@@ -5,7 +5,7 @@
 // (the browser's print dialog), so the PDF needs no extra library and shapes
 // Meetei Mayek with the browser's own text engine.
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
-import { LETTERS, answerKey, numbered } from './mayekPaper.js'
+import { LETTERS, answerKey, numbered, optionsPerRow, answerLineCount, LOOKS } from './mayekPaper.js'
 
 const MAYEK_FONT = 'Noto Sans Meetei Mayek'
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -45,7 +45,10 @@ body{font:11pt/1.5 Calibri,'Carlito','Segoe UI',Arial,'${MAYEK_FONT}',sans-serif
 .ins li{position:relative;font-size:10pt}
 .ins li i{position:absolute;left:-26px;color:#b8923a;font-weight:700;font-style:normal}
 .cols2{column-count:2;column-gap:7.5mm;column-rule:1px solid #e8e3d8}
-.q{break-inside:avoid;margin:8px 0 4px}
+.zone{line-height:calc(1.5 * var(--lf,1))}
+.q{break-inside:avoid;margin:calc(8px * var(--g,1)) 0 calc(4px * var(--g,1))}
+.al{margin-left:28px;height:calc(9.5mm * var(--k,1));border-bottom:1px dotted #b9b2a2}
+.roll td{border:1px solid #d9d2c2;height:10mm;padding:3px 8px;vertical-align:top;font-size:7pt;font-weight:700;color:#b8923a;letter-spacing:.06em}
 .q-h{display:flex;gap:6px;font-weight:700;font-size:11.5pt}
 .q-n{color:#132a4f;min-width:22px}
 .q-t{flex:1}
@@ -55,8 +58,8 @@ body{font:11pt/1.5 Calibri,'Carlito','Segoe UI',Arial,'${MAYEK_FONT}',sans-serif
 .opts{padding-left:28px;display:grid;gap:1px 10px;margin-top:2px}
 .opt{display:flex;gap:6px;font-size:11pt}
 .opt b{color:#b8923a;font-size:10pt;min-width:22px}
-.sec{text-align:center;font-weight:700;color:#132a4f;font-size:12pt;border-bottom:1px solid #eadbb2;margin:12px 0 6px;padding-bottom:2px;break-after:avoid;column-span:all}
-.txt{margin:5px 0;font-size:11pt}
+.sec{text-align:center;font-weight:700;color:#132a4f;font-size:12pt;border-bottom:1px solid #eadbb2;margin:calc(12px * var(--g,1)) 0 calc(6px * var(--g,1));padding-bottom:2px;break-after:avoid;column-span:all}
+.txt{margin:calc(5px * var(--g,1)) 0;font-size:11pt}
 table{border-collapse:collapse;width:100%}
 .sbs th{background:#132a4f;color:#fff;font-size:8.5pt;text-align:left;padding:4px 6px}
 .sbs td{border-bottom:1px solid #f1ede3;padding:4px 6px;vertical-align:top;font-size:10.5pt}
@@ -84,12 +87,13 @@ function letterhead(inst, logoSrc) {
   return `<div class="lh">${logoSrc ? `<img src="${logoSrc}" alt="">` : ''}<div><h1>${esc(inst.name)}</h1>${inst.tagline ? `<div class="tag">${esc(inst.tagline)}</div>` : ''}${inst.address ? `<div class="ad">${esc(inst.address)}</div>` : ''}<div class="ad">${esc([inst.phone, inst.email, inst.website].filter(Boolean).join('  ·  '))}</div></div></div><div class="rule"></div>`
 }
 
-function question(q, lang) {
+function question(q, lang, look) {
   const lines = q.body.filter(b => b.kind === 'line'), opts = q.body.filter(b => b.kind === 'option')
-  const longest = Math.max(0, ...opts.map(o => main(o, lang).length))
-  const per = lang === 'bilingual' ? 1 : opts.length === 4 && longest <= 16 ? 4 : longest <= 34 ? 2 : 1
+  const per = optionsPerRow(opts.map(o => main(o)), look.perRow, { bilingual: lang === 'bilingual', wide: !look.twoCols })
+  const ruled = answerLineCount(q, look.answerLines)
   return `<div class="q"><div class="q-h"><span class="q-n">${q.no}.</span><span class="q-t">${esc(main(q, lang))}${sub(q, lang)}</span>${q.marks ? `<span class="q-m">[${esc(q.marks)}]</span>` : ''}</div>`
     + lines.map(l => `<div class="q-l">${esc(main(l, lang))}${sub(l, lang)}</div>`).join('')
+    + '<div class="al"></div>'.repeat(ruled)
     + (opts.length ? `<div class="opts" style="grid-template-columns:repeat(${per},minmax(0,1fr))">${opts.map((o, i) => `<div class="opt"><b>(${LETTERS[i]})</b><span>${esc(main(o, lang))}${sub(o, lang)}</span></div>`).join('')}</div>` : '')
     + '</div>'
 }
@@ -136,9 +140,13 @@ export function paperHtml(model, opts = {}) {
   const top = letterhead(institute, showLogo ? logoSrc : '')
   const head = `${top}${paper.title ? `<div class="title">${esc(paper.title)}</div>` : ''}${paper.titleMayek ? `<div class="title mm">${esc(paper.titleMayek)}</div>` : ''}`
     + (facts.length || setName ? `<div class="facts">${facts.map(([k, v]) => `<span><b>${k.toUpperCase()}</b>${esc(v)}</span>`).join('')}${setName ? `<span class="set"><b>SET</b>${esc(setName)}</span>` : ''}</div>` : '')
+    + (opts.rollBox ? '<table class="roll"><tr><td style="width:52%">NAME</td><td>ROLL NO.</td><td>CLASS / SECTION</td></tr></table><div style="height:8px"></div>' : '')
     + (ins.length ? `<div class="ins"><h3>General Instructions</h3><ol>${ins.map((x, i) => `<li><i>(${ROMAN[i] || i + 1})</i>${esc(main(x, lang))}${sub(x, lang)}</li>`).join('')}</ol></div>` : '')
-  const body = lang === 'sidebyside' ? sideBySide(blocks)
-    : `<div class="${columns === 2 ? 'cols2' : ''}">${blocks.map(b => (b.type === 'question' ? question(b, lang) : b.type === 'section' ? `<div class="sec">${esc(main(b, lang))}${sub(b, lang)}</div>` : `<div class="txt">${esc(main(b, lang))}${sub(b, lang)}</div>`)).join('')}</div>`
+  const look = { perRow: opts.optionsPerRow || 'auto', answerLines: opts.answerLines || 'off', twoCols: columns === 2 }
+  const k = LOOKS.size[opts.textSize] || 1
+  const zone = `style="zoom:${k};--k:${k};--g:${LOOKS.spacing[opts.spacing] || 1};--lf:${(LOOKS.line[opts.spacing] || 1.08) / 1.08}"`
+  const body = lang === 'sidebyside' ? `<div class="zone" ${zone}>${sideBySide(blocks)}</div>`
+    : `<div class="zone ${columns === 2 ? 'cols2' : ''}" ${zone}>${blocks.map(b => (b.type === 'question' ? question(b, lang, look) : b.type === 'section' ? `<div class="sec">${esc(main(b, lang))}${sub(b, lang)}</div>` : `<div class="txt">${esc(main(b, lang))}${sub(b, lang)}</div>`)).join('')}</div>`
   const foot = `<div class="foot"><span>${esc([institute.name, institute.website].filter(Boolean).join('  ·  '))}</span><span>${esc([paper.title, setName && `Set ${setName}`].filter(Boolean).join(' · '))}</span></div>`
   const pages = keyOnly
     ? [`${top}${keyHtml(model, paper, setName)}`]

@@ -198,6 +198,36 @@ export function answerKey(model) {
   })
 }
 
+/**
+ * How many options to set side by side: the teacher's choice (1, 2 or 4 —
+ * never more than there are), or 'auto' from the option lengths. `wide` is
+ * false on a two-column page.
+ */
+export function optionsPerRow(texts, setting = 'auto', { bilingual = false, wide = true } = {}) {
+  const n = texts.length
+  if (!n) return 1
+  if (setting !== 'auto') return Math.max(1, Math.min(n, Number(setting) || 1))
+  if (bilingual) return 1
+  const longest = Math.max(...texts.map(t => String(t || '').length))
+  if (n === 4 && longest <= (wide ? 16 : 7)) return 4
+  return longest <= (wide ? 34 : 15) ? 2 : 1
+}
+
+/** Ruled answer lines under a written question: setting 'off' | 'auto' (by marks) | a number. */
+export function answerLineCount(q, setting = 'off') {
+  if (setting === 'off' || q.body.some(b => b.kind === 'option')) return 0
+  if (setting !== 'auto') return Math.max(0, Math.min(20, Number(setting) || 0))
+  const m = parseFloat(q.marks) || 1
+  return m <= 1 ? 2 : m <= 2 ? 3 : m <= 3 ? 4 : m <= 5 ? 6 : 8
+}
+
+/** Text size and spacing choices as factors. */
+export const LOOKS = {
+  size: { small: 0.9, normal: 1, large: 1.15 },
+  spacing: { compact: 0.6, normal: 1, relaxed: 1.45 },
+  line: { compact: 1, normal: 1.08, relaxed: 1.25 },
+}
+
 /** Paper statistics for the screen. */
 export function paperStats(model) {
   const qs = model.blocks.filter(b => b.type === 'question')

@@ -5771,7 +5771,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
       {tab === 'doctranslate' && (
         <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
-          <MayekDocTranslator showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />
+          <MayekDocTranslator showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />
         </Suspense>
       )}
       {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}

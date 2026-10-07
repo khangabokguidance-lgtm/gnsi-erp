@@ -1,7 +1,7 @@
 // Question-paper structure for the Document Translator (src/mayekPaper.js).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prepareSource, buildModel, makeSet, answerKey, answerIndex, splitInlineOptions, paperStats, numbered } from '../src/mayekPaper.js'
+import { prepareSource, buildModel, makeSet, answerKey, answerIndex, splitInlineOptions, paperStats, numbered, optionsPerRow, answerLineCount } from '../src/mayekPaper.js'
 
 const PAPER = [
   'Section A',
@@ -63,4 +63,25 @@ test('sets shuffle within sections and keep answers with their options', () => {
     assert.deepEqual(makeSet(m, n), s) // the same every time
   }
   assert.notDeepEqual(JSON.stringify(makeSet(m, 1)), JSON.stringify(makeSet(m, 2)))
+})
+
+test('options per row: the teacher\'s choice, or worked out from the lengths', () => {
+  const short = ['3', '4', '5', '6'], long = ['Rabindranath Tagore', 'Bankim Chandra Chatterjee', 'Sarojini Naidu', 'Mahatma Gandhi']
+  assert.equal(optionsPerRow(short, 'auto'), 4)
+  assert.equal(optionsPerRow(long, 'auto'), 2)
+  assert.equal(optionsPerRow(short, 'auto', { bilingual: true }), 1)
+  assert.equal(optionsPerRow(long, 2), 2)
+  assert.equal(optionsPerRow(long, 4, { bilingual: true }), 4)
+  assert.equal(optionsPerRow(['x', 'y'], 4), 2)
+  assert.equal(optionsPerRow(long, 1), 1)
+})
+
+test('answer lines only under written questions', () => {
+  const m = buildModel(prepareSource(PAPER).map(i => ({ ...i, mm: i.en })))
+  const [q1, , q3, , q4] = m.blocks.slice(1)
+  assert.equal(answerLineCount(q1, 'auto'), 0) // has options
+  assert.equal(answerLineCount(q3, 'off'), 0)
+  assert.equal(answerLineCount(q3, 'auto'), 2) // no marks -> 1 mark
+  assert.equal(answerLineCount(q4, 'auto'), 6) // 5 marks
+  assert.equal(answerLineCount(q4, 3), 3)
 })

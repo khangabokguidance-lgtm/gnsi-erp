@@ -22,7 +22,7 @@ import {
   VerticalAlign, VerticalPositionRelativeFrom, WidthType,
 } from 'docx'
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
-import { LETTERS, answerKey, numbered } from './mayekPaper.js'
+import { LETTERS, answerKey, numbered, optionsPerRow, answerLineCount, LOOKS } from './mayekPaper.js'
 
 export const MAYEK_FONT = 'Noto Sans Meetei Mayek'
 const LATIN_FONT = 'Calibri'
@@ -279,6 +279,16 @@ function paperBlock(paper, setName) {
   return out
 }
 
+// Name / Roll No. strip for the candidate, under the paper details.
+function rollStrip() {
+  const cell = (label, w) => new TableCell({ width: { size: w, type: WidthType.DXA }, borders: boxBorders('D9D2C2'), margins: { top: 110, bottom: 110, left: 120, right: 120 },
+    children: [new Paragraph({ children: [latin(label.toUpperCase(), { size: 14, bold: true, color: GOLD })] })] })
+  return [
+    new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: [5100, 2400, 2400], rows: [new TableRow({ cantSplit: true, children: [cell('Name', 5100), cell('Roll No.', 2400), cell('Class / Section', 2400)] })] }),
+    new Paragraph({ spacing: { after: 140 }, children: [] }),
+  ]
+}
+
 // "General Instructions" box: (i), (ii)… in the chosen language.
 function instructionsBox(list, lang) {
   const items = (list || []).filter(x => x.en || x.mm)
@@ -302,70 +312,100 @@ const marksText = m => (m ? `[${m}]` : '')
 const mainText = (x, lang) => (lang === 'english' ? x.en : (x.mm || x.en))
 
 // One question in the "Meetei Mayek" or "Mayek + English" layout.
-function questionParas(q, lang, width) {
+// Text size, spacing, options per row and answer lines for the paper body.
+function lookFor(opts) {
+  const k = LOOKS.size[opts.textSize] || 1, g = LOOKS.spacing[opts.spacing] || 1
+  return {
+    sz: n => Math.round(n * k),
+    sp: (before = 0, after = 0) => ({ before: Math.round(before * g), after: Math.round(after * g), line: Math.round(240 * (LOOKS.line[opts.spacing] || 1.08)) }),
+    perRow: opts.optionsPerRow || 'auto',
+    answerLines: opts.answerLines || 'off',
+  }
+}
+
+// Lines to write the answer on: a dotted tab leader across the column (a
+// bottom border would not do — Word joins the borders of paragraphs that
+// follow each other into one box, leaving a single line).
+const answerLinesParas = (n, L, width) => Array.from({ length: n }, () => new Paragraph({
+  indent: { left: 440 }, spacing: { before: 0, after: 0, line: Math.round(440 * (L.sz(100) / 100)), lineRule: 'exact' },
+  tabStops: [{ type: TabStopType.RIGHT, position: width - 20, leader: 'dot' }],
+  children: [latin('\t', { size: L.sz(22), color: 'B9B2A2' })],
+}))
+
+function questionParas(q, lang, width, L) {
   const out = []
   const tabs = [{ type: TabStopType.RIGHT, position: width - 20 }]
   const both = lang === 'bilingual' && q.mm && q.en && q.mm !== q.en
   const lines = q.body.filter(b => b.kind === 'line'), opts = q.body.filter(b => b.kind === 'option')
+  const ruled = answerLineCount(q, L.answerLines)
   // "Keep with next" only inside a question: on its last line it would tie
   // the question to whatever comes after (in LibreOffice, a blank page).
-  const more = lines.length + opts.length > 0
+  const more = lines.length + opts.length + ruled > 0
   out.push(new Paragraph({
-    keepNext: both || more, keepLines: true, indent: { left: 440, hanging: 440 }, tabStops: tabs, spacing: { before: 150, after: both ? 0 : 40 },
-    children: [latin(`${q.no}.\t`, { bold: true, size: 22, color: NAVY }), ...runs(mainText(q, lang), { size: 23, bold: true, color: INK }),
-      ...(q.marks ? [latin(`\t${marksText(q.marks)}`, { size: 19, bold: true, color: GOLD })] : [])],
+    keepNext: both || more, keepLines: true, indent: { left: 440, hanging: 440 }, tabStops: tabs, spacing: L.sp(150, both ? 0 : 40),
+    children: [latin(`${q.no}.\t`, { bold: true, size: L.sz(22), color: NAVY }), ...runs(mainText(q, lang), { size: L.sz(23), bold: true, color: INK }),
+      ...(q.marks ? [latin(`\t${marksText(q.marks)}`, { size: L.sz(19), bold: true, color: GOLD })] : [])],
   }))
-  if (both) out.push(new Paragraph({ keepNext: more, indent: { left: 440 }, spacing: { after: 40 }, children: runs(q.en, { size: 17, color: GREY, italics: true }) }))
+  if (both) out.push(new Paragraph({ keepNext: more, indent: { left: 440 }, spacing: L.sp(0, 40), children: runs(q.en, { size: L.sz(17), color: GREY, italics: true }) }))
   lines.forEach((l, i) => {
-    const next = i < lines.length - 1 || opts.length > 0
+    const next = i < lines.length - 1 || opts.length + ruled > 0
     const en = lang === 'bilingual' && l.mm && l.en && l.mm !== l.en
-    out.push(new Paragraph({ keepNext: next || en, indent: { left: 440 }, spacing: { after: 20 }, children: runs(mainText(l, lang), { size: 22, color: INK }) }))
-    if (en) out.push(new Paragraph({ keepNext: next, indent: { left: 440 }, children: runs(l.en, { size: 16, color: GREY, italics: true }) }))
+    out.push(new Paragraph({ keepNext: next || en, indent: { left: 440 }, spacing: L.sp(0, 20), children: runs(mainText(l, lang), { size: L.sz(22), color: INK }) }))
+    if (en) out.push(new Paragraph({ keepNext: next, indent: { left: 440 }, spacing: L.sp(0, 0), children: runs(l.en, { size: L.sz(16), color: GREY, italics: true }) }))
   })
+  if (ruled) out.push(...answerLinesParas(ruled, L, width))
   if (!opts.length) return out
   const label = i => `(${LETTERS[i]})`
-  const longest = Math.max(...opts.map(o => mainText(o, lang).length))
-  const perRow = lang === 'bilingual' ? 1 : opts.length === 4 && longest <= (width > 6000 ? 16 : 7) ? 4 : longest <= (width > 6000 ? 34 : 15) ? 2 : 1
+  const bilingual = lang === 'bilingual'
+  const perRow = optionsPerRow(opts.map(o => mainText(o, lang)), L.perRow, { bilingual, wide: width > 6000 })
   if (perRow === 1) {
     opts.forEach((o, i) => {
       const last = i === opts.length - 1
-      const en = lang === 'bilingual' && o.mm && o.en && o.mm !== o.en
-      out.push(new Paragraph({ keepNext: !last || en, indent: { left: 880, hanging: 440 }, spacing: { after: en ? 0 : 20 },
-        children: [latin(`${label(i)}\t`, { size: 20, bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: 22, color: INK })] }))
-      if (en) out.push(new Paragraph({ keepNext: !last, indent: { left: 880 }, spacing: { after: 20 }, children: runs(o.en, { size: 16, color: GREY, italics: true }) }))
+      const en = bilingual && o.mm && o.en && o.mm !== o.en
+      out.push(new Paragraph({ keepNext: !last || en, indent: { left: 880, hanging: 440 }, spacing: L.sp(0, en ? 0 : 20),
+        children: [latin(`${label(i)}\t`, { size: L.sz(20), bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: L.sz(22), color: INK })] }))
+      if (en) out.push(new Paragraph({ keepNext: !last, indent: { left: 880 }, spacing: L.sp(0, 20), children: runs(o.en, { size: L.sz(16), color: GREY, italics: true }) }))
     })
     return out
   }
+  // Options side by side on tab stops; in "Mayek + English" the English
+  // follows on a second line at the same tab stops.
   const step = Math.floor((width - 440) / perRow)
+  const stops = Array.from({ length: perRow }, (_, k) => ({ type: TabStopType.LEFT, position: 440 + k * step })).slice(1)
   for (let r = 0; r < opts.length; r += perRow) {
     const row = opts.slice(r, r + perRow)
+    const last = r + perRow >= opts.length
+    const en = bilingual && row.some(o => o.mm && o.en && o.mm !== o.en)
     out.push(new Paragraph({
-      keepNext: r + perRow < opts.length, indent: { left: 440 }, spacing: { after: 30 },
-      tabStops: row.map((_, k) => ({ type: TabStopType.LEFT, position: 440 + k * step })).slice(1),
-      children: row.flatMap((o, k) => [latin(`${k ? '\t' : ''}${label(r + k)} `, { size: 20, bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: 22, color: INK })]),
+      keepNext: !last || en, indent: { left: 440 }, spacing: L.sp(0, en ? 0 : 30), tabStops: stops,
+      children: row.flatMap((o, k) => [latin(`${k ? '\t' : ''}${label(r + k)} `, { size: L.sz(20), bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: L.sz(22), color: INK })]),
+    }))
+    if (en) out.push(new Paragraph({
+      keepNext: !last, indent: { left: 440 }, spacing: L.sp(0, 30), tabStops: stops,
+      children: row.flatMap((o, k) => [latin(`${k ? '\t' : ''}     `, { size: L.sz(16) }), ...runs(o.en, { size: L.sz(16), color: GREY, italics: true })]),
     }))
   }
   return out
 }
 
-function sectionPara(b, lang) {
-  const out = [new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 220, after: lang === 'bilingual' ? 0 : 100 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2', space: 2 } }, children: runs(mainText(b, lang), { size: 24, bold: true, color: NAVY }) })]
-  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { after: 100 }, children: runs(b.en, { size: 17, color: GREY, italics: true }) }))
+function sectionPara(b, lang, L) {
+  const out = [new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: L.sp(220, lang === 'bilingual' ? 0 : 100),
+    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2', space: 2 } }, children: runs(mainText(b, lang), { size: L.sz(24), bold: true, color: NAVY }) })]
+  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: L.sp(0, 100), children: runs(b.en, { size: L.sz(17), color: GREY, italics: true }) }))
   return out
 }
 
-function textParas(b, lang) {
-  const out = [new Paragraph({ spacing: { before: 60, after: lang === 'bilingual' ? 0 : 60 }, children: runs(mainText(b, lang), { size: 22, color: INK }) })]
-  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ spacing: { after: 60 }, children: runs(b.en, { size: 16, color: GREY, italics: true }) }))
+function textParas(b, lang, L) {
+  const out = [new Paragraph({ spacing: L.sp(60, lang === 'bilingual' ? 0 : 60), children: runs(mainText(b, lang), { size: L.sz(22), color: INK }) })]
+  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ spacing: L.sp(0, 60), children: runs(b.en, { size: L.sz(16), color: GREY, italics: true }) }))
   return out
 }
 
 // "Side by side": English | Meetei Mayek in a table, with a number and a marks column.
-function sideBySide(blocks) {
+function sideBySide(blocks, L) {
   const W = [620, 4290, 4290, 700]
   const cell = (children, i, o = {}) => new TableCell({ width: { size: W[i], type: WidthType.DXA }, borders: { ...noBorders, bottom: thin('F1EDE3') }, margins: { top: 50, bottom: 50, left: 80, right: 80 }, children, ...o })
-  const p = (text, o = {}) => new Paragraph({ alignment: o.align, children: runs(text, { size: o.size || 21, bold: o.bold, color: o.color || INK, italics: o.italics }) })
+  const p = (text, o = {}) => new Paragraph({ alignment: o.align, spacing: L.sp(0, 0), children: runs(text, { size: L.sz(o.size || 21), bold: o.bold, color: o.color || INK, italics: o.italics }) })
   const head = new TableRow({ tableHeader: true, children: ['No.', 'English', 'Meetei Mayek', 'Marks'].map((t, i) => new TableCell({ width: { size: W[i], type: WidthType.DXA }, shading: { fill: NAVY }, borders: noBorders, margins: { top: 60, bottom: 60, left: 80, right: 80 },
     children: [new Paragraph({ alignment: i === 3 ? AlignmentType.CENTER : AlignmentType.LEFT, children: [latin(t, { bold: true, size: 17, color: 'FFFFFF' })] })] })) })
   const rows = [head]
@@ -384,8 +424,8 @@ function sideBySide(blocks) {
       ] }))
       b.body.filter(x => x.kind === 'option').forEach((o, i) => rows.push(new TableRow({ cantSplit: true, children: [
         cell([p('')], 0),
-        cell([new Paragraph({ indent: { left: 200 }, children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: 19 }), ...runs(o.en, { size: 20, color: INK })] })], 1),
-        cell([new Paragraph({ indent: { left: 200 }, children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: 19 }), ...runs(o.mm || '', { size: 21, color: INK })] })], 2),
+        cell([new Paragraph({ indent: { left: 200 }, spacing: L.sp(0, 0), children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: L.sz(19) }), ...runs(o.en, { size: L.sz(20), color: INK })] })], 1),
+        cell([new Paragraph({ indent: { left: 200 }, spacing: L.sp(0, 0), children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: L.sz(19) }), ...runs(o.mm || '', { size: L.sz(21), color: INK })] })], 2),
         cell([p('')], 3),
       ] })))
     }
@@ -393,11 +433,11 @@ function sideBySide(blocks) {
   return [new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: W, rows })]
 }
 
-function bodyFor(model, lang, columns) {
+function bodyFor(model, lang, columns, L) {
   const blocks = numbered(model)
-  if (lang === 'sidebyside') return sideBySide(blocks)
+  if (lang === 'sidebyside') return sideBySide(blocks, L)
   const width = widthFor(columns)
-  return blocks.flatMap(b => (b.type === 'question' ? questionParas(b, lang, width) : b.type === 'section' ? sectionPara(b, lang) : textParas(b, lang)))
+  return blocks.flatMap(b => (b.type === 'question' ? questionParas(b, lang, width, L) : b.type === 'section' ? sectionPara(b, lang, L) : textParas(b, lang, L)))
 }
 
 const pageTitle = (text, sub, pageBreakBefore = false) => [
@@ -490,8 +530,8 @@ export async function buildPaperDocx(model, opts = {}) {
   if (keyOnly) {
     sections.push({ ...first, children: [...top, ...keyPage(model, paper, setName)] })
   } else {
-    const intro = [...top, ...paperBlock(paper, setName), ...instructionsBox(instructions, lang)]
-    const body = bodyFor(model, lang, columns)
+    const intro = [...top, ...paperBlock(paper, setName), ...(opts.rollBox ? rollStrip() : []), ...instructionsBox(instructions, lang)]
+    const body = bodyFor(model, lang, columns, lookFor(opts))
     if (columns === 2) {
       sections.push({ ...first, children: intro })
       sections.push({ properties: { page: PAGE, type: SectionType.CONTINUOUS, column: { count: 2, space: GAP, separate: true } }, children: body })

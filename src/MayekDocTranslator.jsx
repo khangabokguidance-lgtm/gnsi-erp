@@ -13,6 +13,10 @@
 //   the paper. An OMR sheet can be added.
 // • Paper sets A–D shuffle questions (and options); answers follow.
 // • Papers are saved on this computer and can be reopened.
+// • Questions can be picked from the Question Bank instead of a file; the
+//   Meetei Mayek they already have is used as it is.
+// • Options per row, text size, spacing, ruled answer lines and a
+//   Name / Roll No. strip are chosen per paper.
 //
 // Translation goes through the same pipeline as the Mayek Tool
 // (mayekTranslate.js): the school's dictionary first, then the offline
@@ -28,6 +32,8 @@ import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
 import { translate, ENGINE_LABELS, saveTranslationDrafts, saveCorrections, offlineEnabled, setOfflineEnabled, offlineRunning } from './mayekTranslate'
 import { readPaperFile, linesFromText, cleanLines, buildPaperDocx, docxFileName, watermarkDataUrl, MAX_LINES, MAYEK_FONT } from './mayekDocx'
 import { prepareSource, buildModel, makeSet, kindOf, paperStats, SET_NAMES } from './mayekPaper'
+import { bmeiToUnicode } from './mayekSegments'
+import { normalizeAnswer, tidyText } from './paperTools'
 import { paperHtml } from './mayekPaperHtml'
 
 const LOGO_SRC = `data:image/jpeg;base64,${LOGO_BASE64}`
@@ -152,6 +158,13 @@ textarea.mdt-in{resize:vertical;line-height:1.5}
 .mdt-x{border:0;background:none;color:${PX.faint};cursor:pointer;font-size:16px;padding:4px 6px;border-radius:8px}
 .mdt-x:hover{color:${PX.bad};background:${PX.badBg}}
 .mdt-dl{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mdt-group{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:${PX.gold};margin:6px 0 10px;padding-top:10px;border-top:1px dashed ${PX.line}}
+.mdt-pick{max-height:340px;overflow:auto;border:1px solid ${PX.line};border-radius:12px;margin-top:10px}
+.mdt-pick label{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid #f1ede3;cursor:pointer;font-size:12.5px;line-height:1.45}
+.mdt-pick label:hover{background:${PX.tint}}
+.mdt-pick label.on{background:${PX.goldBg}}
+.mdt-pick small{display:block;color:${PX.sub};font-size:11px}
+.mdt-tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:99px;background:${PX.okBg};color:${PX.ok};font-size:10px;font-weight:800}
 
 `
 
@@ -194,7 +207,70 @@ function Preview({ html }) {
   )
 }
 
-export default function MayekDocTranslator({ showToast, currentStaffId }) {
+// A bank question's Meetei Mayek as Unicode (BMEI04 keystrokes converted).
+const bankMayek = (q, text) => {
+  const t = String(text || '').replace(/\s*\n\s*/g, ' ').trim()
+  if (!t) return ''
+  const u = q.question_mayek_font === 'bmei04' ? bmeiToUnicode(t) : t
+  return MTEI.test(u) ? u : ''
+}
+const oneLine = t => tidyText(String(t || '')).replace(/\s*\n\s*/g, ' ').trim()
+
+// Pick questions from the Question Bank by course, subject and chapter.
+function BankPicker({ questions, onUse }) {
+  const [course, setCourse] = useState('')
+  const [subject, setSubject] = useState('')
+  const [chapter, setChapter] = useState('')
+  const [q, setQ] = useState('')
+  const [picked, setPicked] = useState([]) // ids in the order chosen
+  const all = questions || []
+  const uniq = list => [...new Set(list.filter(Boolean))].sort()
+  const courses = uniq(all.map(x => x.course))
+  const subjects = uniq(all.filter(x => !course || x.course === course).map(x => x.subject))
+  const chapters = uniq(all.filter(x => (!course || x.course === course) && (!subject || x.subject === subject)).map(x => x.chapter))
+  const needle = q.trim().toLowerCase()
+  const shown = all.filter(x => (!course || x.course === course) && (!subject || x.subject === subject) && (!chapter || x.chapter === chapter)
+    && (!needle || String(x.question || '').toLowerCase().includes(needle)))
+  const list = shown.slice(0, 300)
+  const toggle = id => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]))
+  const sel = { width: '100%', marginBottom: 8 }
+  if (!all.length) return <div className="mdt-note">The Question Bank has no questions loaded.</div>
+  return (
+    <div>
+      <div className="mdt-row three" style={{ marginBottom: 0 }}>
+        <select className="mdt-in" style={sel} value={course} onChange={e => { setCourse(e.target.value); setSubject(''); setChapter('') }} aria-label="Course"><option value="">All courses</option>{courses.map(c => <option key={c}>{c}</option>)}</select>
+        <select className="mdt-in" style={sel} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }} aria-label="Subject"><option value="">All subjects</option>{subjects.map(c => <option key={c}>{c}</option>)}</select>
+        <select className="mdt-in" style={sel} value={chapter} onChange={e => setChapter(e.target.value)} aria-label="Chapter"><option value="">All chapters</option>{chapters.map(c => <option key={c}>{c}</option>)}</select>
+      </div>
+      <input className="mdt-in" value={q} onChange={e => setQ(e.target.value)} placeholder="Search the questions…" />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+        <span className="mdt-note">{shown.length} question{shown.length === 1 ? '' : 's'}{shown.length > list.length ? ` (first ${list.length} shown)` : ''}</span>
+        <button className="mdt-btn ghost sm" onClick={() => setPicked(p => [...p, ...list.map(x => x.id).filter(id => !p.includes(id))])} disabled={!list.length}>Select all shown</button>
+        {picked.length > 0 && <button className="mdt-btn ghost sm" onClick={() => setPicked([])}>Clear</button>}
+        <button className="mdt-btn gold sm" style={{ marginLeft: 'auto' }} disabled={!picked.length}
+          onClick={() => onUse(picked.map(id => all.find(x => x.id === id)).filter(Boolean), { course, subject, chapter })}>Use {picked.length || ''} question{picked.length === 1 ? '' : 's'}</button>
+      </div>
+      <div className="mdt-pick">
+        {list.map(x => {
+          const on = picked.includes(x.id)
+          return (
+            <label key={x.id} className={on ? 'on' : ''}>
+              <input type="checkbox" checked={on} onChange={() => toggle(x.id)} />
+              <span>
+                {on && <b style={{ color: PX.gold }}>{picked.indexOf(x.id) + 1}. </b>}{oneLine(x.question).slice(0, 180)}
+                {bankMayek(x, x.question_mayek) && <span className="mdt-tag">MAYEK</span>}
+                <small>{[x.subject, x.chapter, x.difficulty].filter(Boolean).join(' · ')}</small>
+              </span>
+            </label>
+          )
+        })}
+        {!list.length && <div className="mdt-note" style={{ padding: 14 }}>No questions match.</div>}
+      </div>
+    </div>
+  )
+}
+
+export default function MayekDocTranslator({ showToast, currentStaffId, questions }) {
   const [saved] = useState(() => readJson(SETTINGS_KEY, {}))
   const [source, setSource] = useState(null) // { name, lines, pictures }
   const [pasted, setPasted] = useState('')
@@ -216,6 +292,12 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
   const [sets, setSets] = useState(saved.sets || 1)
   const [shuffleOpts, setShuffleOpts] = useState(saved.shuffleOpts ?? true)
   const [viewSet, setViewSet] = useState(0)
+  const [optionsPerRow, setOptionsPerRow] = useState(saved.optionsPerRow ?? 'auto')
+  const [textSize, setTextSize] = useState(saved.textSize || 'normal')
+  const [spacing, setSpacing] = useState(saved.spacing || 'normal')
+  const [answerLines, setAnswerLines] = useState(saved.answerLines ?? 'off')
+  const [rollBox, setRollBox] = useState(saved.rollBox ?? false)
+  const [srcMode, setSrcMode] = useState('file') // file | bank
   const [offline, setOffline] = useState(offlineEnabled)
   const [offlineUp, setOfflineUp] = useState(null)
   const [onlyFlagged, setOnlyFlagged] = useState(false)
@@ -228,8 +310,8 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
 
   // Letterhead, layout and output choices are remembered on this computer.
   useEffect(() => {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ lang, columns, inst, watermark, showLogo, keyMode, withOmr, sets, shuffleOpts, insText })) } catch { /* private mode */ }
-  }, [lang, columns, inst, watermark, showLogo, keyMode, withOmr, sets, shuffleOpts, insText])
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ lang, columns, inst, watermark, showLogo, keyMode, withOmr, sets, shuffleOpts, insText, optionsPerRow, textSize, spacing, answerLines, rollBox })) } catch { /* private mode */ }
+  }, [lang, columns, inst, watermark, showLogo, keyMode, withOmr, sets, shuffleOpts, insText, optionsPerRow, textSize, spacing, answerLines, rollBox])
   useEffect(() => {
     if (!offline) return
     let live = true
@@ -266,12 +348,13 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
   const paperOut = useMemo(() => ({ ...paper, marks: paper.marks || (stats.marks ? String(stats.marks) : '') }), [paper, stats.marks])
   const outOpts = (n, extra = {}) => ({
     lang, columns, institute: inst, paper: paperOut, instructions: insList, watermark, logoSrc: LOGO_SRC, showLogo,
-    setName: setCount > 1 ? SET_NAMES[n] : '', withKey: keyMode === 'end', withOmr, ...extra,
+    setName: setCount > 1 ? SET_NAMES[n] : '', withKey: keyMode === 'end', withOmr,
+    optionsPerRow, textSize, spacing, answerLines, rollBox, ...extra,
   })
   const setModel = n => makeSet(model, n, { options: shuffleOpts })
   const previewHtml = useMemo(() => paperHtml(setModel(shownSet), { ...outOpts(shownSet), watermarkSrc: watermark.kind === 'none' ? '' : wmSrc }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- outOpts/setModel read these values
-    [model, shownSet, lang, columns, inst, paperOut, insList, watermark.kind, wmSrc, showLogo, keyMode, withOmr, setCount, shuffleOpts])
+    [model, shownSet, lang, columns, inst, paperOut, insList, watermark.kind, wmSrc, showLogo, keyMode, withOmr, setCount, shuffleOpts, optionsPerRow, textSize, spacing, answerLines, rollBox])
 
   // The preview reloads after a short pause in typing, not on every key.
   const [previewDoc, setPreviewDoc] = useState('')
@@ -320,15 +403,46 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
     } catch (e) { showToast(e.message, PX.bad) }
   }
 
+  // Questions from the Bank become the paper's lines; their Meetei Mayek (if
+  // any) is kept by line and used instead of translating.
+  const takeBankQuestions = (list, f) => {
+    const out = [], known = {}
+    list.forEach((x, i) => {
+      const qLine = `${i + 1}. ${oneLine(x.question)}`
+      out.push(qLine)
+      const qm = bankMayek(x, x.question_mayek)
+      if (qm) known[qLine] = qm
+      ;['a', 'b', 'c', 'd'].forEach(l => {
+        const t = oneLine(x[`option_${l}`])
+        if (!t) return
+        const line = `(${l}) ${t}`
+        out.push(line)
+        const om = bankMayek(x, x[`option_${l}_mayek`])
+        if (om) known[line] = om
+      })
+      const ans = normalizeAnswer(x.correct_option)
+      if (ans) out.push(`Ans: ${ans.toLowerCase()}`)
+    })
+    run.current++
+    setSource({ name: `${list.length} questions from the Question Bank`, lines: out, pictures: 0, known })
+    setPairs([]); setWarnings([]); setPaperId(null); setInsMm({})
+    setPaper(p => ({ ...p, title: [f.subject, f.chapter].filter(Boolean).join(' — ') || p.title || 'Question paper', titleMayek: '', subject: f.subject || p.subject }))
+    setSrcMode('file')
+    const have = Object.keys(known).length
+    showToast(`${plural(list.length, 'question')} added${have ? ` · ${plural(have, 'line')} already in Meetei Mayek` : ''}`, PX.ok)
+  }
+
   // Translate in chunks of lines; a chunk whose reply doesn't keep one line
   // per line is redone line by line so every line stays paired.
   const translateAll = async () => {
     if (!realLines || busy) return
     if (realLines > MAX_LINES) { showToast(`This paper has ${realLines} lines; the limit is ${MAX_LINES}. Split it into parts.`, PX.warn); return }
     const id = ++run.current
-    const out = items.map(it => ({ ...it, mm: '', machine: it.en ? '' : null, engine: '' }))
-    const idx = items.map((it, i) => (it.en ? i : -1)).filter(i => i >= 0)
     const used = {}, warns = new Set()
+    const known = source?.known || {}
+    const out = items.map(it => (known[it.en] ? { ...it, mm: known[it.en], machine: known[it.en], engine: 'bank' } : { ...it, mm: '', machine: it.en ? '' : null, engine: '' }))
+    const idx = items.map((it, i) => (it.en && !known[it.en] ? i : -1)).filter(i => i >= 0)
+    if (out.some(p => p.engine === 'bank')) used.bank = out.filter(p => p.engine === 'bank').length
     setPairs(out.map(p => ({ ...p }))); setWarnings([]); setEngines({})
     const one = async text => {
       const r = await translate(text, 'en', 'mni-Mtei')
@@ -464,6 +578,8 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
               </div>
             ) : (
               <>
+                <Seg value={srcMode} onChange={setSrcMode} options={[['file', 'Upload or paste'], ['bank', 'From Question Bank']]} />
+                {srcMode === 'bank' ? <BankPicker questions={questions} onUse={takeBankQuestions} /> : (<>
                 <div className={'mdt-drop' + (over ? ' over' : '')} role="button" tabIndex={0}
                   onClick={() => fileRef.current?.click()} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click() }}
                   onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
@@ -475,6 +591,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
                 <div className="mdt-or">or paste the questions</div>
                 <textarea className="mdt-in" rows={7} value={pasted} onChange={e => { setPasted(e.target.value); setPairs([]); setPaperId(null) }}
                   placeholder={'1. What is the capital of India? [1]\n(a) Delhi (b) Mumbai (c) Kolkata (d) Chennai\nAns: a\n2. Find the value of x if 2x + 3 = 11. (2 marks)'} />
+                </>)}
               </>
             )}
             <input ref={fileRef} type="file" accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden
@@ -510,7 +627,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
             )}
             {Object.keys(engines).length > 0 && (
               <div className="mdt-stats">
-                {Object.entries(engines).map(([e, n]) => <span key={e} className="mdt-chip">{ENGINE_LABELS[e] || e} · {n}</span>)}
+                {Object.entries(engines).map(([e, n]) => <span key={e} className="mdt-chip">{e === 'bank' ? 'From the Question Bank' : ENGINE_LABELS[e] || e} · {n}</span>)}
                 {flaggedCount > 0 ? <span className="mdt-chip warn">{plural(flaggedCount, 'line')} to check</span> : <span className="mdt-chip ok">All lines in Meetei Mayek</span>}
               </div>
             )}
@@ -600,6 +717,18 @@ export default function MayekDocTranslator({ showToast, currentStaffId }) {
             <label className="mdt-lbl">Columns {lang === 'sidebyside' && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(side by side is one table)</span>}</label>
             <Seg value={lang === 'sidebyside' ? 1 : columns} onChange={setColumns} disabled={lang === 'sidebyside'} options={[[1, 'One column'], [2, 'Two columns']]} />
 
+            <div className="mdt-group">Look of the paper</div>
+            <label className="mdt-lbl">Options per row</label>
+            <Seg value={optionsPerRow} onChange={setOptionsPerRow} options={[['auto', 'Auto'], [1, '1 in a row'], [2, '2 in a row'], [4, '4 in a row']]} />
+            <label className="mdt-lbl">Text size</label>
+            <Seg value={textSize} onChange={setTextSize} options={[['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']]} />
+            <label className="mdt-lbl">Spacing</label>
+            <Seg value={spacing} onChange={setSpacing} options={[['compact', 'Compact'], ['normal', 'Normal'], ['relaxed', 'Relaxed']]} />
+            <label className="mdt-lbl">Answer lines <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(under questions without options)</span></label>
+            <Seg value={answerLines} onChange={setAnswerLines} options={[['off', 'None'], ['auto', 'By marks'], [3, '3 lines'], [6, '6 lines']]} />
+            <label className="mdt-check" style={{ marginBottom: 12 }}><input type="checkbox" checked={rollBox} onChange={e => setRollBox(e.target.checked)} />Name / Roll No. strip at the top</label>
+
+            <div className="mdt-group">Answer key, sets & watermark</div>
             <label className="mdt-lbl">Answer key {!stats.answers && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(add "Ans: b" lines or fill Answer in the list)</span>}</label>
             <Seg value={keyMode} onChange={setKeyMode} options={[['off', 'None'], ['end', 'Last page'], ['separate', 'Separate file']]} />
             <label className="mdt-check" style={{ marginBottom: 12 }}><input type="checkbox" checked={withOmr} onChange={e => setWithOmr(e.target.checked)} />Add an OMR answer sheet{stats.mcq ? ` (${plural(stats.mcq, 'question')})` : ''}</label>
