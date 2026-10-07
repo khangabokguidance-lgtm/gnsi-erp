@@ -1,7 +1,11 @@
 -- ============================================================================
 -- gnsi bucket: let signed-in staff upload student photos
 -- ============================================================================
--- Symptom: "Student saved, but the photo failed: Upload failed"
+-- Symptom: "Student saved, but the photo failed: Upload failed: Bucket not found"
+--
+-- The 'gnsi' bucket (student photos AND student documents) did not exist in
+-- the project, so this also creates it as a PRIVATE bucket (files are shown
+-- through short-lived signed links). Creating it again is harmless.
 --
 -- Student photos are stored in the 'gnsi' bucket under student_photos/. The
 -- storage lockdown removed broad write rules, and no staff rule exists for
@@ -23,6 +27,11 @@ begin
   end if;
 end $$;
 
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('gnsi', 'gnsi', false, 10485760)
+on conflict (id) do nothing;
+
+-- Student documents live in the same bucket under student_docs/.
 drop policy if exists gnsi_student_photos_select on storage.objects;
 drop policy if exists gnsi_student_photos_insert on storage.objects;
 drop policy if exists gnsi_student_photos_update on storage.objects;
@@ -30,14 +39,14 @@ drop policy if exists gnsi_student_photos_delete on storage.objects;
 
 create policy gnsi_student_photos_select on storage.objects
   for select to authenticated
-  using (bucket_id = 'gnsi' and name like 'student_photos/%' and public.qbank_is_staff());
+  using (bucket_id = 'gnsi' and (name like 'student_photos/%' or name like 'student_docs/%') and public.qbank_is_staff());
 create policy gnsi_student_photos_insert on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'gnsi' and name like 'student_photos/%' and public.qbank_is_staff());
+  with check (bucket_id = 'gnsi' and (name like 'student_photos/%' or name like 'student_docs/%') and public.qbank_is_staff());
 create policy gnsi_student_photos_update on storage.objects
   for update to authenticated
-  using (bucket_id = 'gnsi' and name like 'student_photos/%' and public.qbank_is_staff())
-  with check (bucket_id = 'gnsi' and name like 'student_photos/%' and public.qbank_is_staff());
+  using (bucket_id = 'gnsi' and (name like 'student_photos/%' or name like 'student_docs/%') and public.qbank_is_staff())
+  with check (bucket_id = 'gnsi' and (name like 'student_photos/%' or name like 'student_docs/%') and public.qbank_is_staff());
 create policy gnsi_student_photos_delete on storage.objects
   for delete to authenticated
-  using (bucket_id = 'gnsi' and name like 'student_photos/%' and public.qbank_is_staff());
+  using (bucket_id = 'gnsi' and (name like 'student_photos/%' or name like 'student_docs/%') and public.qbank_is_staff());
