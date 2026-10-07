@@ -45,7 +45,7 @@ import {
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
-import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
+import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, OFFLINE_DRAFT_SOURCE, reviewedSource, offlineToMayek, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -3002,18 +3002,8 @@ function MayekTranslator({ showToast, currentStaffId }) {
   const [showKeys, setShowKeys] = useState(false)
   const [last, setLast] = useState(null) // what the engine returned, to spot staff edits
   const [saving, setSaving] = useState(false)
-  // The offline translator (a program on this computer): on/off is per browser.
-  const [offline, setOffline] = useState(offlineEnabled)
-  const [offlineUp, setOfflineUp] = useState(null) // null = not checked yet
+  const [translated, setTranslated] = useState(0) // re-checks the offline translator after each run
   const run = useRef(0)
-
-  useEffect(() => {
-    if (!offline) return
-    let live = true
-    offlineRunning().then(ok => { if (live) setOfflineUp(ok) })
-    return () => { live = false }
-  }, [offline])
-  const toggleOffline = on => { setOfflineEnabled(on); setOfflineUp(null); setOffline(on) }
 
   const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
   const doTranslate = async () => {
@@ -3030,7 +3020,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
       if (id === run.current) showToast('Translation failed: ' + e.message, C.rose)
     } finally {
       if (id === run.current) setBusy('')
-      if (offline) offlineRunning().then(setOfflineUp)
+      setTranslated(n => n + 1)
     }
   }
   const swap = () => {
@@ -3071,16 +3061,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
         <select aria-label="Translate to" value={to} onChange={e => setTo(e.target.value)} style={sel}>
           {LANGS.filter(l => l.target).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
         </select>
-        <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:C.slate, cursor:'pointer' }}
-          title="Translates English on this computer with no internet. Needs the offline translator program running here.">
-          <input type="checkbox" checked={offline} onChange={e => toggleOffline(e.target.checked)} />
-          Use the offline translator on this computer
-          {offline && (
-            <b style={{ color: offlineUp ? C.green : offlineUp === false ? C.rose : C.slate }}>
-              {offlineUp ? '— running' : offlineUp === false ? '— not running (start start-translator.bat)' : '— checking…'}
-            </b>
-          )}
-        </label>
+        <OfflineToggle recheck={translated} />
       </div>
 
       <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
@@ -3286,6 +3267,33 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
 // real English words/sentences to Meetei Mayek, using a Supabase table
 // (mayek_dictionary) that grows as entries are added — never machine-translated,
 // so a missing word is shown as [?word?] rather than guessed.
+// "Use the offline translator on this computer" tick box with a running /
+// not-running status. The setting is per browser (see mayekTranslate.js);
+// the status is re-checked whenever `recheck` changes.
+function OfflineToggle({ recheck = 0 }) {
+  const [offline, setOffline] = useState(offlineEnabled)
+  const [offlineUp, setOfflineUp] = useState(null) // null = not checked yet
+  useEffect(() => {
+    if (!offline) return
+    let live = true
+    offlineRunning().then(ok => { if (live) setOfflineUp(ok) })
+    return () => { live = false }
+  }, [offline, recheck])
+  const toggle = on => { setOfflineEnabled(on); setOfflineUp(null); setOffline(on) }
+  return (
+    <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:C.slate, cursor:'pointer' }}
+      title="Translates English on this computer with no internet. Needs the offline translator program running here.">
+      <input type="checkbox" checked={offline} onChange={e => toggle(e.target.checked)} />
+      Use the offline translator on this computer
+      {offline && (
+        <b style={{ color: offlineUp ? C.green : offlineUp === false ? C.rose : C.slate }}>
+          {offlineUp ? '— running' : offlineUp === false ? '— not running (start start-translator.bat)' : '— checking…'}
+        </b>
+      )}
+    </label>
+  )
+}
+
 function TabDictionary({ showToast, currentStaffId, questions, isAdmin }) {
   const [subView, setSubView] = useState('translate') // translate | add | bulk | wordlist | coverage | browse
 
@@ -3294,8 +3302,11 @@ function TabDictionary({ showToast, currentStaffId, questions, isAdmin }) {
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>
         Dictionary - English to Meetei Mayek
       </div>
-      <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:8 }}>
         Dictionary lookup for known words/sentences, with BMEI04 keystrokes. Unknown words are flagged, never guessed.
+      </div>
+      <div style={{ marginBottom:16 }}>
+        <OfflineToggle recheck={subView} />
       </div>
 
       <div style={{ display:'flex', gap:6, marginBottom:16, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content', flexWrap:'wrap' }}>
@@ -3406,7 +3417,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
   const [phrases, setPhrases] = useState([])
   const [loadingQueues, setLoadingQueues] = useState(true)
   const [fillDrafts, setFillDrafts] = useState({}) // id -> bmei04 text being typed
-  const [drafting, setDrafting] = useState('') // progress text while Gemini fills entries
+  const [drafting, setDrafting] = useState('') // progress text while entries are auto-filled
   const [sentScan, setSentScan] = useState(null) // Question Bank sentence coverage
   const [sentBusy, setSentBusy] = useState('')
 
@@ -3451,7 +3462,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     try {
       await saveDictionaryEntry({
         entryType: row.entry_type, english: row.english, bmei04,
-        category: row.category, source: row.source === AI_DRAFT_SOURCE ? 'gemini_reviewed' : row.source,
+        category: row.category, source: reviewedSource(row.source),
         createdBy: currentStaffId || null,
       })
       showToast('Saved', C.green)
@@ -3462,16 +3473,19 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     }
   }
 
-  // Gemini fills blank entries as drafts (needs_review) for a teacher to check.
+  // Blank entries are filled as drafts (needs_review) for a teacher to check:
+  // by the offline translator where it is switched on and running, else Gemini.
   const DRAFT_LIMIT = 200
   const runDraft = async (rows) => {
     if (drafting || !rows.length) return
     const todo = rows.slice(0, DRAFT_LIMIT)
-    setDrafting('Asking Gemini…')
+    setDrafting('Translating…')
     try {
-      const { filled, failed } = await aiDraftEntries(todo, (n, total) => setDrafting(`Asking Gemini… ${n}/${total}`))
+      const { filled, offline, gemini, failed } = await aiDraftEntries(todo,
+        (n, total, engine) => setDrafting(`${engine === 'indictrans' ? 'Offline translator' : 'Asking Gemini'}… ${n}/${total}`))
       const more = rows.length - todo.length
-      showToast(`Gemini drafted ${filled} entr${filled === 1 ? 'y' : 'ies'} — check them under Needs Review` +
+      const by = [offline && `${offline} by the offline translator`, gemini && `${gemini} by Gemini`].filter(Boolean).join(', ')
+      showToast(`Drafted ${filled} entr${filled === 1 ? 'y' : 'ies'}${by ? ` (${by})` : ''} — check them under Needs Review` +
         (failed.length ? ` · ${failed.length} skipped` : '') + (more > 0 ? ` · ${more} more: click again` : ''), filled ? C.green : C.amber)
       loadQueues()
     } catch (err) {
@@ -3580,7 +3594,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginTop:8 }}>
                   <button onClick={draftMissing} disabled={!!drafting} style={btnSm(C.violet)}>
-                    {drafting || `✨ Add these & auto-fill with Gemini`}
+                    {drafting || `✨ Add these & auto-fill`}
                   </button>
                   <span style={{ fontSize:11, color:'#991b1b' }}>
                     Or copy them into <strong>Seed Wordlist</strong> to fill by hand.
@@ -3627,7 +3641,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
               )}
               {sentScan.missingEnglish.length > 0 && (
                 <button onClick={addEnglishSentences} disabled={!!sentBusy || !!drafting} style={btnSm(C.violet)}>
-                  {drafting || `✨ Add ${sentScan.missingEnglish.length} English sentence${sentScan.missingEnglish.length === 1 ? '' : 's'} & auto-fill with Gemini`}
+                  {drafting || `✨ Add ${sentScan.missingEnglish.length} English sentence${sentScan.missingEnglish.length === 1 ? '' : 's'} & auto-fill`}
                 </button>
               )}
             </div>
@@ -3643,8 +3657,8 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
           </div>
           {unfilled.length > 0 && (
             <button onClick={() => runDraft(unfilled)} disabled={!!drafting} style={btnSm(C.violet)}
-              title="Gemini suggests each word; they're saved as drafts for a teacher to approve">
-              {drafting || `✨ Auto-fill ${Math.min(unfilled.length, DRAFT_LIMIT)} with Gemini`}
+              title="The offline translator (when ticked above and running) or Gemini suggests each entry; they're saved as drafts for a teacher to approve">
+              {drafting || `✨ Auto-fill ${Math.min(unfilled.length, DRAFT_LIMIT)}`}
             </button>
           )}
         </div>
@@ -3677,7 +3691,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
             Needs Review ({needsReview.length}) — AI drafts and entries flagged during entry
           </div>
           {aiDrafts.length > 1 && (
-            <button onClick={() => { if (window.confirm(`Approve all ${aiDrafts.length} drafts (Gemini and Question Bank) without checking each one? The translator will start using them.`)) approve(aiDrafts.map(r => r.id)) }}
+            <button onClick={() => { if (window.confirm(`Approve all ${aiDrafts.length} drafts (offline translator, Gemini and Question Bank) without checking each one? The translator will start using them.`)) approve(aiDrafts.map(r => r.id)) }}
               style={btnSm('#fff', C.navy)}>Approve all {aiDrafts.length} drafts</button>
           )}
         </div>
@@ -3694,15 +3708,15 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                   <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>{row.mayek_unicode}</div>
                   <div style={{ fontFamily:'monospace', fontSize:11, color:C.slate }}>{row.bmei04}</div>
                   {REVIEWABLE_SOURCES.has(row.source) && (
-                    <span style={{ fontSize:10, fontWeight:700, color: row.source === QB_SOURCE ? C.teal : C.violet, background: row.source === QB_SOURCE ? '#ecfeff' : '#f3e8ff', borderRadius:5, padding:'2px 6px' }}>
-                      {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : 'AI DRAFT'}
+                    <span style={{ fontSize:10, fontWeight:700, color: row.source === AI_DRAFT_SOURCE ? C.violet : C.teal, background: row.source === AI_DRAFT_SOURCE ? '#f3e8ff' : '#ecfeff', borderRadius:5, padding:'2px 6px' }}>
+                      {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : row.source === OFFLINE_DRAFT_SOURCE ? 'OFFLINE TRANSLATOR' : 'AI DRAFT'}
                     </span>
                   )}
                 </div>
                 {REVIEWABLE_SOURCES.has(row.source) ? (
                   <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6, flexWrap:'wrap' }}>
                     <span style={{ fontSize:11, color:C.slate }}>
-                      {row.source === QB_SOURCE ? 'Taken from a question written in both scripts — approve if it is a true translation' : 'Suggested by Gemini — approve if right'}, or type the correct BMEI04 keystrokes:
+                      {row.source === QB_SOURCE ? 'Taken from a question written in both scripts — approve if it is a true translation' : `Suggested by ${row.source === OFFLINE_DRAFT_SOURCE ? 'the offline translator' : 'Gemini'} — approve if right`}, or type the correct BMEI04 keystrokes:
                     </span>
                     <button onClick={() => approve([row.id])} style={btnSm(C.green)}>✓ Approve</button>
                     <input value={fillDrafts[row.id] ?? ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
@@ -3845,8 +3859,25 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
   const [bmei04, setBmei04] = useState('')
   const [category, setCategory] = useState('')
   const [saving, setSaving] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggested, setSuggested] = useState('') // keystrokes the offline translator gave, to record the source
 
   const preview = useMemo(() => { try { return romanToMeetei(bmei04) } catch { return '' } }, [bmei04])
+
+  const suggest = async () => {
+    if (!english.trim() || suggesting) return
+    if (!offlineEnabled()) { showToast('Tick "Use the offline translator on this computer" above first', C.amber); return }
+    setSuggesting(true)
+    try {
+      const out = await offlineToMayek([english.trim()])
+      if (!out) { showToast('The offline translator is not running — start start-translator.bat', C.rose); return }
+      if (!out[0]) { showToast('The offline translator gave no Meetei Mayek for this — type it in', C.amber); return }
+      const keys = meeteiToRoman(out[0])
+      setBmei04(keys); setSuggested(keys)
+    } finally {
+      setSuggesting(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!english.trim() || !bmei04.trim()) {
@@ -3857,10 +3888,11 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
       await saveDictionaryEntry({
         entryType, english, bmei04,
         category: category.trim() || null,
+        source: suggested && bmei04.trim() === suggested ? reviewedSource(OFFLINE_DRAFT_SOURCE) : null,
         createdBy: currentStaffId || null,
       })
       showToast('Saved to dictionary', C.green)
-      setEnglish(''); setBmei04('')
+      setEnglish(''); setBmei04(''); setSuggested('')
     } catch (err) {
       showToast('Save failed: ' + err.message, C.rose)
     } finally {
@@ -3887,8 +3919,17 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
         placeholder={entryType === 'word' ? 'e.g. apple' : 'e.g. find the value of x'} style={iS} />
 
       <label style={{ ...lS, marginTop:12 }}>BMEI04 Keystrokes</label>
-      <input value={bmei04} onChange={e => setBmei04(e.target.value)}
-        placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, fontFamily:'monospace' }} />
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={bmei04} onChange={e => setBmei04(e.target.value)}
+          placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, flex:1, fontFamily:'monospace' }} />
+        <button onClick={suggest} disabled={!english.trim() || suggesting} style={btnSm(C.violet)}
+          title="Fills this in with the offline translator on this computer. Check it before saving.">
+          {suggesting ? 'Translating…' : '✨ Translate'}
+        </button>
+      </div>
+      {suggested && bmei04.trim() === suggested && (
+        <div style={{ fontSize:11, color:C.slate, marginTop:4 }}>From the offline translator — check it, correct it if needed, then save.</div>
+      )}
 
       <label style={{ ...lS, marginTop:12 }}>Category (optional)</label>
       <input value={category} onChange={e => setCategory(e.target.value)}
