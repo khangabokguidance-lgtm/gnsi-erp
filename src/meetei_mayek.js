@@ -9,13 +9,14 @@
 //
 // One English keystroke -> one Meetei Mayek character. Case matters:
 // capital letters are mostly the LONSUM (final-consonant) forms, not a
-// different sound. This is the same 42-key table used by Eeyek.
+// different sound. This is the same 42-key table used by Eeyek, except
+// capital Y: the BMEI04 font draws THOU (ꯊ) on that key, not YANG.
 
 export const MAPPING = {
   // Consonants (base form, lowercase)
   k:'ꯀ', s:'ꯁ', l:'ꯂ', m:'ꯃ', p:'ꯄ', n:'ꯅ', c:'ꯆ', t:'ꯇ',
   w:'ꯋ', y:'ꯌ', h:'ꯍ', f:'ꯐ', g:'ꯒ', r:'ꯔ', b:'ꯕ', j:'ꯖ', d:'ꯗ',
-  z:'ꯉ', H:'ꯈ', v:'ꯚ', Y:'ꯌ',
+  z:'ꯉ', H:'ꯈ', v:'ꯚ', Y:'ꯊ',
 
   // Final consonants (lonsum) - capitals
   K:'ꯛ', L:'ꯜ', M:'ꯝ', P:'ꯞ', N:'ꯟ', T:'ꯠ', Z:'ꯡ', I:'ꯢ',
@@ -32,7 +33,7 @@ export const MAPPING = {
 
 export const CHAR_NAMES = {
   'ꯀ':'KOK', 'ꯁ':'SAM', 'ꯂ':'LAI', 'ꯃ':'MIT', 'ꯄ':'PA', 'ꯅ':'NA',
-  'ꯆ':'CHIL', 'ꯇ':'TIL', 'ꯈ':'KHOU', 'ꯉ':'NGOU', 'ꯋ':'WAI', 'ꯌ':'YANG',
+  'ꯆ':'CHIL', 'ꯇ':'TIL', 'ꯈ':'KHOU', 'ꯉ':'NGOU', 'ꯊ':'THOU', 'ꯋ':'WAI', 'ꯌ':'YANG',
   'ꯍ':'HUK', 'ꯎ':'UN', 'ꯐ':'PHAM', 'ꯑ':'ATIYA', 'ꯒ':'GOK', 'ꯔ':'RAI',
   'ꯕ':'BA', 'ꯖ':'JIL', 'ꯗ':'DIL', 'ꯚ':'BHAM',
   'ꯛ':'KOK LONSUM', 'ꯜ':'LAI LONSUM', 'ꯝ':'MIT LONSUM', 'ꯞ':'PA LONSUM',
@@ -43,13 +44,17 @@ export const CHAR_NAMES = {
 }
 
 // Reverse map: Unicode Meetei Mayek character -> BMEI04 keystroke.
-// Two keys can map to the same character (y/Y both give YANG) - the
-// reverse map keeps the first one encountered, which is fine since both
-// keystrokes are equally valid.
 const _REVERSE = {}
 for (const [key, char] of Object.entries(MAPPING)) {
   if (!(char in _REVERSE)) _REVERSE[char] = key
 }
+// Letters the BMEI04 font has a key for but that are converted in this
+// direction only. The letter I (ꯏ) is drawn on the same key as I LONSUM.
+// J, G and D (JHAM, GHOU, DHOU) stay out of MAPPING on purpose: these
+// letters are rare in Manipuri, and mayekSegments.js relies on capitals
+// like these being unknown to keep English words ("Delhi", "Gopal",
+// "June") in Latin letters inside a BMEI04 line.
+Object.assign(_REVERSE, { 'ꯏ':'I', 'ꯓ':'J', 'ꯘ':'G', 'ꯙ':'D' })
 
 // Vowel-sign (matra) keys. In this abugida, these attach to a PRECEDING
 // consonant letter within the same syllable — they have no valid meaning
@@ -153,7 +158,7 @@ export function meeteiToRoman(text) {
 export function getAllCharacters() {
   const order = [
     // consonants
-    'k','s','l','m','p','n','c','t','H','z','w','y','h','U','f','A',
+    'k','s','l','m','p','n','c','t','H','z','Y','w','y','h','U','f','A',
     'g','r','b','j','d','v',
     // lonsum
     'K','L','M','P','N','T','Z','I',
