@@ -394,7 +394,7 @@ async function saveStudentPhoto(student, rawFile, { alreadyCompressed=false }={}
   const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, info.file, { upsert: false, contentType: info.file.type })
   if (upErr) throw new Error('Upload failed: ' + (upErr.message || upErr.error || 'storage refused the file'))
   const { error: dbErr } = await updateStudentsRows({ match: { id: student.id }, patch: { photo_path: path, photo_url: null } })
-  if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed') }
+  if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed: ' + (dbErr.message || 'could not update the student record')) }
   // tidy up the previous stored photo so replaced photos don't pile up
   if (student.photo_path && student.photo_path !== path) supabase.storage.from(PHOTO_BUCKET).remove([student.photo_path]).catch(() => {})
   const { data } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(path, PHOTO_URL_TTL)
