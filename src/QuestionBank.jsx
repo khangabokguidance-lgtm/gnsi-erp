@@ -45,7 +45,7 @@ import {
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
-import { LANGS, langLabel, ENGINE_LABELS, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
+import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -3002,7 +3002,18 @@ function MayekTranslator({ showToast, currentStaffId }) {
   const [showKeys, setShowKeys] = useState(false)
   const [last, setLast] = useState(null) // what the engine returned, to spot staff edits
   const [saving, setSaving] = useState(false)
+  // The offline translator (a program on this computer): on/off is per browser.
+  const [offline, setOffline] = useState(offlineEnabled)
+  const [offlineUp, setOfflineUp] = useState(null) // null = not checked yet
   const run = useRef(0)
+
+  useEffect(() => {
+    if (!offline) return
+    let live = true
+    offlineRunning().then(ok => { if (live) setOfflineUp(ok) })
+    return () => { live = false }
+  }, [offline])
+  const toggleOffline = on => { setOfflineEnabled(on); setOfflineUp(null); setOffline(on) }
 
   const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
   const doTranslate = async () => {
@@ -3019,6 +3030,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
       if (id === run.current) showToast('Translation failed: ' + e.message, C.rose)
     } finally {
       if (id === run.current) setBusy('')
+      if (offline) offlineRunning().then(setOfflineUp)
     }
   }
   const swap = () => {
@@ -3059,6 +3071,16 @@ function MayekTranslator({ showToast, currentStaffId }) {
         <select aria-label="Translate to" value={to} onChange={e => setTo(e.target.value)} style={sel}>
           {LANGS.filter(l => l.target).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
         </select>
+        <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:C.slate, cursor:'pointer' }}
+          title="Translates English on this computer with no internet. Needs the offline translator program running here.">
+          <input type="checkbox" checked={offline} onChange={e => toggleOffline(e.target.checked)} />
+          Use the offline translator on this computer
+          {offline && (
+            <b style={{ color: offlineUp ? C.green : offlineUp === false ? C.rose : C.slate }}>
+              {offlineUp ? '— running' : offlineUp === false ? '— not running (start start-translator.bat)' : '— checking…'}
+            </b>
+          )}
+        </label>
       </div>
 
       <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
@@ -3112,7 +3134,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
 
       <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
         border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
-        Lines already in your Dictionary are used exactly; the rest is machine translation (Bhashini or Google Translate when set up, otherwise Gemini AI) —
+        Lines already in your Dictionary are used exactly; the rest is machine translation (the offline translator when switched on above, else Bhashini or Google Translate when set up, otherwise Gemini AI) —
         check it before putting it in a question paper. If a line is wrong, fix it in the result box and press
         <b> Save corrections to Dictionary</b>: the next translation of that line will use your wording.
         For exact letter-by-letter conversion of BMEI04 text, use the two keystroke modes instead.
