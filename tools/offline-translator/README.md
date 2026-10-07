@@ -11,12 +11,17 @@ the same as with Bhashini, Google Translate or Gemini.
 
 ## One-time setup (needs internet)
 
-1. Install Python 3.10 or newer from python.org, ticking "Add python.exe to PATH".
+1. Install Python **3.12** from python.org (3.12.10 is the last version with a
+   Windows installer), ticking "Add python.exe to PATH". Avoid the newest
+   Python: PyTorch often has no build for it and fails with "Failed to load
+   PyTorch C extensions". `start-translator.bat` picks 3.12, 3.11, 3.13 or 3.10
+   through the `py` launcher, so newer versions can stay installed.
 2. Install "Microsoft C++ Build Tools" with the **Desktop development with C++**
    workload (one of the packages is compiled during install).
 3. Copy this folder to the computer, open a Command Prompt in it and run:
 
-       pip install -r requirements.txt
+       py -3.12 -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+       py -3.12 -m pip install -r requirements.txt
 
 4. Make a free account at huggingface.co, open the page of the model
    `ai4bharat/indictrans2-en-indic-dist-200M` and accept its terms. Create a
@@ -77,7 +82,7 @@ The program already does the following by itself:
 - It weighs 3 candidate translations per sentence instead of 5.
 
 Two settings trade a little wording quality for more speed. Add them after
-`python server.py` in `run-hidden.vbs` (automatic start) or after
+`run-server.bat` in `run-hidden.vbs` (automatic start) or after
 `start-translator.bat` when starting it by hand:
 
 - `--beams 1` — one candidate per sentence: fastest. `--beams 5` gives the
