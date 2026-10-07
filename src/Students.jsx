@@ -227,7 +227,8 @@ const randomSuffix = () => Math.random().toString(36).slice(2,10)
 // Phone-camera originals are big, so the picker accepts large files and shrinks
 // them in the browser (lib/imageCompress.js) before anything is uploaded.
 const PHOTO_PICK_MAX_MB = 25
-const PHOTO_COMPRESS    = { maxDim: 1000, targetKB: 250 }
+const PHOTO_COMPRESS    = { maxDim: 1200, quality: 0.9, targetKB: 300 }
+const DOC_COMPRESS      = { maxDim: 1800, quality: 0.9, targetKB: 300 } // scanned documents: keep text readable
 const PHOTO_BUCKET      = 'gnsi'
 const PHOTO_URL_TTL     = 86400   // seconds; viewing links for private storage photos
 
@@ -391,7 +392,7 @@ async function saveStudentPhoto(student, rawFile, { alreadyCompressed=false }={}
   const isJpeg = info.file.type === 'image/jpeg'
   const path = `student_photos/${student.id}_${randomSuffix()}.${isJpeg ? 'jpg' : (info.file.name.split('.').pop() || 'jpg').toLowerCase()}`
   const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, info.file, { upsert: false, contentType: info.file.type })
-  if (upErr) throw new Error('Upload failed')
+  if (upErr) throw new Error('Upload failed: ' + (upErr.message || upErr.error || 'storage refused the file'))
   const { error: dbErr } = await updateStudentsRows({ match: { id: student.id }, patch: { photo_path: path, photo_url: null } })
   if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed') }
   // tidy up the previous stored photo so replaced photos don't pile up
@@ -1517,9 +1518,11 @@ function DocumentsTab({ student, can, showToast }) {
 
   const handleUpload=async(e,docType)=>{
     if(!can.write){showToast('No permission',T.red);return}
-    const file=e.target.files[0];if(!file)return
-    const err=validateFile(file);if(err){showToast(err,T.red);return}
+    const picked=e.target.files[0];if(!picked)return
+    const err=validateFile(picked);if(err){showToast(err,T.red);return}
     setUploading(true)
+    // images are shrunk to ~300 KB first; PDFs and other files pass through untouched
+    const file=(await compressImage(picked,DOC_COMPRESS)).file
     const ext=file.name.split('.').pop().toLowerCase()
     const path=`student_docs/${student.id}/${docType}_${randomSuffix()}.${ext}`
     const{error:upErr}=await supabase.storage.from('gnsi').upload(path,file,{contentType:file.type})

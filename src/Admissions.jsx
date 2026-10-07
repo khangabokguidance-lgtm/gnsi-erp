@@ -2318,8 +2318,8 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     if (!form.gcc) { setPhotoUploadError('Enter GCC No. first — the photo is filed by GCC No.'); return }
     setPhotoUploading(true); setPhotoUploadError(''); setPhotoNote('')
     try {
-      // shrink the photo first (phone photos are several MB; ~250 KB is plenty for a passport photo)
-      const info = await compressImage(file, { maxDim: 1000, targetKB: 250 })
+      // shrink the photo first (phone photos are several MB; ~300 KB is plenty for a passport photo)
+      const info = await compressImage(file, { maxDim: 1200, quality: 0.9, targetKB: 300 })
       const { url } = await Promise.race([
         uploadPhotoToGoogleDrive(info.file, form.gcc),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Upload timed out. Please check your connection and try again.')), 60000)),
