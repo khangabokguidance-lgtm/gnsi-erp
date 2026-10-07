@@ -39,6 +39,16 @@ the same as with Bhashini, Google Translate or Gemini.
 The tick is remembered per browser, so only computers that have the program
 need it. If the program is not running, the ERP uses its other engines and says so.
 
+### Starting it automatically
+
+Double-click `install-autostart.bat` once. From then on the program starts by
+itself, with no window, each time you sign in to Windows, so step 1 above is
+no longer needed. It takes about a minute after sign-in to be ready, and it
+keeps the model in memory (roughly 1 to 2 GB) while the computer is on.
+
+If it does not come up, `translator.log` in this folder says why. Run
+`remove-autostart.bat` to stop it and turn automatic start off.
+
 ## Good to know
 
 - English is the only source language. Other directions (for example Manipuri
