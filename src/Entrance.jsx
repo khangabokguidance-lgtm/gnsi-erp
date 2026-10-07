@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import { compressImage } from './lib/imageCompress'
 import { PX, PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PIcon } from './premiumUI'
 import { COURSES } from './qbankTaxonomy'
 import { fetchAllPages } from './StudyMaterialBridge'
@@ -773,7 +774,7 @@ function CandidateForm({ exam, cands, initial, onClose, onSaved, notify, user })
           <Field label="Address" span><input className="px-input" value={f.address || ''} onChange={e => set({ address: e.target.value })} /></Field>
           <Field label="Application fee"><select className="px-input" value={f.fee_status || 'Unpaid'} onChange={e => set({ fee_status: e.target.value })}>{FEE_STATUS.map(s => <option key={s}>{s}</option>)}</select></Field>
           <Field label="Receipt / txn ref"><input className="px-input" value={f.fee_ref || ''} onChange={e => set({ fee_ref: e.target.value })} /></Field>
-          <Field label="Photo" hint={f.photo_url && !photo ? 'Photo on file — choose a file to replace' : 'JPG/PNG, under 2 MB'}><input type="file" accept="image/jpeg,image/png,image/webp" className="px-input" style={{ padding: 7 }} onChange={e => setPhoto(e.target.files?.[0] || null)} /></Field>
+          <Field label="Photo" hint={f.photo_url && !photo ? 'Photo on file — choose a file to replace' : 'JPG/PNG, under 2 MB'}><input type="file" accept="image/jpeg,image/png,image/webp" className="px-input" style={{ padding: 7 }} onChange={async e => { const f = e.target.files?.[0] || null; setPhoto(f ? (await compressImage(f, { maxDim: 1200, quality: 0.9, targetKB: 300 })).file : null) }} /></Field>
           <Field label="Remarks" span><input className="px-input" value={f.remarks || ''} onChange={e => set({ remarks: e.target.value })} /></Field>
         </div>
       </form>
