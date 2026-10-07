@@ -5,9 +5,11 @@
 // Pipeline, per translation:
 //   1. The school's own dictionary (mayek_dictionary) first: any line that
 //      exactly matches a verified entry is taken from it, never re-translated.
-//   2. The rest goes to a translation service the server has keys for and
-//      that supports the language pair: Bhashini (/api/bhashini, the
-//      Government of India's Indian-language models) is tried first when
+//   2. The rest goes to a translation service that supports the language
+//      pair. The offline translator (IndicTrans2 running on this computer,
+//      tools/offline-translator) is tried first where it is switched on.
+//      Then the services the server has keys for: Bhashini (/api/bhashini,
+//      the Government of India's Indian-language models) first when
 //      Manipuri is involved, Google Translate (/api/translate) first
 //      otherwise,
 //   3. and to Gemini (/api/gemini) when neither can, with dictionary words
@@ -35,7 +37,7 @@ export const LANGS = [
 ]
 export const langLabel = code => LANGS.find(l => l.code === code)?.label || code
 const langName = code => LANGS.find(l => l.code === code)?.name || langLabel(code)
-export const ENGINE_LABELS = { bhashini: 'Bhashini', google: 'Google Translate', gemini: 'Gemini AI', dictionary: 'Your dictionary' }
+export const ENGINE_LABELS = { indictrans: 'Offline translator', bhashini: 'Bhashini', google: 'Google Translate', gemini: 'Gemini AI', dictionary: 'Your dictionary' }
 
 const MTEI = /[ꯀ-꯿]/g
 const BENG = /[ঀ-৿]/g
@@ -100,9 +102,30 @@ async function glossary(text, pair) {
   return (await dictLookup('mayek_unicode', tokens)).filter(r => r.entry_type === 'word').slice(0, 120)
 }
 
-// ── 2. Translation services (server-side keys) ─────────────────────────────
-// Bhashini needs a known source language (it has no text language detection).
+// ── 2. Translation services ────────────────────────────────────────────────
+// The offline translator is a program on the staff member's own computer
+// (tools/offline-translator), so it is used only in browsers where it has
+// been switched on — other devices never try to reach a program that isn't
+// there. It translates from English only.
+export const OFFLINE_URL = 'http://127.0.0.1:8765'
+const OFFLINE_KEY = 'gnsi_offline_translator'
+export const offlineEnabled = () => { try { return localStorage.getItem(OFFLINE_KEY) === '1' } catch { return false } }
+export const setOfflineEnabled = on => {
+  try { if (on) localStorage.setItem(OFFLINE_KEY, '1'); else localStorage.removeItem(OFFLINE_KEY) } catch { /* storage blocked */ }
+}
+/** Whether the offline translator program is running on this computer. */
+export async function offlineRunning() {
+  try {
+    const res = await fetch(OFFLINE_URL + '/health', { signal: AbortSignal.timeout(2500) })
+    return res.ok && (await res.json()).engine === 'indictrans'
+  } catch { return false }
+}
+
+// Bhashini and the offline translator need a known source language (they
+// have no text language detection). `from` narrows the source languages
+// where they differ from the targets.
 const SERVICES = {
+  indictrans: { url: OFFLINE_URL + '/translate', from: new Set(['en']), langs: new Set(['mni-Mtei', 'mni-Beng', 'hi', 'bn']), auto: false, enabled: offlineEnabled },
   bhashini: { url: '/api/bhashini', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei', 'mni-Beng']), auto: false },
   google:   { url: '/api/translate', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei']), auto: true },
 }
@@ -110,8 +133,8 @@ const serviceOff = new Set() // services whose server said "no key", to skip the
 
 async function viaService(name, segments, from, to) {
   const svc = SERVICES[name]
-  if (serviceOff.has(name) || !svc.langs.has(to) || from === to) return null
-  if (from === 'auto' ? !svc.auto : !svc.langs.has(from)) return null
+  if (serviceOff.has(name) || (svc.enabled && !svc.enabled()) || !svc.langs.has(to) || from === to) return null
+  if (from === 'auto' ? !svc.auto : !(svc.from || svc.langs).has(from)) return null
   const res = await fetch(svc.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -235,11 +258,11 @@ export async function translate(text, from, to, onProgress) {
   let translated = []
   if (segments.length) {
     // Google and Gemini get the user's choice ('auto' stays auto) and detect
-    // it themselves; Bhashini can't, so it gets the script-based guess.
+    // it themselves; the others can't, so they get the script-based guess.
     const manipuri = /^mni/.test(known || '') || /^mni/.test(to)
     let s = null
-    for (const name of manipuri ? ['bhashini', 'google'] : ['google', 'bhashini']) {
-      s = await viaService(name, segments, name === 'bhashini' && fromCode === 'auto' ? known || 'auto' : fromCode, to)
+    for (const name of ['indictrans', ...(manipuri ? ['bhashini', 'google'] : ['google', 'bhashini'])]) {
+      s = await viaService(name, segments, !SERVICES[name].auto && fromCode === 'auto' ? known || 'auto' : fromCode, to)
       if (s) { engine = name; translated = s.segments; detected = s.detected || (fromCode === 'auto' && known ? langLabel(known) : ''); break }
     }
     if (!s) {
@@ -251,6 +274,8 @@ export async function translate(text, from, to, onProgress) {
   const result = parts.map(p => ('keep' in p ? p.keep : translated[p.seg] ?? '')).join('\n')
 
   const warnings = []
+  if (engine && engine !== 'indictrans' && engine !== 'dictionary' && offlineEnabled() && known === 'en' && SERVICES.indictrans.langs.has(to))
+    warnings.push(`The offline translator on this computer did not answer, so ${ENGINE_LABELS[engine]} was used. Start it (start-translator.bat) and translate again.`)
   if (to === 'mni-Mtei') {
     const m = count(result, MTEI), b = count(result, BENG), l = count(result, /[A-Za-z]/g)
     if (!m) warnings.push('The result has no Meetei Mayek letters — translate again or edit it by hand.')
