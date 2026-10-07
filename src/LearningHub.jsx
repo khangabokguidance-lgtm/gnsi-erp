@@ -144,8 +144,7 @@ const CSS = `
   .lh-wrap{padding:10px 12px 0}
   .lh-pill{height:40px;padding:0 11px 0 9px}
   .lh-pill:not(.on) .lh-label-long{display:none}
-  .lh-links{display:flex;overflow-x:auto;gap:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:8px -12px 0;padding:2px 12px 4px}
-  .lh-links::-webkit-scrollbar{display:none}
+  .lh-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
   .lh-link{flex:0 0 auto;padding:8px 12px 8px 8px;gap:9px}
   .lh-link-d,.lh-link-go{display:none}
   .lh-link-ico{width:32px;height:32px;border-radius:10px}

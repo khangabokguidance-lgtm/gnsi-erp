@@ -21,6 +21,8 @@
 // are added, never touching React-owned props.
 // Opt out with data-ti-skip on the button or any ancestor. Buttons that already
 // contain an <svg> (bottom bars, icon grids) are left alone.
+// Tab bars that are wider than the screen wrap onto more rows (data-ti-wrap)
+// instead of scrolling sideways, so every tab is visible without dragging.
 import { useEffect } from 'react';
 
 const S = (...d) => d; // icon = list of path strings (24×24 grid, stroke only)
@@ -258,6 +260,9 @@ function scan(root) {
   const btns = root.matches && root.matches('button,[role="tab"]') ? [root] : [];
   root.querySelectorAll && root.querySelectorAll('button,[role="tab"]').forEach((b) => btns.push(b));
   btns.forEach((b) => { try { process(b); } catch { /* never break the page for an icon */ } });
+  const bars = new Set();
+  btns.forEach((b) => { const s = b.closest('[role="tablist"]') || b.parentElement; if (isStrip(s) || b.hasAttribute('data-ti-c')) bars.add(s); });
+  bars.forEach((s) => { try { watchStrip(s); fitStrip(s); } catch { /* cosmetic only */ } });
 }
 
 // 12 distinct mid-tone hues: readable as a stroke on white and as a chip on dark tabs.
@@ -287,8 +292,12 @@ ${PALETTE.map((c, i) => `[data-ti-c="${i}"]{--ti-c:${c}}`).join('')}
 [data-ti-m3][data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active]{color:#fff!important}
 [data-ti-m3][data-ti-m3][data-ti-dark] .ti-ic{color:#fff!important;background:linear-gradient(160deg,#2f63a8,#1a3a6e)!important}
 [data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active] .ti-ic{background:linear-gradient(160deg,#d4ae58,#b8923a)!important;color:#1a1406!important}
-[data-ti-scroll]{overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-[data-ti-scroll]::-webkit-scrollbar{display:none}
+/* A tab bar too wide for the screen wraps onto more rows instead of scrolling sideways. */
+[data-ti-wrap][data-ti-wrap]{flex-wrap:wrap!important;overflow-x:visible!important;row-gap:6px;max-width:100%}
+[data-ti-wrap="flex"][data-ti-wrap="flex"]{display:flex!important}
+[data-ti-wrap="iflex"][data-ti-wrap="iflex"]{display:inline-flex!important}
+[data-ti-wrap] > *{flex-shrink:0}
+[data-ti-wrap-out][data-ti-wrap-out]{overflow-x:visible!important}
 [data-ti-m3][data-ti-only]{min-width:0}
 [data-ti-m3][data-ti-only] .ti-ic{width:48px!important}
 `;
@@ -385,11 +394,36 @@ function syncActive(strip) {
       if (m3) b.setAttribute('data-ti-m3', ''); else b.removeAttribute('data-ti-m3');
     }
   });
-  // tabs keep their natural width: if the row no longer fits, let it scroll sideways (Google Play style)
-  const scroll = m3 && strip.scrollWidth > strip.clientWidth + 1;
-  if (scroll !== strip.hasAttribute('data-ti-scroll')) {
-    if (scroll) strip.setAttribute('data-ti-scroll', ''); else strip.removeAttribute('data-ti-scroll');
-  }
+  fitStrip(strip);
+}
+
+// ── tab bars wrap instead of scrolling sideways ─────────────────────────────
+// A tab bar whose tabs don't fit its width (or that is wider than the
+// scrolling box around it) is switched to wrapping. Once set it stays: a bar
+// that fits on one row looks the same either way.
+const isStrip = (el) => {
+  if (!el || el.nodeType !== 1 || el.closest('[data-ti-skip]')) return false;
+  if (el.getAttribute('role') === 'tablist') return true;
+  return (el.getAttribute('class') || '').split(/\s+/).some((c) => TAB_CLASS.test(c)) && !!el.querySelector(':scope > button, :scope > [role="tab"]');
+};
+const scrollsX = (el) => /auto|scroll/.test(getComputedStyle(el).overflowX);
+function fitStrip(strip) {
+  if (!strip || !strip.isConnected || strip.hasAttribute('data-ti-wrap')) return;
+  if (!strip.clientWidth) return; // hidden: checked again when it appears
+  const outer = strip.parentElement;
+  const tooWide = strip.scrollWidth > strip.clientWidth + 1;
+  const outerTooWide = !tooWide && outer && outer !== document.body && scrollsX(outer) && strip.offsetWidth > outer.clientWidth + 1;
+  if (!tooWide && !outerTooWide) return;
+  const d = getComputedStyle(strip).display;
+  strip.setAttribute('data-ti-wrap', d === 'inline-flex' ? 'iflex' : d === 'flex' ? '' : 'flex');
+  if (outerTooWide) outer.setAttribute('data-ti-wrap-out', '');
+}
+let fitObserver = null; // ResizeObserver: re-checks a bar when it is shown or resized
+let fitWatched = new WeakSet();
+function watchStrip(strip) {
+  if (!fitObserver || !strip || fitWatched.has(strip)) return;
+  fitWatched.add(strip);
+  fitObserver.observe(strip);
 }
 
 export default function TabIcons() {
@@ -427,6 +461,10 @@ export default function TabIcons() {
       timer = setTimeout(() => { strips.add(strip); flushActive(); }, 280);
     };
     onColored = queueActive;
+    fitWatched = new WeakSet();
+    fitObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver((entries) => entries.forEach((e) => { try { fitStrip(e.target); } catch { /* cosmetic only */ } }))
+      : null;
     const mo = new MutationObserver((muts) => {
       muts.forEach((m) => {
         if (m.type === 'attributes') {
@@ -443,7 +481,7 @@ export default function TabIcons() {
     mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'aria-selected', 'aria-current', 'aria-pressed'] });
     scan(document.body);
     document.querySelectorAll('[data-ti-c]').forEach((b) => queueActive(b));
-    return () => { onColored = null; mo.disconnect(); if (raf) cancelAnimationFrame(raf); if (sraf) cancelAnimationFrame(sraf); clearTimeout(timer); st.remove(); };
+    return () => { onColored = null; if (fitObserver) { fitObserver.disconnect(); fitObserver = null; } mo.disconnect(); if (raf) cancelAnimationFrame(raf); if (sraf) cancelAnimationFrame(sraf); clearTimeout(timer); st.remove(); };
   }, []);
   return null;
 }

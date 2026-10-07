@@ -4,8 +4,6 @@
 // opens with the same header, tabs, cards and controls as Students / Fees /
 // Attendance / Reception.
 
-import { useEffect, useRef } from 'react'
-
 export const PX = {
   navy: '#132a4f', navy2: '#1e3a6e', navyDeep: '#0e203f',
   gold: '#b8923a', goldLt: '#e9d9b0', goldBg: '#f6efdc', goldLine: '#eadbb2',
@@ -116,6 +114,7 @@ export function PremiumHero({ eyebrow, title, subtitle, icon, actions, stats = [
 // then every tab as a small icon button for switching without going back.
 // groups: [{ label, color, tabs: [{ id, label, icon, hint, badge, count }] }]
 // icon: a component (PIcon.x) or a string (emoji). Empty groups are skipped.
+// data-ti-skip: these carry their own icons, so TabIcons.jsx leaves them alone.
 const ixtIcon = (icon, size) => {
   if (!icon) return null
   if (typeof icon === 'string') return <span style={{ fontSize: size, lineHeight: 1 }}>{icon}</span>
@@ -139,10 +138,9 @@ const IXT_CSS = `
 .ixt-hint{font-size:10.5px;color:${PX.sub};line-height:1.3;margin-top:-3px}
 .ixt-cnt{font-size:10.5px;font-weight:700;color:${PX.faint};margin-top:-3px;font-variant-numeric:tabular-nums}
 .ixt-badge{position:absolute;top:-5px;right:-7px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font:800 10.5px/19px ${PX.sans};box-shadow:0 0 0 2px #fff}
-.ixt-bar{display:flex;align-items:center;gap:6px;padding:6px;margin-bottom:18px;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border:1px solid ${PX.line};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;scrollbar-width:none}
-.ixt-bar::-webkit-scrollbar{display:none}
+.ixt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px;margin-bottom:18px;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border:1px solid ${PX.line};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05)}
 .ixt-bar.sticky{position:sticky;top:0;z-index:60}
-.ixt-back{position:sticky;left:0;z-index:1;box-shadow:-10px 0 0 4px #fff,10px 0 10px -2px #fff;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;height:36px;padding:0 12px 0 8px;border:1px solid ${PX.goldLine};border-radius:10px;background:${PX.goldBg};color:${PX.ink};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
+.ixt-back{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;height:36px;padding:0 12px 0 8px;border:1px solid ${PX.goldLine};border-radius:10px;background:${PX.goldBg};color:${PX.ink};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
 .ixt-back-s{display:none}
 .ixt-back b{font-size:20px;line-height:1;color:${PX.gold};margin-top:-2px}
 .ixt-back:hover{border-color:${PX.gold}}
@@ -163,15 +161,8 @@ const IXT_CSS = `
 export function IconTabs({ groups, active, open, onOpen, onHome, homeLabel = 'All sections', sticky = false, ariaLabel }) {
   const shown = (groups || []).filter(g => g.tabs.length)
   const all = shown.flatMap(g => g.tabs.map(t => ({ ...t, color: g.color })))
-  // Keep the open section's button in view in the scrolling bar (phones).
-  const barRef = useRef(null)
-  useEffect(() => {
-    const bar = barRef.current, el = bar?.querySelector('.ixt-chip.on')
-    const back = bar?.querySelector('.ixt-back')?.offsetWidth || 0
-    if (el) bar.scrollLeft = Math.max(0, el.offsetLeft - back - (bar.clientWidth - back - el.offsetWidth) / 2)
-  }, [active, open])
   if (!open) return (
-    <div className="ixt-home" aria-label={ariaLabel}>
+    <div className="ixt-home" aria-label={ariaLabel} data-ti-skip>
       <style>{IXT_CSS}</style>
       {shown.map(g => (
         <section key={g.label} className="ixt-grp">
@@ -194,7 +185,7 @@ export function IconTabs({ groups, active, open, onOpen, onHome, homeLabel = 'Al
     </div>
   )
   return (
-    <nav ref={barRef} className={'ixt-bar' + (sticky ? ' sticky' : '')} role="tablist" aria-label={ariaLabel}>
+    <nav className={'ixt-bar' + (sticky ? ' sticky' : '')} role="tablist" aria-label={ariaLabel} data-ti-skip>
       <style>{IXT_CSS}</style>
       <button type="button" className="ixt-back" onClick={onHome} title={homeLabel}><b>‹</b><span className="ixt-back-l">{homeLabel}</span><span className="ixt-back-s">All</span></button>
       <span className="ixt-sep" aria-hidden />
