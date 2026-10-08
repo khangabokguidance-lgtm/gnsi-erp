@@ -1387,6 +1387,26 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // The other roll call of the same day, so both of the day's two roll
+  // calls can be shown side by side (the open session's own records are
+  // allRecords, which update live as students are marked).
+  // Roll-call screen: a clock for the deadline countdown.
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    if (view !== 'rollcall') return
+    const tick = setInterval(() => setClock(Date.now()), 30000)
+    return () => clearInterval(tick)
+  }, [view])
+
+  const [otherSessionRecords, setOtherSessionRecords] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('attendance_records').select('student_id, house, session, status')
+      .eq('date', date).eq('session', session === 'morning' ? 'night' : 'morning')
+      .then(({ data }) => { if (!cancelled) setOtherSessionRecords(data || []) })
+    return () => { cancelled = true }
+  }, [date, session])
+
   // Load previous calendar day's records (both sessions) to check completeness
   useEffect(() => {
     let cancelled = false
@@ -1439,9 +1459,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   }
 
   // ── Per-house stats (defined before the auto-fire effect that uses it) ──
+  // One record per CURRENT student of the house (the latest, if a student
+  // was marked twice). Counting raw records let duplicates and records of
+  // students who left or moved house push a house past 100% ("47/46 marked",
+  // "-1 pending") — and could hide students who were never marked.
+  const recordsForStudents = (records, hStudents) => {
+    const ids = new Set(hStudents.map(s => s.id))
+    const byStudent = new Map()
+    // r.house: a hostel roll-call record (the table also holds class attendance).
+    for (const r of records) if (r.house && ids.has(r.student_id)) byStudent.set(r.student_id, r)
+    return [...byStudent.values()]
+  }
+
   const getHouseStats = (houseName) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
-    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+    const hRecords = recordsForStudents(allRecords, hStudents)
     const present = hRecords.filter(r => r.status === 'Present').length
     const absent = hRecords.filter(r => r.status === 'Absent').length
     const sick = hRecords.filter(r => r.status === 'Sick').length
@@ -1460,8 +1492,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     const total = hStudents.length
     if (total === 0) return { complete: true, morningMarked: 0, nightMarked: 0, total: 0 }
-    const morningMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'morning').length
-    const nightMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'night').length
+    const morningMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'morning'), hStudents).length
+    const nightMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'night'), hStudents).length
     return {
       complete: morningMarked >= total && nightMarked >= total,
       morningMarked, nightMarked, total,
@@ -2067,10 +2099,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // ══════════════════════════════════════════════════
   if (view === 'houses') {
     const totalStudents = activeStudents.length
-    const totalMarked = allRecords.length
-    const totalPresent = allRecords.filter(r => r.status === 'Present').length
-    const totalAbsent = allRecords.filter(r => r.status === 'Absent').length
-    const totalUnmarked = totalStudents - totalMarked
+    const totalMarked = recordsForStudents(allRecords, activeStudents).length
 
     return (
       <div>
@@ -2083,56 +2112,117 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           }
           .hr-pop-in-anim { display: inline-block; animation: hr-daily-pop 0.5s ease-out; }
         `}</style>
-        {/* Date & Session selector */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input
-            type="date" value={date}
-            onChange={e => setDate(e.target.value)}
-            style={{ ...inp, flex: 1, minWidth: 140 }}
-          />
-          <select value={session} onChange={e => setSession(e.target.value)} style={{ ...inp, flex: 1 }}>
-            <option value="morning">🌅 Morning Roll Call</option>
-            <option value="night">🌙 Night Roll Call</option>
-          </select>
-        </div>
-
-        {/* Overall stats bar */}
-        <div style={{
-          background: '#1e3a6e', borderRadius: '14px', padding: '16px 20px',
-          marginBottom: '20px', color: 'white',
-        }}>
-          <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '10px', fontWeight: '600' }}>
-            TODAY'S SUMMARY · {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            {[
-              { label: 'Total', value: totalStudents, color: 'rgba(255,255,255,0.9)' },
-              { label: 'Present', value: totalPresent, color: '#4ade80' },
-              { label: 'Absent', value: totalAbsent, color: '#f87171' },
-              { label: 'Unmarked', value: totalUnmarked, color: '#fbbf24' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: mobile ? '22px' : '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: mobile ? '9px' : '11px', opacity: 0.7 }}>{s.label}</div>
+        {/* ── Today's two roll calls ─────────────────────────────────
+            Roll call happens twice a day. The date bar picks the day; the
+            two cards show both roll calls of that day side by side, and
+            the one you tap is the one the house cards below work on. */}
+        {(() => {
+          const todayStr = today()
+          const shift = n => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
+          const nowHour = new Date().getHours()
+          const liveSession = nowHour < 13 ? 'morning' : 'night'
+          const sessionStats = key => {
+            const recs = recordsForStudents((key === session ? allRecords : otherSessionRecords).filter(r => r.session === key), activeStudents)
+            const count = st => recs.filter(r => r.status === st).length
+            const total = activeStudents.length
+            const marked = recs.length
+            const { graceEnd, label } = rollCallDeadline(date, key)
+            const status = total > 0 && marked >= total ? 'done'
+              : date < todayStr || (date === todayStr && new Date() > graceEnd) ? (marked ? 'overdue' : 'missed')
+              : marked ? 'progress' : 'open'
+            return { total, marked, pct: total ? Math.round(marked / total * 100) : 0, present: count('Present') + count('Late'), absent: count('Absent'), leave: count('On Leave'), sick: count('Sick'), status, due: label }
+          }
+          const STATUS = {
+            done:     { t: 'Complete',     c: '#15803D', b: '#DCFCE7' },
+            progress: { t: 'In progress',  c: '#A16207', b: '#FEF3C7' },
+            open:     { t: 'Not started',  c: '#475569', b: '#F1F5F9' },
+            overdue:  { t: 'Overdue',      c: '#DC2626', b: '#FEE2E2' },
+            missed:   { t: 'Not done',     c: '#DC2626', b: '#FEE2E2' },
+          }
+          const navBtn = { width: 34, height: 34, borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }
+          return (
+            <div style={{ marginBottom: '22px' }}>
+              {/* Date bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button onClick={() => setDate(shift(-1))} style={navBtn} aria-label="Previous day">‹</button>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>Hostel roll call · twice daily</div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? '18px' : '21px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2 }}>
+                    {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                </div>
+                {date !== todayStr && (
+                  <button onClick={() => setDate(todayStr)} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 12, background: '#0B1E3D', color: '#fff', border: 'none' }}>Today</button>
+                )}
+                <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Pick a date"
+                  style={{ height: 34, padding: '0 10px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 12.5, fontFamily: 'inherit' }} />
+                <button onClick={() => setDate(shift(1))} style={navBtn} aria-label="Next day">›</button>
               </div>
-            ))}
-          </div>
-          {/* Overall progress bar */}
-          <div style={{ marginTop: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.6, marginBottom: '5px' }}>
-              <span>Roll Call Progress</span>
-              <span>{totalMarked}/{totalStudents} marked</span>
+
+              {/* The two roll calls */}
+              <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                {[['morning', '🌅', 'Morning roll call'], ['night', '🌙', 'Night roll call']].map(([key, icon, name]) => {
+                  const st = sessionStats(key)
+                  const on = key === session
+                  const badge = STATUS[st.status]
+                  const fg = on ? '#fff' : '#0B1E3D', sub = on ? 'rgba(255,255,255,.7)' : '#64748B'
+                  return (
+                    <button key={key} type="button" onClick={() => setSession(key)} aria-pressed={on}
+                      style={{
+                        textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', position: 'relative', overflow: 'hidden',
+                        borderRadius: '20px', padding: '16px 18px', color: fg,
+                        border: on ? '1px solid rgba(226,197,126,.6)' : '1px solid #ECE6D8',
+                        background: on
+                          ? (key === 'morning'
+                            ? 'radial-gradient(120% 160% at 100% 0%, #2B4C80 0%, #132B52 50%, #0B1E3D 90%)'
+                            : 'radial-gradient(120% 160% at 100% 0%, #312E81 0%, #1E1B4B 55%, #0B1E3D 95%)')
+                          : '#fff',
+                        boxShadow: on ? '0 20px 36px -22px rgba(11,30,61,.85)' : '0 1px 2px rgba(19,42,79,.05)',
+                        transition: 'transform .15s, box-shadow .2s',
+                      }}
+                      onMouseEnter={e => { if (!on) e.currentTarget.style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
+                    >
+                      {on && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0,
+                          background: on ? 'rgba(255,255,255,.1)' : (key === 'morning' ? '#FFF7E6' : '#EEF0FF'), border: on ? '1px solid rgba(255,255,255,.18)' : 'none' }}>{icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: FONT_DISPLAY, fontSize: '17px', fontWeight: 600 }}>{name}</span>
+                            {date === todayStr && key === liveSession && (
+                              <span style={{ fontSize: '9.5px', fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 99, background: on ? '#E2C57E' : '#0B1E3D', color: on ? '#0B1E3D' : '#E2C57E' }}>Now</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: sub, marginTop: '2px' }}>Due by {st.due}</div>
+                        </div>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: 99, background: badge.b, color: badge.c, whiteSpace: 'nowrap' }}>
+                          {st.status === 'done' ? '✓ ' : ''}{badge.t}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '14px' }}>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: '28px', fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'lining-nums tabular-nums', color: on ? '#E2C57E' : '#0B1E3D' }}>{st.marked}</span>
+                        <span style={{ fontSize: '13px', color: sub, fontVariantNumeric: 'tabular-nums' }}>/ {st.total} marked · {st.pct}%</span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: on ? 'rgba(255,255,255,.14)' : '#F1EDE4', overflow: 'hidden', margin: '8px 0 10px' }}>
+                        <div style={{ height: '100%', width: `${Math.min(st.pct, 100)}%`, borderRadius: 99, transition: 'width .4s', background: st.status === 'done' ? '#22C55E' : on ? '#E2C57E' : '#B8923A' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px', color: sub, fontVariantNumeric: 'tabular-nums' }}>
+                        {[['Present', st.present, '#22C55E'], ['Absent', st.absent, '#F87171'], ['Leave', st.leave, '#60A5FA'], ['Sick', st.sick, '#A78BFA']].map(([l, v, c]) => (
+                          <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: c }} />
+                            <b style={{ color: fg, fontWeight: 800 }}>{v}</b> {l}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div style={{ height: '6px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%',
-                width: `${totalStudents ? Math.round(totalMarked / totalStudents * 100) : 0}%`,
-                background: totalMarked === totalStudents ? '#4ade80' : '#60a5fa',
-                borderRadius: '99px', transition: 'width 0.4s',
-              }} />
-            </div>
-          </div>
-        </div>
+          )
+        })()}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
@@ -2256,15 +2346,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px 14px 18px', cursor: 'pointer' }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'capitalize' }}>
                             🏠 {houseName}
                           </div>
                           <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, marginTop: '2px', fontWeight: '600' }}>
                             {houseGaps > 0 ? `${houseGaps} slot${houseGaps > 1 ? 's' : ''} flagged` : houseDone === DAILY_SLOTS.length ? 'Fully compliant today' : 'Checks pending'}
                           </div>
                         </div>
-                        {/* Slot status rings — one ring per daily slot, filled progressively */}
-                        <div style={{ display: 'flex', gap: '5px' }}>
+                        {/* Slot tasks — one tappable task per daily check. A check that
+                            can run now runs straight from here; anything else opens
+                            the card. */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
                             const result = dailyCheckResults[key]
@@ -2274,24 +2366,55 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             const gaps = result?.checked && remaining.length > 0
                             const isCurrent = slot.key === nowSlot
                             const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
-                            const ringColor = done ? MD.color.success : gaps ? MD.color.error : locked ? MD.color.outline : isCurrent ? MD.color.secondary : MD.color.outlineVariant
+                            // Due now or overdue — never a later slot: a check that finds
+                            // gaps logs neglect and alerts on WhatsApp, so running one
+                            // early would flag the house unfairly.
+                            const todayStr = new Date().toLocaleDateString('en-CA')
+                            const due = date < todayStr ? true : date > todayStr ? false
+                              : DAILY_SLOTS.findIndex(x => x.key === slot.key) <= DAILY_SLOTS.findIndex(x => x.key === nowSlot)
+                            const runnable = !result?.checked && !locked && due
+                            const [icon, ...words] = slot.label.split(' ')
+                            const st = done ? { c: MD.color.success, bg: MD.color.success, fg: '#fff', mark: '✓', note: 'Done' }
+                              : gaps ? { c: MD.color.error, bg: MD.color.errorContainer, fg: MD.color.error, mark: '!', note: `${remaining.length} gap${remaining.length > 1 ? 's' : ''}` }
+                              : locked ? { c: MD.color.outlineVariant, bg: MD.color.surfaceVariant, fg: MD.color.onSurfaceVariant, mark: '🔒', note: 'Locked' }
+                              : runnable ? { c: MD.color.secondary, bg: MD.color.secondaryContainer, fg: MD.color.secondary, mark: '', note: isCurrent ? 'Tap to check' : 'Overdue' }
+                              : { c: MD.color.outlineVariant, bg: 'transparent', fg: MD.color.onSurfaceVariant, mark: '', note: 'Later' }
                             return (
-                              <div
+                              <button
                                 key={slot.key}
-                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — roll call pending' : isCurrent ? 'Current slot' : 'Not checked'}`}
-                                style={{
-                                  width: '22px', height: '22px', borderRadius: '50%',
-                                  border: `2px solid ${ringColor}`,
-                                  background: done ? ringColor : gaps ? ringColor + '22' : 'transparent',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '10px', fontWeight: '800',
-                                  color: done ? 'white' : ringColor,
-                                  boxShadow: isCurrent && !result?.checked && !locked ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
-                                  flexShrink: 0,
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  if (runnable) runDailySlotCheck(houseName, slot.key)
+                                  else setDailyCheckHouse(isExpanded ? null : houseName)
                                 }}
+                                title={`${words.join(' ')} check: ${done ? 'complete' : gaps ? `${remaining.length} gap(s) found — open to review` : locked ? `locked until the ${slot.rollCallGate} roll call is complete` : runnable ? 'tap to run the check now' : 'not due yet'}`}
+                                aria-label={`${words.join(' ')} check — ${st.note}`}
+                                style={{
+                                  position: 'relative', width: '58px', padding: '6px 2px 5px', borderRadius: '12px',
+                                  border: `1.5px solid ${st.c}`, background: st.bg, color: st.fg,
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
+                                  cursor: locked ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                                  opacity: locked ? 0.75 : 1,
+                                  boxShadow: runnable ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
+                                  transition: 'transform .12s ease, box-shadow .2s ease',
+                                }}
+                                onMouseEnter={e => { if (!locked) e.currentTarget.style.transform = 'translateY(-1px)' }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
                               >
-                                {done ? '✓' : gaps ? '!' : locked ? '🔒' : ''}
-                              </div>
+                                <span style={{ fontSize: '16px', lineHeight: 1.1, filter: locked ? 'grayscale(1)' : 'none' }}>{icon}</span>
+                                <span style={{ fontSize: '9.5px', fontWeight: '800', letterSpacing: '.02em', lineHeight: 1.2 }}>{words.join(' ')}</span>
+                                <span style={{ fontSize: '8.5px', fontWeight: '700', opacity: 0.85, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{st.note}</span>
+                                {st.mark && (
+                                  <span style={{
+                                    position: 'absolute', top: '-7px', right: '-7px', width: '18px', height: '18px', borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: done || gaps ? '11px' : '9px', fontWeight: '900',
+                                    background: done ? '#fff' : gaps ? MD.color.error : MD.color.surfaceContainer,
+                                    color: done ? MD.color.success : gaps ? '#fff' : MD.color.onSurfaceVariant,
+                                    border: `1.5px solid ${done ? MD.color.success : gaps ? MD.color.error : MD.color.outlineVariant}`,
+                                  }}>{st.mark}</span>
+                                )}
+                              </button>
                             )
                           })}
                         </div>
@@ -2491,131 +2614,140 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               {houses.map((houseName, idx) => {
                 const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
                 const stats = getHouseStats(houseName)
-                const allDone = stats.unmarked === 0
+                const allDone = stats.total > 0 && stats.unmarked === 0
+                const blocked = isHouseBlocked(houseName)
+                const prev = blocked ? getPrevDayStatus(houseName) : null
+                const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+                const accent = allDone ? '#15803D' : pal.color
+                const R = 22, C = 2 * Math.PI * R
+                const STAT = [
+                  { label: 'Present', value: stats.present, color: '#15803D' },
+                  { label: 'Absent',  value: stats.absent,  color: '#DC2626' },
+                  { label: 'Late',    value: stats.late,    color: '#B8923A' },
+                  { label: 'Leave',   value: stats.onLeave, color: '#1D4ED8' },
+                  { label: 'Sick',    value: stats.sick,    color: '#7C3AED' },
+                ]
                 return (
                   <div
                     key={houseName}
                     onClick={() => { setSelectedHouse(houseName); setView('dashboard') }}
                     style={{
-                      borderRadius: '20px', overflow: 'hidden',
-                      background: `linear-gradient(180deg,#fff 0%,#f7f4ea 100%) padding-box, linear-gradient(150deg,${allDone ? '#86efac' : '#e9d9b0'},${allDone ? '#16a34a' : '#c9a24b'} 50%,#e9d9b0) border-box`,
-                      border: '1.5px solid transparent',
-                      boxShadow: '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)',
-                      cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s',
+                      position: 'relative', borderRadius: '20px', overflow: 'hidden', background: '#fff',
+                      border: `1px solid ${allDone ? '#BBE5C8' : '#ECE6D8'}`,
+                      boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)',
+                      cursor: 'pointer', transition: 'transform .18s, box-shadow .18s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 26px 40px -20px rgba(19,42,79,.6)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 24px 40px -22px rgba(19,42,79,.55)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)' }}
                   >
-                    {/* Cover band */}
-                    <div style={{ height: '10px', position: 'relative', background: `linear-gradient(90deg,${allDone ? '#16a34a' : pal.color},#0e203f)` }}>
-                      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
-                    </div>
-                    <div style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '20px', fontWeight: '600', color: '#0e203f', fontFamily: FONT_DISPLAY, letterSpacing: '-.01em' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 10, fontSize: 15, marginRight: 8, verticalAlign: 'middle', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>🏠</span>{houseName}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                            {stats.total} students
+                    <div style={{ height: '4px', background: `linear-gradient(90deg, ${accent}, ${accent}55)` }} />
+                    <div style={{ padding: '18px 18px 16px' }}>
+                      {/* Header: crest, name, completion ring */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#E2C57E',
+                          fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1.5px #fff, 0 0 0 2.5px #C9A24B',
+                        }}>{title.charAt(0)}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: '19px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                          <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>{stats.total} students</span>
+                            <span style={{ width: 3, height: 3, borderRadius: '50%', background: '#CBD5E1' }} />
+                            <span style={{ fontWeight: 700, color: allDone ? '#15803D' : blocked ? '#DC2626' : '#A16207' }}>
+                              {allDone ? 'Roll call complete' : blocked ? 'Blocked' : `${stats.unmarked} to mark`}
+                            </span>
                           </div>
                         </div>
-                        {allDone
-                          ? <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#16a34a' }}>✓ Complete</span>
-                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#b8923a' }}>{stats.unmarked} pending</span>
-                        }
+                        <div style={{ position: 'relative', width: 54, height: 54, flexShrink: 0 }} title={`${stats.marked} of ${stats.total} marked`}>
+                          <svg width="54" height="54" viewBox="0 0 54 54" style={{ transform: 'rotate(-90deg)' }}>
+                            <circle cx="27" cy="27" r={R} fill="none" stroke="#F1EDE4" strokeWidth="5" />
+                            <circle cx="27" cy="27" r={R} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round"
+                              strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(stats.pct, 100) / 100)} style={{ transition: 'stroke-dashoffset .5s' }} />
+                          </svg>
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12.5px', fontWeight: 800, color: '#0B1E3D', fontVariantNumeric: 'tabular-nums' }}>
+                            {allDone ? <span style={{ color: '#15803D', fontSize: 18 }}>✓</span> : `${stats.pct}%`}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Mini stats row */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '12px' }}>
-                        {[
-                          { label: 'P', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
-                          { label: 'A', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-                          { label: 'L', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
-                          { label: '🚪', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
-                          { label: '🏥', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
-                        ].map(s => (
-                          <div key={s.label} style={{ textAlign: 'center', padding: '6px 4px', background: s.bg, borderRadius: '8px' }}>
-                            <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                            <div style={{ fontSize: '10px', color: s.color, fontWeight: '600' }}>{s.label}</div>
+                      {/* Status counts */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '6px', margin: '16px 0 10px' }}>
+                        {STAT.map(st => (
+                          <div key={st.label} style={{ textAlign: 'center', padding: '8px 2px 7px', borderRadius: '12px', background: st.value ? st.color + '0F' : '#FAF8F3', border: `1px solid ${st.value ? st.color + '2E' : '#F1EDE4'}` }}>
+                            <div style={{ fontFamily: FONT_DISPLAY, fontSize: '18px', fontWeight: 700, lineHeight: 1.1, color: st.value ? st.color : '#CBD5E1', fontVariantNumeric: 'lining-nums tabular-nums' }}>{st.value}</div>
+                            <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: st.value ? st.color : '#94A3B8', marginTop: '3px' }}>{st.label}</div>
                           </div>
                         ))}
                       </div>
 
-                      {/* Progress bar */}
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%',
-                            width: `${stats.pct}%`,
-                            background: allDone ? '#16a34a' : pal.color,
-                            borderRadius: '99px', transition: 'width 0.4s',
-                          }} />
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
-                          {stats.marked}/{stats.total} marked · {stats.pct}%
-                        </div>
+                      {/* Composition bar */}
+                      <div style={{ display: 'flex', height: '6px', borderRadius: '99px', overflow: 'hidden', background: '#F1EDE4' }}>
+                        {stats.total > 0 && STAT.filter(st => st.value > 0).map(st => (
+                          <div key={st.label} style={{ width: `${(st.value / stats.total) * 100}%`, background: st.color }} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '5px', display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
+                        <span>{session === 'morning' ? 'Morning' : 'Night'} roll call</span>
+                        <span>{stats.marked} / {stats.total} marked</span>
                       </div>
 
-                      {/* Action buttons */}
-                      {(() => {
-                        const blocked = isHouseBlocked(houseName)
-                        return (
-                          <>
-                            {blocked && (
-                              <div
-                                onClick={e => e.stopPropagation()}
-                                style={{ marginBottom: '10px', padding: '10px 12px', background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '10px' }}
-                              >
-                                <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
-                                  🚫 Yesterday's roll call incomplete — {(() => { const p = getPrevDayStatus(houseName); return `${p.morningMarked}/${p.total} morning · ${p.nightMarked}/${p.total} night` })()}
-                                </div>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a6e', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
-                                >
-                                  📋 Complete Missed Roll Call
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
-                                    style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#dc2626', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                                  >
-                                    🔓 Override (Admin)
-                                  </button>
-                                )}
+                      {/* Yesterday not finished */}
+                      {blocked && (
+                        <div onClick={e => e.stopPropagation()} style={{ marginTop: '14px', padding: '12px', borderRadius: '14px', background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#DC2626', color: '#fff', fontSize: 12, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+                            <div>
+                              <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#991B1B' }}>Yesterday's roll call is incomplete</div>
+                              <div style={{ fontSize: '11.5px', color: '#B91C1C', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                                Morning {prev.morningMarked}/{prev.total} · Night {prev.nightMarked}/{prev.total}
                               </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
-                                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.bg, color: pal.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                              >
-                                📊 Dashboard
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
-                                disabled={blocked}
-                                style={{
-                                  flex: 1, padding: '9px', borderRadius: '9px', border: 'none',
-                                  background: blocked ? '#e2e8f0' : pal.color,
-                                  color: blocked ? '#94a3b8' : 'white',
-                                  fontSize: '12px', fontWeight: '700',
-                                  cursor: blocked ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                {blocked ? '🔒 Blocked' : '⚡ Roll Call'}
-                              </button>
                             </div>
-                          </>
-                        )
-                      })()}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            <button onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
+                              style={{ flex: 1, padding: '8px 10px', borderRadius: '10px', border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Complete missed roll call
+                            </button>
+                            {isAdmin && (
+                              <button onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
+                                style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Override
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
+                          style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid #E5DCC7', background: '#FCFBF7', color: '#0B1E3D', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Dashboard
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
+                          disabled={blocked}
+                          style={{
+                            flex: 1.3, padding: '10px', borderRadius: '12px', border: 'none', fontFamily: 'inherit',
+                            background: blocked ? '#EEF1F5' : allDone ? 'linear-gradient(180deg,#1F8A4C,#15803D)' : 'linear-gradient(180deg,#1C3A6B,#0B1E3D)',
+                            color: blocked ? '#94A3B8' : '#fff', fontSize: '12.5px', fontWeight: 800,
+                            cursor: blocked ? 'not-allowed' : 'pointer',
+                            boxShadow: blocked ? 'none' : '0 8px 16px -10px rgba(11,30,61,.8)',
+                          }}
+                        >
+                          {blocked ? '🔒 Locked' : allDone ? 'Roll call ✓' : 'Start roll call →'}
+                        </button>
+                      </div>
                       {allDone && (
                         <button
                           onClick={e => { e.stopPropagation(); setReportHouse(houseName) }}
-                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '9px', border: 'none', background: '#f5f3ff', color: '#7c3aed', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '12px', border: '1px solid #E9D9B0', background: 'linear-gradient(180deg,#FFFCF3,#F8F0DC)', color: '#7A5A12', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
                         >
-                          📄 View Report
+                          View house report
                         </button>
                       )}
                     </div>
@@ -3036,13 +3168,30 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 300)
     }
 
+    // Desktop shortcuts: P A L S V to mark, ← → to move between students.
+    const KEY_STATUS = { p: 'Present', a: 'Absent', l: 'Late', s: 'Sick', v: 'On Leave' }
+    const onRollCallKey = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setRollCallIndex(i => Math.max(0, i - 1)); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); setRollCallIndex(i => Math.min(total - 1, i + 1)); return }
+      const st = KEY_STATUS[String(e.key).toLowerCase()]
+      if (!st || isDone || !currentStudent || savingId === currentStudent.id) return
+      e.preventDefault()
+      markAndAdvance(currentStudent.id, st)
+    }
+    const keyHint = (k, on) => !mobile && (
+      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 5, verticalAlign: 'middle', border: `1px solid ${on ? 'rgba(255,255,255,.55)' : 'currentColor'}`, opacity: 0.7 }}>{k}</span>
+    )
+
     const dismissCardLeavePrompt = () => {
       setCardLeavePrompt(null)
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 200)
     }
 
     return (
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+      <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
         {reportModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
@@ -3103,8 +3252,37 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
             <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{selectedHouse}</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {date}</div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
+              {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </div>
+            {(() => {
+              // Deadline countdown: Morning 7:00 AM / Night 8:00 PM, 15-min grace.
+              const { deadline, graceEnd, label } = rollCallDeadline(date, session)
+              const mins = Math.round((deadline.getTime() - clock) / 60000)
+              const fmt = m => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
+              const state = isDone ? { t: `Done · due by ${label}`, c: '#86EFAC' }
+                : clock > graceEnd.getTime() ? { t: `Overdue by ${fmt(-mins)} · was due ${label}`, c: '#FCA5A5' }
+                : mins < 0 ? { t: `Grace period · was due ${label}`, c: '#FCD34D' }
+                : mins <= 24 * 60 ? { t: `Due by ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
+                : { t: `Due by ${label}`, c: '#E9D9B0' }
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
+                </div>
+              )
+            })()}
           </div>
+          {!catchUpReturn && (
+            <div role="tablist" aria-label="Roll call" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 3, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)' }}>
+              {[['morning', '🌅'], ['night', '🌙']].map(([k, ic]) => (
+                <button key={k} type="button" role="tab" aria-selected={session === k} title={`${k === 'morning' ? 'Morning' : 'Night'} roll call`}
+                  onClick={() => { if (k !== session) { setSession(k); setRollCallIndex(0) } }}
+                  style={{ width: 34, height: 26, borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 14, background: session === k ? 'linear-gradient(160deg,#d4ae58,#b8923a)' : 'transparent', opacity: session === k ? 1 : 0.6 }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ minWidth: 54, textAlign: 'center', padding: '7px 10px', borderRadius: 14, fontWeight: 800, fontSize: 14, color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 16px -8px rgba(184,146,58,.9)' }}>
             {Math.min(rollCallIndex + 1, total)}<span style={{ opacity: .6, fontWeight: 700 }}>/{total}</span>
           </div>
@@ -3638,9 +3816,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Big status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               {[
-                { status: 'Present', bg: '#16a34a', label: '✓ Present' },
-                { status: 'Absent', bg: '#dc2626', label: '✕ Absent' },
-              ].map(({ status, bg, label }) => (
+                { status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' },
+                { status: 'Absent', bg: '#dc2626', label: '✕ Absent', k: 'A' },
+              ].map(({ status, bg, label, k }) => (
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
@@ -3655,7 +3833,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     minHeight: '64px',
                   }}
                 >
-                  {label}
+                  {label}{keyHint(k, currentStatus === status)}
                 </button>
               ))}
             </div>
@@ -3663,10 +3841,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Secondary status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
               {[
-                { status: 'Late', bg: '#b8923a', label: '⏰ Late' },
-                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick' },
-                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave' },
-              ].map(({ status, bg, label }) => (
+                { status: 'Late', bg: '#b8923a', label: '⏰ Late', k: 'L' },
+                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick', k: 'S' },
+                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave', k: 'V' },
+              ].map(({ status, bg, label, k }) => (
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
@@ -3680,10 +3858,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
-                  {label}
+                  {label}{keyHint(k, currentStatus === status)}
                 </button>
               ))}
             </div>
+            {!mobile && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', margin: '-10px 0 16px' }}>
+                Keyboard: P present · A absent · L late · S sick · V leave · ← → move
+              </div>
+            )}
 
             {/* Navigation */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

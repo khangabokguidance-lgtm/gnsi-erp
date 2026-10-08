@@ -10,13 +10,15 @@ import { supabase } from './supabase'
 //  Printable via window.print() with a dedicated print stylesheet.
 // ══════════════════════════════════════════════════════════════
 
-const inp = {
-  width: '100%', padding: '10px 12px', borderRadius: '8px',
-  border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box',
-}
+const SERIF = "'Playfair Display', Georgia, serif"
+const SANS = "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif"
+const GOLD_LT = '#E2C57E'
+// "2026-10-06" -> "6 Oct"
+const shortDate = d => (d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '')
+
 const btn = (bg = '#1e3a5f', c = 'white') => ({
-  backgroundColor: bg, color: c, border: 'none', borderRadius: '10px',
-  padding: '10px 18px', fontWeight: '700', cursor: 'pointer', fontSize: '13px',
+  background: bg, color: c, border: 'none', borderRadius: '12px',
+  padding: '11px 18px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
 })
 
 export default function HouseReportModal({ house, date, session, students, allRecords, onClose }) {
@@ -44,6 +46,8 @@ export default function HouseReportModal({ house, date, session, students, allRe
     let cancelled = false
     const load = async () => {
       setLoading(true)
+      // A failed load (e.g. the connection dropped) still shows the report,
+      // just without leave and sickbay details — never a stuck spinner.
       const [{ data: leave }, { data: sick }] = await Promise.all([
         supabase
           .from('leave_records')
@@ -55,7 +59,7 @@ export default function HouseReportModal({ house, date, session, students, allRe
           .from('sickbay_records')
           .select('*')
           .eq('status', 'Admitted'),
-      ])
+      ].map(q => Promise.resolve(q).catch(() => ({ data: [] }))))
       if (!cancelled) {
         setLeaveRecords(leave || [])
         setSickbayRecords(sick || [])
@@ -95,6 +99,19 @@ export default function HouseReportModal({ house, date, session, students, allRe
 
   const total = houseStudents.length
   const marked = present.length + absent.length + late.length + onLeaveMarked.length + sickMarked.length
+
+  const complete = total > 0 && marked === total
+  const presentPct = total ? Math.round(((present.length + late.length) / total) * 100) : 0
+  const houseName = String(house).trim().replace(/\b\w/g, c => c.toUpperCase())
+  const longDate = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const sickOnly = sickMarked.filter(s => !sickbayDetails.some(d => d.student.id === s.id))
+  const STATS = [
+    { label: 'Total', value: total, color: '#0B1E3D' },
+    { label: 'Present', value: present.length + late.length, color: '#0F7A4C' },
+    { label: 'Absent', value: absent.length, color: '#DC2626' },
+    { label: 'On leave', value: onLeaveMarked.length, color: '#1D4ED8' },
+    { label: 'Sick', value: sickMarked.length, color: '#7C3AED' },
+  ]
 
   const handlePrint = () => {
     if (!printAreaRef.current) { window.print(); return }
@@ -161,6 +178,7 @@ export default function HouseReportModal({ house, date, session, students, allRe
         @media print {
           @page { size: A4; margin: 10mm; }
           html, body { height: auto !important; overflow: visible !important; }
+          .hr-print-clone, .hr-print-clone * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           /* Only .hr-print-clone (appended directly to <body> at print
              time) is shown; everything else in the document — including
              this modal and the rest of the app — is hidden outright. */
@@ -191,158 +209,186 @@ export default function HouseReportModal({ house, date, session, students, allRe
         .hr-pop-in { animation: hr-pop 0.35s ease-out; display: inline-block; }
       `}</style>
       <div style={{
-        background: 'white', borderRadius: '16px', maxWidth: '720px', width: '100%',
-        maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        background: '#fff', borderRadius: '20px', maxWidth: '760px', width: '100%',
+        maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 30px 80px -20px rgba(11,30,61,.55), 0 0 0 1px rgba(201,162,75,.25)',
       }}>
-        <div className="hr-print-area" ref={printAreaRef} style={{ padding: '28px 28px 20px' }}>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', borderBottom: '2px solid #1e3a5f', paddingBottom: '14px' }}>
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>GNSI Hostel — Daily House Report</div>
-              <div style={{ fontSize: '22px', fontWeight: 900, color: '#1e3a5f', marginTop: '2px' }}>🏠 {house} House</div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
-                {new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} Roll Call
+        <div className="hr-print-area" ref={printAreaRef} style={{ background: '#fff', fontFamily: SANS }}>
+          {/* Header band */}
+          <div style={{
+            position: 'relative', padding: '26px 30px 24px', color: '#fff', borderRadius: '20px 20px 0 0', overflow: 'hidden',
+            background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)',
+          }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: '3px', background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '10.5px', fontWeight: 800, color: GOLD_LT, letterSpacing: '.18em', textTransform: 'uppercase' }}>GNSI Hostel · Daily House Report</div>
+                <div style={{ fontFamily: SERIF, fontSize: '30px', fontWeight: 600, lineHeight: 1.15, marginTop: '6px' }}>{houseName} House</div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,.72)', marginTop: '6px' }}>
+                  {longDate} · {session === 'morning' ? 'Morning' : 'Night'} roll call
+                </div>
               </div>
-            </div>
-            <div style={{
-              padding: '5px 14px', borderRadius: '99px', fontSize: '12px', fontWeight: 800,
-              background: marked === total ? '#dcfce7' : '#fef9c3',
-              color: marked === total ? '#16a34a' : '#ca8a04',
-            }}>
-              {marked === total ? '✓ Roll Call Complete' : `${marked}/${total} marked`}
+              <div style={{ textAlign: 'right' }}>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', borderRadius: '99px', fontSize: '12px', fontWeight: 800,
+                  background: complete ? 'rgba(16,185,129,.16)' : 'rgba(234,179,8,.16)',
+                  color: complete ? '#6EE7B7' : '#FDE68A',
+                  border: `1px solid ${complete ? 'rgba(110,231,183,.45)' : 'rgba(253,230,138,.45)'}`,
+                }}>
+                  {complete ? '✓ Roll call complete' : `${marked} of ${total} marked`}
+                </div>
+                <div style={{ marginTop: '12px', fontFamily: SERIF, fontSize: '34px', fontWeight: 600, lineHeight: 1, color: GOLD_LT, fontVariantNumeric: 'lining-nums' }}>{presentPct}%</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,.6)', marginTop: '3px', letterSpacing: '.04em' }}>in house</div>
+              </div>
             </div>
           </div>
 
-          {/* Summary strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '20px' }}>
-            {[
-              { label: 'Total', value: total, color: '#1e3a5f', bg: '#eff6ff' },
-              { label: 'Present', value: present.length, color: '#16a34a', bg: '#dcfce7' },
-              { label: 'Absent', value: absent.length, color: '#dc2626', bg: '#fee2e2' },
-              { label: 'On Leave', value: onLeaveMarked.length, color: '#1d4ed8', bg: '#dbeafe' },
-              { label: 'Sick', value: sickMarked.length, color: '#7c3aed', bg: '#f5f3ff' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center', background: s.bg, borderRadius: '10px', padding: '10px 6px' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '10px', color: s.color, fontWeight: 600 }}>{s.label}</div>
+          <div style={{ padding: '22px 30px 8px' }}>
+            {/* Stat tiles */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: '10px' }}>
+              {STATS.map(st => (
+                <div key={st.label} style={{ position: 'relative', background: '#fff', border: '1px solid #ECE6D8', borderRadius: '14px', padding: '14px 10px 12px', textAlign: 'center', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: 0, left: '22%', right: '22%', height: '3px', borderRadius: '0 0 3px 3px', background: st.color }} />
+                  <div style={{ fontFamily: SERIF, fontSize: '26px', fontWeight: 600, color: st.value ? st.color : '#CBD5E1', lineHeight: 1.1, fontVariantNumeric: 'lining-nums tabular-nums' }}>{st.value}</div>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: '#64748B', letterSpacing: '.1em', textTransform: 'uppercase', marginTop: '5px' }}>{st.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Composition bar */}
+            {total > 0 && (
+              <div style={{ display: 'flex', height: '8px', borderRadius: '99px', overflow: 'hidden', background: '#F1EDE4', margin: '14px 0 4px' }}>
+                {STATS.slice(1).filter(st => st.value > 0).map(st => (
+                  <div key={st.label} title={`${st.label}: ${st.value}`} style={{ width: `${(st.value / total) * 100}%`, background: st.color }} />
+                ))}
               </div>
-            ))}
-          </div>
+            )}
 
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>⏳ Loading leave & health details...</div>
-          ) : (
-            <>
-              {/* Absent list */}
-              <Section title="❌ Absent Students" color="#dc2626" bg="#fee2e2">
-                {absent.length === 0
-                  ? <Empty text="No students marked absent." />
-                  : absent.map(s => <NameRow key={s.id} student={s} />)
-                }
-              </Section>
-
-              {/* Late list */}
-              {late.length > 0 && (
-                <Section title="⏰ Late" color="#ca8a04" bg="#fef9c3">
-                  {late.map(s => <NameRow key={s.id} student={s} />)}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '34px', color: '#94A3B8', fontSize: '13px' }}>Loading leave and health details…</div>
+            ) : (
+              <div style={{ marginTop: '18px' }}>
+                <Section title="Absent" count={absent.length} color="#DC2626">
+                  {absent.length === 0
+                    ? <Empty text="Nobody absent" />
+                    : absent.map(s => <NameRow key={s.id} student={s} color="#DC2626" />)}
                 </Section>
-              )}
 
-              {/* On Leave */}
-              <Section title="🚪 On Leave" color="#1d4ed8" bg="#dbeafe">
-                {onLeaveMarked.length === 0
-                  ? <Empty text="No students on leave today." />
-                  : onLeaveMarked.map(s => {
-                    const detail = leaveDetails.find(d => d.student.id === s.id)?.leave
-                    return (
-                      <NameRow key={s.id} student={s}
-                        sub={detail ? `${detail.from_date} → ${detail.to_date}${detail.reason ? ' · ' + detail.reason : ''} · ${detail.status}` : null}
-                      />
-                    )
-                  })
-                }
-              </Section>
+                {late.length > 0 && (
+                  <Section title="Late" count={late.length} color="#CA8A04">
+                    {late.map(s => <NameRow key={s.id} student={s} color="#CA8A04" />)}
+                  </Section>
+                )}
 
-              {/* Health / Sickbay report */}
-              <Section title="🏥 House Health Report (Sickbay)" color="#7c3aed" bg="#f5f3ff">
-                {sickbayDetails.length === 0 && sickMarked.length === 0
-                  ? <Empty text="No students currently in sickbay." />
-                  : (
-                    <>
-                      {sickbayDetails.map(({ student, sickbay }) => (
-                        <NameRow key={student.id} student={student}
-                          sub={`${sickbay.complaint || 'Under observation'}${sickbay.attended_by ? ' · Attended by ' + sickbay.attended_by : ''}`}
-                        />
-                      ))}
-                      {sickMarked.filter(s => !sickbayDetails.some(d => d.student.id === s.id)).map(s => (
-                        <NameRow key={s.id} student={s} sub="Marked sick in roll call (no active sickbay record)" />
-                      ))}
-                    </>
-                  )
-                }
-              </Section>
-            </>
-          )}
+                <Section title="On leave" count={onLeaveMarked.length} color="#1D4ED8">
+                  {onLeaveMarked.length === 0
+                    ? <Empty text="Nobody on leave today" />
+                    : onLeaveMarked.map(s => {
+                      const d = leaveDetails.find(x => x.student.id === s.id)?.leave
+                      return (
+                        <NameRow key={s.id} student={s} color="#1D4ED8"
+                          sub={d ? `${shortDate(d.from_date)} → ${shortDate(d.to_date)}${d.reason ? ' · ' + d.reason : ''}` : null}
+                          badge={d?.status} />
+                      )
+                    })}
+                </Section>
 
-          <div style={{ marginTop: '18px', fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>
-            Generated {new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                <Section title="Health · sickbay" count={sickbayDetails.length + sickOnly.length} color="#7C3AED">
+                  {sickbayDetails.length === 0 && sickOnly.length === 0
+                    ? <Empty text="Nobody in sickbay" />
+                    : (
+                      <>
+                        {sickbayDetails.map(({ student, sickbay }) => (
+                          <NameRow key={student.id} student={student} color="#7C3AED"
+                            sub={`${sickbay.complaint || 'Under observation'}${sickbay.attended_by ? ' · Attended by ' + sickbay.attended_by : ''}`} />
+                        ))}
+                        {sickOnly.map(s => (
+                          <NameRow key={s.id} student={s} color="#7C3AED" sub="Marked sick at roll call (no sickbay record)" />
+                        ))}
+                      </>
+                    )}
+                </Section>
+              </div>
+            )}
+
+            {/* Sign-off */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px', marginTop: '26px' }}>
+              {['House master', 'Warden'].map(l => (
+                <div key={l} style={{ borderTop: '1px solid #CBD5E1', paddingTop: '6px', fontSize: '11px', color: '#64748B', letterSpacing: '.04em' }}>{l}</div>
+              ))}
+            </div>
+            <div style={{ margin: '14px 0 18px', fontSize: '10.5px', color: '#94A3B8', display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+              <span>Guidance Navodaya &amp; Sainik Institute</span>
+              <span>Generated {new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="hr-no-print" style={{ display: 'flex', gap: '10px', padding: '16px 28px', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
-          <button onClick={handlePrint} style={{ ...btn('#1e3a5f'), flex: 1 }}>🖨️ Print Report</button>
+        <div className="hr-no-print" style={{ display: 'flex', gap: '10px', padding: '14px 30px 18px', borderTop: '1px solid #F1EDE4', flexWrap: 'wrap', background: '#FCFBF7', borderRadius: '0 0 20px 20px' }}>
+          <button onClick={handlePrint} style={{ ...btn('linear-gradient(180deg,#1C3A6B,#0B1E3D)'), flex: 1, boxShadow: '0 8px 18px -10px rgba(11,30,61,.8)' }}>Print report</button>
           <button
             onClick={handleSendWhatsapp}
             disabled={whatsappStatus === 'generating'}
             style={{
-              ...btn(
-                whatsappStatus === 'error' ? '#dc2626'
-                  : whatsappStatus === 'ready' ? '#16a34a'
-                  : '#25D366'
-              ),
-              flex: 1,
-              opacity: whatsappStatus === 'generating' ? 0.85 : 1,
-              transition: 'background-color 0.25s ease',
+              ...btn(whatsappStatus === 'error' ? '#DC2626' : whatsappStatus === 'ready' ? '#15803D' : '#1FAF54'),
+              flex: 1, opacity: whatsappStatus === 'generating' ? 0.85 : 1, transition: 'background .25s ease',
             }}
           >
-            {whatsappStatus === 'generating' && <><span className="hr-spinner" style={{ marginRight: '8px', verticalAlign: 'middle' }} />Preparing image...</>}
-            {whatsappStatus === 'ready' && <span className="hr-pop-in">✅ Ready to send!</span>}
-            {whatsappStatus === 'error' && <span className="hr-pop-in">⚠️ Failed — try again</span>}
-            {whatsappStatus === 'idle' && <>📲 Send via WhatsApp (JPG)</>}
+            {whatsappStatus === 'generating' && <><span className="hr-spinner" style={{ marginRight: '8px', verticalAlign: 'middle' }} />Preparing image…</>}
+            {whatsappStatus === 'ready' && <span className="hr-pop-in">✓ Ready to send</span>}
+            {whatsappStatus === 'error' && <span className="hr-pop-in">Failed — try again</span>}
+            {whatsappStatus === 'idle' && <>Send on WhatsApp</>}
           </button>
-          <button onClick={onClose} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Close</button>
+          <button onClick={onClose} style={{ ...btn('#fff', '#334155'), flex: 1, border: '1px solid #DDD5C3' }}>Close</button>
         </div>
       </div>
     </div>
   )
 }
 
-function Section({ title, color, bg, children }) {
+function Section({ title, count, color, children }) {
   return (
-    <div className="hr-print-section" style={{ marginBottom: '16px' }}>
-      <div style={{ fontSize: '13px', fontWeight: 800, color, marginBottom: '8px' }}>{title}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {children}
+    <div className="hr-print-section" style={{ marginBottom: '18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
+        <span style={{ fontFamily: SERIF, fontSize: '16px', fontWeight: 600, color: '#0B1E3D' }}>{title}</span>
+        <span style={{ fontSize: '11px', fontWeight: 800, color, background: color + '14', border: `1px solid ${color}33`, borderRadius: '99px', padding: '1px 9px' }}>{count}</span>
+        <span style={{ flex: 1, height: '1px', background: '#ECE6D8', marginLeft: '4px' }} />
       </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>{children}</div>
     </div>
   )
 }
 
-function NameRow({ student, sub }) {
+const BADGE = {
+  Approved: { c: '#15803D', b: '#DCFCE7' },
+  Pending: { c: '#A16207', b: '#FEF3C7' },
+}
+
+function NameRow({ student, sub, color, badge }) {
+  const initials = String(student.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  const bd = badge && (BADGE[badge] || { c: '#475569', b: '#F1F5F9' })
   return (
-    <div className="hr-print-row" style={{ display: 'flex', flexDirection: 'column', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 700, color: '#1e293b' }}>{student.name}</span>
-        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-          GCC-{student.gcc_no || '--'} · {student.batch || student.class_name || '--'}
-        </span>
+    <div className="hr-print-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', background: '#fff', border: '1px solid #ECE6D8', borderLeft: `3px solid ${color}`, borderRadius: '12px' }}>
+      <div style={{ width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color, background: color + '12' }}>{initials}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+          <span style={{ fontWeight: 700, color: '#0F172A', fontSize: '13.5px' }}>{student.name}</span>
+          <span style={{ color: '#64748B', fontSize: '11.5px', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+            GCC {student.gcc_no || '—'} · {student.batch || student.class_name || '—'}
+          </span>
+        </div>
+        {(sub || bd) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', fontSize: '12px', color: '#64748B' }}>
+            {sub && <span>{sub}</span>}
+            {bd && <span style={{ fontSize: '10.5px', fontWeight: 800, color: bd.c, background: bd.b, borderRadius: '99px', padding: '1px 8px' }}>{badge}</span>}
+          </div>
+        )}
       </div>
-      {sub && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>{sub}</div>}
     </div>
   )
 }
 
 function Empty({ text }) {
-  return <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '4px 2px' }}>{text}</div>
+  return <div style={{ fontSize: '12.5px', color: '#64748B', padding: '9px 14px', background: '#FAF8F2', border: '1px dashed #E5DCC7', borderRadius: '12px' }}>✓ {text}</div>
 }
