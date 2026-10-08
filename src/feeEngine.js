@@ -80,7 +80,7 @@ export const CURRENT_YEAR = (() => {
 export const COURSE_STRUCTURE = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
   Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Prime', 'Elite'],
+  Foundation:        ['Pragati', 'Udaan'],
   'Combined Course': ['—'],
 }
 

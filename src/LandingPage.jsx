@@ -254,7 +254,7 @@ const PROGRAMMES = {
   fdn: {
     name: 'Foundation Classes', exam: 'Foundation', entry: 'School readiness & competitive basics',
     intro: 'Builds the base in Mathematics and English, study habits and discipline — so students are ready for competitive entrance preparation.',
-    tracks: ['Elite — High-performance track', 'Prime — Standard track'],
+    tracks: ['Udaan — High-performance track', 'Pragati — Standard track'],
     features: ['Mathematics & English focus', 'Study habit building', 'Discipline-first environment', 'Day scholar option available'],
     patterns: [],
     batch: '10 January 2027',
@@ -2863,8 +2863,8 @@ window.submitGrievance = async () => {
           <h3>Foundation Programme</h3>
           <p className="sub">School readiness &amp; competitive prep</p>
           <ul className="course-features">
-            <li>Elite — High-performance track</li>
-            <li>Prime — Standard track</li>
+            <li>Udaan — High-performance track</li>
+            <li>Pragati — Standard track</li>
             <li>Mathematics &amp; English focus</li>
             <li>Study habit building</li>
             <li>Discipline-first environment</li>

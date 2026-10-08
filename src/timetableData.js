@@ -9,8 +9,8 @@ export const BATCHES = [
   { name: 'Lakshya A',  sub: 'Navodaya',         color: '#A05A00', light: '#F5E3CC' },
   { name: 'Lakshya B',  sub: 'Navodaya',         color: '#8C5F00', light: '#F2E6CC' },
   { name: 'Umeed',      sub: 'Navodaya',         color: '#B23A48', light: '#F5DADE' },
-  { name: 'Elite',      sub: 'Navodaya Course',  color: '#1B5E5E', light: '#D6EDED' },
-  { name: 'Prime',      sub: 'Foundation',       color: '#4A4A00', light: '#EFEFCC' },
+  { name: 'Udaan',      sub: 'Navodaya Course',  color: '#1B5E5E', light: '#D6EDED' },
+  { name: 'Pragati',      sub: 'Foundation',       color: '#4A4A00', light: '#EFEFCC' },
 ]
 
 // Each row: from/to + one [subject, teacher] pair per batch (null = no class that slot)

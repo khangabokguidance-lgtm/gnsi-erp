@@ -182,7 +182,7 @@ const DRESS_ITEMS = [
 const COURSE_STRUCTURE = {
   Navodaya:          { subtypes: ['Lakshya', 'Umeed'] },
   Sainik:            { subtypes: ['Achiever', 'Leader', 'Champion'] },
-  Foundation:        { subtypes: ['Elite', 'Prime'] },
+  Foundation:        { subtypes: ['Udaan', 'Pragati'] },
   'Combined Course': { subtypes: [] },
 }
 

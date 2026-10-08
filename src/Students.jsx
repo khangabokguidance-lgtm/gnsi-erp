@@ -554,12 +554,12 @@ async function uploadPhotoToGoogleDriveStudents(file, identifier) {
 const COURSE_STRUCTURE = {
   Navodaya:         { subtypes:['Lakshya','Umeed'],             color:'#2563EB', bg:'#EFF6FF' },
   Sainik:           { subtypes:['Achiever','Leader','Champion'], color:'#059669', bg:'#ECFDF5' },
-  Foundation:       { subtypes:['Elite','Prime'],                color:'#7C3AED', bg:'#F5F3FF' },
+  Foundation:       { subtypes:['Udaan','Pragati'],                color:'#7C3AED', bg:'#F5F3FF' },
   'Combined Course':{ subtypes:[],                               color:'#D97706', bg:'#FFFBEB' },
 }
 
-const PROMOTION_MAP = { 'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Elite':'Prime' }
-const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime']
+const PROMOTION_MAP = { 'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Udaan':'Pragati' }
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Udaan','Pragati']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
 // Houses will be loaded dynamically from DB
@@ -4640,13 +4640,13 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
 //
 //  Course comes from students.course. Many older rows have it blank, so it
 //  falls back to the batch name (Achiever/Leader/Champion → Sainik,
-//  Lakshya/Umeed → Navodaya, Elite/Prime → Foundation). Anything still
+//  Lakshya/Umeed → Navodaya, Udaan/Pragati → Foundation). Anything still
 //  unknown is listed under "Unassigned" so nobody silently disappears.
 // ═══════════════════════════════════════════════════════════════════════════
 const CDB_COURSES = [
   { key:'Sainik',          exam:'AISSEE', batches:['Achiever','Leader','Champion'],            accent:'#1F6F4A', tint:'#E8F5EE' },
   { key:'Navodaya',        exam:'JNVST',  batches:['Lakshya','Lakshya A','Lakshya B','Umeed'], accent:'#1E3A6E', tint:'#E9EEF8' },
-  { key:'Foundation',      exam:'School foundation', batches:['Elite','Prime'],                accent:'#6D28D9', tint:'#F3EEFF' },
+  { key:'Foundation',      exam:'School foundation', batches:['Udaan','Pragati'],                accent:'#6D28D9', tint:'#F3EEFF' },
   { key:'Combined Course', exam:'AISSEE + JNVST', batches:[],                                  accent:'#A7771F', tint:'#FBF3E0' },
   { key:'Unassigned',      exam:'Course not set',  batches:[],                                 accent:'#64748B', tint:'#F1F5F9' },
 ]

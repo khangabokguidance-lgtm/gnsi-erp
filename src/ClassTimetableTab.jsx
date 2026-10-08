@@ -29,8 +29,8 @@ const BATCH_PALETTE = {
   Champion:  { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
   Lakshya:   { color: '#ca8a04', bg: '#fef9c3', border: '#fde047' },
   Umeed:     { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
-  Elite:     { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
-  Prime:     { color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
+  Udaan:     { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
+  Pragati:   { color: '#059669', bg: '#d1fae5', border: '#6ee7b7' },
 }
 const batchPalette = name => {
   for (const key of Object.keys(BATCH_PALETTE)) {
@@ -59,11 +59,11 @@ const subjectColor = s => {
 
 const CLASS_BATCHES = [
   'Achiever (Combined)', 'Leader (Sainik)', 'Champion (Sainik)',
-  'Lakshya (Navodaya)', 'Umeed (Navodaya)', 'Elite (Foundation)', 'Prime (Foundation)',
+  'Lakshya (Navodaya)', 'Umeed (Navodaya)', 'Udaan (Foundation)', 'Pragati (Foundation)',
 ]
 const DOUBT_BATCHES = [
   'Achiever A', 'Achiever B', 'Leader A', 'Leader B',
-  'Champion A', 'Champion B', 'Lakshya', 'Umeed', 'Elite', 'Prime',
+  'Champion A', 'Champion B', 'Lakshya', 'Umeed', 'Udaan', 'Pragati',
 ]
 
 const SUBJECTS = [
