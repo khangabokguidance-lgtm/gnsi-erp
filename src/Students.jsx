@@ -4654,6 +4654,13 @@ const CDB_COURSES = [
 // call uses, so a student is in the same class in both modules.
 const cdbCourseOf = courseOf
 const cdbBatchOf = batchOf
+// One spelling for gender, whatever was saved ('Male', 'MALE', 'boy', 'F' …).
+const cdbGender = s => {
+  const g = String(s?.gender || '').trim().toLowerCase()
+  if (['male', 'm', 'boy'].includes(g)) return 'Boy'
+  if (['female', 'f', 'girl'].includes(g)) return 'Girl'
+  return g ? s.gender : ''
+}
 const cdbEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
 const cdbInr = n => '₹' + Number(n || 0).toLocaleString('en-IN')
 
@@ -4839,6 +4846,8 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
   const sel = { boxSizing:'border-box', padding:'8px 10px', borderRadius:10, border:`1px solid ${T.border2}`, fontSize:12.5, height:36, fontFamily:'inherit', background:T.surface, color:T.text1 }
   const houseMix = houses.map((h, i) => ({ l:h, n: courseList.filter(s => s.house === h && (s.status || 'Active') === 'Active').length, c: ['#132a4f','#b8923a','#1F6F4A','#6D28D9','#0284C7','#E11D48','#0D9488','#EA580C','#64748B','#A7771F'][i % 10] }))
 
+  // Grouped by batch, every row's batch is the group heading: no column for it.
+  const showBatchCol = groupBy !== 'batch'
   const AttBar = ({ v }) => v == null ? <span style={{ color:T.text4 }}>—</span> : (
     <div style={{ display:'flex', alignItems:'center', gap:7, minWidth:92 }}>
       <div style={{ flex:1, height:6, borderRadius:99, background:T.surface2, overflow:'hidden' }}>
@@ -4867,7 +4876,12 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
         .cdb-pill.on .n{background:rgba(255,255,255,.16);color:${T.goldBorder}}
         .cdb-table{width:100%;border-collapse:separate;border-spacing:0}
         .cdb-table th{position:sticky;top:0;z-index:1;background:var(--surface2);text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
-        .cdb-table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);vertical-align:middle}
+        .cdb-table td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);vertical-align:middle}
+        .cdb-table th{padding:10px 10px}
+        .cdb-table th:first-child,.cdb-table td:first-child{padding-left:16px}
+        .cdb-table th:last-child,.cdb-table td:last-child{padding-right:16px}
+        .cdb-name{font-weight:700;color:var(--text1);font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cdb-clip{max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .cdb-table tbody tr{cursor:pointer;transition:background .12s}
         .cdb-table tbody tr:hover td{background:var(--surface-hover)}
         .cdb-grp{display:flex;align-items:center;gap:10px;padding:12px 16px;background:${T.goldLight};border-top:1px solid ${T.goldBorder};border-bottom:1px solid ${T.goldBorder};font-family:${T.serif};font-weight:600;color:${T.navy};font-size:15px}
@@ -5015,21 +5029,21 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
           <div style={{ overflowX:'auto' }}>
             <table className="cdb-table">
               <thead><tr>
-                <th style={{ width:44 }}>#</th><th>Student</th><th>Batch</th><th>House</th><th>Residence</th>
+                <th style={{ width:40 }}>#</th><th>Student</th>{showBatchCol && <th>Batch</th>}<th>House</th>
                 {can?.viewPII && <th>Parent / phone</th>}
-                <th>Attendance</th><th style={{ textAlign:'right' }}>Score</th><th style={{ textAlign:'right' }}>Dues</th><th>Status</th><th style={{ textAlign:'right' }}></th>
+                <th style={{ width:150 }}>Attendance</th><th style={{ textAlign:'right' }} title="Total in the latest exam">Last exam</th><th style={{ textAlign:'right' }}>Dues</th><th>Status</th><th style={{ textAlign:'right' }}></th>
               </tr></thead>
               {groups.map(g => (
                 <tbody key={g.title || 'all'}>
                   {g.title && (
-                    <tr style={{ cursor:'default' }}><td colSpan={can?.viewPII ? 11 : 10} style={{ padding:0 }}>
+                    <tr style={{ cursor:'default' }}><td colSpan={(can?.viewPII ? 9 : 8) + (showBatchCol ? 1 : 0)} style={{ padding:0 }}>
                       <div className="cdb-grp">{g.title}
                         <span style={{ fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>{g.list.length} student{g.list.length > 1 ? 's' : ''}</span>
                         {groupBy === 'batch' && course !== 'Unassigned' && g.title !== 'No batch' && (
                           <button className="cdb-act" style={{ fontFamily:'inherit' }} onClick={() => openAttendance({ page:'mark', course, subtype: g.title })}>Mark attendance →</button>
                         )}
                         <span style={{ marginLeft:'auto', fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>
-                          ♂ {g.list.filter(s => s.gender === 'Male').length} · ♀ {g.list.filter(s => s.gender === 'Female').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
+                          ♂ {g.list.filter(s => cdbGender(s) === 'Boy').length} · ♀ {g.list.filter(s => cdbGender(s) === 'Girl').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
                         </span>
                       </div>
                     </td></tr>
@@ -5040,22 +5054,24 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
                       <tr key={s.id} onClick={() => onOpenDetail?.(s)}>
                         <td style={{ color:T.text4, fontVariantNumeric:'tabular-nums' }}>{i + 1}</td>
                         <td>
-                          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:200 }}>
-                            <Avatar name={s.name} photoUrl={s.photo_url} size={34} />
+                          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:180, maxWidth:300 }}>
+                            <Avatar name={s.name} photoUrl={s.photo_url} size={32} />
                             <div style={{ minWidth:0 }}>
-                              <div style={{ fontWeight:700, color:T.text1 }}>{s.name}</div>
-                              <div style={{ fontSize:11.5, color:T.text3 }}>GCC {s.gcc_no}{s.gender ? ` · ${s.gender === 'Male' ? 'Boy' : s.gender === 'Female' ? 'Girl' : s.gender}` : ''}{s.session ? ` · ${s.session}` : ''}</div>
+                              <div className="cdb-name" title={s.name}>{s.name}</div>
+                              <div style={{ fontSize:11.5, color:T.text3, whiteSpace:'nowrap' }}>GCC {s.gcc_no}{cdbGender(s) ? ` · ${cdbGender(s)}` : ''}{s.session ? ` · ${s.session}` : ''}</div>
                             </div>
                           </div>
                         </td>
-                        <td>{cdbBatchOf(s)}</td>
-                        <td>{s.house || <span style={{ color:T.text4 }}>—</span>}</td>
-                        <td><span style={{ fontSize:11.5, fontWeight:700, padding:'3px 9px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span></td>
-                        {can?.viewPII && <td><div style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3 }}>{s.phone || ''}</div></td>}
+                        {showBatchCol && <td style={{ whiteSpace:'nowrap' }}>{cdbBatchOf(s)}</td>}
+                        <td style={{ whiteSpace:'nowrap' }}>
+                          <div style={{ color:T.text1 }}>{s.house || <span style={{ color:T.text4 }}>—</span>}</div>
+                          <span style={{ display:'inline-block', marginTop:3, fontSize:10.5, fontWeight:700, padding:'1px 8px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span>
+                        </td>
+                        {can?.viewPII && <td><div className="cdb-clip" title={s.father_name || ''} style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3, fontVariantNumeric:'tabular-nums' }}>{s.phone || ''}</div></td>}
                         <td onClick={e => { e.stopPropagation(); openAttendance({ page:'student360', gcc: s.gcc_no }) }} title="Open in Attendance 360" style={{ cursor:'pointer' }}><AttBar v={attData?.[s.id]} /></td>
                         <td style={{ textAlign:'right', fontWeight:700, color:T.text1, fontVariantNumeric:'tabular-nums' }}>{score ?? <span style={{ color:T.text4, fontWeight:400 }}>—</span>}</td>
                         <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{dues > 0 ? <span style={{ fontWeight:800, color:T.red }}>{cdbInr(dues)}</span> : <span style={{ color:T.green, fontWeight:700 }}>✓</span>}</td>
-                        <td><StatusPill status={s.status || 'Active'} /></td>
+                        <td style={{ whiteSpace:'nowrap' }}><StatusPill status={s.status || 'Active'} /></td>
                         <td style={{ textAlign:'right', whiteSpace:'nowrap' }} onClick={e => e.stopPropagation()}>
                           {can?.fees && (s.status || 'Active') === 'Active' && <button className="cdb-act" onClick={() => onOpenFee?.(s)}>Fee</button>}{' '}
                           {can?.write && <button className="cdb-act" onClick={() => onEdit?.(s)}>Edit</button>}
