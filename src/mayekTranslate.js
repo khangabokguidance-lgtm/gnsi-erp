@@ -22,7 +22,7 @@
 // wrong and are shown for a human to check and edit before use.
 import { supabase } from './supabase'
 import { bmeiToUnicode, bmeiSegments } from './mayekSegments'
-import { meeteiToRoman } from './meetei_mayek'
+import { meeteiToRoman, fixApunOrder } from './meetei_mayek'
 import { normalizeEnglish } from './mayekDictionary'
 
 export const LANGS = [
@@ -82,7 +82,7 @@ async function dictionaryLines(lines, pair) {
   if (pair === 'toMayek') {
     const rows = await dictLookup('english_norm', cands.map(normalizeEnglish))
     const byNorm = new Map(rows.map(r => [r.english_norm, r.mayek_unicode]))
-    cands.forEach(l => { const t = byNorm.get(normalizeEnglish(l)); if (t) hits.set(l, t) })
+    cands.forEach(l => { const t = byNorm.get(normalizeEnglish(l)); if (t) hits.set(l, fixApunOrder(t)) })
   } else {
     const rows = await dictLookup('mayek_unicode', cands)
     const byMayek = new Map(rows.map(r => [r.mayek_unicode.trim(), r.english]))
@@ -527,7 +527,7 @@ const cleanLine = t => String(t || '').replace(/\s+/g, ' ').trim()
 const sentenceLike = t => t.length <= 300 && (t.match(/[A-Za-z]{2,}/g) || []).length >= 3
 const mayekOf = q => {
   const m = String(q.question_mayek || '').trim()
-  if (!m || q.question_mayek_font !== 'bmei04') return m
+  if (!m || q.question_mayek_font !== 'bmei04') return fixApunOrder(m)
   // A BMEI04 word the key table can't convert stays in Latin letters; such a
   // line isn't a trustworthy pair, so the question counts as English-only.
   // (All-capital runs are Roman numerals, which are meant to stay Latin.)

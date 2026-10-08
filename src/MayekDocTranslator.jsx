@@ -33,6 +33,9 @@ import { translate, ENGINE_LABELS, saveTranslationDrafts, saveCorrections, offli
 import { readPaperFile, linesFromText, cleanLines, buildPaperDocx, docxFileName, watermarkDataUrl, MAX_LINES, MAYEK_FONT } from './mayekDocx'
 import { prepareSource, buildModel, makeSet, kindOf, paperStats, SET_NAMES } from './mayekPaper'
 import { bmeiToUnicode } from './mayekSegments'
+import { fixApunOrder } from './meetei_mayek'
+import { BmeiKeyboardToggle, BmeiKeyPad } from './BmeiKeyboard'
+import { useBmeiKeyboard } from './useBmeiKeyboard'
 import { normalizeAnswer, tidyText } from './paperTools'
 import { paperHtml } from './mayekPaperHtml'
 
@@ -211,7 +214,7 @@ function Preview({ html }) {
 const bankMayek = (q, text) => {
   const t = String(text || '').replace(/\s*\n\s*/g, ' ').trim()
   if (!t) return ''
-  const u = q.question_mayek_font === 'bmei04' ? bmeiToUnicode(t) : t
+  const u = q.question_mayek_font === 'bmei04' ? bmeiToUnicode(t) : fixApunOrder(t)
   return MTEI.test(u) ? u : ''
 }
 const oneLine = t => tidyText(String(t || '')).replace(/\s*\n\s*/g, ' ').trim()
@@ -271,6 +274,7 @@ function BankPicker({ questions, onUse }) {
 }
 
 export default function MayekDocTranslator({ showToast, currentStaffId, questions }) {
+  const { areaRef: kbArea, kb } = useBmeiKeyboard() // BMEI04 typing in the Meetei Mayek boxes
   const [saved] = useState(() => readJson(SETTINGS_KEY, {}))
   const [source, setSource] = useState(null) // { name, lines, pictures }
   const [pasted, setPasted] = useState('')
@@ -550,7 +554,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
   const marksOff = paper.marks && stats.withMarks && Math.abs(parseFloat(paper.marks) - stats.marks) > 0.001
 
   return (
-    <div className="mdt">
+    <div className="mdt" ref={kbArea}>
       <style>{CSS}</style>
       <header className="mdt-hero">
         <div className="mdt-eyebrow">Mayek Tool · Document Translator</div>
@@ -645,6 +649,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
               <div className="mdt-card-h" style={{ flexWrap: 'wrap' }}>
                 <span className="bar" /><span className="mdt-card-t">Line by line</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <BmeiKeyboardToggle kb={kb} />
                   {flaggedCount > 0 && <label className="mdt-check"><input type="checkbox" checked={onlyFlagged} onChange={e => setOnlyFlagged(e.target.checked)} />Only lines to check</label>}
                   {edited.length > 0 && <button className="mdt-btn sm" onClick={saveFixes} disabled={saving}>{saving ? 'Saving…' : `Save ${plural(edited.length, 'correction')} to Dictionary`}</button>}
                 </span>
@@ -665,7 +670,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
                           </div>
                         )}
                       </div>
-                      <textarea className="mdt-mm" rows={Math.max(1, Math.ceil((p.mm || '').length / 46))} value={p.mm} aria-label={`Meetei Mayek for line ${p.i + 1}`}
+                      <textarea className="mdt-mm" data-bmei="" rows={Math.max(1, Math.ceil((p.mm || '').length / 46))} value={p.mm} aria-label={`Meetei Mayek for line ${p.i + 1}`}
                         placeholder={busy ? '…' : 'Type the Meetei Mayek'} onChange={e => setRow(p.i, { mm: e.target.value })} />
                       <button className="mdt-redo" title="Translate this line again" aria-label={`Translate line ${p.i + 1} again`} onClick={() => redoLine(p.i)} disabled={!!busy}>↻</button>
                     </div>
@@ -673,6 +678,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
                 })}
                 {!shown.length && <div className="mdt-note" style={{ padding: 16 }}>Nothing to check.</div>}
               </div>
+              <BmeiKeyPad kb={kb} style={{ margin: 0, borderRadius: 0, borderWidth: '1px 0 0' }} />
             </section>
           )}
 
@@ -699,7 +705,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
           <Card title="3 · Paper & layout">
             <label className="mdt-lbl">Paper title</label>
             <input className="mdt-in" value={paper.title} onChange={setP('title')} placeholder="e.g. Unit Test 2 — Mathematics" style={{ marginBottom: 8 }} />
-            <input className="mdt-in" value={paper.titleMayek} onChange={setP('titleMayek')} placeholder="Title in Meetei Mayek (filled in when you translate)" style={{ marginBottom: 10, fontFamily: `'${MAYEK_FONT}',${PX.sans}` }} />
+            <input className="mdt-in" data-bmei="" value={paper.titleMayek} onChange={setP('titleMayek')} placeholder="Title in Meetei Mayek (filled in when you translate)" style={{ marginBottom: 10, fontFamily: `'${MAYEK_FONT}',${PX.sans}` }} />
             <div className="mdt-row three">
               <div><label className="mdt-lbl">Class</label><input className="mdt-in" value={paper.klass} onChange={setP('klass')} placeholder="VI" /></div>
               <div><label className="mdt-lbl">Subject</label><input className="mdt-in" value={paper.subject} onChange={setP('subject')} placeholder="Maths" /></div>
