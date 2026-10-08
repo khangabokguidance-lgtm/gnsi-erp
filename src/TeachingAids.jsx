@@ -91,7 +91,7 @@ import { isAdminRole } from './roles'
 const TRACKS = [
   { name: 'Sainik',     batches: ['Achiever', 'Leader', 'Champion'] },
   { name: 'Navodaya',   batches: ['Lakshya', 'Umeed'] },
-  { name: 'Foundation', batches: ['Elite', 'Prime'] },
+  { name: 'Foundation', batches: ['Udaan', 'Pragati'] },
   { name: 'Combined',   batches: ['Combined Course'] },
 ]
 const ALL_BATCHES = TRACKS.flatMap(t => t.batches)

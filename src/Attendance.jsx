@@ -18,7 +18,7 @@ import {
 const COURSE_STRUCTURE = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
   Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Prime', 'Elite'],
+  Foundation:        ['Pragati', 'Udaan'],
   'Combined Course': ['—'],
 }
 const COURSES      = Object.keys(COURSE_STRUCTURE)

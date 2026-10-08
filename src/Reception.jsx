@@ -88,7 +88,7 @@ const DEFAULT_ITEMS = [
 ]
 
 // ── dropdown option sets ─────────────────────────────────────────────────────
-const CLASS_OPTIONS    = ['Lakshya','Umeed','Elite','Prime','Achiever','Leader','Champion']
+const CLASS_OPTIONS    = ['Lakshya','Umeed','Udaan','Pragati','Achiever','Leader','Champion']
 const COURSES          = ['Sainik','Navodaya','Foundation','Combined Course']
 const HOSTEL_TYPES     = ['Boarder','Day Scholar','Day Boarder']
 const SOURCE_OPTIONS   = ['Walk-in','Phone Call','WhatsApp','Referral / Word of Mouth','Facebook / Instagram','Website','Google Search','School Fair / Event','Pamphlet / Poster','Other']

@@ -192,20 +192,20 @@ const DOUBT_SESSION_MAP = [
   { batch:'Achiever', subject:'Mathematics',       hm:'Sir Himan',       slot:'7:40–8:30 PM (Sainik)' },
   { batch:'Lakshya',  subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Lakshya/Umeed)' },
   { batch:'Umeed',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Lakshya/Umeed)' },
-  { batch:'Elite',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Elite/Prime)' },
-  { batch:'Prime',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Elite/Prime)' },
+  { batch:'Udaan',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Udaan/Pragati)' },
+  { batch:'Pragati',    subject:'General Knowledge', hm:'Sir Himan',       slot:'6:00–7:40 PM Doubt Session (Udaan/Pragati)' },
 
-  // ── Annexure-V: Foundation Group (Elite & Prime) — Morning Doubt Session ──
-  { batch:'Elite', subject:'English Grammar', hm:'Sir Shrinivash', slot:'6:30–7:20 AM Foundation Doubt (Group A)' },
-  { batch:'Prime', subject:'English Grammar', hm:'Sir James',      slot:'6:30–7:20 AM Foundation Doubt (Group B)' },
-  { batch:'Elite', subject:'Mathematics',     hm:'Sir James',      slot:'7:20–8:20 AM Foundation Doubt (Group A)' },
-  { batch:'Prime', subject:'Mathematics',     hm:'Sir Shrinivash', slot:'7:20–8:20 AM Foundation Doubt (Group B)' },
+  // ── Annexure-V: Foundation Group (Udaan & Pragati) — Morning Doubt Session ──
+  { batch:'Udaan', subject:'English Grammar', hm:'Sir Shrinivash', slot:'6:30–7:20 AM Foundation Doubt (Group A)' },
+  { batch:'Pragati', subject:'English Grammar', hm:'Sir James',      slot:'6:30–7:20 AM Foundation Doubt (Group B)' },
+  { batch:'Udaan', subject:'Mathematics',     hm:'Sir James',      slot:'7:20–8:20 AM Foundation Doubt (Group A)' },
+  { batch:'Pragati', subject:'Mathematics',     hm:'Sir Shrinivash', slot:'7:20–8:20 AM Foundation Doubt (Group B)' },
 
-  // ── Annexure-VI: Foundation Group (Elite & Prime) — Evening Doubt Session ──
-  { batch:'Elite', subject:'Reasoning',        hm:'Sir Bidyachandra', slot:'6:00–7:15 PM Foundation Doubt (Group A)' },
-  { batch:'Prime', subject:'Reasoning',        hm:'Sir Shrinivash',   slot:'6:00–7:15 PM Foundation Doubt (Group B)' },
-  { batch:'Elite', subject:'General Science',  hm:'Sir James',        slot:'7:15–8:30 PM Foundation Doubt (Group A)' },
-  { batch:'Prime', subject:'General Science',  hm:'Miss Bidyarani',   slot:'7:15–8:30 PM Foundation Doubt (Group B)' },
+  // ── Annexure-VI: Foundation Group (Udaan & Pragati) — Evening Doubt Session ──
+  { batch:'Udaan', subject:'Reasoning',        hm:'Sir Bidyachandra', slot:'6:00–7:15 PM Foundation Doubt (Group A)' },
+  { batch:'Pragati', subject:'Reasoning',        hm:'Sir Shrinivash',   slot:'6:00–7:15 PM Foundation Doubt (Group B)' },
+  { batch:'Udaan', subject:'General Science',  hm:'Sir James',        slot:'7:15–8:30 PM Foundation Doubt (Group A)' },
+  { batch:'Pragati', subject:'General Science',  hm:'Miss Bidyarani',   slot:'7:15–8:30 PM Foundation Doubt (Group B)' },
 
   // ── Annexure-VII: Navodaya Group (Lakshya & Umeed) — Morning Doubt Session ──
   { batch:'Lakshya', subject:'General Science', hm:'Sir Adison', slot:'6:30–7:20 AM Navodaya Doubt (Group A)' },
@@ -245,7 +245,7 @@ const DOUBT_TIME_SLOTS = [
   '6:50–7:40 PM (Navodaya ENG)',
   '7:40–8:30 PM (Sainik)',
   '6:00–7:40 PM Doubt Session (Lakshya/Umeed)',
-  '6:00–7:40 PM Doubt Session (Elite/Prime)',
+  '6:00–7:40 PM Doubt Session (Udaan/Pragati)',
   '6:30–7:20 AM Foundation Doubt (Group A)',
   '6:30–7:20 AM Foundation Doubt (Group B)',
   '7:20–8:20 AM Foundation Doubt (Group A)',

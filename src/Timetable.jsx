@@ -54,8 +54,8 @@ const BATCH_PALETTE = {
   Champion: { bg: '#F3EEFA', border: '#CBB6E8', text: '#5A2E8E', dot: '#7C3EC4' },
   Lakshya:  { bg: '#FCF1E6', border: '#EABF8F', text: '#8A4A16', dot: '#C1701F' },
   Umeed:    { bg: '#FCEEF3', border: '#EAB0C6', text: '#8A2050', dot: '#C22D6F' },
-  Elite:    { bg: '#EAF6F4', border: '#9CD8CE', text: '#0F5C50', dot: '#1A8D79' },
-  Prime:    { bg: '#FBF3DF', border: '#E7C878', text: '#7A5710', dot: '#B3861F' },
+  Udaan:    { bg: '#EAF6F4', border: '#9CD8CE', text: '#0F5C50', dot: '#1A8D79' },
+  Pragati:  { bg: '#FBF3DF', border: '#E7C878', text: '#7A5710', dot: '#B3861F' },
 }
 const getBatchStyle = n => {
   if (!n) return { bg: C.navy50, border: C.line, text: C.inkSoft, dot: C.inkFaint }
@@ -95,8 +95,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics I', teacher_name: 'Sir Himan' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Chetan' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Arjun' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Grammar', teacher_name: 'Sir Manglemba' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'Mathematics II', teacher_name: 'Sir Kabiraj' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Grammar', teacher_name: 'Sir Manglemba' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Mathematics II', teacher_name: 'Sir Kabiraj' },
   ]},
   { period_name: '11:20 AM–12:10 PM', rows: [
     { class_name: 'Champion', section: 'Sainik', subject_name: 'Reasoning', teacher_name: 'Sir Johny' },
@@ -105,8 +105,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics', teacher_name: 'Sir Himan' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Sunder' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Mathematics I', teacher_name: 'Sir Kabiraj' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'English Grammar', teacher_name: 'Sir Adison' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Mathematics I', teacher_name: 'Sir Kabiraj' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'English Grammar', teacher_name: 'Sir Adison' },
   ]},
   { period_name: '12:10 PM–1:00 PM', rows: [
     { class_name: 'Champion', section: 'Sainik', subject_name: 'Science', teacher_name: 'Sir Arunkumar' },
@@ -115,8 +115,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Chetan' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Lenin' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Shrinivash' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Meitei Mayek', teacher_name: 'Madam Sandhya' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Meitei Mayek', teacher_name: 'Madam Sandhya' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
   ]},
   { period_name: '1:00 PM–1:15 PM', rows: [
     { class_name: 'ALL', section: null, subject_name: 'BREAK', teacher_name: null },
@@ -128,8 +128,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Deepak' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mental Ability', teacher_name: 'Sir Roshan' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'Mathematics', teacher_name: 'Sir Lenin' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Mathematics', teacher_name: 'Sir Lenin' },
   ]},
   { period_name: '2:10 PM–3:00 PM', rows: [
     { class_name: 'Champion', section: 'Sainik', subject_name: 'Vocabulary', teacher_name: 'Sir Lenin' },
@@ -138,8 +138,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Kabiraj' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Arunkumar' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mathematics', teacher_name: 'Sir Himan' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Mathematics', teacher_name: 'Sir Sumanta' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Mathematics', teacher_name: 'Sir Sumanta' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
   ]},
   { period_name: '3:00 PM–3:50 PM', rows: [
     { class_name: 'Champion', section: 'Sainik', subject_name: 'Grammar', teacher_name: 'Sir Bidyachandra' },
@@ -148,8 +148,8 @@ const SEED_PERIODS = [
     { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Sunder' },
     { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Kabiraj' },
     { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
-    { class_name: 'Elite', section: 'Navodaya Course', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
-    { class_name: 'Prime', section: 'Foundation', subject_name: 'Passage', teacher_name: 'Madam Sandhya' },
+    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
+    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Passage', teacher_name: 'Madam Sandhya' },
   ]},
   { period_name: '6:00 PM–7:00 PM', rows: [
     { class_name: 'Champion', section: 'Sainik', subject_name: 'GK', teacher_name: 'Sir Deepak' },

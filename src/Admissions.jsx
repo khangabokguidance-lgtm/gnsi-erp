@@ -464,10 +464,10 @@ const REFERRAL_SOURCES = ['--','Social Media','Newspaper Ad','Alumni','Walk-in',
 const COURSE_STRUCTURE = {
   Navodaya:          { subtypes:['Lakshya','Umeed'],              color:T.indigo[600], bg:T.indigo[50]  },
   Sainik:            { subtypes:['Achiever','Leader','Champion'],  color:T.emerald[600],bg:T.emerald[50] },
-  Foundation:        { subtypes:['Elite','Prime'],                 color:T.violet[600], bg:T.violet[50]  },
+  Foundation:        { subtypes:['Udaan','Pragati'],                 color:T.violet[600], bg:T.violet[50]  },
   'Combined Course': { subtypes:[],                               color:T.amber[600],  bg:T.amber[50]   },
 }
-const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Udaan','Pragati','Class 6','Class 7','Class 8','Class 9','Class 10']
 const HOSTEL_TYPES = ['Day Scholar','Boarder','Day Boarder']
 const HOSTEL_STYLES = {
   'Boarder':     { bg:T.emerald[50], color:T.emerald[700], border:T.emerald[300], icon:'🏠' },

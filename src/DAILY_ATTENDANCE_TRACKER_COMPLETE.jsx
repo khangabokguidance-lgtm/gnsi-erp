@@ -43,7 +43,7 @@ const SHIFT_SLOTS = [
 const BATCHES = [
   'Achiever A','Achiever B','Leader A','Leader B',
   'Champion A','Champion B','Lakshya A','Lakshya B',
-  'Umeed A','Umeed B','Elite','Prime',
+  'Umeed A','Umeed B','Udaan','Pragati',
 ]
 
 const SUBJECTS = [

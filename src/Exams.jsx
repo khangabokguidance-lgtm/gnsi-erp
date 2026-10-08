@@ -65,8 +65,8 @@ const SUFFIX_TO_SECONDARY_BATCH = {
 
 const DEFAULT_COURSE_SUBJECTS = {
   ACHIEVER:  ["English Grammar", "Vocabulary", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
-  ELITE:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
-  PRIME:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
+  UDAAN:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
+  PRAGATI:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
   LAKSHYA:   ["Grammar", "Mental", "Mathematics", "Meitei Mayek"],
   // Split to match the live saved config's actual keys ("LAKSHYA - A" /
   // "LAKSHYA - B"), which StudentDB's "Lakshya A"/"Lakshya B" batches
@@ -89,7 +89,7 @@ const DEFAULT_COURSE_SUBJECTS = {
 // ─── Track (real exam track) → Batches it contains ───────────────────────────
 // IMPORTANT: throughout this file, the word "course" in variable names, picker
 // labels, and courseSubjects keys (ACHIEVER, CHAMPION, LEADER, LAKSHYA, UMEED,
-// PRIME, ELITE) actually means BATCH, not the student's real exam track. The
+// PRAGATI, UDAAN) actually means BATCH, not the student's real exam track. The
 // `students.course` database column holds the real track instead (Sainik /
 // Navodaya / Foundation / Combined Course). These two concepts share the word
 // "course" but are NOT the same thing — never compare s.course against a
@@ -100,7 +100,7 @@ const TRACK_BATCHES = {
   // "LAKSHYA - B") — see STUDENTDB_BATCH_TO_EXAM_KEY. Kept the old
   // unsplit "LAKSHYA" too in case any legacy record still uses it.
   Navodaya:         ["LAKSHYA - A", "LAKSHYA - B", "LAKSHYA", "UMEED"],
-  Foundation:       ["PRIME", "ELITE"],
+  Foundation:       ["PRAGATI", "UDAAN"],
   "Combined Course": ["Combined Navodaya Course (Sainik Appearing Group)"],
 };
 const TRACKS = Object.keys(TRACK_BATCHES);
@@ -203,7 +203,7 @@ function listSecondaryBatches(secondaryBatchMap) {
 
 // StudentDB (Attendance.jsx → TabStudentDB) writes students.batch using its
 // own COURSE_STRUCTURE spelling: "Achiever", "Leader", "Champion", "Umeed",
-// "Lakshya A", "Lakshya B", "Prime", "Elite", "—" (Combined Course). The
+// "Lakshya A", "Lakshya B", "Pragati", "Udaan", "—" (Combined Course). The
 // exam side's courseSubjects (a saved system_settings row, editable in
 // Exams → Course/Subjects) determines the actual live keys — confirmed here
 // to be the all-caps spelling with Lakshya kept SPLIT ("LAKSHYA - A",
@@ -219,8 +219,11 @@ const STUDENTDB_BATCH_TO_EXAM_KEY = {
   UMEED: "UMEED",
   "LAKSHYA A": "LAKSHYA - A",
   "LAKSHYA B": "LAKSHYA - B",
-  PRIME: "PRIME",
-  ELITE: "ELITE",
+  PRAGATI: "PRAGATI",
+  UDAAN: "UDAAN",
+  // Old names of these two batches, in case a record still carries them.
+  PRIME: "PRAGATI",
+  ELITE: "UDAAN",
 };
 function batchToCourseSubjectsKey(batch) {
   const b = (batch || "").trim().toUpperCase();
@@ -233,8 +236,8 @@ const COMBINED_COURSE_BATCH_LABEL_CONST = "Combined Navodaya Course (Sainik Appe
 // ─── Max marks per subject per course (all total to 100) ─────────────────────
 const COURSE_MAX_MARKS = {
   ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
-  ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
-  PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+  UDAAN:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+  PRAGATI:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   LAKSHYA:   { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   // "LAKSHYA - A"/"LAKSHYA - B" are the live, split batch keys StudentDB's
   // "Lakshya A"/"Lakshya B" batches translate to (see
@@ -8617,8 +8620,8 @@ const EXAM_CONFIG_PRESETS = [
     sessions: [],
     courseSubjects: {
       ACHIEVER:  ["English Grammar","Vocabulary","General Knowledge","Mathematics -I","Mathematics - II","Reasoning","Science"],
-      ELITE:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
-      PRIME:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
+      UDAAN:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
+      PRAGATI:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
       LAKSHYA:   ["Grammar","Mental","Mathematics","Meitei Mayek"],
       "LAKSHYA - A":   ["Grammar","Mental","Mathematics","Meitei Mayek"],
       "LAKSHYA - B":   ["Grammar","Mental","Mathematics","Meitei Mayek"],
@@ -8628,8 +8631,8 @@ const EXAM_CONFIG_PRESETS = [
     },
     courseMaxMarks: {
       ACHIEVER:  {"English Grammar":10,"Vocabulary":10,"General Knowledge":10,"Mathematics -I":20,"Mathematics - II":20,"Reasoning":20,"Science":10},
-      ELITE:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
-      PRIME:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
+      UDAAN:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
+      PRAGATI:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
       LAKSHYA:   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
       "LAKSHYA - A":   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
       "LAKSHYA - B":   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
@@ -8655,8 +8658,8 @@ LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","V
       "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
-      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
-      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      UDAAN:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRAGATI:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
     },
     courseMaxMarks: {
       ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
@@ -8666,8 +8669,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
-      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
-      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      UDAAN:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRAGATI:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
     },
   },
   {
@@ -8688,8 +8691,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
-      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
-      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      UDAAN:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRAGATI:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
     },
     courseMaxMarks: {
       ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
@@ -8699,8 +8702,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
-      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
-      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      UDAAN:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRAGATI:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
     },
   },
   {
@@ -8721,8 +8724,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
-      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
-      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      UDAAN:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRAGATI:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
     },
     courseMaxMarks: {
       ACHIEVER:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
@@ -8732,8 +8735,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
-      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
-      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      UDAAN:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRAGATI:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
     },
   },
   {
@@ -8754,8 +8757,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
       "LAKSHYA - B":   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
       UMEED:     ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
-      ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
-      PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      UDAAN:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
+      PRAGATI:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
     },
     courseMaxMarks: {
       ACHIEVER:  {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
@@ -8765,8 +8768,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       "LAKSHYA - A":   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
       "LAKSHYA - B":   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
       UMEED:     {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
-      ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
-      PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      UDAAN:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
+      PRAGATI:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
     },
   },
 ];

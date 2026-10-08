@@ -11,7 +11,7 @@
 export const COURSE_BATCHES = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
   Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B', 'Lakshya'],   // 'Lakshya' = older, unsplit records
-  Foundation:        ['Prime', 'Elite'],
+  Foundation:        ['Pragati', 'Udaan'],
   'Combined Course': [],
 }
 export const COURSE_ORDER = ['Sainik', 'Navodaya', 'Foundation', 'Combined Course']
