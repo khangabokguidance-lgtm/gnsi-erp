@@ -61,3 +61,29 @@ If it does not come up, `translator.log` in this folder says why. Run
 - It listens on this computer only (127.0.0.1, port 8765) and is not reachable
   from other devices. Use `--port` to change the port; the ERP expects 8765.
 - Translating on a computer without a graphics card is slow for long texts.
+  See **Speed** below.
+
+## Speed
+
+The program already does the following by itself:
+
+- It remembers the last 5000 sentences, so a repeated sentence (common in
+  question papers) comes back at once, and each different sentence in a
+  text is translated only once.
+- It uses the model's decoder cache, which makes long sentences many times
+  faster. At start-up it checks that this gives exactly the same translation;
+  if your transformers version breaks it, `translator.log` says
+  "Decoder cache: off" and it runs without it.
+- It weighs 3 candidate translations per sentence instead of 5.
+
+Two settings trade a little wording quality for more speed. Add them after
+`python server.py` in `run-hidden.vbs` (automatic start) or after
+`start-translator.bat` when starting it by hand:
+
+- `--beams 1` — one candidate per sentence: fastest. `--beams 5` gives the
+  old, slightly better and slower behaviour.
+- `--quantize` — an 8-bit copy of the model on a computer without a graphics
+  card: about twice as fast, slightly rougher wording.
+
+A computer with an NVIDIA graphics card (and the CUDA build of PyTorch) is
+used automatically and is much faster than any of these settings.
