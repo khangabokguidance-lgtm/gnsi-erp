@@ -7499,9 +7499,12 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 // ══════════════════════════════════════════════════════════════
 function SuperintendentDashboard({ students, currentUser }) {
   const canReview = isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'superintendent'
+  const mobile = useMobileView()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('Open')
+  const [houseFilter, setHouseFilter] = useState('All')
+  const [savingId, setSavingId] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -7519,60 +7522,144 @@ function SuperintendentDashboard({ students, currentUser }) {
     return r
   }), [records, students])
 
-  const filtered = filter === 'All' ? enriched : enriched.filter(r => r.status === filter)
-  const open = records.filter(r => r.status === 'Open').length
-  const inProgress = records.filter(r => r.status === 'In Progress').length
+  const count = st => records.filter(r => r.status === st).length
+  const activeByHouse = useMemo(() => {
+    const m = {}
+    enriched.filter(r => r.status === 'Open' || r.status === 'In Progress').forEach(r => { const h = r._house || 'No house'; m[h] = (m[h] || 0) + 1 })
+    return Object.entries(m).sort((x, y) => y[1] - x[1])
+  }, [enriched])
+  const filtered = enriched.filter(r => (filter === 'All' || r.status === filter) && (houseFilter === 'All' || (r._house || 'No house') === houseFilter))
 
+  // The change is shown at once and undone if the database refuses it
+  // (before, a failed save still looked saved).
   const handleStatusChange = async (id, status) => {
     if (!canReview) { alert('Only the Superintendent or an admin can update review status.'); return }
-    await supabase.from('discipline_records').update({ status }).eq('id', id)
+    const before = records.find(r => r.id === id)?.status
+    setSavingId(id)
     setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    const { error } = await supabase.from('discipline_records').update({ status }).eq('id', id)
+    setSavingId(null)
+    if (error) {
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, status: before } : r))
+      alert('Could not update the case: ' + error.message)
+    }
   }
 
   if (!canReview) {
     return (
-      <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '16px 20px', fontSize: 13, color: '#92400e', fontWeight: 600 }}>
-        ⚠️ This dashboard is restricted to the Superintendent and admins.
+      <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 14, padding: '16px 20px', fontSize: 13, color: '#92400E', fontWeight: 700 }}>
+        This dashboard is for the Superintendent and admins.
       </div>
     )
   }
 
+  const STATUS = {
+    Open: { c: '#DC2626', b: '#FEE2E2' },
+    'In Progress': { c: '#A16207', b: '#FEF3C7' },
+    Resolved: { c: '#15803D', b: '#DCFCE7' },
+    Closed: { c: '#475569', b: '#F1F5F9' },
+  }
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: 20, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  const TILES = [{ key: 'All', label: 'All cases', value: records.length, c: '#0B1E3D' }, ...DISC_STATUSES.map(st => ({ key: st, label: st, value: count(st), c: STATUS[st].c }))]
+
   return (
     <div>
-      <div style={statGrid()}>
-        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a6e" bg="#eff6ff" />
-        <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#b8923a" bg="#fef9c3" />
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ fontSize: 14, color: '#64748b' }}>Discipline cases across all houses, newest first</div>
-        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Status</option>
-          {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {loading
-        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-        : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtered.map(r => (
-              <div key={r.id} style={{ background: 'white', borderRadius: 10, padding: '14px 18px', boxShadow: '0 1px 6px rgba(0,0,0,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                <div style={{ flex: 1, minWidth: 220 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: '#1e293b' }}>
-                    {r.student_name} {r._house && <span style={{ fontWeight: 600, color: '#64748b', fontSize: 12 }}>· {r._house}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{r.incident}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>{r.date} · Reported by {r.reported_by || '—'}</div>
-                </div>
-                <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)} style={{ ...inp, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
-                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
+      {/* Header */}
+      <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: 22, padding: mobile ? 18 : '22px 26px', marginBottom: 16,
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Superintendent · All houses</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, margin: '5px 0 0' }}>Discipline review</h2>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.7)', marginTop: 4 }}>Every case across the hostel, newest first</div>
+          </div>
+          <div style={{ display: 'flex', gap: 22 }}>
+            {[['Need action', count('Open') + count('In Progress'), '#FCA5A5'], ['Resolved', count('Resolved') + count('Closed'), '#86EFAC']].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700, lineHeight: 1, color: c, fontVariantNumeric: 'lining-nums' }}>{v}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.65)', marginTop: 4 }}>{l}</div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Status tiles — tap to filter */}
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(5, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+        {TILES.map(t => {
+          const on = filter === t.key
+          return (
+            <button key={t.key} type="button" onClick={() => setFilter(t.key)} aria-pressed={on}
+              style={{ ...panel, boxShadow: on ? `0 0 0 2px ${t.c}` : panel.boxShadow, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '12px 14px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 3, borderRadius: '0 0 3px 3px', background: t.c }} />
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, color: t.value ? t.c : '#CBD5E1', marginTop: 3, fontVariantNumeric: 'lining-nums' }}>{t.value}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: '#0B1E3D', marginTop: 2 }}>{t.label}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Active cases by house */}
+      {activeByHouse.length > 0 && (
+        <div style={{ ...panel, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#94A3B8', marginRight: 4 }}>Active by house</span>
+          <button type="button" onClick={() => setHouseFilter('All')}
+            style={{ fontSize: 12, fontWeight: 800, padding: '5px 11px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${houseFilter === 'All' ? '#0B1E3D' : '#E5DCC7'}`, background: houseFilter === 'All' ? '#0B1E3D' : '#fff', color: houseFilter === 'All' ? '#fff' : '#334155' }}>All</button>
+          {activeByHouse.map(([h, n]) => {
+            const on = houseFilter === h
+            return (
+              <button key={h} type="button" onClick={() => setHouseFilter(on ? 'All' : h)}
+                style={{ fontSize: 12, fontWeight: 800, padding: '5px 11px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize',
+                  border: `1px solid ${on ? '#0B1E3D' : '#E5DCC7'}`, background: on ? '#0B1E3D' : '#fff', color: on ? '#fff' : '#334155' }}>
+                {h} <span style={{ marginLeft: 4, padding: '0 6px', borderRadius: 99, background: on ? 'rgba(255,255,255,.2)' : '#FEE2E2', color: on ? '#fff' : '#DC2626' }}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Cases */}
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 48, color: '#64748B' }}>Loading…</div>
+        : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => {
+              const st = STATUS[r.status] || STATUS.Closed
+              const initials = String(r.student_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+              return (
+                <div key={r.id} style={{ ...panel, borderLeft: `4px solid ${st.c}`, padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, color: st.c, background: st.b }}>{initials}</div>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A' }}>{r.student_name || '—'}</span>
+                      {r._house && <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', background: '#F5F1E8', borderRadius: 99, padding: '1px 8px', textTransform: 'capitalize' }}>{r._house}</span>}
+                      {r.class_name && <span style={{ fontSize: 11, color: '#94A3B8' }}>{r.class_name}</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#334155', marginTop: 4 }}>{r.incident || 'No details recorded'}</div>
+                    <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 4 }}>
+                      {r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} · reported by {r.reported_by || '—'}
+                    </div>
+                  </div>
+                  <div role="group" aria-label="Case status" style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 12, background: '#F5F1E8', flexWrap: 'wrap', opacity: savingId === r.id ? 0.6 : 1 }}>
+                    {DISC_STATUSES.map(opt => {
+                      const on = r.status === opt
+                      return (
+                        <button key={opt} type="button" disabled={savingId === r.id} onClick={() => !on && handleStatusChange(r.id, opt)} aria-pressed={on}
+                          style={{ padding: '6px 10px', borderRadius: 9, border: 'none', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: on ? 'default' : 'pointer',
+                            background: on ? STATUS[opt].c : 'transparent', color: on ? '#fff' : '#64748B' }}>
+                          {opt}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
             {filtered.length === 0 && (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No {filter !== 'All' ? filter.toLowerCase() : ''} discipline records</div>
+              <div style={{ ...panel, padding: 36, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+                No {filter !== 'All' ? filter.toLowerCase() + ' ' : ''}cases{houseFilter !== 'All' ? ` in ${houseFilter}` : ''}.
+              </div>
             )}
           </div>
         )
