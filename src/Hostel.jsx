@@ -1390,6 +1390,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // The other roll call of the same day, so both of the day's two roll
   // calls can be shown side by side (the open session's own records are
   // allRecords, which update live as students are marked).
+  // House dashboard: student-list filter and search.
+  const [dashFilter, setDashFilter] = useState('All')
+  const [dashQuery, setDashQuery] = useState('')
+
   // Roll-call screen: a clock for the deadline countdown.
   const [clock, setClock] = useState(() => Date.now())
   useEffect(() => {
@@ -2901,211 +2905,195 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       })
     const stats = getHouseStats(selectedHouse)
     const unmarkedStudents = hStudents.filter(s => getStatus(s.id) === 'Unmarked')
+    const blocked = isHouseBlocked(selectedHouse)
+    const title = String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())
+    const allDone = stats.total > 0 && stats.unmarked === 0
+    const q = dashQuery.trim().toLowerCase()
+    const shown = hStudents.filter(st => (dashFilter === 'All' || getStatus(st.id) === dashFilter)
+      && (!q || (st.name || '').toLowerCase().includes(q) || String(st.gcc_no || '').includes(q)))
+    const R = 34, C = 2 * Math.PI * R
+    const TILES = [
+      { key: 'Present', value: stats.present, color: '#15803D' },
+      { key: 'Absent', value: stats.absent, color: '#DC2626' },
+      { key: 'Late', value: stats.late, color: '#B8923A' },
+      { key: 'On Leave', label: 'Leave', value: stats.onLeave, color: '#1D4ED8' },
+      { key: 'Sick', value: stats.sick, color: '#7C3AED' },
+      { key: 'Unmarked', label: 'To mark', value: stats.unmarked, color: '#64748B' },
+    ]
+    const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+    const LETTER = { Present: 'P', Absent: 'A', Late: 'L', 'On Leave': 'V', Sick: 'S' }
 
     return (
       <div>
         {reportModal}
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', padding: '16px 18px', borderRadius: '22px', position: 'relative', overflow: 'hidden', color: '#fff',
-          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`, boxShadow: '0 20px 38px -22px rgba(11,30,61,.75)' }}>
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
-          <button onClick={() => setView('houses')} style={{ padding: '8px 14px', fontSize: '13px', fontWeight: 700, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)' }}>
-            ← Back
-          </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel House</div>
-            <div style={{ fontSize: mobile ? '21px' : '26px', fontWeight: '600', color: '#fff', fontFamily: FONT_DISPLAY, lineHeight: 1.1, marginTop: 2 }}>
-              {selectedHouse} House
+        <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
+          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
+          boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <button onClick={() => setView('houses')} aria-label="Back to all houses"
+              style={{ width: 38, height: 38, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.22)', fontSize: 16, fontWeight: 800 }}>←</button>
+            <div style={{ width: 50, height: 50, borderRadius: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#E2C57E', fontFamily: FONT_DISPLAY, fontSize: 23, fontWeight: 700,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1.5px rgba(255,255,255,.7), 0 0 0 3px #C9A24B' }}>{title.charAt(0)}</div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>GNSI Hostel · House dashboard</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, lineHeight: 1.15, marginTop: 3 }}>{title} House</div>
+              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 3 }}>
+                {stats.total} students · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 3 }}>
-              {date} · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} Roll Call
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {allDone && (
+                <button onClick={() => setReportHouse(selectedHouse)}
+                  style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(226,197,126,.55)', background: 'rgba(255,255,255,.08)', color: '#F8EBC7', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  House report
+                </button>
+              )}
+              <button onClick={() => { if (!blocked) startRollCall(selectedHouse) }} disabled={blocked}
+                style={{ padding: '10px 18px', borderRadius: 12, border: 'none', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit',
+                  cursor: blocked ? 'not-allowed' : 'pointer', color: blocked ? '#94A3B8' : '#1A1406',
+                  background: blocked ? 'rgba(255,255,255,.12)' : 'linear-gradient(160deg,#D4AE58,#B8923A)',
+                  boxShadow: blocked ? 'none' : 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' }}>
+                {blocked ? '🔒 Locked' : allDone ? 'Roll call ✓ — review' : `Start roll call · ${stats.unmarked} left →`}
+              </button>
             </div>
           </div>
-          {stats.unmarked === 0 && (
-            <button
-              onClick={() => setReportHouse(selectedHouse)}
-              style={{ ...btn('#7c3aed'), padding: '10px 16px', fontSize: '13px' }}
-            >
-              📄 View Report
-            </button>
-          )}
-          <button
-            onClick={() => { if (!isHouseBlocked(selectedHouse)) startRollCall(selectedHouse) }}
-            disabled={isHouseBlocked(selectedHouse)}
-            style={{
-              ...btn(isHouseBlocked(selectedHouse) ? '#e2e8f0' : '#c9a24b', isHouseBlocked(selectedHouse) ? '#94a3b8' : '#1a1406'),
-              ...(isHouseBlocked(selectedHouse) ? {} : { backgroundImage: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' }),
-              padding: '10px 20px', fontSize: '14px', fontWeight: 800,
-              cursor: isHouseBlocked(selectedHouse) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isHouseBlocked(selectedHouse) ? '🔒 Blocked' : `⚡ Quick Roll Call ${stats.unmarked > 0 ? `(${stats.unmarked} left)` : '✓'}`}
-          </button>
         </div>
 
-        {isHouseBlocked(selectedHouse) && (
-          <div style={{ background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
-              🚫 Roll call is blocked for {selectedHouse}
+        {blocked && (
+          <div style={{ ...panel, background: '#FEF2F2', border: '1px solid #FECACA', boxShadow: 'none', padding: '14px 16px', marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#DC2626', color: '#fff', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: '#991B1B' }}>Roll call is locked until yesterday is finished</div>
+              <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 3 }}>
+                {(() => { const p = getPrevDayStatus(selectedHouse); return `${prevDate}: morning ${p.morningMarked}/${p.total}, night ${p.nightMarked}/${p.total}. Both must reach 100% before today's roll call can start.` })()}
+              </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#9a3412', marginBottom: '10px' }}>
-              {(() => {
-                const p = getPrevDayStatus(selectedHouse)
-                return `Yesterday (${prevDate}) wasn't fully marked — ${p.morningMarked}/${p.total} morning, ${p.nightMarked}/${p.total} night. Both sessions must reach 100% before today's roll call can start.`
-              })()}
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => handleCatchUpRollCall(selectedHouse)}
-                style={{ ...btn('#1e3a6e'), fontSize: '12px', padding: '8px 16px' }}
-              >
-                📋 Complete Missed Roll Call
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={() => handleCatchUpRollCall(selectedHouse)}
+                style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Complete missed roll call
               </button>
               {isAdmin && (
-                <button
-                  onClick={() => handleOverride(selectedHouse)}
-                  style={{ ...btn('#dc2626'), fontSize: '12px', padding: '8px 16px' }}
-                >
-                  🔓 Override & Allow Roll Call (Admin)
+                <button onClick={() => handleOverride(selectedHouse)}
+                  style={{ padding: '9px 14px', borderRadius: 10, border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Override (admin)
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px' }}>
-          {[
-            { icon: '👥', label: 'Total', value: stats.total, color: pal.color, bg: pal.bg },
-            { icon: '✅', label: 'Present', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
-            { icon: '❌', label: 'Absent', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-            { icon: '⏰', label: 'Late', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
-            { icon: '🏥', label: 'Sick', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
-            { icon: '🚪', label: 'On Leave', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
-            { icon: '⚪', label: 'Unmarked', value: stats.unmarked, color: '#94a3b8', bg: '#f1f5f9' },
-          ].map(s => (
-            <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} color={s.color} bg={s.bg} compact />
-          ))}
-        </div>
-
-        {/* Progress */}
-        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>
-            <span style={{ color: '#1e293b' }}>Roll Call Progress</span>
-            <span style={{ color: stats.pct === 100 ? '#16a34a' : pal.color }}>{stats.marked}/{stats.total} · {stats.pct}%</span>
-          </div>
-          <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', width: `${stats.pct}%`,
-              background: stats.pct === 100 ? '#16a34a' : pal.color,
-              borderRadius: '99px', transition: 'width 0.4s',
-            }} />
-          </div>
-          {stats.pct === 100 && (
-            <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: '700', marginTop: '8px' }}>
-              🎉 All {stats.total} students marked for {selectedHouse}!
+        {/* Progress + counts */}
+        <div style={{ ...panel, padding: mobile ? '16px' : '18px 20px', marginBottom: '16px', display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: 84, height: 84, flexShrink: 0 }}>
+            <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="42" cy="42" r={R} fill="none" stroke="#F1EDE4" strokeWidth="8" />
+              <circle cx="42" cy="42" r={R} fill="none" stroke={allDone ? '#15803D' : '#B8923A'} strokeWidth="8" strokeLinecap="round"
+                strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(stats.pct, 100) / 100)} style={{ transition: 'stroke-dashoffset .5s' }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, color: '#0B1E3D', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{stats.pct}%</div>
+              <div style={{ fontSize: 9.5, fontWeight: 800, color: '#94A3B8', letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 3 }}>marked</div>
             </div>
-          )}
-        </div>
-
-        {/* Quick bulk actions */}
-        {stats.unmarked > 0 && (
-          <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400e', marginBottom: '10px' }}>
-              ⚡ {stats.unmarked} students still unmarked — bulk mark:
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(6, minmax(0,1fr))', gap: '8px' }}>
+              {TILES.map(t => {
+                const on = dashFilter === t.key
+                return (
+                  <button key={t.key} type="button" onClick={() => setDashFilter(on ? 'All' : t.key)} aria-pressed={on} title={`Show ${t.label || t.key}`}
+                    style={{ textAlign: 'center', padding: '9px 4px 8px', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit',
+                      background: on ? t.color : t.value ? t.color + '0F' : '#FAF8F3',
+                      border: `1px solid ${on ? t.color : t.value ? t.color + '33' : '#F1EDE4'}` }}>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.1, fontVariantNumeric: 'lining-nums tabular-nums', color: on ? '#fff' : t.value ? t.color : '#CBD5E1' }}>{t.value}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', marginTop: 3, color: on ? 'rgba(255,255,255,.85)' : t.value ? t.color : '#94A3B8' }}>{t.label || t.key}</div>
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {['Present', 'Absent', 'On Leave'].map(status => (
-                <button
-                  key={status}
-                  disabled={saving}
-                  onClick={async () => {
-                    const confirmMsg = status === 'Present'
-                      ? `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as Present WITHOUT checking each one individually?\n\nThis is only meant for genuine emergencies. Please verify each student's bed/presence whenever possible — this action is logged and visible to admin.`
-                      : `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`
-                    if (window.confirm(confirmMsg)) {
-                      await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
-                    }
-                  }}
-                  style={{
-                    padding: '8px 16px', borderRadius: '8px', border: 'none',
-                    background: statusConfig[status]?.bg || '#f1f5f9',
-                    color: statusConfig[status]?.color || '#374151',
-                    fontSize: '13px', fontWeight: '700', cursor: 'pointer',
-                  }}
-                >
-                  {statusConfig[status]?.icon} Mark Unmarked as {status}
-                </button>
+            <div style={{ display: 'flex', height: 7, borderRadius: 99, overflow: 'hidden', background: '#F1EDE4', marginTop: 12 }}>
+              {stats.total > 0 && TILES.filter(t => t.key !== 'Unmarked' && t.value > 0).map(t => (
+                <div key={t.key} style={{ width: `${(t.value / stats.total) * 100}%`, background: t.color }} />
               ))}
             </div>
+            <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 6, display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
+              <span>{allDone ? `All ${stats.total} students marked` : `${stats.unmarked} still to mark`}</span>
+              <span>{stats.marked} / {stats.total}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bulk mark the rest */}
+        {stats.unmarked > 0 && (
+          <div style={{ ...panel, boxShadow: 'none', background: 'linear-gradient(180deg,#FFFCF3,#FBF4E2)', border: '1px solid #EBD9A8', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>Mark the {stats.unmarked} remaining at once</div>
+              <div style={{ fontSize: 11.5, color: '#9A7B2F', marginTop: 2 }}>For emergencies only — checking each student is preferred, and this is logged.</div>
+            </div>
+            {['Present', 'Absent', 'On Leave'].map(status => (
+              <button key={status} disabled={saving}
+                onClick={async () => {
+                  const confirmMsg = status === 'Present'
+                    ? `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as Present WITHOUT checking each one individually?\n\nThis is only meant for genuine emergencies. Please verify each student's bed/presence whenever possible — this action is logged and visible to admin.`
+                    : `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`
+                  if (window.confirm(confirmMsg)) await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
+                }}
+                style={{ padding: '8px 14px', borderRadius: 10, border: `1px solid ${statusConfig[status].color}55`, background: '#fff', color: statusConfig[status].color, fontSize: 12.5, fontWeight: 800, cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                All {status === 'On Leave' ? 'on leave' : status.toLowerCase()}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Student list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {hStudents.map((student, i) => {
+        {/* Students */}
+        <div style={{ ...panel, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', borderBottom: '1px solid #F1EDE4', flexWrap: 'wrap' }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600, color: '#0B1E3D' }}>Students</div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#7A5A12', background: '#F8F0DC', borderRadius: 99, padding: '2px 9px' }}>
+              {shown.length}{shown.length !== hStudents.length ? ` of ${hStudents.length}` : ''}
+            </span>
+            {dashFilter !== 'All' && (
+              <button onClick={() => setDashFilter('All')} style={{ fontSize: 11.5, fontWeight: 700, color: '#64748B', background: '#F1F5F9', border: 'none', borderRadius: 99, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {dashFilter === 'Unmarked' ? 'To mark' : dashFilter} ✕
+              </button>
+            )}
+            <input value={dashQuery} onChange={e => setDashQuery(e.target.value)} placeholder="Search name or GCC…" aria-label="Search students"
+              style={{ marginLeft: 'auto', width: mobile ? '100%' : 220, padding: '8px 12px', borderRadius: 10, border: '1px solid #E5DCC7', fontSize: 13, fontFamily: 'inherit', background: '#FCFBF7' }} />
+          </div>
+          {shown.length === 0 && (
+            <div style={{ padding: '28px', textAlign: 'center', fontSize: 13, color: '#94A3B8' }}>No students match.</div>
+          )}
+          {shown.map((student, i) => {
             const status = getStatus(student.id)
-            const sc = statusConfig[status] || statusConfig['Unmarked']
+            const sc = statusConfig[status] || statusConfig.Unmarked
             const isJust = justMarked === student.id
+            const busy = savingId === student.id
+            const initials = String(student.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
             return (
-              <div
-                key={student.id}
-                style={{
-                  background: isJust ? '#f0fdf4' : 'white',
-                  borderRadius: '12px',
-                  padding: '12px 14px',
-                  boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
-                  borderLeft: `4px solid ${sc.color}`,
-                  transition: 'background 0.3s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  flexWrap: mobile ? 'wrap' : 'nowrap',
-                }}
-              >
-                {/* Rank */}
-                <div style={{ fontSize: '12px', color: '#94a3b8', minWidth: '20px', fontWeight: '600' }}>{i + 1}</div>
-
-                {/* Student info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{student.name}</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
-                    GCC-{student.gcc_no || '--'} · {getStudentClass(student) || '--'}
-                  </div>
+              <div key={student.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderTop: i ? '1px solid #F5F1E8' : 'none',
+                background: isJust ? '#F0FDF4' : 'transparent', transition: 'background .3s', flexWrap: mobile ? 'wrap' : 'nowrap' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
+                  color: sc.color, background: sc.bg, boxShadow: `inset 0 0 0 1.5px ${sc.color}44` }}>{initials}</div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ fontWeight: 700, color: '#0F172A', fontSize: 13.5 }}>{student.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 1 }}>GCC {student.gcc_no || '—'} · {getStudentClass(student) || '—'}</div>
                 </div>
-
-                {/* Status badge */}
-                <span style={{
-                  padding: '4px 10px', borderRadius: '99px', fontSize: '12px',
-                  fontWeight: '700', background: sc.bg, color: sc.color,
-                  whiteSpace: 'nowrap',
-                }}>
-                  {sc.icon} {status}
+                <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>
+                  {status === 'Unmarked' ? 'To mark' : status}
                 </span>
-
-                {/* Action buttons */}
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: mobile ? '160px' : 'none' }}>
-                  {ATTENDANCE_TYPES.map(s => {
-                    const sConf = statusConfig[s]
-                    const isActive = status === s
+                <div role="group" aria-label={`Mark ${student.name}`} style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 11, background: '#F5F1E8', opacity: busy ? 0.55 : 1 }}>
+                  {ATTENDANCE_TYPES.map(st => {
+                    const on = status === st
+                    const c = statusConfig[st].color
                     return (
-                      <button
-                        key={s}
-                        onClick={() => handleMark(student.id, s)}
-                        disabled={savingId === student.id}
-                        title={s}
-                        style={{
-                          width: '34px', height: '34px',
-                          borderRadius: '8px', border: 'none',
-                          background: isActive ? sConf.color : '#f1f5f9',
-                          color: isActive ? 'white' : '#94a3b8',
-                          fontSize: '14px', fontWeight: '700',
-                          cursor: savingId === student.id ? 'wait' : 'pointer',
-                          transition: 'all 0.15s',
-                          opacity: savingId === student.id ? 0.5 : 1,
-                        }}
-                      >
-                        {savingId === student.id ? '⏳' : sConf.icon}
+                      <button key={st} onClick={() => handleMark(student.id, st)} disabled={busy} title={st} aria-pressed={on}
+                        style={{ width: 32, height: 30, borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 800,
+                          background: on ? c : 'transparent', color: on ? '#fff' : c, cursor: busy ? 'wait' : 'pointer',
+                          boxShadow: on ? `0 4px 10px -4px ${c}` : 'none', transition: 'all .12s' }}>
+                        {LETTER[st]}
                       </button>
                     )
                   })}
@@ -3113,6 +3101,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             )
           })}
+          <div style={{ padding: '9px 16px', borderTop: '1px solid #F1EDE4', fontSize: 11, color: '#94A3B8', background: '#FCFBF7' }}>
+            P present · A absent · L late · V leave · S sick
+          </div>
         </div>
       </div>
     )
