@@ -54,6 +54,15 @@ function guessLang(text) {
   return null
 }
 
+// Machine-translated Meetei Mayek: the engines split words into pieces and
+// can leave a space beside Apun Iyek ("ꯍ꯭ ꯋꯥ"), which breaks the joined
+// letters, and can put Apun in BMEI04 typing order. A space next to Apun
+// between two letters is never right, so it is removed; then the order is
+// repaired. (Only for engine output: saved BMEI04-converted text keeps its
+// spaces.)
+const APUN_SPACE = /([\uABC0-\uABDA])[ \t]*\uABED[ \t]+(?=[\uABC0-\uABDA])|([\uABC0-\uABDA])[ \t]+\uABED(?=[\uABC0-\uABDA])/g
+export const tidyMayek = t => fixApunOrder(String(t ?? '').replace(APUN_SPACE, (_, a, b) => (a || b) + '\uABED'))
+
 // ── 1. Dictionary ──────────────────────────────────────────────────────────
 // Only the English <-> Meetei Mayek pair: that's what the dictionary holds.
 const dictPair = (from, to) =>
@@ -362,6 +371,8 @@ export async function translate(text, from, to, onProgress, { eachLine = false }
     }
   }
   translated = translated.map((t, i) => (single.has(i) ? String(t ?? '').replace(/\s*\n\s*/g, ' ').trim() : t))
+  // Engines trained on BMEI04-typed text can put Apun Iyek in typing order.
+  if (to === 'mni-Mtei') translated = translated.map(tidyMayek)
   const result = parts.map(line => line.map(x => (typeof x === 'string' ? x : translated[x.seg] ?? '')).join('')).join('\n')
 
   // Machine-translated lines paired with their source line, where a block
@@ -514,7 +525,7 @@ function draftPrompt(words) {
 // A usable draft: Meetei Mayek (no Bengali script; Latin only for the odd
 // label such as "(A)" inside a sentence).
 const cleanDraft = s => {
-  const t = String(s || '').trim()
+  const t = tidyMayek(String(s || '').trim())
   const m = count(t, MTEI)
   return t && m && !count(t, BENG) && count(t, /[A-Za-z]/g) <= m / 10 ? t : null
 }
@@ -698,7 +709,7 @@ export async function addSentences(sentences, createdBy = null) {
 // Fills a question's Meetei Mayek fields (question_mayek, option_x_mayek)
 // with the offline translator. Only questions with no Meetei Mayek yet.
 const hasWords = t => /[A-Za-z]{2,}/.test(String(t || ''))
-const usableMayek = t => { const s = String(t || '').trim(); return s && count(s, MTEI) && !count(s, BENG) ? s : null }
+const usableMayek = t => { const s = tidyMayek(String(t || '').trim()); return s && count(s, MTEI) && !count(s, BENG) ? s : null }
 
 /** Questions that have English text and no Meetei Mayek at all yet. */
 export const needsMayek = q => hasWords(q.question) && !String(q.question_mayek || '').trim() &&
