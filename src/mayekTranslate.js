@@ -102,6 +102,31 @@ async function glossary(text, pair) {
   return (await dictLookup('mayek_unicode', tokens)).filter(r => r.entry_type === 'word').slice(0, 120)
 }
 
+// Question numbers and option labels: "1.", "Q2)", "(A)", "(iv)", and "a)" /
+// "B." at the start of a line.
+const LABEL = /^\s*(?:Q\.?\s*)?\d{1,3}\s*[.)]\s+|^\s*[A-Ha-h][.)]\s+|(?:^|(?<=\s))\(\s*(?:[A-Ha-h]|i{1,3}|iv|vi{0,3}|ix|x)\s*\)\s*/g
+
+/** A line cut at its labels — [label string | { text }] — or null if it has none. */
+export function labelPieces(line) {
+  const out = []
+  let last = 0
+  for (const m of String(line).matchAll(LABEL)) {
+    const before = line.slice(last, m.index)
+    if (before.trim()) {
+      const lead = before.match(/^\s*/)[0], trail = before.match(/\s*$/)[0]
+      out.push(lead, { text: before.trim() }, trail)
+    } else out.push(before)
+    out.push(m[0])
+    last = m.index + m[0].length
+  }
+  if (!out.length) return null
+  const rest = line.slice(last)
+  if (rest.trim()) out.push(rest.match(/^\s*/)[0], { text: rest.trim() }, rest.match(/\s*$/)[0])
+  else out.push(rest)
+  const pieces = out.filter(x => x !== '')
+  return pieces.some(x => typeof x !== 'string') ? pieces : null
+}
+
 // ── 2. Translation services ────────────────────────────────────────────────
 // The offline translator is a program on the staff member's own computer
 // (tools/offline-translator), so it is used only in browsers where it has
@@ -291,20 +316,32 @@ export async function translate(text, from, to, onProgress, { eachLine = false }
   // Lines the dictionary knows are kept; the rest are grouped into blocks
   // (runs of consecutive lines) so the engine keeps sentence context.
   const lines = src.split('\n')
-  const hits = await dictionaryLines(lines, pair)
-  const parts = [] // { keep } | { seg: index into segments }
+  // Lines with question numbers or option labels ("1.", "(A) … (B) …") are
+  // cut at the labels: the labels are kept exactly as typed and only the
+  // text between them is translated, each piece on its own. Engines
+  // otherwise translate or transliterate the labels, differently each time.
+  const labelled = lines.map(labelPieces)
+  const pieceTexts = labelled.flatMap(p => (p ? p.filter(x => typeof x !== 'string').map(x => x.text) : []))
+  const hits = await dictionaryLines([...lines, ...pieceTexts], pair)
+  const parts = [] // one per output line (or per block of lines): [string | { seg }]
   const segments = []
+  const single = new Set() // segments that must come back as one line
+  const addSeg = (text, one) => { if (one) single.add(segments.length); segments.push(text); return { seg: segments.length - 1 } }
   let block = null
-  for (const line of lines) {
+  const flush = () => { if (block) { parts.push([addSeg(block.join('\n'), false)]); block = null } }
+  lines.forEach((line, n) => {
     const hit = line.trim() && hits.get(line.trim())
     if (hit || !line.trim()) {
-      if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')); block = null }
-      parts.push({ keep: hit ? line.match(/^\s*/)[0] + hit : line })
+      flush()
+      parts.push([hit ? line.match(/^\s*/)[0] + hit : line])
+    } else if (labelled[n]) {
+      flush()
+      parts.push(labelled[n].map(x => (typeof x === 'string' ? x : hits.get(x.text) || addSeg(x.text, true))))
     } else if (eachLine) {
-      parts.push({ seg: segments.length }); segments.push(line)
+      parts.push([addSeg(line, true)])
     } else (block = block || []).push(line)
-  }
-  if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')) }
+  })
+  flush()
 
   let engine = segments.length ? '' : 'dictionary'
   let detected = ''
@@ -324,8 +361,8 @@ export async function translate(text, from, to, onProgress, { eachLine = false }
       engine = 'gemini'; translated = r.segments; detected = r.detected
     }
   }
-  if (eachLine) translated = translated.map(t => String(t ?? '').replace(/\s*\n\s*/g, ' '))
-  const result = parts.map(p => ('keep' in p ? p.keep : translated[p.seg] ?? '')).join('\n')
+  translated = translated.map((t, i) => (single.has(i) ? String(t ?? '').replace(/\s*\n\s*/g, ' ').trim() : t))
+  const result = parts.map(line => line.map(x => (typeof x === 'string' ? x : translated[x.seg] ?? '')).join('')).join('\n')
 
   // Machine-translated lines paired with their source line, where a block
   // came back with the same number of lines (else which line is which is
