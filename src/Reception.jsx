@@ -2634,13 +2634,24 @@ export default function ReceptionPage({ currentUser }) {
               <CardHead icon="📝" title="Leave Applications" sub={`${filteredRows.length} total`} accentColor={C.violet} isMobile={mob} />
               <RecordsTable loading={loading} rows={filteredRows} onDelete={id => { const app = leaveApps.find(a => a.id === id); if (app) deleteLeaveApp(app) }}
                 columns={[
-                  { key: 'from_date',    label: 'Date',    render: r => fmtDate(r.from_date) },
-                  { key: 'student_name', label: 'Student', render: r => <b style={{ fontFamily: font }}>{r.student_name}</b> },
-                  { key: 'gcc_no',       label: 'GCC No.' },
-                  { key: 'house',        label: 'House' },
+                  // Fewer, combined columns so Status and Actions stay on screen.
+                  { key: 'student_name', label: 'Student', render: r => (
+                    <div style={{ fontFamily: font, minWidth: 140 }}>
+                      <b>{r.student_name}</b>
+                      <div style={{ fontSize: 11, color: C.slate[500], marginTop: 2 }}>{[r.gcc_no && `GCC ${r.gcc_no}`, r.house].filter(Boolean).join(' · ') || '—'}</div>
+                    </div>
+                  ) },
+                  { key: 'from_date',    label: 'Leave → Return', render: r => (
+                    <div style={{ fontFamily: font, whiteSpace: 'nowrap' }}>
+                      {fmtDate(r.from_date)}
+                      <div style={{ fontSize: 11, color: C.slate[500], marginTop: 2 }}>→ {fmtDate(r.to_date)}</div>
+                    </div>
+                  ) },
                   { key: 'reason',       label: 'Reason' },
-                  { key: 'to_date',      label: 'Return',  render: r => fmtDate(r.to_date) },
-                  { key: 'responsible_name', label: 'Responsible', render: r => <span style={{ fontFamily: font }}>{r.responsible_name}{r.relation_to_student ? ` (${r.relation_to_student})` : ''}</span> },
+                  { key: 'responsible_name', label: 'Responsible', render: r => {
+                    const name = String(r.responsible_name || '').trim(), rel = String(r.relation_to_student || '').trim()
+                    return <span style={{ fontFamily: font }}>{name || rel || '—'}{name && rel && name.toLowerCase() !== rel.toLowerCase() ? ` (${rel})` : ''}</span>
+                  } },
                   { key: 'submitted_by', label: 'By' },
                   { key: 'status',       label: 'Status',  render: r => <Pill label={r.status} /> },
                   { key: '_q',           label: 'Actions', render: r => (
@@ -2671,7 +2682,7 @@ export default function ReceptionPage({ currentUser }) {
                   meta: r => [
                     `📅 ${fmtDate(r.from_date)} → ${fmtDate(r.to_date)}`,
                     r.gcc_no ? `GCC ${r.gcc_no}` : null,
-                    r.responsible_name ? `Responsible: ${r.responsible_name} (${r.relation_to_student || '—'})` : null,
+                    r.responsible_name ? `Responsible: ${r.responsible_name}${r.relation_to_student && r.relation_to_student.trim().toLowerCase() !== r.responsible_name.trim().toLowerCase() ? ` (${r.relation_to_student})` : ''}` : null,
                     `By: ${r.submitted_by}`,
                     !r.printed_at && r.status === 'Pending' ? '⚠ Print required first' : null,
                   ],
