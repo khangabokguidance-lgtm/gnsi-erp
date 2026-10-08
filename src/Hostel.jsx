@@ -2256,15 +2256,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px 14px 18px', cursor: 'pointer' }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'capitalize' }}>
                             🏠 {houseName}
                           </div>
                           <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, marginTop: '2px', fontWeight: '600' }}>
                             {houseGaps > 0 ? `${houseGaps} slot${houseGaps > 1 ? 's' : ''} flagged` : houseDone === DAILY_SLOTS.length ? 'Fully compliant today' : 'Checks pending'}
                           </div>
                         </div>
-                        {/* Slot status rings — one ring per daily slot, filled progressively */}
-                        <div style={{ display: 'flex', gap: '5px' }}>
+                        {/* Slot tasks — one tappable task per daily check. A check that
+                            can run now runs straight from here; anything else opens
+                            the card. */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
                             const result = dailyCheckResults[key]
@@ -2274,24 +2276,55 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             const gaps = result?.checked && remaining.length > 0
                             const isCurrent = slot.key === nowSlot
                             const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
-                            const ringColor = done ? MD.color.success : gaps ? MD.color.error : locked ? MD.color.outline : isCurrent ? MD.color.secondary : MD.color.outlineVariant
+                            // Due now or overdue — never a later slot: a check that finds
+                            // gaps logs neglect and alerts on WhatsApp, so running one
+                            // early would flag the house unfairly.
+                            const todayStr = new Date().toLocaleDateString('en-CA')
+                            const due = date < todayStr ? true : date > todayStr ? false
+                              : DAILY_SLOTS.findIndex(x => x.key === slot.key) <= DAILY_SLOTS.findIndex(x => x.key === nowSlot)
+                            const runnable = !result?.checked && !locked && due
+                            const [icon, ...words] = slot.label.split(' ')
+                            const st = done ? { c: MD.color.success, bg: MD.color.success, fg: '#fff', mark: '✓', note: 'Done' }
+                              : gaps ? { c: MD.color.error, bg: MD.color.errorContainer, fg: MD.color.error, mark: '!', note: `${remaining.length} gap${remaining.length > 1 ? 's' : ''}` }
+                              : locked ? { c: MD.color.outlineVariant, bg: MD.color.surfaceVariant, fg: MD.color.onSurfaceVariant, mark: '🔒', note: 'Locked' }
+                              : runnable ? { c: MD.color.secondary, bg: MD.color.secondaryContainer, fg: MD.color.secondary, mark: '', note: isCurrent ? 'Tap to check' : 'Overdue' }
+                              : { c: MD.color.outlineVariant, bg: 'transparent', fg: MD.color.onSurfaceVariant, mark: '', note: 'Later' }
                             return (
-                              <div
+                              <button
                                 key={slot.key}
-                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — roll call pending' : isCurrent ? 'Current slot' : 'Not checked'}`}
-                                style={{
-                                  width: '22px', height: '22px', borderRadius: '50%',
-                                  border: `2px solid ${ringColor}`,
-                                  background: done ? ringColor : gaps ? ringColor + '22' : 'transparent',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '10px', fontWeight: '800',
-                                  color: done ? 'white' : ringColor,
-                                  boxShadow: isCurrent && !result?.checked && !locked ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
-                                  flexShrink: 0,
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  if (runnable) runDailySlotCheck(houseName, slot.key)
+                                  else setDailyCheckHouse(isExpanded ? null : houseName)
                                 }}
+                                title={`${words.join(' ')} check: ${done ? 'complete' : gaps ? `${remaining.length} gap(s) found — open to review` : locked ? `locked until the ${slot.rollCallGate} roll call is complete` : runnable ? 'tap to run the check now' : 'not due yet'}`}
+                                aria-label={`${words.join(' ')} check — ${st.note}`}
+                                style={{
+                                  position: 'relative', width: '58px', padding: '6px 2px 5px', borderRadius: '12px',
+                                  border: `1.5px solid ${st.c}`, background: st.bg, color: st.fg,
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
+                                  cursor: locked ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                                  opacity: locked ? 0.75 : 1,
+                                  boxShadow: runnable ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
+                                  transition: 'transform .12s ease, box-shadow .2s ease',
+                                }}
+                                onMouseEnter={e => { if (!locked) e.currentTarget.style.transform = 'translateY(-1px)' }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
                               >
-                                {done ? '✓' : gaps ? '!' : locked ? '🔒' : ''}
-                              </div>
+                                <span style={{ fontSize: '16px', lineHeight: 1.1, filter: locked ? 'grayscale(1)' : 'none' }}>{icon}</span>
+                                <span style={{ fontSize: '9.5px', fontWeight: '800', letterSpacing: '.02em', lineHeight: 1.2 }}>{words.join(' ')}</span>
+                                <span style={{ fontSize: '8.5px', fontWeight: '700', opacity: 0.85, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{st.note}</span>
+                                {st.mark && (
+                                  <span style={{
+                                    position: 'absolute', top: '-7px', right: '-7px', width: '18px', height: '18px', borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: done || gaps ? '11px' : '9px', fontWeight: '900',
+                                    background: done ? '#fff' : gaps ? MD.color.error : MD.color.surfaceContainer,
+                                    color: done ? MD.color.success : gaps ? '#fff' : MD.color.onSurfaceVariant,
+                                    border: `1.5px solid ${done ? MD.color.success : gaps ? MD.color.error : MD.color.outlineVariant}`,
+                                  }}>{st.mark}</span>
+                                )}
+                              </button>
                             )
                           })}
                         </div>
