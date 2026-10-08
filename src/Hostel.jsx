@@ -308,8 +308,8 @@ function getStudentClass(s) {
 //  Activities — within the current roll-call session's time window
 //  (Morning = 00:00–12:00, Night = 12:00–24:00, same calendar date).
 //
-//  Also powers a STANDALONE 3x-daily check (Morning/Afternoon/Night,
-//  8hr split: 00–08, 08–16, 16–24) independent of roll call — see
+//  Also powers the standalone 2x-daily check (Morning/Night, the same
+//  12hr split: 00–12, 12–24), run from the compliance grid — see
 //  DAILY_SLOTS / checkSixTabComplianceForSlot below.
 //
 //  REQUIRED SQL (run once in Supabase):
@@ -355,13 +355,14 @@ export function sessionWindow(dateStr, session) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-// ── Standalone 3x-daily compliance check ──
-// Independent of roll call's morning/night sessions. Splits the day into
-// three even 8-hour slots that the housemaster must clear separately.
+// ── Standalone 2x-daily compliance check ──
+// Twice a day, matching the two roll calls: Morning (00:00–12:00) and
+// Night (12:00–24:00), each unlocked by its own roll call. (It used to be
+// three 8-hour slots; old 'afternoon' entries in the neglect log still
+// display.)
 const DAILY_SLOTS = [
-  { key: 'morning', label: '🌅 Morning', startHour: 0, endHour: 8, rollCallGate: 'morning' },
-  { key: 'afternoon', label: '☀️ Afternoon', startHour: 8, endHour: 16, rollCallGate: 'morning' },
-  { key: 'night', label: '🌙 Night', startHour: 16, endHour: 24, rollCallGate: 'night' },
+  { key: 'morning', label: '🌅 Morning', startHour: 0, endHour: 12, rollCallGate: 'morning' },
+  { key: 'night', label: '🌙 Night', startHour: 12, endHour: 24, rollCallGate: 'night' },
 ]
 
 // ── Housemaster compliance WhatsApp group ──────────────────────────
@@ -496,7 +497,7 @@ async function logLateRollCallPenalty(houseName, dateStr, session, housemasterNa
 
 // Core checker — takes an explicit {start, end} ISO window so it can be
 // reused by both the roll-call-linked check (12hr split) and the
-// standalone 3x-daily check (8hr split). Returns array of missing tab keys.
+// standalone 2x-daily check (same 12hr split). Returns array of missing tab keys.
 async function hasAny(queryBuilder) {
   try {
     const { data, error } = await queryBuilder
@@ -579,7 +580,7 @@ async function checkSixTabCompliance(houseName, dateStr, session, houseStudentId
   return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
 }
 
-// Standalone 3x-daily wrapper (Morning/Afternoon/Night, 8hr split).
+// Standalone 2x-daily wrapper (Morning/Night, 12hr split).
 async function checkSixTabComplianceForSlot(houseName, dateStr, slotKey, houseStudentIds) {
   const { start, end } = dailySlotWindow(dateStr, slotKey)
   return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
@@ -1882,7 +1883,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     }
   }
 
-  // ── Standalone 3x-daily compliance check (independent of roll call) ──
+  // ── Standalone 2x-daily compliance check (Morning / Night) ──
   // Tracks per house+date+slot: done / missing tabs / whether the "all
   // clear" confirmation animation has already played for this slot.
   const [dailyCheckHouse, setDailyCheckHouse] = useState(null) // house currently expanded for slot detail
@@ -2233,7 +2234,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         ) : (
           <>
             {/* ══════════════════════════════════════════════════════════
-                MANDATORY 3X-DAILY COMPLIANCE — Futuristic grid dashboard
+                MANDATORY 2X-DAILY COMPLIANCE — Futuristic grid dashboard
                 Same data hooks as before (dailyCheckResults, DAILY_SLOTS,
                 runDailySlotCheck, isRollCallSessionComplete,
                 autoSendComplianceWa, skip/recheck handlers) — only the
@@ -2244,7 +2245,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                 <span style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  📋 Mandatory 3x-Daily Compliance
+                  📋 Mandatory 2x-Daily Compliance
                 </span>
                 <span style={{ fontSize: '10px', fontWeight: '700', color: MD.color.onSurfaceVariant, background: MD.color.surfaceVariant, padding: '2px 8px', borderRadius: MD.radius.pill }}>
                   LIVE
@@ -4169,7 +4170,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 //       marked before that session's window closed (Morning by 12:00,
 //       Night by 24:00), out of all sessions that reached 100%.
 //    2. Six-tab compliance % — of compliance checks that ran (roll-call
-//       linked + standalone 3x-daily), the % with zero missing tabs.
+//       linked + standalone 2x-daily), the % with zero missing tabs.
 //    3. Neglect-free % — 100 minus (neglect log rows / total checks run).
 //  Weak-performance reasons combine the data pattern (which tabs get
 //  skipped most) with the actual skip_reasons text housemasters typed.
@@ -10882,7 +10883,7 @@ function NeglectReportTab({ currentUser }) {
                       background: r.check_type === 'standalone' ? '#f5f3ff' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#fef2f2' : '#eff6ff',
                       color: r.check_type === 'standalone' ? '#7c3aed' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#dc2626' : '#1e3a6e',
                     }}>
-                      {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : r.check_type === 'missed_rollcall' ? '🚫 Roll Call Missed' : r.check_type === 'missed_sixtab' ? '🚫 Tabs Not Logged' : '✅ Roll Call'}
+                      {r.check_type === 'standalone' ? '📋 Daily check' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : r.check_type === 'missed_rollcall' ? '🚫 Roll Call Missed' : r.check_type === 'missed_sixtab' ? '🚫 Tabs Not Logged' : '✅ Roll Call'}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
