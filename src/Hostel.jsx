@@ -1387,6 +1387,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // The other roll call of the same day, so both of the day's two roll
+  // calls can be shown side by side (the open session's own records are
+  // allRecords, which update live as students are marked).
+  const [otherSessionRecords, setOtherSessionRecords] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('attendance_records').select('student_id, house, session, status')
+      .eq('date', date).eq('session', session === 'morning' ? 'night' : 'morning')
+      .then(({ data }) => { if (!cancelled) setOtherSessionRecords(data || []) })
+    return () => { cancelled = true }
+  }, [date, session])
+
   // Load previous calendar day's records (both sessions) to check completeness
   useEffect(() => {
     let cancelled = false
@@ -2079,10 +2091,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // ══════════════════════════════════════════════════
   if (view === 'houses') {
     const totalStudents = activeStudents.length
-    const totalMarked = allRecords.length
-    const totalPresent = allRecords.filter(r => r.status === 'Present').length
-    const totalAbsent = allRecords.filter(r => r.status === 'Absent').length
-    const totalUnmarked = totalStudents - totalMarked
+    const totalMarked = recordsForStudents(allRecords, activeStudents).length
 
     return (
       <div>
@@ -2095,56 +2104,117 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           }
           .hr-pop-in-anim { display: inline-block; animation: hr-daily-pop 0.5s ease-out; }
         `}</style>
-        {/* Date & Session selector */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input
-            type="date" value={date}
-            onChange={e => setDate(e.target.value)}
-            style={{ ...inp, flex: 1, minWidth: 140 }}
-          />
-          <select value={session} onChange={e => setSession(e.target.value)} style={{ ...inp, flex: 1 }}>
-            <option value="morning">🌅 Morning Roll Call</option>
-            <option value="night">🌙 Night Roll Call</option>
-          </select>
-        </div>
-
-        {/* Overall stats bar */}
-        <div style={{
-          background: '#1e3a6e', borderRadius: '14px', padding: '16px 20px',
-          marginBottom: '20px', color: 'white',
-        }}>
-          <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '10px', fontWeight: '600' }}>
-            TODAY'S SUMMARY · {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            {[
-              { label: 'Total', value: totalStudents, color: 'rgba(255,255,255,0.9)' },
-              { label: 'Present', value: totalPresent, color: '#4ade80' },
-              { label: 'Absent', value: totalAbsent, color: '#f87171' },
-              { label: 'Unmarked', value: totalUnmarked, color: '#fbbf24' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: mobile ? '22px' : '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: mobile ? '9px' : '11px', opacity: 0.7 }}>{s.label}</div>
+        {/* ── Today's two roll calls ─────────────────────────────────
+            Roll call happens twice a day. The date bar picks the day; the
+            two cards show both roll calls of that day side by side, and
+            the one you tap is the one the house cards below work on. */}
+        {(() => {
+          const todayStr = today()
+          const shift = n => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
+          const nowHour = new Date().getHours()
+          const liveSession = nowHour < 13 ? 'morning' : 'night'
+          const sessionStats = key => {
+            const recs = recordsForStudents((key === session ? allRecords : otherSessionRecords).filter(r => r.session === key), activeStudents)
+            const count = st => recs.filter(r => r.status === st).length
+            const total = activeStudents.length
+            const marked = recs.length
+            const { graceEnd, label } = rollCallDeadline(date, key)
+            const status = total > 0 && marked >= total ? 'done'
+              : date < todayStr || (date === todayStr && new Date() > graceEnd) ? (marked ? 'overdue' : 'missed')
+              : marked ? 'progress' : 'open'
+            return { total, marked, pct: total ? Math.round(marked / total * 100) : 0, present: count('Present') + count('Late'), absent: count('Absent'), leave: count('On Leave'), sick: count('Sick'), status, due: label }
+          }
+          const STATUS = {
+            done:     { t: 'Complete',     c: '#15803D', b: '#DCFCE7' },
+            progress: { t: 'In progress',  c: '#A16207', b: '#FEF3C7' },
+            open:     { t: 'Not started',  c: '#475569', b: '#F1F5F9' },
+            overdue:  { t: 'Overdue',      c: '#DC2626', b: '#FEE2E2' },
+            missed:   { t: 'Not done',     c: '#DC2626', b: '#FEE2E2' },
+          }
+          const navBtn = { width: 34, height: 34, borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }
+          return (
+            <div style={{ marginBottom: '22px' }}>
+              {/* Date bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button onClick={() => setDate(shift(-1))} style={navBtn} aria-label="Previous day">‹</button>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>Hostel roll call · twice daily</div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? '18px' : '21px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2 }}>
+                    {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                </div>
+                {date !== todayStr && (
+                  <button onClick={() => setDate(todayStr)} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 12, background: '#0B1E3D', color: '#fff', border: 'none' }}>Today</button>
+                )}
+                <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Pick a date"
+                  style={{ height: 34, padding: '0 10px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 12.5, fontFamily: 'inherit' }} />
+                <button onClick={() => setDate(shift(1))} style={navBtn} aria-label="Next day">›</button>
               </div>
-            ))}
-          </div>
-          {/* Overall progress bar */}
-          <div style={{ marginTop: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.6, marginBottom: '5px' }}>
-              <span>Roll Call Progress</span>
-              <span>{totalMarked}/{totalStudents} marked</span>
+
+              {/* The two roll calls */}
+              <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                {[['morning', '🌅', 'Morning roll call'], ['night', '🌙', 'Night roll call']].map(([key, icon, name]) => {
+                  const st = sessionStats(key)
+                  const on = key === session
+                  const badge = STATUS[st.status]
+                  const fg = on ? '#fff' : '#0B1E3D', sub = on ? 'rgba(255,255,255,.7)' : '#64748B'
+                  return (
+                    <button key={key} type="button" onClick={() => setSession(key)} aria-pressed={on}
+                      style={{
+                        textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', position: 'relative', overflow: 'hidden',
+                        borderRadius: '20px', padding: '16px 18px', color: fg,
+                        border: on ? '1px solid rgba(226,197,126,.6)' : '1px solid #ECE6D8',
+                        background: on
+                          ? (key === 'morning'
+                            ? 'radial-gradient(120% 160% at 100% 0%, #2B4C80 0%, #132B52 50%, #0B1E3D 90%)'
+                            : 'radial-gradient(120% 160% at 100% 0%, #312E81 0%, #1E1B4B 55%, #0B1E3D 95%)')
+                          : '#fff',
+                        boxShadow: on ? '0 20px 36px -22px rgba(11,30,61,.85)' : '0 1px 2px rgba(19,42,79,.05)',
+                        transition: 'transform .15s, box-shadow .2s',
+                      }}
+                      onMouseEnter={e => { if (!on) e.currentTarget.style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
+                    >
+                      {on && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0,
+                          background: on ? 'rgba(255,255,255,.1)' : (key === 'morning' ? '#FFF7E6' : '#EEF0FF'), border: on ? '1px solid rgba(255,255,255,.18)' : 'none' }}>{icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: FONT_DISPLAY, fontSize: '17px', fontWeight: 600 }}>{name}</span>
+                            {date === todayStr && key === liveSession && (
+                              <span style={{ fontSize: '9.5px', fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 99, background: on ? '#E2C57E' : '#0B1E3D', color: on ? '#0B1E3D' : '#E2C57E' }}>Now</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: sub, marginTop: '2px' }}>Due by {st.due}</div>
+                        </div>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: 99, background: badge.b, color: badge.c, whiteSpace: 'nowrap' }}>
+                          {st.status === 'done' ? '✓ ' : ''}{badge.t}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '14px' }}>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: '28px', fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'lining-nums tabular-nums', color: on ? '#E2C57E' : '#0B1E3D' }}>{st.marked}</span>
+                        <span style={{ fontSize: '13px', color: sub, fontVariantNumeric: 'tabular-nums' }}>/ {st.total} marked · {st.pct}%</span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: on ? 'rgba(255,255,255,.14)' : '#F1EDE4', overflow: 'hidden', margin: '8px 0 10px' }}>
+                        <div style={{ height: '100%', width: `${Math.min(st.pct, 100)}%`, borderRadius: 99, transition: 'width .4s', background: st.status === 'done' ? '#22C55E' : on ? '#E2C57E' : '#B8923A' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px', color: sub, fontVariantNumeric: 'tabular-nums' }}>
+                        {[['Present', st.present, '#22C55E'], ['Absent', st.absent, '#F87171'], ['Leave', st.leave, '#60A5FA'], ['Sick', st.sick, '#A78BFA']].map(([l, v, c]) => (
+                          <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: c }} />
+                            <b style={{ color: fg, fontWeight: 800 }}>{v}</b> {l}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div style={{ height: '6px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%',
-                width: `${totalStudents ? Math.round(totalMarked / totalStudents * 100) : 0}%`,
-                background: totalMarked === totalStudents ? '#4ade80' : '#60a5fa',
-                borderRadius: '99px', transition: 'width 0.4s',
-              }} />
-            </div>
-          </div>
-        </div>
+          )
+        })()}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
