@@ -5,9 +5,8 @@
 // displayed with BMEI04 installed) instead of real Unicode Meitei Mayek.
 //
 // This script re-encodes question_mayek, option_a_mayek, option_b_mayek,
-// option_c_mayek, option_d_mayek using the verified BMEI04 -> Unicode
-// character map (sourced from the BMEI Meitei Mayek Generator tool's
-// BMEI_MAP_DEFAULT table).
+// option_c_mayek, option_d_mayek using the app's verified BMEI04 -> Unicode
+// key table (src/meetei_mayek.js).
 //
 // SAFE BY DEFAULT: does a DRY RUN first (prints before/after, changes nothing).
 // Pass --apply to actually write changes to Supabase.
@@ -33,51 +32,12 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── BMEI04 -> Unicode Meitei Mayek character map ────────────────────────────
-// Sourced verbatim from BMEI_MAP_DEFAULT in the BMEI Meitei Mayek Generator
-// tool. Each key is the ASCII character typed; value is the real Unicode
-// Meitei Mayek glyph it's supposed to represent.
-const BMEI_MAP = {
-  // Lowercase: basic consonants
-  'k':'ꯀ','s':'ꯁ','l':'ꯂ','m':'ꯃ','p':'ꯄ','n':'ꯅ','c':'ꯆ','t':'ꯇ',
-  'v':'ꯋ','y':'ꯌ','h':'ꯍ','f':'ꯐ','g':'ꯒ','r':'ꯔ','b':'ꯕ','j':'ꯖ',
-  'd':'ꯗ','z':'ꯉ','w':'ꯋ','q':'ꯘ',
-  // Lowercase: vowel matras
-  'a':'ꯥ','e':'ꯦ','i':'ꯤ','o':'ꯣ','u':'ꯨ','x':'ꯩ',
-  // Uppercase: independent vowels
-  'A':'ꯑ','E':'ꯏ','O':'ꯎ','I':'ꯤ','U':'ꯎ',
-  // Uppercase: lonsum (final closed consonant forms)
-  'K':'ꯛ','L':'ꯜ','M':'ꯝ','N':'ꯟ','Z':'ꯪ','T':'ꯠ','P':'ꯞ',
-  // Uppercase: cluster-position consonants
-  'H':'ꯍ','Y':'ꯌ','B':'ꯕ','C':'ꯆ','D':'ꯗ','F':'ꯐ','G':'ꯒ','J':'ꯖ',
-  'R':'ꯔ','S':'ꯁ','V':'ꯋ','W':'ꯋ','X':'ꯦ','Q':'ꯘ',
-  // Special characters
-  '_':'꯭','|':'꯫',
-  // Meitei Mayek digits
-  '0':'꯰','1':'꯱','2':'꯲','3':'꯳','4':'꯴','5':'꯵','6':'꯶','7':'꯷','8':'꯸','9':'꯹',
-  // Symbol keys (no shift)
-  '-':'ꯤ','=':'ꯥ','[':'ꯓ',']':'ꯙ','\\':'ꯊ',';':'ꯏ',"'":'ꯚ',',':'ꯈ','.':'ꯍ','/':'ꯎ',
-  // Shift + symbol keys
-  '+':'ꯘ','{':'ꯓ','}':'ꯙ',':':'ꯚ','"':'ꯋ','<':'ꯈ','>':'ꯊ','?':'ꯎ',
-};
-
-const isClusterConsonant = c => !!c && c >= 'ꯀ' && c <= 'ꯚ' && c !== 'ꯎ' && c !== 'ꯏ' && c !== 'ꯑ';
-
-function bmeiToUnicode(bmei) {
-  if (!bmei) return bmei;
-  let result = '';
-  for (let i = 0; i < bmei.length; i++) {
-    const ch = bmei[i];
-    if (ch === ' ') { result += ' '; continue; }
-    const u = BMEI_MAP[ch] !== undefined ? BMEI_MAP[ch] : ch;
-    // BMEI04 types APUN IYEK after the cluster ("fy_"); Unicode puts it
-    // between the two consonants (ꯐ꯭ꯌ). Same rule as src/meetei_mayek.js.
-    const a = result.slice(-1), b = result.slice(-2, -1);
-    if (u === '꯭' && isClusterConsonant(a) && isClusterConsonant(b)) result = result.slice(0, -1) + '꯭' + a;
-    else result += u;
-  }
-  return result;
-}
+// ── BMEI04 -> Unicode Meitei Mayek ──────────────────────────────────────────
+// Uses the app's own verified key table (src/meetei_mayek.js), so this script
+// converts exactly the way the app does — including APUN IYEK order. The key
+// table this script used to carry had several wrong keys (H, I, Z, x, ',' …)
+// and kept APUN in typing order. Loaded in main() (it is an ES module).
+let bmeiToUnicode;
 
 // Heuristic: skip fields that already look like real Unicode Mayek
 // (i.e. contain characters in the Meetei Mayek Unicode block U+ABC0-ABFF
@@ -90,6 +50,8 @@ function looksLikeUnicodeMayek(text) {
 const FIELDS = ['question_mayek', 'option_a_mayek', 'option_b_mayek', 'option_c_mayek', 'option_d_mayek'];
 
 async function main() {
+  const { romanToMeetei } = await import('./meetei_mayek.js');
+  bmeiToUnicode = t => (t ? romanToMeetei(t) : t);
   console.log(APPLY ? "APPLY MODE — changes will be written." : "DRY RUN — no changes will be written. Pass --apply to write.");
 
   let from = 0;

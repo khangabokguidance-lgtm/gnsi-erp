@@ -47,3 +47,13 @@ test('APUN IYEK is reordered on every BMEI04 path: typing, Word import, old Unic
   // correct Unicode is left alone, including a cluster after a full consonant
   for (const ok of ['ꯐ꯭ꯌꯨꯇꯥꯏꯜ', 'ꯁꯀ꯭ꯋꯥꯔ', 'ꯔ꯭']) assert.equal(fixApunOrder(ok), ok)
 })
+
+test('APUN typed after the vowel sign still joins the two consonants before it', () => {
+  assert.equal(romanToMeetei('Hya_Idgi'), 'ꯈ꯭ꯌꯥꯏꯗꯒꯤ')
+  assert.equal(romanToMeetei('Hw_aIdgi'), 'ꯈ꯭ꯋꯥꯏꯗꯒꯤ')
+  assert.equal(romanToMeetei(meeteiToRoman('ꯈ꯭ꯌꯥꯏꯗꯒꯤ')), 'ꯈ꯭ꯌꯥꯏꯗꯒꯤ')
+  // saved before the fix with APUN after the vowel sign: never correct Unicode
+  assert.equal(fixApunOrder('ꯈꯌꯥ꯭ꯏꯗꯒꯤ'), 'ꯈ꯭ꯌꯥꯏꯗꯒꯤ')
+  // one consonant and a vowel sign: nothing to join, APUN stays
+  assert.equal(romanToMeetei('ka_'), 'ꯀꯥ꯭')
+})

@@ -50,6 +50,7 @@ import { romanToMeetei, meeteiToRoman, getAllCharacters, fixApunOrder } from './
 import { bmeiToUnicode } from './mayekSegments'
 import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, OFFLINE_DRAFT_SOURCE, DRAFT_BY, reviewedSource, offlineToMayek, saveTranslationDrafts, needsMayek, translateQuestionsOffline, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
+import { planMayekRepair, applyMayekRepair } from './mayekRepair'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
   seedWordlist, getUnfilledEntries, getNeedsReviewEntries, findCoverageGaps,
@@ -3311,7 +3312,60 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
         Lowercase <code>a</code> is the Atap vowel sign (&ldquo;aa&rdquo;), not the vowel letter &mdash; that's capital <code>A</code>.
         The Save button converts a saved BMEI04 question_mayek to real Unicode — paste that question's full Mayek line exactly as stored.
       </div>
+      <MayekRepairPanel questions={questions} refetch={refetch} showToast={showToast} />
       </>)}
+    </div>
+  )
+}
+
+// Repairs Meetei Mayek already saved as Unicode: imported questions converted
+// with the old key table, and APUN IYEK saved in typing order (mayekRepair.js).
+// Shows what would change first; nothing is written until Repair is pressed.
+function MayekRepairPanel({ questions, refetch, showToast }) {
+  const [plan, setPlan] = useState(null)
+  const [busy, setBusy] = useState('')
+
+  const check = async () => {
+    setBusy('Checking…')
+    try { setPlan(await planMayekRepair(questions)) }
+    catch (e) { showToast('Check failed: ' + e.message, C.rose) }
+    setBusy('')
+  }
+  const repair = async () => {
+    if (!plan?.length) return
+    if (!window.confirm(`Repair the Meetei Mayek of ${plan.length} question${plan.length === 1 ? '' : 's'}?`)) return
+    const { saved, failed } = await applyMayekRepair(plan, (n, total) => setBusy(`Repairing ${n} of ${total}…`))
+    setBusy('')
+    setPlan(null)
+    showToast(failed ? `Repaired ${saved}; ${failed} could not be saved (sign in as staff?)` : `Repaired ${saved} question${saved === 1 ? '' : 's'}`, failed ? C.amber : C.green)
+    refetch && refetch(true)
+  }
+
+  return (
+    <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid '+C.border }}>
+      <div style={{ fontSize:13, fontWeight:800, color:C.navy, marginBottom:4 }}>Repair saved Meetei Mayek</div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:10, lineHeight:1.6 }}>
+        Finds questions whose Unicode Meetei Mayek was saved wrongly — Apun Iyek in the wrong place (ꯈꯋ꯭ꯥ instead of ꯈ꯭ꯋꯥ),
+        or imported with the old key table (ꯍꯋ꯭ꯥꯤꯗꯒꯤ instead of ꯈ꯭ꯋꯥꯏꯗꯒꯤ) — and shows the fix before saving anything.
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+        <button onClick={check} disabled={!!busy} style={btn(C.navy, !!busy)}>Check questions</button>
+        {plan?.length > 0 && <button onClick={repair} disabled={!!busy} style={btn(C.green, !!busy)}>Repair {plan.length} question{plan.length === 1 ? '' : 's'}</button>}
+        {busy && <span style={{ fontSize:12, color:C.slate }}>{busy}</span>}
+        {plan && !plan.length && !busy && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>Nothing to repair.</span>}
+      </div>
+      {plan?.length > 0 && (
+        <div style={{ marginTop:10, maxHeight:280, overflowY:'auto', border:'1px solid '+C.border, borderRadius:8 }}>
+          {plan.slice(0, 50).map(row => Object.entries(row.updates).map(([f, { before, after }]) => (
+            <div key={row.id + f} style={{ padding:'8px 12px', borderBottom:'1px solid '+C.border, fontSize:12 }}>
+              <div style={{ color:C.slate, marginBottom:2 }}>{row.question || '(no English text)'}{f !== 'question_mayek' ? ` — option ${f[7].toUpperCase()}` : ''}</div>
+              <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:15, color:'#b91c1c' }}>{before}</div>
+              <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:15, color:'#15803d' }}>{after}</div>
+            </div>
+          )))}
+          {plan.length > 50 && <div style={{ padding:'8px 12px', fontSize:12, color:C.slate }}>…and {plan.length - 50} more</div>}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,16 +1,20 @@
 -- ============================================================================
 -- Meetei Mayek: put APUN IYEK (꯭) between the two consonants it joins
 -- ============================================================================
--- BMEI04 types APUN IYEK after a cluster ("fy_" draws ꯐ꯭ꯌ), but Unicode puts
+-- BMEI04 types APUN IYEK after a cluster and its vowel sign ("fy_", "Hya_"),
+-- because the font draws the mark under the letters before it; Unicode puts
 -- it between the consonants. The app used to keep the typing order, so text
--- converted to Unicode before this fix has it one letter late:
---   ꯍꯋ꯭ꯥꯏ  should be  ꯍ꯭ꯋꯥꯏ        ꯐꯌ꯭ꯨꯇꯥꯢꯜ  should be  ꯐ꯭ꯌꯨꯇꯥꯏꯜ
+-- converted to Unicode before this fix has it in the wrong place:
+--   ꯈꯌꯥ꯭ꯏ  should be  ꯈ꯭ꯌꯥꯏ        ꯐꯌ꯭ꯨꯇꯥꯢꯜ  should be  ꯐ꯭ꯌꯨꯇꯥꯏꯜ
 -- The converter (src/meetei_mayek.js) is fixed; this repairs saved text.
 --
 --   * Unicode text of unknown origin (questions, AI/translator dictionary
 --     entries): only the cases that can never be correct Unicode are fixed —
---     two consonants then APUN followed by a vowel sign, lonsum, punctuation,
---     a space or the end. Text that is already right is left alone.
+--     APUN after a vowel sign, or two consonants then APUN followed by a vowel
+--     sign, lonsum, punctuation, a space or the end. Correct text is left alone.
+--     (Questions imported from the Eng_Man .docx files also have other wrong
+--     letters from an old key table; repair those in the app: Question Bank →
+--     Mayek Tool → Roman - Meetei Mayek → "Repair saved Meetei Mayek".)
 --   * Dictionary entries typed in BMEI04 (their bmei04 is the source of
 --     truth): Meetei Mayek is rebuilt the way the converter now does it, and
 --     capital I becomes ꯏ (it used to give ꯢ).
@@ -24,20 +28,22 @@
 create table if not exists public.mayek_fix_log (name text primary key, ran_at timestamptz not null default now());
 alter table public.mayek_fix_log enable row level security;  -- no policies: not reachable from the app
 
--- Unambiguous repair, for any Unicode Meetei Mayek text.
+-- Unambiguous repair, for any Unicode Meetei Mayek text:
+-- consonant, consonant, vowel sign(s), APUN  ->  consonant, APUN, consonant, vowel sign(s)
+-- consonant, consonant, APUN, then no cluster partner  ->  consonant, APUN, consonant
 create or replace function pg_temp.fix_apun(t text) returns text
 language sql immutable as $$
-  select regexp_replace(t,
-    '([ꯀ-ꯍꯐꯒ-ꯚ])([ꯀ-ꯍꯐꯒ-ꯚ])꯭(?=[ꯛ-꯭꯰-꯿]|[^ꯀ-꯿]|$)',
-    '\1' || U&'\ABED' || '\2', 'g')
+  select regexp_replace(regexp_replace(t,
+    '([ꯀ-ꯍꯐꯒ-ꯚ])([ꯀ-ꯍꯐꯒ-ꯚ])([ꯣ-ꯪ]+)\uABED', '\1' || U&'\ABED' || '\2\3', 'g'),
+    '([ꯀ-ꯍꯐꯒ-ꯚ])([ꯀ-ꯍꯐꯒ-ꯚ])\uABED(?=[\uABDB-\uABED\uABF0-\uABFF]|[^\uABC0-\uABFF]|$)', '\1' || U&'\ABED' || '\2', 'g')
 $$;
 
--- Full repair, for Unicode converted straight from BMEI04 keystrokes.
+-- Full repair, for Unicode converted straight from BMEI04 keystrokes
+-- (same rule as romanToMeetei), plus capital I -> ꯏ.
 create or replace function pg_temp.fix_apun_typed(t text) returns text
 language sql immutable as $$
   select replace(regexp_replace(t,
-    '([ꯀ-ꯍꯐꯒ-ꯚ])([ꯀ-ꯍꯐꯒ-ꯚ])꯭',
-    '\1' || U&'\ABED' || '\2', 'g'), U&'\ABE2', U&'\ABCF')
+    '([ꯀ-ꯍꯐꯒ-ꯚ])([ꯀ-ꯍꯐꯒ-ꯚ])([ꯣ-ꯪ]*)\uABED', '\1' || U&'\ABED' || '\2\3', 'g'), U&'\ABE2', U&'\ABCF')
 $$;
 
 -- ── Question Bank ───────────────────────────────────────────────────────────

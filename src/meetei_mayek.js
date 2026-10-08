@@ -83,33 +83,43 @@ const APUN = '꯭'
 const isClusterConsonant = (c) => typeof c === 'string' && c.length === 1 &&
   c >= 'ꯀ' && c <= 'ꯚ' && c !== 'ꯎ' && c !== 'ꯏ' && c !== 'ꯑ'
 
+const isVowelSign = (c) => typeof c === 'string' && c >= 'ꯣ' && c <= 'ꯪ'
+
 // Appends one converted character, moving a typed APUN IYEK between the two
-// consonants it joins: BMEI04 "fy_" -> ꯐ꯭ꯌ. Shared by every BMEI04 -> Unicode
-// path so they all agree.
+// consonants it joins. In the BMEI04 font the APUN mark is drawn under the
+// letters before it, so it is typed after the cluster and after any vowel
+// sign on it: "fy_" -> ꯐ꯭ꯌ, "Hya_" -> ꯈ꯭ꯌꯥ. Shared by every BMEI04 ->
+// Unicode path so they all agree.
 function pushConverted(out, char) {
-  if (char === APUN && isClusterConsonant(out[out.length - 1]) && isClusterConsonant(out[out.length - 2])) {
-    out.splice(out.length - 1, 0, APUN)
-  } else {
-    out.push(char)
+  if (char === APUN) {
+    let j = out.length - 1
+    while (isVowelSign(out[j])) j--
+    if (isClusterConsonant(out[j]) && isClusterConsonant(out[j - 1])) {
+      out.splice(j, 0, APUN)
+      return
+    }
   }
+  out.push(char)
 }
 
-// Same consonant set as isClusterConsonant, for regular expressions.
+// Same consonant and vowel-sign sets, for regular expressions.
 const CONS = '[\\uABC0-\\uABCD\\uABD0\\uABD2-\\uABDA]'
-// Two consonants then APUN, where nothing can follow the APUN as a cluster
-// partner: a vowel sign, a lonsum letter, another APUN, a non-Mayek character
-// or the end of the text. Correct Unicode never has this; it is BMEI04 typing
-// order that was converted without reordering.
-const KEYSTROKE_ORDER_APUN = new RegExp(`(${CONS})(${CONS})\\uABED(?=[\\uABDB-\\uABED\\uABF0-\\uABFF]|[^\\uABC0-\\uABFF]|$)`, 'g')
+const VSIGN = '[\\uABE3-\\uABEA]'
+// APUN in BMEI04 typing order, which correct Unicode never has: after two
+// consonants and a vowel sign (ꯈꯌꯥ꯭), or right after two consonants with
+// nothing that could be a cluster partner next — a vowel sign, a lonsum
+// letter, another APUN, a non-Mayek character or the end of the text.
+const KEYSTROKE_ORDER_APUN = new RegExp(
+  `(${CONS})(${CONS})(?:(${VSIGN}+)\\uABED|\\uABED(?=[\\uABDB-\\uABED\\uABF0-\\uABFF]|[^\\uABC0-\\uABFF]|$))`, 'g')
 
 /**
  * Repair Unicode Meetei Mayek that was converted from BMEI04 before APUN
- * IYEK was reordered (ꯍꯋ꯭ꯥ -> ꯍ꯭ꯋꯥ). Only fixes the cases that cannot be
+ * IYEK was reordered (ꯈꯋ꯭ꯥ or ꯈꯋꯥ꯭ -> ꯈ꯭ꯋꯥ). Only fixes the cases that cannot be
  * correct Unicode, so text that is already right is returned unchanged.
  */
 export function fixApunOrder(text) {
   if (!text || !String(text).includes(APUN)) return text
-  return String(text).replace(KEYSTROKE_ORDER_APUN, `$1${APUN}$2`)
+  return String(text).replace(KEYSTROKE_ORDER_APUN, (_, c1, c2, signs = '') => c1 + APUN + c2 + signs)
 }
 
 /**
