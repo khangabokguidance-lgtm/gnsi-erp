@@ -11,6 +11,14 @@
 // capital letters are mostly the LONSUM (final-consonant) forms, not a
 // different sound. This is the same 42-key table used by Eeyek, except
 // capital Y: the BMEI04 font draws THOU (ꯊ) on that key, not YANG.
+//
+// Two places where BMEI04 keystroke order differs from Unicode order:
+//  - APUN IYEK (_) is typed AFTER the second consonant of a cluster
+//    ("fy_" draws the PHAM+YANG conjunct), but Unicode puts the virama
+//    between the two consonants (ꯐ꯭ꯌ). romanToMeetei/meeteiToRoman
+//    reorder it in each direction.
+//  - Capital I is the letter I (ꯏ), as in ꯇꯥꯏ — that is the form in all of
+//    GNSI's existing Unicode text. I LONSUM (ꯢ) still converts back to I.
 
 export const MAPPING = {
   // Consonants (base form, lowercase)
@@ -19,7 +27,7 @@ export const MAPPING = {
   z:'ꯉ', H:'ꯈ', v:'ꯚ', Y:'ꯊ',
 
   // Final consonants (lonsum) - capitals
-  K:'ꯛ', L:'ꯜ', M:'ꯝ', P:'ꯞ', N:'ꯟ', T:'ꯠ', Z:'ꯡ', I:'ꯢ',
+  K:'ꯛ', L:'ꯜ', M:'ꯝ', P:'ꯞ', N:'ꯟ', T:'ꯠ', Z:'ꯡ', I:'ꯏ',
 
   // Vowel signs (matras)
   a:'ꯥ', e:'ꯦ', E:'ꯩ', i:'ꯤ', o:'ꯣ', O:'ꯧ', u:'ꯨ', x:'ꯪ',
@@ -37,7 +45,7 @@ export const CHAR_NAMES = {
   'ꯍ':'HUK', 'ꯎ':'UN', 'ꯐ':'PHAM', 'ꯑ':'ATIYA', 'ꯒ':'GOK', 'ꯔ':'RAI',
   'ꯕ':'BA', 'ꯖ':'JIL', 'ꯗ':'DIL', 'ꯚ':'BHAM',
   'ꯛ':'KOK LONSUM', 'ꯜ':'LAI LONSUM', 'ꯝ':'MIT LONSUM', 'ꯞ':'PA LONSUM',
-  'ꯟ':'NA LONSUM', 'ꯠ':'TIL LONSUM', 'ꯡ':'NGOU LONSUM', 'ꯢ':'I LONSUM',
+  'ꯟ':'NA LONSUM', 'ꯠ':'TIL LONSUM', 'ꯡ':'NGOU LONSUM', 'ꯏ':'I', 'ꯢ':'I LONSUM',
   'ꯥ':'ATAP', 'ꯦ':'YENAP', 'ꯩ':'CHEINAP', 'ꯤ':'INAP', 'ꯣ':'ONAP',
   'ꯧ':'SOUNAP', 'ꯨ':'UNAP', 'ꯪ':'NUNG',
   '꯫':'CHEIKHEI', '꯬':'LUM IYEK', '꯭':'APUN IYEK',
@@ -49,12 +57,12 @@ for (const [key, char] of Object.entries(MAPPING)) {
   if (!(char in _REVERSE)) _REVERSE[char] = key
 }
 // Letters the BMEI04 font has a key for but that are converted in this
-// direction only. The letter I (ꯏ) is drawn on the same key as I LONSUM.
+// direction only. I LONSUM (ꯢ) is drawn on the same key as the letter I.
 // J, G and D (JHAM, GHOU, DHOU) stay out of MAPPING on purpose: these
 // letters are rare in Manipuri, and mayekSegments.js relies on capitals
 // like these being unknown to keep English words ("Delhi", "Gopal",
 // "June") in Latin letters inside a BMEI04 line.
-Object.assign(_REVERSE, { 'ꯏ':'I', 'ꯓ':'J', 'ꯘ':'G', 'ꯙ':'D' })
+Object.assign(_REVERSE, { 'ꯢ':'I', 'ꯓ':'J', 'ꯘ':'G', 'ꯙ':'D' })
 
 // Vowel-sign (matra) keys. In this abugida, these attach to a PRECEDING
 // consonant letter within the same syllable — they have no valid meaning
@@ -68,6 +76,12 @@ const VOWEL_SIGN_KEYS = new Set(['a', 'e', 'E', 'i', 'o', 'O', 'u', 'x'])
 // A) and 'u' (-> UN, key U) have one; e/i/o/x do not, so those get flagged
 // instead of guessed (see romanToMeetei below).
 const WORD_INITIAL_SUBSTITUTE = { a: 'A', u: 'U' }
+
+const APUN = '꯭'
+// Full consonant letters (KOK..BHAM), i.e. the ones that can join in an
+// APUN IYEK cluster. Excludes the independent vowels ꯎ ꯏ ꯑ and lonsum forms.
+const isClusterConsonant = (c) => typeof c === 'string' && c.length === 1 &&
+  c >= 'ꯀ' && c <= 'ꯚ' && c !== 'ꯎ' && c !== 'ꯏ' && c !== 'ꯑ'
 
 /**
  * Convert BMEI04 keystrokes (plain English letters, exactly as you'd type
@@ -119,6 +133,9 @@ export function romanToMeetei(text, options = {}, withWarnings = false) {
             reason: `Word-initial vowel sign '${ch}' has no consonant to attach to, and this table has no independent vowel letter for it. Needs a human decision.`,
           })
         }
+      } else if (ch === '_' && isClusterConsonant(out[out.length - 1]) && isClusterConsonant(out[out.length - 2])) {
+        // "fy_" -> ꯐ꯭ꯌ: BMEI04 types APUN after the cluster, Unicode between.
+        out.splice(out.length - 1, 0, APUN)
       } else if (ch in MAPPING) {
         out.push(MAPPING[ch])
       } else if (isLetter) {
@@ -144,7 +161,15 @@ export function romanToMeetei(text, options = {}, withWarnings = false) {
  */
 export function meeteiToRoman(text) {
   const out = []
-  for (const ch of text) {
+  const chars = [...text]
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]
+    if (isClusterConsonant(ch) && chars[i + 1] === APUN && isClusterConsonant(chars[i + 2])) {
+      // ꯐ꯭ꯌ -> "fy_" (the order a BMEI04 typist presses the keys)
+      out.push(_REVERSE[ch], _REVERSE[chars[i + 2]], '_')
+      i += 2
+      continue
+    }
     out.push(_REVERSE[ch] !== undefined ? _REVERSE[ch] : ch)
   }
   return out.join('')

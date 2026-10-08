@@ -25,3 +25,15 @@ test('the character picker lists every key once', () => {
   assert.deepEqual([...keys].sort(), Object.keys(MAPPING).sort())
   assert.ok(getAllCharacters().every(c => c.name))
 })
+
+test('APUN IYEK is typed after the cluster in BMEI04 but sits between the consonants in Unicode', () => {
+  assert.equal(romanToMeetei('fy_utaIL'), 'ꯐ꯭ꯌꯨꯇꯥꯏꯜ')
+  assert.equal(meeteiToRoman('ꯐ꯭ꯌꯨꯇꯥꯏꯜ'), 'fy_utaIL')
+  // no cluster to join (word-final, or after a vowel sign): APUN stays where it was typed
+  assert.equal(romanToMeetei('r_ ka_'), 'ꯔ꯭ ꯀꯥ꯭')
+})
+
+test('capital I is the letter I; I LONSUM still converts back to I', () => {
+  assert.equal(romanToMeetei('taI'), 'ꯇꯥꯏ')
+  assert.equal(meeteiToRoman('ꯢ'), 'I')
+})
