@@ -1439,9 +1439,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   }
 
   // ── Per-house stats (defined before the auto-fire effect that uses it) ──
+  // One record per CURRENT student of the house (the latest, if a student
+  // was marked twice). Counting raw records let duplicates and records of
+  // students who left or moved house push a house past 100% ("47/46 marked",
+  // "-1 pending") — and could hide students who were never marked.
+  const recordsForStudents = (records, hStudents) => {
+    const ids = new Set(hStudents.map(s => s.id))
+    const byStudent = new Map()
+    // r.house: a hostel roll-call record (the table also holds class attendance).
+    for (const r of records) if (r.house && ids.has(r.student_id)) byStudent.set(r.student_id, r)
+    return [...byStudent.values()]
+  }
+
   const getHouseStats = (houseName) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
-    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+    const hRecords = recordsForStudents(allRecords, hStudents)
     const present = hRecords.filter(r => r.status === 'Present').length
     const absent = hRecords.filter(r => r.status === 'Absent').length
     const sick = hRecords.filter(r => r.status === 'Sick').length
@@ -1460,8 +1472,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     const total = hStudents.length
     if (total === 0) return { complete: true, morningMarked: 0, nightMarked: 0, total: 0 }
-    const morningMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'morning').length
-    const nightMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'night').length
+    const morningMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'morning'), hStudents).length
+    const nightMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'night'), hStudents).length
     return {
       complete: morningMarked >= total && nightMarked >= total,
       morningMarked, nightMarked, total,
@@ -2524,131 +2536,140 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               {houses.map((houseName, idx) => {
                 const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
                 const stats = getHouseStats(houseName)
-                const allDone = stats.unmarked === 0
+                const allDone = stats.total > 0 && stats.unmarked === 0
+                const blocked = isHouseBlocked(houseName)
+                const prev = blocked ? getPrevDayStatus(houseName) : null
+                const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+                const accent = allDone ? '#15803D' : pal.color
+                const R = 22, C = 2 * Math.PI * R
+                const STAT = [
+                  { label: 'Present', value: stats.present, color: '#15803D' },
+                  { label: 'Absent',  value: stats.absent,  color: '#DC2626' },
+                  { label: 'Late',    value: stats.late,    color: '#B8923A' },
+                  { label: 'Leave',   value: stats.onLeave, color: '#1D4ED8' },
+                  { label: 'Sick',    value: stats.sick,    color: '#7C3AED' },
+                ]
                 return (
                   <div
                     key={houseName}
                     onClick={() => { setSelectedHouse(houseName); setView('dashboard') }}
                     style={{
-                      borderRadius: '20px', overflow: 'hidden',
-                      background: `linear-gradient(180deg,#fff 0%,#f7f4ea 100%) padding-box, linear-gradient(150deg,${allDone ? '#86efac' : '#e9d9b0'},${allDone ? '#16a34a' : '#c9a24b'} 50%,#e9d9b0) border-box`,
-                      border: '1.5px solid transparent',
-                      boxShadow: '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)',
-                      cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s',
+                      position: 'relative', borderRadius: '20px', overflow: 'hidden', background: '#fff',
+                      border: `1px solid ${allDone ? '#BBE5C8' : '#ECE6D8'}`,
+                      boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)',
+                      cursor: 'pointer', transition: 'transform .18s, box-shadow .18s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 26px 40px -20px rgba(19,42,79,.6)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 24px 40px -22px rgba(19,42,79,.55)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)' }}
                   >
-                    {/* Cover band */}
-                    <div style={{ height: '10px', position: 'relative', background: `linear-gradient(90deg,${allDone ? '#16a34a' : pal.color},#0e203f)` }}>
-                      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
-                    </div>
-                    <div style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '20px', fontWeight: '600', color: '#0e203f', fontFamily: FONT_DISPLAY, letterSpacing: '-.01em' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 10, fontSize: 15, marginRight: 8, verticalAlign: 'middle', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>🏠</span>{houseName}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                            {stats.total} students
+                    <div style={{ height: '4px', background: `linear-gradient(90deg, ${accent}, ${accent}55)` }} />
+                    <div style={{ padding: '18px 18px 16px' }}>
+                      {/* Header: crest, name, completion ring */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#E2C57E',
+                          fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1.5px #fff, 0 0 0 2.5px #C9A24B',
+                        }}>{title.charAt(0)}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: '19px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                          <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>{stats.total} students</span>
+                            <span style={{ width: 3, height: 3, borderRadius: '50%', background: '#CBD5E1' }} />
+                            <span style={{ fontWeight: 700, color: allDone ? '#15803D' : blocked ? '#DC2626' : '#A16207' }}>
+                              {allDone ? 'Roll call complete' : blocked ? 'Blocked' : `${stats.unmarked} to mark`}
+                            </span>
                           </div>
                         </div>
-                        {allDone
-                          ? <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#16a34a' }}>✓ Complete</span>
-                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#b8923a' }}>{stats.unmarked} pending</span>
-                        }
+                        <div style={{ position: 'relative', width: 54, height: 54, flexShrink: 0 }} title={`${stats.marked} of ${stats.total} marked`}>
+                          <svg width="54" height="54" viewBox="0 0 54 54" style={{ transform: 'rotate(-90deg)' }}>
+                            <circle cx="27" cy="27" r={R} fill="none" stroke="#F1EDE4" strokeWidth="5" />
+                            <circle cx="27" cy="27" r={R} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round"
+                              strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(stats.pct, 100) / 100)} style={{ transition: 'stroke-dashoffset .5s' }} />
+                          </svg>
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12.5px', fontWeight: 800, color: '#0B1E3D', fontVariantNumeric: 'tabular-nums' }}>
+                            {allDone ? <span style={{ color: '#15803D', fontSize: 18 }}>✓</span> : `${stats.pct}%`}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Mini stats row */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '12px' }}>
-                        {[
-                          { label: 'P', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
-                          { label: 'A', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-                          { label: 'L', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
-                          { label: '🚪', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
-                          { label: '🏥', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
-                        ].map(s => (
-                          <div key={s.label} style={{ textAlign: 'center', padding: '6px 4px', background: s.bg, borderRadius: '8px' }}>
-                            <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                            <div style={{ fontSize: '10px', color: s.color, fontWeight: '600' }}>{s.label}</div>
+                      {/* Status counts */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '6px', margin: '16px 0 10px' }}>
+                        {STAT.map(st => (
+                          <div key={st.label} style={{ textAlign: 'center', padding: '8px 2px 7px', borderRadius: '12px', background: st.value ? st.color + '0F' : '#FAF8F3', border: `1px solid ${st.value ? st.color + '2E' : '#F1EDE4'}` }}>
+                            <div style={{ fontFamily: FONT_DISPLAY, fontSize: '18px', fontWeight: 700, lineHeight: 1.1, color: st.value ? st.color : '#CBD5E1', fontVariantNumeric: 'lining-nums tabular-nums' }}>{st.value}</div>
+                            <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: st.value ? st.color : '#94A3B8', marginTop: '3px' }}>{st.label}</div>
                           </div>
                         ))}
                       </div>
 
-                      {/* Progress bar */}
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%',
-                            width: `${stats.pct}%`,
-                            background: allDone ? '#16a34a' : pal.color,
-                            borderRadius: '99px', transition: 'width 0.4s',
-                          }} />
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
-                          {stats.marked}/{stats.total} marked · {stats.pct}%
-                        </div>
+                      {/* Composition bar */}
+                      <div style={{ display: 'flex', height: '6px', borderRadius: '99px', overflow: 'hidden', background: '#F1EDE4' }}>
+                        {stats.total > 0 && STAT.filter(st => st.value > 0).map(st => (
+                          <div key={st.label} style={{ width: `${(st.value / stats.total) * 100}%`, background: st.color }} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '5px', display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
+                        <span>{session === 'morning' ? 'Morning' : 'Night'} roll call</span>
+                        <span>{stats.marked} / {stats.total} marked</span>
                       </div>
 
-                      {/* Action buttons */}
-                      {(() => {
-                        const blocked = isHouseBlocked(houseName)
-                        return (
-                          <>
-                            {blocked && (
-                              <div
-                                onClick={e => e.stopPropagation()}
-                                style={{ marginBottom: '10px', padding: '10px 12px', background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '10px' }}
-                              >
-                                <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
-                                  🚫 Yesterday's roll call incomplete — {(() => { const p = getPrevDayStatus(houseName); return `${p.morningMarked}/${p.total} morning · ${p.nightMarked}/${p.total} night` })()}
-                                </div>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a6e', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
-                                >
-                                  📋 Complete Missed Roll Call
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
-                                    style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#dc2626', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                                  >
-                                    🔓 Override (Admin)
-                                  </button>
-                                )}
+                      {/* Yesterday not finished */}
+                      {blocked && (
+                        <div onClick={e => e.stopPropagation()} style={{ marginTop: '14px', padding: '12px', borderRadius: '14px', background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#DC2626', color: '#fff', fontSize: 12, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+                            <div>
+                              <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#991B1B' }}>Yesterday's roll call is incomplete</div>
+                              <div style={{ fontSize: '11.5px', color: '#B91C1C', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                                Morning {prev.morningMarked}/{prev.total} · Night {prev.nightMarked}/{prev.total}
                               </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
-                                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.bg, color: pal.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                              >
-                                📊 Dashboard
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
-                                disabled={blocked}
-                                style={{
-                                  flex: 1, padding: '9px', borderRadius: '9px', border: 'none',
-                                  background: blocked ? '#e2e8f0' : pal.color,
-                                  color: blocked ? '#94a3b8' : 'white',
-                                  fontSize: '12px', fontWeight: '700',
-                                  cursor: blocked ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                {blocked ? '🔒 Blocked' : '⚡ Roll Call'}
-                              </button>
                             </div>
-                          </>
-                        )
-                      })()}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            <button onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
+                              style={{ flex: 1, padding: '8px 10px', borderRadius: '10px', border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Complete missed roll call
+                            </button>
+                            {isAdmin && (
+                              <button onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
+                                style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Override
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
+                          style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid #E5DCC7', background: '#FCFBF7', color: '#0B1E3D', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Dashboard
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
+                          disabled={blocked}
+                          style={{
+                            flex: 1.3, padding: '10px', borderRadius: '12px', border: 'none', fontFamily: 'inherit',
+                            background: blocked ? '#EEF1F5' : allDone ? 'linear-gradient(180deg,#1F8A4C,#15803D)' : 'linear-gradient(180deg,#1C3A6B,#0B1E3D)',
+                            color: blocked ? '#94A3B8' : '#fff', fontSize: '12.5px', fontWeight: 800,
+                            cursor: blocked ? 'not-allowed' : 'pointer',
+                            boxShadow: blocked ? 'none' : '0 8px 16px -10px rgba(11,30,61,.8)',
+                          }}
+                        >
+                          {blocked ? '🔒 Locked' : allDone ? 'Roll call ✓' : 'Start roll call →'}
+                        </button>
+                      </div>
                       {allDone && (
                         <button
                           onClick={e => { e.stopPropagation(); setReportHouse(houseName) }}
-                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '9px', border: 'none', background: '#f5f3ff', color: '#7c3aed', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '12px', border: '1px solid #E9D9B0', background: 'linear-gradient(180deg,#FFFCF3,#F8F0DC)', color: '#7A5A12', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
                         >
-                          📄 View Report
+                          View house report
                         </button>
                       )}
                     </div>
