@@ -101,15 +101,18 @@ export async function loadFullProfile(student) {
   // read as "no record" and feed false-positive mismatch flags. This
   // logs to console rather than throwing, so one bad table/query doesn't
   // take down the whole profile load for a student.
-  ;[
+  const queryResults = [
     ['admission', admission], ['adm_fee_collections', admFeeCols], ['adm_flat_fees', admFlatFees],
     ['adm_course_fees', admCourseFees], ['hostel_allocations', hostelAlloc], ['discipline_records', disciplineRecs],
     ['sickbay_records', sickbayRecs], ['leave_records', leaveRecs], ['reception_gatepasses', gatePasses],
     ['reception_enquiries', enquiries], ['reception_parent_items', parentItems], ['reception_complaints', complaints],
     ['exam_marks', examMarks],
-  ].forEach(([label, result]) => {
-    if (result?.error) console.error(`loadFullProfile(${student.name || id}): ${label} query failed —`, result.error.message || result.error)
-  })
+  ]
+  const failedQueries = queryResults.filter(([label, result]) => {
+    if (!result?.error) return false
+    console.error(`loadFullProfile(${student.name || id}): ${label} query failed —`, result.error.message || result.error)
+    return true
+  }).length
 
   // Room details for the current allocation, fetched as a plain lookup
   // rather than an embedded join (see note above the hostel_allocations
@@ -130,6 +133,10 @@ export async function loadFullProfile(student) {
   const courseFeeTotal = (admCourseFees.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0)
 
   return {
+    // How many of the queries above failed (network, permissions). A failed
+    // query reads as "no record", so callers must not treat this profile as
+    // complete when this is > 0.
+    failedQueries,
     admission: admission.data || null,
     fees: { admFeeCols: admFeeCols.data || [], admFlatFees: admFlatFees.data || [], admCourseFees: admCourseFees.data || [], total: admFeeTotal + flatFeeTotal + courseFeeTotal },
     attendance: { records: attRows, presentCount, totalMarked: attRows.length, pct: attendancePct },
