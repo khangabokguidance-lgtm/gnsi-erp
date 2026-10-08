@@ -3311,12 +3311,16 @@ function SortControl({ sortBy, sortDir, onChange }) {
   )
 }
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
+// YYYY-MM-DD in this computer's time zone (toISOString() is UTC, a day
+// behind in India until 5:30 am).
+const localDay = d => d.toLocaleDateString('en-CA')
+
 function Dashboard({ apps, cols, darkMode }) {
   const [activeTab, setActiveTab] = useState('overview')
   const bg   = darkMode ? T.slate[800] : '#fff'
   const bd   = darkMode ? T.slate[700] : T.slate[200]
   const tx   = darkMode ? T.slate[100] : T.slate[800]
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDay(new Date())
 
   const byStatus = s => apps.filter(a => a.status === s).length
   const total    = apps.length
@@ -3333,7 +3337,7 @@ function Dashboard({ apps, cols, darkMode }) {
     const d = new Date(); d.setDate(d.getDate() - 6 + i); return d
   })
   const dayCounts = days.map(d =>
-    apps.filter(a => a.created_at?.slice(0, 10) === d.toISOString().slice(0, 10)).length
+    apps.filter(a => a.created_at && localDay(new Date(a.created_at)) === localDay(d)).length
   )
 
   const houseFill = HOUSES_LIST.filter(h => h !== 'Day Scholar').map(h => ({
@@ -3342,9 +3346,12 @@ function Dashboard({ apps, cols, darkMode }) {
     cap: HOUSE_CAPACITIES[h] || 40,
   }))
 
-  const overdue  = apps.filter(a => a.followupDate && a.followupDate < today)
+  const weekAheadDate = new Date(); weekAheadDate.setDate(weekAheadDate.getDate() + 7)
+  const weekAhead = localDay(weekAheadDate)
+  const byFollowup = (x, y) => x.followupDate.localeCompare(y.followupDate)
+  const overdue  = apps.filter(a => a.followupDate && a.followupDate < today).sort(byFollowup)
   const dueToday = apps.filter(a => a.followupDate === today)
-  const upcoming = apps.filter(a => a.followupDate && a.followupDate > today)
+  const upcoming = apps.filter(a => a.followupDate && a.followupDate > today && a.followupDate <= weekAhead).sort(byFollowup)
 
   const metric = (label, value, accent, sub) => (
     <div style={{ background: darkMode ? T.slate[700] : T.slate[50], borderRadius: 8, padding: '14px 16px' }}>
@@ -3429,7 +3436,7 @@ function Dashboard({ apps, cols, darkMode }) {
       </div>}
 
       {/* ── Hostel & House ── */}
-      {activeTab === 'hostelhouseandhouse' && <>
+      {activeTab === 'hostelhouse' && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap: 12, marginBottom: 14 }}>
           {HOSTEL_TYPES.map(h => {
             const count = apps.filter(a => a.hostel_type === h).length
@@ -3464,17 +3471,17 @@ function Dashboard({ apps, cols, darkMode }) {
       {/* ── Follow-ups ── */}
       {activeTab === 'followups' && <>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {[[`${overdue.length} Overdue`, T.rose[600], T.rose[50]], [`${dueToday.length} Today`, T.amber[600], T.amber[50]], [`${upcoming.length} Upcoming`, T.sky[600], T.sky[50]]].map(([l, c, bg]) => (
+          {[[`${overdue.length} Overdue`, T.rose[600], T.rose[50]], [`${dueToday.length} Today`, T.amber[600], T.amber[50]], [`${upcoming.length} in 7 days`, T.sky[600], T.sky[50]]].map(([l, c, bg]) => (
             <span key={l} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: c, background: bg }}>{l}</span>
           ))}
         </div>
-        {[['Overdue', overdue, T.rose[600]], ['Due Today', dueToday, T.amber[600]], ['Upcoming (7 days)', upcoming.slice(0,7), T.sky[600]]].map(([heading, list, accent]) => (
+        {[['Overdue', overdue, T.rose[600]], ['Due Today', dueToday, T.amber[600]], ['Upcoming (7 days)', upcoming, T.sky[600]]].map(([heading, list, accent]) => (
           <div key={heading} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>{heading}</div>
             {list.length === 0
               ? <div style={{ fontSize: 12, color: T.slate[300] }}>None</div>
               : list.map(a => (
-                <div key={a.gcc} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: T.slate[50], borderRadius: 7, marginBottom: 4, fontSize: 12 }}>
+                <div key={a.id ?? a.gcc} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: T.slate[50], borderRadius: 7, marginBottom: 4, fontSize: 12 }}>
                   <span style={{ fontWeight: 700, flex: 1, color: tx }}>{a.name}</span>
                   <StatusBadge status={a.status} />
                   <span style={{ color: accent, fontWeight: 700 }}>{dateFmt(a.followupDate)}</span>
@@ -3682,19 +3689,22 @@ function SessionManager({ onChanged, darkMode }) {
     if (session.is_active) return
     if (!confirm(`Make "${session.session_name}" the active session? This affects the whole app, not just Admissions.`)) return
     setBusyId(session.id)
-    // Deactivate whichever session currently holds is_active, then activate
-    // the chosen one — kept as two sequential calls (not a single bulk
-    // update) so a failure on the second step leaves at most the OLD
-        // session active rather than none, never leaving zero active sessions
-    // silently.
+    // Switch the current session off, then the chosen one on (in that
+    // order, in case the database allows only one active session). If the
+    // second step fails, the old session is switched back on, so the app is
+    // never left with no active session.
     const currentActive = sessions.find(s => s.is_active)
     if (currentActive && currentActive.id !== session.id) {
       const { error: deactErr } = await supabase.from('admission_sessions').update({ is_active: false }).eq('id', currentActive.id)
       if (deactErr) { setBusyId(null); setErr('Failed to deactivate current session: ' + deactErr.message); return }
     }
     const { error: actErr } = await supabase.from('admission_sessions').update({ is_active: true }).eq('id', session.id)
+    if (actErr) {
+      if (currentActive && currentActive.id !== session.id)
+        await supabase.from('admission_sessions').update({ is_active: true }).eq('id', currentActive.id)
+      setBusyId(null); setErr('Failed to activate session: ' + actErr.message); await load(); return
+    }
     setBusyId(null)
-    if (actErr) { setErr('Failed to activate session: ' + actErr.message); return }
     await load()
     onChanged?.()
   }
@@ -3855,7 +3865,7 @@ function StudentLedgerView({ apps, darkMode }) {
       const [{ data: stu }, admRes, flatRes, crsfRes] = await Promise.all([
         supabase.from('students').select('*').eq('gcc_no', String(gccInt)).maybeSingle(),
         supabase.from('adm_fee_collections').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
-        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
+        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', String(gccInt)).eq('paid', true).eq('reverted', false),
         supabase.from('adm_course_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
       ])
       if (cancelled) return
@@ -4671,6 +4681,7 @@ export default function Admissions() {
               <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
                 {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
                   : moduleView==='newApplication' ? 'New applicant admission form'
+                  : moduleView==='sessions' ? 'Admission sessions — create, activate, lock'
                   : 'Application management & enrollment'}
               </p>
             </div>
