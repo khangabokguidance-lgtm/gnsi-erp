@@ -1,7 +1,7 @@
 // BMEI04 <-> Unicode Meetei Mayek key table (src/meetei_mayek.js).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { romanToMeetei, meeteiToRoman, getAllCharacters, MAPPING, puaToMeetei, fixApunOrder } from '../src/meetei_mayek.js'
+import { romanToMeetei, meeteiToRoman, getAllCharacters, MAPPING, puaToMeetei, fixApunOrder, typeBmeiKey } from '../src/meetei_mayek.js'
 
 test('capital Y is THOU and small y is YANG, both ways', () => {
   assert.equal(romanToMeetei('Ya'), 'ꯊꯥ')
@@ -56,4 +56,10 @@ test('APUN typed after the vowel sign still joins the two consonants before it',
   assert.equal(fixApunOrder('ꯈꯌꯥ꯭ꯏꯗꯒꯤ'), 'ꯈ꯭ꯌꯥꯏꯗꯒꯤ')
   // one consonant and a vowel sign: nothing to join, APUN stays
   assert.equal(romanToMeetei('ka_'), 'ꯀꯥ꯭')
+})
+
+test('live BMEI04 typing (the keyboard on translation boxes) matches the converter', () => {
+  const type = keys => [...keys].reduce((t, k) => typeBmeiKey(t, k) ?? t + k, '')
+  for (const keys of ['fy_utaIL', 'Hya_Idgi', 'apL boL', 'tr_eN 12, mark_']) assert.equal(type(keys), romanToMeetei(keys))
+  assert.equal(typeBmeiKey('abc', '5'), null)
 })

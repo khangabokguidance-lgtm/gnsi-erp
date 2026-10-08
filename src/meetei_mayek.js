@@ -257,3 +257,20 @@ export function puaToMeetei(text) {
   }
   return out.join('')
 }
+
+/**
+ * Live BMEI04 typing: the text before the caret after pressing `key`, or
+ * null when the key has no Meetei Mayek letter (digits, space, most
+ * punctuation) and should be typed as it is. Follows romanToMeetei: a
+ * word-initial a/u gives the vowel letter ꯑ/ꯎ, and APUN IYEK moves between
+ * the two consonants it joins ("fy_" -> ꯐ꯭ꯌ, "Hya_" -> ꯈ꯭ꯌꯥ).
+ */
+export function typeBmeiKey(before, key) {
+  if (!(key in MAPPING)) return null
+  const out = [...String(before || '')]
+  const prev = out[out.length - 1]
+  const atWordStart = !prev || !/[ꯀ-꯭]/.test(prev)
+  const sub = atWordStart && VOWEL_SIGN_KEYS.has(key) ? WORD_INITIAL_SUBSTITUTE[key] : null
+  pushConverted(out, MAPPING[sub || key])
+  return out.join('')
+}

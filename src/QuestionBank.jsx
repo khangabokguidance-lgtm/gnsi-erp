@@ -50,6 +50,8 @@ import { romanToMeetei, meeteiToRoman, getAllCharacters, fixApunOrder } from './
 import { bmeiToUnicode } from './mayekSegments'
 import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, OFFLINE_DRAFT_SOURCE, DRAFT_BY, reviewedSource, offlineToMayek, saveTranslationDrafts, needsMayek, translateQuestionsOffline, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
+import { BmeiKeyboardToggle, BmeiKeyPad } from './BmeiKeyboard'
+import { useBmeiKeyboard } from './useBmeiKeyboard'
 import { planMayekRepair, applyMayekRepair } from './mayekRepair'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -3053,6 +3055,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
   const [translated, setTranslated] = useState(0) // re-checks the offline translator after each run
   const [autoSaved, setAutoSaved] = useState(0) // lines of the last translation added to the dictionary
   const run = useRef(0)
+  const { areaRef: kbArea, kb } = useBmeiKeyboard() // BMEI04 typing in the result box (Meetei Mayek only)
 
   const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
   const doTranslate = async () => {
@@ -3105,7 +3108,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
     fontSize:15, lineHeight:1.8, resize:'vertical', boxSizing:'border-box' }
 
   return (
-    <div>
+    <div ref={kbArea}>
       <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:10 }}>
         <select aria-label="Translate from" value={from} onChange={e => setFrom(e.target.value)} style={sel}>
           {LANGS.filter(l => l.source).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
@@ -3129,8 +3132,15 @@ function MayekTranslator({ showToast, currentStaffId }) {
         <div>
           <label style={lS}>{langLabel(to)}{last?.engine ? ` — ${ENGINE_LABELS[last.engine]}` : ''}{last?.dictLines && last.engine !== 'dictionary' ? ` + ${last.dictLines} line${last.dictLines === 1 ? '' : 's'} from your dictionary` : ''}</label>
           <textarea value={output} onChange={e => setOutput(e.target.value)} rows={9} aria-label="Translation"
-            placeholder={busy || 'Translation will appear here — you can edit it'}
+            data-bmei={to === 'mni-Mtei' ? '' : undefined}
+            placeholder={busy || (to === 'mni-Mtei' && kb.on ? 'Translation will appear here — edit it with BMEI04 keys' : 'Translation will appear here — you can edit it')}
             style={{ ...box, background:'#f8fafc', fontFamily: mayekFont(to), fontSize: to === 'mni-Mtei' ? 19 : 15 }} />
+          {to === 'mni-Mtei' && (
+            <div style={{ marginTop:6 }}>
+              <BmeiKeyboardToggle kb={kb} />
+              <BmeiKeyPad kb={kb} />
+            </div>
+          )}
           {keys && (
             <div style={{ marginTop:8 }}>
               <label style={lS}>BMEI04 keystrokes (to type in Word with the Bmei04 font)</label>
