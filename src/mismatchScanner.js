@@ -17,10 +17,19 @@ import { detectMismatches } from './mismatchDetector'
 import { logAndNotify, resolveStaleFlags, isMismatchLoggingBlocked } from './mismatchLog'
 import { useState, useEffect } from 'react'
 
-const BATCH_SIZE = 8   // students processed concurrently per wave
-const BATCH_DELAY_MS = 400  // pause between waves — keeps this a background
+const BATCH_SIZE = 3   // students processed concurrently per wave (~15 queries each)
+const BATCH_DELAY_MS = 1500  // pause between waves — keeps this a background
                              // courtesy scan, not a burst that competes with
                              // whatever else is hitting Supabase right now
+const START_DELAY_MS = 2 * 60 * 1000   // let the app load first
+const LAST_SCAN_KEY = 'gnsi_mismatch_scan_at' // shared by every tab / reload
+
+const lastScanAt = () => { try { return Number(localStorage.getItem(LAST_SCAN_KEY)) || 0 } catch { return 0 } }
+const markScanned = () => { try { localStorage.setItem(LAST_SCAN_KEY, String(Date.now())) } catch { /* storage blocked */ } }
+// Wait while the tab is hidden or the computer is offline.
+async function waitUntilUsable() {
+  while ((typeof document !== 'undefined' && document.hidden) || (typeof navigator !== 'undefined' && navigator.onLine === false)) await sleep(5000)
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
@@ -38,10 +47,14 @@ export async function runMismatchScan({ onProgress } = {}) {
   let stopped = null
   for (let i = 0; i < students.length; i += BATCH_SIZE) {
     if (isMismatchLoggingBlocked()) { stopped = 'logging blocked'; break }
+    await waitUntilUsable()
     const batch = students.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(batch.map(async student => {
       try {
         const profile = await loadFullProfile(student)
+        // Some queries failed (e.g. the connection dropped): the profile
+        // would read as missing records and raise false mismatches. Skip.
+        if (profile.failedQueries > 0) return { hasIssues: false, newCount: 0, failed: true }
         const flags = detectMismatches(student, profile)
         if (flags.length > 0) {
           const { newCount } = await logAndNotify(student, flags)
@@ -61,6 +74,9 @@ export async function runMismatchScan({ onProgress } = {}) {
     results.forEach(r => { if (r.hasIssues) studentsWithIssues++; newMismatches += r.newCount })
     scanned += batch.length
     onProgress?.({ scanned, total: students.length })
+    // Most of this wave failed: the network or database is struggling.
+    // Stop rather than pile hundreds more failing requests on top.
+    if (results.filter(r => r.failed).length * 2 > results.length) { stopped = 'requests failing'; break }
 
     if (i + BATCH_SIZE < students.length) await sleep(BATCH_DELAY_MS)
   }
@@ -82,6 +98,9 @@ export function useMismatchAutoScan({ enabled, intervalMinutes = 60 } = {}) {
     let cancelled = false
 
     const run = async () => {
+      // At most once per interval, however many tabs are open or reloaded.
+      if (Date.now() - lastScanAt() < intervalMinutes * 60 * 1000) return
+      markScanned()
       setScanning(true)
       try {
         const result = await runMismatchScan()
@@ -93,9 +112,9 @@ export function useMismatchAutoScan({ enabled, intervalMinutes = 60 } = {}) {
       }
     }
 
-    run()
-    const id = setInterval(run, intervalMinutes * 60 * 1000)
-    return () => { cancelled = true; clearInterval(id) }
+    const first = setTimeout(run, START_DELAY_MS)
+    const id = setInterval(run, Math.min(intervalMinutes, 10) * 60 * 1000) // checks often, runs per the shared clock
+    return () => { cancelled = true; clearTimeout(first); clearInterval(id) }
   }, [enabled, intervalMinutes])
 
   return { lastResult, scanning }
