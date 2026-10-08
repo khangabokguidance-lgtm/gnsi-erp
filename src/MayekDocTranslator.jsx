@@ -33,6 +33,7 @@ import { translate, ENGINE_LABELS, saveTranslationDrafts, saveCorrections, offli
 import { readPaperFile, linesFromText, cleanLines, buildPaperDocx, docxFileName, watermarkDataUrl, MAX_LINES, MAYEK_FONT } from './mayekDocx'
 import { prepareSource, buildModel, makeSet, kindOf, paperStats, SET_NAMES } from './mayekPaper'
 import { bmeiToUnicode } from './mayekSegments'
+import { fixApunOrder } from './meetei_mayek'
 import { normalizeAnswer, tidyText } from './paperTools'
 import { paperHtml } from './mayekPaperHtml'
 
@@ -211,7 +212,7 @@ function Preview({ html }) {
 const bankMayek = (q, text) => {
   const t = String(text || '').replace(/\s*\n\s*/g, ' ').trim()
   if (!t) return ''
-  const u = q.question_mayek_font === 'bmei04' ? bmeiToUnicode(t) : t
+  const u = q.question_mayek_font === 'bmei04' ? bmeiToUnicode(t) : fixApunOrder(t)
   return MTEI.test(u) ? u : ''
 }
 const oneLine = t => tidyText(String(t || '')).replace(/\s*\n\s*/g, ' ').trim()

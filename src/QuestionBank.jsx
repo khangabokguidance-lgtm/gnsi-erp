@@ -46,7 +46,7 @@ import {
 // Tool tab below — separate from the auto-detect-on-paste system above,
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
-import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+import { romanToMeetei, meeteiToRoman, getAllCharacters, fixApunOrder } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
 import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, OFFLINE_DRAFT_SOURCE, DRAFT_BY, reviewedSource, offlineToMayek, saveTranslationDrafts, needsMayek, translateQuestionsOffline, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
@@ -579,7 +579,7 @@ function CastButton({ url, presentTargetId, showToast, small }) {
 // Mayek (which the viewer's machine needs installed to display it).
 function slideMayekUnicode(text, fontTag) {
   if (!text) return ''
-  return fontTag === 'bmei04' ? bmeiToUnicode(text) : text
+  return fontTag === 'bmei04' ? bmeiToUnicode(text) : fixApunOrder(text)
 }
 
 

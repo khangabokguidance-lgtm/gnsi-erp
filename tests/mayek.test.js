@@ -1,7 +1,7 @@
 // BMEI04 <-> Unicode Meetei Mayek key table (src/meetei_mayek.js).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { romanToMeetei, meeteiToRoman, getAllCharacters, MAPPING } from '../src/meetei_mayek.js'
+import { romanToMeetei, meeteiToRoman, getAllCharacters, MAPPING, puaToMeetei, fixApunOrder } from '../src/meetei_mayek.js'
 
 test('capital Y is THOU and small y is YANG, both ways', () => {
   assert.equal(romanToMeetei('Ya'), 'ꯊꯥ')
@@ -36,4 +36,14 @@ test('APUN IYEK is typed after the cluster in BMEI04 but sits between the conson
 test('capital I is the letter I; I LONSUM still converts back to I', () => {
   assert.equal(romanToMeetei('taI'), 'ꯇꯥꯏ')
   assert.equal(meeteiToRoman('ꯢ'), 'I')
+})
+
+test('APUN IYEK is reordered on every BMEI04 path: typing, Word import, old Unicode', () => {
+  const pua = s => [...s].map(c => String.fromCharCode(c.charCodeAt(0) + 0xF000)).join('')
+  assert.equal(puaToMeetei(pua('Hw_aIdgi')), 'ꯈ꯭ꯋꯥꯏꯗꯒꯤ')
+  assert.equal(romanToMeetei('tr_eN mark_'), 'ꯇ꯭ꯔꯦꯟ ꯃꯥꯔ꯭ꯀ')
+  // text converted before the fix: APUN before a vowel sign, a space or the end
+  assert.equal(fixApunOrder('ꯍꯋ꯭ꯥꯏ ꯃꯥꯔꯀ꯭'), 'ꯍ꯭ꯋꯥꯏ ꯃꯥꯔ꯭ꯀ')
+  // correct Unicode is left alone, including a cluster after a full consonant
+  for (const ok of ['ꯐ꯭ꯌꯨꯇꯥꯏꯜ', 'ꯁꯀ꯭ꯋꯥꯔ', 'ꯔ꯭']) assert.equal(fixApunOrder(ok), ok)
 })

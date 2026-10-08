@@ -83,6 +83,35 @@ const APUN = '꯭'
 const isClusterConsonant = (c) => typeof c === 'string' && c.length === 1 &&
   c >= 'ꯀ' && c <= 'ꯚ' && c !== 'ꯎ' && c !== 'ꯏ' && c !== 'ꯑ'
 
+// Appends one converted character, moving a typed APUN IYEK between the two
+// consonants it joins: BMEI04 "fy_" -> ꯐ꯭ꯌ. Shared by every BMEI04 -> Unicode
+// path so they all agree.
+function pushConverted(out, char) {
+  if (char === APUN && isClusterConsonant(out[out.length - 1]) && isClusterConsonant(out[out.length - 2])) {
+    out.splice(out.length - 1, 0, APUN)
+  } else {
+    out.push(char)
+  }
+}
+
+// Same consonant set as isClusterConsonant, for regular expressions.
+const CONS = '[\\uABC0-\\uABCD\\uABD0\\uABD2-\\uABDA]'
+// Two consonants then APUN, where nothing can follow the APUN as a cluster
+// partner: a vowel sign, a lonsum letter, another APUN, a non-Mayek character
+// or the end of the text. Correct Unicode never has this; it is BMEI04 typing
+// order that was converted without reordering.
+const KEYSTROKE_ORDER_APUN = new RegExp(`(${CONS})(${CONS})\\uABED(?=[\\uABDB-\\uABED\\uABF0-\\uABFF]|[^\\uABC0-\\uABFF]|$)`, 'g')
+
+/**
+ * Repair Unicode Meetei Mayek that was converted from BMEI04 before APUN
+ * IYEK was reordered (ꯍꯋ꯭ꯥ -> ꯍ꯭ꯋꯥ). Only fixes the cases that cannot be
+ * correct Unicode, so text that is already right is returned unchanged.
+ */
+export function fixApunOrder(text) {
+  if (!text || !String(text).includes(APUN)) return text
+  return String(text).replace(KEYSTROKE_ORDER_APUN, `$1${APUN}$2`)
+}
+
 /**
  * Convert BMEI04 keystrokes (plain English letters, exactly as you'd type
  * them with the Bmei04 font selected in Word) into Unicode Meetei Mayek.
@@ -133,11 +162,8 @@ export function romanToMeetei(text, options = {}, withWarnings = false) {
             reason: `Word-initial vowel sign '${ch}' has no consonant to attach to, and this table has no independent vowel letter for it. Needs a human decision.`,
           })
         }
-      } else if (ch === '_' && isClusterConsonant(out[out.length - 1]) && isClusterConsonant(out[out.length - 2])) {
-        // "fy_" -> ꯐ꯭ꯌ: BMEI04 types APUN after the cluster, Unicode between.
-        out.splice(out.length - 1, 0, APUN)
       } else if (ch in MAPPING) {
-        out.push(MAPPING[ch])
+        pushConverted(out, MAPPING[ch])
       } else if (isLetter) {
         out.push(`[?${ch}?]`)
       } else {
@@ -212,7 +238,7 @@ export function puaToMeetei(text) {
     const code = ch.codePointAt(0)
     if (code >= 0xF020 && code <= 0xF07E) {
       const key = String.fromCharCode(code - 0xF000)
-      if (key in MAPPING) out.push(MAPPING[key])
+      if (key in MAPPING) pushConverted(out, MAPPING[key])
       else if (/[A-Za-z]/.test(key)) out.push(`[?${key}?]`)
       else out.push(key)
     } else {

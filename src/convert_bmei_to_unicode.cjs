@@ -61,13 +61,20 @@ const BMEI_MAP = {
   '+':'ꯘ','{':'ꯓ','}':'ꯙ',':':'ꯚ','"':'ꯋ','<':'ꯈ','>':'ꯊ','?':'ꯎ',
 };
 
+const isClusterConsonant = c => !!c && c >= 'ꯀ' && c <= 'ꯚ' && c !== 'ꯎ' && c !== 'ꯏ' && c !== 'ꯑ';
+
 function bmeiToUnicode(bmei) {
   if (!bmei) return bmei;
   let result = '';
   for (let i = 0; i < bmei.length; i++) {
     const ch = bmei[i];
     if (ch === ' ') { result += ' '; continue; }
-    result += BMEI_MAP[ch] !== undefined ? BMEI_MAP[ch] : ch;
+    const u = BMEI_MAP[ch] !== undefined ? BMEI_MAP[ch] : ch;
+    // BMEI04 types APUN IYEK after the cluster ("fy_"); Unicode puts it
+    // between the two consonants (ꯐ꯭ꯌ). Same rule as src/meetei_mayek.js.
+    const a = result.slice(-1), b = result.slice(-2, -1);
+    if (u === '꯭' && isClusterConsonant(a) && isClusterConsonant(b)) result = result.slice(0, -1) + '꯭' + a;
+    else result += u;
   }
   return result;
 }
