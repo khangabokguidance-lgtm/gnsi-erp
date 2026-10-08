@@ -1390,6 +1390,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // The other roll call of the same day, so both of the day's two roll
   // calls can be shown side by side (the open session's own records are
   // allRecords, which update live as students are marked).
+  // Roll-call screen: a clock for the deadline countdown.
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    if (view !== 'rollcall') return
+    const tick = setInterval(() => setClock(Date.now()), 30000)
+    return () => clearInterval(tick)
+  }, [view])
+
   const [otherSessionRecords, setOtherSessionRecords] = useState([])
   useEffect(() => {
     let cancelled = false
@@ -3160,13 +3168,30 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 300)
     }
 
+    // Desktop shortcuts: P A L S V to mark, ← → to move between students.
+    const KEY_STATUS = { p: 'Present', a: 'Absent', l: 'Late', s: 'Sick', v: 'On Leave' }
+    const onRollCallKey = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setRollCallIndex(i => Math.max(0, i - 1)); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); setRollCallIndex(i => Math.min(total - 1, i + 1)); return }
+      const st = KEY_STATUS[String(e.key).toLowerCase()]
+      if (!st || isDone || !currentStudent || savingId === currentStudent.id) return
+      e.preventDefault()
+      markAndAdvance(currentStudent.id, st)
+    }
+    const keyHint = (k, on) => !mobile && (
+      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 5, verticalAlign: 'middle', border: `1px solid ${on ? 'rgba(255,255,255,.55)' : 'currentColor'}`, opacity: 0.7 }}>{k}</span>
+    )
+
     const dismissCardLeavePrompt = () => {
       setCardLeavePrompt(null)
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 200)
     }
 
     return (
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+      <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
         {reportModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
@@ -3227,8 +3252,37 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
             <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{selectedHouse}</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {date}</div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
+              {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </div>
+            {(() => {
+              // Deadline countdown: Morning 7:00 AM / Night 8:00 PM, 15-min grace.
+              const { deadline, graceEnd, label } = rollCallDeadline(date, session)
+              const mins = Math.round((deadline.getTime() - clock) / 60000)
+              const fmt = m => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
+              const state = isDone ? { t: `Done · due by ${label}`, c: '#86EFAC' }
+                : clock > graceEnd.getTime() ? { t: `Overdue by ${fmt(-mins)} · was due ${label}`, c: '#FCA5A5' }
+                : mins < 0 ? { t: `Grace period · was due ${label}`, c: '#FCD34D' }
+                : mins <= 24 * 60 ? { t: `Due by ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
+                : { t: `Due by ${label}`, c: '#E9D9B0' }
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
+                </div>
+              )
+            })()}
           </div>
+          {!catchUpReturn && (
+            <div role="tablist" aria-label="Roll call" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 3, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)' }}>
+              {[['morning', '🌅'], ['night', '🌙']].map(([k, ic]) => (
+                <button key={k} type="button" role="tab" aria-selected={session === k} title={`${k === 'morning' ? 'Morning' : 'Night'} roll call`}
+                  onClick={() => { if (k !== session) { setSession(k); setRollCallIndex(0) } }}
+                  style={{ width: 34, height: 26, borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 14, background: session === k ? 'linear-gradient(160deg,#d4ae58,#b8923a)' : 'transparent', opacity: session === k ? 1 : 0.6 }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{ minWidth: 54, textAlign: 'center', padding: '7px 10px', borderRadius: 14, fontWeight: 800, fontSize: 14, color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 16px -8px rgba(184,146,58,.9)' }}>
             {Math.min(rollCallIndex + 1, total)}<span style={{ opacity: .6, fontWeight: 700 }}>/{total}</span>
           </div>
@@ -3762,9 +3816,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Big status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
               {[
-                { status: 'Present', bg: '#16a34a', label: '✓ Present' },
-                { status: 'Absent', bg: '#dc2626', label: '✕ Absent' },
-              ].map(({ status, bg, label }) => (
+                { status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' },
+                { status: 'Absent', bg: '#dc2626', label: '✕ Absent', k: 'A' },
+              ].map(({ status, bg, label, k }) => (
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
@@ -3779,7 +3833,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     minHeight: '64px',
                   }}
                 >
-                  {label}
+                  {label}{keyHint(k, currentStatus === status)}
                 </button>
               ))}
             </div>
@@ -3787,10 +3841,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Secondary status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
               {[
-                { status: 'Late', bg: '#b8923a', label: '⏰ Late' },
-                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick' },
-                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave' },
-              ].map(({ status, bg, label }) => (
+                { status: 'Late', bg: '#b8923a', label: '⏰ Late', k: 'L' },
+                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick', k: 'S' },
+                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave', k: 'V' },
+              ].map(({ status, bg, label, k }) => (
                 <button
                   key={status}
                   onClick={() => markAndAdvance(currentStudent.id, status)}
@@ -3804,10 +3858,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
-                  {label}
+                  {label}{keyHint(k, currentStatus === status)}
                 </button>
               ))}
             </div>
+            {!mobile && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', margin: '-10px 0 16px' }}>
+                Keyboard: P present · A absent · L late · S sick · V leave · ← → move
+              </div>
+            )}
 
             {/* Navigation */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
