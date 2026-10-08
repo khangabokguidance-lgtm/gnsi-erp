@@ -21,6 +21,8 @@ import os
 import re
 import sys
 import threading
+import time
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL = "ai4bharat/indictrans2-en-indic-dist-200M"
@@ -30,6 +32,8 @@ MAX_SEGMENTS = 400
 MAX_CHARS = 60000
 MAX_BODY = 1024 * 1024
 BATCH = 8
+BEAMS = 3          # candidate translations weighed per sentence; 5 is a little better and much slower
+MEMORY = 5000      # sentences remembered, so a repeated sentence comes back at once
 
 # Pages allowed to call this program from a browser. "null" is the desktop
 # (Electron) build, which loads the ERP from a file.
@@ -62,7 +66,7 @@ def split_sentences(line):
 class Engine:
     """IndicTrans2, loaded once from the files already downloaded to this computer."""
 
-    def __init__(self, model_name):
+    def __init__(self, model_name, beams=BEAMS, quantize=False):
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         import torch
@@ -72,24 +76,67 @@ class Engine:
         except ImportError:
             from IndicTransToolkit import IndicProcessor
         self.torch = torch
+        self.beams = max(1, beams)
         self.tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name, trust_remote_code=True)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device).eval()
+        if quantize and self.device == "cpu":
+            # 8-bit weights: roughly twice as fast on a processor, slightly rougher wording.
+            self.model = torch.quantization.quantize_dynamic(self.model, {torch.nn.Linear}, dtype=torch.qint8)
         self.ip = IndicProcessor(inference=True)
+        self.memory = OrderedDict()
+        self.use_cache = self._cache_works()
+
+    def _cache_works(self):
+        """The decoder cache (the model remembering what it has already written)
+        makes long sentences many times faster, but the model's own code breaks
+        with it under some transformers releases. Use it only if it gives
+        exactly the same translation as without it."""
+        test = ["The sum of two numbers is 25 and their difference is 7. Find the numbers."]
+        try:
+            slow = self._generate(test, "eng_Latn", "mni_Mtei", use_cache=False)
+        except Exception:
+            return False
+        try:
+            t0 = time.time()
+            fast = self._generate(test, "eng_Latn", "mni_Mtei", use_cache=True)
+            ok = fast == slow
+        except Exception:
+            ok = False
+        print("Decoder cache: %s" % ("on (%.1fs per test sentence)" % (time.time() - t0) if ok
+              else "off — this transformers version breaks it, so translation is slower"), flush=True)
+        return ok
+
+    def _generate(self, sentences, src, tgt, use_cache):
+        batch = self.ip.preprocess_batch(sentences, src_lang=src, tgt_lang=tgt)
+        enc = self.tok(batch, truncation=True, padding="longest", return_tensors="pt").to(self.device)
+        with self.torch.inference_mode():
+            gen = self.model.generate(**enc, use_cache=use_cache, min_length=0, max_length=256,
+                                      num_beams=self.beams, num_return_sequences=1)
+        dec = self.tok.batch_decode(gen, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+        return self.ip.postprocess_batch(dec, lang=tgt)
 
     def translate(self, sentences, src, tgt):
-        out = []
-        for i in range(0, len(sentences), BATCH):
-            batch = self.ip.preprocess_batch(sentences[i:i + BATCH], src_lang=src, tgt_lang=tgt)
-            enc = self.tok(batch, truncation=True, padding="longest", return_tensors="pt").to(self.device)
-            with self.torch.no_grad():
-                # use_cache=False: the model's own code breaks with the cache on
-                # under current transformers releases.
-                gen = self.model.generate(**enc, use_cache=False, min_length=0, max_length=256,
-                                          num_beams=5, num_return_sequences=1)
-            dec = self.tok.batch_decode(gen, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-            out.extend(self.ip.postprocess_batch(dec, lang=tgt))
+        out = [None] * len(sentences)
+        todo = {}  # sentence -> positions, each different sentence translated once
+        for i, s in enumerate(sentences):
+            hit = self.memory.get((src, tgt, s))
+            if hit is not None:
+                self.memory.move_to_end((src, tgt, s))
+                out[i] = hit
+            else:
+                todo.setdefault(s, []).append(i)
+        # Similar lengths together, so a batch isn't padded out to one long sentence.
+        pending = sorted(todo, key=len)
+        for i in range(0, len(pending), BATCH):
+            part = pending[i:i + BATCH]
+            for s, t in zip(part, self._generate(part, src, tgt, self.use_cache)):
+                for k in todo[s]:
+                    out[k] = t
+                self.memory[(src, tgt, s)] = t
+                if len(self.memory) > MEMORY:
+                    self.memory.popitem(last=False)
         return out
 
 
@@ -202,12 +249,16 @@ def main():
     ap = argparse.ArgumentParser(description="Offline translator for the GNSI ERP Mayek Tool")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--model", default=MODEL, help="IndicTrans2 en-indic model already downloaded to this computer")
+    ap.add_argument("--beams", type=int, default=BEAMS,
+                    help="candidate translations per sentence (default %d; 5 is slightly better and slower, 1 is fastest)" % BEAMS)
+    ap.add_argument("--quantize", action="store_true",
+                    help="8-bit model on a computer without a graphics card: about twice as fast, slightly rougher wording")
     ap.add_argument("--allow-origin", action="append", default=[], metavar="URL",
                     help="another site allowed to use this translator, e.g. a Vercel preview address")
     args = ap.parse_args()
 
     print("Loading the translation model (this takes a minute) ...", flush=True)
-    engine = Engine(args.model)
+    engine = Engine(args.model, beams=args.beams, quantize=args.quantize)
     allowed = ALLOWED_ORIGINS | {o.rstrip("/") for o in args.allow_origin}
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(engine, args.model, allowed, threading.Lock()))
     print("Offline translator is ready at http://127.0.0.1:%d" % args.port)

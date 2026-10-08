@@ -54,6 +54,15 @@ function guessLang(text) {
   return null
 }
 
+// Machine-translated Meetei Mayek: the engines split words into pieces and
+// can leave a space beside Apun Iyek ("ꯍ꯭ ꯋꯥ"), which breaks the joined
+// letters, and can put Apun in BMEI04 typing order. A space next to Apun
+// between two letters is never right, so it is removed; then the order is
+// repaired. (Only for engine output: saved BMEI04-converted text keeps its
+// spaces.)
+const APUN_SPACE = /([\uABC0-\uABDA])[ \t]*\uABED[ \t]+(?=[\uABC0-\uABDA])|([\uABC0-\uABDA])[ \t]+\uABED(?=[\uABC0-\uABDA])/g
+export const tidyMayek = t => fixApunOrder(String(t ?? '').replace(APUN_SPACE, (_, a, b) => (a || b) + '\uABED'))
+
 // ── 1. Dictionary ──────────────────────────────────────────────────────────
 // Only the English <-> Meetei Mayek pair: that's what the dictionary holds.
 const dictPair = (from, to) =>
@@ -102,6 +111,31 @@ async function glossary(text, pair) {
   return (await dictLookup('mayek_unicode', tokens)).filter(r => r.entry_type === 'word').slice(0, 120)
 }
 
+// Question numbers and option labels: "1.", "Q2)", "(A)", "(iv)", and "a)" /
+// "B." at the start of a line.
+const LABEL = /^\s*(?:Q\.?\s*)?\d{1,3}\s*[.)]\s+|^\s*[A-Ha-h][.)]\s+|(?:^|(?<=\s))\(\s*(?:[A-Ha-h]|i{1,3}|iv|vi{0,3}|ix|x)\s*\)\s*/g
+
+/** A line cut at its labels — [label string | { text }] — or null if it has none. */
+export function labelPieces(line) {
+  const out = []
+  let last = 0
+  for (const m of String(line).matchAll(LABEL)) {
+    const before = line.slice(last, m.index)
+    if (before.trim()) {
+      const lead = before.match(/^\s*/)[0], trail = before.match(/\s*$/)[0]
+      out.push(lead, { text: before.trim() }, trail)
+    } else out.push(before)
+    out.push(m[0])
+    last = m.index + m[0].length
+  }
+  if (!out.length) return null
+  const rest = line.slice(last)
+  if (rest.trim()) out.push(rest.match(/^\s*/)[0], { text: rest.trim() }, rest.match(/\s*$/)[0])
+  else out.push(rest)
+  const pieces = out.filter(x => x !== '')
+  return pieces.some(x => typeof x !== 'string') ? pieces : null
+}
+
 // ── 2. Translation services ────────────────────────────────────────────────
 // The offline translator is a program on the staff member's own computer
 // (tools/offline-translator), so it is used only in browsers where it has
@@ -130,25 +164,45 @@ const SERVICES = {
   google:   { url: '/api/translate', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei']), auto: true },
 }
 const serviceOff = new Set() // services whose server said "no key", to skip the round trip
+// Online services that just failed or timed out are skipped for a few
+// minutes, so every translation doesn't wait for the same failure again
+// before falling back. (The offline translator is not: it fails at once when
+// it isn't running, and staff start it while the page is open.)
+const serviceDown = new Map() // name -> time it failed
+const RETRY_AFTER = 5 * 60 * 1000
+const SERVICE_TIMEOUT = 45 * 1000
 
 async function viaService(name, segments, from, to) {
   const svc = SERVICES[name]
   if (serviceOff.has(name) || (svc.enabled && !svc.enabled()) || !svc.langs.has(to) || from === to) return null
   if (from === 'auto' ? !svc.auto : !(svc.from || svc.langs).has(from)) return null
+  const online = name !== 'indictrans'
+  if (online && Date.now() - (serviceDown.get(name) || 0) < RETRY_AFTER) return null
+  const failed = () => { if (online) serviceDown.set(name, Date.now()); return null }
   const res = await fetch(svc.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ segments, from, to }),
+    ...(online ? { signal: AbortSignal.timeout(SERVICE_TIMEOUT) } : {}),
   }).catch(() => null)
-  if (!res) return null
+  if (!res) return failed()
   const data = await res.json().catch(() => ({}))
   if (res.status === 501 || res.status === 404) { serviceOff.add(name); return null }
-  if (!res.ok || !Array.isArray(data.segments) || data.segments.length !== segments.length) return null
+  if (!res.ok || !Array.isArray(data.segments) || data.segments.length !== segments.length) return failed()
+  serviceDown.delete(name)
   return { segments: data.segments, detected: data.detected ? langLabel(data.detected) : '' }
 }
 
 // ── 3. Gemini ──────────────────────────────────────────────────────────────
 const CHUNK = 900 // characters per request, so one reply is never cut off
+const GEMINI_PARALLEL = 3 // Gemini requests in flight at once, across the whole page
+
+/** Run fn over items with at most `limit` running at a time. */
+export async function inParallel(items, limit, fn) {
+  let next = 0
+  const worker = async () => { while (next < items.length) { const i = next++; await fn(items[i], i) } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
 
 function buildPrompt(segments, from, to, terms) {
   const src = from === 'auto' ? 'the language it is written in (detect it; Manipuri may be in Meetei Mayek, Bengali or Roman script)' : langName(from)
@@ -181,16 +235,40 @@ function parseReply(raw) {
   return { segments: null, detected: '', raw: s }
 }
 
+// All translator calls to Gemini share one small pool, so a long document
+// can't fire more requests at once than the key's per-minute limit allows;
+// a "too many requests" answer is retried after a short wait.
+let geminiActive = 0
+const geminiQueue = []
+const GEMINI_RETRY_WAIT = [3000, 8000, 20000]
+async function geminiSlot(fn) {
+  if (geminiActive >= GEMINI_PARALLEL) await new Promise(r => geminiQueue.push(r)) // handed a slot
+  else geminiActive++
+  try { return await fn() } finally {
+    const next = geminiQueue.shift()
+    if (next) next() // pass the slot straight on
+    else geminiActive--
+  }
+}
+
 async function callGemini(prompt) {
-  const res = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, maxTokens: 8192 }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `Translation service error (${res.status})`)
-  if (!data.text) throw new Error('The translation service returned nothing — try a shorter text.')
-  return data.text
+  for (let attempt = 0; ; attempt++) {
+    const { res, data } = await geminiSlot(async () => {
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, maxTokens: 8192, thinking: false }),
+      })
+      return { res, data: await res.json().catch(() => ({})) }
+    })
+    if ((res.status === 429 || res.status === 503) && attempt < GEMINI_RETRY_WAIT.length) {
+      await new Promise(r => setTimeout(r, GEMINI_RETRY_WAIT[attempt]))
+      continue
+    }
+    if (!res.ok) throw new Error(data.error || `Translation service error (${res.status})`)
+    if (!data.text) throw new Error('The translation service returned nothing — try a shorter text.')
+    return data.text
+  }
 }
 
 async function viaGemini(segments, from, to, terms, onProgress) {
@@ -204,20 +282,24 @@ async function viaGemini(segments, from, to, terms, onProgress) {
   if (cur.length) groups.push(cur)
 
   const out = new Array(segments.length)
-  let detected = ''
-  for (let g = 0; g < groups.length; g++) {
-    onProgress && onProgress(g + 1, groups.length)
-    const idx = groups[g], texts = idx.map(i => segments[i])
+  let detected = '', done = 0
+  const doGroup = async idx => {
+    const texts = idx.map(i => segments[i])
     const r = parseReply(await callGemini(buildPrompt(texts, from, to, terms)))
     detected = detected || r.detected
-    if (r.segments && r.segments.length === texts.length) { idx.forEach((i, k) => { out[i] = r.segments[k] }); continue }
-    if (texts.length === 1 && r.raw) { out[idx[0]] = r.raw; continue }
-    // Reply didn't line up with the request: redo this group one text at a time.
-    for (const i of idx) {
-      const one = parseReply(await callGemini(buildPrompt([segments[i]], from, to, terms)))
-      out[i] = one.segments?.[0] ?? one.raw ?? ''
+    if (r.segments && r.segments.length === texts.length) idx.forEach((i, k) => { out[i] = r.segments[k] })
+    else if (texts.length === 1 && r.raw) out[idx[0]] = r.raw
+    else {
+      // Reply didn't line up with the request: redo this group one text at a time.
+      await inParallel(idx, GEMINI_PARALLEL, async i => {
+        const one = parseReply(await callGemini(buildPrompt([segments[i]], from, to, terms)))
+        out[i] = one.segments?.[0] ?? one.raw ?? ''
+      })
     }
+    onProgress && onProgress(++done, groups.length)
   }
+  onProgress && groups.length > 1 && onProgress(0, groups.length)
+  await inParallel(groups, GEMINI_PARALLEL, doGroup)
   return { segments: out, detected }
 }
 
@@ -228,8 +310,11 @@ async function viaGemini(segments, from, to, terms, onProgress) {
  * `source` is the text actually translated (BMEI04 converted to Unicode) and
  * `from` is the source language actually used (resolved from 'auto' when
  * the script makes it clear).
+ * With { eachLine: true } every line is translated as its own item instead
+ * of in blocks, so the result always has one line per source line (for
+ * documents whose lines must stay paired; costs a little sentence context).
  */
-export async function translate(text, from, to, onProgress) {
+export async function translate(text, from, to, onProgress, { eachLine = false } = {}) {
   let src = String(text || '').replace(/\r\n?/g, '\n')
   let fromCode = from
   if (from === 'bmei04') { src = bmeiToUnicode(src); fromCode = 'mni-Mtei' }
@@ -240,18 +325,32 @@ export async function translate(text, from, to, onProgress) {
   // Lines the dictionary knows are kept; the rest are grouped into blocks
   // (runs of consecutive lines) so the engine keeps sentence context.
   const lines = src.split('\n')
-  const hits = await dictionaryLines(lines, pair)
-  const parts = [] // { keep } | { seg: index into segments }
+  // Lines with question numbers or option labels ("1.", "(A) … (B) …") are
+  // cut at the labels: the labels are kept exactly as typed and only the
+  // text between them is translated, each piece on its own. Engines
+  // otherwise translate or transliterate the labels, differently each time.
+  const labelled = lines.map(labelPieces)
+  const pieceTexts = labelled.flatMap(p => (p ? p.filter(x => typeof x !== 'string').map(x => x.text) : []))
+  const hits = await dictionaryLines([...lines, ...pieceTexts], pair)
+  const parts = [] // one per output line (or per block of lines): [string | { seg }]
   const segments = []
+  const single = new Set() // segments that must come back as one line
+  const addSeg = (text, one) => { if (one) single.add(segments.length); segments.push(text); return { seg: segments.length - 1 } }
   let block = null
-  for (const line of lines) {
+  const flush = () => { if (block) { parts.push([addSeg(block.join('\n'), false)]); block = null } }
+  lines.forEach((line, n) => {
     const hit = line.trim() && hits.get(line.trim())
     if (hit || !line.trim()) {
-      if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')); block = null }
-      parts.push({ keep: hit ? line.match(/^\s*/)[0] + hit : line })
+      flush()
+      parts.push([hit ? line.match(/^\s*/)[0] + hit : line])
+    } else if (labelled[n]) {
+      flush()
+      parts.push(labelled[n].map(x => (typeof x === 'string' ? x : hits.get(x.text) || addSeg(x.text, true))))
+    } else if (eachLine) {
+      parts.push([addSeg(line, true)])
     } else (block = block || []).push(line)
-  }
-  if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')) }
+  })
+  flush()
 
   let engine = segments.length ? '' : 'dictionary'
   let detected = ''
@@ -271,7 +370,10 @@ export async function translate(text, from, to, onProgress) {
       engine = 'gemini'; translated = r.segments; detected = r.detected
     }
   }
-  const result = parts.map(p => ('keep' in p ? p.keep : translated[p.seg] ?? '')).join('\n')
+  translated = translated.map((t, i) => (single.has(i) ? String(t ?? '').replace(/\s*\n\s*/g, ' ').trim() : t))
+  // Engines trained on BMEI04-typed text can put Apun Iyek in typing order.
+  if (to === 'mni-Mtei') translated = translated.map(tidyMayek)
+  const result = parts.map(line => line.map(x => (typeof x === 'string' ? x : translated[x.seg] ?? '')).join('')).join('\n')
 
   // Machine-translated lines paired with their source line, where a block
   // came back with the same number of lines (else which line is which is
@@ -423,7 +525,7 @@ function draftPrompt(words) {
 // A usable draft: Meetei Mayek (no Bengali script; Latin only for the odd
 // label such as "(A)" inside a sentence).
 const cleanDraft = s => {
-  const t = String(s || '').trim()
+  const t = tidyMayek(String(s || '').trim())
   const m = count(t, MTEI)
   return t && m && !count(t, BENG) && count(t, /[A-Za-z]/g) <= m / 10 ? t : null
 }
@@ -607,7 +709,7 @@ export async function addSentences(sentences, createdBy = null) {
 // Fills a question's Meetei Mayek fields (question_mayek, option_x_mayek)
 // with the offline translator. Only questions with no Meetei Mayek yet.
 const hasWords = t => /[A-Za-z]{2,}/.test(String(t || ''))
-const usableMayek = t => { const s = String(t || '').trim(); return s && count(s, MTEI) && !count(s, BENG) ? s : null }
+const usableMayek = t => { const s = tidyMayek(String(t || '').trim()); return s && count(s, MTEI) && !count(s, BENG) ? s : null }
 
 /** Questions that have English text and no Meetei Mayek at all yet. */
 export const needsMayek = q => hasWords(q.question) && !String(q.question_mayek || '').trim() &&

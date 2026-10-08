@@ -29,7 +29,7 @@ import { PX, PIcon } from './premiumUI'
 import { getInstitute } from './systemSettings'
 import { LOGO_BASE64 } from './logo'
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
-import { translate, ENGINE_LABELS, saveTranslationDrafts, saveCorrections, offlineEnabled, setOfflineEnabled, offlineRunning } from './mayekTranslate'
+import { translate, inParallel, ENGINE_LABELS, saveTranslationDrafts, saveCorrections, offlineEnabled, setOfflineEnabled, offlineRunning } from './mayekTranslate'
 import { readPaperFile, linesFromText, cleanLines, buildPaperDocx, docxFileName, watermarkDataUrl, MAX_LINES, MAYEK_FONT } from './mayekDocx'
 import { prepareSource, buildModel, makeSet, kindOf, paperStats, SET_NAMES } from './mayekPaper'
 import { bmeiToUnicode } from './mayekSegments'
@@ -44,6 +44,7 @@ const SETTINGS_KEY = 'gnsi_mayek_doc_settings'
 const PAPERS_KEY = 'gnsi_mayek_doc_papers'
 const MAX_PAPERS = 25
 const CHUNK = 25 // lines per translation request
+const PARALLEL_CHUNKS = 3 // translation requests in flight at once
 const MTEI = /[ꯀ-꯿]/
 const A4_PX = 794 // 210 mm at 96 dpi
 
@@ -449,7 +450,7 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
     if (out.some(p => p.engine === 'bank')) used.bank = out.filter(p => p.engine === 'bank').length
     setPairs(out.map(p => ({ ...p }))); setWarnings([]); setEngines({})
     const one = async text => {
-      const r = await translate(text, 'en', 'mni-Mtei')
+      const r = await translate(text, 'en', 'mni-Mtei', null, { eachLine: true })
       used[r.engine] = (used[r.engine] || 0) + 1
       r.warnings.forEach(w => warns.add(w))
       saveTranslationDrafts(r.pairs, r.engine, currentStaffId).catch(() => {})
@@ -474,14 +475,22 @@ export default function MayekDocTranslator({ showToast, currentStaffId, question
         insList.forEach(x => { const t = (got[k++] || '').trim(); if (MTEI.test(t)) map[x.en] = t })
         setInsMm(m => ({ ...m, ...map }))
       }
-      for (let c = 0; c < idx.length; c += CHUNK) {
+      // A few chunks at a time: each is a separate request, so running them
+      // together finishes a long paper several times faster.
+      const chunks = []
+      for (let c = 0; c < idx.length; c += CHUNK) chunks.push(idx.slice(c, c + CHUNK))
+      let done = 0
+      setBusy({ label: 'Translating', done: 0, total: idx.length })
+      await inParallel(chunks, PARALLEL_CHUNKS, async part => {
         if (id !== run.current) return
-        const part = idx.slice(c, c + CHUNK)
-        setBusy({ label: 'Translating', done: c, total: idx.length })
         const { got, engine } = await lineByLine(part.map(i => items[i].en))
+        if (id !== run.current) return
         part.forEach((i, k) => { const t = (got[k] || '').trim(); out[i] = { ...items[i], mm: t, machine: t, engine } })
+        done += part.length
+        setBusy({ label: 'Translating', done, total: idx.length })
         setPairs(out.map(p => ({ ...p })))
-      }
+      })
+      if (id !== run.current) return
       setEngines(used); setWarnings([...warns])
       showToast('Translated — check the lines, then download', PX.ok)
     } catch (e) {

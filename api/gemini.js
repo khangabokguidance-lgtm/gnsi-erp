@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { prompt, maxTokens } = req.body
+  const { prompt, maxTokens, thinking } = req.body
   if (!prompt) return res.status(400).json({ error: 'No prompt provided' })
 
   const apiKey = process.env.GEMINI_API_KEY
@@ -20,6 +20,10 @@ export default async function handler(req, res) {
             // Callers may ask for more room (e.g. translation into Meetei
             // Mayek, which is token-heavy); capped so a request can't run away.
             maxOutputTokens: Math.min(Math.max(Number(maxTokens) || 4096, 256), 8192),
+            // thinking: false skips the model's "thinking" pass, which on
+            // gemini-2.5-flash adds many seconds per call. The translator
+            // uses it; other callers keep the default.
+            ...(thinking === false ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           },
         }),
       }
