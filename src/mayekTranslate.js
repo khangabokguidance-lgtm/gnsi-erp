@@ -130,25 +130,45 @@ const SERVICES = {
   google:   { url: '/api/translate', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei']), auto: true },
 }
 const serviceOff = new Set() // services whose server said "no key", to skip the round trip
+// Online services that just failed or timed out are skipped for a few
+// minutes, so every translation doesn't wait for the same failure again
+// before falling back. (The offline translator is not: it fails at once when
+// it isn't running, and staff start it while the page is open.)
+const serviceDown = new Map() // name -> time it failed
+const RETRY_AFTER = 5 * 60 * 1000
+const SERVICE_TIMEOUT = 45 * 1000
 
 async function viaService(name, segments, from, to) {
   const svc = SERVICES[name]
   if (serviceOff.has(name) || (svc.enabled && !svc.enabled()) || !svc.langs.has(to) || from === to) return null
   if (from === 'auto' ? !svc.auto : !(svc.from || svc.langs).has(from)) return null
+  const online = name !== 'indictrans'
+  if (online && Date.now() - (serviceDown.get(name) || 0) < RETRY_AFTER) return null
+  const failed = () => { if (online) serviceDown.set(name, Date.now()); return null }
   const res = await fetch(svc.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ segments, from, to }),
+    ...(online ? { signal: AbortSignal.timeout(SERVICE_TIMEOUT) } : {}),
   }).catch(() => null)
-  if (!res) return null
+  if (!res) return failed()
   const data = await res.json().catch(() => ({}))
   if (res.status === 501 || res.status === 404) { serviceOff.add(name); return null }
-  if (!res.ok || !Array.isArray(data.segments) || data.segments.length !== segments.length) return null
+  if (!res.ok || !Array.isArray(data.segments) || data.segments.length !== segments.length) return failed()
+  serviceDown.delete(name)
   return { segments: data.segments, detected: data.detected ? langLabel(data.detected) : '' }
 }
 
 // ── 3. Gemini ──────────────────────────────────────────────────────────────
 const CHUNK = 900 // characters per request, so one reply is never cut off
+const GEMINI_PARALLEL = 3 // Gemini requests in flight at once, across the whole page
+
+/** Run fn over items with at most `limit` running at a time. */
+export async function inParallel(items, limit, fn) {
+  let next = 0
+  const worker = async () => { while (next < items.length) { const i = next++; await fn(items[i], i) } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
 
 function buildPrompt(segments, from, to, terms) {
   const src = from === 'auto' ? 'the language it is written in (detect it; Manipuri may be in Meetei Mayek, Bengali or Roman script)' : langName(from)
@@ -181,16 +201,40 @@ function parseReply(raw) {
   return { segments: null, detected: '', raw: s }
 }
 
+// All translator calls to Gemini share one small pool, so a long document
+// can't fire more requests at once than the key's per-minute limit allows;
+// a "too many requests" answer is retried after a short wait.
+let geminiActive = 0
+const geminiQueue = []
+const GEMINI_RETRY_WAIT = [3000, 8000, 20000]
+async function geminiSlot(fn) {
+  if (geminiActive >= GEMINI_PARALLEL) await new Promise(r => geminiQueue.push(r)) // handed a slot
+  else geminiActive++
+  try { return await fn() } finally {
+    const next = geminiQueue.shift()
+    if (next) next() // pass the slot straight on
+    else geminiActive--
+  }
+}
+
 async function callGemini(prompt) {
-  const res = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, maxTokens: 8192 }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `Translation service error (${res.status})`)
-  if (!data.text) throw new Error('The translation service returned nothing — try a shorter text.')
-  return data.text
+  for (let attempt = 0; ; attempt++) {
+    const { res, data } = await geminiSlot(async () => {
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, maxTokens: 8192, thinking: false }),
+      })
+      return { res, data: await res.json().catch(() => ({})) }
+    })
+    if ((res.status === 429 || res.status === 503) && attempt < GEMINI_RETRY_WAIT.length) {
+      await new Promise(r => setTimeout(r, GEMINI_RETRY_WAIT[attempt]))
+      continue
+    }
+    if (!res.ok) throw new Error(data.error || `Translation service error (${res.status})`)
+    if (!data.text) throw new Error('The translation service returned nothing — try a shorter text.')
+    return data.text
+  }
 }
 
 async function viaGemini(segments, from, to, terms, onProgress) {
@@ -204,20 +248,24 @@ async function viaGemini(segments, from, to, terms, onProgress) {
   if (cur.length) groups.push(cur)
 
   const out = new Array(segments.length)
-  let detected = ''
-  for (let g = 0; g < groups.length; g++) {
-    onProgress && onProgress(g + 1, groups.length)
-    const idx = groups[g], texts = idx.map(i => segments[i])
+  let detected = '', done = 0
+  const doGroup = async idx => {
+    const texts = idx.map(i => segments[i])
     const r = parseReply(await callGemini(buildPrompt(texts, from, to, terms)))
     detected = detected || r.detected
-    if (r.segments && r.segments.length === texts.length) { idx.forEach((i, k) => { out[i] = r.segments[k] }); continue }
-    if (texts.length === 1 && r.raw) { out[idx[0]] = r.raw; continue }
-    // Reply didn't line up with the request: redo this group one text at a time.
-    for (const i of idx) {
-      const one = parseReply(await callGemini(buildPrompt([segments[i]], from, to, terms)))
-      out[i] = one.segments?.[0] ?? one.raw ?? ''
+    if (r.segments && r.segments.length === texts.length) idx.forEach((i, k) => { out[i] = r.segments[k] })
+    else if (texts.length === 1 && r.raw) out[idx[0]] = r.raw
+    else {
+      // Reply didn't line up with the request: redo this group one text at a time.
+      await inParallel(idx, GEMINI_PARALLEL, async i => {
+        const one = parseReply(await callGemini(buildPrompt([segments[i]], from, to, terms)))
+        out[i] = one.segments?.[0] ?? one.raw ?? ''
+      })
     }
+    onProgress && onProgress(++done, groups.length)
   }
+  onProgress && groups.length > 1 && onProgress(0, groups.length)
+  await inParallel(groups, GEMINI_PARALLEL, doGroup)
   return { segments: out, detected }
 }
 
@@ -228,8 +276,11 @@ async function viaGemini(segments, from, to, terms, onProgress) {
  * `source` is the text actually translated (BMEI04 converted to Unicode) and
  * `from` is the source language actually used (resolved from 'auto' when
  * the script makes it clear).
+ * With { eachLine: true } every line is translated as its own item instead
+ * of in blocks, so the result always has one line per source line (for
+ * documents whose lines must stay paired; costs a little sentence context).
  */
-export async function translate(text, from, to, onProgress) {
+export async function translate(text, from, to, onProgress, { eachLine = false } = {}) {
   let src = String(text || '').replace(/\r\n?/g, '\n')
   let fromCode = from
   if (from === 'bmei04') { src = bmeiToUnicode(src); fromCode = 'mni-Mtei' }
@@ -249,6 +300,8 @@ export async function translate(text, from, to, onProgress) {
     if (hit || !line.trim()) {
       if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')); block = null }
       parts.push({ keep: hit ? line.match(/^\s*/)[0] + hit : line })
+    } else if (eachLine) {
+      parts.push({ seg: segments.length }); segments.push(line)
     } else (block = block || []).push(line)
   }
   if (block) { parts.push({ seg: segments.length }); segments.push(block.join('\n')) }
@@ -271,6 +324,7 @@ export async function translate(text, from, to, onProgress) {
       engine = 'gemini'; translated = r.segments; detected = r.detected
     }
   }
+  if (eachLine) translated = translated.map(t => String(t ?? '').replace(/\s*\n\s*/g, ' '))
   const result = parts.map(p => ('keep' in p ? p.keep : translated[p.seg] ?? '')).join('\n')
 
   // Machine-translated lines paired with their source line, where a block

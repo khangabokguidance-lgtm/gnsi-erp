@@ -3064,7 +3064,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
     const id = ++run.current
     setBusy('Translating…'); setWarnings([]); setDetected(''); setLast(null); setAutoSaved(0)
     try {
-      const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating part ${i} of ${n}…`) })
+      const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating… ${i} of ${n} parts done`) })
       if (id !== run.current) return
       setOutput(r.text); setDetected(r.detected); setWarnings(r.warnings)
       setLast({ source: r.source, machine: r.text, from: r.from, to, engine: r.engine, dictLines: r.dictLines })
