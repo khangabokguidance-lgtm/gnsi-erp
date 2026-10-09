@@ -4,6 +4,10 @@
 import { useMemo, useState } from 'react'
 import { getSessionYear, sessionStartYear } from './feeEngine'
 import { buildAllLedgers, printLedgerBook } from './feeLedgerBulk'
+import { canonicalBatch, courseOf } from './courseMap'
+
+// Course for the filters: the resolved course, or the saved one if unknown.
+const crs = s => { const c = courseOf(s); return c === 'Unassigned' ? (s.course || '') : c }
 
 const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')
 const lbl = { fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#6b7690', display: 'block', marginBottom: 5 }
@@ -26,10 +30,12 @@ export default function PrintAllLedgers({ students, onClose }) {
 
   const uniq = arr => [...new Set(arr.filter(Boolean))].sort()
   const pool = useMemo(() => students.filter(s => s.gcc_no && (!activeOnly || isActive(s))), [students, activeOnly])
-  const courses = useMemo(() => uniq(pool.map(s => s.course)), [pool])
-  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || s.course === course).map(s => s.batch)), [pool, course])
+  const courses = useMemo(() => uniq(pool.map(crs)), [pool])
+  // Resolved course and standard batch name: "UDAAN" / old "Elite" are one
+  // Udaan entry, and a blank course on a Udaan / Pragati batch is Foundation.
+  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || crs(s) === course).map(s => canonicalBatch(s.batch))), [pool, course])
   const hostels = useMemo(() => uniq(pool.map(s => s.hostel_type)), [pool])
-  const chosen = useMemo(() => pool.filter(s => (course === 'All' || s.course === course) && (batch === 'All' || s.batch === batch) && (hostel === 'All' || s.hostel_type === hostel)), [pool, course, batch, hostel])
+  const chosen = useMemo(() => pool.filter(s => (course === 'All' || crs(s) === course) && (batch === 'All' || canonicalBatch(s.batch) === batch) && (hostel === 'All' || s.hostel_type === hostel)), [pool, course, batch, hostel])
 
   const run = async () => {
     if (!chosen.length) return
