@@ -635,13 +635,87 @@ async function checkSixTabComplianceForWindow(houseName, start, end, houseStuden
 // existing roll-call completion warning banner.
 async function checkSixTabCompliance(houseName, dateStr, session, houseStudentIds) {
   const { start, end } = sessionWindow(dateStr, session)
-  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  const missing = await checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  return withoutConfirmed(missing, houseName, dateStr, session)
 }
 
 // Standalone 2x-daily wrapper (Morning/Night, 12hr split).
 async function checkSixTabComplianceForSlot(houseName, dateStr, slotKey, houseStudentIds) {
   const { start, end } = dailySlotWindow(dateStr, slotKey)
-  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  const missing = await checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  return withoutConfirmed(missing, houseName, dateStr, slotKey)
+}
+
+// ── Before-roll-call checklist ─────────────────────────────────────
+// A housemaster can start a roll call only once each compulsory tab has
+// an entry for that session (morning 00–12, night 12–24), or — where the
+// admin allows it — they have confirmed "Nothing to report" for it.
+// Rules per tab: 'off' (not checked), 'confirm' (an entry or "Nothing to
+// report"), 'fill' (an entry is required). Saved in system_settings.
+const PRECHECK_SETTING_KEY = 'hostel_rollcall_required_tabs'
+const PRECHECK_RETURN_KEY = 'gnsi_precheck_return'
+const PRECHECK_RULES = [
+  { key: 'off', label: 'Not required' },
+  { key: 'confirm', label: 'Entry or “Nothing to report”' },
+  { key: 'fill', label: 'Entry required' },
+]
+const PRECHECK_DEFAULT = Object.fromEntries(SIX_TABS.map(t => [t.key, 'confirm']))
+
+async function loadPrecheckRules() {
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', PRECHECK_SETTING_KEY).maybeSingle()
+    const v = typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value
+    if (v && typeof v === 'object') return { ...Object.fromEntries(SIX_TABS.map(t => [t.key, 'off'])), ...v }
+  } catch { /* not saved yet — use the default */ }
+  return PRECHECK_DEFAULT
+}
+
+async function savePrecheckRules(rules) {
+  const { error } = await supabase.from('system_settings').upsert(
+    { key: PRECHECK_SETTING_KEY, value: JSON.stringify(rules), updated_at: new Date().toISOString() },
+    { onConflict: 'key' })
+  return error
+}
+
+// "Nothing to report" confirmations for one house's session → Set of tab
+// keys, or null when the table isn't there yet (SQL 20261024 not run).
+async function loadPrecheckConfirmations(houseName, dateStr, session) {
+  try {
+    const { data, error } = await supabase.from('hm_rollcall_precheck').select('tab_key')
+      .ilike('house', houseName).eq('date', dateStr).eq('session', session)
+    if (error) return null
+    return new Set((data || []).map(r => r.tab_key))
+  } catch { return null }
+}
+
+async function savePrecheckConfirmation(houseName, dateStr, session, tabKey, by) {
+  const { error } = await supabase.from('hm_rollcall_precheck').upsert(
+    { house: houseName, date: dateStr, session, tab_key: tabKey, status: 'none', confirmed_by: by || null },
+    { onConflict: 'house,date,session,tab_key' })
+  return error
+}
+
+// A tab confirmed "Nothing to report" before roll call isn't a gap.
+async function withoutConfirmed(missing, houseName, dateStr, session) {
+  if (!missing.length) return missing
+  const confirmed = await loadPrecheckConfirmations(houseName, dateStr, session)
+  return confirmed ? missing.filter(k => !confirmed.has(k)) : missing
+}
+
+// Each compulsory tab's state for one house's session:
+// 'filled' | 'none' (confirmed nothing to report) | 'pending'.
+async function evaluatePrecheck(houseName, dateStr, session, houseStudentIds, rules) {
+  const { start, end } = sessionWindow(dateStr, session)
+  const tabs = SIX_TABS.filter(t => (rules[t.key] || 'off') !== 'off')
+  const [filled, confirmed] = await Promise.all([
+    Promise.all(tabs.map(t => TAB_CHECKERS[t.key](houseName, start, end, houseStudentIds))),
+    loadPrecheckConfirmations(houseName, dateStr, session),
+  ])
+  const status = {}
+  tabs.forEach((t, i) => {
+    status[t.key] = filled[i] ? 'filled' : rules[t.key] === 'confirm' && confirmed?.has(t.key) ? 'none' : 'pending'
+  })
+  return { status, tableReady: confirmed !== null }
 }
 
 // Re-verify a single tab against a given window — used by the manual
@@ -2154,7 +2228,70 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setApprovingLeaveId(null)
   }
 
+  // ── Before-roll-call checklist (housemasters; admins start directly) ──
+  const precheckOn = !isAdmin
+  const [precheckRules, setPrecheckRules] = useState(null)
+  const [precheck, setPrecheck] = useState({}) // `${house}_${date}_${session}` → { status, tableReady }
+  // Reopened after "Fill now" sends the housemaster to a tab and back.
+  const [precheckHouse, setPrecheckHouse] = useState(() => {
+    try {
+      const r = JSON.parse(sessionStorage.getItem(PRECHECK_RETURN_KEY) || 'null')
+      return r && r.date === today() ? r.house : null
+    } catch { return null }
+  })
+  const [precheckBusy, setPrecheckBusy] = useState(null) // tab key being confirmed
+  const [precheckError, setPrecheckError] = useState('')
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const [rulesDraft, setRulesDraft] = useState(null)
+  const [rulesSaving, setRulesSaving] = useState(false)
+  useEffect(() => {
+    try { sessionStorage.removeItem(PRECHECK_RETURN_KEY) } catch { /* private mode */ }
+    let alive = true
+    loadPrecheckRules().then(r => { if (alive) setPrecheckRules(r) })
+    return () => { alive = false }
+  }, [])
+  const precheckKey = houseName => `${houseName}_${date}_${session}`
+  const houseIdsFor = houseName => activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName)).map(s => s.id)
+  const refreshPrecheck = async houseName => {
+    const rules = precheckRules || await loadPrecheckRules()
+    const result = await evaluatePrecheck(houseName, date, session, houseIdsFor(houseName), rules)
+    setPrecheck(prev => ({ ...prev, [`${houseName}_${date}_${session}`]: result }))
+  }
+  useEffect(() => {
+    if (!precheckHouse) return
+    let alive = true
+    const h = precheckHouse
+    ;(precheckRules ? Promise.resolve(precheckRules) : loadPrecheckRules())
+      .then(rules => evaluatePrecheck(h, date, session, houseIdsFor(h), rules))
+      .then(result => { if (alive) setPrecheck(prev => ({ ...prev, [`${h}_${date}_${session}`]: result })) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precheckHouse, date, session, precheckRules])
+  const precheckCleared = houseName => {
+    const st = precheck[precheckKey(houseName)]?.status
+    return !!st && Object.values(st).every(v => v !== 'pending')
+  }
+  const confirmNothing = async (houseName, tabKey) => {
+    setPrecheckBusy(tabKey); setPrecheckError('')
+    const error = await savePrecheckConfirmation(houseName, date, session, tabKey, currentHousemaster?.name || currentUser?.name)
+    setPrecheckBusy(null)
+    if (error) { setPrecheckError('Could not save — ask the office to run SQL 20261024 (hm_rollcall_precheck). ' + (error.message || '')); return }
+    const key = precheckKey(houseName)
+    setPrecheck(prev => ({ ...prev, [key]: { ...prev[key], status: { ...prev[key]?.status, [tabKey]: 'none' } } }))
+  }
+  const fillNow = (houseName, tab) => {
+    try { sessionStorage.setItem(PRECHECK_RETURN_KEY, JSON.stringify({ house: houseName, date })) } catch { /* private mode */ }
+    if (onCompleteTab) onCompleteTab(tab.rootTabId, houseName)
+    else onTabChange?.(tab.rootTabId)
+  }
+
   const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    // Housemasters clear the checklist first (not for a missed past day).
+    const alreadyStarted = allRecords.some(r => r.house && normalizeHouse(r.house) === normalizeHouse(houseName))
+    if (!skipBlockCheck && precheckOn && date === today() && !alreadyStarted && !precheckCleared(houseName)) {
+      setPrecheckHouse(houseName)
+      return false
+    }
     // isHouseBlocked checks whether the day before "today" (homeDate) is
     // complete. That check is meaningless — and self-defeating — while
     // we're deliberately opening the *missed* prior day's catch-up roll
@@ -2183,6 +2320,149 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     return true
   }
 
+  // ── Before-roll-call checklist modal ──
+  const precheckModal = (() => {
+    if (!precheckHouse) return null
+    const h = precheckHouse
+    const result = precheck[precheckKey(h)]
+    const rules = precheckRules || PRECHECK_DEFAULT
+    const tabs = SIX_TABS.filter(t => (rules[t.key] || 'off') !== 'off')
+    const st = result?.status || {}
+    const doneCount = tabs.filter(t => st[t.key] && st[t.key] !== 'pending').length
+    const allClear = !!result && doneCount === tabs.length
+    const title = String(h).replace(/\b\w/g, c => c.toUpperCase())
+    const close = () => { setPrecheckHouse(null); setPrecheckError('') }
+    const pct = tabs.length ? Math.round(doneCount / tabs.length * 100) : 100
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Before roll call" onClick={close}
+        style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(10,18,32,.55)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', display: 'flex', alignItems: mobile ? 'flex-end' : 'center', justifyContent: 'center', padding: mobile ? 0 : 20 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ width: '100%', maxWidth: 560, maxHeight: mobile ? '92vh' : '88vh', overflowY: 'auto', background: '#fff', borderRadius: mobile ? '22px 22px 0 0' : 22, boxShadow: '0 30px 60px -20px rgba(10,18,32,.6)' }}>
+          <div style={{ position: 'relative', color: '#fff', padding: mobile ? '18px 18px 16px' : '22px 24px 18px', borderRadius: mobile ? '22px 22px 0 0' : '22px 22px 0 0',
+            background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: '22px 22px 0 0', background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Before roll call · {session === 'morning' ? '🌅 Morning' : '🌙 Night'}</div>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, lineHeight: 1.2, marginTop: 4 }}>{title} House</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 4 }}>Fill these tabs for this session first — roll call opens once every one is done.</div>
+              </div>
+              <button onClick={close} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,.25)', background: 'rgba(255,255,255,.08)', color: '#fff', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
+              <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,.14)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: allClear ? '#22C55E' : 'linear-gradient(90deg,#B8913F,#E2C57E)', transition: 'width .3s' }} />
+              </div>
+              <span style={{ fontSize: 12.5, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{result ? `${doneCount}/${tabs.length}` : '…'}</span>
+            </div>
+          </div>
+
+          <div style={{ padding: mobile ? '14px 14px 18px' : '18px 22px 22px' }}>
+            {!result ? (
+              <div style={{ textAlign: 'center', padding: '26px 0', color: '#64748B', fontSize: 13 }}>Checking today's entries…</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {tabs.map(t => {
+                  const v = st[t.key]
+                  const done = v && v !== 'pending'
+                  const { icon, text } = (() => { const m = t.label.match(/^(\S+)\s+(.*)$/); return m ? { icon: m[1], text: m[2] } : { icon: '•', text: t.label } })()
+                  return (
+                    <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', borderRadius: 14,
+                      background: done ? '#F0FDF4' : '#FCFBF7', border: `1px solid ${done ? '#BBE5C8' : '#ECE6D8'}` }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0,
+                        background: done ? '#15803D' : 'linear-gradient(160deg,#1F4E8C,#0B1E3D)', color: '#fff' }}>{done ? '✓' : icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: '#0F172A' }}>{text}</div>
+                        <div style={{ fontSize: 11.5, color: done ? '#15803D' : '#94A3B8', marginTop: 1 }}>
+                          {v === 'filled' ? 'Entry added this session' : v === 'none' ? 'Nothing to report — confirmed' : rules[t.key] === 'fill' ? 'Entry required' : 'Add an entry, or confirm nothing to report'}
+                        </div>
+                      </div>
+                      {!done && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {rules[t.key] === 'confirm' && (
+                            <button onClick={() => confirmNothing(h, t.key)} disabled={precheckBusy === t.key}
+                              style={{ padding: '8px 11px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                              {precheckBusy === t.key ? 'Saving…' : 'Nothing to report'}
+                            </button>
+                          )}
+                          <button onClick={() => fillNow(h, t)}
+                            style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                            Fill now →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {tabs.length === 0 && <div style={{ fontSize: 13, color: '#64748B', textAlign: 'center', padding: 10 }}>No tabs are required before roll call.</div>}
+              </div>
+            )}
+            {precheckError && <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '8px 10px' }}>{precheckError}</div>}
+            {result && !result.tableReady && tabs.some(t => rules[t.key] === 'confirm') && !precheckError && (
+              <div style={{ marginTop: 10, fontSize: 11.5, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '8px 10px' }}>
+                “Nothing to report” needs SQL 20261024 run in Supabase.
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => refreshPrecheck(h)}
+                style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ↻ Recheck
+              </button>
+              <button disabled={!allClear} onClick={() => { setPrecheckHouse(null); setSelectedHouse(h); startRollCall(h) }}
+                style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', fontSize: 14, fontWeight: 800, fontFamily: 'inherit',
+                  cursor: allClear ? 'pointer' : 'not-allowed', color: allClear ? '#1A1406' : '#94A3B8',
+                  background: allClear ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5',
+                  boxShadow: allClear ? 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' : 'none' }}>
+                {allClear ? 'Start roll call →' : `🔒 ${tabs.length - doneCount} left before roll call`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  })()
+
+  // ── Admin: which tabs are compulsory before roll call ──
+  const rulesModal = rulesOpen && rulesDraft && (
+    <div role="dialog" aria-modal="true" aria-label="Before roll call settings" onClick={() => setRulesOpen(false)}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(10,18,32,.55)', display: 'flex', alignItems: mobile ? 'flex-end' : 'center', justifyContent: 'center', padding: mobile ? 0 : 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: mobile ? '22px 22px 0 0' : 22, padding: mobile ? 16 : 22, boxShadow: '0 30px 60px -20px rgba(10,18,32,.6)' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#B8923A' }}>Roll call rules</div>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 600, color: '#0B1E3D', marginTop: 2 }}>Tabs to fill before roll call</div>
+        <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 4, marginBottom: 14 }}>Housemasters can't start the morning or night roll call until these are done for that session.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {SIX_TABS.map(t => (
+            <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 14, border: '1px solid #ECE6D8', background: '#FCFBF7' }}>
+              <span style={{ flex: 1, minWidth: 120, fontSize: 13.5, fontWeight: 800, color: '#0F172A' }}>{t.label}</span>
+              <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #E5DCC7', borderRadius: 11, padding: 3, flexWrap: 'wrap' }}>
+                {PRECHECK_RULES.map(r => {
+                  const on = (rulesDraft[t.key] || 'off') === r.key
+                  return (
+                    <button key={r.key} type="button" aria-pressed={on} onClick={() => setRulesDraft(d => ({ ...d, [t.key]: r.key }))}
+                      style={{ padding: '6px 10px', borderRadius: 8, border: 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'linear-gradient(180deg,#1E3A6E,#132A4F)' : 'transparent', color: on ? '#fff' : '#5D6B82' }}>{r.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button onClick={() => setRulesOpen(false)} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button disabled={rulesSaving} onClick={async () => {
+            setRulesSaving(true)
+            const error = await savePrecheckRules(rulesDraft)
+            setRulesSaving(false)
+            if (error) { alert('Could not save: ' + error.message); return }
+            setPrecheckRules(rulesDraft); setPrecheck({}); setRulesOpen(false)
+          }} style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(160deg,#D4AE58,#B8923A)', color: '#1A1406', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {rulesSaving ? 'Saving…' : 'Save rules'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   // ══════════════════════════════════════════════════
   //  VIEW 1: ALL HOUSES OVERVIEW
   // ══════════════════════════════════════════════════
@@ -2192,7 +2472,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}
+        {reportModal}{precheckModal}{rulesModal}
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
@@ -2246,6 +2526,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Pick a date"
                   style={{ height: 34, padding: '0 10px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 12.5, fontFamily: 'inherit' }} />
                 <button onClick={() => setDate(shift(1))} style={navBtn} aria-label="Next day">›</button>
+                {isAdmin && (
+                  <button onClick={() => { setRulesDraft(precheckRules || PRECHECK_DEFAULT); setRulesOpen(true) }} title="Tabs housemasters must fill before roll call"
+                    style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 12 }}>⚙ Before roll call</button>
+                )}
               </div>
 
               {/* The two roll calls */}
@@ -2970,7 +3254,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}
+        {reportModal}{precheckModal}{rulesModal}
         {/* Header */}
         <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
@@ -3229,7 +3513,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
-        {reportModal}
+        {reportModal}{precheckModal}{rulesModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
             <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
