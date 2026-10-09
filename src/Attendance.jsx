@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
-import { courseOf, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { courseOf, canonicalBatch, takeAttendanceHandoff, handoffToStudents } from './courseMap'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
@@ -1467,13 +1467,22 @@ function TabMark({ staff, prefill }) {
     // `course` column dropped every student whose course was blank (older
     // records only have `batch`), so they were in Students but never on the
     // roll call. Batch is filtered server-side; course is resolved here.
-    let q = supabase.from('students')
-      .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
-      .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
-    if (form.subtype)   q = q.eq('batch', form.subtype)
-    if (form.class_name) q = q.eq('class_name', form.class_name)
-    const { data: raw } = await q.order('name')
-    const data = (raw || []).filter(s => courseOf(s) === form.course)
+    // Paged — without a batch filter the list can pass Supabase's 1000-row cap.
+    const raw = []
+    for (let from = 0; ; from += 1000) {
+      let q = supabase.from('students')
+        .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
+        .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
+      if (form.class_name) q = q.eq('class_name', form.class_name)
+      const { data: page, error } = await q.order('name').order('id').range(from, from + 999)
+      if (error) { console.error('Roster load failed:', error); break }
+      raw.push(...(page || []))
+      if (!page || page.length < 1000) break
+    }
+    // Batch matched here, not with .eq('batch', …): "UDAAN", "Udaan — ENG"
+    // and the old "Elite"/"Prime" all belong on the Udaan/Pragati register.
+    const inBatch = s => !form.subtype || canonicalBatch(s.batch || s.class_name) === canonicalBatch(form.subtype)
+    const data = raw.filter(s => courseOf(s) === form.course && inBatch(s))
     // Map to the field names the rest of this component (and the save/
     // WhatsApp-report/notify code below) already expects, so nothing
     // downstream needs to change: student_id/student_name/gcc_no/hostel_type.
@@ -5147,8 +5156,8 @@ function TabStudentDB({ isAdmin }) {
   }, [courseFilter])
 
   const filtered = visibleStudents.filter(s => {
-    if (courseFilter !== 'all' && s.course !== courseFilter) return false
-    if (batchFilter !== 'all' && s.batch !== batchFilter) return false
+    if (courseFilter !== 'all' && courseOf(s) !== courseFilter) return false
+    if (batchFilter !== 'all' && canonicalBatch(s.batch) !== canonicalBatch(batchFilter)) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     // Phone is masked for non-admins (see render below), so it also
