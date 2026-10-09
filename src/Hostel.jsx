@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from 'rea
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
 import { StaffAvatar, findStaffPhoto } from './staffPhotos'
+import { canonicalBatch, courseOf } from './courseMap'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -9079,8 +9080,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   // Option lists for the advanced-filter selects — drawn from every student
   // on record (not just activeStudents) so a filter can still be used to,
   // say, find dropout students of a particular batch.
-  const advBatchOptions = useMemo(() => [...new Set(students.map(s => s.batch).filter(Boolean))].sort(), [students])
-  const advCourseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students])
+  // Standard names, so "UDAAN", "Udaan — ENG" and the old "Elite" are one
+  // Udaan entry, and a blank course on a Udaan / Pragati batch is Foundation.
+  const advBatchOptions = useMemo(() => [...new Set(students.map(s => canonicalBatch(s.batch)).filter(Boolean))].sort(), [students])
+  const advCourseOptions = useMemo(() => [...new Set(students.map(s => courseOf(s)).filter(c => c && c !== 'Unassigned'))].sort(), [students])
   const advGenderOptions = useMemo(() => [...new Set(students.map(s => s.gender).filter(Boolean))].sort(), [students])
   const advHostelTypeOptions = useMemo(() => [...new Set(students.map(s => s.hostel_type).filter(Boolean))].sort(), [students])
 
@@ -9097,8 +9100,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         : assignFilter === 'Dropout' ? s.status === 'Dropout'
         : s.status !== 'Dropout' && normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
       const matchesAdv =
-        (advBatch === 'All' || s.batch === advBatch) &&
-        (advCourse === 'All' || s.course === advCourse) &&
+        (advBatch === 'All' || canonicalBatch(s.batch) === advBatch) &&
+        (advCourse === 'All' || courseOf(s) === advCourse) &&
         (advGender === 'All' || s.gender === advGender) &&
         (advHostelType === 'All' || s.hostel_type === advHostelType)
       return matchesSearch && matchesFilter && matchesAdv

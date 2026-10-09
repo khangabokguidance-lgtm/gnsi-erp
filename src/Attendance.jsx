@@ -2783,8 +2783,9 @@ function TabReport() {
       }
       if (sess?.session_date) map[r.student_name].byDate[sess.session_date] = r.status
       if (sess) {
-        const bkey = `${sess.course}||${sess.subtype||'—'}||${sess.session_date}`
-        if (!batchMap[bkey]) batchMap[bkey] = { course: sess.course, batch: sess.subtype||'—', date: sess.session_date, Present:0, total:0 }
+        const sub = canonicalBatch(sess.subtype) || '—' // old "Elite"/"Prime" sessions join Udaan/Pragati
+        const bkey = `${sess.course}||${sub}||${sess.session_date}`
+        if (!batchMap[bkey]) batchMap[bkey] = { course: sess.course, batch: sub, date: sess.session_date, Present:0, total:0 }
         if (r.status==='Present') batchMap[bkey].Present++
         batchMap[bkey].total++
       }
