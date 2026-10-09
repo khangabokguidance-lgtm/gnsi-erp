@@ -11658,6 +11658,36 @@ function HostelParentItemsTab({ currentHousemaster, currentUser }) {
   )
 }
 
+// The housemaster record for a login. Names are compared without titles,
+// dots, case or word order ("Mr. Pheiroijam Adison" = "Adison Pheiroijam"),
+// also against the login's Staff profile name; then by phone or email; then
+// a record whose name contains all of the login's name words (or the other
+// way round), when exactly one does.
+const NAME_TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'sir', 'madam', 'dr', 'shri', 'smt'])
+const nameWords = n => String(n || '').toLowerCase().replace(/[.,]/g, ' ').split(/\s+/).filter(w => w && !NAME_TITLES.has(w))
+const nameKey = n => nameWords(n).sort().join(' ')
+const digits10 = v => String(v || '').replace(/\D/g, '').slice(-10)
+function findHousemasterForUser(rows, user, staffName) {
+  const active = (rows || []).filter(h => String(h.status || 'Active').toLowerCase() === 'active' && h.house)
+  const keys = [user?.name, staffName, user?.full_name].map(nameKey).filter(Boolean)
+  if (!keys.length && !user?.phone && !user?.email) return null
+  const byName = active.find(h => keys.includes(nameKey(h.name)))
+  if (byName) return byName
+  const phone = digits10(user?.phone || user?.mobile)
+  const email = String(user?.email || '').trim().toLowerCase()
+  const byContact = active.find(h => (phone.length === 10 && digits10(h.phone) === phone) || (email && String(h.email || '').trim().toLowerCase() === email))
+  if (byContact) return byContact
+  const loose = active.filter(h => {
+    const hw = new Set(nameWords(h.name))
+    return [user?.name, staffName].some(n => {
+      const uw = nameWords(n)
+      if (uw.length < 2 || hw.size < 2) return false
+      return uw.every(w => hw.has(w)) || [...hw].every(w => uw.includes(w))
+    })
+  })
+  return loose.length === 1 ? loose[0] : null
+}
+
 function Hostel() {
   // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
   // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
@@ -11764,12 +11794,8 @@ function Hostel() {
       // .select(), capped at 1000 rows).
       getAllStudents('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
-      // Case-insensitive, so "Sir James" on the login still finds "SIR JAMES".
-      supabase.from('housemasters').select('*')
-        .eq('status', 'Active')
-        .ilike('name', (currentUser?.name || '').trim() || '-')
-        .limit(1)
-        .maybeSingle(),
+      // All housemasters; the one for this login is picked below.
+      supabase.from('housemasters').select('*'),
       supabase.from('houses').select('name, color_index'),
     ])
     if (e2) console.error('Staff fetch error:', e2)
@@ -11778,7 +11804,8 @@ function Hostel() {
     console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
     setStudents(s || [])
     setStaffProfiles(st || [])
-    setCurrentHousemaster(hm || null)
+    const staffName = (st || []).find(p => currentUser?.staff_profile_id != null && String(p.id) === String(currentUser.staff_profile_id))?.name
+    setCurrentHousemaster(findHousemasterForUser(hm || [], currentUser, staffName))
 
     // Load house colors
     if (houses?.length) {
