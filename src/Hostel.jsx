@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
+import { StaffAvatar } from './staffPhotos'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -378,11 +379,55 @@ function buildComplianceWaMessage(houseName, slotLabel, dateStr, missingLabels, 
   return `⚠️ Compliance Alert — ${who}\n${slotLabel} · ${dateStr}\nMissing: ${missingLabels}\n\nPlease log the above and confirm here.`
 }
 
-// Roll-call-completion report (separate from the compliance-gap message
-// above) — sent whenever a house's roll call hits 100% marked.
-function buildRollCallReportMessage(houseName, sessionLabel, dateStr, marked, total, housemasterName) {
-  const who = housemasterName ? `${housemasterName} (${houseName})` : houseName
-  return `✅ Roll Call Report — ${who}\n${sessionLabel} · ${dateStr}\nMarked: ${marked}/${total}\n\nRoll call completed and submitted.`
+// Full roll-call report for WhatsApp: counts plus who is out, so the
+// recipient doesn't have to open the app.
+function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other }) {
+  const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+  const names = list => list.map(st => `  • ${st.name}${st.gcc_no ? ` (GCC ${st.gcc_no})` : ''}`).join('\n')
+  return [
+    `✅ *Roll Call Report — ${title} House*`,
+    `${sessionLabel} · ${dateStr}`,
+    hm ? `${hmTitle(hm)}: ${hm.name}` : null,
+    '',
+    `Total: ${total}`,
+    `✓ Present: ${present.length}`,
+    `🚶 Outing: ${outing.length}`,
+    outing.length ? names(outing) : null,
+    `🎫 Outpass: ${outpass.length}`,
+    outpass.length ? names(outpass) : null,
+    other ? `Other: ${other}` : null,
+    '',
+    'Roll call completed and submitted.',
+  ].filter(l => l !== null).join('\n')
+}
+
+// "Housemaster" / "Housemistress" from the housemasters record.
+function hmTitle(hm) {
+  if (hm?.designation) return hm.designation
+  return /^f/i.test(hm?.gender || '') ? 'Housemistress' : 'Housemaster'
+}
+
+// The house's housemaster/mistress with their Staff-module photo (initials
+// when there's no photo).
+function HmChip({ hm, dark = false, size = 34 }) {
+  if (!hm) {
+    return <span style={{ fontSize: 11.5, color: dark ? 'rgba(255,255,255,.6)' : '#94A3B8' }}>No housemaster assigned</span>
+  }
+  const initials = String(hm.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+      <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+        style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 800, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+          border: '2px solid #E2C57E', boxShadow: '0 4px 10px -4px rgba(11,30,61,.4)' }}>
+        {initials}
+      </StaffAvatar>
+      <span style={{ minWidth: 0, lineHeight: 1.2 }}>
+        <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: dark ? '#E2C57E' : '#A87A1F' }}>{hmTitle(hm)}</span>
+        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: dark ? '#fff' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hm.name}</span>
+      </span>
+    </span>
+  )
 }
 
 // Mandatory recipient — every roll call completion and every compliance
@@ -1398,6 +1443,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // The other roll call of the same day, so both of the day's two roll
   // calls can be shown side by side (the open session's own records are
   // allRecords, which update live as students are marked).
+  // Each house's active housemaster/mistress (housemasters table, the same
+  // one Admissions and the Housemasters tab use), for names and photos.
+  const [hmByHouse, setHmByHouse] = useState({})
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('housemasters').select('*').eq('status', 'Active').then(({ data }) => {
+      if (cancelled) return
+      const m = {}
+      ;(data || []).forEach(h => { const k = normalizeHouse(h.house); if (k && !m[k]) m[k] = h })
+      setHmByHouse(m)
+    })
+    return () => { cancelled = true }
+  }, [])
+  const hmFor = house => hmByHouse[normalizeHouse(house)] || null
+
   // House dashboard: student-list filter and search.
   const [dashFilter, setDashFilter] = useState('All')
   const [dashQuery, setDashQuery] = useState('')
@@ -2685,6 +2745,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         </div>
                       </div>
 
+                      {/* Housemaster / housemistress */}
+                      <div style={{ marginTop: '12px', padding: '8px 10px', borderRadius: '12px', background: '#FCFBF7', border: '1px solid #F1EDE4' }}>
+                        <HmChip hm={hmFor(houseName)} size={30} />
+                      </div>
+
                       {/* Status counts */}
                       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAT.length}, minmax(0,1fr))`, gap: '6px', margin: '16px 0 10px' }}>
                         {STAT.map(st => (
@@ -2910,6 +2975,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 3 }}>
                 {stats.total} students · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
               </div>
+              <div style={{ marginTop: 10 }}><HmChip hm={hmFor(selectedHouse)} dark size={32} /></div>
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {allDone && (
@@ -3277,11 +3343,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             // WhatsApp group) exactly once per house/date/session — fires on
             // THIS house's own completed roll call, independent of whichever
             // house the compliance switcher above is currently showing.
+            const byStatus = st => rollCallStudents.filter(x => getStatus(x.id) === st)
+            const rollCallWaText = buildRollCallWaReport({
+              houseName: selectedHouse, sessionLabel: session === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
+              hm: hmFor(selectedHouse) || (currentHousemaster?.name ? { name: currentHousemaster.name } : null), total,
+              present: [...byStatus('Present'), ...byStatus('Late')], outing: byStatus('Outing'), outpass: byStatus('Outpass'),
+              other: rollCallStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(getStatus(x.id))).length,
+            })
             const rollCallReportKey = `${selectedHouse}_${date}_${session}`
             if (!rollCallReportSent[rollCallReportKey]) {
               setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
-              const sessionLabel = session === 'morning' ? '🌅 Morning' : '🌙 Night'
-              autoSendComplianceWa(buildRollCallReportMessage(selectedHouse, sessionLabel, date, marked, total, currentHousemaster?.name))
+              autoSendComplianceWa(rollCallWaText)
             }
             const rawMissing = complianceMissing[complianceKey] || []
             const resolvedSet = resolvedByRecheck[complianceKey] || {}
@@ -3390,6 +3462,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '4px 0 20px', padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 800, color: '#fff', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>
                 {marked} of {total} students marked
               </div>
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '-6px 0 16px' }}>
+                <span style={{ padding: '8px 14px 8px 8px', borderRadius: 999, background: '#fff', border: '1px solid #EBDDB4' }}>
+                  <HmChip hm={hmFor(selectedHouse)} size={36} />
+                </span>
+              </div>
+              {/* Send the report on WhatsApp — a tap opens WhatsApp with the
+                  report filled in (opening it automatically is usually
+                  blocked by the browser). */}
+              <a href={`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(rollCallWaText)}`} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 22px', borderRadius: 14, marginBottom: 20, textDecoration: 'none',
+                  background: 'linear-gradient(180deg,#25D366,#1DA851)', color: '#fff', fontSize: 14.5, fontWeight: 800,
+                  boxShadow: '0 12px 22px -12px rgba(29,168,81,.9)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>
+                Send report on WhatsApp · 89742 98074
+              </a>
             </div>
 
             {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
