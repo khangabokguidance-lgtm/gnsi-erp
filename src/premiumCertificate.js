@@ -2,11 +2,11 @@
 //
 // One design for every certificate the portal issues: Attendance "Best
 // Student of the Month", Hostel "Housemaster of the Month" and the Awards
-// categories. Ivory parchment with a fine gold guilloche, a navy band frame
-// with gold rules and corner ornaments, the institute crest, "CERTIFICATE"
-// in gold capitals with a script "of Excellence", the name on a gold
-// flourish, a gold rosette seal with the score, two signature lines, the
-// date of issue and a certificate number.
+// categories. White guilloche paper, a navy wave with a gold swoosh across
+// the top, "CERTIFICATE" in gold, a navy ribbon down the left carrying a gold
+// award badge (value + label), the recipient in script on a rule at right,
+// two signature lines with a crest and a wax seal between them, the date of
+// issue and a certificate number.
 //
 //   const canvas = await drawPremiumCertificate({ … })
 //   canvas.toDataURL('image/jpeg', .95)        → image
@@ -74,87 +74,56 @@ function goldGradient(g, x0, x1) {
   gr.addColorStop(0.7, GOLD_LIGHT); gr.addColorStop(1, GOLD_DEEP)
   return gr
 }
-// Gold flourish: a line fading at both ends with a diamond in the middle.
-function flourish(g, cx, y, half) {
-  const gr = g.createLinearGradient(cx - half, 0, cx + half, 0)
-  gr.addColorStop(0, 'rgba(184,145,63,0)'); gr.addColorStop(0.5, GOLD); gr.addColorStop(1, 'rgba(184,145,63,0)')
-  g.strokeStyle = gr; g.lineWidth = 2.2
-  g.beginPath(); g.moveTo(cx - half, y); g.lineTo(cx + half, y); g.stroke()
+// Gold award badge: scalloped rosette with ribbon tails; label on top, value big.
+function badge(g, cx, cy, r, value, label) {
   g.fillStyle = GOLD
-  g.beginPath(); g.moveTo(cx, y - 9); g.lineTo(cx + 9, y); g.lineTo(cx, y + 9); g.lineTo(cx - 9, y); g.closePath(); g.fill()
-  ;[-22, 22].forEach(d => { g.beginPath(); g.arc(cx + d, y, 3.2, 0, Math.PI * 2); g.fill() })
-}
-// Corner ornament: nested gold quarter arcs, a diamond and dots.
-function cornerOrnament(g, x, y, sx, sy) {
-  g.save(); g.translate(x, y); g.scale(sx, sy)
-  g.strokeStyle = GOLD; g.lineWidth = 2.4
-  ;[46, 66].forEach(r => { g.beginPath(); g.arc(0, 0, r, 0, Math.PI / 2); g.stroke() })
-  g.lineWidth = 1.4
-  g.beginPath(); g.moveTo(0, 86); g.lineTo(0, 150); g.moveTo(86, 0); g.lineTo(150, 0); g.stroke()
-  g.fillStyle = GOLD
-  g.beginPath(); g.moveTo(0, -14); g.lineTo(14, 0); g.lineTo(0, 14); g.lineTo(-14, 0); g.closePath(); g.fill()
-  g.beginPath(); g.arc(28, 28, 5, 0, Math.PI * 2); g.fill()
-  ;[[0, 160], [160, 0]].forEach(([a, b]) => { g.beginPath(); g.arc(a, b, 4, 0, Math.PI * 2); g.fill() })
-  g.restore()
-}
-// Navy ribbon banner with notched ends.
-function ribbon(g, cx, y, w, h, text) {
-  const x0 = cx - w / 2, x1 = cx + w / 2, n = h * 0.42
-  g.fillStyle = NAVY2
-  ;[[x0 - 40, x0 + 6], [x1 + 40, x1 - 6]].forEach(([outer, inner]) => {
-    g.beginPath(); g.moveTo(inner, y + 10); g.lineTo(outer, y + 10); g.lineTo(outer + (outer < cx ? n : -n), y + 10 + h / 2)
-    g.lineTo(outer, y + 10 + h); g.lineTo(inner, y + 10 + h); g.closePath(); g.fill()
-  })
-  const gr = g.createLinearGradient(0, y, 0, y + h)
-  gr.addColorStop(0, '#16305A'); gr.addColorStop(1, NAVY)
-  g.fillStyle = gr; g.fillRect(x0, y, w, h)
-  g.strokeStyle = GOLD; g.lineWidth = 1.6
-  g.strokeRect(x0 + 6, y + 6, w - 12, h - 12)
-  g.fillStyle = GOLD_LIGHT; g.textAlign = 'center'
-  fit(g, text, w - 80, 26, CINZEL, '700')
-  spaced(g, text, cx, y + h / 2 + 9, 4)
-}
-// Gold rosette seal with ribbon tails; value in the middle.
-function seal(g, cx, cy, r, value, label) {
-  g.fillStyle = NAVY2
   ;[-1, 1].forEach(s => {
-    g.beginPath(); g.moveTo(cx + s * r * 0.25, cy + r * 0.5); g.lineTo(cx + s * r * 0.8, cy + r * 1.45)
-    g.lineTo(cx + s * r * 0.55, cy + r * 1.3); g.lineTo(cx + s * r * 0.38, cy + r * 1.55); g.lineTo(cx - s * r * 0.05, cy + r * 0.6); g.closePath(); g.fill()
+    g.beginPath(); g.moveTo(cx + s * r * 0.15, cy + r * 0.6); g.lineTo(cx + s * r * 0.95, cy + r * 1.7)
+    g.lineTo(cx + s * r * 0.62, cy + r * 1.58); g.lineTo(cx + s * r * 0.42, cy + r * 1.85); g.lineTo(cx - s * r * 0.15, cy + r * 0.7); g.closePath(); g.fill()
   })
-  const pts = 36
+  const pts = 32
   g.beginPath()
   for (let i = 0; i <= pts * 2; i++) {
-    const a = (i / (pts * 2)) * Math.PI * 2, rr = i % 2 ? r : r * 0.9
+    const a = (i / (pts * 2)) * Math.PI * 2, rr = i % 2 ? r : r * 0.92
     g.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr)
   }
-  const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r)
-  gr.addColorStop(0, '#F6E7B8'); gr.addColorStop(0.55, GOLD_LIGHT); gr.addColorStop(1, GOLD_DEEP)
+  const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r)
+  gr.addColorStop(0, '#FBEFC4'); gr.addColorStop(0.5, GOLD_LIGHT); gr.addColorStop(1, GOLD_DEEP)
   g.fillStyle = gr; g.fill()
-  g.beginPath(); g.arc(cx, cy, r * 0.74, 0, Math.PI * 2)
-  const inner = g.createRadialGradient(cx, cy - r * 0.3, r * 0.1, cx, cy, r * 0.74)
-  inner.addColorStop(0, NAVY2); inner.addColorStop(1, NAVY)
-  g.fillStyle = inner; g.fill()
-  g.strokeStyle = GOLD_LIGHT; g.lineWidth = 2
-  g.beginPath(); g.arc(cx, cy, r * 0.68, 0, Math.PI * 2); g.stroke()
-  g.textAlign = 'center'; g.fillStyle = '#F6E7B8'
-  fit(g, value, r * 1.15, r * 0.48, CINZEL, '800')
-  g.fillText(value, cx, cy + r * 0.12)
-  if (label) {
-    g.fillStyle = GOLD_LIGHT
-    fit(g, label, r * 0.82, r * 0.15, CINZEL, '700')
-    spaced(g, label, cx, cy + r * 0.38, 1)
+  g.strokeStyle = GOLD_DEEP; g.lineWidth = 3
+  g.beginPath(); g.arc(cx, cy, r * 0.78, 0, Math.PI * 2); g.stroke()
+  g.lineWidth = 1.5; g.beginPath(); g.arc(cx, cy, r * 0.7, 0, Math.PI * 2); g.stroke()
+  g.textAlign = 'center'; g.fillStyle = NAVY
+  if (label) { fit(g, label, r * 1.1, r * 0.2, CINZEL, '800'); spaced(g, label, cx, cy - r * 0.3, 1) }
+  fit(g, value, r * 1.2, r * 0.6, PLAYFAIR, '800')
+  g.fillText(value, cx, cy + r * 0.28)
+}
+// Small round stamp: laurel ring around the crest (or a star).
+function stamp(g, cx, cy, r, logo, wax) {
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2)
+  g.fillStyle = wax ? '#9B1C24' : NAVY; g.fill()
+  g.strokeStyle = wax ? '#C4505A' : GOLD_LIGHT; g.lineWidth = 3
+  g.beginPath(); g.arc(cx, cy, r * 0.84, 0, Math.PI * 2); g.stroke()
+  g.fillStyle = wax ? '#E8A6AB' : GOLD_LIGHT
+  if (logo && !wax) {
+    g.save(); g.beginPath(); g.arc(cx, cy, r * 0.66, 0, Math.PI * 2); g.clip(); g.fillStyle = '#fff'; g.fillRect(cx - r, cy - r, 2 * r, 2 * r)
+    g.drawImage(logo, cx - r * 0.66, cy - r * 0.66, r * 1.32, r * 1.32); g.restore()
+  } else {
+    g.beginPath()
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.26 : r * 0.6; g.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr) }
+    g.closePath(); g.fill()
   }
 }
 
 /**
  * Draws the certificate and returns the canvas (2000 × 1414, A4 landscape).
  * opts: {
- *   kind: 'Excellence' | 'Appreciation' | …   (script line under CERTIFICATE)
- *   subtitle: 'Best Student of the Month · Attendance'   (ribbon)
+ *   kind: 'Excellence' | 'Appreciation' | …   ("OF …" under CERTIFICATE)
+ *   subtitle: 'Best Student of the Month · Attendance'
  *   presented: 'This certificate is proudly presented to'
  *   name, detail: 'GCC No. 925 · Foundation · Udaan',
  *   body: ['has achieved …', '…'],
- *   seal: { value: '100%', label: 'ATTENDANCE' },
+ *   seal: { value: '100%', label: 'ATTENDANCE' },   (gold badge on the ribbon)
  *   signatures: [{ title: 'Principal', name? }, { title, name? }],
  *   issued: Date, certNo: 'GNSI/ATT/2026-10/925'
  * }
@@ -166,98 +135,123 @@ export async function drawPremiumCertificate(opts) {
   const c = document.createElement('canvas'); c.width = W; c.height = H
   const g = c.getContext('2d')
   const logo = await loadImage(`data:image/png;base64,${LOGO_BASE64}`)
+  const R = W - 150            // right text edge
 
-  // ── parchment ──
-  const bg = g.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, W * 0.7)
-  bg.addColorStop(0, '#FFFDF7'); bg.addColorStop(1, '#F3EBD8')
+  // ── paper: white to pale blue-grey with fine guilloche waves ──
+  const bg = g.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0, '#FFFFFF'); bg.addColorStop(1, '#E9EEF6')
   g.fillStyle = bg; g.fillRect(0, 0, W, H)
-  // guilloche: fine interlaced gold waves
   g.lineWidth = 1
-  for (let k = 0; k < 26; k++) {
-    g.strokeStyle = `rgba(184,145,63,${k % 2 ? 0.05 : 0.07})`
+  for (let k = 0; k < 90; k++) {
+    g.strokeStyle = k % 5 === 0 ? 'rgba(184,145,63,.16)' : 'rgba(100,115,145,.10)'
     g.beginPath()
-    for (let x = 120; x <= W - 120; x += 6) {
-      const y = 140 + k * 44 + Math.sin(x / 70 + k * 0.7) * 16 + Math.sin(x / 23 + k) * 4
-      x === 120 ? g.moveTo(x, y) : g.lineTo(x, y)
+    for (let x = 0; x <= W; x += 8) {
+      const y = 200 + k * 15 + Math.sin(x / 260 + k * 0.12) * 60 + Math.sin(x / 40 + k) * 3
+      x === 0 ? g.moveTo(x, y) : g.lineTo(x, y)
     }
     g.stroke()
   }
-  // crest watermark
-  if (logo) { g.save(); g.globalAlpha = 0.035; g.drawImage(logo, W / 2 - 300, H / 2 - 250, 600, 600); g.restore() }
 
-  // ── frame ──
-  g.fillStyle = NAVY
-  g.fillRect(28, 28, W - 56, 40); g.fillRect(28, H - 68, W - 56, 40); g.fillRect(28, 28, 40, H - 56); g.fillRect(W - 68, 28, 40, H - 56)
-  g.strokeStyle = GOLD; g.lineWidth = 3; g.strokeRect(22, 22, W - 44, H - 44)
-  g.lineWidth = 2; g.strokeRect(74, 74, W - 148, H - 148)
-  g.lineWidth = 1; g.strokeRect(86, 86, W - 172, H - 172)
-  // dotted gold pattern in the navy band
-  g.fillStyle = 'rgba(226,197,126,.55)'
-  for (let x = 60; x < W - 60; x += 18) { g.beginPath(); g.arc(x, 48, 1.6, 0, 7); g.fill(); g.beginPath(); g.arc(x, H - 48, 1.6, 0, 7); g.fill() }
-  for (let y = 60; y < H - 60; y += 18) { g.beginPath(); g.arc(48, y, 1.6, 0, 7); g.fill(); g.beginPath(); g.arc(W - 48, y, 1.6, 0, 7); g.fill() }
-  cornerOrnament(g, 100, 100, 1, 1); cornerOrnament(g, W - 100, 100, -1, 1)
-  cornerOrnament(g, 100, H - 100, 1, -1); cornerOrnament(g, W - 100, H - 100, -1, -1)
+  // ── navy ribbon down the left, gold rules either side ──
+  const rx0 = 230, rx1 = 520, rcx = (rx0 + rx1) / 2
+  const rb = g.createLinearGradient(rx0, 0, rx1, 0)
+  rb.addColorStop(0, NAVY); rb.addColorStop(0.5, NAVY2); rb.addColorStop(1, NAVY)
+  g.fillStyle = rb; g.fillRect(rx0, 0, rx1 - rx0, H)
+  g.fillStyle = GOLD
+  ;[rx0 + 14, rx1 - 17].forEach(x => g.fillRect(x, 0, 3, H))
 
-  // ── header: crest + institute ──
-  const cx = W / 2
+  // ── navy wave across the top ──
+  const wave = new Path2D()
+  wave.moveTo(0, 0); wave.lineTo(W, 0); wave.lineTo(W, H * 0.17)
+  wave.bezierCurveTo(W * 0.78, H * 0.17, W * 0.58, H * 0.27, W * 0.4, H * 0.38)
+  wave.bezierCurveTo(W * 0.24, H * 0.48, W * 0.1, H * 0.54, 0, H * 0.55)
+  wave.closePath()
+  const nv = g.createLinearGradient(0, 0, W, H * 0.4)
+  nv.addColorStop(0, NAVY); nv.addColorStop(1, NAVY2)
+  g.save(); g.shadowColor = 'rgba(11,30,61,.35)'; g.shadowBlur = 30; g.shadowOffsetY = 8
+  g.fillStyle = nv; g.fill(wave); g.restore()
+  // the ribbon's gold rules continue over nothing here: wave sits above them
+  // gold swoosh along the right
+  const sw = new Path2D()
+  sw.moveTo(W * 0.6, H * 0.2)
+  sw.bezierCurveTo(W * 0.74, H * 0.145, W * 0.88, H * 0.145, W, H * 0.12)
+  sw.lineTo(W, H * 0.2)
+  sw.bezierCurveTo(W * 0.9, H * 0.165, W * 0.74, H * 0.17, W * 0.6, H * 0.2)
+  sw.closePath()
+  g.fillStyle = goldGradient(g, W * 0.6, W); g.fill(sw)
+
+  // ── header: crest + institute (white on navy) ──
+  const lx = 90
   if (logo) {
-    g.save(); g.beginPath(); g.arc(cx, 186, 66, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill(); g.clip()
-    g.drawImage(logo, cx - 62, 124, 124, 124); g.restore()
+    g.save(); g.beginPath(); g.arc(lx + 56, 110, 56, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill(); g.clip()
+    g.drawImage(logo, lx, 54, 112, 112); g.restore()
+    g.strokeStyle = GOLD_LIGHT; g.lineWidth = 4; g.beginPath(); g.arc(lx + 56, 110, 60, 0, Math.PI * 2); g.stroke()
   }
-  g.strokeStyle = goldGradient(g, cx - 72, cx + 72); g.lineWidth = 5
-  g.beginPath(); g.arc(cx, 186, 70, 0, Math.PI * 2); g.stroke()
-  g.textAlign = 'center'; g.fillStyle = NAVY
-  fit(g, inst.name.toUpperCase(), W - 520, 44, CINZEL, '700')
-  spaced(g, inst.name.toUpperCase(), cx, 318, 5)
-  g.fillStyle = MUTED; g.font = `italic 500 28px ${CORMORANT}`
-  g.fillText(inst.address, cx, 356)
-  flourish(g, cx, 384, 210)
+  g.textAlign = 'left'; g.fillStyle = '#fff'
+  fit(g, inst.name.toUpperCase(), 900, 38, CINZEL, '700')
+  spaced(g, inst.name.toUpperCase(), lx + 150, 106, 3)
+  g.fillStyle = GOLD_LIGHT; g.font = `italic 500 28px ${CORMORANT}`
+  g.fillText(inst.address, lx + 150, 148)
 
   // ── title ──
-  g.fillStyle = goldGradient(g, cx - 520, cx + 520)
-  g.font = `800 118px ${CINZEL}`
-  g.save(); g.shadowColor = 'rgba(140,106,34,.25)'; g.shadowOffsetY = 3; g.shadowBlur = 4
-  spaced(g, 'CERTIFICATE', cx, 512, 18); g.restore()
-  g.fillStyle = NAVY; g.font = `400 92px ${SCRIPT}`
-  g.fillText(`of ${opts.kind || 'Excellence'}`, cx, 600)
-  if (opts.subtitle) ribbon(g, cx, 636, Math.min(1040, Math.max(640, opts.subtitle.length * 21)), 62, opts.subtitle.toUpperCase())
+  g.textAlign = 'left'
+  g.fillStyle = goldGradient(g, lx, lx + 900)
+  g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowOffsetY = 4; g.shadowBlur = 6
+  g.font = `800 190px ${CINZEL}`
+  const cw = g.measureText('C').width
+  g.fillText('C', lx, 395)
+  g.font = `800 130px ${CINZEL}`
+  spaced(g, 'ERTIFICATE', lx + cw + 6, 395, 6)
+  g.restore()
+  g.fillStyle = '#fff'; g.font = `600 44px ${CINZEL}`
+  spaced(g, `OF ${(opts.kind || 'Excellence').toUpperCase()}`, lx + 6, 470, 6)
+  if (opts.subtitle) {
+    g.fillStyle = GOLD_LIGHT
+    fit(g, opts.subtitle, 880, 34, CORMORANT, 'italic 600')
+    g.fillText(opts.subtitle, lx + 6, 520)
+  }
 
-  // ── recipient ──
-  g.fillStyle = INK; g.font = `italic 500 34px ${CORMORANT}`
-  g.fillText(opts.presented || 'This certificate is proudly presented to', cx, 766)
+  // ── gold badge on the ribbon ──
+  if (opts.seal) badge(g, rcx, 1010, 150, String(opts.seal.value), opts.seal.label)
+
+  // ── recipient (right-aligned) ──
+  g.textAlign = 'right'; g.fillStyle = NAVY
+  const pres = (opts.presented || 'This certificate is proudly presented to').toUpperCase()
+  fit(g, pres, 1000, 38, CORMORANT, '700')
+  spaced(g, pres, R, 650, 2)
   g.fillStyle = NAVY
-  fit(g, opts.name || '', W - 560, 96, PLAYFAIR, '800')
-  g.fillText(opts.name || '', cx, 868)
-  const nw = Math.min(W - 560, g.measureText(opts.name || '').width)
-  flourish(g, cx, 900, Math.max(260, nw / 2 + 80))
-  let y = 952
+  fit(g, opts.name || '', 1100, 150, SCRIPT, '400')
+  g.fillText(opts.name || '', R, 800)
+  g.strokeStyle = INK; g.lineWidth = 2.5
+  g.beginPath(); g.moveTo(W * 0.37, 828); g.lineTo(R, 828); g.stroke()
+  let y = 900
   if (opts.detail) {
-    g.fillStyle = NAVY2; fit(g, opts.detail, W - 600, 32, CORMORANT, '700')
-    g.fillText(opts.detail, cx, y); y += 46
+    g.fillStyle = NAVY; fit(g, opts.detail.toUpperCase(), 1100, 40, CINZEL, '700')
+    g.fillText(opts.detail.toUpperCase(), R, y); y += 52
   }
   g.fillStyle = INK
-  for (const line of opts.body || []) { fit(g, line, W - 640, 32, CORMORANT, '500'); g.fillText(line, cx, y); y += 42 }
+  for (const line of opts.body || []) { fit(g, line, 1100, 32, CORMORANT, '600'); g.fillText(line, R, y); y += 40 }
 
-  // ── seal ──
-  if (opts.seal) seal(g, cx, Math.max(1140, y + 92), 92, String(opts.seal.value), opts.seal.label)
-
-  // ── signatures ──
+  // ── signatures with crest + wax seal between ──
   const sigs = opts.signatures || [{ title: 'Principal' }, { title: 'Founder & Director' }]
-  ;[[430, sigs[0]], [W - 430, sigs[1]]].forEach(([sx, s]) => {
-    if (!s) return
-    g.strokeStyle = goldGradient(g, sx - 190, sx + 190); g.lineWidth = 2
-    g.beginPath(); g.moveTo(sx - 190, 1200); g.lineTo(sx + 190, 1200); g.stroke()
+  const sxs = [[W * 0.37, W * 0.37 + 330], [R - 330, R]]
+  sxs.forEach(([a, b], i) => {
+    const s = sigs[i]; if (!s) return
+    g.strokeStyle = INK; g.lineWidth = 2
+    g.beginPath(); g.moveTo(a, 1235); g.lineTo(b, 1235); g.stroke()
     g.textAlign = 'center'; g.fillStyle = NAVY
-    fit(g, s.title.toUpperCase(), 380, 24, CINZEL, '700'); spaced(g, s.title.toUpperCase(), sx, 1236, 3)
-    if (s.name) { g.fillStyle = MUTED; fit(g, s.name, 380, 26, CORMORANT, 'italic 600'); g.fillText(s.name, sx, 1270) }
+    fit(g, s.title.toUpperCase(), 320, 22, CINZEL, '700'); spaced(g, s.title.toUpperCase(), (a + b) / 2, 1272, 3)
+    if (s.name) { g.fillStyle = MUTED; fit(g, s.name, 320, 26, CORMORANT, 'italic 600'); g.fillText(s.name, (a + b) / 2, 1304) }
   })
+  const mid = (sxs[0][1] + sxs[1][0]) / 2
+  stamp(g, mid - 58, 1190, 52, logo, false)
+  stamp(g, mid + 58, 1190, 52, null, true)
 
   // ── issue date and number ──
-  // under the two signature columns, clear of the corner ornaments
   const issued = (opts.issued || new Date()).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
   g.textAlign = 'center'; g.fillStyle = MUTED; g.font = `600 19px ${CINZEL}`
-  spaced(g, `ISSUED ${issued.toUpperCase()}`, 430, 1306, 2)
-  if (opts.certNo) spaced(g, `NO. ${opts.certNo}`, W - 430, 1306, 2)
+  spaced(g, `ISSUED ${issued.toUpperCase()}`, (sxs[0][0] + sxs[0][1]) / 2, 1360, 2)
+  if (opts.certNo) spaced(g, `NO. ${opts.certNo}`, (sxs[1][0] + sxs[1][1]) / 2, 1360, 2)
   return c
 }
 
