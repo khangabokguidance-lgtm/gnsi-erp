@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
-import { StaffAvatar } from './staffPhotos'
+import { StaffAvatar, findStaffPhoto } from './staffPhotos'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -392,26 +392,190 @@ function buildComplianceWaMessage(houseName, slotLabel, dateStr, missingLabels, 
   return `⚠️ Compliance Alert — ${who}\n${slotLabel} · ${dateStr}\nMissing: ${missingLabels}\n\nPlease log the above and confirm here.`
 }
 
-// Full roll-call report for WhatsApp: counts plus who is out, so the
+// A short, encouraging line for the housemaster, from their rank and
+// whether today's roll call was on time.
+function motivationLine(rankInfo, late) {
+  if (late) return 'Today ran late — a punctual roll call tomorrow will lift your rank. You can do it!'
+  if (!rankInfo?.rank) return 'Every on-time roll call builds a stronger, safer house. Keep it up!'
+  if (rankInfo.rank === 1) return 'Leading every house — outstanding care and discipline. Keep setting the standard!'
+  if (rankInfo.rank <= 3) return 'In the top three — excellent work. One more push for the top spot!'
+  if (rankInfo.rank <= Math.ceil(rankInfo.total / 2)) return 'Strong and steady — keep the momentum and climb higher!'
+  return 'Every on-time roll call moves you up the table. Let’s climb together!'
+}
+const medalFor = n => n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : '🏆'
+
+// Full roll-call report for WhatsApp: the housemaster's profile and rank,
+// the counts, and who is out — professional and encouraging, so the
 // recipient doesn't have to open the app.
-function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other }) {
+function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other, rankInfo, completedAt, late }) {
   const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
-  const names = list => list.map(st => `  • ${st.name}${st.gcc_no ? ` (GCC ${st.gcc_no})` : ''}`).join('\n')
+  const names = list => list.map(st => `   • ${st.name}${st.gcc_no ? ` (GCC ${st.gcc_no})` : ''}`).join('\n')
+  const day = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  const time = completedAt ? new Date(completedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : null
   return [
-    `✅ *Roll Call Report — ${title} House*`,
-    `${sessionLabel} · ${dateStr}`,
-    hm ? `${hmTitle(hm)}: ${hm.name}` : null,
+    `🏠 *GNSI Hostel · Roll Call Report*`,
+    '━━━━━━━━━━━━━━━━━━',
+    `*${title} House* · ${sessionLabel}`,
+    `📅 ${day}`,
     '',
-    `Total: ${total}`,
-    `✓ Present: ${present.length}`,
+    hm ? `👤 *${hm.name}*` : null,
+    hm ? `${hmTitle(hm)}, ${title} House` : null,
+    rankInfo?.rank ? `${medalFor(rankInfo.rank)} Rank *#${rankInfo.rank}* of ${rankInfo.total} housemasters & housemistresses` : null,
+    rankInfo?.score != null ? `⭐ Score ${rankInfo.score}/100${rankInfo.onTimePct != null ? ` · On-time ${rankInfo.onTimePct}%` : ''} _(last 7 days)_` : null,
+    time ? `⏱️ Completed ${time} — ${late ? 'late ⏰' : 'on time ✅'}` : null,
+    '',
+    '📊 *Attendance*',
+    `Total students: ${total}`,
+    `✅ Present: ${present.length}`,
     `🚶 Outing: ${outing.length}`,
     outing.length ? names(outing) : null,
     `🎫 Outpass: ${outpass.length}`,
     outpass.length ? names(outpass) : null,
-    other ? `Other: ${other}` : null,
+    other ? `• Other: ${other}` : null,
     '',
-    'Roll call completed and submitted.',
+    `💬 _${motivationLine(rankInfo, late)}_`,
+    '',
+    '— GNSI Hostel Administration',
   ].filter(l => l !== null).join('\n')
+}
+
+// Housemaster's rank on the same 7-day score as the HM ranking.
+async function loadHmRank(houseName) {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 7)
+  const rows = await computeHMPerformance(start.toISOString().split('T')[0], end.toISOString().split('T')[0])
+  const scored = rows.filter(r => r.hm && r.score !== null)
+  const mine = scored.find(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+  if (!mine) return { rank: null, total: scored.length, score: null, onTimePct: null }
+  return { rank: scored.indexOf(mine) + 1, total: scored.length, score: mine.score, onTimePct: mine.onTimePct }
+}
+
+// Profile card image (1080×1350) for WhatsApp: photo, name, house, rank,
+// today's counts and an encouraging line. Returns a PNG Blob.
+async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankInfo, total, present, outing, outpass, late, completedAt }) {
+  const W = 1080, H = 1350
+  const c = document.createElement('canvas')
+  c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const serif = '"Fraunces", Georgia, "Times New Roman", serif'
+  const sans = '"Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif'
+  const title = String(houseName).replace(/\b\w/g, ch => ch.toUpperCase())
+  const roundRect = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath() }
+  const fitText = (text, maxW, size, font, weight = 700) => {
+    let s = size
+    do { g.font = `${weight} ${s}px ${font}`; s -= 2 } while (g.measureText(text).width > maxW && s > 20)
+  }
+
+  // Background
+  const bg = g.createRadialGradient(W, 0, 50, W, 0, W * 1.4)
+  bg.addColorStop(0, '#1F4E8C'); bg.addColorStop(0.45, '#132B52'); bg.addColorStop(1, '#0B1E3D')
+  g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  g.fillStyle = 'rgba(255,255,255,.05)'
+  for (let y = 20; y < H; y += 28) for (let x = 20; x < W; x += 28) { g.beginPath(); g.arc(x, y, 1.6, 0, Math.PI * 2); g.fill() }
+  const gold = g.createLinearGradient(0, 0, W, 0)
+  gold.addColorStop(0, '#B8913F'); gold.addColorStop(0.5, '#E2C57E'); gold.addColorStop(1, '#B8913F')
+  g.fillStyle = gold; g.fillRect(0, 0, W, 12); g.fillRect(0, H - 12, W, 12)
+
+  // Header
+  g.textAlign = 'center'
+  g.fillStyle = '#E2C57E'; g.font = `800 30px ${sans}`
+  g.fillText('GNSI HOSTEL  ·  ROLL CALL REPORT', W / 2, 92)
+  g.fillStyle = 'rgba(255,255,255,.75)'; g.font = `600 30px ${sans}`
+  const day = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  g.fillText(`${sessionLabel.replace(/^\S+\s/, '')}  ·  ${day}`, W / 2, 140)
+
+  // Photo
+  const cx = W / 2, cy = 340, r = 150
+  g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40
+  g.beginPath(); g.arc(cx, cy, r + 14, 0, Math.PI * 2); g.fillStyle = gold; g.fill(); g.restore()
+  g.beginPath(); g.arc(cx, cy, r + 4, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill()
+  const url = hm ? findStaffPhoto(hm.name, hm.staff_id || hm.staff_profile_id) : null
+  const img = url ? await new Promise(res => {
+    const im = new Image(); im.crossOrigin = 'anonymous'
+    im.onload = () => res(im); im.onerror = () => res(null); im.src = url
+    setTimeout(() => res(null), 6000)
+  }) : null
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip()
+  if (img) {
+    const scale = Math.max((r * 2) / img.width, (r * 2) / img.height)
+    const w = img.width * scale, h = img.height * scale
+    g.drawImage(img, cx - w / 2, cy - r, w, h) // top-aligned, faces stay in frame
+  } else {
+    const ig = g.createLinearGradient(cx - r, cy - r, cx + r, cy + r)
+    ig.addColorStop(0, '#F8EBC7'); ig.addColorStop(1, '#E2C57E')
+    g.fillStyle = ig; g.fillRect(cx - r, cy - r, r * 2, r * 2)
+    g.fillStyle = '#0B1E3D'; g.font = `700 120px ${serif}`; g.textBaseline = 'middle'
+    g.fillText(String(hm?.name || title).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(), cx, cy + 6)
+    g.textBaseline = 'alphabetic'
+  }
+  g.restore()
+
+  // Name and house
+  g.fillStyle = '#fff'; fitText(hm?.name || 'Housemaster', W - 140, 66, serif, 700)
+  g.fillText(hm?.name || 'Housemaster', W / 2, 580)
+  g.fillStyle = '#E2C57E'; g.font = `700 34px ${sans}`
+  g.fillText(`${hm ? hmTitle(hm) : 'Housemaster'}  ·  ${title} House`, W / 2, 632)
+
+  // Rank medallion
+  roundRect(140, 680, W - 280, 190, 36)
+  g.fillStyle = 'rgba(255,255,255,.08)'; g.fill()
+  g.lineWidth = 3; g.strokeStyle = 'rgba(226,197,126,.55)'; g.stroke()
+  if (rankInfo?.rank) {
+    g.fillStyle = '#E2C57E'; g.font = `800 26px ${sans}`
+    g.fillText('RANK AMONG HOUSEMASTERS & HOUSEMISTRESSES', W / 2, 728)
+    g.fillStyle = '#fff'; g.font = `700 96px ${serif}`
+    g.fillText(`${medalFor(rankInfo.rank)} #${rankInfo.rank}`, W / 2 - 90, 830)
+    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 32px ${sans}`
+    g.fillText(`of ${rankInfo.total}`, W / 2 + 70, 800)
+    if (rankInfo.score != null) { g.fillStyle = '#E2C57E'; g.font = `800 32px ${sans}`; g.fillText(`Score ${rankInfo.score}/100`, W / 2 + 70, 842) }
+    g.textAlign = 'center'
+  } else {
+    g.fillStyle = '#fff'; g.font = `700 44px ${serif}`
+    g.fillText('Building the record this week', W / 2, 790)
+    g.fillStyle = 'rgba(255,255,255,.7)'; g.font = `600 28px ${sans}`
+    g.fillText('Rank appears after a few on-time roll calls', W / 2, 836)
+  }
+
+  // Counts
+  const tiles = [
+    { l: 'TOTAL', v: total, c: '#fff' },
+    { l: 'PRESENT', v: present, c: '#4ADE80' },
+    { l: 'OUTING', v: outing, c: '#7DD3FC' },
+    { l: 'OUTPASS', v: outpass, c: '#FBBF24' },
+  ]
+  const tw = 196, gap = 22, tx0 = (W - (tw * 4 + gap * 3)) / 2
+  tiles.forEach((t, i) => {
+    const x = tx0 + i * (tw + gap)
+    roundRect(x, 905, tw, 150, 26); g.fillStyle = 'rgba(255,255,255,.07)'; g.fill()
+    g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke()
+    g.fillStyle = t.c; g.font = `700 64px ${serif}`; g.fillText(String(t.v), x + tw / 2, 990)
+    g.fillStyle = 'rgba(255,255,255,.65)'; g.font = `800 22px ${sans}`; g.fillText(t.l, x + tw / 2, 1030)
+  })
+
+  // Status pill
+  const time = completedAt ? new Date(completedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : ''
+  const pill = late ? `⏰ Completed late${time ? ` · ${time}` : ''}` : `✓ Completed on time${time ? ` · ${time}` : ''}`
+  g.font = `800 30px ${sans}`
+  const pw = g.measureText(pill).width + 70
+  roundRect((W - pw) / 2, 1090, pw, 64, 32)
+  g.fillStyle = late ? 'rgba(251,191,36,.18)' : 'rgba(74,222,128,.18)'; g.fill()
+  g.lineWidth = 2; g.strokeStyle = late ? '#FBBF24' : '#4ADE80'; g.stroke()
+  g.fillStyle = late ? '#FDE68A' : '#BBF7D0'; g.fillText(pill, W / 2, 1133)
+
+  // Motivation
+  const line = motivationLine(rankInfo, late)
+  g.fillStyle = '#fff'; g.font = `italic 600 32px ${serif}`
+  const words = line.split(' '), lines = []
+  let cur = ''
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (g.measureText(t).width > W - 200 && cur) { lines.push(cur); cur = w } else cur = t }
+  if (cur) lines.push(cur)
+  const shown = lines.slice(0, 2)
+  shown.forEach((l, i) => g.fillText(`${i === 0 ? '“' : ''}${l}${i === shown.length - 1 ? '”' : ''}`, W / 2, 1208 + i * 42))
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.font = `700 22px ${sans}`
+  g.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W / 2, 1300)
+
+  return new Promise(res => c.toBlob(b => res(b), 'image/png'))
 }
 
 // "Housemaster" / "Housemistress" from the housemasters record.
@@ -2057,6 +2221,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // rather than replaying on every re-render of an already-clear house.
   const [complianceCelebrated, setComplianceCelebrated] = useState({}) // key: complianceKey → true once played
   const [rollCallReportSent, setRollCallReportSent] = useState({}) // key: `${house}_${date}_${session}` → true once WA report auto-sent
+  const [hmRankByHouse, setHmRankByHouse] = useState({}) // `${house}_${date}` → 'loading' | rank info | null
+  const [profileCards, setProfileCards] = useState({}) // `${house}_${date}_${session}` → 'loading' | { blob, url } | null
   const [complianceCelebrating, setComplianceCelebrating] = useState(null) // complianceKey currently animating
   // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
   // linked version — lets the housemaster force a recheck in place.
@@ -3641,17 +3807,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             // THIS house's own completed roll call, independent of whichever
             // house the compliance switcher above is currently showing.
             const byStatus = st => rollCallStudents.filter(x => getStatus(x.id) === st)
-            const rollCallWaText = buildRollCallWaReport({
-              houseName: selectedHouse, sessionLabel: session === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
-              hm: hmFor(selectedHouse) || (currentHousemaster?.name ? { name: currentHousemaster.name } : null), total,
-              present: [...byStatus('Present'), ...byStatus('Late')], outing: byStatus('Outing'), outpass: byStatus('Outpass'),
-              other: rollCallStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(getStatus(x.id))).length,
-            })
             const rollCallReportKey = `${selectedHouse}_${date}_${session}`
-            if (!rollCallReportSent[rollCallReportKey]) {
-              setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
-              autoSendComplianceWa(rollCallWaText)
-            }
             const rawMissing = complianceMissing[complianceKey] || []
             const resolvedSet = resolvedByRecheck[complianceKey] || {}
             const missingTabs = rawMissing.filter(k => !resolvedSet[k])
@@ -3683,6 +3839,59 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 currentUser?.name || currentHousemaster?.name,
                 lateStatus.minutesLate, lateStatus.deadlineLabel
               )
+            }
+
+            // ── WhatsApp report with the housemaster's profile and rank.
+            //    The rank loads first (at most 8 s), then the report is
+            //    sent once and the profile card image is made for sharing.
+            const rankKey = `${selectedHouse}_${date}`
+            if (hmRankByHouse[rankKey] === undefined) {
+              setHmRankByHouse(prev => ({ ...prev, [rankKey]: 'loading' }))
+              Promise.race([loadHmRank(selectedHouse), new Promise(res => setTimeout(() => res(null), 8000))])
+                .catch(() => null)
+                .then(info => setHmRankByHouse(prev => ({ ...prev, [rankKey]: info || null })))
+            }
+            const rankLoaded = hmRankByHouse[rankKey] !== undefined && hmRankByHouse[rankKey] !== 'loading'
+            const rankInfo = rankLoaded ? hmRankByHouse[rankKey] : null
+            const reportHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+            const presentList = [...byStatus('Present'), ...byStatus('Late')]
+            const reportArgs = {
+              houseName: selectedHouse, sessionLabel: session === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
+              hm: reportHm, total, present: presentList, outing: byStatus('Outing'), outpass: byStatus('Outpass'),
+              other: rollCallStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(getStatus(x.id))).length,
+              rankInfo, completedAt: lastMarkedAtForOwnSession, late: lateStatus.isLate,
+            }
+            const rollCallWaText = buildRollCallWaReport(reportArgs)
+            if (rankLoaded && !rollCallReportSent[rollCallReportKey]) {
+              setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
+              autoSendComplianceWa(rollCallWaText)
+            }
+            const card = profileCards[rollCallReportKey]
+            if (rankLoaded && card === undefined) {
+              setProfileCards(prev => ({ ...prev, [rollCallReportKey]: 'loading' }))
+              buildHmProfileCard({ ...reportArgs, present: presentList.length, outing: reportArgs.outing.length, outpass: reportArgs.outpass.length })
+                .then(blob => setProfileCards(prev => ({ ...prev, [rollCallReportKey]: blob ? { blob, url: URL.createObjectURL(blob) } : null })))
+                .catch(() => setProfileCards(prev => ({ ...prev, [rollCallReportKey]: null })))
+            }
+            const cardReady = card && card !== 'loading'
+            const cardFileName = `roll-call-${String(selectedHouse).toLowerCase().replace(/\s+/g, '-')}-${date}-${session}.png`
+            const shareProfileCard = async () => {
+              if (!cardReady) return
+              const file = new File([card.blob], cardFileName, { type: 'image/png' })
+              try {
+                if (navigator.canShare?.({ files: [file] })) {
+                  await navigator.share({ files: [file], text: rollCallWaText, title: `${selectedHouse} — Roll Call Report` })
+                  return
+                }
+              } catch (e) {
+                if (e?.name === 'AbortError') return
+              }
+              // No file sharing here (most computers): save the card and open
+              // the chat, so it can be attached there.
+              const a = document.createElement('a')
+              a.href = card.url; a.download = cardFileName
+              document.body.appendChild(a); a.click(); a.remove()
+              window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(rollCallWaText)}`, '_blank', 'noopener,noreferrer')
             }
 
             return (
@@ -3774,6 +3983,29 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>
                 Send report on WhatsApp · 89742 98074
               </a>
+              {/* Profile card — image with photo, rank and today's counts */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                {cardReady ? (
+                  <img src={card.url} alt={`${selectedHouse} roll call profile card`}
+                    style={{ width: 'min(100%, 260px)', borderRadius: 16, border: '1px solid #E9D9B0', boxShadow: '0 18px 34px -18px rgba(11,30,61,.7)' }} />
+                ) : card === 'loading' || !rankLoaded ? (
+                  <div style={{ width: 'min(100%, 260px)', aspectRatio: '4 / 5', borderRadius: 16, background: 'linear-gradient(160deg,#132B52,#0B1E3D)', color: '#E2C57E', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Preparing profile card…
+                  </div>
+                ) : null}
+                {rankInfo?.rank && (
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>
+                    {medalFor(rankInfo.rank)} Rank #{rankInfo.rank} of {rankInfo.total} · Score {rankInfo.score}/100
+                  </div>
+                )}
+                {cardReady && (
+                  <button type="button" onClick={shareProfileCard}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 14, border: '1px solid #E2C57E', cursor: 'pointer', fontFamily: 'inherit',
+                      background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 13.5, fontWeight: 800, boxShadow: '0 12px 22px -12px rgba(11,30,61,.9)' }}>
+                    📤 Share profile card on WhatsApp
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
