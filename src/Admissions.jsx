@@ -29,6 +29,9 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { printApplicationReceipt as printApplicationReceiptDoc } from './applicationReceipt'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
+import { canonicalBatch } from './courseMap'
+// A batch in its standard name; unknown names ("Class 6") stay as typed.
+const stdBatch = v => canonicalBatch(v)
 
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
@@ -987,8 +990,9 @@ function mapToDB(app) {
     emergency_contact_rel:  app.emergencyRel   || null,
     sibling_gcc:     app.siblingGcc    ? parseInt(app.siblingGcc) : null,
     course:          app.course        || null,
-    subtype:         app.subtype       || null,
-    batch:           app.cls           || null,
+    // Standard batch names ("ELITE" / "Udaan — ENG" → Udaan); anything else as typed.
+    subtype:         stdBatch(app.subtype) || null,
+    batch:           stdBatch(app.cls)     || null,
     house:           app.house         || null,
     session:         app.session       || null,
     hostel_type:     hostelType,
@@ -2182,7 +2186,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     entranceScore:def('entranceScore'), interviewScore:def('interviewScore'), interviewDate:def('interviewDate'),
     followupDate:def('followupDate'), bedNumber:def('bedNumber'),
     emergencyName:def('emergencyName'), emergencyPhone:def('emergencyPhone'), emergencyRel:def('emergencyRel'),
-    siblingGcc:def('siblingGcc'), course:def('course'), subtype:def('subtype'), cls:def('cls'), house:def('house'),
+    siblingGcc:def('siblingGcc'), course:def('course'), subtype:stdBatch(def('subtype')), cls:stdBatch(def('cls')), house:def('house'),
     session:defaultSession, hostel_type:def('hostel_type','Day Scholar'), status:def('status','Applied'),
     father:def('father'), mother:def('mother'), phone:def('phone'), whatsapp:def('whatsapp'),
     prevSchool:def('prevSchool'), address:def('address'), remarks:def('remarks'), photoUrl:def('photoUrl'),
@@ -2541,7 +2545,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                   </AfField>
                   <AfField label="Subtype / batch" required={subtypes.length > 0} error={err('subtype','programme')}>
                     {subtypes.length > 0
-                      ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}</select>
+                      ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}{form.subtype && !subtypes.includes(form.subtype) && <option>{form.subtype}</option>}</select>
                       : <input {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)} placeholder="Optional" />}
                   </AfField>
                   <AfField label="Class / batch" required error={err('cls','programme')}>
@@ -4151,7 +4155,7 @@ export default function Admissions() {
   const courseOptions  = useMemo(() => [...new Set(apps.map(a=>a.course).filter(Boolean))].sort(), [apps])
   const subtypeOptions = useMemo(() => {
     const src = filterCourse !== 'All' ? apps.filter(a=>a.course===filterCourse) : apps
-    return [...new Set(src.map(a=>a.subtype).filter(Boolean))].sort()
+    return [...new Set(src.map(a=>canonicalBatch(a.subtype)).filter(Boolean))].sort()
   }, [apps, filterCourse])
 
   useEffect(() => { setSubtype('All') }, [filterCourse])
@@ -4188,7 +4192,7 @@ export default function Admissions() {
       const matchStatus  = filterStatus  === 'All' || a.status      === filterStatus
       const matchSession = filterSession === 'All' || a.session     === filterSession
       const matchCourse  = filterCourse  === 'All' || a.course      === filterCourse
-      const matchSubtype = filterSubtype === 'All' || a.subtype     === filterSubtype
+      const matchSubtype = filterSubtype === 'All' || canonicalBatch(a.subtype) === filterSubtype
       const matchHostel  = filterHostel  === 'All' || a.hostel_type === filterHostel
       const matchHouse   = filterHouse   === 'All' || a.house       === filterHouse
       const matchSearch  = !q || [a.name,a.phone,a.admNo,a.gcc,a.cls,a.house,a.father,a.course,a.subtype,a.session,a.hostel_type,a.whatsapp,a.mother,a.prevSchool]

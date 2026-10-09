@@ -69,9 +69,10 @@ export function courseOf(s) {
     || 'Unassigned'
 }
 
-// Batch for a student row (students.batch, falling back to class_name).
+// Batch for a student row (students.batch, falling back to class_name), in
+// the standard name ("UDAAN", "Udaan — ENG", old "Elite" → Udaan).
 export function batchOf(s) {
-  return String(s?.batch || s?.class_name || '').trim() || 'No batch'
+  return canonicalBatch(s?.batch || s?.class_name) || 'No batch'
 }
 
 // Batches to offer for a course: the standard list, plus any other batch
