@@ -18,7 +18,7 @@ import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
-import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
+import { courseOf, batchOf, canonicalBatch, isStandardBatch, handoffToAttendance, takeStudentsHandoff } from './courseMap'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -2356,7 +2356,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
   const [presets, setPresets]   = useState(() => { try { return JSON.parse(localStorage.getItem(REPORT_PRESETS_KEY)||'[]') } catch { return [] } })
   const [presetName, setPresetName] = useState('')
 
-  const allBatches = Array.from(new Set(students.map(s=>s.batch).filter(Boolean))).sort()
+  const allBatches = Array.from(new Set(students.map(s=>canonicalBatch(s.batch)).filter(Boolean))).sort()
   const availableFields = REPORT_FIELDS.filter(f => can.viewPII || !f.pii)
   const fieldGroups = Array.from(new Set(availableFields.map(f=>f.group)))
 
@@ -2372,8 +2372,8 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
   const setField = (k,v) => setRf(prev => ({ ...prev, [k]: v }))
 
   const matched = useMemo(() => students.filter(s => {
-    if (rf.course.length  && !rf.course.includes(s.course))      return false
-    if (rf.batch.length   && !rf.batch.includes(s.batch))        return false
+    if (rf.course.length  && !rf.course.includes(courseOf(s)))   return false
+    if (rf.batch.length   && !rf.batch.includes(canonicalBatch(s.batch))) return false
     if (rf.house.length   && !rf.house.includes(s.house))        return false
     if (rf.hostel.length  && !rf.hostel.includes(s.hostel_type)) return false
     if (rf.status.length  && !rf.status.includes(s.status))      return false
@@ -2995,7 +2995,10 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
-  const [form,setForm]=useState(savedDraft||(editing?Object.fromEntries(Object.entries({...blank,...editing}).map(([k,v])=>[k,v??''])):blank))
+  // Batch in its standard name ("UDAAN" / old "Elite" → Udaan) and a blank
+  // course filled from it, so the Course / Batch boxes show the student's.
+  const stdStudent=st=>{const b=canonicalBatch(st.batch),c=courseOf(st);return{...st,batch:isStandardBatch(b)?b:st.batch,course:st.course||(c!=='Unassigned'?c:st.course)}}
+  const [form,setForm]=useState(savedDraft||(editing?Object.fromEntries(Object.entries({...blank,...stdStudent(editing)}).map(([k,v])=>[k,v??''])):blank))
   const [errors,setErrors]=useState({})
   const [saving,setSaving]=useState(false)
   const [draftSaved,setDraftSaved]=useState(false)
@@ -3100,7 +3103,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12,marginBottom:4}}>
           <FieldRow label="Course"><select style={SEL} value={form.course} onChange={e=>set('course',e.target.value)}><option value="">— Course —</option>{Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}</select></FieldRow>
           <FieldRow label="Batch / Class">
-            {subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
+            {subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}{form.batch&&!subtypes.includes(form.batch)&&<option>{form.batch}</option>}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
           </FieldRow>
           <FieldRow label="Session"><select style={SEL} value={form.session} onChange={e=>set('session',e.target.value)}><option value="">—</option>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{(houseOptions?.length?houseOptions:HOUSES_LIST).map(h=><option key={h}>{h}</option>)}</select></FieldRow>
@@ -5490,18 +5493,18 @@ const effectiveCols = visibleCols.filter(col => {
   const clearSel=()=>setSelected(new Set())
   const applyPreset=f=>{setSearch(f.q||'');setFilterStatus(f.status||'All');setFilterCourse(f.course||'All');setFilterHostel(f.hostel||'All');setFilterHouse(f.house||'All');setFilterGender(f.gender||'All');setFilterSession(f.session||'All');setFilterBatch(f.batch||'All');setGccMin(f.gccMin||'');setGccMax(f.gccMax||'');setPage(1);setShowPresets(false)}
   const currentFilters={q:search,status:filterStatus,course:filterCourse,hostel:filterHostel,house:filterHouse,gender:filterGender,session:filterSession,batch:filterBatch,gccMin,gccMax}
-  const allBatches=['All',...Array.from(new Set(students.map(s=>s.batch).filter(Boolean))).sort()]
+  const allBatches=['All',...Array.from(new Set(students.map(s=>canonicalBatch(s.batch)).filter(Boolean))).sort()]
 
   const filtered=students.filter(s=>{
     const q=search.toLowerCase()
     if(q&&![s.name,s.gcc_no,s.batch,s.father_name,s.mother_name,s.phone,s.house].some(v=>v?.toString().toLowerCase().includes(q)))return false
     if(filterStatus!=='All'&&s.status!==filterStatus)return false
-    if(filterCourse!=='All'&&s.course!==filterCourse)return false
+    if(filterCourse!=='All'&&courseOf(s)!==filterCourse)return false
     if(filterHostel!=='All'&&s.hostel_type!==filterHostel)return false
     if(filterHouse!=='All'&&s.house!==filterHouse)return false
     if(filterGender!=='All'&&s.gender!==filterGender)return false
     if(filterSession!=='All'&&s.session!==filterSession)return false
-    if(filterBatch!=='All'&&s.batch!==filterBatch)return false
+    if(filterBatch!=='All'&&canonicalBatch(s.batch)!==filterBatch)return false
     if(gccMin&&Number(s.gcc_no)<Number(gccMin))return false
     if(gccMax&&Number(s.gcc_no)>Number(gccMax))return false
     if(ageMin){const a=getAge(s.dob);if(a==null||a<Number(ageMin))return false}
