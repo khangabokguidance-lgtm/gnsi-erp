@@ -18,6 +18,7 @@ import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
+import { canonicalBatch, courseOf } from './courseMap'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -88,7 +89,12 @@ const DEFAULT_ITEMS = [
 ]
 
 // ── dropdown option sets ─────────────────────────────────────────────────────
-const CLASS_OPTIONS    = ['Lakshya','Umeed','Udaan','Pragati','Achiever','Leader','Champion']
+const CLASS_OPTIONS    = ['Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati','Achiever','Leader','Champion']
+// A picked student's batch and course in the standard names, so the Class
+// box shows them ("UDAAN", "Udaan — ENG", old "Elite" → Udaan) and a blank
+// course on a known batch is filled in (Udaan → Foundation).
+const classOf = s => canonicalBatch(s?.batch || s?.class_name)
+const courseFor = s => s?.course || (courseOf(s) !== 'Unassigned' ? courseOf(s) : '')
 const COURSES          = ['Sainik','Navodaya','Foundation','Combined Course']
 const HOSTEL_TYPES     = ['Boarder','Day Scholar','Day Boarder']
 const SOURCE_OPTIONS   = ['Walk-in','Phone Call','WhatsApp','Referral / Word of Mouth','Facebook / Instagram','Website','Google Search','School Fair / Event','Pamphlet / Poster','Other']
@@ -1234,6 +1240,7 @@ function FormSelect({ field, value, onChange, options, placeholder }) {
     <select style={{ ...inp, cursor: 'pointer' }} value={value ?? ''} onChange={e => onChange(field, e.target.value)}>
       {placeholder && <option value="" disabled>{placeholder}</option>}
       {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {value && !options.includes(value) && <option value={value}>{value}</option>}
     </select>
   )
 }
@@ -1479,7 +1486,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
   }
 
   const onSelectHL = useCallback(s => {
-    if (s) { setHLStudent(s); setHLForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, house: s.house || f.house, course: s.course || f.course, hostel_type: s.hostel_type || f.hostel_type })) }
+    if (s) { setHLStudent(s); setHLForm(f => ({ ...f, student_name: s.name, class_name: classOf(s) || f.class_name, house: s.house || f.house, course: courseFor(s) || f.course, hostel_type: s.hostel_type || f.hostel_type })) }
     else   { setHLStudent(null); setHLForm(f => ({ ...f, student_name: '', class_name: '', house: '', course: '', hostel_type: '' })) }
   }, [])
 
@@ -2168,7 +2175,7 @@ export default function ReceptionPage({ currentUser }) {
   }
 
   const onSelectEnquiry = useCallback(s => {
-    if (s) { setEnquiryStudent(s); setEnquiryForm(f => ({ ...f, student_name: s.name, class_interest: s.batch || f.class_interest, phone: s.phone || f.phone, parent_name: s.father_name || f.parent_name })) }
+    if (s) { setEnquiryStudent(s); setEnquiryForm(f => ({ ...f, student_name: s.name, class_interest: classOf(s) || f.class_interest, phone: s.phone || f.phone, parent_name: s.father_name || f.parent_name })) }
     else   { setEnquiryStudent(null); setEnquiryForm(f => ({ ...f, student_name: '', parent_name: '' })) }
   }, [])
 
@@ -2193,22 +2200,22 @@ export default function ReceptionPage({ currentUser }) {
   }, [])
 
   const onSelectGP = useCallback(s => {
-    if (s) { setGpStudent(s); setGpForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, course: s.course || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
+    if (s) { setGpStudent(s); setGpForm(f => ({ ...f, student_name: s.name, class_name: classOf(s) || f.class_name, course: courseFor(s) || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
     else   { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })) }
   }, [])
 
   const onSelectLA = useCallback(s => {
-    if (s) { setLaStudent(s); setLaForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, course: s.course || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
+    if (s) { setLaStudent(s); setLaForm(f => ({ ...f, student_name: s.name, class_name: classOf(s) || f.class_name, course: courseFor(s) || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
     else   { setLaStudent(null); setLaForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })) }
   }, [])
 
   const onSelectCO = useCallback(s => {
-    if (s) { setCoStudent(s); setCoForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house, parent_name: f.parent_name || s.father_name || '', phone: f.phone || s.phone || '' })) }
+    if (s) { setCoStudent(s); setCoForm(f => ({ ...f, student_name: s.name, class_name: classOf(s) || f.class_name, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house, parent_name: f.parent_name || s.father_name || '', phone: f.phone || s.phone || '' })) }
     else   { setCoStudent(null); setCoForm(f => ({ ...f, student_name: '', class_name: '', gcc_no: '', house: '' })) }
   }, [])
 
   const onSelectPI = useCallback(s => {
-    if (s) { setPiStudent(s); setPiForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, house: s.house || f.house, course: s.course || f.course, hostel_type: s.hostel_type || f.hostel_type })) }
+    if (s) { setPiStudent(s); setPiForm(f => ({ ...f, student_name: s.name, class_name: classOf(s) || f.class_name, house: s.house || f.house, course: courseFor(s) || f.course, hostel_type: s.hostel_type || f.hostel_type })) }
     else   { setPiStudent(null); setPiForm(f => ({ ...f, student_name: '', class_name: '', house: '', course: '', hostel_type: '' })) }
   }, [])
 
