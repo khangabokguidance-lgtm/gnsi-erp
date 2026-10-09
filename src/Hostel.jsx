@@ -275,6 +275,19 @@ const TAB_GROUPS = [
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
 
+// A housemaster/housemistress logging in sees only these tabs, each
+// limited to their own house; everything else stays with the office.
+const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
+const HM_TABS = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable']
+
+// Rows of one house: matched by the row's student (when it has one) or by
+// the row's own house. No lockHouse = everything (admins, office staff).
+function inHouse(rows, lockHouse, studentIds) {
+  if (!lockHouse) return rows || []
+  const key = normalizeHouse(lockHouse)
+  return (rows || []).filter(r => (r.student_id && studentIds?.has(r.student_id)) || normalizeHouse(r.house) === key)
+}
+
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -3925,11 +3938,15 @@ const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
 const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
 
-function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
+function MaintenanceTab({ lockHouse, currentHousemaster, currentUser, autoOpenForm }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
 
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  // A housemaster sees their own house's repairs and the ones they raised.
+  const records = useMemo(() => !lockHouse ? allRecords
+    : allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(lockHouse) || (r.reported_by && r.reported_by === currentUser?.name)),
+  [allRecords, lockHouse, currentUser?.name])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -3937,14 +3954,14 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
   const [filterPriority, setFilterPriority] = useState('All')
   const [search, setSearch] = useState('')
   const mobile = useMobileView()
-  const emptyMaintenance = { category: 'Plumbing', house: '', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }
+  const emptyMaintenance = { category: 'Plumbing', house: lockHouse || '', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }
   const [form, setForm] = useState(emptyMaintenance)
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   useEffect(() => {
     if (autoOpenForm) {
-      setForm({ ...emptyMaintenance, house: autoOpenForm.house || '' })
+      setForm({ ...emptyMaintenance, house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -4234,7 +4251,7 @@ export async function computeHMPerformance(startDateStr, endDateStr) {
   const [attendance, neglect, { data: housemasters }, studentsForCount] = await Promise.all([
     fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr)),
     fetchAllRows(() => supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr)),
-    supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
+    supabase.from('housemasters').select('*').eq('status', 'Active'),
     // Fetched so a "No data" house can be distinguished as either
     // "no students assigned here" or "students exist but nothing was
     // logged" — otherwise both look identical in the ranking card.
@@ -4334,6 +4351,7 @@ export async function computeHMPerformance(startDateStr, endDateStr) {
       house: houseName,
       hmName: hm?.name || 'Unassigned',
       hmPhone: hm?.phone || '',
+      hm: hm || null,
       onTimePct, compliancePct, neglectFreePct, score,
       sessionsCount: sessionKeys.length,
       neglectCount: houseNeglect.length,
@@ -5145,6 +5163,113 @@ function CommandCentreTab({ students, currentUser }) {
 }
 
 
+// ══════════════════════════════════════════════════════════════
+//  YOUR RANK — a housemaster's place among all housemasters and
+//  housemistresses, on the same 7-day score as the admin ranking
+//  (on-time roll call, compliance, neglect-free). Their own row is
+//  highlighted; the others show name, house and score only.
+// ══════════════════════════════════════════════════════════════
+function HMRankCard({ house }) {
+  const [rankings, setRankings] = useState(null)
+  const mobile = useMobileView()
+
+  useEffect(() => {
+    let alive = true
+    const end = new Date()
+    const start = new Date()
+    start.setDate(start.getDate() - 7)
+    computeHMPerformance(start.toISOString().split('T')[0], end.toISOString().split('T')[0])
+      .then(r => { if (alive) setRankings(r) })
+      .catch(() => { if (alive) setRankings([]) })
+    return () => { alive = false }
+  }, [])
+
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  if (!rankings) return <div style={{ ...panel, padding: 22, textAlign: 'center', color: '#64748B', fontSize: 13, marginTop: 16 }}>Working out your rank…</div>
+
+  const key = normalizeHouse(house)
+  const ranked = rankings.filter(r => r.hm) // houses with a housemaster/mistress
+  const scored = ranked.filter(r => r.score !== null)
+  const mine = ranked.find(r => normalizeHouse(r.house) === key)
+  const myRank = mine && mine.score !== null ? scored.indexOf(mine) + 1 : null
+  const total = scored.length
+  const medal = n => n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : null
+  const scoreColor = v => v === null ? '#94A3B8' : v >= 80 ? '#15803D' : v >= 60 ? '#B8923A' : '#DC2626'
+  const FACTORS = mine ? [
+    { label: 'On-time roll call', v: mine.onTimePct },
+    { label: 'Compliance', v: mine.compliancePct },
+    { label: 'Neglect-free', v: mine.neglectFreePct },
+  ] : []
+
+  return (
+    <div style={{ ...panel, marginTop: 16, overflow: 'hidden' }}>
+      <div style={{ position: 'relative', color: '#fff', padding: mobile ? '18px' : '20px 24px',
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Your rank · last 7 days</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+              <span style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 38 : 46, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>
+                {myRank ? `${medal(myRank) ? medal(myRank) + ' ' : ''}#${myRank}` : '—'}
+              </span>
+              <span style={{ fontSize: 14, color: 'rgba(255,255,255,.75)' }}>
+                {myRank ? <>of <b style={{ color: '#fff' }}>{total}</b> housemasters &amp; housemistresses</> : 'No roll calls logged yet this week'}
+              </span>
+            </div>
+          </div>
+          {mine && (
+            <div style={{ textAlign: 'center', padding: '10px 18px', borderRadius: 16, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)' }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700, color: mine.score === null ? 'rgba(255,255,255,.5)' : '#E2C57E', lineHeight: 1 }}>{mine.score === null ? '—' : mine.score}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.65)', marginTop: 4 }}>Score / 100</div>
+            </div>
+          )}
+        </div>
+        {mine && (
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3, 1fr)', gap: 10, marginTop: 16 }}>
+            {FACTORS.map(f => (
+              <div key={f.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'rgba(255,255,255,.75)' }}>
+                  <span>{f.label}</span><b style={{ color: '#fff' }}>{f.v === null ? '—' : `${f.v}%`}</b>
+                </div>
+                <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,.12)', marginTop: 5, overflow: 'hidden' }}>
+                  <div style={{ width: `${f.v || 0}%`, height: '100%', borderRadius: 99, background: 'linear-gradient(90deg,#B8913F,#E2C57E)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {mine?.topSkippedTabs?.length > 0 && (
+          <div style={{ marginTop: 14, fontSize: 12, color: 'rgba(255,255,255,.8)' }}>
+            To climb: complete <b style={{ color: '#E2C57E' }}>{mine.topSkippedTabs.map(t => t.tab).join(', ')}</b> on time — these were missed most.
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: mobile ? '12px' : '14px 18px 16px' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#B8923A', padding: '2px 4px 8px' }}>All housemasters &amp; housemistresses</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ranked.map(r => {
+            const me = r === mine
+            const n = r.score !== null ? scored.indexOf(r) + 1 : null
+            return (
+              <div key={r.house} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 14,
+                background: me ? 'linear-gradient(90deg,#FBF4E2,#FFFDF7)' : '#FCFBF7', border: `1px solid ${me ? '#E2C57E' : '#F1EDE4'}` }}>
+                <span style={{ width: 30, textAlign: 'center', fontFamily: FONT_DISPLAY, fontSize: medal(n) ? 19 : 15, fontWeight: 700, color: '#0B1E3D', flexShrink: 0 }}>{n ? (medal(n) || n) : '–'}</span>
+                <span style={{ flex: 1, minWidth: 0 }}><HmChip hm={r.hm} size={32} /></span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: mobile ? 80 : 160 }}>🏠 {r.house}</span>
+                {me && <span style={{ fontSize: 10, fontWeight: 800, color: '#7A5A12', background: '#F8EBC7', borderRadius: 99, padding: '2px 8px' }}>YOU</span>}
+                <span style={{ width: 44, textAlign: 'right', fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 700, color: scoreColor(r.score), fontVariantNumeric: 'tabular-nums' }}>{r.score === null ? '—' : r.score}</span>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 10, padding: '0 4px' }}>Score = equal weight of on-time roll call, six-tab compliance and neglect-free rate.</div>
+      </div>
+    </div>
+  )
+}
+
 function HMPerformanceRanking() {
   const [loading, setLoading] = useState(true)
   const [rankings, setRankings] = useState([])
@@ -5488,14 +5613,22 @@ function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onS
 // sessions, night duty, 7-day trend). Dropped into both the mobile and
 // desktop dashboard layouts, right below each one's header, without
 // altering either layout's existing structure below it.
-function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
+function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [attendanceToday, setAttendanceToday] = useState([])
-  const [eveningToday, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
-  const [leaveToday, setLeaveToday] = useState([])
-  const [sickbayToday, setSickbayToday] = useState([])
-  const [maintenanceOpen, setMaintenanceOpen] = useState([])
-  const [disciplineOpen, setDisciplineOpen] = useState([])
+  // Loaded for every house; a housemaster (lockHouse) sees only their own.
+  const [attendanceAll, setAttendanceToday] = useState([])
+  const [eveningAll, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
+  const [leaveAll, setLeaveToday] = useState([])
+  const [sickbayAll, setSickbayToday] = useState([])
+  const [maintenanceAll, setMaintenanceOpen] = useState([])
+  const [disciplineAll, setDisciplineOpen] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const attendanceToday = inHouse(attendanceAll, lockHouse, studentIds)
+  const eveningToday = inHouse(eveningAll, lockHouse, studentIds)
+  const leaveToday = inHouse(leaveAll, lockHouse, studentIds)
+  const sickbayToday = inHouse(sickbayAll, lockHouse, studentIds)
+  const maintenanceOpen = inHouse(maintenanceAll, lockHouse)
+  const disciplineOpen = inHouse(disciplineAll, lockHouse, studentIds)
   const [nightDutyTonight, setNightDutyTonight] = useState(null)
   // Pending doubt-session tasks assigned to THIS housemaster (from
   // EnhancedLogEntry.jsx's doubt_sessions table) — matched by hm_name,
@@ -5537,7 +5670,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         hmName
           ? supabase.from('doubt_sessions').select('*').ilike('hm_name', hmName).eq('status', 'open').order('created_at', { ascending: false })
           : Promise.resolve({ data: [] }),
-        fetchAllRows(() => supabase.from('attendance_records').select('date, status, session').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
+        fetchAllRows(() => supabase.from('attendance_records').select('date, status, session, house').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
         supabase.from('hostel_duty_rosters').select('*').eq('date', todayStr).maybeSingle(),
         supabase.from('hostel_duty_completions').select('duty_id, done').eq('date', todayStr),
       ])
@@ -5559,7 +5692,9 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       // (not a fixed denominator, since the active student count itself
       // can drift day to day with admissions/dropouts).
       const byDate = {}
+      const houseKey = normalizeHouse(lockHouse)
       for (const r of (wk || [])) {
+        if (!r.house || (houseKey && normalizeHouse(r.house) !== houseKey)) continue
         if (!byDate[r.date]) byDate[r.date] = { present: 0, total: 0 }
         byDate[r.date].total++
         if (r.status === 'Present') byDate[r.date].present++
@@ -5579,7 +5714,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       setLoading(false)
     }
     loadDashboard()
-  }, [currentHousemaster?.name])
+  }, [currentHousemaster?.name, lockHouse])
 
   // One roll-call record per student (the latest), hostel records only.
   const perStudent = rows => [...new Map(rows.filter(r => r.house && r.student_id).map(r => [r.student_id, r])).values()]
@@ -5669,7 +5804,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Housemaster · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15 }}>Good {greetingWord()}, {hmName}</h2>
             <div style={{ marginTop: 12 }}>
               <ReportExportButtons
@@ -5820,6 +5955,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         />
       </div>
 
+      {hmOnly && lockHouse && <HMRankCard house={lockHouse} />}
+
       {isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <MonthlyCertificateCard />
@@ -5833,9 +5970,14 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER JOURNAL
 // ══════════════════════════════════════════════════════════════
-function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
+function JournalTab({ lockHouse, currentHousemaster, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [entries, setEntries] = useState([])
+  const [allEntries, setEntries] = useState([])
+  // A housemaster reads their own house's journal and their own entries.
+  const myName = currentHousemaster?.name
+  const entries = useMemo(() => !lockHouse ? allEntries
+    : allEntries.filter(e => normalizeHouse(e.house) === normalizeHouse(lockHouse) || (myName && e.housemaster_name === myName)),
+  [allEntries, lockHouse, myName])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -5845,12 +5987,12 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
   const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
-  const emptyJournalForm = { entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }
+  const emptyJournalForm = { entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: lockHouse || '', flagged: false }
   const [form, setForm] = useState(emptyJournalForm)
 
   useEffect(() => {
     if (autoOpenForm) {
-      setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime(), house: autoOpenForm.house || '' })
+      setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime(), house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -6788,9 +6930,10 @@ const SHIFT_STYLE = {
   'Full Day': { color: '#1e3a6e', bg: '#eff6ff', icon: '📋' },
 }
 
-function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
+function NightDutyTab({ staffProfiles, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const records = useMemo(() => inHouse(allRecords, lockHouse), [allRecords, lockHouse])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -6800,7 +6943,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
   useEffect(() => {
     if (autoOpenForm) {
       setEditRec(null)
-      setForm({ ...emptyMD, date: today(), house: autoOpenForm.house || '' })
+      setForm({ ...emptyMD, date: today(), house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -6831,7 +6974,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       ? await supabase.from('mess_duty').update(payload).eq('id', editRec.id)
       : await supabase.from('mess_duty').insert([payload])
     if (error) alert('Error: ' + error.message)
-    else { setForm(emptyMD); setShowForm(false); setEditRec(null); load() }
+    else { setForm({ ...emptyMD, house: lockHouse || '' }); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
 
@@ -7021,7 +7164,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
           allRows={enriched}
         />
         {isAdmin && (
-          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm({ ...emptyMD, house: lockHouse || '' }) }} style={btn()}>
             {showForm ? '✖ Cancel' : '➕ Assign Duty'}
           </button>
         )}
@@ -7258,10 +7401,12 @@ const emptyDisc = {
 }
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
-function DisciplineTab({ students, autoOpenForm, currentUser }) {
+function DisciplineTab({ students, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const mobile = useMobileView()
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const records = useMemo(() => inHouse(allRecords, lockHouse, studentIds), [allRecords, lockHouse, studentIds])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -7711,10 +7856,12 @@ const emptySick = {
   discharge_date: '', status: 'Admitted', attended_by: '',
 }
 
-function SickbayTab({ students, autoOpenForm, currentUser }) {
+function SickbayTab({ students, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const mobile = useMobileView()
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const records = useMemo(() => inHouse(allRecords, lockHouse, studentIds), [allRecords, lockHouse, studentIds])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -11149,7 +11296,7 @@ function Hostel() {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
   const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
-  const [activeTab, setActiveTab] = useState(() => {
+  const [requestedTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
   })
@@ -11194,7 +11341,17 @@ function Hostel() {
   }, [])
   const userRole = (currentUser?.role || '').toLowerCase()
   const isAdmin = isAdminRole(userRole)
-  const isHM = userRole === 'house master'
+  // A housemaster/housemistress (not an admin) works only with their own
+  // house: the tabs they need, and every list limited to that house.
+  const hmOnly = HM_ROLES.includes(userRole) && !isAdmin
+  const activeTab = hmOnly && !HM_TABS.includes(requestedTab) ? 'hmdashboard' : requestedTab
+  const shownTabs = hmOnly ? TABS.filter(t => HM_TABS.includes(t.id)) : TABS
+  const lockHouse = hmOnly ? (currentHousemaster?.house || '') : ''
+  const myStudents = useMemo(() => {
+    if (!hmOnly) return students
+    const key = normalizeHouse(currentHousemaster?.house)
+    return key ? students.filter(st => normalizeHouse(st.house) === key) : []
+  }, [hmOnly, students, currentHousemaster?.house])
 
   // Track mobile state
   useEffect(() => {
@@ -11218,9 +11375,11 @@ function Hostel() {
       // .select(), capped at 1000 rows).
       getAllStudents('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
+      // Case-insensitive, so "Sir James" on the login still finds "SIR JAMES".
       supabase.from('housemasters').select('*')
         .eq('status', 'Active')
-        .eq('name', (currentUser?.name || '').trim())
+        .ilike('name', (currentUser?.name || '').trim() || '-')
+        .limit(1)
         .maybeSingle(),
       supabase.from('houses').select('name, color_index'),
     ])
@@ -11262,14 +11421,17 @@ function Hostel() {
 
   const activeTabDef = TABS.find(t => t.id === activeTab)
   const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
-  const QUICK_TABS = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+  const QUICK_TABS = hmOnly
+    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal']
+    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+  const menuGroups = TAB_GROUPS.map(g => ({ ...g, ids: g.ids.filter(id => shownTabs.some(t => t.id === id)) })).filter(g => g.ids.length)
   const splitLabel = label => {
     const m = (label || '').match(/^(\S+)\s+(.*)$/)
     return m ? { icon: m[1], text: m[2] } : { icon: '', text: label }
   }
   const hourNow = new Date().getHours()
   const greeting = hourNow < 12 ? 'Good morning' : hourNow < 17 ? 'Good afternoon' : 'Good evening'
-  const boardersCount = students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
+  const boardersCount = myStudents.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
   const houseCount = Object.keys(houseColorMap).length
 
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
@@ -11277,10 +11439,10 @@ function Hostel() {
   const tabContent = {
     allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
-    nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
-    discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
+    nightduty: <NightDutyTab staffProfiles={staffProfiles} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
+    discipline: <DisciplineTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
     superintendentdash: <SuperintendentDashboard students={students} currentUser={currentUser} />,
-    sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
+    sickbay: <SickbayTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
     houseexpense: <HouseExpenseTab currentUser={currentUser} />,
@@ -11289,15 +11451,15 @@ function Hostel() {
     studymaterial: <StudyMaterialTab students={students} currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
-    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
+    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} lockHouse={lockHouse} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={changeTab} onCompleteTab={navigateAndOpenForm} />,
-    leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
-    maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
+    attendance: <AttendanceTab students={myStudents} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={changeTab} onCompleteTab={navigateAndOpenForm} />,
+    leave: <LeaveTab students={myStudents} lockHouse={lockHouse} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    hmdashboard: <HMDashboard students={myStudents} hmOnly={hmOnly} lockHouse={lockHouse} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
+    maintenance: <MaintenanceTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
     parentitems: <HostelParentItemsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
+    journal: <JournalTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} />,
@@ -11410,8 +11572,10 @@ function Hostel() {
         {/* Hero quick figures */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: mobile ? 8 : 12, marginTop: mobile ? 16 : 22 }}>
           {[
-            { l: 'Students', v: dataLoading ? '—' : students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout').length, sub: 'Active roster' },
-            { l: 'In houses', v: dataLoading ? '—' : boardersCount, sub: houseCount ? `${houseCount} houses` : 'Allocated' },
+            { l: 'Students', v: dataLoading ? '—' : myStudents.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout').length, sub: hmOnly ? 'In your house' : 'Active roster' },
+            ...(hmOnly
+              ? [{ l: 'Your house', v: lockHouse || '—', sub: currentHousemaster ? hmTitle(currentHousemaster) : 'Not linked', small: true }]
+              : [{ l: 'In houses', v: dataLoading ? '—' : boardersCount, sub: houseCount ? `${houseCount} houses` : 'Allocated' }]),
             { l: 'Staff', v: dataLoading ? '—' : staffProfiles.length, sub: 'On record' },
             ...(!mobile ? [{ l: 'Section', v: activeTabDef ? splitLabel(activeTabDef.label).text : '—', sub: activeGroup?.label || 'Dashboard', small: true }] : []),
           ].map(h => (
@@ -11468,12 +11632,12 @@ function Hostel() {
                 onKeyDown={e => {
                   if (e.key !== 'Enter') return
                   const q = menuQuery.trim().toLowerCase(); if (!q) return
-                  const hit = TABS.find(t => t.label.toLowerCase().includes(q))
+                  const hit = shownTabs.find(t => t.label.toLowerCase().includes(q))
                   if (hit) { changeTab(hit.id); setMenuOpen(false) }
                 }} />
             </div>
             <div style={{ overflowY: 'auto', padding: mobile ? '10px 12px 28px' : '14px 16px 18px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: mobile ? 4 : '6px 16px', alignContent: 'start' }}>
-              {TAB_GROUPS.map(group => {
+              {menuGroups.map(group => {
                 const q = menuQuery.trim().toLowerCase()
                 const items = group.ids.map(id => TABS.find(tab => tab.id === id)).filter(t => t && (!q || t.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)))
                 if (!items.length) return null
@@ -11502,6 +11666,12 @@ function Hostel() {
       {/* Desktop/Tablet Tab Bar and Mobile Tab Grid removed — all tabs now
           live in the hamburger menu in the header above, per instruction. */}
 
+      {hmOnly && !dataLoading && !lockHouse && (
+        <div role="alert" style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 14, background: '#FFF7E6', border: '1px solid #F1D9A6', color: '#7A5A12', fontSize: 13.5, lineHeight: 1.5 }}>
+          <b>Your login isn't linked to a house yet.</b> Ask the office to add you under Hostel → 🧑‍🏫 HM with the same name you log in with
+          ({currentUser?.name || 'your name'}) and your house. Until then no students are shown.
+        </div>
+      )}
       {dataLoading && !standaloneTab
         ? (
           <div aria-busy="true">
