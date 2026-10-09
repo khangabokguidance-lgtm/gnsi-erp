@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
 import { StaffAvatar } from './staffPhotos'
@@ -4803,6 +4803,7 @@ function HMRollCallReportTab({ lockHouse }) {
   [allHouses, lockHouse])
   const [studentsByHouse, setStudentsByHouse] = useState({}) // house → count of active students
   const [records, setRecords] = useState([]) // attendance_records in range
+  const [hms, setHms] = useState([]) // active housemasters, for each house's photo
   const [expandedHouse, setExpandedHouse] = useState(null)
   const shownHouse = lockHouse ? (expandedHouse === '' ? null : houses[0]) : expandedHouse
   const mobile = useMobileView()
@@ -4829,12 +4830,14 @@ function HMRollCallReportTab({ lockHouse }) {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [{ data: houseRows }, studentRows, attRows] = await Promise.all([
+      const [{ data: houseRows }, studentRows, attRows, { data: hmRows }] = await Promise.all([
         supabase.from('houses').select('name'),
         getActiveStudents('house'),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr)),
+        supabase.from('housemasters').select('*').eq('status', 'Active'),
       ])
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
+      setHms(hmRows || [])
       const counts = {}
       ;(studentRows || []).forEach(s => {
         const h = normalizeHouse(s.house)
@@ -4867,6 +4870,9 @@ function HMRollCallReportTab({ lockHouse }) {
     return { total, marked, absent, pct, onTime, complete: total > 0 && marked >= total }
   }
 
+  // Today's session whose deadline (plus grace) hasn't passed yet.
+  const isUpcoming = (dateStr, session) => dateStr === today() && new Date() <= rollCallDeadline(dateStr, session).graceEnd
+
   // ── Per-house summary across the whole range ──
   const getHouseSummary = (houseName) => {
     let sessionsExpected = 0, sessionsComplete = 0, onTimeCount = 0, completeWithTimeData = 0, daysBlocked = 0
@@ -4874,6 +4880,7 @@ function HMRollCallReportTab({ lockHouse }) {
       ;['morning', 'night'].forEach(session => {
         const s = getDayStats(houseName, d, session)
         if (s.total === 0) return // no students in this house — don't count as expected
+        if (!s.complete && isUpcoming(d, session)) return // not due yet today
         sessionsExpected++
         if (s.complete) {
           sessionsComplete++
@@ -4887,15 +4894,12 @@ function HMRollCallReportTab({ lockHouse }) {
       // despite students existing in the house — i.e. roll call never ran.
       const m = getDayStats(houseName, d, 'morning')
       const n = getDayStats(houseName, d, 'night')
-      if (m.total > 0 && m.marked === 0 && n.marked === 0) daysBlocked++
+      if (m.total > 0 && m.marked === 0 && n.marked === 0 && !isUpcoming(d, 'night')) daysBlocked++
     })
     const completionPct = sessionsExpected > 0 ? Math.round((sessionsComplete / sessionsExpected) * 100) : null
     const onTimePct = completeWithTimeData > 0 ? Math.round((onTimeCount / completeWithTimeData) * 100) : null
     return { sessionsExpected, sessionsComplete, completionPct, onTimePct, daysBlocked }
   }
-
-  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#b8923a' : '#dc2626'
-  const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
 
   // Flattened one-row-per-house-per-day-per-session view, for export only.
   const exportRows = useMemo(() => {
@@ -4918,121 +4922,211 @@ function HMRollCallReportTab({ lockHouse }) {
     return rows
   }, [houses, dayList, records, studentsByHouse])
 
-  if (loading) {
-    return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading roll call report...</div>
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  const hmFor = h => hms.find(x => normalizeHouse(x.house) === normalizeHouse(h)) || null
+  const fmtDay = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  const weekday = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })
+  // One cell's look: complete on time / complete late / partly marked / not done / upcoming / no students.
+  const cellState = (d, session, s) => {
+    if (s.total === 0) return { key: 'none', bg: '#F8FAFC', fg: '#CBD5E1', border: '#EEF1F5', mark: '–', label: 'No students' }
+    if (s.complete && s.onTime === false) return { key: 'late', bg: '#FEF3C7', fg: '#A16207', border: '#F6DE95', mark: '⏰', label: 'Complete — late' }
+    if (s.complete) return { key: 'ok', bg: '#DCFCE7', fg: '#15803D', border: '#BBE5C8', mark: '✓', label: 'Complete on time' }
+    if (isUpcoming(d, session)) return { key: 'up', bg: '#F1F5F9', fg: '#64748B', border: '#E2E8F0', mark: s.marked ? `${s.pct}%` : '·', label: s.marked ? `In progress · ${s.marked}/${s.total}` : 'Not due yet' }
+    if (s.marked > 0) return { key: 'part', bg: '#FFEDD5', fg: '#C2410C', border: '#FDBA74', mark: `${s.pct}%`, label: `Incomplete · ${s.marked}/${s.total}` }
+    return { key: 'miss', bg: '#FEE2E2', fg: '#B91C1C', border: '#FCA5A5', mark: '✕', label: 'Not done' }
   }
+  const LEGEND = [
+    { label: 'On time', bg: '#DCFCE7', fg: '#15803D', mark: '✓' },
+    { label: 'Late', bg: '#FEF3C7', fg: '#A16207', mark: '⏰' },
+    { label: 'Incomplete', bg: '#FFEDD5', fg: '#C2410C', mark: '%' },
+    { label: 'Not done', bg: '#FEE2E2', fg: '#B91C1C', mark: '✕' },
+    { label: 'Not due yet', bg: '#F1F5F9', fg: '#64748B', mark: '·' },
+  ]
+  const summaries = houses.map(h => ({ house: h, ...getHouseSummary(h) }))
+  const totExpected = summaries.reduce((t, x) => t + x.sessionsExpected, 0)
+  const totComplete = summaries.reduce((t, x) => t + x.sessionsComplete, 0)
+  const withOnTime = summaries.filter(x => x.onTimePct !== null)
+  const overall = {
+    completion: totExpected ? Math.round(totComplete / totExpected * 100) : null,
+    onTime: withOnTime.length ? Math.round(withOnTime.reduce((t, x) => t + x.onTimePct, 0) / withOnTime.length) : null,
+    blocked: summaries.reduce((t, x) => t + x.daysBlocked, 0),
+  }
+  const ringColor = pct => pct === null ? '#CBD5E1' : pct >= 90 ? '#15803D' : pct >= 70 ? '#B8923A' : '#DC2626'
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
-        <div>
-          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Roll Call Report{lockHouse ? ` · ${lockHouse}` : ''}</h2>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
+      {/* Header */}
+      <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '18px' : '24px 26px', marginBottom: '16px',
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>GNSI Hostel · Roll call report</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 23 : 29, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>
+              {lockHouse ? `${String(lockHouse).replace(/\b\w/g, c => c.toUpperCase())} House` : 'All houses'}
+            </h2>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 5 }}>
+              {fmtDay(startStr)} – {fmtDay(endStr)} · morning &amp; night roll call
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div role="tablist" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)' }}>
+              {[{ key: 'last10', label: 'Last 10 days' }, { key: 'month', label: 'This month' }].map(m => {
+                const on = rangeMode === m.key
+                return (
+                  <button key={m.key} role="tab" aria-selected={on} onClick={() => setRangeMode(m.key)}
+                    style={{ padding: '8px 14px', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                      background: on ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : 'transparent', color: on ? '#1A1406' : 'rgba(255,255,255,.8)' }}>
+                    {m.label}
+                  </button>
+                )
+              })}
+            </div>
+            <ReportExportButtons
+              title={`Roll Call Report${lockHouse ? ` — ${lockHouse}` : ''}`}
+              subtitle={`${startStr} → ${endStr} · ${exportRows.length} house-session rows`}
+              columns={[
+                { key: 'date', label: 'Date', width: 1 },
+                { key: 'house', label: 'House', width: 1 },
+                { key: 'session', label: 'Session', width: 1 },
+                { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
+                { key: 'pct', label: '% Complete', width: 0.9 },
+                { key: 'onTime', label: 'On Time', width: 0.8 },
+                { key: 'absent', label: 'Out', width: 0.7 },
+              ]}
+              rows={exportRows}
+            />
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
-          {[{ key: 'last10', label: 'Last 10 Days' }, { key: 'month', label: 'This Month' }].map(m => (
-            <button
-              key={m.key}
-              onClick={() => setRangeMode(m.key)}
-              style={{
-                padding: '8px 14px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                background: rangeMode === m.key ? '#1e3a6e' : 'transparent',
-                color: rangeMode === m.key ? 'white' : '#64748b',
-              }}
-            >
-              {m.label}
-            </button>
+
+        {/* Overall figures */}
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: 10, marginTop: 18 }}>
+          {[
+            { l: 'Roll calls done', v: loading ? '—' : `${totComplete}/${totExpected}`, sub: 'sessions complete' },
+            { l: 'Completion', v: loading || overall.completion === null ? '—' : `${overall.completion}%`, sub: 'of sessions due' },
+            { l: 'On time', v: loading || overall.onTime === null ? '—' : `${overall.onTime}%`, sub: 'finished before deadline' },
+            { l: 'Days missed', v: loading ? '—' : overall.blocked, sub: 'no roll call at all' },
+          ].map(f => (
+            <div key={f.l} style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '11px 14px', minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)' }}>{f.l}</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, marginTop: 5, lineHeight: 1.1, fontVariantNumeric: 'lining-nums tabular-nums' }}>{f.v}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 4 }}>{f.sub}</div>
+            </div>
           ))}
         </div>
-        <ReportExportButtons
-          title="Monthly Roll Call Report"
-          subtitle={`${startStr} → ${endStr} · ${exportRows.length} house-session rows`}
-          columns={[
-            { key: 'date', label: 'Date', width: 1 },
-            { key: 'house', label: 'House', width: 1 },
-            { key: 'session', label: 'Session', width: 1 },
-            { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
-            { key: 'pct', label: '% Complete', width: 0.9 },
-            { key: 'onTime', label: 'On Time', width: 0.8 },
-            { key: 'absent', label: 'Out', width: 0.7 },
-          ]}
-          rows={exportRows}
-        />
       </div>
 
-      {houses.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No houses found.</div>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', margin: '0 4px 12px', fontSize: 11.5, color: '#64748B' }}>
+        {LEGEND.map(l => (
+          <span key={l.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 20, height: 20, borderRadius: 6, background: l.bg, color: l.fg, fontSize: 10.5, fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{l.mark}</span>
+            {l.label}
+          </span>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[0, 1].map(i => <div key={i} className="hs-skel" style={{ height: 150 }} />)}
+        </div>
+      ) : houses.length === 0 ? (
+        <div style={{ ...panel, textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No houses found.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {houses.map(houseName => {
-            const summary = getHouseSummary(houseName)
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {summaries.map((summary, idx) => {
+            const houseName = summary.house
             const isExpanded = shownHouse === houseName
+            const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
+            const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+            const R = 26, C = 2 * Math.PI * R
+            const pct = summary.completionPct
+            const strip = [...dayList].reverse() // oldest → newest, left to right
             return (
-              <div key={houseName} style={{ background: 'white', borderRadius: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-                <div
+              <div key={houseName} style={{ ...panel, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: pal.color }} />
+                <div role="button" tabIndex={0} aria-expanded={isExpanded}
                   onClick={() => setExpandedHouse(isExpanded ? (lockHouse ? '' : null) : houseName)}
-                  style={{ padding: '16px', cursor: 'pointer' }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🏠 {houseName}</span>
-                    <span style={{ fontSize: '14px', color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? (lockHouse ? '' : null) : houseName) } }}
+                  style={{ padding: mobile ? '16px 14px 14px 18px' : '18px 20px 16px 24px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <svg width="64" height="64" viewBox="0 0 64 64" style={{ flexShrink: 0 }} aria-label={pct === null ? 'No data' : `${pct}% complete`}>
+                      <circle cx="32" cy="32" r={R} fill="none" stroke="#F1EDE4" strokeWidth="6" />
+                      <circle cx="32" cy="32" r={R} fill="none" stroke={ringColor(pct)} strokeWidth="6" strokeLinecap="round"
+                        strokeDasharray={C} strokeDashoffset={C * (1 - (pct || 0) / 100)} transform="rotate(-90 32 32)" style={{ transition: 'stroke-dashoffset .5s' }} />
+                      <text x="32" y="36" textAnchor="middle" style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, fill: '#0B1E3D' }}>{pct === null ? '—' : `${pct}%`}</text>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2 }}>{title} House</div>
+                      <div style={{ marginTop: 6 }}><HmChip hm={hmFor(houseName)} size={28} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { l: 'Done', v: `${summary.sessionsComplete}/${summary.sessionsExpected}`, c: '#0B1E3D' },
+                        { l: 'On time', v: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, c: ringColor(summary.onTimePct) },
+                        { l: 'Days missed', v: summary.daysBlocked, c: summary.daysBlocked > 0 ? '#DC2626' : '#15803D' },
+                      ].map(t => (
+                        <div key={t.l} style={{ minWidth: 74, padding: '8px 12px', borderRadius: 12, background: '#FCFBF7', border: '1px solid #F1EDE4', textAlign: 'center' }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 700, color: t.c, fontVariantNumeric: 'lining-nums tabular-nums' }}>{t.v}</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#94A3B8', marginTop: 1 }}>{t.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: 14, color: '#94A3B8', transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '8px' }}>
-                    {[
-                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1e3a6e', bg: '#eff6ff' },
-                      { label: 'Completion', value: summary.completionPct === null ? '—' : `${summary.completionPct}%`, color: scoreColor(summary.completionPct), bg: scoreBg(summary.completionPct) },
-                      { label: 'On-Time Rate', value: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, color: scoreColor(summary.onTimePct), bg: scoreBg(summary.onTimePct) },
-                      { label: 'Days Blocked', value: summary.daysBlocked, color: summary.daysBlocked > 0 ? '#dc2626' : '#16a34a', bg: summary.daysBlocked > 0 ? '#fee2e2' : '#dcfce7' },
-                    ].map(s => (
-                      <div key={s.label} style={{ background: s.bg, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                        <div style={{ fontSize: '10px', color: s.color, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
-                      </div>
-                    ))}
+
+                  {/* Day strip: top row morning, bottom row night */}
+                  <div style={{ marginTop: 14, overflowX: 'auto', paddingBottom: 2 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `22px repeat(${strip.length}, minmax(22px, 1fr))`, gap: 4, minWidth: strip.length * 26 + 26 }}>
+                      {['🌅', '🌙'].map((icon, row) => (
+                        <Fragment key={icon}>
+                          <span style={{ fontSize: 12, display: 'flex', alignItems: 'center' }}>{icon}</span>
+                          {strip.map(d => {
+                            const session = row === 0 ? 'morning' : 'night'
+                            const c = cellState(d, session, getDayStats(houseName, d, session))
+                            return <span key={d + session} title={`${fmtDay(d)} · ${session} — ${c.label}`}
+                              style={{ height: 22, borderRadius: 6, background: c.bg, border: `1px solid ${c.border}`, color: c.fg, fontSize: 9.5, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>{c.key === 'up' ? '' : c.mark}</span>
+                          })}
+                        </Fragment>
+                      ))}
+                      <span />
+                      {strip.map(d => <span key={d} style={{ fontSize: 9, color: '#94A3B8', textAlign: 'center', fontWeight: 700 }}>{new Date(d + 'T00:00:00').getDate()}</span>)}
+                    </div>
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div style={{ padding: '0 16px 16px' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '520px' }}>
-                        <thead>
-                          <tr style={{ background: '#f8fafc' }}>
-                            {['Date', '🌅 Morning', '🌙 Night', 'Out (M/N)'].map(h => (
-                              <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', color: '#374151', fontSize: '11px' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dayList.map(d => {
-                            const m = getDayStats(houseName, d, 'morning')
-                            const n = getDayStats(houseName, d, 'night')
-                            const cellStyle = (s) => ({
-                              padding: '8px 10px',
-                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#b8923a' : '#16a34a') : '#dc2626',
-                              fontWeight: '700',
-                            })
-                            return (
-                              <tr key={d} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '8px 10px', color: '#64748b' }}>{d}</td>
-                                <td style={cellStyle(m)}>
-                                  {m.pct === null ? '—' : `${m.pct}%`}
-                                  {m.complete && m.onTime === false && ' ⏰'}
-                                  {m.complete && m.onTime === true && ' ✓'}
-                                </td>
-                                <td style={cellStyle(n)}>
-                                  {n.pct === null ? '—' : `${n.pct}%`}
-                                  {n.complete && n.onTime === false && ' ⏰'}
-                                  {n.complete && n.onTime === true && ' ✓'}
-                                </td>
-                                <td style={{ padding: '8px 10px', color: (m.absent + n.absent) > 0 ? '#b45309' : '#94a3b8' }}>
-                                  {m.absent} / {n.absent}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                  <div style={{ padding: mobile ? '0 12px 14px 16px' : '0 20px 18px 24px' }}>
+                    <div style={{ borderTop: '1px solid #F1EDE4', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {dayList.map(d => {
+                        const m = getDayStats(houseName, d, 'morning')
+                        const n = getDayStats(houseName, d, 'night')
+                        const isToday = d === today()
+                        const pill = (session, st) => {
+                          const c = cellState(d, session, st)
+                          return (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 99, background: c.bg, border: `1px solid ${c.border}`, color: c.fg, fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                              {session === 'morning' ? '🌅' : '🌙'} {st.total ? `${st.marked}/${st.total}` : '—'}
+                              <span style={{ fontWeight: 700, opacity: .85 }}>{c.label.split(' · ')[0]}</span>
+                            </span>
+                          )
+                        }
+                        return (
+                          <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, background: isToday ? '#FBF4E2' : '#FCFBF7', border: `1px solid ${isToday ? '#E9D9B0' : '#F5F1E8'}` }}>
+                            <div style={{ width: 78, flexShrink: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0B1E3D' }}>{isToday ? 'Today' : fmtDay(d)}</div>
+                              <div style={{ fontSize: 10.5, color: '#94A3B8' }}>{weekday(d)}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                              {pill('morning', m)}
+                              {pill('night', n)}
+                            </div>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: (m.absent + n.absent) > 0 ? '#B45309' : '#94A3B8', whiteSpace: 'nowrap' }}>
+                              Out {m.absent} / {n.absent}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
