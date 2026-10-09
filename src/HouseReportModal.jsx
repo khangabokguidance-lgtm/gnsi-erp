@@ -4,7 +4,8 @@ import { supabase } from './supabase'
 // ══════════════════════════════════════════════════════════════
 //  HOUSE DAILY REPORT MODAL
 //  Auto-opens when a house hits 100% roll call. Pulls:
-//   - Present / Absent / Late (from attendance_records, already loaded)
+//   - Present / Outing / Outpass (from attendance_records, already loaded;
+//     older days may also have Absent / Late / On Leave / Sick)
 //   - On Leave students (from leave_records, from_date <= date <= to_date)
 //   - Sickbay / health status (from sickbay_records, status = Admitted)
 //  Printable via window.print() with a dedicated print stylesheet.
@@ -81,6 +82,8 @@ export default function HouseReportModal({ house, date, session, students, allRe
   const late = houseStudents.filter(s => recordMap[s.id]?.status === 'Late')
   const onLeaveMarked = houseStudents.filter(s => recordMap[s.id]?.status === 'On Leave')
   const sickMarked = houseStudents.filter(s => recordMap[s.id]?.status === 'Sick')
+  const outing = houseStudents.filter(s => recordMap[s.id]?.status === 'Outing')
+  const outpass = houseStudents.filter(s => recordMap[s.id]?.status === 'Outpass')
 
   // Cross-reference leave_records for richer detail (reason, dates) where available
   const leaveDetails = houseStudents
@@ -98,7 +101,7 @@ export default function HouseReportModal({ house, date, session, students, allRe
     .filter(Boolean)
 
   const total = houseStudents.length
-  const marked = present.length + absent.length + late.length + onLeaveMarked.length + sickMarked.length
+  const marked = present.length + absent.length + late.length + onLeaveMarked.length + sickMarked.length + outing.length + outpass.length
 
   const complete = total > 0 && marked === total
   const presentPct = total ? Math.round(((present.length + late.length) / total) * 100) : 0
@@ -108,9 +111,12 @@ export default function HouseReportModal({ house, date, session, students, allRe
   const STATS = [
     { label: 'Total', value: total, color: '#0B1E3D' },
     { label: 'Present', value: present.length + late.length, color: '#0F7A4C' },
-    { label: 'Absent', value: absent.length, color: '#DC2626' },
-    { label: 'On leave', value: onLeaveMarked.length, color: '#1D4ED8' },
-    { label: 'Sick', value: sickMarked.length, color: '#7C3AED' },
+    { label: 'Outing', value: outing.length, color: '#0369A1' },
+    { label: 'Outpass', value: outpass.length, color: '#B45309' },
+    // Old statuses, only on days that used them.
+    ...(absent.length ? [{ label: 'Absent', value: absent.length, color: '#DC2626' }] : []),
+    ...(onLeaveMarked.length ? [{ label: 'On leave', value: onLeaveMarked.length, color: '#1D4ED8' }] : []),
+    ...(sickMarked.length ? [{ label: 'Sick', value: sickMarked.length, color: '#7C3AED' }] : []),
   ]
 
   const handlePrint = () => {
@@ -267,22 +273,39 @@ export default function HouseReportModal({ house, date, session, students, allRe
               <div style={{ textAlign: 'center', padding: '34px', color: '#94A3B8', fontSize: '13px' }}>Loading leave and health details…</div>
             ) : (
               <div style={{ marginTop: '18px' }}>
-                <Section title="Absent" count={absent.length} color="#DC2626">
-                  {absent.length === 0
-                    ? <Empty text="Nobody absent" />
-                    : absent.map(s => <NameRow key={s.id} student={s} color="#DC2626" />)}
+                <Section title="Outing" count={outing.length} color="#0369A1">
+                  {outing.length === 0
+                    ? <Empty text="Nobody out on an outing" />
+                    : outing.map(s => <NameRow key={s.id} student={s} color="#0369A1" />)}
                 </Section>
 
+                <Section title="Outpass" count={outpass.length} color="#B45309">
+                  {outpass.length === 0
+                    ? <Empty text="Nobody out on an outpass" />
+                    : outpass.map(s => {
+                      const d = leaveDetails.find(x => x.student.id === s.id)?.leave
+                      return (
+                        <NameRow key={s.id} student={s} color="#B45309"
+                          sub={d ? `${shortDate(d.from_date)} → ${shortDate(d.to_date)}${d.reason ? ' · ' + d.reason : ''}` : null}
+                          badge={d?.status} />
+                      )
+                    })}
+                </Section>
+
+                {/* Old statuses — only on earlier days that used them */}
+                {absent.length > 0 && (
+                  <Section title="Absent" count={absent.length} color="#DC2626">
+                    {absent.map(s => <NameRow key={s.id} student={s} color="#DC2626" />)}
+                  </Section>
+                )}
                 {late.length > 0 && (
                   <Section title="Late" count={late.length} color="#CA8A04">
                     {late.map(s => <NameRow key={s.id} student={s} color="#CA8A04" />)}
                   </Section>
                 )}
-
-                <Section title="On leave" count={onLeaveMarked.length} color="#1D4ED8">
-                  {onLeaveMarked.length === 0
-                    ? <Empty text="Nobody on leave today" />
-                    : onLeaveMarked.map(s => {
+                {onLeaveMarked.length > 0 && (
+                  <Section title="On leave" count={onLeaveMarked.length} color="#1D4ED8">
+                    {onLeaveMarked.map(s => {
                       const d = leaveDetails.find(x => x.student.id === s.id)?.leave
                       return (
                         <NameRow key={s.id} student={s} color="#1D4ED8"
@@ -290,7 +313,8 @@ export default function HouseReportModal({ house, date, session, students, allRe
                           badge={d?.status} />
                       )
                     })}
-                </Section>
+                  </Section>
+                )}
 
                 <Section title="Health · sickbay" count={sickbayDetails.length + sickOnly.length} color="#7C3AED">
                   {sickbayDetails.length === 0 && sickOnly.length === 0
