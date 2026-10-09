@@ -763,6 +763,8 @@ function statusStyle(status) {
     Late: { bg: '#fef9c3', color: '#b8923a' },
     'On Leave': { bg: '#dbeafe', color: '#1d4ed8' },
     Sick: { bg: '#f5f3ff', color: '#7c3aed' },
+    Outing: { bg: '#e0f2fe', color: '#0369a1' },
+    Outpass: { bg: '#fef3c7', color: '#b45309' },
     Pending: { bg: '#fef9c3', color: '#b8923a' },
     Approved: { bg: '#dcfce7', color: '#16a34a' },
     Rejected: { bg: '#fee2e2', color: '#dc2626' },
@@ -1178,7 +1180,10 @@ function MobileActionButtons({ actions }) {
 //  Drop-in replacement for AttendanceTab in Hostel.jsx
 // ══════════════════════════════════════════════════════════════
 
-const ATTENDANCE_TYPES = ['Present', 'Absent', 'Late', 'On Leave', 'Sick']
+// Hostel roll call statuses: in the hostel, out on an outing, or out on an
+// outpass. (Absent / Late / On Leave / Sick were removed; old records with
+// those values still display, see statusConfig.)
+const ATTENDANCE_TYPES = ['Present', 'Outing', 'Outpass']
 
 const HOUSE_PALETTE = [
   { color: '#1d4ed8', bg: '#dbeafe', light: '#eff6ff', border: '#93c5fd', dark: '#1e40af' },
@@ -1197,6 +1202,8 @@ const statusConfig = {
   Late: { bg: '#fef9c3', color: '#b8923a', icon: '⏰' },
   'On Leave': { bg: '#dbeafe', color: '#1d4ed8', icon: '🚪' },
   Sick: { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
+  Outing: { bg: '#e0f2fe', color: '#0369a1', icon: '🚶' },
+  Outpass: { bg: '#fef3c7', color: '#b45309', icon: '🎫' },
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
 }
 
@@ -1484,11 +1491,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const sick = hRecords.filter(r => r.status === 'Sick').length
     const onLeave = hRecords.filter(r => r.status === 'On Leave').length
     const late = hRecords.filter(r => r.status === 'Late').length
+    const outing = hRecords.filter(r => r.status === 'Outing').length
+    const outpass = hRecords.filter(r => r.status === 'Outpass').length
+    // Old statuses (before Outing/Outpass) on earlier dates, shown as "Other".
+    const other = absent + sick + onLeave
     const marked = hRecords.length
     const total = hStudents.length
     const unmarked = total - marked
     const pct = total ? Math.round(marked / total * 100) : 0
-    return { total, present, absent, sick, onLeave, late, marked, unmarked, pct }
+    return { total, present: present + late, outing, outpass, other, absent, sick, onLeave, late, marked, unmarked, pct }
   }
 
   // ── Was the previous calendar day fully covered for this house?
@@ -2135,7 +2146,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             const status = total > 0 && marked >= total ? 'done'
               : date < todayStr || (date === todayStr && new Date() > graceEnd) ? (marked ? 'overdue' : 'missed')
               : marked ? 'progress' : 'open'
-            return { total, marked, pct: total ? Math.round(marked / total * 100) : 0, present: count('Present') + count('Late'), absent: count('Absent'), leave: count('On Leave'), sick: count('Sick'), status, due: label }
+            return { total, marked, pct: total ? Math.round(marked / total * 100) : 0, present: count('Present') + count('Late'), outing: count('Outing'), outpass: count('Outpass'), status, due: label }
           }
           const STATUS = {
             done:     { t: 'Complete',     c: '#15803D', b: '#DCFCE7' },
@@ -2214,7 +2225,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         <div style={{ height: '100%', width: `${Math.min(st.pct, 100)}%`, borderRadius: 99, transition: 'width .4s', background: st.status === 'done' ? '#22C55E' : on ? '#E2C57E' : '#B8923A' }} />
                       </div>
                       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px', color: sub, fontVariantNumeric: 'tabular-nums' }}>
-                        {[['Present', st.present, '#22C55E'], ['Absent', st.absent, '#F87171'], ['Leave', st.leave, '#60A5FA'], ['Sick', st.sick, '#A78BFA']].map(([l, v, c]) => (
+                        {[['Present', st.present, '#22C55E'], ['Outing', st.outing, '#38BDF8'], ['Outpass', st.outpass, '#F59E0B']].map(([l, v, c]) => (
                           <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                             <span style={{ width: 7, height: 7, borderRadius: '50%', background: c }} />
                             <b style={{ color: fg, fontWeight: 800 }}>{v}</b> {l}
@@ -2601,10 +2612,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   { key: 'total', label: 'Total', width: 0.7 },
                   { key: 'marked', label: 'Marked', width: 0.7 },
                   { key: 'present', label: 'Present', width: 0.7 },
-                  { key: 'absent', label: 'Absent', width: 0.7 },
-                  { key: 'late', label: 'Late', width: 0.6 },
-                  { key: 'onLeave', label: 'On Leave', width: 0.8 },
-                  { key: 'sick', label: 'Sick', width: 0.6 },
+                  { key: 'outing', label: 'Outing', width: 0.7 },
+                  { key: 'outpass', label: 'Outpass', width: 0.7 },
                   { key: 'pct', label: '% Complete', width: 0.9 },
                 ]}
                 rows={houses.map(h => { const s = getHouseStats(h); return { house: h, ...s } })}
@@ -2627,10 +2636,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 const R = 22, C = 2 * Math.PI * R
                 const STAT = [
                   { label: 'Present', value: stats.present, color: '#15803D' },
-                  { label: 'Absent',  value: stats.absent,  color: '#DC2626' },
-                  { label: 'Late',    value: stats.late,    color: '#B8923A' },
-                  { label: 'Leave',   value: stats.onLeave, color: '#1D4ED8' },
-                  { label: 'Sick',    value: stats.sick,    color: '#7C3AED' },
+                  { label: 'Outing',  value: stats.outing,  color: '#0369A1' },
+                  { label: 'Outpass', value: stats.outpass, color: '#B45309' },
+                  ...(stats.other ? [{ label: 'Other', value: stats.other, color: '#64748B' }] : []),
                 ]
                 return (
                   <div
@@ -2678,7 +2686,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                       </div>
 
                       {/* Status counts */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '6px', margin: '16px 0 10px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAT.length}, minmax(0,1fr))`, gap: '6px', margin: '16px 0 10px' }}>
                         {STAT.map(st => (
                           <div key={st.label} style={{ textAlign: 'center', padding: '8px 2px 7px', borderRadius: '12px', background: st.value ? st.color + '0F' : '#FAF8F3', border: `1px solid ${st.value ? st.color + '2E' : '#F1EDE4'}` }}>
                             <div style={{ fontFamily: FONT_DISPLAY, fontSize: '18px', fontWeight: 700, lineHeight: 1.1, color: st.value ? st.color : '#CBD5E1', fontVariantNumeric: 'lining-nums tabular-nums' }}>{st.value}</div>
@@ -2761,53 +2769,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               })}
             </div>
 
-            {/* ── ALERT BANNER: Absent + Unmarked reminders ── */}
+            {/* ── ALERT BANNER: unmarked reminder ── */}
             {(() => {
-              const absentCount = allRecords.filter(r => r.status === 'Absent').length
               const unmarkedCount = totalStudents - totalMarked
-              if (absentCount === 0 && unmarkedCount === 0) return null
-
-              const absentStudents = activeStudents.filter(s => statusMap[s.id] === 'Absent')
+              if (unmarkedCount <= 0) return null
               const unmarkedStudentsAll = activeStudents.filter(s => !statusMap[s.id])
 
               return (
                 <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {absentCount > 0 && (
-                    <div>
-                      <div
-                        onClick={() => setActiveAlertPanel(activeAlertPanel === 'absent' ? null : 'absent')}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '12px',
-                          padding: '13px 16px', background: '#fff1f2',
-                          border: '1.5px solid #fca5a5', borderRadius: '12px',
-                          fontSize: '13px', color: '#dc2626', fontWeight: '700',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <span style={{ fontSize: '20px' }}>🔴</span>
-                        <div style={{ flex: 1 }}>
-                          <div>{absentCount} student{absentCount > 1 ? 's' : ''} marked <strong>Absent</strong> today</div>
-                          <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
-                            Verify with housemaster · Check if on approved leave
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '16px', transition: 'transform 0.2s', transform: activeAlertPanel === 'absent' ? 'rotate(180deg)' : 'none' }}>▾</span>
-                      </div>
-                      {activeAlertPanel === 'absent' && (
-                        <AlertStudentPanel
-                          students={absentStudents}
-                          accentColor="#dc2626"
-                          actions={[
-                            { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
-                            { label: '🚪 On Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
-                            { label: '🏥 Sick', status: 'Sick', bg: '#f5f3ff', color: '#7c3aed' },
-                          ]}
-                          onMark={handleMark}
-                          savingId={savingId}
-                        />
-                      )}
-                    </div>
-                  )}
                   {unmarkedCount > 0 && (
                     <div>
                       <div
@@ -2835,9 +2804,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                           accentColor="#b8923a"
                           actions={[
                             { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
-                            { label: '✕ Absent', status: 'Absent', bg: '#fee2e2', color: '#dc2626' },
-                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#b8923a' },
-                            { label: '🚪 Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
+                            { label: '🚶 Outing', status: 'Outing', bg: '#e0f2fe', color: '#0369a1' },
+                            { label: '🎫 Outpass', status: 'Outpass', bg: '#fef3c7', color: '#b45309' },
                           ]}
                           onMark={handleMark}
                           savingId={savingId}
@@ -2915,14 +2883,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const R = 34, C = 2 * Math.PI * R
     const TILES = [
       { key: 'Present', value: stats.present, color: '#15803D' },
-      { key: 'Absent', value: stats.absent, color: '#DC2626' },
-      { key: 'Late', value: stats.late, color: '#B8923A' },
-      { key: 'On Leave', label: 'Leave', value: stats.onLeave, color: '#1D4ED8' },
-      { key: 'Sick', value: stats.sick, color: '#7C3AED' },
+      { key: 'Outing', value: stats.outing, color: '#0369A1' },
+      { key: 'Outpass', value: stats.outpass, color: '#B45309' },
       { key: 'Unmarked', label: 'To mark', value: stats.unmarked, color: '#64748B' },
     ]
     const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
-    const LETTER = { Present: 'P', Absent: 'A', Late: 'L', 'On Leave': 'V', Sick: 'S' }
+    const LETTER = { Present: 'P', Outing: 'O', Outpass: 'U' }
 
     return (
       <div>
@@ -3001,7 +2967,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             </div>
           </div>
           <div style={{ flex: 1, minWidth: 240 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(6, minmax(0,1fr))', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '8px' }}>
               {TILES.map(t => {
                 const on = dashFilter === t.key
                 return (
@@ -3034,7 +3000,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>Mark the {stats.unmarked} remaining at once</div>
               <div style={{ fontSize: 11.5, color: '#9A7B2F', marginTop: 2 }}>For emergencies only — checking each student is preferred, and this is logged.</div>
             </div>
-            {['Present', 'Absent', 'On Leave'].map(status => (
+            {ATTENDANCE_TYPES.map(status => (
               <button key={status} disabled={saving}
                 onClick={async () => {
                   const confirmMsg = status === 'Present'
@@ -3043,7 +3009,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   if (window.confirm(confirmMsg)) await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
                 }}
                 style={{ padding: '8px 14px', borderRadius: 10, border: `1px solid ${statusConfig[status].color}55`, background: '#fff', color: statusConfig[status].color, fontSize: 12.5, fontWeight: 800, cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
-                All {status === 'On Leave' ? 'on leave' : status.toLowerCase()}
+                All {status === 'Present' ? 'present' : `on ${status.toLowerCase()}`}
               </button>
             ))}
           </div>
@@ -3103,7 +3069,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             )
           })}
           <div style={{ padding: '9px 16px', borderTop: '1px solid #F1EDE4', fontSize: 11, color: '#94A3B8', background: '#FCFBF7' }}>
-            P present · A absent · L late · V leave · S sick
+            P present · O outing · U outpass
           </div>
         </div>
       </div>
@@ -3160,8 +3126,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 300)
     }
 
-    // Desktop shortcuts: P A L S V to mark, ← → to move between students.
-    const KEY_STATUS = { p: 'Present', a: 'Absent', l: 'Late', s: 'Sick', v: 'On Leave' }
+    // Desktop shortcuts: P present, O outing, U outpass; ← → to move.
+    const KEY_STATUS = { p: 'Present', o: 'Outing', u: 'Outpass' }
     const onRollCallKey = e => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
       const t = e.target
@@ -3590,11 +3556,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
-              {['Present', 'Absent', 'Sick', 'Late', 'On Leave', 'Unmarked'].map(s => {
+              {['Present', 'Outing', 'Outpass', 'Absent', 'Sick', 'Late', 'On Leave', 'Unmarked'].map(s => {
                 const count = s === 'Unmarked'
                   ? rollCallStudents.filter(st => getStatus(st.id) === 'Unmarked').length
                   : rollCallStudents.filter(st => getStatus(st.id) === s).length
-                if (count === 0 && s !== 'Present' && s !== 'Absent') return null
+                if (count === 0 && !ATTENDANCE_TYPES.includes(s)) return null // old statuses only if used
                 const sc = statusConfig[s]
                 return (
                   <div key={s} style={{ background: sc.bg, borderRadius: '10px', padding: '12px' }}>
@@ -3805,58 +3771,35 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               )}
             </div>
 
-            {/* Big status buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-              {[
-                { status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' },
-                { status: 'Absent', bg: '#dc2626', label: '✕ Absent', k: 'A' },
-              ].map(({ status, bg, label, k }) => (
-                <button
-                  key={status}
-                  onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={savingId === currentStudent.id}
-                  style={{
-                    padding: '18px', borderRadius: '18px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
-                    background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
-                    color: currentStatus === status ? 'white' : bg,
-                    fontSize: '17px', fontWeight: '800', letterSpacing: '.01em',
-                    boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 14px 22px -12px ${bg}` : `0 8px 16px -12px ${bg}`,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    minHeight: '64px',
-                  }}
-                >
-                  {label}{keyHint(k, currentStatus === status)}
-                </button>
-              ))}
-            </div>
-
-            {/* Secondary status buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
-              {[
-                { status: 'Late', bg: '#b8923a', label: '⏰ Late', k: 'L' },
-                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick', k: 'S' },
-                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave', k: 'V' },
-              ].map(({ status, bg, label, k }) => (
-                <button
-                  key={status}
-                  onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={savingId === currentStudent.id}
-                  style={{
-                    padding: '13px 8px', borderRadius: '14px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
-                    background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
-                    color: currentStatus === status ? 'white' : bg,
-                    fontSize: '13px', fontWeight: '800',
-                    boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 10px 18px -10px ${bg}` : `0 6px 12px -10px ${bg}`,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}
-                >
-                  {label}{keyHint(k, currentStatus === status)}
-                </button>
-              ))}
-            </div>
+            {/* Status buttons: Present (big), then Outing / Outpass */}
+            {[
+              [{ status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' }],
+              [{ status: 'Outing', bg: '#0369a1', label: '🚶 Outing', k: 'O' }, { status: 'Outpass', bg: '#b45309', label: '🎫 Outpass', k: 'U' }],
+            ].map((row, ri) => (
+              <div key={ri} style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, 1fr)`, gap: '10px', marginBottom: ri ? '20px' : '10px' }}>
+                {row.map(({ status, bg, label, k }) => (
+                  <button
+                    key={status}
+                    onClick={() => markAndAdvance(currentStudent.id, status)}
+                    disabled={savingId === currentStudent.id}
+                    style={{
+                      padding: ri ? '15px 8px' : '18px', borderRadius: '18px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
+                      background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
+                      color: currentStatus === status ? 'white' : bg,
+                      fontSize: ri ? '15px' : '18px', fontWeight: '800', letterSpacing: '.01em',
+                      boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 14px 22px -12px ${bg}` : `0 8px 16px -12px ${bg}`,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      minHeight: ri ? '54px' : '66px',
+                    }}
+                  >
+                    {label}{keyHint(k, currentStatus === status)}
+                  </button>
+                ))}
+              </div>
+            ))}
             {!mobile && (
               <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', margin: '-10px 0 16px' }}>
-                Keyboard: P present · A absent · L late · S sick · V leave · ← → move
+                Keyboard: P present · O outing · U outpass · ← → move
               </div>
             )}
 
@@ -4517,7 +4460,8 @@ function HMRollCallReportTab() {
       normalizeHouse(r.house) === normalizeHouse(houseName) && r.date === dateStr && r.session === session
     )
     const marked = dayRecords.length
-    const absent = dayRecords.filter(r => r.status === 'Absent').length
+    // "Out": not in the hostel — Outing / Outpass (and the old Absent).
+    const absent = dayRecords.filter(r => r.status === 'Outing' || r.status === 'Outpass' || r.status === 'Absent').length
     const pct = total > 0 ? Math.round((marked / total) * 100) : null
     let onTime = null
     if (marked > 0 && total > 0 && marked >= total) {
@@ -4616,7 +4560,7 @@ function HMRollCallReportTab() {
             { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
             { key: 'pct', label: '% Complete', width: 0.9 },
             { key: 'onTime', label: 'On Time', width: 0.8 },
-            { key: 'absent', label: 'Absent', width: 0.7 },
+            { key: 'absent', label: 'Out', width: 0.7 },
           ]}
           rows={exportRows}
         />
@@ -4660,7 +4604,7 @@ function HMRollCallReportTab() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '520px' }}>
                         <thead>
                           <tr style={{ background: '#f8fafc' }}>
-                            {['Date', '🌅 Morning', '🌙 Night', 'Absent (M/N)'].map(h => (
+                            {['Date', '🌅 Morning', '🌙 Night', 'Out (M/N)'].map(h => (
                               <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', color: '#374151', fontSize: '11px' }}>{h}</th>
                             ))}
                           </tr>
@@ -4687,7 +4631,7 @@ function HMRollCallReportTab() {
                                   {n.complete && n.onTime === false && ' ⏰'}
                                   {n.complete && n.onTime === true && ' ✓'}
                                 </td>
-                                <td style={{ padding: '8px 10px', color: (m.absent + n.absent) > 0 ? '#dc2626' : '#94a3b8' }}>
+                                <td style={{ padding: '8px 10px', color: (m.absent + n.absent) > 0 ? '#b45309' : '#94a3b8' }}>
                                   {m.absent} / {n.absent}
                                 </td>
                               </tr>
@@ -5555,7 +5499,9 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   const morningRows = perStudent(attendanceToday)
   const nightRows = perStudent(eveningToday)
   const presentCount = morningRows.filter(r => r.status === 'Present' || r.status === 'Late').length
-  const absentCount = morningRows.filter(r => r.status === 'Absent').length
+  // Out of the hostel: Outing / Outpass (and the old Absent, on older days).
+  const isOut = r => r.status === 'Outing' || r.status === 'Outpass' || r.status === 'Absent'
+  const absentCount = morningRows.filter(isOut).length
 
   const toggleDutyCompletion = async (dutyId) => {
     const nextVal = !dutyCompletions[dutyId]
@@ -5590,7 +5536,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   // One-row-per-metric summary, for the dashboard's Generate Report button.
   const snapshotRows = [
     { metric: 'Present (Morning)', value: presentCount },
-    { metric: 'Absent (Morning)', value: absentCount },
+    { metric: 'Out — outing / outpass (Morning)', value: absentCount },
     { metric: 'Unmarked', value: unmarkedCount },
     { metric: 'Present (Night)', value: eveningPresentCount },
     { metric: 'Total Students', value: activeStudentCount },
@@ -5609,8 +5555,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   const trendWithData = weekTrend.filter(d => d.presentPct !== null)
   const weekAvg = trendWithData.length ? Math.round(trendWithData.reduce((t, d) => t + d.presentPct, 0) / trendWithData.length) : null
   const ROLL_CALLS = [
-    { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:00 AM', marked: morningRows.length, present: presentCount, absent: absentCount },
-    { key: 'night', icon: '🌙', name: 'Night roll call', due: '8:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, absent: nightRows.filter(r => r.status === 'Absent').length },
+    { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:00 AM', marked: morningRows.length, present: presentCount, out: absentCount },
+    { key: 'night', icon: '🌙', name: 'Night roll call', due: '8:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, out: nightRows.filter(isOut).length },
   ]
   const FIGURES = [
     { id: 'leave', label: 'On leave', value: leaveToday.length, note: 'from today', color: '#1D4ED8' },
@@ -5679,7 +5625,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 12 }}>
                 <span style={{ fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, color: '#0B1E3D', fontVariantNumeric: 'lining-nums tabular-nums' }}>{rc.marked}</span>
-                <span style={{ fontSize: 12.5, color: '#64748B' }}>/ {activeStudentCount} marked · {rc.present} present · {rc.absent} absent</span>
+                <span style={{ fontSize: 12.5, color: '#64748B' }}>/ {activeStudentCount} marked · {rc.present} present · {rc.out} out</span>
               </div>
               <div style={{ height: 6, borderRadius: 99, background: '#F1EDE4', overflow: 'hidden', marginTop: 8 }}>
                 <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', borderRadius: 99, background: done ? '#15803D' : '#B8923A', transition: 'width .4s' }} />
