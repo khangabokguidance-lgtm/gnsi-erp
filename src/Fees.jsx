@@ -2156,7 +2156,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const stuRows = (list, extra) => list.map(s => ({
     'GCC No': `GCC-${s.gcc_no}`, 'Student': s.name, 'Course': s.course || '', 'Batch': s.batch || '',
     'Hostel': s.hostel_type || '', 'Status': s.liveStatus || '',
-    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': Number(s.totalDue) || 0, ...(extra ? extra(s) : {}),
+    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': s.totalDue == null ? '' : (Number(s.totalDue) || 0), ...(extra ? extra(s) : {}),
   }))
   const rptUnderpaid = stuRows(underpaidStudents)
   const rptZero      = stuRows(zeroPayment)
@@ -2268,7 +2268,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 8.5, fontWeight: 700, color: '#8a93a6', textTransform: 'uppercase', letterSpacing: '.04em' }}>Short By</div>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(s.totalDue)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }} title={s.totalDue == null ? 'Could not be worked out — tap Fix to see the dues' : undefined}>{s.totalDue == null ? '—' : `₹${n(s.totalDue)}`}</div>
                     </div>
                     <button onClick={() => onCollect(s)}
                       style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: 'none', background: '#c2410c', color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -4897,8 +4897,22 @@ export default function Fees() {
     if (studentsNeedingDues.length === 0) return
 
     setDuesLoading(true)
-    getDuesForStudents(studentsNeedingDues, getSessionYear())
-      .then(results => {
+    const sessionYearNow = getSessionYear()
+    getDuesForStudents(studentsNeedingDues, sessionYearNow)
+      .then(async firstPass => {
+        // A student whose dues failed (a dropped connection, say) is skipped
+        // by getDuesForStudents. Without a retry they stay on the rough
+        // fallback check — "Underpaid" with no amount — until the page is
+        // reloaded. Try those once more, a couple at a time.
+        let results = firstPass
+        const got = new Set(firstPass.map(r => gccStr(r.student.gcc_no)))
+        const missing = studentsNeedingDues.filter(st => !got.has(gccStr(st.gcc_no)))
+        if (missing.length && !cancelled) {
+          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2 })
+          results = [...firstPass, ...again]
+          const still = missing.filter(st => !again.some(r => gccStr(r.student.gcc_no) === gccStr(st.gcc_no)))
+          if (still.length) console.warn('Fees.jsx: dues could not be worked out for', still.map(st => `${st.name} (GCC-${st.gcc_no})`).join(', '))
+        }
         if (cancelled) return
         setDuesByGcc(prevMap => {
           const next = { ...prevMap }
