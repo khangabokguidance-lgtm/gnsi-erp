@@ -12,6 +12,7 @@
 // (reason HOSTEL_MISMATCH_REASON), anything else is admin-only.
 import { supabase } from './supabase'
 import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
+import { canonicalBatch, normalizeCourse, courseOf } from './courseMap'
 
 export const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HOSTEL_MISMATCH_REASON = 'Hostel type mismatch'
@@ -93,8 +94,10 @@ const gccKey = v => String(parseInt(v) || 0)
 // Configured rate for a session/course/batch/hostel type (any batch as a fallback,
 // the same way getFeeRates does). field: 'course_fee' | 'flat_fee'.
 export function rateFrom(structures, { session, course, batch, type, field }) {
-  const same = r => r.session_year === session && r.course === course && r.hostel_type === type
-  const hit = structures.find(r => same(r) && (r.batch || '') === (batch || '')) || (!batch ? structures.find(same) : null)
+  // Standard names on both sides, so "UDAAN" / "Elite" find the Udaan row.
+  const crs = c => normalizeCourse(c) || String(c || '').trim()
+  const same = r => r.session_year === session && crs(r.course) === crs(course) && r.hostel_type === type
+  const hit = structures.find(r => same(r) && canonicalBatch(r.batch) === canonicalBatch(batch)) || (!batch ? structures.find(same) : null)
   return hit ? Number(hit[field]) || 0 : 0
 }
 
@@ -114,7 +117,7 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     const field = kind === 'flat' ? 'flat_fee' : 'course_fee'
     // The type in effect for that month (a mid-session change keeps earlier months at the old type).
     const ownType = typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
-    const course = kind === 'course' ? (row.course || st.course) : st.course
+    const course = (kind === 'course' ? (row.course || st.course) : st.course) || (courseOf(st) !== 'Unassigned' ? courseOf(st) : '')
     const args = { session: rateSession, course, batch: st.batch || '', field }
     const own = rateFrom(structures, { ...args, type: ownType })
     if (!(own > 0) || !(paid > 0)) return

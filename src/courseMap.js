@@ -27,6 +27,13 @@ const BATCH_TO_COURSE = (() => {
 const RENAMED_BATCHES = { elite: 'Udaan', prime: 'Pragati' }
 const STANDARD_BATCHES = Object.values(COURSE_BATCHES).flat()
 
+// Spellings a batch may still be saved under elsewhere (e.g. Fee Setup rows
+// written before the rename) — used to look those rows up.
+export const BATCH_ALIASES = {
+  Udaan: ['Udaan', 'UDAAN', 'Elite', 'ELITE'],
+  Pragati: ['Pragati', 'PRAGATI', 'Prime', 'PRIME'],
+}
+
 // A batch as the standard name: case and spacing don't matter, a section
 // suffix is dropped ("UDAAN — ENG" → Udaan) and the old names map to the
 // new ones ("ELITE" → Udaan). Unknown names come back trimmed, unchanged.

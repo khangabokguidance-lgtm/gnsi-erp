@@ -6,6 +6,7 @@
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
+import { canonicalBatch, normalizeCourse, courseOf, BATCH_ALIASES } from './courseMap'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
@@ -268,19 +269,30 @@ export const getFeeRates = async (
   gccNo       = null,   // ← NEW optional param
 ) => {
   sessionYear = normalizeSessionYear(sessionYear)
+  // Standard names, so "UDAAN", "Udaan — ENG" or the old "Elite" / "Prime"
+  // (and a blank course on a Foundation batch) find the Udaan / Pragati rows
+  // in Fee Setup instead of falling back to the old hardcoded rates.
+  const rawCourse = course, rawBatch = batch
+  batch = canonicalBatch(batch)
+  const batchCourse = courseOf({ batch })
+  course = normalizeCourse(course) || (batchCourse !== 'Unassigned' ? batchCourse : String(course || '').trim())
   const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
 
   // Fetch structural rates (cached, subject to RATE_CACHE_TTL_MS — see cache
   // declaration above for why this isn't a permanent cache)
   if (!_rateCache[structKey] || !_isFresh(_rateCache[structKey]._cachedAt)) {
-    let { data } = await supabase
+    const courseKeys = [...new Set([course, rawCourse].filter(v => v != null))]
+    const batchKeys = [...new Set([batch, rawBatch, ...(BATCH_ALIASES[batch] || [])].filter(v => v != null))]
+    const { data: matches } = await supabase
       .from(TABLES.feeStructures)
-      .select('flat_fee, course_fee, admission_fee')
+      .select('flat_fee, course_fee, admission_fee, course, batch')
       .eq('session_year', sessionYear)
-      .eq('course',       course)
-      .eq('batch',        batch)
+      .in('course',       courseKeys.length ? courseKeys : [''])
+      .in('batch',        batchKeys.length ? batchKeys : [''])
       .eq('hostel_type',  hostelType)
-      .maybeSingle()
+    // Prefer the row saved under the standard names.
+    const rank = r => (r.course === course ? 0 : 2) + (r.batch === batch ? 0 : 1)
+    let data = (matches || []).slice().sort((a, b) => rank(a) - rank(b))[0] || null
 
     // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
     //   batch assigned yet), the exact match above can never succeed because

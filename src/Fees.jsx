@@ -4,6 +4,11 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
+import { courseOf } from './courseMap'
+
+// Course to show for a student: the resolved course (a blank course on a
+// Udaan / Pragati batch counts as Foundation), else what is saved.
+const courseLabel = st => { const c = st ? courseOf(st) : ''; return (c && c !== 'Unassigned' ? c : st?.course) || '—' }
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
@@ -1428,7 +1433,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[initialSelected])
   const n=v=>Number(v||0).toLocaleString('en-IN')
-  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF])
+  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF])
   const inp2={width:'100%',padding:'8px 12px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:13,outline:'none',background:'white'}
   return(
     <div style={{display:'flex',gap:20,alignItems:'flex-start',flexWrap:'wrap'}}>
@@ -1493,13 +1498,13 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const w=useWindowWidth(),isMobile=w<768,todayStr=new Date().toLocaleDateString('en-CA')
   const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[lastExport,setLastExport]=useState(null)
   const n=v=>Number(v||0).toLocaleString('en-IN')
-  const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
+  const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
   const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
   // Month-wise dues (same figures as the Fee Dashboard card) for the two Dues Reports below.
   const { monthwiseDues } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
   const duesLoading = monthwiseDues.some(m => m.loading)
   const dueSummaryRows = useMemo(() => duesSummaryRows(monthwiseDues), [monthwiseDues])
-  const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || st.course === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
+  const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || courseOf(st) === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
   const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
@@ -5064,7 +5069,7 @@ export default function Fees() {
   const advFilteredLive = useMemo(() => {
     const q = search.toLowerCase()
     return liveRows.filter(s => {
-      if (afCourse !== 'All' && s.course !== afCourse) return false
+      if (afCourse !== 'All' && courseOf(s) !== afCourse) return false
       if (afHostel !== 'All' && s.hostel_type !== afHostel) return false
       if (afBatch  !== 'All' && (s.class_name || s.batch || '') !== afBatch) return false
       if (afStatus !== 'All' && s.liveStatus !== afStatus) return false
@@ -5079,19 +5084,19 @@ export default function Fees() {
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsfToday = adm_course_fees
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const admToday = adm_fee_collections
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     return [...admToday, ...flatToday, ...crsfToday].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   }, [adm_fee_collections, adm_flat_fees, adm_course_fees, students, todayStr])
@@ -5105,19 +5110,19 @@ export default function Fees() {
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsf = adm_course_fees
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const adm = adm_fee_collections
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     return [...adm, ...flat, ...crsf].sort((a, b) => (b.pay_date || '').localeCompare(a.pay_date || ''))
   }, [adm_fee_collections, adm_flat_fees, adm_course_fees, students, afDateFrom, afDateTo, todayStr])
