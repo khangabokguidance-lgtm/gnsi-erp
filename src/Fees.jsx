@@ -113,6 +113,18 @@ async function fileFeeActionRequest({ actionType, table, id, reason, currentUser
 // resolves when it's ready. Safe to call from multiple components/renders —
 // subsequent calls reuse the same in-flight/resolved promise.
 let _razorpayScriptPromise = null
+// An amount that shrinks to fit the card it sits in (CSS container units), so
+// a large total like ₹1,03,28,050 is never cut off — on a phone or in a narrow
+// desktop column. `base` is the largest size; the floor is 12px.
+function FitAmount({ children, base = 24, color, style }) {
+  const len = Math.max(String(children ?? '').length, 4)
+  return (
+    <div style={{ containerType: 'inline-size', minWidth: 0, flex: '1 1 auto' }}>
+      <div style={{ fontSize: `max(12px, min(${base}px, ${(100 / (len * 0.6)).toFixed(2)}cqw))`, color, whiteSpace: 'nowrap', ...style }}>{children}</div>
+    </div>
+  )
+}
+
 function loadRazorpayScript() {
   if (typeof window === 'undefined') return Promise.resolve(false)
   if (window.Razorpay) return Promise.resolve(true)
@@ -2192,7 +2204,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     'Hostel': r.st.hostel_type || '', 'Stage': PROG_STAGES[progStage].short, 'Status': r.status,
     'Concession (₹)': r.conc ? r.conc.amt : '', 'Concession Status': r.conc ? r.conc.status : '', 'Note': r.note,
   }))
-  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 4 }
+  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 4 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2222,7 +2234,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
             <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
             <div style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</div>
+            <FitAmount base={24} color={c.color} style={{ fontWeight: 600, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</FitAmount>
             <div style={{ fontSize: 11, color: '#98a2b3', marginTop: 6 }}>{c.sub}{c.onClick ? (c.open ? ' ▲' : ' ▼') : ''}</div>
           </div>
         ))}
@@ -2233,9 +2245,9 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       {/* ── Underpaid Students drilldown — toggled by the stat card above ── */}
       {isAdmin && showUnderpaid && (
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fdba74', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fdba74' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid #fdba74' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', flex: '1 1 220px', minWidth: 0 }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
               <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
               <ExportBar rows={rptUnderpaid} filename={`GNSI_Underpaid_${todayStr}`} compact />
             </div>
@@ -2244,12 +2256,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             {underpaidStudents.length === 0
               ? <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No underpaid students right now</div>
               : underpaidStudents.map(s => (
-                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
-                  <div style={{ minWidth: 0 }}>
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px 14px', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
+                  <div style={{ minWidth: 0, flex: '1 1 170px' }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginLeft: 'auto' }}>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 8.5, fontWeight: 700, color: '#8a93a6', textTransform: 'uppercase', letterSpacing: '.04em' }}>Paid</div>
                       <div style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}>₹{n(s.grandTotal)}</div>
@@ -2284,11 +2296,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           { icon: '📚', label: 'Course Fees', value: `₹${n(crsfTotal)}`, color: '#a7771f', bg: '#fbf3e0' },
           { icon: '✅', label: 'Fully Paid', value: fullyPaid.length, color: '#059669', bg: '#dcfce7', sub: 'flat + course both paid' },
         ].map(c => (
-          <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '13px 16px', boxShadow: '0 1px 2px rgba(19,42,79,.05)', minWidth: 0 }}>
+          <div key={c.label} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 8 : 12, background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '13px 16px', boxShadow: '0 1px 2px rgba(19,42,79,.05)', minWidth: 0 }}>
             <div style={{ width: 38, height: 38, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>{c.icon}</div>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: isMobile ? 'none' : 1, width: isMobile ? '100%' : 'auto' }}>
               <div style={{ fontSize: 10.5, color: '#5d6b82', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{c.value}</div>
+              <div style={{ marginTop: 2, display: 'flex' }}><FitAmount base={20} color={c.color} style={{ fontWeight: 600, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums' }}>{c.value}</FitAmount></div>
               {c.sub && <div style={{ fontSize: 10.5, color: '#98a2b3', marginTop: 2 }}>{c.sub}</div>}
             </div>
           </div>
@@ -5170,7 +5182,7 @@ export default function Fees() {
             ].map(h => (
               <div key={h.l} className="fe-hstat">
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.l}</div>
-                <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: isMobile ? 20 : 26, fontWeight: 600, color: h.tone, marginTop: 6, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.v}</div>
+                <div style={{ marginTop: 6, display: 'flex' }}><FitAmount base={isMobile ? 20 : 26} color={h.tone} style={{ fontFamily: "'Fraunces',Georgia,serif", fontWeight: 600, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>{h.v}</FitAmount></div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.sub}</div>
               </div>
             ))
