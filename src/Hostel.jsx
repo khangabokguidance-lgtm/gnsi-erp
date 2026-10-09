@@ -11818,7 +11818,7 @@ function Hostel() {
     }
 
     setDataLoading(false)
-  }, [currentUser?.name])
+  }, [currentUser])
 
   useEffect(() => { fetchShared() }, [fetchShared])
 
