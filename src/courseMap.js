@@ -34,13 +34,19 @@ export const BATCH_ALIASES = {
   Pragati: ['Pragati', 'PRAGATI', 'Prime', 'PRIME'],
 }
 
+export const isStandardBatch = b => STANDARD_BATCHES.includes(b)
+
 // A batch as the standard name: case and spacing don't matter, a section
 // suffix is dropped ("UDAAN — ENG" → Udaan) and the old names map to the
 // new ones ("ELITE" → Udaan). Unknown names come back trimmed, unchanged.
 export function canonicalBatch(raw) {
   const s = String(raw || '').trim().replace(/\s+/g, ' ')
   if (!s) return ''
-  const base = s.split(/\s+[—–-]\s+/)[0].trim()
+  // Whole value first, ignoring spaces and dashes ("LAKSHYA - A" → Lakshya A).
+  const squash = v => v.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const whole = STANDARD_BATCHES.find(b => squash(b) === squash(s)) || RENAMED_BATCHES[squash(s)]
+  if (whole) return whole
+  const base = s.split(/\s*[—–-]\s*/)[0].trim()
   const low = base.toLowerCase()
   return RENAMED_BATCHES[low] || STANDARD_BATCHES.find(b => b.toLowerCase() === low) || s
 }
