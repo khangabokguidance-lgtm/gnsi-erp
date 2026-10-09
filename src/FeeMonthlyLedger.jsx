@@ -10,6 +10,10 @@ import { fmt, shortSession } from './feeLedgerModel'
 import { monthTotals, printMonthlyLedger, exportMonthlyExcel } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
 import { LedgerLink } from './LedgerLinks'
+import { canonicalBatch, courseOf } from './courseMap'
+
+// Course for the filters: the resolved course, or the saved one if unknown.
+const crs = s => { const c = courseOf(s); return c === 'Unassigned' ? (s.course || '') : c }
 
 const uniq = xs => [...new Set(xs.filter(Boolean))].sort()
 const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')
@@ -60,15 +64,16 @@ export default function FeeMonthlyLedger({ students }) {
   }, [rows, pool, session, reload])
   const ready = built.key === key
 
-  const courses = useMemo(() => uniq(pool.map(s => s.course)), [pool])
-  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || s.course === course).map(s => s.batch)), [pool, course])
+  const courses = useMemo(() => uniq(pool.map(crs)), [pool])
+  // Resolved course and standard batch name (see PrintAllLedgers).
+  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || crs(s) === course).map(s => canonicalBatch(s.batch))), [pool, course])
   const hostels = useMemo(() => uniq(pool.map(s => s.hostel_type)), [pool])
 
   const items = useMemo(() => {
     const t = q.trim().toLowerCase()
     const xs = (ready ? built.items : []).filter(x => { const s = x.student; return (
       (who === 'all' || isActive(s)) &&
-      (course === 'All' || s.course === course) && (batch === 'All' || s.batch === batch) && (hostel === 'All' || s.hostel_type === hostel) &&
+      (course === 'All' || crs(s) === course) && (batch === 'All' || canonicalBatch(s.batch) === batch) && (hostel === 'All' || s.hostel_type === hostel) &&
       (show === 'all' || (show === 'dues' ? bal(x) > 0 : bal(x) === 0)) &&
       (!t || [s.name, s.gcc_no, s.admission_no, s.father_name].some(v => String(v || '').toLowerCase().includes(t)))) })
     const by = { name: (a, b) => String(a.student.name || '').localeCompare(String(b.student.name || '')), gcc: (a, b) => (Number(a.student.gcc_no) || 0) - (Number(b.student.gcc_no) || 0), due: (a, b) => bal(b) - bal(a), paid: (a, b) => b.reg.totalPaid - a.reg.totalPaid }
