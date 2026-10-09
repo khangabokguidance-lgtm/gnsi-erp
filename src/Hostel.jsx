@@ -6554,7 +6554,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15 }}>Good {greetingWord()}, {hmName}</h2>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
             <div style={{ marginTop: 12 }}>
               <ReportExportButtons
                 title="HM Dashboard — Daily Snapshot"
@@ -8499,7 +8499,7 @@ function SuperintendentDashboard({ students, currentUser }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Superintendent · All houses</div>
-            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, margin: '5px 0 0' }}>Discipline review</h2>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, margin: '5px 0 0', color: '#fff' }}>Discipline review</h2>
             <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.7)', marginTop: 4 }}>Every case across the hostel, newest first</div>
           </div>
           <div style={{ display: 'flex', gap: 22 }}>

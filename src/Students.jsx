@@ -4924,7 +4924,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap', position:'relative' }}>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.18em', textTransform:'uppercase', color:T.goldBorder }}>{meta.exam} · Course database</div>
-            <h2 style={{ margin:'6px 0 0', fontFamily:T.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1 }}>{course}</h2>
+            <h2 style={{ margin:'6px 0 0', fontFamily:T.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1, color:'#fff' }}>{course}</h2>
             <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', marginTop:6 }}>
               {batchCounts.length} batch{batchCounts.length === 1 ? '' : 'es'}{houses.length ? ` · ${houses.length} house${houses.length === 1 ? '' : 's'}` : ''}{sessions.length ? ` · sessions ${sessions.slice(0, 3).join(', ')}` : ''}
             </div>
