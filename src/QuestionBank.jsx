@@ -24,6 +24,7 @@ import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
 import { IconTabs } from './premiumUI'
 // Loaded on first use: it brings the Word-file library and the logo.
 const MayekDocTranslator = lazy(() => import('./MayekDocTranslator'))
+const BookletBuilder = lazy(() => import('./BookletBuilder'))
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -5776,6 +5777,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools', hint:'Convert and translate Meetei Mayek' },
     { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools', hint:'English ↔ Meetei Mayek words' },
     { key:'doctranslate',icon:'📑', label:'Document Translator', count: null, group:'tools', hint:'English paper → Meetei Mayek Word file' },
+    { key:'booklet', icon:'📘', label:'Booklet Builder', count: null, group:'deliver', hint:'Chapter file → premium booklet (Word)' },
     { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver', hint:'Build a printable question paper' },
     { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver', hint:'Run a test on screen' },
     { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver', hint:'Questions as slides for class' },
@@ -5836,6 +5838,11 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       {tab === 'doctranslate' && (
         <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
           <MayekDocTranslator showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />
+        </Suspense>
+      )}
+      {tab === 'booklet' && (
+        <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
+          <BookletBuilder showToast={showToast} />
         </Suspense>
       )}
       {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}

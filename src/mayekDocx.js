@@ -561,8 +561,8 @@ export async function buildPaperDocx(model, opts = {}) {
 // in uppercase and LibreOffice only reads it that way (lowercase = the font is
 // silently ignored). Also switch on "embed fonts" so Word keeps the font when
 // the file is edited and saved again.
-async function fixFontEmbedding(blob) {
-  const zip = await JSZip.loadAsync(blob)
+export async function fixFontEmbedding(blob) {
+  const zip = await JSZip.loadAsync(blob.arrayBuffer ? await blob.arrayBuffer() : blob)
   const ft = zip.file('word/fontTable.xml'), st = zip.file('word/settings.xml')
   if (ft) zip.file('word/fontTable.xml', (await ft.async('string')).replace(/w:fontKey="(\{[^"]+\})"/g, (_, k) => `w:fontKey="${k.toUpperCase()}"`))
   if (st) {
