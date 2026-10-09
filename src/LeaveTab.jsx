@@ -4157,9 +4157,16 @@ function StaffAlertBanner({ links, onDismiss }) {
 // ══════════════════════════════════════════════════════════════
 //  MAIN LEAVE TAB
 // ══════════════════════════════════════════════════════════════
-function LeaveTab({ students, currentHousemaster, currentUser }) {
+function LeaveTab({ students, lockHouse, currentHousemaster, currentUser }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  // A housemaster (lockHouse set) sees only their own house's leave.
+  const records = useMemo(() => {
+    if (!lockHouse) return allRecords
+    const key = lockHouse.trim().toLowerCase()
+    const ids = new Set(students.map(s => s.id))
+    return allRecords.filter(r => (r.student_id && ids.has(r.student_id)) || (r.house || '').trim().toLowerCase() === key)
+  }, [allRecords, lockHouse, students])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 

@@ -1473,17 +1473,24 @@ function DutyRosterPanel({ currentUser }) {
   )
 }
 
-export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
+export function HousemasterActivitiesTab({ staffProfiles, currentUser, lockHouse }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
   const [activeView, setActiveView] = useState('checklist') // 'checklist' | 'log' | 'doubt'
-  const [records,    setRecords]    = useState([])
+  const [allRecords, setRecords]    = useState([])
+  // A housemaster sees their own house's logs and the ones they wrote.
+  const records = useMemo(() => {
+    if (!lockHouse) return allRecords
+    const key = lockHouse.trim().toLowerCase()
+    return allRecords.filter(r => (r.house || '').trim().toLowerCase() === key || (r.housemaster_name && r.housemaster_name === currentUser?.name))
+  }, [allRecords, lockHouse, currentUser?.name])
   const [houses,     setHouses]     = useState([])
   const [loading,    setLoading]    = useState(true)
   const [saving,     setSaving]     = useState(false)
   const [showForm,   setShowForm]   = useState(false)
   const [editRec,    setEditRec]    = useState(null)
-  const [form,       setForm]       = useState(emptyHMA)
+  const blankForm = lockHouse ? { ...emptyHMA, house: lockHouse } : emptyHMA
+  const [form,       setForm]       = useState(blankForm)
   const [catFilter,  setCatFilter]  = useState('All')
   const [houseFilter,setHouseFilter]= useState('All')
   const [search,     setSearch]     = useState('')
@@ -1523,7 +1530,7 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
       ? await supabase.from('housemaster_activities').update(payload).eq('id', editRec.id)
       : await supabase.from('housemaster_activities').insert([payload])
     if (error) alert('Error: ' + error.message)
-    else { setForm(emptyHMA); setShowForm(false); setEditRec(null); load() }
+    else { setForm(blankForm); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
 
@@ -1610,7 +1617,7 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
                 {uniqueHouses.map(h => <option key={h}>{h}</option>)}
               </select>
             </div>
-            <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyHMA) }} style={btn()}>
+            <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(blankForm) }} style={btn()}>
               {showForm ? '✖ Cancel' : '➕ Log Activity'}
             </button>
           </div>
