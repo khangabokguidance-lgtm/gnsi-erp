@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
 import { courseOf, canonicalBatch, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { drawPremiumCertificate, certificatePdf } from './premiumCertificate'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
@@ -3494,7 +3495,6 @@ function TabLeave({ staff, currentUser, isAdmin }) {
 // same attendance_sessions / attendance_records tables TabHome uses.
 
 const CERT_BORDER = '#C9A24B' // brass gold, matches portal design language
-const CERT_NAVY    = '#0B1E3D'
 
 function monthOptions(count = 6) {
   const out = []
@@ -3508,113 +3508,35 @@ function monthOptions(count = 6) {
   return out
 }
 
-function drawAwardCertificateToCanvas({ studentName, gcc, course, className, monthLabel, pct, scopeLabel }) {
-  const W = 1200, H = 850
-  const canvas = document.createElement('canvas')
-  canvas.width = W; canvas.height = H
-  const ctx = canvas.getContext('2d')
-
-  ctx.fillStyle = '#fffdf8'
-  ctx.fillRect(0, 0, W, H)
-
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 10
-  ctx.strokeRect(24, 24, W - 48, H - 48)
-  ctx.lineWidth = 2
-  ctx.strokeRect(42, 42, W - 84, H - 84)
-
-  const corners = [[42,42],[W-42,42],[42,H-42],[W-42,H-42]]
-  corners.forEach(([x,y]) => {
-    ctx.fillStyle = CERT_BORDER
-    ctx.beginPath()
-    ctx.moveTo(x, y-14); ctx.lineTo(x+14, y); ctx.lineTo(x, y+14); ctx.lineTo(x-14, y)
-    ctx.closePath(); ctx.fill()
-  })
-
-  ctx.textAlign = 'center'
-  ctx.fillStyle = CERT_NAVY
-  ctx.font = '700 20px Georgia, serif'
-  ctx.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W/2, 118)
-  ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#5d6b82'
-  ctx.fillText('Khangabok · Thoubal · Manipur', W/2, 140)
-
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 1.5
-  ctx.beginPath(); ctx.moveTo(W/2 - 90, 158); ctx.lineTo(W/2 + 90, 158); ctx.stroke()
-
-  ctx.font = '700 46px Georgia, serif'
-  ctx.fillStyle = CERT_NAVY
-  ctx.fillText('Certificate of Excellence', W/2, 230)
-
-  ctx.font = '400 17px Georgia, serif'
-  ctx.fillStyle = '#4b5870'
-  ctx.fillText('Best Student of the Month — Attendance', W/2, 262)
-
-  ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  ctx.fillText('This is to certify that', W/2, 330)
-
-  ctx.font = '700 44px Georgia, serif'
-  ctx.fillStyle = CERT_NAVY
-  ctx.fillText(studentName, W/2, 390)
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 1.5
-  const nameW = ctx.measureText(studentName).width
-  ctx.beginPath(); ctx.moveTo(W/2 - nameW/2 - 10, 402); ctx.lineTo(W/2 + nameW/2 + 10, 402); ctx.stroke()
-
-  ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  const bodyLines = [
-    `${gcc ? `GCC No. ${gcc} · ` : ''}${[course, className].filter(Boolean).join(' · ') || scopeLabel}`,
-    `has achieved an outstanding attendance record of ${pct}% for ${monthLabel},`,
-    `recognised as the ${scopeLabel} for the month.`,
-  ]
-  bodyLines.forEach((line, i) => ctx.fillText(line, W/2, 440 + i * 28))
-
-  ctx.beginPath()
-  ctx.fillStyle = '#f0fdf4'
-  ctx.arc(W/2, 580, 56, 0, Math.PI*2)
-  ctx.fill()
-  ctx.strokeStyle = '#16a34a'
-  ctx.lineWidth = 3
-  ctx.stroke()
-  ctx.fillStyle = '#15803d'
-  ctx.font = '700 30px Georgia, serif'
-  ctx.fillText(`${pct}%`, W/2, 592)
-
-  ctx.textAlign = 'left'
-  ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#5d6b82'
-  ctx.fillText(`Issued: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}`, 90, H - 100)
-
-  ctx.strokeStyle = '#8a93a6'
-  ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(W - 340, H - 110); ctx.lineTo(W - 90, H - 110); ctx.stroke()
-  ctx.textAlign = 'center'
-  ctx.font = '600 13px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  ctx.fillText('Principal, GNSI', W - 215, H - 90)
-
-  return canvas
-}
-
 function AwardCertificateModal({ award, onClose }) {
   const isMobile = useIsMobile()
-  const canvasEl = useMemo(() => drawAwardCertificateToCanvas({
-    studentName: award.student_name,
-    gcc: award.gcc_no,
-    course: award.course,
-    className: award.class_name,
-    monthLabel: fmtMonth(award.month),
-    pct: award.attendance_pct,
-    scopeLabel: award.scope === 'overall' ? 'Overall Best Student' : `Best Student · ${award.scope}`,
-  }), [award])
+  // The premium certificate (premiumCertificate.js), drawn once per award.
+  const [canvasEl, setCanvasEl] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const scopeLabel = award.scope === 'overall' ? 'Overall Best Student' : `Best Student · ${award.scope}`
+    drawPremiumCertificate({
+      kind: 'Excellence',
+      subtitle: 'Best Student of the Month · Attendance',
+      name: award.student_name,
+      detail: [award.gcc_no ? `GCC No. ${award.gcc_no}` : '', award.course, award.class_name].filter(Boolean).join(' · ') || scopeLabel,
+      body: [
+        `for an outstanding attendance record of ${award.attendance_pct}% in ${fmtMonth(award.month)},`,
+        `recognised as the ${scopeLabel} of the Month.`,
+      ],
+      seal: { value: `${award.attendance_pct}%`, label: 'ATTENDANCE' },
+      signatures: [{ title: 'Principal' }, { title: 'Head of the Institution' }],
+      certNo: `GNSI/ATT/${award.month}/${award.gcc_no || award.id || ''}`.replace(/\/$/, ''),
+    }).then(c => { if (alive) setCanvasEl(c) })
+    return () => { alive = false }
+  }, [award])
+  const fileBase = `Certificate_${award.student_name.replace(/\s+/g,'_')}_${award.month}`
 
   const download = () => {
-    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.95)
-    downloadDataUrl(dataUrl, `Certificate_${award.student_name.replace(/\s+/g,'_')}_${award.month}.jpg`)
+    if (!canvasEl) return
+    downloadDataUrl(canvasEl.toDataURL('image/jpeg', 0.95), `${fileBase}.jpg`)
   }
+  const downloadPdf = () => { if (canvasEl) certificatePdf(canvasEl, `${fileBase}.pdf`) }
 
   return (
     <div onClick={onClose} style={{
@@ -3624,13 +3546,16 @@ function AwardCertificateModal({ award, onClose }) {
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#fff', borderRadius: 14, overflow: 'hidden',
-        maxWidth: isMobile ? '100%' : 720, width: '100%',
+        maxWidth: isMobile ? '100%' : 900, width: '100%',
         boxShadow: '0 24px 60px rgba(0,0,0,.35)',
       }}>
-        <img src={canvasEl.toDataURL('image/jpeg', 0.92)} alt="Certificate" style={{ width: '100%', display: 'block' }} />
-        <div style={{ padding: 16, display: 'flex', gap: 10, borderTop: `1.5px solid ${T.gray150}` }}>
+        {canvasEl
+          ? <img src={canvasEl.toDataURL('image/jpeg', 0.92)} alt="Certificate" style={{ width: '100%', display: 'block' }} />
+          : <div style={{ aspectRatio: '1.414', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FBF7EE', color: '#8C6A22', fontWeight: 700 }}>Preparing certificate…</div>}
+        <div style={{ padding: 16, display: 'flex', gap: 10, borderTop: `1.5px solid ${T.gray150}`, flexWrap: 'wrap' }}>
           <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Close</Btn>
-          <Btn variant="primary" onClick={download} style={{ flex: 1, justifyContent: 'center' }}>⬇ Download</Btn>
+          <Btn variant="ghost" onClick={download} disabled={!canvasEl} style={{ flex: 1, justifyContent: 'center' }}>⬇ Image</Btn>
+          <Btn variant="primary" onClick={downloadPdf} disabled={!canvasEl} style={{ flex: 1, justifyContent: 'center' }}>⬇ PDF (A4)</Btn>
         </div>
       </div>
     </div>
