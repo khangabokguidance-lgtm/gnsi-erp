@@ -21,6 +21,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
+import { canonicalBatch, isStandardBatch } from './courseMap'
 import { receiptDocument, openReceiptWindow } from './premiumReceipt';
 import { CertificateDialog } from './certificateKit';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
@@ -228,7 +229,10 @@ const STUDENTDB_BATCH_TO_EXAM_KEY = {
 function batchToCourseSubjectsKey(batch) {
   const b = (batch || "").trim().toUpperCase();
   if (!b || b === "—") return COMBINED_COURSE_BATCH_LABEL_CONST;
-  return STUDENTDB_BATCH_TO_EXAM_KEY[b] || batch || "";
+  if (STUDENTDB_BATCH_TO_EXAM_KEY[b]) return STUDENTDB_BATCH_TO_EXAM_KEY[b];
+  // Other spellings of a standard batch: "Udaan — ENG", "LAKSHYA - A", " udaan ".
+  const std = canonicalBatch(batch);
+  return (isStandardBatch(std) && STUDENTDB_BATCH_TO_EXAM_KEY[std.toUpperCase()]) || batch || "";
 }
 // Combined Course has no batch split — StudentDB stores "—" as its placeholder.
 const COMBINED_COURSE_BATCH_LABEL_CONST = "Combined Navodaya Course (Sainik Appearing Group)";
@@ -10006,9 +10010,12 @@ export default function Exams({ currentUser, perms }) {
     // (e.g. "Achiever", "Lakshya A") is the field StudentDB's Course/Batch
     // selects actually write the batch to, so that's the source of truth
     // here, translated to the exam-side spelling via batchToCourseSubjectsKey.
+    // An older record with no batch but the batch name in class_name
+    // ("Udaan", "Elite") still belongs to that batch.
+    const classBatch = !s.batch && isStandardBatch(canonicalBatch(s.class_name)) ? s.class_name : "";
     const rawBatch = (s.course === "Combined Course" && (!s.batch || s.batch === "—"))
       ? COMBINED_COURSE_BATCH_LABEL
-      : (s.batch || "");
+      : (s.batch || classBatch);
     const batch = batchToCourseSubjectsKey(rawBatch);
     return { ...s, class_name: batch };
   };

@@ -18,3 +18,11 @@ test('course: a blank course on a Udaan / Pragati batch is Foundation', () => {
   assert.equal(courseOf({ course: 'Navodaya', batch: 'Udaan' }), 'Navodaya')
   assert.equal(courseOf({ batch: '???' }), 'Unassigned')
 })
+
+test('batch: dashed and spaced spellings of a standard batch', () => {
+  assert.equal(canonicalBatch('LAKSHYA - A'), 'Lakshya A')
+  assert.equal(canonicalBatch('lakshya-b'), 'Lakshya B')
+  assert.equal(canonicalBatch('ACHIEVER — ENG'), 'Achiever')
+  assert.equal(canonicalBatch('UDAAN-ENG'), 'Udaan')
+  assert.equal(canonicalBatch('elite-hin'), 'Udaan')
+})
