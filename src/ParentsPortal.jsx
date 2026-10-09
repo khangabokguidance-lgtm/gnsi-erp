@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { parentSupabase as supabase } from './parentSupabase';
 import './privateFiles';
 import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razorpayEnabled } from './systemSettings';
+import { examKeyFor } from './examBatchKey'
 
 // Escapes text before it is placed inside HTML strings (receipts, report
 // cards, progress reports). Names/addresses/remarks come from the database
@@ -851,7 +852,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // Course (Sainik Appearing Group)" are mixed-case, so forcing
       // uppercase here would silently break scheduling/ranking lookups
       // for those batches).
-      const course = student.class_name || student.batch || '';
+      // The exam batch key, worked out exactly as Exams does (examKeyFor):
+      // from students.batch ("Udaan", "UDAAN — ENG", old "Elite" → UDAAN),
+      // not the free-text class_name ("9A", "ENG").
+      const course = examKeyFor(student);
+      const me = { ...student, class_name: course };
       const examTypeName = rcExamTypes.options.find(t => String(t.id) === String(examTypeId))?.name || 'Examination';
 
       // Live exam_schedule is the real source of truth for subjects/max
@@ -882,12 +887,22 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // (ENG/MM), since those students' class_name is a phantom secondary-
       // batch tag rather than the base course key. Pull a broad candidate
       // set once, then filter client-side with the real matcher.
-      const { data: candidatePool } = await supabase
-        .from('students')
-        .select('id, name, gcc_no, class_name, course, admission_no, batch')
-        .eq('status', 'Active');
-      const allStudents = (candidatePool || []).filter(s => matchesCourseBatch(s, course));
-      if (!allStudents.some(s => s.id === student.id)) allStudents.push(student);
+      // Paged, so the 1000-row cap can't drop classmates; each candidate gets
+      // its exam key the same way before matching.
+      const candidatePool = [];
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error: poolErr } = await supabase
+          .from('students')
+          .select('id, name, gcc_no, class_name, course, admission_no, batch')
+          .eq('status', 'Active')
+          .order('id')
+          .range(from, from + 999);
+        if (poolErr) throw poolErr;
+        candidatePool.push(...(page || []));
+        if (!page || page.length < 1000) break;
+      }
+      const allStudents = candidatePool.map(s => ({ ...s, class_name: examKeyFor(s) })).filter(s => matchesCourseBatch(s, course));
+      if (!allStudents.some(s => s.id === student.id)) allStudents.push(me);
 
       const ids = allStudents.map(s => s.id);
       const [{ data: schedRows }, { data: markRows }] = await Promise.all([
@@ -915,7 +930,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       let institute = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur', academicYear: '2026-2027' };
       try { institute = { ...institute, ...JSON.parse(instSetting?.value || '{}') }; } catch (_) {}
 
-      const html = buildReportCardHTML(student, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
+      const html = buildReportCardHTML(me, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
 
       const title = `Report Card — ${student.name}`;
       fillWindow(receiptDocument(title, html, { extraCss: REPORT_CARD_CSS, printLabel: '🖨 Print / Save as PDF' }));

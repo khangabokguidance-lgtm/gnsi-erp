@@ -21,7 +21,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
-import { canonicalBatch, isStandardBatch } from './courseMap'
+import { examKeyFor } from './examBatchKey'
 import { receiptDocument, openReceiptWindow } from './premiumReceipt';
 import { CertificateDialog } from './certificateKit';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
@@ -213,29 +213,8 @@ function listSecondaryBatches(secondaryBatchMap) {
 // StudentDB's batch value into it. Without this translation every
 // courseSubjects[batch] lookup here silently returned [] for every
 // StudentDB-entered student.
-const STUDENTDB_BATCH_TO_EXAM_KEY = {
-  ACHIEVER: "ACHIEVER",
-  LEADER: "LEADER",
-  CHAMPION: "CHAMPION",
-  UMEED: "UMEED",
-  "LAKSHYA A": "LAKSHYA - A",
-  "LAKSHYA B": "LAKSHYA - B",
-  PRAGATI: "PRAGATI",
-  UDAAN: "UDAAN",
-  // Old names of these two batches, in case a record still carries them.
-  PRIME: "PRAGATI",
-  ELITE: "UDAAN",
-};
-function batchToCourseSubjectsKey(batch) {
-  const b = (batch || "").trim().toUpperCase();
-  if (!b || b === "—") return COMBINED_COURSE_BATCH_LABEL_CONST;
-  if (STUDENTDB_BATCH_TO_EXAM_KEY[b]) return STUDENTDB_BATCH_TO_EXAM_KEY[b];
-  // Other spellings of a standard batch: "Udaan — ENG", "LAKSHYA - A", " udaan ".
-  const std = canonicalBatch(batch);
-  return (isStandardBatch(std) && STUDENTDB_BATCH_TO_EXAM_KEY[std.toUpperCase()]) || batch || "";
-}
-// Combined Course has no batch split — StudentDB stores "—" as its placeholder.
-const COMBINED_COURSE_BATCH_LABEL_CONST = "Combined Navodaya Course (Sainik Appearing Group)";
+// (STUDENTDB_BATCH_TO_EXAM_KEY / batchToCourseSubjectsKey now live in
+// examBatchKey.js, shared with the Parents Portal.)
 
 // ─── Max marks per subject per course (all total to 100) ─────────────────────
 const COURSE_MAX_MARKS = {
@@ -10002,22 +9981,14 @@ export default function Exams({ currentUser, perms }) {
   // anywhere in Exams: every course/batch filter silently returned zero
   // students for it. Translating the placeholder here, in the one shared
   // normalizer, fixes every exam function at once without touching each one.
-  const COMBINED_COURSE_BATCH_LABEL = "Combined Navodaya Course (Sainik Appearing Group)";
   const normalizeStudent = (s) => {
     // `students.class_name` is StudentDB's free-text "Class (optional)"
     // section field (e.g. "9A") and is unrelated to the exam batch group —
     // it must never be used for exam grouping/lookups. `students.batch`
     // (e.g. "Achiever", "Lakshya A") is the field StudentDB's Course/Batch
     // selects actually write the batch to, so that's the source of truth
-    // here, translated to the exam-side spelling via batchToCourseSubjectsKey.
-    // An older record with no batch but the batch name in class_name
-    // ("Udaan", "Elite") still belongs to that batch.
-    const classBatch = !s.batch && isStandardBatch(canonicalBatch(s.class_name)) ? s.class_name : "";
-    const rawBatch = (s.course === "Combined Course" && (!s.batch || s.batch === "—"))
-      ? COMBINED_COURSE_BATCH_LABEL
-      : (s.batch || classBatch);
-    const batch = batchToCourseSubjectsKey(rawBatch);
-    return { ...s, class_name: batch };
+    // here — see examKeyFor (examBatchKey.js), shared with the Parents Portal.
+    return { ...s, class_name: examKeyFor(s) };
   };
 
   // ── Secondary batches: a student can appear under a SECOND batch (e.g. a
