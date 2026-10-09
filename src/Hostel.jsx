@@ -278,7 +278,7 @@ const TAB_GROUPS = [
 // A housemaster/housemistress logging in sees only these tabs, each
 // limited to their own house; everything else stays with the office.
 const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
-const HM_TABS = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable']
 
 // Rows of one house: matched by the row's student (when it has one) or by
 // the row's own house. No lockHouse = everything (admins, office staff).
@@ -4793,13 +4793,18 @@ function MonthlyCertificateCard() {
 //  breakdown table (one row per day per house: morning/night %
 //  marked, on-time status, absent count).
 // ══════════════════════════════════════════════════════════════
-function HMRollCallReportTab() {
+function HMRollCallReportTab({ lockHouse }) {
   const [rangeMode, setRangeMode] = useState('last10') // 'last10' | 'month'
   const [loading, setLoading] = useState(true)
-  const [houses, setHouses] = useState([])
+  const [allHouses, setHouses] = useState([])
+  // A housemaster sees only their own house's report, opened.
+  const houses = useMemo(() => !lockHouse ? allHouses
+    : [allHouses.find(h => normalizeHouse(h) === normalizeHouse(lockHouse)) || lockHouse],
+  [allHouses, lockHouse])
   const [studentsByHouse, setStudentsByHouse] = useState({}) // house → count of active students
   const [records, setRecords] = useState([]) // attendance_records in range
   const [expandedHouse, setExpandedHouse] = useState(null)
+  const shownHouse = lockHouse ? (expandedHouse === '' ? null : houses[0]) : expandedHouse
   const mobile = useMobileView()
 
   const { startStr, endStr, dayList } = useMemo(() => {
@@ -4921,7 +4926,7 @@ function HMRollCallReportTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Roll Call Report</h2>
+          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Roll Call Report{lockHouse ? ` · ${lockHouse}` : ''}</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
         </div>
         <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
@@ -4961,11 +4966,11 @@ function HMRollCallReportTab() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {houses.map(houseName => {
             const summary = getHouseSummary(houseName)
-            const isExpanded = expandedHouse === houseName
+            const isExpanded = shownHouse === houseName
             return (
               <div key={houseName} style={{ background: 'white', borderRadius: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
                 <div
-                  onClick={() => setExpandedHouse(isExpanded ? null : houseName)}
+                  onClick={() => setExpandedHouse(isExpanded ? (lockHouse ? '' : null) : houseName)}
                   style={{ padding: '16px', cursor: 'pointer' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
@@ -11197,9 +11202,11 @@ function KitchenTab({ currentUser }) {
 //  Shows every logged compliance gap: which housemaster skipped
 //  which of the 6 mandatory tabs, for which house/date/session.
 // ══════════════════════════════════════════════════════════════
-function NeglectReportTab({ currentUser }) {
-  const isAdmin = isAdminRole(currentUser?.role)
-  const [records, setRecords] = useState([])
+function NeglectReportTab({ currentUser, lockHouse }) {
+  // Admins see every house; a housemaster sees only their own house's gaps.
+  const isAdmin = isAdminRole(currentUser?.role) || !!lockHouse
+  const [allRecords, setRecords] = useState([])
+  const records = useMemo(() => lockHouse ? allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(lockHouse)) : allRecords, [allRecords, lockHouse])
   const [loading, setLoading] = useState(true)
   const [houseFilter, setHouseFilter] = useState('All')
   const [hmFilter, setHmFilter] = useState('All')
@@ -11248,7 +11255,7 @@ function NeglectReportTab({ currentUser }) {
   return (
     <div>
       <div style={{ background: '#1e3a6e', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
-        <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report</div>
+        <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report{lockHouse ? ` · ${lockHouse}` : ''}</div>
         <div style={{ fontSize: '12px', opacity: 0.75 }}>
           Tracks housemasters who complete roll call without logging Discipline, Sickbay, Repairs, Journal, Mess Duty, or Activities for their house that session.
         </div>
@@ -11269,14 +11276,18 @@ function NeglectReportTab({ currentUser }) {
       )}
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Houses</option>
-          {houseNames.map(h => <option key={h}>{h}</option>)}
-        </select>
-        <select value={hmFilter} onChange={e => setHmFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Housemasters</option>
-          {hmNames.map(h => <option key={h}>{h}</option>)}
-        </select>
+        {!lockHouse && (
+          <>
+            <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+              <option value="All">All Houses</option>
+              {houseNames.map(h => <option key={h}>{h}</option>)}
+            </select>
+            <select value={hmFilter} onChange={e => setHmFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+              <option value="All">All Housemasters</option>
+              {hmNames.map(h => <option key={h}>{h}</option>)}
+            </select>
+          </>
+        )}
         <ReportExportButtons
           title="Six-Tab Compliance Neglect Report"
           subtitle={`${filtered.length} of ${records.length} logged gaps${houseFilter !== 'All' ? ` · House: ${houseFilter}` : ''}${hmFilter !== 'All' ? ` · HM: ${hmFilter}` : ''}`}
@@ -11718,7 +11729,7 @@ function Hostel() {
   const boardersCount = myStudents.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
   const houseCount = Object.keys(houseColorMap).length
 
-  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
+  const standaloneTab = !hmOnly && (activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport')
 
   const tabContent = {
     allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
@@ -11746,8 +11757,8 @@ function Hostel() {
     journal: <JournalTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    neglectreport: <NeglectReportTab currentUser={currentUser} />,
-    hmrollreport: <HMRollCallReportTab />,
+    neglectreport: <NeglectReportTab currentUser={currentUser} lockHouse={lockHouse} />,
+    hmrollreport: <HMRollCallReportTab lockHouse={lockHouse} />,
     commandcentre: <CommandCentreTab students={students} currentUser={currentUser} />,
   }
 
@@ -11966,7 +11977,7 @@ function Hostel() {
             <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: MD.color.onSurfaceVariant, marginTop: 14 }}>Loading student &amp; staff data…</div>
           </div>
         )
-        : tabContent[activeTab]
+        : hmOnly && !lockHouse ? null : tabContent[activeTab]
       }
 
       {/* Phone: payments-app style bottom navigation — the day-to-day sections + the full menu */}
