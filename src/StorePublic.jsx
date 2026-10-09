@@ -85,7 +85,7 @@ const CSS = `
 
 /* hero */
 .gs-hero{background:radial-gradient(1200px 400px at 85% -10%,rgba(184,146,58,.28),transparent 60%),linear-gradient(160deg,#132a4f 0%,#1e3a6e 70%,#23457f 100%);color:#fff;padding:38px 0 30px;position:relative;overflow:hidden}
-.gs-hero h1{font-size:clamp(28px,4.4vw,44px);line-height:1.08;margin:10px 0 10px;max-width:640px;font-weight:700}
+.gs-hero h1{font-size:clamp(28px,4.4vw,44px);line-height:1.08;margin:10px 0 10px;max-width:640px;font-weight:700;color:#fff}
 .gs-hero p{margin:0;color:rgba(255,255,255,.78);font-size:15px;max-width:560px;line-height:1.55}
 .gs-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2)}
 .gs-eyebrow:before{content:'';width:22px;height:1px;background:var(--gold2)}
