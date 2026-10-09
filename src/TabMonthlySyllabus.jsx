@@ -938,7 +938,7 @@ export default function TabMonthlySyllabus({ logs=[], missed=[], timetable=[], s
       <div style={{ background:'linear-gradient(135deg,#1e3a5f,#1e40af)', borderRadius:14, padding:'14px 18px', marginBottom:12, color:'white' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
           <div>
-            <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>Monthly Syllabus Planner</h2>
+            <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:'#fff' }}>Monthly Syllabus Planner</h2>
             <p style={{ margin:'2px 0 0', fontSize:11, opacity:.75 }}>
               {admin ? 'Admin view · Full CRUD · Multi-teacher assignment' : `Teacher view · ${currentUser?.name||''}`}
             </p>

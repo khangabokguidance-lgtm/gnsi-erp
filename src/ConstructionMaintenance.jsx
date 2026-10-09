@@ -148,7 +148,7 @@ const CSS = `
 .cm-serif{font-family:'Fraunces',Georgia,serif;letter-spacing:-.01em}
 .cm-wrap{max-width:1280px;margin:0 auto;padding:0 20px}
 .cm-hero{background:radial-gradient(900px 300px at 90% -30%,rgba(184,146,58,.32),transparent 60%),linear-gradient(135deg,#132a4f,#1e3a6e);color:#fff;padding:24px 0 0}
-.cm-hero h1{margin:4px 0 2px;font-size:clamp(22px,3vw,30px);font-weight:700}
+.cm-hero h1{margin:4px 0 2px;font-size:clamp(22px,3vw,30px);font-weight:700;color:#fff}
 .cm-hero p{margin:0;color:rgba(255,255,255,.7);font-size:13.5px}
 .cm-eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2)}
 .cm-tabs{display:flex;gap:4px;margin-top:18px;overflow-x:auto;scrollbar-width:none}.cm-tabs::-webkit-scrollbar{display:none}
