@@ -22,6 +22,22 @@ const BATCH_TO_COURSE = (() => {
   return m
 })()
 
+// Foundation batches were renamed (Elite → Udaan, Prime → Pragati); rows not
+// yet renamed still mean the new batch.
+const RENAMED_BATCHES = { elite: 'Udaan', prime: 'Pragati' }
+const STANDARD_BATCHES = Object.values(COURSE_BATCHES).flat()
+
+// A batch as the standard name: case and spacing don't matter, a section
+// suffix is dropped ("UDAAN — ENG" → Udaan) and the old names map to the
+// new ones ("ELITE" → Udaan). Unknown names come back trimmed, unchanged.
+export function canonicalBatch(raw) {
+  const s = String(raw || '').trim().replace(/\s+/g, ' ')
+  if (!s) return ''
+  const base = s.split(/\s+[—–-]\s+/)[0].trim()
+  const low = base.toLowerCase()
+  return RENAMED_BATCHES[low] || STANDARD_BATCHES.find(b => b.toLowerCase() === low) || s
+}
+
 export function normalizeCourse(raw) {
   const s = String(raw || '').trim().toLowerCase()
   if (!s) return ''
@@ -35,8 +51,8 @@ export function normalizeCourse(raw) {
 // Course for a student row — 'Unassigned' when neither course nor batch tells us.
 export function courseOf(s) {
   return normalizeCourse(s?.course)
-    || BATCH_TO_COURSE[String(s?.batch || '').trim().toLowerCase()]
-    || BATCH_TO_COURSE[String(s?.class_name || '').trim().toLowerCase()]
+    || BATCH_TO_COURSE[canonicalBatch(s?.batch).toLowerCase()]
+    || BATCH_TO_COURSE[canonicalBatch(s?.class_name).toLowerCase()]
     || 'Unassigned'
 }
 
