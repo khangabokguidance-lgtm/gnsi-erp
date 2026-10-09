@@ -407,7 +407,7 @@ const medalFor = n => n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : '
 // Full roll-call report for WhatsApp: the housemaster's profile and rank,
 // the counts, and who is out — professional and encouraging, so the
 // recipient doesn't have to open the app.
-function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other, rankInfo, completedAt, late }) {
+function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other, rankInfo, completedAt, late, mock }) {
   const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
   const names = list => list.map(st => `   • ${st.name}${st.gcc_no ? ` (GCC ${st.gcc_no})` : ''}`).join('\n')
   const day = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
@@ -432,11 +432,58 @@ function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, pr
     `🎫 Outpass: ${outpass.length}`,
     outpass.length ? names(outpass) : null,
     other ? `• Other: ${other}` : null,
+    ...(mock ? [
+      '',
+      `📝 *Mock Test — ${mock.series}* _(${mock.testCount} test${mock.testCount === 1 ? '' : 's'}, average score)_`,
+      '🏅 Top performers',
+      ...mock.top.map((m, i) => `   ${['🥇', '🥈', '🥉'][i]} ${m.name} — ${m.avg}%`),
+      ...(mock.weak.length ? ['📈 Needs support', ...mock.weak.map(m => `   • ${m.name} — ${m.avg}%`)] : []),
+    ] : []),
     '',
     `💬 _${motivationLine(rankInfo, late)}_`,
     '',
     '— GNSI Hostel Administration',
   ].filter(l => l !== null).join('\n')
+}
+
+// ── House mock-test standings (from the Mock Analyzer) ─────────────
+// For one house: the latest mock series, each student's average score
+// across that series' tests, and the top 3 / the 3 who most need support.
+// Students are matched by GCC number, or by name when the sheet has none.
+// Returns null when there are no mock results for the house.
+let mockRowsCache = null // { at, rows } — reused for a few minutes
+async function loadHouseMockStandings(houseStudents) {
+  const [{ loadAll }, { gccDigits, normName }] = await Promise.all([import('./lib/mockTestStore'), import('./lib/mockTestEngine')])
+  if (!mockRowsCache || Date.now() - mockRowsCache.at > 5 * 60 * 1000) {
+    const { rows } = await loadAll()
+    mockRowsCache = { at: Date.now(), rows: rows || [] }
+  }
+  const rows = mockRowsCache.rows.filter(r => Number(r.max_total) > 0)
+  if (!rows.length || !houseStudents?.length) return null
+  const byGcc = new Map(), byName = new Map()
+  const add = (m, k, r) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(r) }
+  rows.forEach(r => { add(byGcc, gccDigits(r.gcc_no), r); add(byName, normName(r.student_name), r) })
+  const rowsFor = st => byGcc.get(gccDigits(st.gcc_no)) || byName.get(normName(st.name)) || []
+  // Latest series that any student of this house sat.
+  const seriesAt = {}
+  houseStudents.forEach(st => rowsFor(st).forEach(r => {
+    const t = r.test_date || r.created_at || ''
+    if (!seriesAt[r.series] || t > seriesAt[r.series]) seriesAt[r.series] = t
+  }))
+  const series = Object.keys(seriesAt).sort((a, b) => (seriesAt[b] > seriesAt[a] ? 1 : seriesAt[b] < seriesAt[a] ? -1 : 0))[0]
+  if (!series) return null
+  const tests = new Set()
+  const list = houseStudents.map(st => {
+    const rs = rowsFor(st).filter(r => r.series === series)
+    if (!rs.length) return null
+    rs.forEach(r => tests.add(r.test_no))
+    const pcts = rs.map(r => (Number(r.total) / Number(r.max_total)) * 100)
+    return { name: st.name, gcc_no: st.gcc_no, avg: Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length), tests: rs.length }
+  }).filter(Boolean).sort((a, b) => b.avg - a.avg)
+  if (!list.length) return null
+  const top = list.slice(0, 3)
+  const weak = list.length > 3 ? list.slice(-3).reverse().filter(x => !top.includes(x)) : []
+  return { series, testCount: tests.size, covered: list.length, top, weak }
 }
 
 // Housemaster's rank on the same 7-day score as the HM ranking.
@@ -453,8 +500,9 @@ async function loadHmRank(houseName) {
 
 // Profile card image (1080×1350) for WhatsApp: photo, name, house, rank,
 // today's counts and an encouraging line. Returns a PNG Blob.
-async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankInfo, total, present, outing, outpass, late, completedAt }) {
-  const W = 1080, H = 1350
+async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankInfo, total, present, outing, outpass, late, completedAt, mock }) {
+  const MOCK_H = mock ? 400 : 0 // extra height for the mock-test section
+  const W = 1080, H = 1350 + MOCK_H
   const c = document.createElement('canvas')
   c.width = W; c.height = H
   const g = c.getContext('2d')
@@ -553,7 +601,48 @@ async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankIn
     g.fillStyle = 'rgba(255,255,255,.65)'; g.font = `800 22px ${sans}`; g.fillText(t.l, x + tw / 2, 1030)
   })
 
-  // Status pill
+  // Mock test: top performers / needs support
+  if (mock) {
+    const y0 = 1085
+    g.fillStyle = '#E2C57E'; g.font = `800 26px ${sans}`
+    g.fillText(`MOCK TEST · ${String(mock.series).toUpperCase()}`, W / 2, y0 + 10)
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `600 22px ${sans}`
+    g.fillText(`Average score · ${mock.testCount} test${mock.testCount === 1 ? '' : 's'} · ${mock.covered} students`, W / 2, y0 + 44)
+    const cols = [
+      { head: '🏅 TOP PERFORMERS', list: mock.top, accent: '#4ADE80', bar: 'rgba(74,222,128,.85)' },
+      { head: '📈 NEEDS SUPPORT', list: mock.weak, accent: '#FBBF24', bar: 'rgba(251,191,36,.85)' },
+    ]
+    const cw = (W - 140 - 24) / 2
+    cols.forEach((col, ci) => {
+      const x = 70 + ci * (cw + 24), y = y0 + 70
+      roundRect(x, y, cw, 300, 26); g.fillStyle = 'rgba(255,255,255,.07)'; g.fill()
+      g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke()
+      g.textAlign = 'left'; g.fillStyle = col.accent; g.font = `800 24px ${sans}`
+      g.fillText(col.head, x + 26, y + 46)
+      if (!col.list.length) {
+        g.fillStyle = 'rgba(255,255,255,.55)'; g.font = `600 24px ${sans}`
+        g.fillText('Everyone is doing well', x + 26, y + 110)
+      }
+      col.list.slice(0, 3).forEach((m, i) => {
+        const ry = y + 96 + i * 70
+        const label = ci === 0 ? ['🥇', '🥈', '🥉'][i] + ' ' : ''
+        g.fillStyle = '#fff'
+        let nm = label + m.name
+        g.font = `700 25px ${sans}`
+        while (g.measureText(nm).width > cw - 140 && nm.length > 4) nm = nm.slice(0, -2) + '…'
+        g.fillText(nm, x + 26, ry)
+        g.textAlign = 'right'; g.fillStyle = col.accent; g.font = `800 28px ${sans}`
+        g.fillText(`${m.avg}%`, x + cw - 26, ry)
+        g.textAlign = 'left'
+        roundRect(x + 26, ry + 14, cw - 52, 10, 5); g.fillStyle = 'rgba(255,255,255,.1)'; g.fill()
+        roundRect(x + 26, ry + 14, Math.max(10, (cw - 52) * Math.min(m.avg, 100) / 100), 10, 5); g.fillStyle = col.bar; g.fill()
+      })
+      g.textAlign = 'center'
+    })
+  }
+
+  // Status pill (moved down by the mock section)
+  g.translate(0, MOCK_H)
   const time = completedAt ? new Date(completedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : ''
   const pill = late ? `⏰ Completed late${time ? ` · ${time}` : ''}` : `✓ Completed on time${time ? ` · ${time}` : ''}`
   g.font = `800 30px ${sans}`
@@ -574,6 +663,7 @@ async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankIn
   shown.forEach((l, i) => g.fillText(`${i === 0 ? '“' : ''}${l}${i === shown.length - 1 ? '”' : ''}`, W / 2, 1208 + i * 42))
   g.fillStyle = 'rgba(255,255,255,.5)'; g.font = `700 22px ${sans}`
   g.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W / 2, 1300)
+  g.setTransform(1, 0, 0, 1, 0, 0)
 
   return new Promise(res => c.toBlob(b => res(b), 'image/png'))
 }
@@ -2221,7 +2311,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // rather than replaying on every re-render of an already-clear house.
   const [complianceCelebrated, setComplianceCelebrated] = useState({}) // key: complianceKey → true once played
   const [rollCallReportSent, setRollCallReportSent] = useState({}) // key: `${house}_${date}_${session}` → true once WA report auto-sent
-  const [hmRankByHouse, setHmRankByHouse] = useState({}) // `${house}_${date}` → 'loading' | rank info | null
+  const [hmRankByHouse, setHmRankByHouse] = useState({}) // `${house}_${date}` → 'loading' | { rank, mock }
   const [profileCards, setProfileCards] = useState({}) // `${house}_${date}_${session}` → 'loading' | { blob, url } | null
   const [complianceCelebrating, setComplianceCelebrating] = useState(null) // complianceKey currently animating
   // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
@@ -3847,19 +3937,25 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             const rankKey = `${selectedHouse}_${date}`
             if (hmRankByHouse[rankKey] === undefined) {
               setHmRankByHouse(prev => ({ ...prev, [rankKey]: 'loading' }))
-              Promise.race([loadHmRank(selectedHouse), new Promise(res => setTimeout(() => res(null), 8000))])
+              const houseList = rollCallStudents
+              Promise.race([
+                Promise.all([loadHmRank(selectedHouse).catch(() => null), loadHouseMockStandings(houseList).catch(() => null)])
+                  .then(([rank, mock]) => ({ rank, mock })),
+                new Promise(res => setTimeout(() => res(null), 10000)),
+              ])
                 .catch(() => null)
-                .then(info => setHmRankByHouse(prev => ({ ...prev, [rankKey]: info || null })))
+                .then(info => setHmRankByHouse(prev => ({ ...prev, [rankKey]: info || { rank: null, mock: null } })))
             }
             const rankLoaded = hmRankByHouse[rankKey] !== undefined && hmRankByHouse[rankKey] !== 'loading'
-            const rankInfo = rankLoaded ? hmRankByHouse[rankKey] : null
+            const rankInfo = rankLoaded ? hmRankByHouse[rankKey].rank : null
+            const mockInfo = rankLoaded ? hmRankByHouse[rankKey].mock : null
             const reportHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
             const presentList = [...byStatus('Present'), ...byStatus('Late')]
             const reportArgs = {
               houseName: selectedHouse, sessionLabel: session === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
               hm: reportHm, total, present: presentList, outing: byStatus('Outing'), outpass: byStatus('Outpass'),
               other: rollCallStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(getStatus(x.id))).length,
-              rankInfo, completedAt: lastMarkedAtForOwnSession, late: lateStatus.isLate,
+              rankInfo, completedAt: lastMarkedAtForOwnSession, late: lateStatus.isLate, mock: mockInfo,
             }
             const rollCallWaText = buildRollCallWaReport(reportArgs)
             if (rankLoaded && !rollCallReportSent[rollCallReportKey]) {
@@ -4006,6 +4102,43 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   </button>
                 )}
               </div>
+              {/* Mock test standings for this house */}
+              {mockInfo && (
+                <div style={{ textAlign: 'left', maxWidth: 620, margin: '0 auto 20px', borderRadius: 20, overflow: 'hidden', border: '1px solid #E9D9B0', background: '#fff', boxShadow: '0 18px 34px -24px rgba(11,30,61,.6)' }}>
+                  <div style={{ padding: '14px 18px', color: '#fff', background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>Mock test · {selectedHouse} House</div>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, marginTop: 3 }}>{mockInfo.series}</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.7)', marginTop: 2 }}>Average score · {mockInfo.testCount} test{mockInfo.testCount === 1 ? '' : 's'} · {mockInfo.covered} students</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: 12, padding: 14 }}>
+                    {[
+                      { head: '🏅 Top performers', list: mockInfo.top, c: '#15803D', bg: '#F0FDF4', bd: '#BBE5C8', bar: 'linear-gradient(90deg,#22C55E,#15803D)' },
+                      { head: '📈 Needs support', list: mockInfo.weak, c: '#B45309', bg: '#FFFBEB', bd: '#FDE68A', bar: 'linear-gradient(90deg,#FBBF24,#D97706)' },
+                    ].map((col, ci) => (
+                      <div key={col.head} style={{ borderRadius: 14, background: col.bg, border: `1px solid ${col.bd}`, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: col.c, letterSpacing: '.04em', marginBottom: 8 }}>{col.head}</div>
+                        {col.list.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: '#64748B' }}>Everyone is doing well.</div>
+                        ) : col.list.map((m, i) => (
+                          <div key={m.name + i} style={{ marginBottom: i < col.list.length - 1 ? 9 : 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {ci === 0 ? ['🥇', '🥈', '🥉'][i] + ' ' : ''}{m.name}
+                              </span>
+                              {m.gcc_no && <span style={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 700 }}>GCC {m.gcc_no}</span>}
+                              <span style={{ fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 700, color: col.c, fontVariantNumeric: 'tabular-nums' }}>{m.avg}%</span>
+                            </div>
+                            <div style={{ height: 6, borderRadius: 99, background: 'rgba(15,23,42,.08)', marginTop: 5, overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(m.avg, 100)}%`, height: '100%', borderRadius: 99, background: col.bar }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
