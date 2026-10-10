@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from 'rea
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
 import { StaffAvatar, findStaffPhoto } from './staffPhotos'
+import { findMissingRollCalls } from './missingRollCalls'
 import { canonicalBatch, courseOf } from './courseMap'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
@@ -1777,6 +1778,67 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 }
 
 
+// ══════════════════════════════════════════════════════════════
+//  MISSING ROLL CALL WARNING
+//  A loud red warning, with instructions, shown at the top of Roll Call and the
+//  HM Dashboard whenever a roll call of today or the last two days is closed but
+//  not complete for a house. A past day counts only if another house did mark
+//  it (so a school holiday never raises it). Reads the three days' hostel
+//  roll call rows once when it opens; nothing refreshes by itself.
+// ══════════════════════════════════════════════════════════════
+function MissingRollCallAlert({ students, onOpen }) {
+  const [rows, setRows] = useState(null)
+  const [now, setNow] = useState(() => Date.now())
+  const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
+  useEffect(() => {
+    let alive = true
+    supabase.from('attendance_records').select('student_id, house, date, session')
+      .in('session', ['morning', 'night']).gte('date', days[days.length - 1])
+      .then(({ data, error }) => { if (alive) setRows(error ? [] : (data || [])) })
+    const t = setInterval(() => setNow(Date.now()), 60000)
+    return () => { alive = false; clearInterval(t) }
+  }, [days])
+
+  const missing = useMemo(() => {
+    if (!rows) return []
+    return findMissingRollCalls({ rows, students, days, normalizeHouse, isClosed: (d, sess) => rollCallClosed(d, sess, now) })
+  }, [rows, students, days, now])
+
+  if (!missing.length) return null
+  const shown = missing.slice(0, 8)
+  const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  return (
+    <div role="alert" style={{ margin: '0 0 16px', borderRadius: 16, border: '2px solid #DC2626', background: '#FEF2F2', overflow: 'hidden', boxShadow: '0 14px 28px -18px rgba(220,38,38,.6)' }}>
+      <div style={{ padding: '12px 16px', background: '#DC2626', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 20 }}>🚨</span>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: '.04em', textTransform: 'uppercase' }}>Missing roll call — action needed now</div>
+          <div style={{ fontSize: 12, opacity: .92 }}>{missing.length} roll call{missing.length > 1 ? 's' : ''} not completed. Every student must be marked, no exceptions.</div>
+        </div>
+        {onOpen && <button type="button" onClick={onOpen} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: '#fff', color: '#B91C1C', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
+      </div>
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {shown.map(m => (
+          <div key={`${m.house}|${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13.5, color: '#7F1D1D' }}>
+            <span><b>{String(m.house).replace(/\b\w/g, c => c.toUpperCase())}</b> · {m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
+            <span style={{ fontWeight: 800 }}>{m.marked} of {m.total} marked</span>
+          </div>
+        ))}
+        {missing.length > shown.length && <div style={{ fontSize: 12.5, color: '#991B1B', fontWeight: 700 }}>+ {missing.length - shown.length} more</div>}
+      </div>
+      <div style={{ padding: '12px 16px', borderTop: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+        <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
+        <ol style={{ margin: 0, paddingLeft: 20 }}>
+          <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
+          <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
+          <li>Mark <b>every</b> student: Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking.</li>
+          <li>A roll call finished after the cutoff is recorded as <b>late</b> against the housemaster, and a repeat counts against the monthly ranking.</li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
 function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
@@ -2940,6 +3002,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       <div>
         {reportModal}{precheckModal}{rulesModal}{unlockModal}
         {unlockPanel}
+        <MissingRollCallAlert students={activeStudents} />
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
@@ -6835,6 +6898,8 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
           </div>
         </div>
       </div>
+
+      <MissingRollCallAlert students={students} onOpen={() => onTabChange?.('attendance')} />
 
       {/* Today's two roll calls */}
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
