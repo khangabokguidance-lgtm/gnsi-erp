@@ -5,6 +5,7 @@
 //   2. fees charged at another type's rate, waiting for approval
 //   3. this session's past payments made at another type's rate
 //   4. admin overrides and record corrections (audit trail)
+import { canonicalBatch, courseOf } from './courseMap'
 import { useEffect, useMemo, useState } from 'react'
 import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit, loadActiveBeds } from './hostelFeeCheck'
 import { loadConcessions, decideConcession, recordConcession, CONCESSIONS_SETUP_MSG } from './feeConcessions'
@@ -166,7 +167,7 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
           return (
             <div key={st.id} style={row}>
               <div style={{ flex: '2 1 260px' }}>
-                <b><LedgerLink gcc={st.gcc_no}>{st.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{st.gcc_no} · {st.course || '—'}{st.batch ? ' · ' + st.batch : ''}</span> <TypePill t={st.hostel_type || 'Day Scholar'} />
+                <b><LedgerLink gcc={st.gcc_no}>{st.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{st.gcc_no} · {courseOf(st) !== 'Unassigned' ? courseOf(st) : '—'}{st.batch ? ' · ' + canonicalBatch(st.batch) : ''}</span> <TypePill t={st.hostel_type || 'Day Scholar'} />
                 <div style={{ fontSize: 12, color: '#9a3412', marginTop: 3 }}>{conflict.message.charAt(0).toUpperCase() + conflict.message.slice(1)}.</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -215,7 +216,7 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
         {suspects.map(x => (
           <div key={x.student.gcc_no} style={row}>
             <div style={{ flex: '2 1 260px' }}>
-              <b><LedgerLink gcc={x.student.gcc_no}>{x.student.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{x.student.gcc_no} · {x.student.course || '—'}{x.student.batch ? ' · ' + x.student.batch : ''}</span>
+              <b><LedgerLink gcc={x.student.gcc_no}>{x.student.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{x.student.gcc_no} · {courseOf(x.student) !== 'Unassigned' ? courseOf(x.student) : '—'}{x.student.batch ? ' · ' + canonicalBatch(x.student.batch) : ''}</span>
               <div style={{ fontSize: 12, marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 Recorded <TypePill t={x.recorded} /> but {x.count} of {x.total} payment{x.total === 1 ? '' : 's'} at the <TypePill t={x.likely} /> rate
               </div>

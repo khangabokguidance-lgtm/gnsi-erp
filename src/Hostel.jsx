@@ -304,8 +304,8 @@ function getStudentClass(s) {
   if (!s) return ''
   const batch = (s.batch || '').trim()
   const cls = (s.class_name || '').trim()
-  if (batch && batch !== '???') return batch
-  if (cls && cls !== '???') return cls
+  if (batch && batch !== '???') return canonicalBatch(batch)
+  if (cls && cls !== '???') return canonicalBatch(cls)
   return ''
 }
 
@@ -1246,7 +1246,7 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
       .filter(s =>
         (s.name || '').toLowerCase().includes(q) ||
         String(s.gcc_no || '').includes(q) ||
-        (s.batch || '').toLowerCase().includes(q) ||
+        (s.batch || '').toLowerCase().includes(q) || canonicalBatch(s.batch).toLowerCase().includes(q) ||
         (s.course || '').toLowerCase().includes(q) ||
         String(s.admission_no || '').toLowerCase().includes(q)
       )
@@ -9281,7 +9281,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
       !isAssigned(s) && (
         (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
         String(s.gcc_no || '').includes(assignSearch) ||
-        (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
+        (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+        canonicalBatch(s.batch).toLowerCase().includes(assignSearch.toLowerCase())
       )
     ).slice(0, 10)
     : []
@@ -9303,7 +9304,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase()
     return students.filter(s => {
-      const matchesSearch = [s.name, s.gcc_no, s.batch, s.course].some(v => (v || '').toString().toLowerCase().includes(q))
+      const matchesSearch = [s.name, s.gcc_no, s.batch, canonicalBatch(s.batch), s.course].some(v => (v || '').toString().toLowerCase().includes(q))
       const matchesFilter = assignFilter === 'All' ? true
         : assignFilter === 'Unassigned' ? (!isAssigned(s) && s.status !== 'Dropout')
         : assignFilter === 'Dropout' ? s.status === 'Dropout'
@@ -9410,10 +9411,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <div>
                           <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
                           <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                            {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.gender || '—'} · {s.batch || '—'}
+                            {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.gender || '—'} · {canonicalBatch(s.batch) || '—'}
                           </div>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                            {s.course || '—'}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                            {courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
                           </div>
                         </div>
                         {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>✕ Remove</button>}
@@ -9439,8 +9440,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
                             {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>}
@@ -9727,7 +9728,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <div>
                             <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
                             <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                              {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}{s.course ? ` · ${s.course}` : ''}
+                              {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}{courseOf(s) !== 'Unassigned' ? ` · ${courseOf(s)}` : ''}
                             </div>
                           </div>
                           {s.status === 'Dropout'
@@ -9777,8 +9778,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
-                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}</td>
                         <td style={{ padding: '9px 14px' }}>
                           {s.status === 'Dropout'
                             ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#fef2f2', color: '#b45309' }}>🚪 Unassigned/Dropout</span>
@@ -12748,7 +12749,8 @@ function StudentTransferTab({ students, currentUser }) {
       list = list.filter(s =>
         (s.name || '').toLowerCase().includes(q) ||
         String(s.gcc_no || '').includes(q) ||
-        (s.batch || '').toLowerCase().includes(q)
+        (s.batch || '').toLowerCase().includes(q) ||
+        canonicalBatch(s.batch).toLowerCase().includes(q)
       )
     }
     return list
@@ -12998,7 +13000,7 @@ function StudentTransferTab({ students, currentUser }) {
                     <div>
                       <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
                       <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                        {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}
+                        {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}
                       </div>
                     </div>
                   </div>
@@ -13073,7 +13075,7 @@ function StudentTransferTab({ students, currentUser }) {
                   <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                   <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
-                  <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
+                  <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
                   <td style={{ padding: '9px 14px' }}>
                     {currentHouse !== '—' ? (
                       <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e' }}>🏠 {currentHouse}</span>
