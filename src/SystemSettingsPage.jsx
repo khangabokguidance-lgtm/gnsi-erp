@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, getDataUsage, resetDataUsage } from "./supabase";
 import { PremiumStyles, PremiumHero } from "./premiumUI";
+import { BackupStatusCard, ExportCard, ImportCard } from "./DataExchangeCards";
 import { settingsSaved } from "./systemSettings";
 
 // ─── Access control ─────────────────────────────────────────
@@ -1131,6 +1132,9 @@ function DataSection() {
   return (
     <Grid mobile={mobile}>
       <div>
+        <BackupStatusCard Card={Card} SectionTitle={SectionTitle} />
+        <ExportCard Card={Card} SectionTitle={SectionTitle} />
+        <ImportCard Card={Card} SectionTitle={SectionTitle} />
         <DataUsageCard />
         <Card>
           <SectionTitle>🔍 Database Health Check</SectionTitle>

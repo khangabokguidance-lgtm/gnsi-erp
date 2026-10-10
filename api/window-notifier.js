@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { enforceCompliance, runDaily } from '../server/hostelCompliance.js'
 import { rollcallReminder } from '../server/rollcallReminder.js'
 import { runFeeAlerts } from '../server/feeAlerts.js'
+import { runBackup } from '../server/backup.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -31,7 +32,7 @@ function todayIST() {
 
 // One function, several cron jobs (Vercel Hobby allows max 12 functions):
 //   /api/window-notifier                      → shift check-in window alerts
-//   /api/window-notifier?job=daily            → shift alerts + yesterday's housemaster enforcement + morning roll call warning
+//   /api/window-notifier?job=daily            → shift alerts + yesterday's housemaster enforcement + morning roll call warning + nightly backup
 //   /api/window-notifier?job=compliance       → manual enforcement (&date=) or &phase=warn-morning|warn-evening
 //   /api/window-notifier?job=rollcall-reminder → roll call cutoff reminders (needs per-minute cron)
 export default async function handler(req, res) {
@@ -47,6 +48,8 @@ export default async function handler(req, res) {
     }
     try { compliance = await runDaily() } catch (e) { compliance = { error: e.message } }
     try { compliance = { ...compliance, feeAlerts: await runFeeAlerts() } } catch (e) { compliance = { ...compliance, feeAlerts: { error: e.message } } }
+    // Nightly backup (core tables daily, everything on Sundays) — see server/backup.js.
+    try { const b = await runBackup(); compliance = { ...compliance, backup: { ok: b.ok, path: b.path, bytes: b.bytes } } } catch (e) { compliance = { ...compliance, backup: { error: e.message } } }
   }
   const now      = nowIST()
   const todayStr = todayIST()
