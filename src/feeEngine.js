@@ -183,6 +183,7 @@ const writeAuditOrThrow = async (entry) => {
 const RATE_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const _rateCache     = {}   // key = session__course__batch__hostel -> { ...rates, _cachedAt }
 const _overrideCache = {}   // key = gcc__session -> { value, _cachedAt }
+const _overrideSessions = {} // session -> { at, promise } — every override of that session, loaded in one go
 
 const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cachedAt) < RATE_CACHE_TTL_MS
 
@@ -190,6 +191,7 @@ const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cac
 export const clearFeeRateCache = () => {
   Object.keys(_rateCache).forEach(k => delete _rateCache[k])
   Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
+  Object.keys(_overrideSessions).forEach(k => delete _overrideSessions[k])
 }
 
 // ─── 4a. Per-student flat fee override ───────────────────────────────────────
@@ -204,14 +206,41 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
   const cached = _overrideCache[key]
   if (cached !== undefined && _isFresh(cached._cachedAt)) return cached.value
 
-  const { data } = await supabase
-    .from(TABLES.studentFeeOverrides)
-    .select('flat_fee_override, reason, updated_by, updated_at')
-    .eq('gcc_no', gccNo)
-    .eq('session_year', sessionYear)
-    .maybeSingle()
-
-  const result = data ?? null
+  // Overrides are few (only students with a special flat fee), but screens ask
+  // for every student one by one. Load all of the session's overrides in one
+  // request and answer each student from that, instead of one request each.
+  const loaded = _overrideSessions[sessionYear]
+  if (!loaded || !_isFresh(loaded.at)) {
+    const promise = (async () => {
+      const rows = []
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from(TABLES.studentFeeOverrides)
+          .select('gcc_no, flat_fee_override, reason, updated_by, updated_at')
+          .eq('session_year', sessionYear)
+          .order('gcc_no')
+          .range(from, from + 999)
+        if (error) return null
+        rows.push(...(data || []))
+        if (!data || data.length < 1000) break
+      }
+      return new Map(rows.map(r => [String(r.gcc_no), { flat_fee_override: r.flat_fee_override, reason: r.reason, updated_by: r.updated_by, updated_at: r.updated_at }]))
+    })()
+    _overrideSessions[sessionYear] = { at: Date.now(), promise }
+  }
+  const map = await _overrideSessions[sessionYear].promise
+  if (!map) {
+    // The bulk load failed — drop it and ask for this one student directly.
+    delete _overrideSessions[sessionYear]
+    const { data } = await supabase
+      .from(TABLES.studentFeeOverrides)
+      .select('flat_fee_override, reason, updated_by, updated_at')
+      .eq('gcc_no', gccNo)
+      .eq('session_year', sessionYear)
+      .maybeSingle()
+    return data ?? null
+  }
+  const result = map.get(String(gccNo)) ?? null
   _overrideCache[key] = { value: result, _cachedAt: Date.now() }
   return result
 }
@@ -238,8 +267,9 @@ export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOver
       )
     if (error) throw error
   }
-  // Bust override cache for this student
+  // Bust the override caches for this student and this session's bulk copy
   delete _overrideCache[`${gccNo}__${sessionYear}`]
+  delete _overrideSessions[sessionYear]
 }
 
 // ─── 4b. Structural rates ─────────────────────────────────────────────────────
