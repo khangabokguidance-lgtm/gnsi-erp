@@ -15,7 +15,7 @@ import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
 import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
-import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
+import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
@@ -835,6 +835,28 @@ function getRollCallLateStatus(dateStr, session, lastMarkedAtIso) {
   const isLate = markedAt > graceEnd
   const minutesLate = isLate ? Math.round((markedAt - deadline) / 60000) : null
   return { isLate, minutesLate, deadlineLabel: label, graceEnd }
+}
+
+// ── Tell the parents when their child's roll call is marked ─────────
+// Only for today's live roll call (not catch-up of a past day) and only
+// when the status actually changed. Goes to the devices subscribed for
+// that student in the Parents portal.
+function notifyParentRollCall(student, dateStr, session, status, markedBy) {
+  if (!student?.id || dateStr !== today() || !status || status === 'Unmarked') return
+  const first = String(student.name || 'Your child').trim().split(/\s+/)[0]
+  const when = session === 'morning' ? 'Morning' : 'Night'
+  const time = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+  const line = {
+    Present: `✅ ${first} was marked Present`,
+    Late: `✅ ${first} was marked Present (late)`,
+    Absent: `⚠️ ${first} was marked Absent`,
+    Sick: `🤒 ${first} was marked Sick`,
+    Outing: `🚶 ${first} is on outing`,
+    Outpass: `🚶 ${first} is on outpass`,
+    'On Leave': `🏠 ${first} is on leave`,
+  }[status] || `${first} was marked ${status}`
+  sendPushToStudent(student.id, `${when} roll call · ${time}`,
+    `${line}${markedBy && markedBy !== 'Unknown' ? ` by ${markedBy}` : ''}. Open the Parents portal for the week.`)
 }
 
 // ── Penalty/fine logging ──────────────────────────────────────────
@@ -2168,6 +2190,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         if (existing) return prev.map(r => r.student_id === studentId ? { ...r, status } : r)
         return [...prev, { ...payload, id: Date.now() }]
       })
+      if (!existing || existing.status !== status) notifyParentRollCall(student, date, session, status, payload.marked_by)
       setJustMarked(studentId)
           setTimeout(() => setJustMarked(null), 600)
           if (!existing) await loadAll() // reconcile real DB id
@@ -2209,7 +2232,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         `Bulk-marked ${studentIds.length} students Present at once (no individual check)`
       )
     }
-    if (!error) await loadAll()
+    if (!error) {
+      studentIds.forEach(id => {
+        const prev = allRecords.find(r => r.student_id === id)
+        if (prev?.status !== status) notifyParentRollCall(activeStudents.find(x => x.id === id), date, session, status, markedByName)
+      })
+      await loadAll()
+    }
     setSaving(false)
   }
 
