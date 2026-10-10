@@ -1,9 +1,9 @@
 // mismatchScanner.js — background auto-scan across all active students.
 // ─────────────────────────────────────────────────────────────────────────────
-// Runs the SAME detection (mismatchDetector.js) and SAME profile query
-// (studentProfileLoader.js) that Student360.jsx uses for a single student
-// — just looped across the whole active roster, in small batches so this
-// doesn't fire (active-student-count × ~15) queries all at once.
+// Runs the SAME detection (mismatchDetector.js) that Student360.jsx uses for
+// a single student — looped across the whole active roster, in small batches.
+// It loads only the few facts the detection reads (scanProfile.js, ~4 tiny
+// requests per student) instead of Student 360's full profile.
 //
 // New mismatches → logged + admins notified (mismatchLog.js dedupes so a
 // mismatch that's still open from a previous scan does NOT re-notify).
@@ -13,7 +13,7 @@
 
 import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
-import { loadFullProfile } from './studentProfileLoader'
+import { loadScanProfile } from './scanProfile'
 import { detectMismatches } from './mismatchDetector'
 import { logAndNotify, resolveStaleFlags, isMismatchLoggingBlocked } from './mismatchLog'
 import { useState, useEffect } from 'react'
@@ -73,7 +73,7 @@ export async function runMismatchScan({ onProgress } = {}) {
     const batch = students.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(batch.map(async student => {
       try {
-        const profile = await loadFullProfile(student)
+        const profile = await loadScanProfile(student, supabase)
         // Some queries failed (e.g. the connection dropped): the profile
         // would read as missing records and raise false mismatches. Skip.
         if (profile.failedQueries > 0) return { hasIssues: false, newCount: 0, failed: true }
