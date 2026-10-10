@@ -280,7 +280,7 @@ const TAB_GROUPS = [
 // A housemaster/housemistress logging in sees only these tabs, each
 // limited to their own house; everything else stays with the office.
 const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
-const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
 
 // Rows of one house: matched by the row's student (when it has one) or by
 // the row's own house. No lockHouse = everything (admins, office staff).
@@ -6443,6 +6443,68 @@ function HMRankCard({ house }) {
   )
 }
 
+// ── Admin: who has read the mandatory "what has changed" notice ─────────────
+// Matches the confirmations logged by HostelChangesGate (audit_logs,
+// action hostel_changes_ack, current version) to the active housemasters and
+// housemistresses by login id when it is known, else by name.
+function HostelChangesReadList() {
+  const [state, setState] = useState(null) // { hms, acks } | 'error'
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const [{ data: hms }, acks] = await Promise.all([
+          supabase.from('housemasters').select('*').eq('status', 'Active'),
+          fetchAllRows(() => supabase.from('audit_logs').select('user_name, metadata, created_at').eq('action', 'hostel_changes_ack').order('created_at', { ascending: false })),
+        ])
+        if (alive) setState({ hms: hms || [], acks: acks.filter(a => a.metadata?.version === HOSTEL_CHANGES_VERSION) })
+      } catch { if (alive) setState('error') }
+    })()
+    return () => { alive = false }
+  }, [])
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: 20, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)', padding: 18 }
+  if (!state) return <div style={{ ...panel, color: '#64748B', fontSize: 13 }}>Checking who has read the notice…</div>
+  if (state === 'error') return <div style={{ ...panel, color: '#64748B', fontSize: 13 }}>Could not load the read list.</div>
+  const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const idOf = h => [h.staff_profile_id, h.staff_id, h.user_id, h.id].filter(v => v != null).map(String)
+  const used = new Set()
+  const rows = state.hms.map(h => {
+    const ids = idOf(h)
+    const ack = state.acks.find(a => (a.metadata?.raw_user_id != null && ids.includes(String(a.metadata.raw_user_id))) || (norm(a.user_name) && norm(a.user_name) === norm(h.name)))
+    if (ack) used.add(ack)
+    return { hm: h, ack }
+  }).sort((a, b) => (a.ack ? 1 : 0) - (b.ack ? 1 : 0) || String(a.hm.house).localeCompare(String(b.hm.house)))
+  const others = state.acks.filter(a => !used.has(a))
+  const read = rows.filter(r => r.ack).length
+  const when = iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div style={panel}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 600, color: '#0B1E3D', margin: 0, flex: 1 }}>📋 Who has read “What has changed in Hostel”</h3>
+        <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99, background: read === rows.length && rows.length ? '#DCFCE7' : '#FEF3C7', color: read === rows.length && rows.length ? '#15803D' : '#A16207' }}>{read} of {rows.length} read</span>
+      </div>
+      {rows.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 13 }}>No active housemasters or housemistresses.</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 8 }}>
+          {rows.map(({ hm, ack }) => (
+            <div key={hm.id ?? hm.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${ack ? '#BBE5C8' : '#FDE68A'}`, background: ack ? '#F0FDF4' : '#FFFBEB' }}>
+              <span style={{ fontSize: 18 }}>{ack ? '✅' : '⏳'}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A', overflowWrap: 'anywhere' }}>{hm.name}</div>
+                <div style={{ fontSize: 11.5, color: '#64748B' }}>{hmTitle(hm)} · {String(hm.house || '—').replace(/\b\w/g, c => c.toUpperCase())}{ack ? ` · read ${when(ack.created_at)}` : ' · not read yet'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {others.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: '#64748B' }}>
+          Also confirmed (not matched to a housemaster): {others.map(a => `${a.user_name || 'Unknown'} (${when(a.created_at)})`).join(', ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HMPerformanceRanking() {
   const [loading, setLoading] = useState(true)
   const [rankings, setRankings] = useState([])
@@ -7277,6 +7339,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
 
       {isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <HostelChangesReadList />
           <MonthlyCertificateCard />
           <HMPerformanceRanking />
         </div>
@@ -12858,8 +12921,8 @@ function Hostel() {
   const activeTabDef = TABS.find(t => t.id === activeTab)
   const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
   const QUICK_TABS = hmOnly
-    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal']
-    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'transfer', 'nightduty', 'maintenance', 'journal']
+    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'transfer', 'kitchen', 'maintenance']
   const menuGroups = TAB_GROUPS.map(g => ({ ...g, ids: g.ids.filter(id => shownTabs.some(t => t.id === id)) })).filter(g => g.ids.length)
   const splitLabel = label => {
     const m = (label || '').match(/^(\S+)\s+(.*)$/)
@@ -12873,7 +12936,7 @@ function Hostel() {
   const standaloneTab = !hmOnly && (activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport')
 
   const tabContent = {
-    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
+    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={myStudents} currentUser={currentUser} canDropout={!hmOnly} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
     nightduty: <NightDutyTab staffProfiles={staffProfiles} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
     discipline: <DisciplineTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
@@ -13146,7 +13209,7 @@ body:has(.hs-bottom){padding-bottom:76px}
     </div>
   )
 }
-function StudentTransferTab({ students, currentUser }) {
+function StudentTransferTab({ students, currentUser, canDropout = true }) {
   const [houses, setHouses] = useState([])
   const [search, setSearch] = useState('')
   const [filterHouse, setFilterHouse] = useState('All')
@@ -13460,13 +13523,15 @@ function StudentTransferTab({ students, currentUser }) {
         >
           {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
         </button>
-        <button
-          onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
-          disabled={transferring || selectedIds.size === 0}
-          style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
-        >
-          🚪 Dropout ({selectedCount})
-        </button>
+        {canDropout && (
+          <button
+            onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
+            disabled={transferring || selectedIds.size === 0}
+            style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
+          >
+            🚪 Dropout ({selectedCount})
+          </button>
+        )}
         <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
@@ -13483,7 +13548,7 @@ function StudentTransferTab({ students, currentUser }) {
         )}
       </div>
 
-      {showDropouts && (
+      {canDropout && showDropouts && (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
           <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🚪 Dropout students ({dropoutList.length})</div>
           {dropoutList.length === 0 ? (
@@ -13552,13 +13617,15 @@ function StudentTransferTab({ students, currentUser }) {
                       ✕ Remove
                     </button>
                   )}
-                  <button
-                    onClick={() => markDropout([s])}
-                    disabled={transferring}
-                    style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
-                  >
-                    🚪 Dropout
-                  </button>
+                  {canDropout && (
+                    <button
+                      onClick={() => markDropout([s])}
+                      disabled={transferring}
+                      style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                    >
+                      🚪 Dropout
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -13644,19 +13711,21 @@ function StudentTransferTab({ students, currentUser }) {
                         ✕ Remove
                       </button>
                     )}
-                    <button
-                      onClick={() => markDropout([s])}
-                      disabled={transferring}
-                      style={{
-                        ...btn('#fef3c7', '#b45309'),
-                        fontSize: 11,
-                        padding: '5px 12px',
-                        cursor: transferring ? 'wait' : 'pointer',
-                        opacity: transferring ? 0.6 : 1,
-                      }}
-                    >
-                      🚪 Dropout
-                    </button>
+                    {canDropout && (
+                      <button
+                        onClick={() => markDropout([s])}
+                        disabled={transferring}
+                        style={{
+                          ...btn('#fef3c7', '#b45309'),
+                          fontSize: 11,
+                          padding: '5px 12px',
+                          cursor: transferring ? 'wait' : 'pointer',
+                          opacity: transferring ? 0.6 : 1,
+                        }}
+                      >
+                        🚪 Dropout
+                      </button>
+                    )}
                   </td>
                 </tr>
               )
