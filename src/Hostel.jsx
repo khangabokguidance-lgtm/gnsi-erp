@@ -698,6 +698,21 @@ function HmChip({ hm, dark = false, size = 34 }) {
   )
 }
 
+// Large portrait of the housemaster / housemistress for dashboard headers:
+// the Staff-module photo in a gold ring (initials when there is none).
+function HmPortrait({ hm, size = 76 }) {
+  if (!hm) return null
+  const initials = String(hm.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+      style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: Math.round(size * 0.36), fontWeight: 800, fontFamily: FONT_DISPLAY, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+        border: '3px solid #E2C57E', boxShadow: '0 0 0 3px rgba(255,255,255,.18), 0 12px 24px -10px rgba(0,0,0,.55)' }}>
+      {initials}
+    </StaffAvatar>
+  )
+}
+
 // Mandatory recipient — every roll call completion and every compliance
 // gap is sent here in addition to the group, no button required.
 const HM_COMPLIANCE_WA_NUMBER = '918974298074'
@@ -6552,9 +6567,18 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18, minWidth: 0, flex: '1 1 320px' }}>
+          {currentHousemaster && <HmPortrait hm={currentHousemaster} size={mobile ? 68 : 88} />}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
+            {currentHousemaster && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  {hmTitle(currentHousemaster)}{currentHousemaster.house ? ` · ${currentHousemaster.house} House` : ''}
+                </span>
+              </div>
+            )}
             <div style={{ marginTop: 12 }}>
               <ReportExportButtons
                 title="HM Dashboard — Daily Snapshot"
@@ -6563,6 +6587,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
                 rows={snapshotRows}
               />
             </div>
+          </div>
           </div>
           <div style={{ padding: '12px 16px', borderRadius: 16, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', minWidth: 200 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#E2C57E' }}>🌙 Tonight's duty</div>
