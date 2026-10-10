@@ -1824,10 +1824,10 @@ function useStudentPhotos(students) {
   }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   return id => studentPhotoCache.get(id) || null
 }
-function RollCallPhoto({ url, name }) {
+function RollCallPhoto({ url, name, fallback }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => { setFailed(false) }, [url])
-  if (!url || failed) return <>{(name || '?')[0].toUpperCase()}</>
+  if (!url || failed) return <>{fallback ?? (name || '?')[0].toUpperCase()}</>
   return <img src={url} alt={name || 'Student'} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
 }
 
@@ -2004,6 +2004,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     [...new Set(activeStudents.map(s => normalizeHouse(s.house)).filter(h => h))].sort(),
     [activeStudents]
   )
+
+  // Photos for the house dashboard's student list (the roll call card has its own call).
+  const dashPhotoStudents = useMemo(() => selectedHouse
+    ? activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(selectedHouse)) : [],
+  [activeStudents, selectedHouse])
+  const dashPhotoOf = useStudentPhotos(dashPhotoStudents)
 
   // ── House palette (computed once, used in all views) ──
   const houseIdx = selectedHouse ? houses.indexOf(selectedHouse) : -1
@@ -4044,8 +4050,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             return (
               <div key={student.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderTop: i ? '1px solid #F5F1E8' : 'none',
                 background: isJust ? '#F0FDF4' : 'transparent', transition: 'background .3s', flexWrap: mobile ? 'wrap' : 'nowrap' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
-                  color: sc.color, background: sc.bg, boxShadow: `inset 0 0 0 1.5px ${sc.color}44` }}>{initials}</div>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, overflow: 'hidden',
+                  color: sc.color, background: sc.bg, boxShadow: `inset 0 0 0 2px ${sc.color}66` }}><RollCallPhoto url={dashPhotoOf(student.id)} name={student.name} fallback={initials} /></div>
                 <div style={{ flex: 1, minWidth: 140 }}>
                   <div style={{ fontWeight: 700, color: '#0F172A', fontSize: 13.5 }}>{student.name}</div>
                   <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 1 }}>GCC {student.gcc_no || '—'} · {getStudentClass(student) || '—'}</div>
