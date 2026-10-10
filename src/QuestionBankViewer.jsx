@@ -359,14 +359,34 @@ export default function QuestionBankViewer({ currentUser }) {
 
   // Refresh when questions are saved anywhere in the app (debounced — a
   // multi-chapter save emits one event per chapter).
+  //
+  // The Learning Hub keeps a visited tab mounted but hidden. A hidden Viewer
+  // used to re-download its whole subject on every save elsewhere; now it only
+  // notes that it is out of date and reloads when it is shown again.
+  const rootRef = useRef(null)
+  const staleRef = useRef(false)
+  const subjectRef = useRef(null)
+  useEffect(() => { subjectRef.current = activeSubject }, [activeSubject])
   useEffect(() => {
     let t = null
     const unsub = EventBus.on(GNSI_EVENTS.QUESTION_SAVED, () => {
       clearTimeout(t)
-      t = setTimeout(() => loadSubjectQuestions(activeSubject), 400)
+      t = setTimeout(() => {
+        const shown = rootRef.current && rootRef.current.offsetParent !== null
+        if (shown) loadSubjectQuestions(activeSubject); else staleRef.current = true
+      }, 400)
     })
     return () => { clearTimeout(t); unsub?.() }
   }, [activeSubject, loadSubjectQuestions])
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && staleRef.current) { staleRef.current = false; loadSubjectQuestions(subjectRef.current) }
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [loadSubjectQuestions])
 
   // Course scoping: a question tagged with a DIFFERENT course never shows
   // here (previously Sainik "Mathematics" also listed Foundation/RMS
@@ -466,7 +486,7 @@ export default function QuestionBankViewer({ currentUser }) {
   const fmt = n => n.toLocaleString('en-IN')
 
   return (
-    <div className="qbx" style={{ fontFamily: T.font }}>
+    <div className="qbx" ref={rootRef} style={{ fontFamily: T.font }}>
       <QBThemeStyles />
       <BmeiFontFace />
       <PrintStyles />

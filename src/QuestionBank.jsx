@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank, openChapterIn, useChapterFocus } from './StudyMaterialBridge'
+import { applyBankPatch } from './qbankPatch'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 // Course → subject → chapter taxonomy (shared with QuestionBankViewer.jsx).
@@ -1363,7 +1364,7 @@ function StudyMaterialsRefPanel({ course, subject, chapter, onNavigate }) {
 // TAB 1: QUESTION BANK
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin, canEdit = isAdmin, onNavigate }) {
+function TabBank({ questions, loading, refetch, patchBank, showToast, initialFilter, isAdmin, canEdit = isAdmin, onNavigate }) {
   const [filterCourse,     setFilterCourse]     = useState('All')
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
@@ -1493,7 +1494,9 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else {
       if (row?.diagram_url) removeDiagrams([row.diagram_url])
       setSelected(prev => { const n = new Set(prev); n.delete(id); return n })
-      showToast('Deleted ✓', C.rose); refetch(true)
+      showToast('Deleted ✓', C.rose)
+      // Drop it from the list on screen instead of re-downloading the whole bank.
+      if (patchBank) patchBank({ remove: [id] }); else refetch(true)
     }
   }
 
@@ -1505,11 +1508,16 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     // Diagram images are kept on bulk delete (not removed from storage)
     // so the backup's diagram_url links stay restorable.
     const rowsToDelete = questions.filter(q => selected.has(q.id))
+    const idsToDelete = [...selected]
     downloadQuestionsBackup(rowsToDelete, `bulk_${selected.size}`)
-    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).in('id', [...selected])
+    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).in('id', idsToDelete)
     if (error) showToast('Bulk delete failed: ' + error.message, C.rose)
     else if (!count) showToast('Nothing was deleted — you may lack permission', C.amber)
-    else { showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
+    else {
+      showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set())
+      // Only when every selected row really went; otherwise reload to see which.
+      if (patchBank && count === idsToDelete.length) patchBank({ remove: idsToDelete }); else refetch(true)
+    }
   }
 
   // One-click repair for a question whose options were merged on paste.
@@ -1517,7 +1525,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     const { data, error } = await supabase.from('qbank_questions').update(patch).eq('id', q.id).select('id')
     if (error) showToast('Fix failed: ' + error.message, C.rose)
     else if (!data?.length) showToast('Nothing was updated — you may lack permission', C.amber)
-    else { showToast('Options split ✓', C.green); refetch(true) }
+    else { showToast('Options split ✓', C.green); if (patchBank) patchBank({ update: [{ id: q.id, ...patch }] }); else refetch(true) }
   }
 
   // Offline translator: fill in Meetei Mayek for the questions now shown
@@ -1578,7 +1586,8 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else if (!data?.length) showToast('Nothing was updated — the question no longer exists, or you lack permission', C.amber)
     else {
       if (_savedDiagramUrl && _savedDiagramUrl !== payload.diagram_url) removeDiagrams([_savedDiagramUrl])
-      showToast('Updated ✓', C.green); setEditQ(null); refetch(true)
+      showToast('Updated ✓', C.green); setEditQ(null)
+      if (patchBank) patchBank({ update: [{ id, ...payload }] }); else refetch(true)
     }
   }
 
@@ -2001,7 +2010,7 @@ const emptyRow = () => ({
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
 })
 
-function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
+function TabManualAdd({ questions, refetch, patchBank, showToast, onNavigate }) {
   const [rows,   setRows]   = useState([emptyRow()])
   const [saving, setSaving] = useState(false)
 
@@ -2048,12 +2057,14 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
       ...r,
       subsection: r.subsection || detectSubsection(r.question, r.subject),
     }))
-    const { error } = await supabase.from('qbank_questions').insert(payload)
+    const { data: inserted, error } = await supabase.from('qbank_questions').insert(payload).select()
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
     showToast(`✅ ${rows.length} question(s) saved!`, C.green)
     // ── PATCH: notify StudyMaterial badges (one event per chapter saved) ──
     emitQuestionsSaved(rows)
-    setRows([emptyRow()]); refetch(true)
+    // Add the saved rows to the list on screen; reload only if they didn't come back.
+    setRows([emptyRow()])
+    if (patchBank && inserted?.length === payload.length) patchBank({ add: inserted }); else refetch(true)
     setSaving(false)
   }
 
@@ -5705,6 +5716,17 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     setLoading(false)
   }, [isStaffAllowed])
 
+  // Apply a known change to the list on screen (and to the 5-minute cache)
+  // instead of re-downloading all ~10,000 questions after every edit, delete or
+  // single add. Anything not covered here still uses refetch(true).
+  const patchBank = useCallback(({ remove = [], update = [], add = [] }) => {
+    setQuestions(prev => {
+      const next = applyBankPatch(prev, { remove, update, add })
+      if (_qbankCache) _qbankCache = { data: next, fetchedAt: _qbankCache.fetchedAt }
+      return next
+    })
+  }, [])
+
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the bank from the server on open
   useEffect(() => { refetch() }, [refetch])
 
@@ -5831,8 +5853,8 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
         homeLabel="All Question Bank sections" sticky ariaLabel="Question Bank sections" />
 
       {!onGrid && (<>
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
-      {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} patchBank={patchBank} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
+      {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} patchBank={patchBank} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
       {tab === 'doctranslate' && (
