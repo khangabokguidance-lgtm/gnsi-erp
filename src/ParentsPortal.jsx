@@ -6,6 +6,8 @@ import { parentSupabase as supabase } from './parentSupabase';
 import './privateFiles';
 import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razorpayEnabled } from './systemSettings';
 import { examKeyFor } from './examBatchKey'
+import { canonicalBatch } from './courseMap'
+import { notifyHousemasterByHouse } from './notifications'
 
 // Escapes text before it is placed inside HTML strings (receipts, report
 // cards, progress reports). Names/addresses/remarks come from the database
@@ -517,7 +519,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const { data, error } = await Promise.race([
         supabase
           .from('students')
-          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, dob, blood_group, father_name, mother_name, address')
+          .select('id, name, course, class_name, batch, house, hostel_type, status, admission_no, gcc_no, photo_url, dob, blood_group, father_name, mother_name, address')
           .eq('gcc_no', gccNo)
           .single(),
         timeout(15000),
@@ -560,7 +562,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         if (col && data[col]) {
           const { data: sibs } = await supabase
             .from('students')
-            .select(`id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, ${col}`)
+            .select(`id, name, course, class_name, batch, house, hostel_type, status, admission_no, gcc_no, photo_url, ${col}`)
             .eq(col, data[col]);
           if (sibs && sibs.length > 1) setSiblings(sibs);
           else setSiblings([data]);
@@ -1760,7 +1762,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} student={student} />
             )}
             {activeTab === 'leave' && (
-              <LeaveTab state={leave} studentId={student.id} studentName={student.name} onSubmitted={() => loadLeave(student.id)} />
+              <LeaveTab state={leave} studentId={student.id} studentName={student.name} student={student} onSubmitted={() => loadLeave(student.id)} />
             )}
             {activeTab === 'items' && (
               <ParentItemsTab studentName={student.name} studentId={student.id} />
@@ -2491,7 +2493,7 @@ function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile
           <ProfileField label="Admission No." value={student?.admission_no} />
           <ProfileField label="Course" value={student?.course} />
           <ProfileField label="Class" value={student?.class_name} />
-          <ProfileField label="Batch" value={student?.batch} />
+          <ProfileField label="Batch" value={canonicalBatch(student?.batch) || student?.batch} />
           <ProfileField label="Hostel Type" value={student?.hostel_type} />
           <ProfileField label="Status" value={student?.status} />
           <ProfileField label="Date of Birth" value={fmtDob} />
@@ -2957,7 +2959,7 @@ const LEAVE_TYPES = ['Home Visit', 'Medical', 'Family Emergency', 'Other'];
 // is included too since LeaveTab already reads it back for display, but if
 // that column turns out not to exist this insert will error — same
 // unconfirmed-column caveat the read side already carries.
-function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
+function LeaveRequestForm({ studentId, studentName, student, onSubmitted }) {
   const isMobile = useWindowWidth() < 640;
   const [leaveType, setLeaveType] = useState(LEAVE_TYPES[0]);
   const [fromDate, setFromDate] = useState('');
@@ -2981,13 +2983,23 @@ function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
       const { error: insertError } = await supabase.from('leave_records').insert({
         student_id: studentId,
         student_name: studentName || null,
+        gcc_no: student?.gcc_no || null,
+        class_name: canonicalBatch(student?.batch) || student?.class_name || '',
+        house: student?.house || '',
         leave_type: leaveType,
         from_date: fromDate,
         to_date: toDate,
-        reason: reason.trim() || null,
+        purpose: reason.trim() || null,
         status: 'Pending',
+        approval_level: 0,
+        requested_by: 'parent',
+        requested_at: new Date().toISOString(),
       });
       if (insertError) throw insertError;
+      if (student?.house) {
+        notifyHousemasterByHouse(student.house, `New leave request — ${studentName}`,
+          `${leaveType} · ${fromDate} → ${toDate} (requested by parent)`, '/hostel?tab=leave').catch(() => {});
+      }
       setJustSubmitted(true);
       setFromDate(''); setToDate(''); setReason('');
       onSubmitted?.();
@@ -3047,14 +3059,14 @@ function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
   );
 }
 
-function LeaveTab({ state, studentId, studentName, onSubmitted }) {
+function LeaveTab({ state, studentId, studentName, student, onSubmitted }) {
   const isMobile = useWindowWidth() < 640;
   // Hostel.jsx's real leave_records statuses are capitalized (Approved,
   // Pending, Rejected) — not the lowercase guesses this used to key off.
   const stTone = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
   return (
     <div>
-      <LeaveRequestForm studentId={studentId} studentName={studentName} onSubmitted={onSubmitted} />
+      <LeaveRequestForm studentId={studentId} studentName={studentName} student={student} onSubmitted={onSubmitted} />
       <Card
         title="Hostel Leave History"
         right={
@@ -3071,7 +3083,7 @@ function LeaveTab({ state, studentId, studentName, onSubmitted }) {
                   title: `Hostel Leave${r.leave_type ? ` — ${r.leave_type}` : ''}`,
                   date: r.from_date,
                   endDate: endStr,
-                  description: r.reason || '',
+                  description: r.purpose || r.reason || '',
                 };
               }))}
               style={{ borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: 'white', color: NAVY, fontWeight: 700, padding: '6px 10px', fontSize: 11, cursor: 'pointer' }}
@@ -3102,7 +3114,7 @@ function LeaveTab({ state, studentId, studentName, onSubmitted }) {
                   {r.leave_type && (
                     <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{r.leave_type}</div>
                   )}
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{r.purpose || r.reason || '—'}</div>
                 </div>
               ))}
             </div>
