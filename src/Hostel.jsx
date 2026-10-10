@@ -1786,6 +1786,52 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 }
 
 
+// ── Student photos for the roll call card ─────────────────────────────────
+// The shared student list does not carry photos, so they are read here, only
+// for the students of the house being called, in chunks. A photo uploaded to
+// private storage is saved as photo_path only; it gets a temporary viewing
+// link in memory (nothing is written back). photo_path is optional: if that
+// column is missing the query falls back to photo_url alone.
+const STUDENT_PHOTO_BUCKET = 'gnsi'
+const studentPhotoCache = new Map() // student id -> url | null
+function useStudentPhotos(students) {
+  const [, bump] = useState(0)
+  const key = (students || []).map(s => s.id).join(',')
+  useEffect(() => {
+    const ids = (students || []).map(s => s.id).filter(id => !studentPhotoCache.has(id))
+    if (!ids.length) return undefined
+    let alive = true
+    ;(async () => {
+      for (let i = 0; i < ids.length; i += 100) {
+        const part = ids.slice(i, i + 100)
+        try {
+          let { data, error } = await supabase.from('students').select('id, photo_url, photo_path').in('id', part)
+          if (error) ({ data } = await supabase.from('students').select('id, photo_url').in('id', part))
+          const rows = data || []
+          const need = rows.filter(r => !r.photo_url && r.photo_path)
+          const signed = new Map()
+          if (need.length) {
+            const { data: sd } = await supabase.storage.from(STUDENT_PHOTO_BUCKET).createSignedUrls(need.map(r => r.photo_path), 86400)
+            ;(sd || []).forEach(d => { if (d.signedUrl) signed.set(d.path, d.signedUrl) })
+          }
+          for (const r of rows) studentPhotoCache.set(r.id, r.photo_url || signed.get(r.photo_path) || null)
+        } catch { /* photos are a bonus: the card falls back to the initial */ }
+        for (const id of part) if (!studentPhotoCache.has(id)) studentPhotoCache.set(id, null)
+        if (alive) bump(n => n + 1)
+      }
+    })()
+    return () => { alive = false }
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return id => studentPhotoCache.get(id) || null
+}
+function RollCallPhoto({ url, name }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { setFailed(false) }, [url])
+  if (!url || failed) return <>{(name || '?')[0].toUpperCase()}</>
+  return <img src={url} alt={name || 'Student'} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+}
+
+
 // ══════════════════════════════════════════════════════════════
 //  MISSING ROLL CALL WARNING
 //  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
@@ -1910,6 +1956,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // Roll call state
   const [rollCallIndex, setRollCallIndex] = useState(0)
   const [rollCallStudents, setRollCallStudents] = useState([])
+  const studentPhotoOf = useStudentPhotos(rollCallStudents)
   const [justMarked, setJustMarked] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
@@ -4775,15 +4822,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
               {/* Avatar */}
               <div style={{
-                width: '84px', height: '84px', borderRadius: '50%', boxSizing: 'border-box',
+                width: '112px', height: '112px', borderRadius: '50%', boxSizing: 'border-box', overflow: 'hidden',
                 background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d) padding-box, linear-gradient(145deg,#e9d9b0,#c9a24b,#8a6d2b) border-box',
                 border: '4px solid transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '32px', fontWeight: '600', color: '#fff', fontFamily: "'Fraunces',Georgia,serif",
-                margin: '-42px auto 14px', position: 'relative',
+                margin: '-56px auto 14px', position: 'relative',
                 boxShadow: '0 12px 22px -8px rgba(19,42,79,.6)',
               }}>
-                {(currentStudent.name || '?')[0].toUpperCase()}
+                <RollCallPhoto url={studentPhotoOf(currentStudent.id)} name={currentStudent.name} />
               </div>
 
               <div style={{ fontSize: '24px', fontWeight: '600', color: '#0e203f', marginBottom: '8px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
