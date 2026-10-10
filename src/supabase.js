@@ -18,6 +18,32 @@ const MAX_BODY_BYTES = 3 * 1024 * 1024
 const LIVE_TABLES = /\/rest\/v1\/(cast_sessions|store_orders|hm_notifications|push_subscriptions|hm_rollcall_unlock)\b/
 const readCache = new Map() // key → { at, promise }
 
+// ── Data-usage meter ─────────────────────────────────────────────────────
+// Counts what this device downloads from the database API, per table (or rpc
+// name): network requests, bytes received, and reads answered from the cache
+// above. Shown in System Settings → Data Mgmt so heavy screens can be found
+// from real numbers. Kept on this device only; resettable.
+const USAGE_KEY = 'gnsi_data_usage'
+let usage = { since: Date.now(), tables: {} }
+try { const saved = JSON.parse(localStorage.getItem(USAGE_KEY) || 'null'); if (saved?.tables) usage = saved } catch { /* storage blocked */ }
+let usageSaveTimer = null
+const saveUsage = () => {
+  if (usageSaveTimer) return
+  usageSaveTimer = setTimeout(() => {
+    usageSaveTimer = null
+    try { localStorage.setItem(USAGE_KEY, JSON.stringify(usage)) } catch { /* storage blocked */ }
+  }, 2000)
+}
+const usageName = url => { const m = String(url).match(/\/rest\/v1\/([^?]+)/); return m ? m[1] : 'other' }
+function recordUsage(url, { requests = 0, bytes = 0, hits = 0 }) {
+  const name = usageName(url)
+  const row = usage.tables[name] || (usage.tables[name] = { requests: 0, bytes: 0, hits: 0 })
+  row.requests += requests; row.bytes += bytes; row.hits += hits
+  saveUsage()
+}
+export const getDataUsage = () => JSON.parse(JSON.stringify(usage))
+export const resetDataUsage = () => { usage = { since: Date.now(), tables: {} }; try { localStorage.setItem(USAGE_KEY, JSON.stringify(usage)) } catch { /* storage blocked */ } }
+
 const clearReadCache = () => readCache.clear()
 
 function cacheKeyFor(url, init) {
@@ -34,17 +60,22 @@ function cachingFetch(input, init) {
 
   if (method !== 'GET') {
     clearReadCache()
+    recordUsage(url, { requests: 1 })
     return fetch(input, init).then(res => { clearReadCache(); return res }, err => { clearReadCache(); throw err })
   }
-  if (init?.signal || LIVE_TABLES.test(url)) return fetch(input, init)
+  if (init?.signal || LIVE_TABLES.test(url)) {
+    return fetch(input, init).then(res => { recordUsage(url, { requests: 1, bytes: Number(res.headers.get('content-length')) || 0 }); return res })
+  }
 
   const key = cacheKeyFor(url, init)
   const hit = readCache.get(key)
   if (hit && Date.now() - hit.at < CACHE_MS) {
+    recordUsage(url, { hits: 1 })
     return hit.promise.then(snap => (snap ? toResponse(snap) : fetch(input, init)))
   }
   const promise = fetch(input, init).then(async res => {
     const body = await res.arrayBuffer()
+    recordUsage(url, { requests: 1, bytes: body.byteLength })
     const snap = { status: res.status, statusText: res.statusText, headers: [...res.headers.entries()], body }
     if (!res.ok || body.byteLength > MAX_BODY_BYTES) { readCache.delete(key); }
     return snap

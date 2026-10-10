@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "./supabase";
+import { supabase, getDataUsage, resetDataUsage } from "./supabase";
 import { PremiumStyles, PremiumHero } from "./premiumUI";
 import { settingsSaved } from "./systemSettings";
 
@@ -947,6 +947,41 @@ function AcademicSection() {
 // ══════════════════════════════════════════════════════════════
 // 6. DATA MANAGEMENT
 // ══════════════════════════════════════════════════════════════
+// Which tables this device has downloaded the most (see the meter in supabase.js).
+function DataUsageCard() {
+  const [usage, setUsage] = useState(() => getDataUsage());
+  const rows = Object.entries(usage.tables)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 15);
+  const totalBytes = Object.values(usage.tables).reduce((s, v) => s + v.bytes, 0);
+  const totalReq = Object.values(usage.tables).reduce((s, v) => s + v.requests, 0);
+  const mb = b => (b / 1048576 >= 0.1 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB");
+  return (
+    <Card>
+      <SectionTitle>📶 Data usage on this device</SectionTitle>
+      <p style={{ fontSize: 12.5, color: "#6B7280", margin: "0 0 10px" }}>
+        What this browser has downloaded from the database since {new Date(usage.since).toLocaleString("en-IN")}:
+        {" "}<b>{mb(totalBytes)}</b> in <b>{totalReq}</b> requests. Use the app as usual, then open this card to see which tables are heaviest.
+      </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setUsage(getDataUsage())} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #D1D5DB", background: "white", fontWeight: 700, cursor: "pointer" }}>↻ Refresh</button>
+        <button onClick={() => { resetDataUsage(); setUsage(getDataUsage()); }} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #FCA5A5", background: "white", color: "#DC2626", fontWeight: 700, cursor: "pointer" }}>Reset</button>
+      </div>
+      {rows.length === 0 ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>Nothing recorded yet.</div> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {rows.map(r => (
+            <div key={r.name} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 12px", background: "#F9FAFB", borderRadius: 9, fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: "#374151", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+              <span style={{ color: "#6B7280", flexShrink: 0, fontSize: 12 }}><b style={{ color: "#111827" }}>{mb(r.bytes)}</b> · {r.requests} req{r.hits ? ` · ${r.hits} cached` : ""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function DataSection() {
   const mobile = useIsMobile();
   const [health,   setHealth]   = useState(null);
@@ -1096,6 +1131,7 @@ function DataSection() {
   return (
     <Grid mobile={mobile}>
       <div>
+        <DataUsageCard />
         <Card>
           <SectionTitle>🔍 Database Health Check</SectionTitle>
           <button
