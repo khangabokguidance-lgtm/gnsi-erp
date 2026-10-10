@@ -11,6 +11,7 @@
 // silently.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
@@ -23,6 +24,27 @@ const BATCH_DELAY_MS = 1500  // pause between waves — keeps this a background
                              // whatever else is hitting Supabase right now
 const START_DELAY_MS = 2 * 60 * 1000   // let the app load first
 const LAST_SCAN_KEY = 'gnsi_mismatch_scan_at' // shared by every tab / reload
+
+const SHARED_SCAN_KEY = 'mismatch_last_scan' // system_settings key: one clock for every admin computer
+
+// The scan loads a whole profile (~25 requests) for every student, so it
+// must run once for the whole school, not once per admin computer. The last
+// scan time is kept in system_settings; a computer only scans when that
+// time is older than the interval, and claims the slot before starting.
+async function claimSharedScan(intervalMs) {
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', SHARED_SCAN_KEY).maybeSingle()
+    const raw = typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value
+    const last = Number(new Date(raw?.at || 0)) || 0
+    if (Date.now() - last < intervalMs) return { run: false, last }
+  } catch { /* no shared clock available — fall back to this computer's own */ }
+  try {
+    await supabase.from('system_settings').upsert(
+      { key: SHARED_SCAN_KEY, value: JSON.stringify({ at: new Date().toISOString() }), updated_at: new Date().toISOString() },
+      { onConflict: 'key' })
+  } catch { /* the local clock still limits this computer */ }
+  return { run: true }
+}
 
 const lastScanAt = () => { try { return Number(localStorage.getItem(LAST_SCAN_KEY)) || 0 } catch { return 0 } }
 const markScanned = () => { try { localStorage.setItem(LAST_SCAN_KEY, String(Date.now())) } catch { /* storage blocked */ } }
@@ -99,7 +121,11 @@ export function useMismatchAutoScan({ enabled, intervalMinutes = 60 } = {}) {
 
     const run = async () => {
       // At most once per interval, however many tabs are open or reloaded.
-      if (Date.now() - lastScanAt() < intervalMinutes * 60 * 1000) return
+      const intervalMs = intervalMinutes * 60 * 1000
+      if (Date.now() - lastScanAt() < intervalMs) return
+      const claim = await claimSharedScan(intervalMs)
+      if (cancelled) return
+      if (!claim.run) { try { localStorage.setItem(LAST_SCAN_KEY, String(claim.last)) } catch { /* storage blocked */ } return }
       markScanned()
       setScanning(true)
       try {
