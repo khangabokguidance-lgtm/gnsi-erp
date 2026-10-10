@@ -1203,12 +1203,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      await supabase.from('push_subscriptions').insert({
-        student_id: student?.id || null,
-        endpoint: sub.endpoint,
-        subscription: JSON.stringify(sub),
-        role: 'parent',
+      const saved = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON(), student_id: student?.id || null, role: 'parent' }),
       });
+      if (!saved.ok) throw new Error('Could not save the notification subscription');
       setPushStatus('subscribed');
     } catch (e) {
       console.error('Push subscription failed:', e);

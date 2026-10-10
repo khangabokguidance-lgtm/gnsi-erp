@@ -10,11 +10,12 @@ const supabase = createClient(
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { subscription, staff_id, role } = req.body
+  const { subscription, staff_id, student_id, role } = req.body
   if (!subscription?.endpoint) return res.status(400).json({ error: 'Missing subscription' })
 
   const { error } = await supabase.from('push_subscriptions').upsert({
     staff_id:   staff_id || null,
+    student_id: student_id || null,
     role:       role     || 'staff',
     endpoint:   subscription.endpoint,
     p256dh:     subscription.keys.p256dh,
