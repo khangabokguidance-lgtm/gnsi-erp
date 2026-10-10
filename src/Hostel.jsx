@@ -3845,7 +3845,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{selectedHouse}</div>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())}</div>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
               {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </div>
