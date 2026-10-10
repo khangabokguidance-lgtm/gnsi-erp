@@ -54,7 +54,7 @@ import DataHealth from './DataHealth'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
-import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
+import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
@@ -4898,7 +4898,28 @@ export default function Fees() {
 
     setDuesLoading(true)
     const sessionYearNow = getSessionYear()
-    getDuesForStudents(studentsNeedingDues, sessionYearNow)
+    // The three payment tables are already in memory (loadAll), so hand each
+    // student's rows to the dues engine instead of letting it re-read them —
+    // that was ~4 database reads per student (and per earlier session) every
+    // time this page opened. Hostel-type history comes in one read for all.
+    const byGcc = (rows, field) => {
+      const m = new Map()
+      for (const r of rows || []) { const g = gccStr(r[field]); if (!m.has(g)) m.set(g, []); m.get(g).push(r) }
+      return m
+    }
+    const admIdx = byGcc(adm_fee_collections, 'adm_app_id')
+    const flatIdx = byGcc(adm_flat_fees, 'adm_app_id')
+    const crsIdx = byGcc(adm_course_fees, 'adm_app_id')
+    loadHostelHistory().then(hist => {
+      const preload = s => {
+        const g = gccStr(s.gcc_no)
+        return {
+          adm: admIdx.get(g) || [], flat: flatIdx.get(g) || [], course: crsIdx.get(g) || [],
+          // If the history read failed, leave it out so each student asks for their own.
+          ...(hist.failed ? {} : { history: hist.map.get(String(parseInt(s.gcc_no) || 0)) || [] }),
+        }
+      }
+      return getDuesForStudents(studentsNeedingDues, sessionYearNow, { preload })
       .then(async firstPass => {
         // A student whose dues failed (a dropped connection, say) is skipped
         // by getDuesForStudents. Without a retry they stay on the rough
@@ -4908,7 +4929,7 @@ export default function Fees() {
         const got = new Set(firstPass.map(r => gccStr(r.student.gcc_no)))
         const missing = studentsNeedingDues.filter(st => !got.has(gccStr(st.gcc_no)))
         if (missing.length && !cancelled) {
-          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2 })
+          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2, preload })
           results = [...firstPass, ...again]
           const still = missing.filter(st => !again.some(r => gccStr(r.student.gcc_no) === gccStr(st.gcc_no)))
           if (still.length) console.warn('Fees.jsx: dues could not be worked out for', still.map(st => `${st.name} (GCC-${st.gcc_no})`).join(', '))
@@ -4920,6 +4941,7 @@ export default function Fees() {
           return next
         })
       })
+    })
       .catch(e => console.error('Fees.jsx: getDuesForStudents failed —', e.message))
       .finally(() => { if (!cancelled) setDuesLoading(false) })
     return () => { cancelled = true }

@@ -47,10 +47,10 @@ export async function loadHostelHistory(gccs = null) {
   if (gccs?.length) q = q.in('gcc_no', gccs.map(gccKey))
   const { data, error } = await q
   const map = new Map()
-  if (error) return { map, setupNeeded: missingTable(error) }
+  if (error) return { map, setupNeeded: missingTable(error), failed: !missingTable(error) }
   for (const r of data || []) { const k = gccKey(r.gcc_no); if (!map.has(k)) map.set(k, []); map.get(k).push(r) }
   for (const list of map.values()) list.sort(byDate)
-  return { map, setupNeeded: false }
+  return { map, setupNeeded: false, failed: false }
 }
 
 // One student's changes. Staff read the table; a parent (no staff session)

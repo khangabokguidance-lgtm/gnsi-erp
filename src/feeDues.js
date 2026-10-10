@@ -60,7 +60,12 @@ function hasMonthStarted(month, year, now = new Date()) {
 // opts.withArrears (default true): also add unpaid flat/course fees from the
 // student's earlier sessions (each at its own session's rates) as `arrears`,
 // included in totalDue — a continuing student's old dues never disappear.
-export async function getStudentDues(student, sessionYear = getSessionYear(), { withArrears = true } = {}) {
+// opts.preloaded: this student's already-downloaded payment rows
+// { adm, flat, course } (same filters as the queries below) and optionally
+// their hostel-type history — used instead of asking the database again.
+// Earlier-session arrears reuse the rows fetched here, so a student costs one
+// set of reads however many sessions they have been enrolled.
+export async function getStudentDues(student, sessionYear = getSessionYear(), { withArrears = true, preloaded = null } = {}) {
   const gcc = String(student.gcc_no || '')
   if (!gcc) return null
 
@@ -109,7 +114,11 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   // which would wrongly show "fees clear", so we never rely on that.)
   const staff = await hasStaffSession()
   let admQ, flatQ, courseQ
-  if (staff) {
+  if (preloaded) {
+    admQ    = Promise.resolve({ data: preloaded.adm || [] })
+    flatQ   = Promise.resolve({ data: preloaded.flat || [] })
+    courseQ = Promise.resolve({ data: preloaded.course || [] })
+  } else if (staff) {
     admQ    = supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false)
     flatQ   = supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
     courseQ = supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false)
@@ -136,8 +145,10 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   // Mid-session hostel type change: each month is expected at the type in
   // effect that month, so months before the change keep the old type's rate.
   let rateAt = () => rates
+  let historyLoaded
   if (!ratesResult._failed) {
-    const changes = await loadStudentHistory(gcc, { staff })
+    const changes = preloaded?.history ?? await loadStudentHistory(gcc, { staff })
+    historyLoaded = changes
     if (changes.length) {
       try {
         const fn = await sessionRates(student, sessionYear, changes, type => getFeeRates(sessionYear, student.course, student.batch, type, gcc))
@@ -231,7 +242,12 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     const startY = Number(String(first || '').slice(0, 4)), curY = Number(String(sessionYear).slice(0, 4))
     for (let y = Math.max(startY, curY - 6); startY && y < curY; y++) {
       const s = `${y}-${y + 1}`
-      const d = await getStudentDues(student, s, { withArrears: false })
+      // Same payment rows and history for every session, so reuse them (when
+      // all five sources loaded cleanly) instead of re-reading per session.
+      const reuse = failedSources.length === 0 && historyLoaded
+        ? { adm: admFeeRows.data || [], flat: flatFeeRows.data || [], course: courseFeeRows.data || [], history: historyLoaded }
+        : null
+      const d = await getStudentDues(student, s, { withArrears: false, preloaded: reuse })
       const due = (d?.flatFee.due || 0) + (d?.courseFee.due || 0)
       if (due > 0) arrearsBySession.push({ session: s, due, months: [...d.courseFee.items, ...d.flatFee.items].filter(i => i.due > 0).map(i => `${i.month.slice(0, 3)} ${i.year}`) })
     }
@@ -265,13 +281,15 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
 // Batch version — for a defaulters list across many students. Runs in
 // small batches (same courtesy pattern as mismatchScanner.js) so this
 // doesn't fire hundreds of parallel multi-query lookups at once.
-export async function getDuesForStudents(students, sessionYear = getSessionYear(), { batchSize = 8, onProgress } = {}) {
+// opts.preload(student) → that student's { adm, flat, course, history } rows
+// when the caller already holds the fee tables (see getStudentDues), else null.
+export async function getDuesForStudents(students, sessionYear = getSessionYear(), { batchSize = 8, onProgress, preload } = {}) {
   const results = []
   for (let i = 0; i < students.length; i += batchSize) {
     const batch = students.slice(i, i + batchSize)
     const batchResults = await Promise.all(batch.map(async s => {
       try {
-        const dues = await getStudentDues(s, sessionYear)
+        const dues = await getStudentDues(s, sessionYear, { preloaded: preload ? preload(s) : null })
         return dues ? { student: s, dues } : null
       } catch (e) {
         console.error(`getDuesForStudents: failed for ${s.name} (${s.gcc_no}):`, e.message)
