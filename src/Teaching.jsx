@@ -49,7 +49,7 @@ import GeoAttendance from './GeoAttendance'
 import TabReportCards from './TabReportCards'
 import { isAdminRole } from './roles'
 import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWindow, esc as rEsc } from './premiumReceipt'
-import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from './premiumUI'
+import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
 // Teaching hub: the study-material modules open as Teaching tabs and share
 // chapter context through StudyMaterialBridge (useChapterFocus/openChapterIn).
 import ChapterHub from './ChapterHub'
@@ -105,7 +105,7 @@ const PinIcon = p => (
 // A bar with the current section and a ☰ button; the menu lists every
 // section the user can open (with badges). Closes on pick, on a tap
 // outside, or with Escape.
-function TeachingMenu({ tabs, active, onChange, badgeOf }) {
+function TeachingMenu({ tabs, active, onChange, badgeOf, wide = false }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
   const btnRef = useRef(null)
@@ -126,7 +126,7 @@ function TeachingMenu({ tabs, active, onChange, badgeOf }) {
   const pick = key => { onChange(key); setOpen(false); btnRef.current?.focus() }
 
   return (
-    <div className="tch-menu-wrap" ref={wrapRef}>
+    <div className={'tch-menu-wrap' + (wide ? ' tch-wide' : '')} ref={wrapRef}>
       <button ref={btnRef} type="button" className="tch-menu-bar" aria-haspopup="true" aria-expanded={open} aria-controls="tch-menu-list"
         aria-label={`Section: ${current?.label}. Open the Teaching menu`} onClick={() => setOpen(o => !o)}>
         <span className="tch-menu-cur">
@@ -343,6 +343,8 @@ const globalCSS = `
   @container (max-width:700px)  { .tch-tabs .px-tabs { grid-template-columns:repeat(var(--tch-c4), auto) } .tch-tabs .px-tab { font-size:12.5px; padding:9px 6px } }
   /* Phones: hamburger section menu. */
   .tch-menu-wrap { position:relative; margin-bottom:16px; z-index:30 }
+  .tch-menu-wrap.tch-wide { max-width:420px }
+  .tch-menu-wrap.tch-wide .tch-menu-list { right:auto; width:min(680px, calc(100vw - 48px)); grid-template-columns:repeat(3, 1fr) }
   .tch-menu-bar { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 8px 8px 10px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05),0 10px 24px -18px rgba(19,42,79,.4); cursor:pointer; font:inherit; color:${PX.ink}; -webkit-tap-highlight-color:transparent }
   .tch-menu-bar:focus { outline:none } .tch-menu-bar:focus-visible { outline:2px solid ${PX.gold}; outline-offset:2px }
   .tch-menu-cur { display:flex; align-items:center; gap:10px; min-width:0 }
@@ -3154,22 +3156,11 @@ useEffect(() => {
           <div style={{ fontSize:13.5, color:PX.sub, marginTop:6 }}>Ask an administrator if you need access to teaching logs or reports.</div>
         </div>
       ) : (
-        isMobile ? (
-          // Phones: a hamburger bar showing the current section; ☰ opens
-          // the full list of sections.
-          <TeachingMenu tabs={TABS} active={activeTab} onChange={handleTabChange}
-            badgeOf={key => key==='logs' ? badges.todayLogs : key==='hmdash' ? hmNotifCount : key==='reports' ? badges.monthMissed : 0} />
-        ) : (
-        <div className="tch-tabs"><PremiumTabs
-          tabs={TABS.map(t => ({
-            id: t.key, label: t.label, icon: t.icon,
-            badge: t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0,
-          }))}
-          active={activeTab}
-          onChange={handleTabChange}
-          style={{ '--tch-c2': Math.ceil(TABS.length / 2), '--tch-c3': Math.ceil(TABS.length / 3), '--tch-c4': Math.ceil(TABS.length / 4) }}
-        /></div>
-        )
+        // A hamburger bar showing the current section; ☰ opens the full list of
+        // sections. Same on phones and computers (computers get a compact bar
+        // and a wider, 3-column list instead of the old two-row tab strip).
+        <TeachingMenu tabs={TABS} active={activeTab} onChange={handleTabChange} wide={!isMobile}
+          badgeOf={key => key==='logs' ? badges.todayLogs : key==='hmdash' ? hmNotifCount : key==='reports' ? badges.monthMissed : 0} />
       )}
 
       {has(activeTab) && activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
