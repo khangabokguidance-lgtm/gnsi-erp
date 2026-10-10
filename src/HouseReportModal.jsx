@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
+import { StaffAvatar } from './staffPhotos'
 
 // ══════════════════════════════════════════════════════════════
 //  HOUSE DAILY REPORT MODAL
@@ -22,7 +23,7 @@ const btn = (bg = '#1e3a5f', c = 'white') => ({
   padding: '11px 18px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
 })
 
-export default function HouseReportModal({ house, date, session, students, allRecords, onClose }) {
+export default function HouseReportModal({ house, date, session, students, allRecords, hm, hmTitle, onClose }) {
   const [leaveRecords, setLeaveRecords] = useState([])
   const [sickbayRecords, setSickbayRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -232,6 +233,20 @@ export default function HouseReportModal({ house, date, session, students, allRe
                 <div style={{ fontSize: '13px', color: 'rgba(255,255,255,.72)', marginTop: '6px' }}>
                   {longDate} · {session === 'morning' ? 'Morning' : 'Night'} roll call
                 </div>
+                {hm?.name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
+                    <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+                      style={{ width: 60, height: 60, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 21, fontWeight: 800, fontFamily: SERIF, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+                        border: '3px solid #E2C57E', boxShadow: '0 0 0 3px rgba(255,255,255,.14), 0 10px 20px -8px rgba(0,0,0,.55)' }}>
+                      {String(hm.name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                    </StaffAvatar>
+                    <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                      <div style={{ fontSize: '10px', fontWeight: 800, color: GOLD_LT, letterSpacing: '.16em', textTransform: 'uppercase' }}>{hmTitle || 'Housemaster'}</div>
+                      <div style={{ fontFamily: SERIF, fontSize: '18px', fontWeight: 600, marginTop: '2px' }}>{hm.name}</div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{
