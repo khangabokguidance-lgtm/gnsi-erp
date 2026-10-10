@@ -2016,17 +2016,24 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [todayBothSessionRecords, setTodayBothSessionRecords] = useState([])
   useEffect(() => {
     let cancelled = false
-    supabase.from('attendance_records').select('student_id, house, session, status').eq('date', date)
-      .then(({ data }) => { if (!cancelled) setTodayBothSessionRecords(data || []) })
+    // Every hostel roll-call row of the day. A bare select is capped at 1000
+    // rows, so on a busy day some houses' rows were dropped and their roll
+    // call looked incomplete (Locked) while others showed "Tap to check".
+    fetchAllRows(() => supabase.from('attendance_records').select('student_id, house, session, status')
+      .eq('date', date).in('session', ['morning', 'night']).not('house', 'is', null).order('id'))
+      .then(data => { if (!cancelled) setTodayBothSessionRecords(data) })
     return () => { cancelled = true }
   }, [date, allRecords]) // re-check whenever allRecords changes too, so a just-completed roll call unlocks immediately
 
   const isRollCallSessionComplete = (houseName, rollCallSession) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     if (hStudents.length === 0) return true
-    const marked = todayBothSessionRecords.filter(r =>
-      normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === rollCallSession
-    ).length
+    // Distinct current students marked: duplicate rows, or rows of students
+    // who left the house, must not make an unfinished roll call look complete.
+    const ids = new Set(hStudents.map(s => s.id))
+    const marked = new Set(todayBothSessionRecords
+      .filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === rollCallSession && ids.has(r.student_id))
+      .map(r => r.student_id)).size
     return marked >= hStudents.length
   }
 
