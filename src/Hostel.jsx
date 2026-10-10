@@ -19,7 +19,7 @@ import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
-import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
+import { allocateStudent, vacateStudent, bulkAllocateStudents, bulkVacateStudents, setStudentsStatus } from './hostelAllocation'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -12887,9 +12887,10 @@ function StudentTransferTab({ students, currentUser }) {
   const [toast, setToast] = useState(null)
   const mobile = useMobileView()
 
+  const [showDropouts, setShowDropouts] = useState(false)
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color })
-    setTimeout(() => setToast(null), 3500)
+    setTimeout(() => setToast(null), color === '#dc2626' ? 9000 : 3500) // errors stay long enough to read
   }
 
   // Load houses
@@ -12898,6 +12899,17 @@ function StudentTransferTab({ students, currentUser }) {
       .then(({ data }) => setHouses(data || []))
       .finally(() => setLoading(false))
   }, [])
+  // The houses table can be empty or miss a house; fall back to the houses the
+  // students are actually in, so there is always something to transfer to.
+  const houseOptions = useMemo(() => {
+    const byKey = new Map()
+    for (const h of houses) byKey.set(normalizeHouse(h.name), { id: h.id ?? h.name, name: h.name })
+    for (const s of students) {
+      const k = normalizeHouse(s.house)
+      if (k && !byKey.has(k)) byKey.set(k, { id: `s-${k}`, name: s.house })
+    }
+    return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+  }, [houses, students])
 
   // Students filtered by search and current house
   const activeStudents = useMemo(() =>
@@ -13067,6 +13079,44 @@ function StudentTransferTab({ students, currentUser }) {
     setTransferring(false)
   }
 
+  // ── Dropout: mark students as Dropout (and free their bed), or bring them back ──
+  const markDropout = async list => {
+    if (!list.length) { showToast('Select at least one student.', '#b8923a'); return }
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Mark ${names} as Dropout? They leave every roll call and their house, and can be reactivated from the Dropout list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Dropout')
+      await bulkVacateStudents(ids)
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Dropout' })
+      showToast(`✅ ${names} marked as Dropout`)
+      setSelectedIds(new Set())
+    } catch (e) {
+      showToast('Dropout failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const reactivate = async list => {
+    if (!list.length) return
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Reactivate ${names}? They return as Active and unassigned; give them a house from the list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Active')
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Active' })
+      showToast(`✅ ${names} reactivated`)
+    } catch (e) {
+      showToast('Reactivate failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const dropoutList = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return !q ? dropoutStudents : dropoutStudents.filter(s => (s.name || '').toLowerCase().includes(q) || String(s.gcc_no || '').includes(q) || (s.batch || '').toLowerCase().includes(q))
+  }, [dropoutStudents, search])
+
   // Stats
   const totalActive = activeStudents.length
   const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
@@ -13091,7 +13141,9 @@ function StudentTransferTab({ students, currentUser }) {
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
         <StatCard icon="👥" label="Total Active" value={totalActive} color="#1e3a6e" bg="#eff6ff" compact={mobile} />
         <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" compact={mobile} />
-        <StatCard icon="🚪" label="Dropout" value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        <div onClick={() => setShowDropouts(v => !v)} style={{ cursor: 'pointer' }} title="Show / hide the Dropout list">
+          <StatCard icon="🚪" label={showDropouts ? 'Dropout ▲' : 'Dropout ▼'} value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        </div>
         <StatCard icon="✅" label="Selected" value={selectedCount} color="#16a34a" bg="#dcfce7" compact={mobile} />
       </div>
 
@@ -13105,11 +13157,11 @@ function StudentTransferTab({ students, currentUser }) {
         <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="All">All Houses</option>
           <option value="Unassigned">Unassigned Only</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <select value={targetHouse} onChange={e => setTargetHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="">— Target House —</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <input
           value={roomNumber}
@@ -13138,6 +13190,13 @@ function StudentTransferTab({ students, currentUser }) {
           {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
         </button>
         <button
+          onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
+          disabled={transferring || selectedIds.size === 0}
+          style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
+        >
+          🚪 Dropout ({selectedCount})
+        </button>
+        <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
             ...btn(filterHouse === 'Unassigned' ? '#1e3a6e' : '#eff6ff', filterHouse === 'Unassigned' ? 'white' : '#1e3a6e'),
@@ -13152,6 +13211,27 @@ function StudentTransferTab({ students, currentUser }) {
           </button>
         )}
       </div>
+
+      {showDropouts && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🚪 Dropout students ({dropoutList.length})</div>
+          {dropoutList.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: 13 }}>No dropout students{search.trim() ? ' match the search' : ''}.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {dropoutList.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}</div>
+                  </div>
+                  <button onClick={() => reactivate([s])} disabled={transferring} style={{ ...btn('#16a34a'), fontSize: 12, padding: '6px 12px' }}>↩ Reactivate</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -13201,6 +13281,13 @@ function StudentTransferTab({ students, currentUser }) {
                       ✕ Remove
                     </button>
                   )}
+                  <button
+                    onClick={() => markDropout([s])}
+                    disabled={transferring}
+                    style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                  >
+                    🚪 Dropout
+                  </button>
                 </div>
               </div>
             )
@@ -13286,6 +13373,19 @@ function StudentTransferTab({ students, currentUser }) {
                         ✕ Remove
                       </button>
                     )}
+                    <button
+                      onClick={() => markDropout([s])}
+                      disabled={transferring}
+                      style={{
+                        ...btn('#fef3c7', '#b45309'),
+                        fontSize: 11,
+                        padding: '5px 12px',
+                        cursor: transferring ? 'wait' : 'pointer',
+                        opacity: transferring ? 0.6 : 1,
+                      }}
+                    >
+                      🚪 Dropout
+                    </button>
                   </td>
                 </tr>
               )
