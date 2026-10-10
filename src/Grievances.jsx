@@ -70,8 +70,8 @@ export default function Grievances({ currentStaff }) {
     try {
       // `students` and `staff_profiles` store the person's name in `name`
       // (every other module reads that column); asking for a non-existent
-      // `full_name` column made this whole page fail to load. Select `*` and
-      // normalise to `full_name` so the rest of this file works either way.
+      // `full_name` column made this whole page fail to load. Select only the
+      // columns used and normalise to `full_name` so the rest of this file works either way.
       const withName = (r) => (r ? { ...r, full_name: r.full_name || r.name || '' } : r);
       const byName = (a, b) => String(a.full_name).localeCompare(String(b.full_name));
       const [gRes, sRes, stRes] = await Promise.all([
@@ -79,15 +79,15 @@ export default function Grievances({ currentStaff }) {
           .from('grievances')
           .select(`
             *,
-            student:student_id ( * ),
-            teacher:teacher_id ( * ),
-            assigned:assigned_staff_id ( * ),
-            logger:logged_by_staff_id ( * )
+            student:student_id ( id, name, class_name ),
+            teacher:teacher_id ( id, name ),
+            assigned:assigned_staff_id ( id, name ),
+            logger:logged_by_staff_id ( id, name )
           `)
           .eq('is_deleted', false)
           .order('created_at', { ascending: false }),
-        supabase.from('staff_profiles').select('*'),
-        supabase.from('students').select('*').is('deleted_at', null),
+        supabase.from('staff_profiles').select('id, name'),
+        supabase.from('students').select('id, name, class_name').is('deleted_at', null),
       ]);
 
       if (gRes.error) throw gRes.error;
