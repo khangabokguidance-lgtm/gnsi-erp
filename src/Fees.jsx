@@ -197,7 +197,7 @@ const DRESS_ITEMS = [
 ]
 
 const COURSE_STRUCTURE = {
-  Navodaya:          { subtypes: ['Lakshya', 'Umeed'] },
+  Navodaya:          { subtypes: ['Lakshya A', 'Lakshya B', 'Lakshya', 'Umeed'] }, // 'Lakshya' = older unsplit records
   Sainik:            { subtypes: ['Achiever', 'Leader', 'Champion'] },
   Foundation:        { subtypes: ['Udaan', 'Pragati'] },
   'Combined Course': { subtypes: [] },

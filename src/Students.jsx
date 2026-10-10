@@ -552,14 +552,16 @@ async function uploadPhotoToGoogleDriveStudents(file, identifier) {
 
 
 const COURSE_STRUCTURE = {
-  Navodaya:         { subtypes:['Lakshya','Umeed'],             color:'#2563EB', bg:'#EFF6FF' },
+  // Plain 'Lakshya' is the older, unsplit batch — not offered for new records. A
+  // student who already has it keeps it as the form's current value.
+  Navodaya:         { subtypes:['Lakshya A','Lakshya B','Umeed'], color:'#2563EB', bg:'#EFF6FF' },
   Sainik:           { subtypes:['Achiever','Leader','Champion'], color:'#059669', bg:'#ECFDF5' },
   Foundation:       { subtypes:['Udaan','Pragati'],                color:'#7C3AED', bg:'#F5F3FF' },
   'Combined Course':{ subtypes:[],                               color:'#D97706', bg:'#FFFBEB' },
 }
 
-const PROMOTION_MAP = { 'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Udaan':'Pragati' }
-const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Udaan','Pragati']
+const PROMOTION_MAP = { 'Lakshya':'Umeed','Lakshya A':'Umeed','Lakshya B':'Umeed','Achiever':'Leader','Leader':'Champion','Udaan':'Pragati' }
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
 // Houses will be loaded dynamically from DB
