@@ -2340,6 +2340,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       session={session}
       students={activeStudents}
       allRecords={allRecords}
+      hm={hmFor(reportHouse)}
+      hmTitle={hmFor(reportHouse) ? hmTitle(hmFor(reportHouse)) : undefined}
       onClose={() => setReportHouse(null)}
     />
   )
