@@ -1909,8 +1909,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setPrevDayLoaded(false)
     supabase
       .from('attendance_records')
-      .select('*')
+      .select('student_id, house, session, status')
       .eq('date', prevDate)
+      .in('session', ['morning', 'night'])
       .then(({ data }) => {
         if (!cancelled) {
           setPrevDayRecords(data || [])
@@ -2181,19 +2182,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       // detection.
       marked_at: new Date().toISOString(),
     }
-    const { error } = existing
+    const { data: inserted, error } = existing
       ? await supabase.from('attendance_records').update({ status, marked_by: payload.marked_by, marked_at: payload.marked_at }).eq('id', existing.id)
-      : await supabase.from('attendance_records').insert([payload])
+      : await supabase.from('attendance_records').insert([payload]).select('id')
     if (!error) {
-      // Optimistic update
+      // Local update with the real row id, so no full reload is needed
+      // after every first-time mark (that re-downloaded the whole roster).
+      const realId = inserted?.[0]?.id
       setAllRecords(prev => {
         if (existing) return prev.map(r => r.student_id === studentId ? { ...r, status } : r)
-        return [...prev, { ...payload, id: Date.now() }]
+        return [...prev, { ...payload, id: realId ?? Date.now() }]
       })
       if (!existing || existing.status !== status) notifyParentRollCall(student, date, session, status, payload.marked_by)
       setJustMarked(studentId)
           setTimeout(() => setJustMarked(null), 600)
-          if (!existing) await loadAll() // reconcile real DB id
+          if (!existing && realId == null) await loadAll() // no id came back: reconcile
         }
         setSaving(false)
         setSavingId(null)
@@ -2609,7 +2612,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     let alive = true
     const run = () => loadUnlocks(date).then(r => { if (alive) setUnlocks(r) })
     run()
-    const t = setInterval(run, 45000)
+    const t = setInterval(() => { if (document.visibilityState === 'visible') run() }, 60000)
     return () => { alive = false; clearInterval(t) }
   }, [date])
   const lockInfo = houseName => {

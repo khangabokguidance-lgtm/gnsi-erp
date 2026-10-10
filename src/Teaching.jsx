@@ -3037,7 +3037,7 @@ useEffect(() => {
     setHmNotifCount(count || 0)
   }
   checkNotifs()
-  const interval = setInterval(checkNotifs, 30000)
+  const interval = setInterval(() => { if (document.visibilityState === 'visible') checkNotifs() }, 60000)
   return () => clearInterval(interval)
 }, [currentUser])
 
