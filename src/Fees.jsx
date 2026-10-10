@@ -54,7 +54,7 @@ import DataHealth from './DataHealth'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
-import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
+import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
@@ -4538,7 +4538,31 @@ function capDuesAtLeftDate(dues, leftDate) {
   return { admDue, flatDue, crsDue, arrears, totalDue: admDue + flatDue + crsDue + arrears, months: flatOwed.length + crsOwed.length, partial: !!dues.failedSources?.length }
 }
 
-function PastStudentDuesTab({ isAdmin, onCollect }) {
+// The three payment tables are already in memory, so the dues engine can be
+// handed each student's rows instead of re-reading them (see getStudentDues).
+// The hostel-type history for everyone comes in one read; if that read fails it
+// is left out so each student asks for their own. → preload(student) for
+// getDuesForStudents.
+async function buildDuesPreload({ adm, flat, course }) {
+  const byGcc = (rows, field) => {
+    const m = new Map()
+    for (const r of rows || []) { const g = gccStr(r[field]); if (!m.has(g)) m.set(g, []); m.get(g).push(r) }
+    return m
+  }
+  const admIdx = byGcc(adm, 'adm_app_id')
+  const flatIdx = byGcc(flat, 'adm_app_id')
+  const crsIdx = byGcc(course, 'adm_app_id')
+  const hist = await loadHostelHistory()
+  return s => {
+    const g = gccStr(s.gcc_no)
+    return {
+      adm: admIdx.get(g) || [], flat: flatIdx.get(g) || [], course: crsIdx.get(g) || [],
+      ...(hist.failed ? {} : { history: hist.map.get(String(parseInt(s.gcc_no) || 0)) || [] }),
+    }
+  }
+}
+
+function PastStudentDuesTab({ isAdmin, onCollect, feeRows }) {
   const n = v => Number(v || 0).toLocaleString('en-IN')
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
@@ -4551,7 +4575,8 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
       const all = await getAllStudents('*')
       const past = (all || []).filter(s => s.status && s.status !== 'Active' && !s.deleted_at && gccStr(s.gcc_no))
       if (!past.length) { setRows([]); return }
-      const results = await getDuesForStudents(past, getSessionYear())
+      const preload = feeRows ? await buildDuesPreload(feeRows) : undefined
+      const results = await getDuesForStudents(past, getSessionYear(), { preload })
       const list = results
         .map(({ student, dues }) => ({ student, d: capDuesAtLeftDate(dues, student.left_date) }))
         .filter(r => r.d && r.d.totalDue > 0)
@@ -4561,7 +4586,7 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
       setErr(e?.message || String(e)); setRows([])
     }
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the past-student dues when an admin opens the tab
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- loads the past-student dues once when an admin opens the tab
   useEffect(() => { if (isAdmin) load() }, [isAdmin])
 
   if (!isAdmin) return <div style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
@@ -4898,7 +4923,11 @@ export default function Fees() {
 
     setDuesLoading(true)
     const sessionYearNow = getSessionYear()
-    getDuesForStudents(studentsNeedingDues, sessionYearNow)
+    // The payment tables are already in memory (loadAll), so give the dues
+    // engine each student's rows rather than letting it re-read them — that
+    // was ~18 database reads per student every time this page opened.
+    buildDuesPreload({ adm: adm_fee_collections, flat: adm_flat_fees, course: adm_course_fees }).then(preload => {
+      return getDuesForStudents(studentsNeedingDues, sessionYearNow, { preload })
       .then(async firstPass => {
         // A student whose dues failed (a dropped connection, say) is skipped
         // by getDuesForStudents. Without a retry they stay on the rough
@@ -4908,7 +4937,7 @@ export default function Fees() {
         const got = new Set(firstPass.map(r => gccStr(r.student.gcc_no)))
         const missing = studentsNeedingDues.filter(st => !got.has(gccStr(st.gcc_no)))
         if (missing.length && !cancelled) {
-          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2 })
+          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2, preload })
           results = [...firstPass, ...again]
           const still = missing.filter(st => !again.some(r => gccStr(r.student.gcc_no) === gccStr(st.gcc_no)))
           if (still.length) console.warn('Fees.jsx: dues could not be worked out for', still.map(st => `${st.name} (GCC-${st.gcc_no})`).join(', '))
@@ -4920,6 +4949,7 @@ export default function Fees() {
           return next
         })
       })
+    })
       .catch(e => console.error('Fees.jsx: getDuesForStudents failed —', e.message))
       .finally(() => { if (!cancelled) setDuesLoading(false) })
     return () => { cancelled = true }
@@ -5711,7 +5741,7 @@ export default function Fees() {
         <ActivityLogTab students={students} isAdmin={isAdmin} />
       )}
       {tab === 'pastDues' && (
-        <PastStudentDuesTab isAdmin={isAdmin} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />
+        <PastStudentDuesTab isAdmin={isAdmin} feeRows={loading ? null : { adm: adm_fee_collections, flat: adm_flat_fees, course: adm_course_fees }} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />
       )}
       {tab === 'warnings' && (
         <AuditWarningsTab isAdmin={isAdmin} />
