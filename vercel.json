@@ -15,5 +15,10 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/window-notifier.js": {
+      "maxDuration": 60
+    }
+  }
 }
