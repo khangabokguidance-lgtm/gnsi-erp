@@ -3506,6 +3506,34 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
 
+                      {/* ── Fix buttons: one per slot that is not done ── */}
+                      {(() => {
+                        const fixes = DAILY_SLOTS.map(slot => {
+                          const key = `${houseName}_${date}_${slot.key}`
+                          const result = resultFor(key)
+                          const resolved = dailyResolvedByRecheck[key] || {}
+                          const remaining = result?.missing?.filter(k => !resolved[k]) || []
+                          if (result?.checked && remaining.length === 0) return null
+                          const gateOk = isRollCallSessionComplete(houseName, slot.rollCallGate)
+                          const label = slot.key === 'morning' ? '🌅 Morning' : '🌙 Night'
+                          if (!gateOk) return { key: slot.key, label, text: `Fix ${label} roll call`, run: () => { setSelectedHouse(houseName); setSession(slot.rollCallGate); setView('dashboard') } }
+                          const firstGap = SIX_TABS.find(t => remaining.includes(t.key))
+                          if (firstGap) return { key: slot.key, label, text: `Fix ${label} · ${firstGap.label}`, run: () => { if (onCompleteTab) onCompleteTab(firstGap.rootTabId, houseName); else onTabChange?.(firstGap.rootTabId) } }
+                          return { key: slot.key, label, text: `Check ${label}`, run: () => runDailySlotCheck(houseName, slot.key) }
+                        }).filter(Boolean)
+                        if (!fixes.length) return null
+                        return (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 16px 12px 18px' }}>
+                            {fixes.map(f => (
+                              <button key={f.key} type="button" onClick={f.run}
+                                style={{ padding: '6px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.error, color: '#fff', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                🔧 {f.text}
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      })()}
+
                       {isExpanded && (
                         <div style={{ padding: '0 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${MD.color.outlineVariant}`, paddingTop: '12px' }}>
                           {DAILY_SLOTS.map(slot => {
