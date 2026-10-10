@@ -2131,6 +2131,96 @@ const HOME_TILES = [
   { id: 'alerts',     icon: '🔔', label: 'Alerts',        color: '#f59e0b' },
 ];
 
+// ── HOSTEL ROLL CALL CARD ────────────────────────────────────────────────────
+// Today's morning / night roll call for a hostel student, plus the last
+// 7 days. Reads the same attendance_records rows the housemaster marks in
+// Hostel → Roll Call (rows with session = morning | night).
+const RC_TONE = {
+  Present: { c: '#15803d', b: '#dcfce7', t: 'Present' },
+  Late: { c: '#b45309', b: '#fef3c7', t: 'Present (late)' },
+  Outing: { c: '#b45309', b: '#fef3c7', t: 'On outing' },
+  Outpass: { c: '#b45309', b: '#fef3c7', t: 'On outpass' },
+  'On Leave': { c: '#1d4ed8', b: '#dbeafe', t: 'On leave' },
+  Sick: { c: '#b91c1c', b: '#fee2e2', t: 'Sick' },
+  Absent: { c: '#b91c1c', b: '#fee2e2', t: 'Absent' },
+};
+function RollCallCard({ student, isMobile }) {
+  const [rows, setRows] = useState(null);
+  const [rowsFor, setRowsFor] = useState(null);
+  const isHostel = !!student?.house || (!!student?.hostel_type && !/day/i.test(student.hostel_type));
+  useEffect(() => {
+    if (!student?.id || !isHostel) return undefined;
+    let alive = true;
+    const from = new Date();
+    from.setDate(from.getDate() - 6);
+    supabase.from('attendance_records')
+      .select('date, session, status, marked_at')
+      .eq('student_id', student.id)
+      .in('session', ['morning', 'night'])
+      .gte('date', from.toLocaleDateString('en-CA'))
+      .order('date', { ascending: false })
+      .then(({ data, error }) => { if (alive) { setRows(error ? [] : (data || [])); setRowsFor(student.id); } });
+    return () => { alive = false; };
+  }, [student?.id, isHostel]);
+  if (!isHostel || rows === null || rowsFor !== student.id) return null;
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return { key: d.toLocaleDateString('en-CA'), label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2) };
+  });
+  const find = (date, sess) => rows.find(r => r.date === date && r.session === sess);
+  const todayKey = days[6].key;
+  const marked = rows.length;
+  const here = rows.filter(r => r.status === 'Present' || r.status === 'Late').length;
+  const house = String(student.house || '').replace(/\b\w/g, c => c.toUpperCase());
+  const timeOf = r => r?.marked_at ? new Date(r.marked_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '';
+
+  return (
+    <div style={{ borderRadius: 20, overflow: 'hidden', marginBottom: isMobile ? 12 : 16, border: '1px solid #ece6d6', backgroundColor: '#fff', boxShadow: '0 14px 34px -22px rgba(19,42,79,.45)' }}>
+      <div style={{ padding: '14px 16px', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>Hostel roll call</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginTop: 3, color: '#fff' }}>{student.name}{house ? ` · ${house} House` : ''}</div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[['morning', '🌅 Morning'], ['night', '🌙 Night']].map(([k, label]) => {
+            const r = find(todayKey, k);
+            const tone = r ? (RC_TONE[r.status] || { c: '#475569', b: '#f1f5f9', t: r.status }) : { c: '#64748b', b: '#f8fafc', t: 'Not marked yet' };
+            return (
+              <div key={k} style={{ borderRadius: 14, padding: '10px 12px', backgroundColor: tone.b, border: `1px solid ${tone.c}22` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{label} · today</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: tone.c, marginTop: 3 }}>{tone.t}</div>
+                {r && timeOf(r) && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>at {timeOf(r)}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '.06em', textTransform: 'uppercase' }}>Last 7 days</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginTop: 8 }}>
+          {days.map(d => (
+            <div key={d.key} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: d.key === todayKey ? '#0B1E3D' : '#94a3b8' }}>{d.label}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 5, alignItems: 'center' }}>
+                {['morning', 'night'].map(k => {
+                  const r = find(d.key, k);
+                  const tone = r ? (RC_TONE[r.status] || { c: '#64748b' }) : null;
+                  return <span key={k} title={`${k} · ${r ? (RC_TONE[r.status]?.t || r.status) : 'not marked'}`}
+                    style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800,
+                      color: tone ? '#fff' : '#cbd5e1', backgroundColor: tone ? tone.c : '#f1f5f9' }}>{k === 'morning' ? 'M' : 'N'}</span>;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, fontSize: 12, color: '#64748b' }}>
+          {marked === 0 ? 'No roll call recorded in the last 7 days.' : `Present in ${here} of ${marked} roll calls this week.`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile, siblings, onSwitchChild }) {
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
@@ -2196,6 +2286,8 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
       </div>
 
       <SiblingOverview siblings={siblings} activeStudentId={student?.id} onSwitchChild={onSwitchChild} isMobile={isMobile} />
+
+      <RollCallCard student={student} isMobile={isMobile} />
 
       {dueSoon && !dueBannerDismissed && (
         <div style={{
