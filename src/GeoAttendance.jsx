@@ -1523,7 +1523,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       try { await supabase.rpc('detect_dead_sessions') } catch (e) { console.warn('Dead session sweep:', e?.message) }
     }
     sweep()
-    deadSessionRef.current = setInterval(sweep, DEAD_SESSION_MS)
+    deadSessionRef.current = setInterval(() => { if (document.visibilityState === 'visible') sweep() }, DEAD_SESSION_MS)
     return () => clearInterval(deadSessionRef.current)
   }, [isAdmin])
 
@@ -1656,6 +1656,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
   // ── Interval ping (with offline queue) ───────────────────────────────────
 
+  const pingRoundRef = useRef(0)
   useEffect(() => {
     if (trackRef.current) clearInterval(trackRef.current)
     if (!activeTracking.length) return
@@ -1721,7 +1722,11 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   }
         } catch { enqueuePing(payload) }
       }
-      await fetchMyLogs()
+      // Every ping used to re-download the last 30 attendance rows. Events that
+      // change the logs (auto check-out, shift end) already refresh above, so
+      // a plain ping only refreshes every few rounds.
+      pingRoundRef.current += 1
+      if (pingRoundRef.current % 5 === 0) await fetchMyLogs()
     }, TRACK_INTERVAL_MS)
     return () => clearInterval(trackRef.current)
   }, [activeTracking, campus, currentStaff?.id, showToast, fetchMyLogs])
