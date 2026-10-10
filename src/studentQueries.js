@@ -26,7 +26,7 @@
 // are feature-specific — this file only owns READS of student rosters.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { supabase } from './supabase'
+import { supabase, onStudentsWrite } from './supabase'
 
 const PAGE = 1000
 
@@ -34,19 +34,46 @@ async function hasStaffSession() {
   try { const { data } = await supabase.auth.getSession(); return !!data?.session } catch { return false }
 }
 
+// Shared roster cache: every module asks for the same student lists, and
+// each ask used to re-download every student. Identical requests inside
+// CACHE_MS now share one download (and one in-flight request). Any write to
+// `students` through the shared client clears it, so edits show up at once;
+// changes made by other users appear within CACHE_MS.
+const CACHE_MS = 90 * 1000
+const rosterCache = new Map() // key → { at, promise }
+onStudentsWrite(() => rosterCache.clear())
+const copyRows = rows => (typeof structuredClone === 'function' ? structuredClone(rows) : JSON.parse(JSON.stringify(rows)))
+
+async function fetchAllRows(select, extra, cacheKey) {
+  const key = `${cacheKey}|${select}`
+  const hit = rosterCache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_MS) return copyRows(await hit.promise)
+  const promise = downloadAllRows(select, extra)
+  rosterCache.set(key, { at: Date.now(), promise })
+  try {
+    const rows = await promise
+    // A failed or partial download is not worth remembering.
+    if (rows.__failed) rosterCache.delete(key)
+    return copyRows(rows)
+  } catch (e) {
+    rosterCache.delete(key)
+    throw e
+  }
+}
+
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Any module that queries `students` directly for a full or
 // filtered roster WILL silently lose the newest rows once the school
 // crosses that many student records — this happened for real in
 // Admissions/Fees against adm_fee_collections before those were fixed.
-async function fetchAllRows(select, extra) {
+async function downloadAllRows(select, extra) {
   let from = 0, all = []
   while (true) {
     let q = supabase.from('students').select(select)
     if (extra) q = extra(q)
     q = q.order('name').order('id').range(from, from + PAGE - 1)   // id breaks ties so pages never skip or repeat rows
     const { data, error } = await q
-    if (error) { console.error('studentQueries fetchAllRows error:', error.message); break }
+    if (error) { console.error('studentQueries fetchAllRows error:', error.message); all.__failed = true; break }
     all = all.concat(data || [])
     if (!data || data.length < PAGE) break
     from += PAGE
@@ -87,7 +114,7 @@ export async function getActiveStudentCount() {
 // Pass a column list to keep payload small (e.g. 'id,name,house,status');
 // defaults to '*'.
 export async function getActiveStudents(select = '*') {
-  return fetchAllRows(select, activeStudentFilter)
+  return fetchAllRows(select, activeStudentFilter, 'active')
 }
 
 // Full roster including dropout/inactive/soft-deleted — for admin/audit
@@ -96,7 +123,7 @@ export async function getActiveStudents(select = '*') {
 // Anything using this should be a deliberate "show me everything" screen,
 // not a headcount or default list.
 export async function getAllStudents(select = '*') {
-  return fetchAllRows(select, null)
+  return fetchAllRows(select, null, 'all')
 }
 
 // Single student by internal id.
