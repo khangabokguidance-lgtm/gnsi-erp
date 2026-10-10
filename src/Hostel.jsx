@@ -1837,6 +1837,29 @@ function RollCallPhoto({ url, name, fallback }) {
 // switches tab; the Roll Call tab picks it up once its data has loaded.
 let pendingRollCallFix = null // { house, date, session } | null
 
+// Profile card sharing is required after a roll call: remember (per browser) and
+// log (audit_logs, action hostel_profile_card_shared) that it was shared, so the
+// Done screen and the HM Dashboard can stop nagging and an admin can check.
+const profileCardKey = (house, date, session) => `gnsi_hm_card_shared_${normalizeHouse(house)}_${date}_${session}`
+function profileCardShared(house, date, session) {
+  try { return localStorage.getItem(profileCardKey(house, date, session)) === '1' } catch { return false }
+}
+function markProfileCardShared(house, date, session) {
+  try { localStorage.setItem(profileCardKey(house, date, session), '1') } catch { /* storage blocked */ }
+  try { window.dispatchEvent(new CustomEvent('gnsi:profilecard-shared')) } catch { /* ignore */ }
+  try {
+    const raw = localStorage.getItem('gnsi_session')
+    const sess = raw ? JSON.parse(raw) : null
+    const user = sess?.user || sess || null
+    supabase.from('audit_logs').insert({
+      action: 'hostel_profile_card_shared', module: 'Hostel', level: 'info', user_id: null,
+      user_name: user?.name || user?.username || 'Unknown',
+      metadata: { house, date, session, raw_user_id: user?.id ?? null, role: user?.role ?? null },
+      created_at: new Date().toISOString(),
+    }).then(() => {}, () => {})
+  } catch { /* the log is a bonus */ }
+}
+
 // ══════════════════════════════════════════════════════════════
 //  MISSING ROLL CALL WARNING
 //  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
@@ -1962,6 +1985,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [rollCallIndex, setRollCallIndex] = useState(0)
   const [rollCallStudents, setRollCallStudents] = useState([])
   const studentPhotoOf = useStudentPhotos(rollCallStudents)
+  const [, setShareTick] = useState(0) // re-render once the profile card is shared
   const [justMarked, setJustMarked] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
@@ -4397,16 +4421,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             }
             const cardReady = card && card !== 'loading'
             const cardFileName = `roll-call-${String(selectedHouse).toLowerCase().replace(/\s+/g, '-')}-${date}-${session}.png`
+            const cardShared = profileCardShared(selectedHouse, date, session)
+            const sharedNow = () => { markProfileCardShared(selectedHouse, date, session); setShareTick(n => n + 1); return true }
             const shareProfileCard = async () => {
-              if (!cardReady) return
+              if (!cardReady) return false
               const file = new File([card.blob], cardFileName, { type: 'image/png' })
               try {
                 if (navigator.canShare?.({ files: [file] })) {
                   await navigator.share({ files: [file], text: rollCallWaText, title: `${selectedHouse} — Roll Call Report` })
-                  return
+                  return sharedNow()
                 }
               } catch (e) {
-                if (e?.name === 'AbortError') return
+                if (e?.name === 'AbortError') return false
               }
               // No file sharing here (most computers): save the card and open
               // the chat, so it can be attached there.
@@ -4414,6 +4440,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               a.href = card.url; a.download = cardFileName
               document.body.appendChild(a); a.click(); a.remove()
               window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(rollCallWaText)}`, '_blank', 'noopener,noreferrer')
+              return sharedNow()
+            }
+            // Leaving this screen needs the profile card shared first (when it is ready).
+            const leaveAfterShare = async fn => {
+              if (cardReady && !cardShared) {
+                const ok = await shareProfileCard()
+                if (!ok) return
+              }
+              fn()
             }
 
             return (
@@ -4520,6 +4555,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     {medalFor(rankInfo.rank)} Rank #{rankInfo.rank} of {rankInfo.total} · Score {rankInfo.score}/100
                   </div>
                 )}
+                {cardReady && !cardShared && (
+                  <div style={{ maxWidth: 360, padding: '9px 14px', borderRadius: 12, background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#B91C1C', fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>
+                    📣 Required: share your profile card on WhatsApp to finish this roll call.
+                  </div>
+                )}
+                {cardReady && cardShared && <div style={{ fontSize: 12.5, fontWeight: 800, color: '#15803D' }}>✅ Profile card shared</div>}
                 {cardReady && (
                   <button type="button" onClick={shareProfileCard}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 14, border: '1px solid #E2C57E', cursor: 'pointer', fontFamily: 'inherit',
@@ -4782,10 +4823,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   <button onClick={() => setReportHouse(selectedHouse)} style={{ ...btn('#7c3aed'), padding: '12px 24px' }}>
                     📄 View Report
                   </button>
-                  <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
+                  <button onClick={() => leaveAfterShare(() => setView('dashboard'))} style={{ ...btn(pal.color), padding: '12px 24px' }}>
                     View {selectedHouse} Dashboard
                   </button>
-                  <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
+                  <button onClick={() => leaveAfterShare(() => setView('houses'))} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
                     All Houses
                   </button>
                 </>
@@ -6855,7 +6896,7 @@ function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onS
 // The same WhatsApp profile card the roll-call "Done" screen makes (photo, rank,
 // counts, mock-test standings), made on demand for today's morning or night
 // roll call so it can be shared whenever, not only right after finishing.
-function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
+function HmProfileCardPanel({ students, lockHouse, currentHousemaster, due = [] }) {
   const mobile = useMobileView()
   const houseOptions = useMemo(() => {
     if (lockHouse) return [lockHouse]
@@ -6876,8 +6917,10 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
   if (!houseOptions.length) return null
   const label = h => String(h).replace(/\b\w/g, c => c.toUpperCase())
 
-  const make = async () => {
+  const make = async (sessOverride) => {
     if (!house) return
+    const sessNow = typeof sessOverride === 'string' ? sessOverride : sess
+    if (sessNow !== sess) setSess(sessNow)
     setBusy(true); setErr(''); setCard(null)
     try {
       const date = today()
@@ -6885,7 +6928,7 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
       const houseStudents = (students || []).filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && normalizeHouse(st.house) === key)
       const ids = new Set(houseStudents.map(st => st.id))
       const rows = await fetchAllRows(() => supabase.from('attendance_records')
-        .select('student_id, house, status, marked_at').eq('date', date).eq('session', sess).not('house', 'is', null).order('id'))
+        .select('student_id, house, status, marked_at').eq('date', date).eq('session', sessNow).not('house', 'is', null).order('id'))
       const statusOf = new Map()
       for (const r of rows) if (ids.has(r.student_id)) statusOf.set(r.student_id, r)
       const by = st => houseStudents.filter(x => statusOf.get(x.id)?.status === st)
@@ -6894,18 +6937,18 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
       const other = houseStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(statusOf.get(x.id)?.status)).length
       const marked = statusOf.size
       const lastAt = [...statusOf.values()].reduce((l, r) => r.marked_at && (!l || new Date(r.marked_at) > new Date(l)) ? r.marked_at : l, null)
-      const lateStatus = getRollCallLateStatus(date, sess, lastAt)
+      const lateStatus = getRollCallLateStatus(date, sessNow, lastAt)
       const { data: hms } = await supabase.from('housemasters').select('*').eq('status', 'Active')
       const hm = (hms || []).find(h => normalizeHouse(h.house) === key) || (lockHouse && currentHousemaster?.name ? currentHousemaster : null)
       const [rankInfo, mock] = await Promise.all([loadHmRank(house).catch(() => null), loadHouseMockStandings(houseStudents).catch(() => null)])
       const args = {
-        houseName: house, sessionLabel: sess === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
+        houseName: house, sessionLabel: sessNow === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
         hm, total: houseStudents.length, present, outing, outpass, other, rankInfo, completedAt: lastAt, late: lateStatus.isLate, mock,
       }
       const text = buildRollCallWaReport(args)
       const blob = await buildHmProfileCard({ ...args, present: present.length, outing: outing.length, outpass: outpass.length })
       if (!blob) throw new Error('Could not draw the card')
-      setCard({ blob, url: URL.createObjectURL(blob), text, marked, total: houseStudents.length, house, fileName: `roll-call-${String(house).toLowerCase().replace(/\s+/g, '-')}-${date}-${sess}.png` })
+      setCard({ blob, url: URL.createObjectURL(blob), text, sess: sessNow, marked, total: houseStudents.length, house, fileName: `roll-call-${String(house).toLowerCase().replace(/\s+/g, '-')}-${date}-${sessNow}.png` })
     } catch (e) {
       setErr(e?.message || 'Could not make the profile card. Try again.')
     }
@@ -6917,6 +6960,7 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
     try {
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], text: card.text, title: `${card.house} — Roll Call Report` })
+        markProfileCardShared(card.house, today(), card.sess)
         return
       }
     } catch (e) { if (e?.name === 'AbortError') return }
@@ -6925,6 +6969,7 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
     a.href = card.url; a.download = card.fileName
     document.body.appendChild(a); a.click(); a.remove()
     window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(card.text)}`, '_blank', 'noopener,noreferrer')
+    markProfileCardShared(card.house, today(), card.sess)
   }
   const pill = on => ({ padding: '7px 14px', borderRadius: 99, border: on ? '1px solid #C9A24B' : '1px solid #E5DCC7', background: on ? '#FBF3DC' : '#fff', color: '#0B1E3D', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' })
   return (
@@ -6942,6 +6987,17 @@ function HmProfileCardPanel({ students, lockHouse, currentHousemaster }) {
           {busy ? 'Preparing…' : card ? 'Refresh card' : 'Show profile card'}
         </button>
       </div>
+      {due.length > 0 && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 14, background: '#FEF2F2', border: '2px solid #DC2626', marginBottom: 12 }}>
+          <span style={{ fontSize: 20 }}>📣</span>
+          <div style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 800, color: '#B91C1C', lineHeight: 1.4 }}>
+            Required: share your profile card on WhatsApp for the {due.map(d => d.name).join(' and ')}. The roll call is complete but the card has not been shared.
+          </div>
+          <button type="button" onClick={() => make(due[0].key)} disabled={busy} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+            {busy ? 'Preparing…' : 'Share now →'}
+          </button>
+        </div>
+      )}
       {err && <div style={{ color: '#DC2626', fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>{err}</div>}
       {card && (
         <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 16, alignItems: mobile ? 'stretch' : 'flex-start' }}>
@@ -7117,6 +7173,13 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
     { metric: 'Pending Doubt Sessions', value: myDoubtTasks.length },
   ]
 
+  // re-render when a profile card is shared (the "share it" reminder below)
+  const [, setCardTick] = useState(0)
+  useEffect(() => {
+    const f = () => setCardTick(n => n + 1)
+    window.addEventListener('gnsi:profilecard-shared', f)
+    return () => window.removeEventListener('gnsi:profilecard-shared', f)
+  }, [])
   if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>Loading dashboard…</div>
 
   const hmName = currentHousemaster?.name || currentUser?.name || 'House Master'
@@ -7138,6 +7201,10 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
     { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:30 AM', marked: morningRows.length, present: presentCount, out: absentCount },
     { key: 'night', icon: '🌙', name: 'Night roll call', due: '10:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, out: nightRows.filter(isOut).length },
   ]
+  // A housemaster must share the profile card of every completed roll call of today.
+  const cardsDue = lockHouse && activeStudentCount > 0
+    ? ROLL_CALLS.filter(rc => rc.marked >= activeStudentCount && !profileCardShared(lockHouse, today(), rc.key)).map(rc => ({ key: rc.key, name: rc.name }))
+    : []
   const FIGURES = [
     { id: 'leave', label: 'On leave', value: leaveToday.length, note: 'from today', color: '#1D4ED8' },
     { id: 'sickbay', label: 'In sickbay', value: sickbayToday.length, note: 'admitted now', color: '#7C3AED' },
@@ -7237,7 +7304,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         })}
       </div>
 
-      <HmProfileCardPanel students={students} lockHouse={lockHouse} currentHousemaster={currentHousemaster} />
+      <HmProfileCardPanel students={students} lockHouse={lockHouse} currentHousemaster={currentHousemaster} due={cardsDue} />
 
       {/* Figures — each opens its tab */}
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(6, minmax(0,1fr))', gap: '10px', marginBottom: '16px' }}>
