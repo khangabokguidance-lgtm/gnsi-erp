@@ -1795,9 +1795,12 @@ function MissingRollCallAlert({ students, onOpen }) {
   const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
   useEffect(() => {
     let alive = true
-    supabase.from('attendance_records').select('student_id, house, date, session')
-      .in('session', ['morning', 'night']).gte('date', days[days.length - 1])
-      .then(({ data, error }) => { if (alive) setRows(error ? [] : (data || [])) })
+    // Three days of every house is well over the 1000-row query cap, which
+    // cut off the newest rows (today's marks) and left finished roll calls
+    // showing as "0 marked". Page through all of them, in a stable order.
+    fetchAllRows(() => supabase.from('attendance_records').select('student_id, house, date, session')
+      .in('session', ['morning', 'night']).gte('date', days[days.length - 1]).order('id'))
+      .then(data => { if (alive) setRows(data) })
     const t = setInterval(() => setNow(Date.now()), 60000)
     return () => { alive = false; clearInterval(t) }
   }, [days])
