@@ -1788,13 +1788,15 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 
 // ══════════════════════════════════════════════════════════════
 //  MISSING ROLL CALL WARNING
-//  A loud red warning, with instructions, shown at the top of Roll Call and the
-//  HM Dashboard whenever a roll call of today or the last two days is closed but
-//  not complete for a house. A past day counts only if another house did mark
+//  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
+//  red "Incomplete" (with its missing roll calls and the instructions below) or
+//  green "Complete"; a housemaster sees only their own house. A roll call of
+//  today or the last two days counts as missing when it is closed but not
+//  complete for a house. A past day counts only if another house did mark
 //  it (so a school holiday never raises it). Reads the three days' hostel
 //  roll call rows once when it opens; nothing refreshes by itself.
 // ══════════════════════════════════════════════════════════════
-function MissingRollCallAlert({ students, onOpen }) {
+function MissingRollCallAlert({ students, onOpen, lockHouse }) {
   const [rows, setRows] = useState(null)
   const [now, setNow] = useState(() => Date.now())
   const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
@@ -1810,44 +1812,76 @@ function MissingRollCallAlert({ students, onOpen }) {
     return () => { alive = false; clearInterval(t) }
   }, [days])
 
+  const scoped = useMemo(() => !lockHouse ? students
+    : (students || []).filter(s => normalizeHouse(s.house) === normalizeHouse(lockHouse)), [students, lockHouse])
   const missing = useMemo(() => {
     if (!rows) return []
-    return findMissingRollCalls({ rows, students, days, normalizeHouse, isClosed: (d, sess) => rollCallClosed(d, sess, now) })
-  }, [rows, students, days, now])
+    return findMissingRollCalls({ rows, students: scoped, days, normalizeHouse, isClosed: (d, sess) => rollCallClosed(d, sess, now) })
+  }, [rows, scoped, days, now])
 
-  if (!missing.length) return null
-  const shown = missing.slice(0, 8)
+  // One card per house: red "Incomplete" with that house's missing roll calls,
+  // or green "Complete". A housemaster (lockHouse) sees only their own house.
+  if (!rows) return null
   const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  const label = h => String(h).replace(/\b\w/g, c => c.toUpperCase())
+  const houseNames = new Map()
+  for (const s of scoped) {
+    const k = normalizeHouse(s.house)
+    if (k && !/day\s*scholar/i.test(k) && !houseNames.has(k)) houseNames.set(k, s.house)
+  }
+  const cards = [...houseNames.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, name]) => ({
+    key: k, name, items: missing.filter(m => normalizeHouse(m.house) === k),
+  }))
+  if (!cards.length) return null
+  const incomplete = cards.filter(c => c.items.length)
+  const single = cards.length === 1
   return (
-    <div role="alert" style={{ margin: '0 0 16px', borderRadius: 16, border: '2px solid #DC2626', background: '#FEF2F2', overflow: 'hidden', boxShadow: '0 14px 28px -18px rgba(220,38,38,.6)' }}>
-      <div style={{ padding: '12px 16px', background: '#DC2626', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 20 }}>🚨</span>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: '.04em', textTransform: 'uppercase' }}>Missing roll call — action needed now</div>
-          <div style={{ fontSize: 12, opacity: .92 }}>{missing.length} roll call{missing.length > 1 ? 's' : ''} not completed. Every student must be marked, no exceptions.</div>
+    <div style={{ margin: '0 0 16px' }}>
+      {!single && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: '.06em', textTransform: 'uppercase', color: incomplete.length ? '#B91C1C' : '#15803D' }}>
+            {incomplete.length ? `🚨 Roll call incomplete — ${incomplete.length} of ${cards.length} houses` : `✅ Roll call complete — all ${cards.length} houses`}
+          </span>
+          {onOpen && incomplete.length > 0 && <button type="button" onClick={onOpen} style={{ padding: '6px 12px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
         </div>
-        {onOpen && <button type="button" onClick={onOpen} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: '#fff', color: '#B91C1C', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
-      </div>
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {shown.map(m => (
-          <div key={`${m.house}|${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13.5, color: '#7F1D1D' }}>
-            <span><b>{String(m.house).replace(/\b\w/g, c => c.toUpperCase())}</b> · {m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
-            <span style={{ fontWeight: 800 }}>{m.marked} of {m.total} marked</span>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {cards.map(c => c.items.length ? (
+          <div key={c.key} role="alert" style={{ borderRadius: 14, border: '2px solid #DC2626', background: '#FEF2F2', overflow: 'hidden' }}>
+            <div style={{ padding: '9px 12px', background: '#DC2626', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🚨</span>
+              <div style={{ flex: 1, fontWeight: 900, fontSize: 14 }}>{label(c.name)} · Incomplete</div>
+              {single && onOpen && <button type="button" onClick={onOpen} style={{ padding: '6px 12px', borderRadius: 10, border: 'none', background: '#fff', color: '#B91C1C', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
+            </div>
+            <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {c.items.map(m => (
+                <div key={`${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#7F1D1D' }}>
+                  <span>{m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
+                  <b>{m.marked} of {m.total} marked</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div key={c.key} style={{ borderRadius: 14, border: '2px solid #16A34A', background: '#F0FDF4', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>✅</span>
+            <div style={{ flex: 1, fontWeight: 900, fontSize: 14, color: '#166534' }}>{label(c.name)} · Complete</div>
           </div>
         ))}
-        {missing.length > shown.length && <div style={{ fontSize: 12.5, color: '#991B1B', fontWeight: 700 }}>+ {missing.length - shown.length} more</div>}
       </div>
-      <div style={{ padding: '12px 16px', borderTop: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
-        <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
-        <ol style={{ margin: 0, paddingLeft: 20 }}>
-          <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
-          {ROLL_CALL_CUTOFF_LOCK
-            ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
-            : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
-          <li>Mark <b>every</b> student: Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking.</li>
-          <li>A roll call finished after the cutoff is recorded as <b>late</b> against the housemaster, and a repeat counts against the monthly ranking.</li>
-        </ol>
-      </div>
+      {incomplete.length > 0 && (
+        <div style={{ marginTop: 10, padding: '12px 16px', borderRadius: 14, border: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
+          <ol style={{ margin: 0, paddingLeft: 20 }}>
+            <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
+            {ROLL_CALL_CUTOFF_LOCK
+              ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
+              : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
+            <li>Mark <b>every</b> student: Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking.</li>
+            <li>A roll call finished after the cutoff is recorded as <b>late</b> against the housemaster, and a repeat counts against the monthly ranking.</li>
+          </ol>
+        </div>
+      )}
     </div>
   )
 }
@@ -6921,7 +6955,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         </div>
       </div>
 
-      <MissingRollCallAlert students={students} onOpen={() => onTabChange?.('attendance')} />
+      <MissingRollCallAlert students={students} lockHouse={lockHouse} onOpen={() => onTabChange?.('attendance')} />
 
       {/* Today's two roll calls */}
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
