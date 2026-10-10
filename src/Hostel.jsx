@@ -1796,7 +1796,7 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 //  it (so a school holiday never raises it). Reads the three days' hostel
 //  roll call rows once when it opens; nothing refreshes by itself.
 // ══════════════════════════════════════════════════════════════
-function MissingRollCallAlert({ students, onOpen, lockHouse }) {
+function MissingRollCallAlert({ students, onOpen, onFix, lockHouse }) {
   const [rows, setRows] = useState(null)
   const [now, setNow] = useState(() => Date.now())
   const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
@@ -1857,7 +1857,10 @@ function MissingRollCallAlert({ students, onOpen, lockHouse }) {
               {c.items.map(m => (
                 <div key={`${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#7F1D1D' }}>
                   <span>{m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
-                  <b>{m.marked} of {m.total} marked</b>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <b>{m.marked} of {m.total} marked</b>
+                    {onFix && <button type="button" onClick={() => onFix(m.house, m.date, m.session)} style={{ padding: '3px 10px', borderRadius: 8, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Fix now</button>}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1873,7 +1876,7 @@ function MissingRollCallAlert({ students, onOpen, lockHouse }) {
         <div style={{ marginTop: 10, padding: '12px 16px', borderRadius: 14, border: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
           <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
           <ol style={{ margin: 0, paddingLeft: 20 }}>
-            <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
+            <li><b>Any missed roll call:</b> tap <b>Fix now</b> on its line (or open Roll Call, tap the house, then <b>Catch up</b>) and mark every student. Today's roll call stays locked until yesterday is 100% marked.</li>
             {ROLL_CALL_CUTOFF_LOCK
               ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
               : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
@@ -2016,14 +2019,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   useEffect(() => {
     let cancelled = false
     setPrevDayLoaded(false)
-    supabase
+    fetchAllRows(() => supabase
       .from('attendance_records')
       .select('student_id, house, session, status')
       .eq('date', prevDate)
       .in('session', ['morning', 'night'])
-      .then(({ data }) => {
+      .order('id'))
+      .then(data => {
         if (!cancelled) {
-          setPrevDayRecords(data || [])
+          setPrevDayRecords(data)
           setPrevDayLoaded(true)
         }
       })
@@ -2137,10 +2141,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   const catchUpTargetRef = useRef(null)
 
-  const handleCatchUpRollCall = (houseName) => {
+  // `target` = { date, session } fixes that exact missed roll call (the warning
+  // cards list the last three days); without it, yesterday's first incomplete
+  // session is opened.
+  const handleCatchUpRollCall = (houseName, target) => {
     const p = getPrevDayStatus(houseName)
-    const targetSession = p.morningMarked < p.total ? 'morning' : 'night'
-    const targetDate = prevDate
+    const targetSession = target?.session || (p.morningMarked < p.total ? 'morning' : 'night')
+    const targetDate = target?.date || prevDate
     setCatchUpReturn({ date, session }) // remember where we came from
     catchUpTargetRef.current = { date: targetDate, session: targetSession }
     setSelectedHouse(houseName)
@@ -3056,7 +3063,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       <div>
         {reportModal}{precheckModal}{rulesModal}{unlockModal}
         {unlockPanel}
-        <MissingRollCallAlert students={activeStudents} />
+        <MissingRollCallAlert students={activeStudents} onFix={(house, d, sess) => handleCatchUpRollCall(house, { date: d, session: sess })} />
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
