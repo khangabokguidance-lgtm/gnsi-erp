@@ -1832,6 +1832,11 @@ function RollCallPhoto({ url, name, fallback }) {
 }
 
 
+// "Fix now" from the HM Dashboard: the dashboard cannot open a catch-up roll call
+// itself (that lives in the Roll Call tab), so it leaves the request here and
+// switches tab; the Roll Call tab picks it up once its data has loaded.
+let pendingRollCallFix = null // { house, date, session } | null
+
 // ══════════════════════════════════════════════════════════════
 //  MISSING ROLL CALL WARNING
 //  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
@@ -2246,6 +2251,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setSession(catchUpReturn.session)
     setCatchUpReturn(null)
   }
+
+  // A "Fix now" tapped on the HM Dashboard: open that missed roll call here.
+  useEffect(() => {
+    if (!pendingRollCallFix || !activeStudents.length || !prevDayLoaded) return
+    const fix = pendingRollCallFix
+    pendingRollCallFix = null
+    handleCatchUpRollCall(fix.house, { date: fix.date, session: fix.session })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStudents.length, prevDayLoaded])
 
   // ── Which alert-panel is expanded (shows student list + quick actions) ──
   const [activeAlertPanel, setActiveAlertPanel] = useState(null) // 'absent' | 'unmarked' | 'unassigned' | null
@@ -7125,7 +7139,8 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         </div>
       </div>
 
-      <MissingRollCallAlert students={students} lockHouse={lockHouse} onOpen={() => onTabChange?.('attendance')} />
+      <MissingRollCallAlert students={students} lockHouse={lockHouse} onOpen={() => onTabChange?.('attendance')}
+        onFix={(house, d, sess) => { pendingRollCallFix = { house, date: d, session: sess }; onTabChange?.('attendance') }} />
 
       {/* Today's two roll calls */}
       <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
