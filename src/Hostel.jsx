@@ -770,6 +770,11 @@ const ROLL_CALL_DEADLINE = {
   night: { hour: 22, minute: 0, label: '10:00 PM' },
 }
 const ROLL_CALL_GRACE_MINUTES = 0
+// Whether a housemaster is locked out of a roll call once its window has
+// closed (and must ask the admin to unlock it). Off: a missed roll call can
+// still be marked; it is recorded as late (marked_at vs the cutoff) and counts
+// in the monthly ranking. Set to true to bring the admin unlock back.
+const ROLL_CALL_CUTOFF_LOCK = false
 
 // Has the roll call window for this date + session closed?
 function rollCallClosed(dateStr, session, nowMs = Date.now()) {
@@ -1836,7 +1841,9 @@ function MissingRollCallAlert({ students, onOpen }) {
         <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
         <ol style={{ margin: 0, paddingLeft: 20 }}>
           <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
-          <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
+          {ROLL_CALL_CUTOFF_LOCK
+            ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
+            : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
           <li>Mark <b>every</b> student: Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking.</li>
           <li>A roll call finished after the cutoff is recorded as <b>late</b> against the housemaster, and a repeat counts against the monthly ranking.</li>
         </ol>
@@ -2669,7 +2676,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     return () => { alive = false }
   }, [])
   // ── Roll call cutoff + admin unlock ──
-  const lockOn = !isAdmin
+  const lockOn = ROLL_CALL_CUTOFF_LOCK && !isAdmin
   const [unlocks, setUnlocks] = useState({ ready: false, rows: [] })
   const [unlockTarget, setUnlockTarget] = useState(null) // { house, date, session }
   const [unlockReason, setUnlockReason] = useState('')
