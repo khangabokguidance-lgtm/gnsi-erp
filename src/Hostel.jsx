@@ -6500,55 +6500,61 @@ function HMPerformanceRanking() {
         <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No roll-call or compliance data in the last 7 days.</div>
       ) : (
         <>
-          {/* Housemaster / housemistress cards, best score first */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '12px' }}>
+          {/* Housemaster / housemistress profile cards (the roll-call profile card design), best score first */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
             {rankings.map((r, i) => {
               const isExpanded = expandedHouse === r.house
               const isTop = topPerformer && r.house === topPerformer.house
               const isWeak = weakestPerformer && weakestPerformer.house !== topPerformer?.house && r.house === weakestPerformer.house
-              const sc = scoreColor(r.score)
               const hmRef = r.hm || { name: r.hmName }
-              const tag = isTop ? { text: '🥇 Top performer', c: '#15803d', bg: '#dcfce7' } : isWeak ? { text: '⚠️ Needs attention', c: '#b91c1c', bg: '#fee2e2' } : null
+              const scored = rankings.filter(x => x.score !== null).length
+              const tiles = [
+                { label: 'Score', value: r.score, c: '#fff' },
+                { label: 'On-time', value: r.onTimePct, c: '#4ADE80' },
+                { label: 'Checks', value: r.compliancePct, c: '#7DD3FC' },
+                { label: 'No gaps', value: r.neglectFreePct, c: '#FBBF24' },
+              ]
+              const tag = isTop ? '🥇 Top performer' : isWeak ? '⚠️ Needs attention' : null
               return (
-                <div key={r.house} style={{ gridColumn: isExpanded ? '1 / -1' : 'auto', borderRadius: 18, overflow: 'hidden', background: '#fff',
-                  border: `1px solid ${isTop ? '#86efac' : isWeak ? '#fca5a5' : '#E9E2D0'}`, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 30px -24px rgba(19,42,79,.55)' }}>
+                <div key={r.house} style={{ gridColumn: isExpanded ? '1 / -1' : 'auto', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+                  boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)', background: '#fff' }}>
                   <div
                     onClick={() => setExpandedHouse(isExpanded ? null : r.house)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? null : r.house) } }}
                     title={isExpanded ? 'Click to collapse' : 'Click to see details'}
-                    style={{ cursor: 'pointer' }}
+                    style={{ cursor: 'pointer', position: 'relative', textAlign: 'center', color: '#fff', padding: '16px 14px 14px',
+                      background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)' }}
                   >
-                    <div style={{ position: 'relative', padding: '14px 14px 12px', color: '#fff', background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 50%, #0B1E3D 100%)' }}>
-                      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <HmPortrait hm={hmRef} size={64} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmTitle(r.hm)}</div>
-                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600, lineHeight: 1.2, marginTop: 2, overflowWrap: 'anywhere' }}>{r.hmName}</div>
-                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>🏠 {String(r.house).replace(/\b\w/g, c => c.toUpperCase())} House</div>
-                        </div>
-                        <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                          <div style={{ fontSize: 22 }}>{r.score === null ? '—' : medalFor(i + 1)}</div>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#E2C57E' }}>#{i + 1}</div>
-                        </div>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Performance</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>Last 7 days</div>
+                    {tag && <div style={{ display: 'inline-block', marginTop: 8, padding: '3px 12px', borderRadius: 99, fontSize: 11, fontWeight: 800, color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.45)' }}>{tag}</div>}
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}>
+                      <HmPortrait hm={hmRef} size={96} />
+                    </div>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{r.hmName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(r.hm)} · {String(r.house).replace(/\b\w/g, c => c.toUpperCase())} House</div>
+                    <div style={{ margin: '12px 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                        <span style={{ fontSize: 26 }}>{r.score === null ? '—' : medalFor(i + 1)}</span>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>{r.score === null ? '—' : `#${i + 1}`}</span>
+                        {r.score !== null && <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {scored}<br /><b style={{ color: '#E2C57E' }}>Score {r.score}/100</b></span>}
                       </div>
                     </div>
-                    <div style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ padding: '5px 14px', borderRadius: 99, fontWeight: 800, fontSize: 18, background: scoreBg(r.score), color: sc, fontVariantNumeric: 'tabular-nums' }}>
-                          {r.score === null ? '—' : `${r.score}%`}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                      {tiles.map(t => (
+                        <div key={t.label} style={{ borderRadius: 12, padding: '8px 2px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.14)' }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 700, color: t.c }}>{t.value === null || t.value === undefined ? '—' : `${t.value}%`}</div>
+                          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.65)', marginTop: 1 }}>{t.label}</div>
                         </div>
-                        <div style={{ flex: 1, fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
-                          {r.sessionsCount} roll calls · {r.neglectCount} gaps logged
-                        </div>
-                        <span style={{ fontSize: 14, color: isExpanded ? '#1e3a6e' : '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex' }}>▾</span>
-                      </div>
-                      <div style={{ height: 6, borderRadius: 99, background: '#F1EDE4', overflow: 'hidden', marginTop: 10 }}>
-                        <div style={{ width: `${Math.min(Math.max(r.score ?? 0, 0), 100)}%`, height: '100%', borderRadius: 99, background: sc }} />
-                      </div>
-                      {tag && <div style={{ display: 'inline-block', marginTop: 10, padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 800, color: tag.c, background: tag.bg }}>{tag.text}</div>}
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11.5, color: 'rgba(255,255,255,.7)' }}>{r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.5)' }}>
+                      Guidance Navodaya &amp; Sainik Institute <span style={{ display: 'inline-block', marginLeft: 4, transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                     </div>
                   </div>
                   {isExpanded && (
