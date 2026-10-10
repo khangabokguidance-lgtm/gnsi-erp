@@ -22,7 +22,7 @@ export default function FeeRequestsPanel({ currentUser, isAdmin, onDone }) {
         && (isAdmin ? !['rejected', 'collected'].includes(r.status) : (sameWho(r.requested_by, me) || sameWho(r.requested_by, meName)))))
     })
   }, [isAdmin, me, meName])
-  useEffect(() => { reload(); const t = setInterval(reload, 20000); return () => clearInterval(t) }, [reload])
+  useEffect(() => { reload(); const t = setInterval(() => { if (document.visibilityState === 'visible') reload() }, 60000); return () => clearInterval(t) }, [reload])
 
   if (!rows.length) return null
   return (
