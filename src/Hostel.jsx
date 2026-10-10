@@ -294,7 +294,7 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-const today = () => new Date().toISOString().split('T')[0]
+const today = () => new Date().toLocaleDateString('en-CA')
 const nowTime = () => {
   const d = new Date()
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -698,6 +698,21 @@ function HmChip({ hm, dark = false, size = 34 }) {
   )
 }
 
+// Large portrait of the housemaster / housemistress for dashboard headers:
+// the Staff-module photo in a gold ring (initials when there is none).
+function HmPortrait({ hm, size = 76 }) {
+  if (!hm) return null
+  const initials = String(hm.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+      style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: Math.round(size * 0.36), fontWeight: 800, fontFamily: FONT_DISPLAY, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+        border: '3px solid #E2C57E', boxShadow: '0 0 0 3px rgba(255,255,255,.18), 0 12px 24px -10px rgba(0,0,0,.55)' }}>
+      {initials}
+    </StaffAvatar>
+  )
+}
+
 // Mandatory recipient — every roll call completion and every compliance
 // gap is sent here in addition to the group, no button required.
 const HM_COMPLIANCE_WA_NUMBER = '918974298074'
@@ -737,11 +752,12 @@ function currentDailySlot() {
 // ══════════════════════════════════════════════════════════════
 //  MANDATORY ROLL CALL DEADLINES + LATE PENALTY
 // ══════════════════════════════════════════════════════════════
-//  Institutional rule: Morning roll call must be completed by 7:00 AM,
-//  Night roll call by 8:00 PM. A 15-minute grace window is allowed
-//  beyond the deadline; a roll call whose LAST student is marked after
-//  deadline + grace is flagged as Late and a penalty/fine record is
-//  logged against that house's housemaster/mistress.
+//  Institutional rule: Morning roll call is open until 7:30 AM, night roll
+//  call until 10:00 PM. After the cutoff the roll call is blocked for
+//  that day; the housemaster must request the admin to unlock it
+//  (hm_rollcall_unlock). A roll call finished after the cutoff (only
+//  possible once an admin approves) is flagged Late and a penalty/fine
+//  record is logged against that house's housemaster/mistress.
 //
 //  This is separate from sessionWindow() above (which governs the
 //  12-hour six-tab compliance gating and is left untouched) — this is
@@ -749,10 +765,55 @@ function currentDailySlot() {
 //  itself.
 // ══════════════════════════════════════════════════════════════
 const ROLL_CALL_DEADLINE = {
-  morning: { hour: 7, minute: 0, label: '7:00 AM' },
-  night: { hour: 20, minute: 0, label: '8:00 PM' },
+  morning: { hour: 7, minute: 30, label: '7:30 AM' },
+  night: { hour: 22, minute: 0, label: '10:00 PM' },
 }
-const ROLL_CALL_GRACE_MINUTES = 15
+const ROLL_CALL_GRACE_MINUTES = 0
+
+// Has the roll call window for this date + session closed?
+function rollCallClosed(dateStr, session, nowMs = Date.now()) {
+  return nowMs > rollCallDeadline(dateStr, session).graceEnd.getTime()
+}
+
+// ── Admin unlock requests (after the cutoff) ──────────────────────
+// A housemaster whose roll call window closed asks the admin to unlock
+// it for that house + day + session. If the table has not been created
+// yet nothing is blocked (no lock-out); admins see a note instead.
+const unlockKey = (house, dateStr, session) => `${normalizeHouse(house)}|${dateStr}|${session}`
+async function loadUnlocks(dateStr) {
+  const from = new Date(`${dateStr}T00:00:00`); from.setDate(from.getDate() - 7)
+  const { data, error } = await supabase.from('hm_rollcall_unlock').select('*')
+    .or(`status.eq.pending,date.gte.${from.toLocaleDateString('en-CA')}`).order('created_at', { ascending: false })
+  if (error) return { ready: false, rows: [] }
+  return { ready: true, rows: data || [] }
+}
+async function requestRollCallUnlock(house, dateStr, session, requestedBy, reason) {
+  const { error } = await supabase.from('hm_rollcall_unlock').upsert([{
+    house, date: dateStr, session, requested_by: requestedBy || 'Housemaster', reason: reason || null,
+    status: 'pending', decided_by: null, decided_at: null, created_at: new Date().toISOString(),
+  }], { onConflict: 'house,date,session' })
+  if (error) throw error
+  try {
+    const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+    const when = `${session === 'morning' ? 'Morning' : 'Night'} roll call · ${dateStr}`
+    await Promise.all((admins || []).map(a => sendPushToStaffId(a.id,
+      `🔓 Roll call unlock request — ${house}`,
+      `${requestedBy || 'Housemaster'} asks to unlock the ${when}. ${reason || ''}`.trim(), '/hostel?tab=attendance')))
+  } catch { /* push is best-effort */ }
+}
+async function decideRollCallUnlock(row, approve, decidedBy) {
+  const { error } = await supabase.from('hm_rollcall_unlock').update({
+    status: approve ? 'approved' : 'rejected', decided_by: decidedBy || 'Admin', decided_at: new Date().toISOString(),
+  }).eq('id', row.id)
+  if (error) throw error
+  try {
+    await notifyHousemasterByHouse(row.house,
+      approve ? '🔓 Roll call unlocked' : 'Roll call request declined',
+      approve ? `Admin unlocked the ${row.session} roll call for ${row.date}. Please complete it now.`
+        : `Admin declined your request to unlock the ${row.session} roll call for ${row.date}.`,
+      '/hostel?tab=attendance')
+  } catch { /* push is best-effort */ }
+}
 
 // Returns the hard deadline and grace-expiry Date objects for a given
 // calendar date + session.
@@ -787,7 +848,7 @@ async function logLateRollCallPenalty(houseName, dateStr, session, housemasterNa
     const { data, error } = await supabase.from('hm_neglect_log').insert([{
       house: houseName, date: dateStr, session,
       housemaster_name: housemasterName || 'Unknown',
-      missing_tabs: [`Late roll call — ${minutesLate} min past ${deadlineLabel} deadline (incl. 15-min grace). Penalty/fine applicable.`],
+      missing_tabs: [`Late roll call — ${minutesLate} min past ${deadlineLabel} cutoff (admin unlocked). Penalty/fine applicable.`],
       skip_reasons: {},
       check_type: 'late_rollcall',
     }]).select('id').single()
@@ -1807,10 +1868,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // Roll-call screen: a clock for the deadline countdown.
   const [clock, setClock] = useState(() => Date.now())
   useEffect(() => {
-    if (view !== 'rollcall') return
     const tick = setInterval(() => setClock(Date.now()), 30000)
     return () => clearInterval(tick)
-  }, [view])
+  }, [])
 
   const [otherSessionRecords, setOtherSessionRecords] = useState([])
   useEffect(() => {
@@ -2072,6 +2132,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   )
 
   const handleMark = async (studentId, status) => {
+    if (selectedHouse && lockInfo(selectedHouse).state !== 'open') { openUnlockRequest(selectedHouse); return }
     setSaving(true)
     setSavingId(studentId)
     const existing = allRecords.find(r => r.student_id === studentId)
@@ -2507,6 +2568,120 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     loadPrecheckRules().then(r => { if (alive) setPrecheckRules(r) })
     return () => { alive = false }
   }, [])
+  // ── Roll call cutoff + admin unlock ──
+  const lockOn = !isAdmin
+  const [unlocks, setUnlocks] = useState({ ready: false, rows: [] })
+  const [unlockTarget, setUnlockTarget] = useState(null) // { house, date, session }
+  const [unlockReason, setUnlockReason] = useState('')
+  const [unlockBusy, setUnlockBusy] = useState(false)
+  const [unlockError, setUnlockError] = useState('')
+  const refreshUnlocks = async () => setUnlocks(await loadUnlocks(date))
+  useEffect(() => {
+    let alive = true
+    const run = () => loadUnlocks(date).then(r => { if (alive) setUnlocks(r) })
+    run()
+    const t = setInterval(run, 45000)
+    return () => { alive = false; clearInterval(t) }
+  }, [date])
+  const lockInfo = houseName => {
+    if (!lockOn || !unlocks.ready || !houseName) return { state: 'open' }
+    if (!rollCallClosed(date, session, clock)) return { state: 'open' }
+    const st = getHouseStats(houseName)
+    if (st.total > 0 && st.unmarked === 0) return { state: 'open' }
+    const row = unlocks.rows.find(r => unlockKey(r.house, r.date, r.session) === unlockKey(houseName, date, session))
+    if (row?.status === 'approved') return { state: 'open', row }
+    if (row?.status === 'pending') return { state: 'pending', row }
+    if (row?.status === 'rejected') return { state: 'rejected', row }
+    return { state: 'closed' }
+  }
+  const openUnlockRequest = houseName => { setUnlockReason(''); setUnlockError(''); setUnlockTarget({ house: houseName, date, session }) }
+  const submitUnlockRequest = async () => {
+    if (!unlockTarget) return
+    setUnlockBusy(true); setUnlockError('')
+    try {
+      await requestRollCallUnlock(unlockTarget.house, unlockTarget.date, unlockTarget.session,
+        currentHousemaster?.name || currentUser?.name, unlockReason.trim())
+      await refreshUnlocks()
+      setUnlockTarget(null)
+    } catch (e) {
+      setUnlockError(e?.message || 'Could not send the request. Try again.')
+    }
+    setUnlockBusy(false)
+  }
+  const decideUnlock = async (row, approve) => {
+    setUnlockBusy(true)
+    try { await decideRollCallUnlock(row, approve, currentUser?.name) } catch (e) { alert(e?.message || 'Could not save the decision.') }
+    await refreshUnlocks()
+    setUnlockBusy(false)
+  }
+  const unlockModal = (() => {
+    if (!unlockTarget) return null
+    const { house, date: d, session: sess } = unlockTarget
+    const row = unlocks.rows.find(r => unlockKey(r.house, r.date, r.session) === unlockKey(house, d, sess))
+    const label = String(house).replace(/\b\w/g, c => c.toUpperCase())
+    const cutoff = ROLL_CALL_DEADLINE[sess]?.label
+    const pending = row?.status === 'pending'
+    return (
+      <div onClick={() => setUnlockTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(11,30,61,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 60px -20px rgba(11,30,61,.6)' }}>
+          <div style={{ padding: '18px 20px', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>🔒 Roll call closed</div>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 600, marginTop: 4, color: '#fff' }}>{label} House · {sess === 'morning' ? 'Morning' : 'Night'}</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.75)', marginTop: 3 }}>
+              {new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} · closed at {cutoff}
+            </div>
+          </div>
+          <div style={{ padding: 20 }}>
+            {pending ? (
+              <div style={{ padding: 14, borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>
+                ⏳ Your request is with the admin. You will get a notification as soon as it is approved.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.55 }}>
+                  The roll call window closed at <b>{cutoff}</b>. Ask the admin to unlock it for this house. {row?.status === 'rejected' && <b style={{ color: '#DC2626' }}>Your earlier request was declined.</b>}
+                </div>
+                <textarea value={unlockReason} onChange={e => setUnlockReason(e.target.value)} rows={3} placeholder="Reason (e.g. students returned late, network issue)"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', fontFamily: 'inherit', fontSize: 14, color: '#0B1E3D', resize: 'vertical' }} />
+                {unlockError && <div style={{ marginTop: 8, color: '#DC2626', fontSize: 12.5, fontWeight: 600 }}>{unlockError}</div>}
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button onClick={() => setUnlockTarget(null)} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>{pending ? 'Close' : 'Cancel'}</button>
+              {!pending && (
+                <button onClick={submitUnlockRequest} disabled={unlockBusy || !unlockReason.trim()}
+                  style={{ flex: 1.4, padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, fontFamily: 'inherit', color: '#1A1406', cursor: unlockBusy || !unlockReason.trim() ? 'not-allowed' : 'pointer',
+                    background: unlockReason.trim() ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5' }}>
+                  {unlockBusy ? 'Sending…' : 'Request admin to unlock'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  })()
+  const pendingUnlocks = isAdmin ? unlocks.rows.filter(r => r.status === 'pending') : []
+  const unlockPanel = isAdmin && (pendingUnlocks.length > 0 || !unlocks.ready) ? (
+    <div style={{ margin: '0 0 18px', borderRadius: 16, border: '1.5px solid #E2C57E', background: '#FFFBEB', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', fontWeight: 800, color: '#92400E', fontSize: 13.5 }}>
+        🔓 Roll call unlock requests {unlocks.ready ? `· ${pendingUnlocks.length} waiting` : ''}
+      </div>
+      {!unlocks.ready && <div style={{ padding: '0 16px 14px', fontSize: 12.5, color: '#92400E' }}>Housemasters are not blocked yet. Run the 20261026 SQL once in Supabase to switch on the 7:30 AM / 10:00 PM cutoff.</div>}
+      {pendingUnlocks.map(r => (
+        <div key={r.id} style={{ padding: '12px 16px', borderTop: '1px solid #F5E6B8', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 170 }}>
+            <div style={{ fontWeight: 800, color: '#0B1E3D', fontSize: 14 }}>{String(r.house).replace(/\b\w/g, c => c.toUpperCase())} · {r.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {r.date}</div>
+            <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{r.requested_by || 'Housemaster'}{r.reason ? ` — ${r.reason}` : ''}</div>
+          </div>
+          <button disabled={unlockBusy} onClick={() => decideUnlock(r, false)} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Decline</button>
+          <button disabled={unlockBusy} onClick={() => decideUnlock(r, true)} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1F8A4C,#15803D)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
+        </div>
+      ))}
+    </div>
+  ) : null
+  const lockLabel = lk => lk.state === 'pending' ? '⏳ Awaiting admin' : lk.state === 'rejected' ? '🔒 Declined · Request again' : '🔒 Closed · Request admin'
+
   const precheckKey = houseName => `${houseName}_${date}_${session}`
   const houseIdsFor = houseName => activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName)).map(s => s.id)
   const refreshPrecheck = async houseName => {
@@ -2543,6 +2718,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   }
 
   const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    if (lockInfo(houseName).state !== 'open') { openUnlockRequest(houseName); return false }
     // Housemasters clear the checklist first (not for a missed past day).
     const alreadyStarted = allRecords.some(r => r.house && normalizeHouse(r.house) === normalizeHouse(houseName))
     if (!skipBlockCheck && precheckOn && date === today() && !alreadyStarted && !precheckCleared(houseName)) {
@@ -2603,6 +2779,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Before roll call · {session === 'morning' ? '🌅 Morning' : '🌙 Night'}</div>
                 <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, lineHeight: 1.2, marginTop: 4 }}>{title} House</div>
                 <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 4 }}>Fill these tabs for this session first — roll call opens once every one is done.</div>
+                <div style={{ marginTop: 10 }}><HmChip hm={hmFor(h)} dark size={30} /></div>
               </div>
               <button onClick={close} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,.25)', background: 'rgba(255,255,255,.08)', color: '#fff', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
             </div>
@@ -2729,7 +2906,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {unlockPanel}
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
@@ -3244,6 +3422,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 const stats = getHouseStats(houseName)
                 const allDone = stats.total > 0 && stats.unmarked === 0
                 const blocked = isHouseBlocked(houseName)
+                const lk = lockInfo(houseName)
                 const prev = blocked ? getPrevDayStatus(houseName) : null
                 const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
                 const accent = allDone ? '#15803D' : pal.color
@@ -3371,7 +3550,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             boxShadow: blocked ? 'none' : '0 8px 16px -10px rgba(11,30,61,.8)',
                           }}
                         >
-                          {blocked ? '🔒 Locked' : allDone ? 'Roll call ✓' : 'Start roll call →'}
+                          {blocked ? '🔒 Locked' : lk.state !== 'open' ? lockLabel(lk) : allDone ? 'Roll call ✓' : 'Start roll call →'}
                         </button>
                       </div>
                       {allDone && (
@@ -3511,7 +3690,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}
         {/* Header */}
         <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
@@ -3543,7 +3722,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   cursor: blocked ? 'not-allowed' : 'pointer', color: blocked ? '#94A3B8' : '#1A1406',
                   background: blocked ? 'rgba(255,255,255,.12)' : 'linear-gradient(160deg,#D4AE58,#B8923A)',
                   boxShadow: blocked ? 'none' : 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' }}>
-                {blocked ? '🔒 Locked' : allDone ? 'Roll call ✓ — review' : `Start roll call · ${stats.unmarked} left →`}
+                {blocked ? '🔒 Locked' : lockInfo(selectedHouse).state !== 'open' ? lockLabel(lockInfo(selectedHouse)) : allDone ? 'Roll call ✓ — review' : `Start roll call · ${stats.unmarked} left →`}
               </button>
             </div>
           </div>
@@ -3699,6 +3878,26 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // ══════════════════════════════════════════════════
   //  VIEW 3: QUICK ROLL CALL (Card-by-card)
   // ══════════════════════════════════════════════════
+  if (view === 'rollcall' && selectedHouse && lockInfo(selectedHouse).state !== 'open') {
+    const lk = lockInfo(selectedHouse)
+    const cutoff = ROLL_CALL_DEADLINE[session]?.label
+    return (
+      <div style={{ maxWidth: 460, margin: '40px auto', padding: 24, borderRadius: 20, background: '#fff', border: '1px solid #E5DCC7', textAlign: 'center', boxShadow: '0 20px 40px -24px rgba(11,30,61,.4)' }}>
+        {unlockModal}
+        <div style={{ fontSize: 44 }}>🔒</div>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, color: '#0B1E3D', marginTop: 6 }}>Roll call closed</div>
+        <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.55, marginTop: 8 }}>
+          The {session === 'morning' ? 'morning' : 'night'} roll call for {String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())} closed at {cutoff}. {lk.state === 'pending' ? 'Your request is waiting for the admin.' : lk.state === 'rejected' ? 'The admin declined your last request.' : 'Ask the admin to unlock it.'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button onClick={() => { if (catchUpReturn) returnFromCatchUp(); setView('houses') }} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Back</button>
+          <button onClick={() => openUnlockRequest(selectedHouse)} style={{ flex: 1.4, padding: 12, borderRadius: 12, border: 'none', background: 'linear-gradient(160deg,#D4AE58,#B8923A)', color: '#1A1406', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {lk.state === 'pending' ? 'View request' : 'Request admin'}
+          </button>
+        </div>
+      </div>
+    )
+  }
   if (view === 'rollcall' && selectedHouse) {
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
@@ -3770,7 +3969,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
-        {reportModal}{precheckModal}{rulesModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
             <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
@@ -3829,20 +4028,20 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{selectedHouse}</div>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())}</div>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
               {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </div>
+            <div style={{ marginTop: 8 }}><HmChip hm={hmFor(selectedHouse)} dark size={34} /></div>
             {(() => {
-              // Deadline countdown: Morning 7:00 AM / Night 8:00 PM, 15-min grace.
+              // Cutoff countdown: Morning 7:30 AM / Night 10:00 PM.
               const { deadline, graceEnd, label } = rollCallDeadline(date, session)
               const mins = Math.round((deadline.getTime() - clock) / 60000)
               const fmt = m => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
-              const state = isDone ? { t: `Done · due by ${label}`, c: '#86EFAC' }
-                : clock > graceEnd.getTime() ? { t: `Overdue by ${fmt(-mins)} · was due ${label}`, c: '#FCA5A5' }
-                : mins < 0 ? { t: `Grace period · was due ${label}`, c: '#FCD34D' }
-                : mins <= 24 * 60 ? { t: `Due by ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
-                : { t: `Due by ${label}`, c: '#E9D9B0' }
+              const state = isDone ? { t: `Done · closes ${label}`, c: '#86EFAC' }
+                : clock > graceEnd.getTime() ? { t: `Past cutoff · closed at ${label} · admin unlocked`, c: '#FCD34D' }
+                : mins <= 24 * 60 ? { t: `Closes at ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
+                : { t: `Closes at ${label}`, c: '#E9D9B0' }
               return (
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
@@ -3912,8 +4111,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             }
             const isCelebratingCompliance = complianceCelebrating === complianceKey
 
-            // ── Mandatory roll-call deadline check (Morning 7:00 AM /
-            //    Night 8:00 PM, 15-minute grace) — computed on THIS
+            // ── Mandatory roll-call deadline check (Morning 7:30 AM /
+            //    Night 10:00 PM cutoff) — computed on THIS
             //    house's own just-completed session, independent of
             //    whichever house the compliance switcher above is showing.
             const ownSessionKey = `${selectedHouse}_${date}_${session}`
@@ -4142,8 +4341,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               )}
             </div>
 
-            {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
-                15-min grace. Late completions are flagged with a penalty/
+            {/* Mandatory deadline badge — Morning 7:30 AM / Night 10:00 PM,
+                cutoff. Late completions are flagged with a penalty/
                 fine notice and logged automatically (see effect above). */}
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -4154,8 +4353,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <span style={{ fontSize: '16px' }}>{lateStatus.isLate ? '⏰' : '✅'}</span>
               <span style={{ fontSize: '13px', fontWeight: '700', color: lateStatus.isLate ? '#dc2626' : '#16a34a' }}>
                 {lateStatus.isLate
-                  ? `Late — ${lateStatus.minutesLate} min past ${lateStatus.deadlineLabel} deadline. Penalty/fine applicable.`
-                  : `On time — within ${lateStatus.deadlineLabel} deadline (15-min grace)`}
+                  ? `Late — ${lateStatus.minutesLate} min past the ${lateStatus.deadlineLabel} cutoff. Penalty/fine applicable.`
+                  : `On time — within ${lateStatus.deadlineLabel} cutoff`}
               </span>
             </div>
 
@@ -6526,8 +6725,8 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
   const trendWithData = weekTrend.filter(d => d.presentPct !== null)
   const weekAvg = trendWithData.length ? Math.round(trendWithData.reduce((t, d) => t + d.presentPct, 0) / trendWithData.length) : null
   const ROLL_CALLS = [
-    { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:00 AM', marked: morningRows.length, present: presentCount, out: absentCount },
-    { key: 'night', icon: '🌙', name: 'Night roll call', due: '8:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, out: nightRows.filter(isOut).length },
+    { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:30 AM', marked: morningRows.length, present: presentCount, out: absentCount },
+    { key: 'night', icon: '🌙', name: 'Night roll call', due: '10:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, out: nightRows.filter(isOut).length },
   ]
   const FIGURES = [
     { id: 'leave', label: 'On leave', value: leaveToday.length, note: 'from today', color: '#1D4ED8' },
@@ -6539,7 +6738,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
   ]
   const attention = [
     ...(unmarkedCount > 0 ? [{ key: 'unmarked', color: '#B8923A', title: `${unmarkedCount} student${unmarkedCount > 1 ? 's' : ''} not marked`, sub: 'Morning roll call', tab: 'attendance' }] : []),
-    ...(activeStudentCount > 0 && !eveningDone && new Date().getHours() >= 19 ? [{ key: 'night', color: '#B8923A', title: `Night roll call: ${eveningMarkedCount}/${activeStudentCount} marked`, sub: 'Due by 8:00 PM', tab: 'attendance' }] : []),
+    ...(activeStudentCount > 0 && !eveningDone && new Date().getHours() >= 21 ? [{ key: 'night', color: '#B8923A', title: `Night roll call: ${eveningMarkedCount}/${activeStudentCount} marked`, sub: 'Closes at 10:00 PM', tab: 'attendance' }] : []),
     ...myDoubtTasks.slice(0, 2).map(t => ({ key: 'd' + t.id, color: '#B45309', title: `Doubt session · ${t.subject_name || 'Subject'}`, sub: [t.class_name, t.teacher_name && `from ${t.teacher_name}`].filter(Boolean).join(' · '), tab: 'doubtsession' })),
     ...maintenanceOpen.map(m => ({ key: 'm' + m.id, color: '#DC2626', title: `Urgent repair · ${m.category || 'Maintenance'}`, sub: [m.location, m.description].filter(Boolean).join(' · '), tab: 'maintenance' })),
     ...disciplineOpen.slice(0, 3).map(d => ({ key: 'x' + d.id, color: '#DC2626', title: `Discipline · ${d.student_name || 'Student'}`, sub: d.incident || '', tab: 'discipline' })),
@@ -6552,9 +6751,18 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18, minWidth: 0, flex: '1 1 320px' }}>
+          {currentHousemaster && <HmPortrait hm={currentHousemaster} size={mobile ? 68 : 88} />}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
+            {currentHousemaster && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  {hmTitle(currentHousemaster)}{currentHousemaster.house ? ` · ${currentHousemaster.house} House` : ''}
+                </span>
+              </div>
+            )}
             <div style={{ marginTop: 12 }}>
               <ReportExportButtons
                 title="HM Dashboard — Daily Snapshot"
@@ -6563,6 +6771,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
                 rows={snapshotRows}
               />
             </div>
+          </div>
           </div>
           <div style={{ padding: '12px 16px', borderRadius: 16, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', minWidth: 200 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#E2C57E' }}>🌙 Tonight's duty</div>

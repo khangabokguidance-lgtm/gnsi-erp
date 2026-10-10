@@ -44,7 +44,7 @@ export default {
         'Keep going until every student is marked (100 percent).',
         'When the house reaches 100 percent, a House Report opens with absent, late, on leave and sickbay students. You can press "🖨️ Print Report".',
       ],
-      tip: 'Deadlines: Morning roll call by 7:00 AM. Night roll call by 8:00 PM. You get 15 minutes extra.',
+      tip: 'Roll call closes at 7:30 AM (morning) and 10:00 PM (night). After that it is blocked for the day, and you must request the admin to unlock it.',
     },
     {
       title: 'Understand the roll call rules',

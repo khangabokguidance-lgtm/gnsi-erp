@@ -13,7 +13,7 @@ const supabase = createClient(
 )
 
 // ── Roll call cutoff times (24h, IST) — edit these to match your schedule ──
-const CUTOFFS = { morning: "09:00", night: "21:00" }
+const CUTOFFS = { morning: "07:30", night: "22:00" }
 
 function nowIST() {
   // Vercel cron runs in UTC. IST = UTC + 5:30.
