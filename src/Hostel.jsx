@@ -1655,6 +1655,9 @@ function MobileActionButtons({ actions }) {
 // outpass. (Absent / Late / On Leave / Sick were removed; old records with
 // those values still display, see statusConfig.)
 const ATTENDANCE_TYPES = ['Present', 'Outing', 'Outpass']
+// "Late" (arrived after roll call time) is offered for day scholars only; it counts as present.
+const isDayScholar = s => /day\s*scholar/i.test(String(s?.hostel_type || '')) || /day\s*scholar/i.test(String(s?.house || ''))
+const typesFor = s => (isDayScholar(s) ? [...ATTENDANCE_TYPES, 'Late'] : ATTENDANCE_TYPES)
 
 const HOUSE_PALETTE = [
   { color: '#1d4ed8', bg: '#dbeafe', light: '#eff6ff', border: '#93c5fd', dark: '#1e40af' },
@@ -3781,7 +3784,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       { key: 'Unmarked', label: 'To mark', value: stats.unmarked, color: '#64748B' },
     ]
     const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
-    const LETTER = { Present: 'P', Outing: 'O', Outpass: 'U' }
+    const LETTER = { Present: 'P', Outing: 'O', Outpass: 'U', Late: 'L' }
 
     return (
       <div>
@@ -3946,7 +3949,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   {status === 'Unmarked' ? 'To mark' : status}
                 </span>
                 <div role="group" aria-label={`Mark ${student.name}`} style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 11, background: '#F5F1E8', opacity: busy ? 0.55 : 1 }}>
-                  {ATTENDANCE_TYPES.map(st => {
+                  {typesFor(student).map(st => {
                     const on = status === st
                     const c = statusConfig[st].color
                     return (
@@ -4041,7 +4044,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     }
 
     // Desktop shortcuts: P present, O outing, U outpass; ← → to move.
-    const KEY_STATUS = { p: 'Present', o: 'Outing', u: 'Outpass' }
+    const KEY_STATUS = { p: 'Present', o: 'Outing', u: 'Outpass', l: 'Late' }
     const onRollCallKey = e => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
       const t = e.target
@@ -4050,6 +4053,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       if (e.key === 'ArrowRight') { e.preventDefault(); setRollCallIndex(i => Math.min(total - 1, i + 1)); return }
       const st = KEY_STATUS[String(e.key).toLowerCase()]
       if (!st || isDone || !currentStudent || savingId === currentStudent.id) return
+      if (st === 'Late' && !isDayScholar(currentStudent)) return // Late is for day scholars only
       e.preventDefault()
       markAndAdvance(currentStudent.id, st)
     }
@@ -4819,6 +4823,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {[
               [{ status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' }],
               [{ status: 'Outing', bg: '#0369a1', label: '🚶 Outing', k: 'O' }, { status: 'Outpass', bg: '#b45309', label: '🎫 Outpass', k: 'U' }],
+              ...(isDayScholar(currentStudent) ? [[{ status: 'Late', bg: '#d97706', label: '⏰ Late (day scholar)', k: 'L' }]] : []),
             ].map((row, ri) => (
               <div key={ri} style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, 1fr)`, gap: '10px', marginBottom: ri ? '20px' : '10px' }}>
                 {row.map(({ status, bg, label, k }) => (
@@ -4843,7 +4848,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             ))}
             {!mobile && (
               <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', margin: '-10px 0 16px' }}>
-                Keyboard: P present · O outing · U outpass · ← → move
+                Keyboard: P present · O outing · U outpass{isDayScholar(currentStudent) ? ' · L late' : ''} · ← → move
               </div>
             )}
 
