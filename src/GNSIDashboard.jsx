@@ -778,6 +778,10 @@ function getDailyBriefing(data, max = 5) {
 }
 
 // ─── DATA LOADING ─────────────────────────────────────────────────────────────
+// The last loaded dashboard, reused for a few minutes (see load() below).
+const DASHBOARD_CACHE_MS = 5 * 60 * 1000
+let dashboardCache = null
+
 async function loadAllData() {
   const today = todayStr(), nowD = new Date()
 
@@ -850,7 +854,7 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
     // FIX #4: single fetch with all needed columns (removed duplicate)
-    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
+    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
     // FIX: removed .limit(200) — was silently dropping older flat/course fee records
@@ -2558,9 +2562,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),60000); return()=>clearInterval(t) },[])
 
-  const load = useCallback(async()=>{
+  // loadAllData() downloads ~50 tables, so its result is kept for
+  // DASHBOARD_CACHE_MS and reused when the dashboard is reopened. Calling
+  // load() with no argument (Retry, the live-update reload) always refetches.
+  const load = useCallback(async(opts)=>{
+    if (opts?.useCache && dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_CACHE_MS) {
+      setData(dashboardCache.data); setLiveTotal(dashboardCache.data.totalFeeCollected); setLoading(false); setError(null)
+      return
+    }
     setLoading(true); setError(null)
-    try { const d=await loadAllData(); setData(d); setLiveTotal(d.totalFeeCollected) }
+    try { const d=await loadAllData(); dashboardCache = { at: Date.now(), data: d }; setData(d); setLiveTotal(d.totalFeeCollected) }
     catch(e) { console.error(e); setError(e.message) }
     finally { setLoading(false) }
   },[])
@@ -2571,15 +2582,22 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
     // overwritten (upsertAccount uses onConflict→UPDATE, which never fires INSERT).
     // Instead, on ANY accounts change we debounce a full reload so every total
     // reconverges to the authoritative paginated figure rather than guessing deltas.
+    // A reload is ~50 requests, so it waits for a quiet minute, runs only in a
+    // visible tab, and at most once per DASHBOARD_CACHE_MS however many fee or
+    // expense entries are made in between.
     let debounce
     const channel=supabase.channel("gnsi-live")
       .on("postgres_changes",{event:"*",schema:"public",table:"accounts"},
-        ()=>{ clearTimeout(debounce); debounce=setTimeout(()=>{ load() }, 1500) })
+        ()=>{ clearTimeout(debounce); debounce=setTimeout(()=>{
+          if (document.visibilityState !== 'visible') return
+          if (dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_CACHE_MS) return
+          load()
+        }, 60000) })
       .subscribe()
     return()=>{ clearTimeout(debounce); channel.unsubscribe() }
   },[load])
 
-  useEffect(()=>{ load() },[load])
+  useEffect(()=>{ load({ useCache: true }) },[load])
 
   if(error) return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
