@@ -280,7 +280,7 @@ const TAB_GROUPS = [
 // A housemaster/housemistress logging in sees only these tabs, each
 // limited to their own house; everything else stays with the office.
 const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
-const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
 
 // Rows of one house: matched by the row's student (when it has one) or by
 // the row's own house. No lockHouse = everything (admins, office staff).
@@ -12921,7 +12921,7 @@ function Hostel() {
   const activeTabDef = TABS.find(t => t.id === activeTab)
   const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
   const QUICK_TABS = hmOnly
-    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal']
+    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'transfer', 'nightduty', 'maintenance', 'journal']
     : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'transfer', 'kitchen', 'maintenance']
   const menuGroups = TAB_GROUPS.map(g => ({ ...g, ids: g.ids.filter(id => shownTabs.some(t => t.id === id)) })).filter(g => g.ids.length)
   const splitLabel = label => {
@@ -12936,7 +12936,7 @@ function Hostel() {
   const standaloneTab = !hmOnly && (activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport')
 
   const tabContent = {
-    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
+    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={myStudents} currentUser={currentUser} canDropout={!hmOnly} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
     nightduty: <NightDutyTab staffProfiles={staffProfiles} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
     discipline: <DisciplineTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
@@ -13209,7 +13209,7 @@ body:has(.hs-bottom){padding-bottom:76px}
     </div>
   )
 }
-function StudentTransferTab({ students, currentUser }) {
+function StudentTransferTab({ students, currentUser, canDropout = true }) {
   const [houses, setHouses] = useState([])
   const [search, setSearch] = useState('')
   const [filterHouse, setFilterHouse] = useState('All')
@@ -13523,13 +13523,15 @@ function StudentTransferTab({ students, currentUser }) {
         >
           {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
         </button>
-        <button
-          onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
-          disabled={transferring || selectedIds.size === 0}
-          style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
-        >
-          🚪 Dropout ({selectedCount})
-        </button>
+        {canDropout && (
+          <button
+            onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
+            disabled={transferring || selectedIds.size === 0}
+            style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
+          >
+            🚪 Dropout ({selectedCount})
+          </button>
+        )}
         <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
@@ -13546,7 +13548,7 @@ function StudentTransferTab({ students, currentUser }) {
         )}
       </div>
 
-      {showDropouts && (
+      {canDropout && showDropouts && (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
           <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🚪 Dropout students ({dropoutList.length})</div>
           {dropoutList.length === 0 ? (
@@ -13615,13 +13617,15 @@ function StudentTransferTab({ students, currentUser }) {
                       ✕ Remove
                     </button>
                   )}
-                  <button
-                    onClick={() => markDropout([s])}
-                    disabled={transferring}
-                    style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
-                  >
-                    🚪 Dropout
-                  </button>
+                  {canDropout && (
+                    <button
+                      onClick={() => markDropout([s])}
+                      disabled={transferring}
+                      style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                    >
+                      🚪 Dropout
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -13707,19 +13711,21 @@ function StudentTransferTab({ students, currentUser }) {
                         ✕ Remove
                       </button>
                     )}
-                    <button
-                      onClick={() => markDropout([s])}
-                      disabled={transferring}
-                      style={{
-                        ...btn('#fef3c7', '#b45309'),
-                        fontSize: 11,
-                        padding: '5px 12px',
-                        cursor: transferring ? 'wait' : 'pointer',
-                        opacity: transferring ? 0.6 : 1,
-                      }}
-                    >
-                      🚪 Dropout
-                    </button>
+                    {canDropout && (
+                      <button
+                        onClick={() => markDropout([s])}
+                        disabled={transferring}
+                        style={{
+                          ...btn('#fef3c7', '#b45309'),
+                          fontSize: 11,
+                          padding: '5px 12px',
+                          cursor: transferring ? 'wait' : 'pointer',
+                          opacity: transferring ? 0.6 : 1,
+                        }}
+                      >
+                        🚪 Dropout
+                      </button>
+                    )}
                   </td>
                 </tr>
               )
