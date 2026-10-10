@@ -6784,10 +6784,19 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18, minWidth: 0, flex: '1 1 320px' }}>
-          {currentHousemaster && <HmPortrait hm={currentHousemaster} size={mobile ? 68 : 88} />}
+          {/* A housemaster sees their own portrait; an admin / superintendent
+              (no house of their own) sees theirs, from the Staff module. */}
+          {(currentHousemaster || currentUser?.name) && <HmPortrait hm={currentHousemaster || { name: currentUser.name, staff_id: currentUser.id }} size={mobile ? 68 : 88} />}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
+            {!currentHousemaster && currentUser?.name && currentUser?.role && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  {isAdmin ? 'Administration' : currentUser.role}{isAdmin && currentUser.role ? ` · ${currentUser.role}` : ''}
+                </span>
+              </div>
+            )}
             {currentHousemaster && (
               <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
