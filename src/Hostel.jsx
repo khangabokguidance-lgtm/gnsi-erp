@@ -6500,61 +6500,62 @@ function HMPerformanceRanking() {
         <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No roll-call or compliance data in the last 7 days.</div>
       ) : (
         <>
-          {/* Top / Weak performer highlight */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-            {topPerformer && (
-              <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  🥇 Top Performer
-                </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{topPerformer.hmName}</div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {topPerformer.house} · Score: {topPerformer.score}%</div>
-              </div>
-            )}
-            {weakestPerformer && weakestPerformer.house !== topPerformer?.house && (
-              <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  ⚠️ Needs Attention
-                </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{weakestPerformer.hmName}</div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {weakestPerformer.house} · Score: {weakestPerformer.score}%</div>
-              </div>
-            )}
-          </div>
-
-          {/* Full ranking list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Housemaster / housemistress profile cards (the roll-call profile card design), best score first */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
             {rankings.map((r, i) => {
               const isExpanded = expandedHouse === r.house
+              const isTop = topPerformer && r.house === topPerformer.house
+              const isWeak = weakestPerformer && weakestPerformer.house !== topPerformer?.house && r.house === weakestPerformer.house
+              const hmRef = r.hm || { name: r.hmName }
+              const scored = rankings.filter(x => x.score !== null).length
+              const tiles = [
+                { label: 'Score', value: r.score, c: '#fff' },
+                { label: 'On-time', value: r.onTimePct, c: '#4ADE80' },
+                { label: 'Checks', value: r.compliancePct, c: '#7DD3FC' },
+                { label: 'No gaps', value: r.neglectFreePct, c: '#FBBF24' },
+              ]
+              const tag = isTop ? '🥇 Top performer' : isWeak ? '⚠️ Needs attention' : null
               return (
-                <div key={r.house} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
+                <div key={r.house} style={{ gridColumn: isExpanded ? '1 / -1' : 'auto', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+                  boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)', background: '#fff' }}>
                   <div
                     onClick={() => setExpandedHouse(isExpanded ? null : r.house)}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? '#f8fafc' : 'white' }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? null : r.house) } }}
                     title={isExpanded ? 'Click to collapse' : 'Click to see details'}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : 'white' }}
+                    style={{ cursor: 'pointer', position: 'relative', textAlign: 'center', color: '#fff', padding: '16px 14px 14px',
+                      background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)' }}
                   >
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#94a3b8', width: '22px' }}>#{i + 1}</div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{r.hmName}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>🏠 {r.house} · {r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Performance</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>Last 7 days</div>
+                    {tag && <div style={{ display: 'inline-block', marginTop: 8, padding: '3px 12px', borderRadius: 99, fontSize: 11, fontWeight: 800, color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.45)' }}>{tag}</div>}
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}>
+                      <HmPortrait hm={hmRef} size={96} />
                     </div>
-                    <div style={{
-                      padding: '6px 14px', borderRadius: '99px', fontWeight: '800', fontSize: '14px',
-                      background: scoreBg(r.score), color: scoreColor(r.score),
-                    }}>
-                      {r.score === null ? '—' : `${r.score}%`}
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{r.hmName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(r.hm)} · {String(r.house).replace(/\b\w/g, c => c.toUpperCase())} House</div>
+                    <div style={{ margin: '12px 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                        <span style={{ fontSize: 26 }}>{r.score === null ? '—' : medalFor(i + 1)}</span>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>{r.score === null ? '—' : `#${i + 1}`}</span>
+                        {r.score !== null && <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {scored}<br /><b style={{ color: '#E2C57E' }}>Score {r.score}/100</b></span>}
+                      </div>
                     </div>
-                    <span style={{
-                      fontSize: '14px', color: isExpanded ? '#1e3a6e' : '#94a3b8', transition: 'transform 0.2s',
-                      transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex',
-                      width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: '50%', background: isExpanded ? '#e3ecf7' : 'transparent',
-                    }}>▾</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                      {tiles.map(t => (
+                        <div key={t.label} style={{ borderRadius: 12, padding: '8px 2px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.14)' }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 700, color: t.c }}>{t.value === null || t.value === undefined ? '—' : `${t.value}%`}</div>
+                          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.65)', marginTop: 1 }}>{t.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11.5, color: 'rgba(255,255,255,.7)' }}>{r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.5)' }}>
+                      Guidance Navodaya &amp; Sainik Institute <span style={{ display: 'inline-block', marginLeft: 4, transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                    </div>
                   </div>
                   {isExpanded && (
                     <div style={{ padding: '14px', borderTop: '1px solid #f1f5f9', background: '#fafbfc' }}>
