@@ -2610,6 +2610,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // clear" confirmation animation has already played for this slot.
   const [dailyCheckHouse, setDailyCheckHouse] = useState(null) // house currently expanded for slot detail
   const [dailyCheckResults, setDailyCheckResults] = useState({}) // key: `${house}_${date}_${slot}` → { missing, checked }
+  // Read-only result worked out by the page itself for slots whose roll call is complete, so
+  // the cards show the real position without a tap. It never logs a gap or sends a message;
+  // those still happen when the check is run (or "Log gaps" is tapped).
+  const [dailyPreview, setDailyPreview] = useState({}) // same key → missing tab keys
+  const resultFor = key => dailyCheckResults[key] || (dailyPreview[key] ? { checked: true, preview: true, missing: dailyPreview[key] } : undefined)
   const [dailyCheckLogId, setDailyCheckLogId] = useState({})
   const [dailySkipPromptTab, setDailySkipPromptTab] = useState(null)
   const [dailySkipDraft, setDailySkipDraft] = useState('')
@@ -2651,6 +2656,29 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setCelebratingSlot(prev => (prev === key ? null : prev)), 1800)
     }
   }
+
+  useEffect(() => {
+    if (loading || !houses.length) return undefined
+    let alive = true
+    const todo = []
+    houses.forEach(houseName => DAILY_SLOTS.forEach(slot => {
+      const key = `${houseName}_${date}_${slot.key}`
+      if (!dailyCheckResults[key]?.checked && dailyPreview[key] === undefined && isRollCallSessionComplete(houseName, slot.rollCallGate)) todo.push({ houseName, slotKey: slot.key, key })
+    }))
+    if (!todo.length) return undefined
+    ;(async () => {
+      for (const t of todo) {
+        if (!alive) return
+        try {
+          const ids = activeStudents.filter(st => normalizeHouse(st.house) === normalizeHouse(t.houseName)).map(st => st.id)
+          const missing = await checkSixTabComplianceForSlot(t.houseName, date, t.slotKey, ids)
+          if (alive) setDailyPreview(prev => ({ ...prev, [t.key]: missing }))
+        } catch { /* leave it as "pending"; tapping still works */ }
+      }
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, houses, date, todayBothSessionRecords])
 
   const handleDailyRecheckTab = async (dailyKey, tabKey, houseName, slotKey) => {
     const recheckKey = `${dailyKey}_${tabKey}`
@@ -3313,7 +3341,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   let houseHasGap = false
                   DAILY_SLOTS.forEach(slot => {
                     const key = `${houseName}_${date}_${slot.key}`
-                    const result = dailyCheckResults[key]
+                    const result = resultFor(key)
                     const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                     const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                     const done = result?.checked && remaining.length === 0
@@ -3380,7 +3408,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   let houseGaps = 0, houseDone = 0
                   DAILY_SLOTS.forEach(slot => {
                     const key = `${houseName}_${date}_${slot.key}`
-                    const result = dailyCheckResults[key]
+                    const result = resultFor(key)
                     const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                     const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                     if (result?.checked && remaining.length === 0) houseDone++
@@ -3416,7 +3444,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
-                            const result = dailyCheckResults[key]
+                            const result = resultFor(key)
                             const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                             const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                             const done = result?.checked && remaining.length === 0
@@ -3478,11 +3506,39 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
 
+                      {/* ── Fix buttons: one per slot that is not done ── */}
+                      {(() => {
+                        const fixes = DAILY_SLOTS.map(slot => {
+                          const key = `${houseName}_${date}_${slot.key}`
+                          const result = resultFor(key)
+                          const resolved = dailyResolvedByRecheck[key] || {}
+                          const remaining = result?.missing?.filter(k => !resolved[k]) || []
+                          if (result?.checked && remaining.length === 0) return null
+                          const gateOk = isRollCallSessionComplete(houseName, slot.rollCallGate)
+                          const label = slot.key === 'morning' ? '🌅 Morning' : '🌙 Night'
+                          if (!gateOk) return { key: slot.key, label, text: `Fix ${label} roll call`, run: () => { setSelectedHouse(houseName); setSession(slot.rollCallGate); setView('dashboard') } }
+                          const firstGap = SIX_TABS.find(t => remaining.includes(t.key))
+                          if (firstGap) return { key: slot.key, label, text: `Fix ${label} · ${firstGap.label}`, run: () => { if (onCompleteTab) onCompleteTab(firstGap.rootTabId, houseName); else onTabChange?.(firstGap.rootTabId) } }
+                          return { key: slot.key, label, text: `Check ${label}`, run: () => runDailySlotCheck(houseName, slot.key) }
+                        }).filter(Boolean)
+                        if (!fixes.length) return null
+                        return (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 16px 12px 18px' }}>
+                            {fixes.map(f => (
+                              <button key={f.key} type="button" onClick={f.run}
+                                style={{ padding: '6px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.error, color: '#fff', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                🔧 {f.text}
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      })()}
+
                       {isExpanded && (
                         <div style={{ padding: '0 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${MD.color.outlineVariant}`, paddingTop: '12px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
-                            const result = dailyCheckResults[key]
+                            const result = resultFor(key)
                             const isCurrent = slot.key === nowSlot
                             const isCelebrating = celebratingSlot === key
                             const gateComplete = isRollCallSessionComplete(houseName, slot.rollCallGate)
@@ -3496,12 +3552,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                   {isCelebrating && (
                                     <span className="hr-pop-in-anim" style={{ fontSize: '16px' }}>✅🎉</span>
                                   )}
-                                  {!result?.checked && gateComplete && (
+                                  {(!result?.checked || (result.preview && result.missing.length > 0)) && gateComplete && (
                                     <button
                                       onClick={() => runDailySlotCheck(houseName, slot.key)}
                                       style={{ padding: '5px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.primary, color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                                     >
-                                      Run Check
+                                      {result?.preview ? 'Log gaps' : 'Run Check'}
                                     </button>
                                   )}
                                   {!result?.checked && !gateComplete && (
@@ -3510,7 +3566,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                     </span>
                                   )}
                                   {result?.checked && result.missing.length === 0 && !isCelebrating && (
-                                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✓ All clear</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✓ All clear{result.preview ? ' (auto-checked)' : ''}</span>
                                   )}
                                 </div>
                                 {!result?.checked && !gateComplete && (
