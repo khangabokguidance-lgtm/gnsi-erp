@@ -738,7 +738,7 @@ export default function App() {
   // dedupes against student_mismatch_log), so this can't spam admins by
   // re-flagging something already open from a previous scan. See
   // mismatchScanner.js / mismatchDetector.js / mismatchLog.js.
-  useMismatchAutoScan({ enabled: !!currentUser && isAdmin, intervalMinutes: 60 })
+  useMismatchAutoScan({ enabled: !!currentUser && isAdmin, intervalMinutes: 24 * 60 })
 
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 
