@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { StaffAvatar } from './staffPhotos'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
 import { courseOf, canonicalBatch, takeAttendanceHandoff, handoffToStudents } from './courseMap'
@@ -309,6 +310,26 @@ function ConsoleCard({ children, style = {}, padded = true, className = '' }) {
     }}>
       {children}
     </div>
+  )
+}
+
+// The teacher taking the class: the Staff-module photo (initials when there is none), name and designation.
+function TeacherChip({ name, id, designation, size = 36 }) {
+  if (!name) return null
+  const initials = String(name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <StaffAvatar name={name} id={id}
+        style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 700, color: C.indigo, background: C.indigoSoft, border: `2px solid ${C.border}` }}>
+        {initials}
+      </StaffAvatar>
+      <span style={{ minWidth: 0, lineHeight: 1.25 }}>
+        <span style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: C.inkMuted }}>Teacher</span>
+        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 650, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+        {designation && <span style={{ display: 'block', fontSize: 11.5, color: C.inkMuted }}>{designation}</span>}
+      </span>
+    </span>
   )
 }
 
@@ -1737,6 +1758,12 @@ function TabMark({ staff, prefill }) {
                 <option value="">Select teacher…</option>
                 {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
               </ConsoleSelect>
+              {form.teacher_name && (
+                <div style={{ marginTop: 8 }}>
+                  <TeacherChip name={form.teacher_name} id={form.staff_id || undefined}
+                    designation={staff.find(s => String(s.id) === String(form.staff_id) || s.name === form.teacher_name)?.designation} />
+                </div>
+              )}
             </div>
             <div>
               <ConsoleLabel>Session type</ConsoleLabel>
@@ -1765,6 +1792,15 @@ function TabMark({ staff, prefill }) {
               </>
             }
           />
+          {form.teacher_name && (
+            <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}`, background: '#FAFAF7' }}>
+              <TeacherChip name={form.teacher_name} id={form.staff_id || undefined}
+                designation={staff.find(s => String(s.id) === String(form.staff_id) || s.name === form.teacher_name)?.designation} />
+              {(form.subject_name || form.period_number) && (
+                <span style={{ fontSize: 12.5, color: C.inkMuted }}>{[form.subject_name, form.period_number && `Period ${form.period_number}`].filter(Boolean).join(' · ')}</span>
+              )}
+            </div>
+          )}
           <div style={{ padding: '12px 20px', display: 'flex', gap: 8, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
             {STATUSES.map(s => {
               const tone = STATUS_TONE[s]
