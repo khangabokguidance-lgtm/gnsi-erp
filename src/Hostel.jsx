@@ -12922,7 +12922,7 @@ function Hostel() {
   const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
   const QUICK_TABS = hmOnly
     ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal']
-    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'transfer', 'kitchen', 'maintenance']
   const menuGroups = TAB_GROUPS.map(g => ({ ...g, ids: g.ids.filter(id => shownTabs.some(t => t.id === id)) })).filter(g => g.ids.length)
   const splitLabel = label => {
     const m = (label || '').match(/^(\S+)\s+(.*)$/)
