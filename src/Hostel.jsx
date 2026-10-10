@@ -19,7 +19,7 @@ import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
-import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
+import { allocateStudent, vacateStudent, bulkAllocateStudents, bulkVacateStudents, setStudentsStatus } from './hostelAllocation'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -1786,6 +1786,52 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 }
 
 
+// ── Student photos for the roll call card ─────────────────────────────────
+// The shared student list does not carry photos, so they are read here, only
+// for the students of the house being called, in chunks. A photo uploaded to
+// private storage is saved as photo_path only; it gets a temporary viewing
+// link in memory (nothing is written back). photo_path is optional: if that
+// column is missing the query falls back to photo_url alone.
+const STUDENT_PHOTO_BUCKET = 'gnsi'
+const studentPhotoCache = new Map() // student id -> url | null
+function useStudentPhotos(students) {
+  const [, bump] = useState(0)
+  const key = (students || []).map(s => s.id).join(',')
+  useEffect(() => {
+    const ids = (students || []).map(s => s.id).filter(id => !studentPhotoCache.has(id))
+    if (!ids.length) return undefined
+    let alive = true
+    ;(async () => {
+      for (let i = 0; i < ids.length; i += 100) {
+        const part = ids.slice(i, i + 100)
+        try {
+          let { data, error } = await supabase.from('students').select('id, photo_url, photo_path').in('id', part)
+          if (error) ({ data } = await supabase.from('students').select('id, photo_url').in('id', part))
+          const rows = data || []
+          const need = rows.filter(r => !r.photo_url && r.photo_path)
+          const signed = new Map()
+          if (need.length) {
+            const { data: sd } = await supabase.storage.from(STUDENT_PHOTO_BUCKET).createSignedUrls(need.map(r => r.photo_path), 86400)
+            ;(sd || []).forEach(d => { if (d.signedUrl) signed.set(d.path, d.signedUrl) })
+          }
+          for (const r of rows) studentPhotoCache.set(r.id, r.photo_url || signed.get(r.photo_path) || null)
+        } catch { /* photos are a bonus: the card falls back to the initial */ }
+        for (const id of part) if (!studentPhotoCache.has(id)) studentPhotoCache.set(id, null)
+        if (alive) bump(n => n + 1)
+      }
+    })()
+    return () => { alive = false }
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return id => studentPhotoCache.get(id) || null
+}
+function RollCallPhoto({ url, name }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { setFailed(false) }, [url])
+  if (!url || failed) return <>{(name || '?')[0].toUpperCase()}</>
+  return <img src={url} alt={name || 'Student'} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+}
+
+
 // ══════════════════════════════════════════════════════════════
 //  MISSING ROLL CALL WARNING
 //  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
@@ -1796,7 +1842,7 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 //  it (so a school holiday never raises it). Reads the three days' hostel
 //  roll call rows once when it opens; nothing refreshes by itself.
 // ══════════════════════════════════════════════════════════════
-function MissingRollCallAlert({ students, onOpen, lockHouse }) {
+function MissingRollCallAlert({ students, onOpen, onFix, lockHouse }) {
   const [rows, setRows] = useState(null)
   const [now, setNow] = useState(() => Date.now())
   const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
@@ -1857,7 +1903,10 @@ function MissingRollCallAlert({ students, onOpen, lockHouse }) {
               {c.items.map(m => (
                 <div key={`${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#7F1D1D' }}>
                   <span>{m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
-                  <b>{m.marked} of {m.total} marked</b>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <b>{m.marked} of {m.total} marked</b>
+                    {onFix && <button type="button" onClick={() => onFix(m.house, m.date, m.session)} style={{ padding: '3px 10px', borderRadius: 8, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Fix now</button>}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1873,7 +1922,7 @@ function MissingRollCallAlert({ students, onOpen, lockHouse }) {
         <div style={{ marginTop: 10, padding: '12px 16px', borderRadius: 14, border: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
           <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
           <ol style={{ margin: 0, paddingLeft: 20 }}>
-            <li><b>Yesterday's roll call:</b> open Roll Call, tap the house marked 🔒, then <b>Catch up</b>. Today's roll call stays locked until yesterday is 100% marked.</li>
+            <li><b>Any missed roll call:</b> tap <b>Fix now</b> on its line (or open Roll Call, tap the house, then <b>Catch up</b>) and mark every student. Today's roll call stays locked until yesterday is 100% marked.</li>
             {ROLL_CALL_CUTOFF_LOCK
               ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
               : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
@@ -1907,6 +1956,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // Roll call state
   const [rollCallIndex, setRollCallIndex] = useState(0)
   const [rollCallStudents, setRollCallStudents] = useState([])
+  const studentPhotoOf = useStudentPhotos(rollCallStudents)
   const [justMarked, setJustMarked] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
@@ -2016,14 +2066,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   useEffect(() => {
     let cancelled = false
     setPrevDayLoaded(false)
-    supabase
+    fetchAllRows(() => supabase
       .from('attendance_records')
       .select('student_id, house, session, status')
       .eq('date', prevDate)
       .in('session', ['morning', 'night'])
-      .then(({ data }) => {
+      .order('id'))
+      .then(data => {
         if (!cancelled) {
-          setPrevDayRecords(data || [])
+          setPrevDayRecords(data)
           setPrevDayLoaded(true)
         }
       })
@@ -2137,10 +2188,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   const catchUpTargetRef = useRef(null)
 
-  const handleCatchUpRollCall = (houseName) => {
+  // `target` = { date, session } fixes that exact missed roll call (the warning
+  // cards list the last three days); without it, yesterday's first incomplete
+  // session is opened.
+  const handleCatchUpRollCall = (houseName, target) => {
     const p = getPrevDayStatus(houseName)
-    const targetSession = p.morningMarked < p.total ? 'morning' : 'night'
-    const targetDate = prevDate
+    const targetSession = target?.session || (p.morningMarked < p.total ? 'morning' : 'night')
+    const targetDate = target?.date || prevDate
     setCatchUpReturn({ date, session }) // remember where we came from
     catchUpTargetRef.current = { date: targetDate, session: targetSession }
     setSelectedHouse(houseName)
@@ -3056,7 +3110,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       <div>
         {reportModal}{precheckModal}{rulesModal}{unlockModal}
         {unlockPanel}
-        <MissingRollCallAlert students={activeStudents} />
+        <MissingRollCallAlert students={activeStudents} onFix={(house, d, sess) => handleCatchUpRollCall(house, { date: d, session: sess })} />
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
@@ -4768,15 +4822,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
               {/* Avatar */}
               <div style={{
-                width: '84px', height: '84px', borderRadius: '50%', boxSizing: 'border-box',
+                width: '112px', height: '112px', borderRadius: '50%', boxSizing: 'border-box', overflow: 'hidden',
                 background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d) padding-box, linear-gradient(145deg,#e9d9b0,#c9a24b,#8a6d2b) border-box',
                 border: '4px solid transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '32px', fontWeight: '600', color: '#fff', fontFamily: "'Fraunces',Georgia,serif",
-                margin: '-42px auto 14px', position: 'relative',
+                margin: '-56px auto 14px', position: 'relative',
                 boxShadow: '0 12px 22px -8px rgba(19,42,79,.6)',
               }}>
-                {(currentStudent.name || '?')[0].toUpperCase()}
+                <RollCallPhoto url={studentPhotoOf(currentStudent.id)} name={currentStudent.name} />
               </div>
 
               <div style={{ fontSize: '24px', fontWeight: '600', color: '#0e203f', marginBottom: '8px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
@@ -12887,9 +12941,10 @@ function StudentTransferTab({ students, currentUser }) {
   const [toast, setToast] = useState(null)
   const mobile = useMobileView()
 
+  const [showDropouts, setShowDropouts] = useState(false)
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color })
-    setTimeout(() => setToast(null), 3500)
+    setTimeout(() => setToast(null), color === '#dc2626' ? 9000 : 3500) // errors stay long enough to read
   }
 
   // Load houses
@@ -12898,6 +12953,17 @@ function StudentTransferTab({ students, currentUser }) {
       .then(({ data }) => setHouses(data || []))
       .finally(() => setLoading(false))
   }, [])
+  // The houses table can be empty or miss a house; fall back to the houses the
+  // students are actually in, so there is always something to transfer to.
+  const houseOptions = useMemo(() => {
+    const byKey = new Map()
+    for (const h of houses) byKey.set(normalizeHouse(h.name), { id: h.id ?? h.name, name: h.name })
+    for (const s of students) {
+      const k = normalizeHouse(s.house)
+      if (k && !byKey.has(k)) byKey.set(k, { id: `s-${k}`, name: s.house })
+    }
+    return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+  }, [houses, students])
 
   // Students filtered by search and current house
   const activeStudents = useMemo(() =>
@@ -13067,6 +13133,44 @@ function StudentTransferTab({ students, currentUser }) {
     setTransferring(false)
   }
 
+  // ── Dropout: mark students as Dropout (and free their bed), or bring them back ──
+  const markDropout = async list => {
+    if (!list.length) { showToast('Select at least one student.', '#b8923a'); return }
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Mark ${names} as Dropout? They leave every roll call and their house, and can be reactivated from the Dropout list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Dropout')
+      await bulkVacateStudents(ids)
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Dropout' })
+      showToast(`✅ ${names} marked as Dropout`)
+      setSelectedIds(new Set())
+    } catch (e) {
+      showToast('Dropout failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const reactivate = async list => {
+    if (!list.length) return
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Reactivate ${names}? They return as Active and unassigned; give them a house from the list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Active')
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Active' })
+      showToast(`✅ ${names} reactivated`)
+    } catch (e) {
+      showToast('Reactivate failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const dropoutList = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return !q ? dropoutStudents : dropoutStudents.filter(s => (s.name || '').toLowerCase().includes(q) || String(s.gcc_no || '').includes(q) || (s.batch || '').toLowerCase().includes(q))
+  }, [dropoutStudents, search])
+
   // Stats
   const totalActive = activeStudents.length
   const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
@@ -13091,7 +13195,9 @@ function StudentTransferTab({ students, currentUser }) {
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
         <StatCard icon="👥" label="Total Active" value={totalActive} color="#1e3a6e" bg="#eff6ff" compact={mobile} />
         <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" compact={mobile} />
-        <StatCard icon="🚪" label="Dropout" value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        <div onClick={() => setShowDropouts(v => !v)} style={{ cursor: 'pointer' }} title="Show / hide the Dropout list">
+          <StatCard icon="🚪" label={showDropouts ? 'Dropout ▲' : 'Dropout ▼'} value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        </div>
         <StatCard icon="✅" label="Selected" value={selectedCount} color="#16a34a" bg="#dcfce7" compact={mobile} />
       </div>
 
@@ -13105,11 +13211,11 @@ function StudentTransferTab({ students, currentUser }) {
         <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="All">All Houses</option>
           <option value="Unassigned">Unassigned Only</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <select value={targetHouse} onChange={e => setTargetHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="">— Target House —</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <input
           value={roomNumber}
@@ -13138,6 +13244,13 @@ function StudentTransferTab({ students, currentUser }) {
           {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
         </button>
         <button
+          onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
+          disabled={transferring || selectedIds.size === 0}
+          style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
+        >
+          🚪 Dropout ({selectedCount})
+        </button>
+        <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
             ...btn(filterHouse === 'Unassigned' ? '#1e3a6e' : '#eff6ff', filterHouse === 'Unassigned' ? 'white' : '#1e3a6e'),
@@ -13152,6 +13265,27 @@ function StudentTransferTab({ students, currentUser }) {
           </button>
         )}
       </div>
+
+      {showDropouts && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🚪 Dropout students ({dropoutList.length})</div>
+          {dropoutList.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: 13 }}>No dropout students{search.trim() ? ' match the search' : ''}.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {dropoutList.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}</div>
+                  </div>
+                  <button onClick={() => reactivate([s])} disabled={transferring} style={{ ...btn('#16a34a'), fontSize: 12, padding: '6px 12px' }}>↩ Reactivate</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -13201,6 +13335,13 @@ function StudentTransferTab({ students, currentUser }) {
                       ✕ Remove
                     </button>
                   )}
+                  <button
+                    onClick={() => markDropout([s])}
+                    disabled={transferring}
+                    style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                  >
+                    🚪 Dropout
+                  </button>
                 </div>
               </div>
             )
@@ -13286,6 +13427,19 @@ function StudentTransferTab({ students, currentUser }) {
                         ✕ Remove
                       </button>
                     )}
+                    <button
+                      onClick={() => markDropout([s])}
+                      disabled={transferring}
+                      style={{
+                        ...btn('#fef3c7', '#b45309'),
+                        fontSize: 11,
+                        padding: '5px 12px',
+                        cursor: transferring ? 'wait' : 'pointer',
+                        opacity: transferring ? 0.6 : 1,
+                      }}
+                    >
+                      🚪 Dropout
+                    </button>
                   </td>
                 </tr>
               )
