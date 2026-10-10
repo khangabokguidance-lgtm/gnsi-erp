@@ -6752,6 +6752,16 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
   if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>Loading dashboard…</div>
 
   const hmName = currentHousemaster?.name || currentUser?.name || 'House Master'
+  // For an admin / superintendent (no housemaster record): their own staff profile,
+  // found by the login's linked staff_profile_id, else by name. currentUser.id is the
+  // portal login's id, not the staff id, so it can't be used for the photo.
+  const adminAsStaff = (() => {
+    if (currentHousemaster || !currentUser?.name) return null
+    const want = String(currentUser.name).trim().toLowerCase()
+    const prof = (staffProfiles || []).find(p => currentUser.staff_profile_id != null && String(p.id) === String(currentUser.staff_profile_id))
+      || (staffProfiles || []).find(p => String(p.name || '').trim().toLowerCase() === want)
+    return { name: prof?.name || currentUser.name, staff_id: prof?.id ?? currentUser.staff_profile_id ?? undefined }
+  })()
   const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
   const panelTitle = { fontFamily: FONT_DISPLAY, fontSize: '17px', fontWeight: 600, color: '#0B1E3D', margin: 0 }
   const trendWithData = weekTrend.filter(d => d.presentPct !== null)
@@ -6786,7 +6796,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
           <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18, minWidth: 0, flex: '1 1 320px' }}>
           {/* A housemaster sees their own portrait; an admin / superintendent
               (no house of their own) sees theirs, from the Staff module. */}
-          {(currentHousemaster || currentUser?.name) && <HmPortrait hm={currentHousemaster || { name: currentUser.name, staff_id: currentUser.id }} size={mobile ? 68 : 88} />}
+          {(currentHousemaster || currentUser?.name) && <HmPortrait hm={currentHousemaster || adminAsStaff} size={mobile ? 68 : 88} />}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
             <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
