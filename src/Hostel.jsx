@@ -12626,6 +12626,88 @@ function findHousemasterForUser(rows, user, staffName) {
   return loose.length === 1 ? loose[0] : null
 }
 
+// ── Mandatory "what has changed" notice for housemasters and housemistresses ──
+// Shown on opening Hostel until they confirm they have read it. Bump
+// HOSTEL_CHANGES_VERSION (and the list) when something new must be read, so
+// every housemaster / housemistress sees it again. The confirmation is kept in
+// this browser and also logged (audit_logs, action hostel_changes_ack) so an
+// admin can see who has read it.
+const HOSTEL_CHANGES_VERSION = '2026-10-10'
+const HOSTEL_CHANGES = [
+  { area: 'HM Dashboard', icon: '🏠', items: [
+    ['House-wise roll call cards', 'The missing roll call warning now shows your house as a red "Incomplete" card (with each missed roll call and how many are marked) or a green "Complete" card. Admins see one card per house.'],
+    ['Fix now', 'Every missed roll call line has a "Fix now" button. It opens that roll call straight away so you can mark every student.'],
+    ['Profile card for WhatsApp', 'Choose Morning or Night, tap "Show profile card", then share it on WhatsApp: your photo, rank, counts and mock-test standings.'],
+  ] },
+  { area: 'Roll Call', icon: '📋', items: [
+    ['Student photos', 'The roll call card and the student list now show each student\'s photo (initials when there is none).'],
+    ['Missed roll calls can be marked', 'After 7:30 AM / 10:00 PM you no longer need the admin to unlock the roll call. Open the house and mark every student. A roll call finished after the cutoff is recorded as LATE against you, and repeats count against your monthly ranking.'],
+    ['Catch up and Fix now (last 3 days)', 'Missed roll calls of today, yesterday and the day before can all be fixed. Today\'s roll call stays locked until yesterday is 100% marked.'],
+    ['Mark every student', 'Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking. No exceptions.'],
+    ['Daily checks unlock correctly', 'A house whose roll call is complete is no longer shown as "Locked" in the morning / night checks.'],
+  ] },
+]
+function HostelChangesGate({ user }) {
+  const userKey = String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')
+  const storeKey = `gnsi_hostel_changes_ack_${userKey}`
+  const [seen, setSeen] = useState(() => { try { return localStorage.getItem(storeKey) } catch { return null } })
+  const [checked, setChecked] = useState(false)
+  const [saving, setSaving] = useState(false)
+  if (seen === HOSTEL_CHANGES_VERSION) return null
+  const confirm = async () => {
+    setSaving(true)
+    try {
+      await supabase.from('audit_logs').insert({
+        action: 'hostel_changes_ack', module: 'Hostel', level: 'info', user_id: null,
+        user_name: user?.name || user?.username || 'Unknown',
+        metadata: { version: HOSTEL_CHANGES_VERSION, raw_user_id: user?.id ?? null, role: user?.role ?? null },
+        created_at: new Date().toISOString(),
+      })
+    } catch { /* the notice is still confirmed here even if the log fails */ }
+    try { localStorage.setItem(storeKey, HOSTEL_CHANGES_VERSION) } catch { /* storage blocked */ }
+    setSeen(HOSTEL_CHANGES_VERSION)
+    setSaving(false)
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="What has changed in Hostel" style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(11,30,61,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 640, maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 22, overflow: 'hidden', boxShadow: '0 40px 80px -30px rgba(0,0,0,.7)' }}>
+        <div style={{ padding: '18px 22px', color: '#fff', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Mandatory · all housemasters &amp; housemistresses</div>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, marginTop: 4 }}>What has changed in Hostel</div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.75)', marginTop: 3 }}>Please read this once. Tick the box and confirm to continue.</div>
+        </div>
+        <div style={{ padding: '14px 22px', overflowY: 'auto', flex: 1 }}>
+          {HOSTEL_CHANGES.map(g => (
+            <div key={g.area} style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 900, color: '#0B1E3D', fontSize: 14.5, marginBottom: 6 }}>{g.icon} {g.area}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {g.items.map(([title, text]) => (
+                  <div key={title} style={{ background: '#FBF8EF', border: '1px solid #EFE3C0', borderRadius: 12, padding: '9px 12px' }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#1C3A6B' }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginTop: 2 }}>{text}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid #EFE3C0', background: '#FCFBF7' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#0B1E3D', fontWeight: 700, cursor: 'pointer' }}>
+            <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1 }} />
+            I have read and understood these changes.
+          </label>
+          <button type="button" onClick={confirm} disabled={!checked || saving}
+            style={{ width: '100%', marginTop: 12, padding: 13, borderRadius: 12, border: 'none', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', color: '#1A1406',
+              cursor: checked && !saving ? 'pointer' : 'not-allowed', background: checked ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5' }}>
+            {saving ? 'Saving…' : 'Confirm and continue'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Hostel() {
   // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
   // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
@@ -12826,6 +12908,7 @@ function Hostel() {
       padding: mobile ? '12px' : '28px', fontFamily: FONT_BODY,
       paddingBottom: mobile ? '80px' : '28px', background: MD.color.surfaceDim, minHeight: '100vh',
     }}>
+      {hmOnly && <HostelChangesGate user={currentUser} />}
       {/* Module-wide heading default — serif display face for every h1–h3
           that doesn't explicitly override it, so the refined type system
           applies consistently across all 17 tabs without editing each
