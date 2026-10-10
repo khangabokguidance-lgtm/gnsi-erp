@@ -2618,6 +2618,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Before roll call · {session === 'morning' ? '🌅 Morning' : '🌙 Night'}</div>
                 <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, lineHeight: 1.2, marginTop: 4 }}>{title} House</div>
                 <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 4 }}>Fill these tabs for this session first — roll call opens once every one is done.</div>
+                <div style={{ marginTop: 10 }}><HmChip hm={hmFor(h)} dark size={30} /></div>
               </div>
               <button onClick={close} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,.25)', background: 'rgba(255,255,255,.08)', color: '#fff', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
             </div>
@@ -3848,6 +3849,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
               {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </div>
+            <div style={{ marginTop: 8 }}><HmChip hm={hmFor(selectedHouse)} dark size={34} /></div>
             {(() => {
               // Deadline countdown: Morning 7:00 AM / Night 8:00 PM, 15-min grace.
               const { deadline, graceEnd, label } = rollCallDeadline(date, session)
