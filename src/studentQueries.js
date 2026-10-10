@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase, onStudentsWrite } from './supabase'
+import { parseColumns, covers, pickColumns } from './rosterColumns'
 
 const PAGE = 1000
 
@@ -40,16 +41,29 @@ async function hasStaffSession() {
 // `students` through the shared client clears it, so edits show up at once;
 // changes made by other users appear within CACHE_MS.
 const CACHE_MS = 90 * 1000
-const rosterCache = new Map() // key → { at, promise }
+const rosterCache = new Map() // key → { at, promise, cacheKey, columns }
 onStudentsWrite(() => rosterCache.clear())
 const copyRows = rows => (typeof structuredClone === 'function' ? structuredClone(rows) : JSON.parse(JSON.stringify(rows)))
 
 async function fetchAllRows(select, extra, cacheKey) {
   const key = `${cacheKey}|${select}`
+  const columns = parseColumns(select)
+  const now = Date.now()
   const hit = rosterCache.get(key)
-  if (hit && Date.now() - hit.at < CACHE_MS) return copyRows(await hit.promise)
+  if (hit && now - hit.at < CACHE_MS) return copyRows(await hit.promise)
+  // The same roster already downloaded with more columns (or '*') can answer
+  // this request: take the columns asked for from those rows.
+  if (columns) {
+    for (const other of rosterCache.values()) {
+      if (other.cacheKey !== cacheKey || now - other.at >= CACHE_MS || !covers(other.columns, columns)) continue
+      try {
+        const rows = await other.promise
+        if (!rows.__failed) return copyRows(pickColumns(rows, columns))
+      } catch { /* that download failed — fetch this one normally */ }
+    }
+  }
   const promise = downloadAllRows(select, extra)
-  rosterCache.set(key, { at: Date.now(), promise })
+  rosterCache.set(key, { at: Date.now(), promise, cacheKey, columns })
   try {
     const rows = await promise
     // A failed or partial download is not worth remembering.
