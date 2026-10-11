@@ -4375,11 +4375,6 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             ← Back
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())}</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
-              {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
-            </div>
             {(() => {
               // Cutoff countdown: Morning 7:30 AM / Night 10:00 PM.
               const { deadline, graceEnd, label } = rollCallDeadline(date, session)
@@ -4390,7 +4385,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 : mins <= 24 * 60 ? { t: `Closes at ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
                 : { t: `Closes at ${label}`, c: '#E9D9B0' }
               return (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 0, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
                 </div>
               )
