@@ -270,11 +270,14 @@ const TABS = [
 // future tab added to TABS but forgotten here fails loudly in dev rather
 // than silently vanishing from the menu.
 const TAB_GROUPS = [
-  { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash', 'a4stock', 'studymaterial'] },
+  { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
-  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
-  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
+  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
+  { label: 'Academics & Activities', ids: ['hmactivities', 'journal'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
+  // Judged from the code as the least needed day to day (not measured): kept
+  // reachable, but out of the way at the bottom of the menu.
+  { label: 'Rarely used', ids: ['a4stock', 'studymaterial', 'allotments', 'classtimetable', 'doubtsession'] },
 ]
 
 // A housemaster/housemistress logging in sees only these tabs, each
@@ -13326,7 +13329,7 @@ function Hostel() {
                 const items = group.ids.map(id => TABS.find(tab => tab.id === id)).filter(t => t && (!q || t.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)))
                 if (!items.length) return null
                 return (
-                  <div key={group.label} style={{ marginBottom: 8 }}>
+                  <div key={group.label} style={{ marginBottom: 8, opacity: group.label === 'Rarely used' ? 0.7 : 1 }}>
                     <div style={{ padding: '8px 12px 6px', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', color: '#b8923a' }}>
                       {group.label}
                     </div>
