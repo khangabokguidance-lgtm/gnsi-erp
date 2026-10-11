@@ -1883,8 +1883,14 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
     for (const { student, reg } of duesLedgers?.[m.session] || []) {
       // Monthly part: the flat / course fee for this month.
       const r = reg.rows.find(x => x.month === m.fullMon && Number(x.year) === m.year)
+      // Expected is net of any approved concession / standing scholarship
+      // (r.waived), so expected = collected + due holds for every month. A part
+      // advance whose month has now started still owes its shortfall.
       const monthly = r && r.status !== 'before' && r.status !== 'upcoming' && r.expected > 0
-        ? { expected: r.expected, paid: r.paidAmt, due: r.status === 'due' ? r.due : r.status === 'short' ? r.shortBy : 0 }
+        ? {
+            expected: Math.max(0, r.expected - (r.waived || 0)), paid: r.paidAmt,
+            due: r.status === 'due' ? r.due : (sh => (sh >= 0.5 ? sh : 0))(r.expected - r.paidAmt - (r.waived || 0)),
+          }
         : null
       if (monthly) head = head || r.head
       // Admission part: charged in the month the student was admitted (the same
