@@ -12975,6 +12975,15 @@ function Hostel() {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
   })
+  // The deep-link tab has been read above — drop it so a refresh starts on the HM Dash.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (!url.searchParams.has('tab')) return
+      url.searchParams.delete('tab')
+      window.history.replaceState({}, '', url)
+    } catch { /* URL API unavailable — non-fatal */ }
+  }, [])
   const [menuOpen, setMenuOpen] = useState(false) // hamburger dropdown, top-right of the header — replaces the old always-visible tab bar/grid
   const [menuQuery, setMenuQuery] = useState('') // live filter inside the "All sections" menu
   const [students, setStudents] = useState([])
@@ -13000,8 +13009,10 @@ function Hostel() {
   const changeTab = tabId => {
     setActiveTab(tabId)
     try {
+      // ?tab= is only for deep links into Hostel; it is not kept while browsing,
+      // so a refresh or reopening Hostel always starts on the HM Dash.
       const url = new URL(window.location.href)
-      url.searchParams.set('tab', tabId)
+      url.searchParams.delete('tab')
       if (tabId !== 'doubtsession') url.searchParams.delete('hm')
       window.history.replaceState({}, '', url)
     } catch { /* URL API unavailable — non-fatal, tab still switches */ }
