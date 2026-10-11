@@ -3002,7 +3002,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     else onTabChange?.(tab.rootTabId)
   }
 
+  // Compulsion: a housemaster / housemistress must confirm the "What has
+  // changed in Hostel" notice before any roll call can be started or marked.
+  const [changesGateHouse, setChangesGateHouse] = useState(null) // house waiting for the notice to be read
+  const changesGateModal = changesGateHouse
+    ? <HostelChangesGate user={currentUser} onConfirmed={() => { const h = changesGateHouse; setChangesGateHouse(null); setTimeout(() => startRollCall(h), 0) }} />
+    : null
+
   const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    if (!isAdmin && !hostelChangesAcked(currentUser)) { setChangesGateHouse(houseName); return false }
     if (lockInfo(houseName).state !== 'open') { openUnlockRequest(houseName); return false }
     // Housemasters clear the checklist first (not for a missed past day).
     const alreadyStarted = allRecords.some(r => r.house && normalizeHouse(r.house) === normalizeHouse(houseName))
@@ -3191,7 +3199,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {unlockPanel}
         <MissingRollCallAlert students={activeStudents} onFix={(house, d, sess) => handleCatchUpRollCall(house, { date: d, session: sess })} />
         <style>{`
@@ -4004,7 +4012,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {/* Header */}
         <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
@@ -4284,7 +4292,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
             <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
@@ -12871,9 +12879,12 @@ const HOSTEL_CHANGES = [
     ['Daily checks unlock correctly', 'A house whose roll call is complete is no longer shown as "Locked" in the morning / night checks.'],
   ] },
 ]
-function HostelChangesGate({ user }) {
-  const userKey = String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')
-  const storeKey = `gnsi_hostel_changes_ack_${userKey}`
+const changesStoreKey = user => `gnsi_hostel_changes_ack_${String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')}`
+function hostelChangesAcked(user) {
+  try { return localStorage.getItem(changesStoreKey(user)) === HOSTEL_CHANGES_VERSION } catch { return false }
+}
+function HostelChangesGate({ user, onConfirmed }) {
+  const storeKey = changesStoreKey(user)
   const [seen, setSeen] = useState(() => { try { return localStorage.getItem(storeKey) } catch { return null } })
   const [checked, setChecked] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -12891,6 +12902,7 @@ function HostelChangesGate({ user }) {
     try { localStorage.setItem(storeKey, HOSTEL_CHANGES_VERSION) } catch { /* storage blocked */ }
     setSeen(HOSTEL_CHANGES_VERSION)
     setSaving(false)
+    onConfirmed?.()
   }
   return (
     <div role="dialog" aria-modal="true" aria-label="What has changed in Hostel" style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(11,30,61,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
