@@ -4321,6 +4321,28 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             📋 Catch-up mode — completing the missed {session} roll call for {date}
           </div>
         )}
+        {/* Profile card — who is taking this roll call */}
+        {(() => {
+          const profileHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, padding: '14px 16px', borderRadius: 20, background: '#fff', border: '1px solid #E9D9B0', boxShadow: '0 12px 26px -18px rgba(11,30,61,.55)' }}>
+              {profileHm ? (
+                <>
+                  <HmPortrait hm={profileHm} size={64} />
+                  <div style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#A87A1F' }}>{hmTitle(profileHm)}</div>
+                    <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 18, fontWeight: 700, color: '#0B1E3D', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileHm.name}</div>
+                    <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 2 }}>
+                      {String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())} House · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <span style={{ fontSize: 12.5, color: '#94A3B8' }}>No housemaster assigned to {selectedHouse}</span>
+              )}
+            </div>
+          )
+        })()}
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px', padding: '14px 16px', borderRadius: '20px', position: 'relative', overflow: 'hidden', color: '#fff',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`,
@@ -4338,7 +4360,6 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
               {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </div>
-            <div style={{ marginTop: 8 }}><HmChip hm={hmFor(selectedHouse)} dark size={34} /></div>
             {(() => {
               // Cutoff countdown: Morning 7:30 AM / Night 10:00 PM.
               const { deadline, graceEnd, label } = rollCallDeadline(date, session)
