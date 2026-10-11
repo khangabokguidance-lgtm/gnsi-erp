@@ -2844,8 +2844,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     loadPrecheckRules().then(r => { if (alive) setPrecheckRules(r) })
     return () => { alive = false }
   }, [])
+  // Rank shown on the profile card at the top of the roll call screen.
+  const [cardRank, setCardRank] = useState({}) // normalized house → { rank, total, score } | null
+  useEffect(() => {
+    if (!selectedHouse) return
+    const k = normalizeHouse(selectedHouse)
+    let alive = true
+    loadHmRank(selectedHouse).then(r => { if (alive) setCardRank(prev => ({ ...prev, [k]: r })) }).catch(() => {})
+    return () => { alive = false }
+  }, [selectedHouse])
   // ── Roll call cutoff + admin unlock ──
-  const lockOn = ROLL_CALL_CUTOFF_LOCK && !isAdmin
+  const lockOn =ROLL_CALL_CUTOFF_LOCK && !isAdmin
   const [unlocks, setUnlocks] = useState({ ready: false, rows: [] })
   const [unlockTarget, setUnlockTarget] = useState(null) // { house, date, session }
   const [unlockReason, setUnlockReason] = useState('')
@@ -4321,24 +4330,35 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             📋 Catch-up mode — completing the missed {session} roll call for {date}
           </div>
         )}
-        {/* Profile card — who is taking this roll call */}
+        {/* Profile card — who is taking this roll call (performance-card design) */}
         {(() => {
           const profileHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+          const rk = cardRank[normalizeHouse(selectedHouse)]
+          const houseTitle = String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, padding: '14px 16px', borderRadius: 20, background: '#fff', border: '1px solid #E9D9B0', boxShadow: '0 12px 26px -18px rgba(11,30,61,.55)' }}>
+            <div style={{ position: 'relative', textAlign: 'center', color: '#fff', marginBottom: 14, padding: '18px 14px 14px', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+              background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Roll Call</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
               {profileHm ? (
                 <>
-                  <HmPortrait hm={profileHm} size={64} />
-                  <div style={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#A87A1F' }}>{hmTitle(profileHm)}</div>
-                    <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 18, fontWeight: 700, color: '#0B1E3D', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileHm.name}</div>
-                    <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 2 }}>
-                      {String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())} House · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call
-                    </div>
-                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}><HmPortrait hm={profileHm} size={96} /></div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{profileHm.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(profileHm)} · {houseTitle} House</div>
                 </>
               ) : (
-                <span style={{ fontSize: 12.5, color: '#94A3B8' }}>No housemaster assigned to {selectedHouse}</span>
+                <div style={{ margin: '14px 0 4px', fontSize: 13, color: 'rgba(255,255,255,.7)' }}>No housemaster assigned to {houseTitle} House</div>
+              )}
+              {rk?.rank && (
+                <div style={{ margin: '12px 0 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                    <span style={{ fontSize: 26 }}>{medalFor(rk.rank)}</span>
+                    <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>#{rk.rank}</span>
+                    <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {rk.total}<br /><b style={{ color: '#E2C57E' }}>Score {rk.score}/100</b></span>
+                  </div>
+                </div>
               )}
             </div>
           )
