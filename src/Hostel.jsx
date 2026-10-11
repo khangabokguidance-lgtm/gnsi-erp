@@ -2844,8 +2844,17 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     loadPrecheckRules().then(r => { if (alive) setPrecheckRules(r) })
     return () => { alive = false }
   }, [])
+  // Rank shown on the profile card at the top of the roll call screen.
+  const [cardRank, setCardRank] = useState({}) // normalized house → { rank, total, score } | null
+  useEffect(() => {
+    if (!selectedHouse) return
+    const k = normalizeHouse(selectedHouse)
+    let alive = true
+    loadHmRank(selectedHouse).then(r => { if (alive) setCardRank(prev => ({ ...prev, [k]: r })) }).catch(() => {})
+    return () => { alive = false }
+  }, [selectedHouse])
   // ── Roll call cutoff + admin unlock ──
-  const lockOn = ROLL_CALL_CUTOFF_LOCK && !isAdmin
+  const lockOn =ROLL_CALL_CUTOFF_LOCK && !isAdmin
   const [unlocks, setUnlocks] = useState({ ready: false, rows: [] })
   const [unlockTarget, setUnlockTarget] = useState(null) // { house, date, session }
   const [unlockReason, setUnlockReason] = useState('')
@@ -2993,7 +3002,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     else onTabChange?.(tab.rootTabId)
   }
 
+  // Compulsion: a housemaster / housemistress must confirm the "What has
+  // changed in Hostel" notice before any roll call can be started or marked.
+  const [changesGateHouse, setChangesGateHouse] = useState(null) // house waiting for the notice to be read
+  const changesGateModal = changesGateHouse
+    ? <HostelChangesGate user={currentUser} onConfirmed={() => { const h = changesGateHouse; setChangesGateHouse(null); setTimeout(() => startRollCall(h), 0) }} />
+    : null
+
   const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    if (!isAdmin && !hostelChangesAcked(currentUser)) { setChangesGateHouse(houseName); return false }
     if (lockInfo(houseName).state !== 'open') { openUnlockRequest(houseName); return false }
     // Housemasters clear the checklist first (not for a missed past day).
     const alreadyStarted = allRecords.some(r => r.house && normalizeHouse(r.house) === normalizeHouse(houseName))
@@ -3182,7 +3199,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {unlockPanel}
         <MissingRollCallAlert students={activeStudents} onFix={(house, d, sess) => handleCatchUpRollCall(house, { date: d, session: sess })} />
         <style>{`
@@ -3995,7 +4012,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {/* Header */}
         <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
@@ -4275,7 +4292,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
     return (
       <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
-        {reportModal}{precheckModal}{rulesModal}{unlockModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
             <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
@@ -4321,6 +4338,39 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             📋 Catch-up mode — completing the missed {session} roll call for {date}
           </div>
         )}
+        {/* Profile card — who is taking this roll call (performance-card design) */}
+        {(() => {
+          const profileHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+          const rk = cardRank[normalizeHouse(selectedHouse)]
+          const houseTitle = String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())
+          return (
+            <div style={{ position: 'relative', textAlign: 'center', color: '#fff', marginBottom: 14, padding: '18px 14px 14px', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+              background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Roll Call</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+              {profileHm ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}><HmPortrait hm={profileHm} size={96} /></div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{profileHm.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(profileHm)} · {houseTitle} House</div>
+                </>
+              ) : (
+                <div style={{ margin: '14px 0 4px', fontSize: 13, color: 'rgba(255,255,255,.7)' }}>No housemaster assigned to {houseTitle} House</div>
+              )}
+              {rk?.rank && (
+                <div style={{ margin: '12px 0 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                    <span style={{ fontSize: 26 }}>{medalFor(rk.rank)}</span>
+                    <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>#{rk.rank}</span>
+                    <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {rk.total}<br /><b style={{ color: '#E2C57E' }}>Score {rk.score}/100</b></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px', padding: '14px 16px', borderRadius: '20px', position: 'relative', overflow: 'hidden', color: '#fff',
           background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`,
@@ -4333,12 +4383,6 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             ← Back
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
-            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())}</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>
-              {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
-            </div>
-            <div style={{ marginTop: 8 }}><HmChip hm={hmFor(selectedHouse)} dark size={34} /></div>
             {(() => {
               // Cutoff countdown: Morning 7:30 AM / Night 10:00 PM.
               const { deadline, graceEnd, label } = rollCallDeadline(date, session)
@@ -4349,7 +4393,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 : mins <= 24 * 60 ? { t: `Closes at ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
                 : { t: `Closes at ${label}`, c: '#E9D9B0' }
               return (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 0, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
                 </div>
               )
@@ -12835,9 +12879,12 @@ const HOSTEL_CHANGES = [
     ['Daily checks unlock correctly', 'A house whose roll call is complete is no longer shown as "Locked" in the morning / night checks.'],
   ] },
 ]
-function HostelChangesGate({ user }) {
-  const userKey = String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')
-  const storeKey = `gnsi_hostel_changes_ack_${userKey}`
+const changesStoreKey = user => `gnsi_hostel_changes_ack_${String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')}`
+function hostelChangesAcked(user) {
+  try { return localStorage.getItem(changesStoreKey(user)) === HOSTEL_CHANGES_VERSION } catch { return false }
+}
+function HostelChangesGate({ user, onConfirmed }) {
+  const storeKey = changesStoreKey(user)
   const [seen, setSeen] = useState(() => { try { return localStorage.getItem(storeKey) } catch { return null } })
   const [checked, setChecked] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -12855,6 +12902,7 @@ function HostelChangesGate({ user }) {
     try { localStorage.setItem(storeKey, HOSTEL_CHANGES_VERSION) } catch { /* storage blocked */ }
     setSeen(HOSTEL_CHANGES_VERSION)
     setSaving(false)
+    onConfirmed?.()
   }
   return (
     <div role="dialog" aria-modal="true" aria-label="What has changed in Hostel" style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(11,30,61,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
