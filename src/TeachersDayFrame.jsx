@@ -151,12 +151,12 @@ const CSS = `
 .tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
 .tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
 .tdf-fm-msg{font:500 4.3mm/1.4 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
-.tdf-fm-sg{margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end}
-.tdf-fm-sg .b{width:56mm;text-align:center}
-.tdf-fm-sg .s{font:400 9mm/1 'Great Vibes',cursive;color:#1d3f87;border-bottom:.35mm solid #1d3f87;padding-bottom:1mm;min-height:10mm}
-.tdf-fm-sg .n{font:700 4mm 'Playfair Display',serif;color:#142a5c;margin-top:1mm}
-.tdf-fm-sg .t{font:500 3.4mm/1.25 'Cormorant Garamond',serif;color:#1d3f87}
-.tdf-fm-stamp{width:36mm;height:36mm;flex-shrink:0}
+.tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1.5mm}
+.tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:#7a4e12}
+.tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:#0d2350}
+.tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
+.tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:#142a5c;border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
+.tdf-fm-stamp{width:30mm;height:30mm;flex-shrink:0}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -439,9 +439,12 @@ function FormalFrame({ s, cfg }) {
         {s.desig && <div className="tdf-fm-des">{s.desig}</div>}
         <div className="tdf-fm-msg">{cfg.certMsg}</div>
         <div className="tdf-fm-sg">
-          <div className="b"><div className="s">{cfg.sig1n}</div><div className="n">{cfg.sig1n}</div><div className="t">{cfg.sig1t}<br />GNSI</div></div>
           <Stamp date={cfg.stampDate} />
-          <div className="b"><div className="s">{cfg.sig2n}</div><div className="n">{cfg.sig2n}</div><div className="t">{cfg.sig2t}<br />GNSI</div></div>
+          <div className="pb">
+            <div className="p1">WITH GRATITUDE, PRESENTED BY</div>
+            <div className="p2"><b>{cfg.batch}</b> Batch Students</div>
+            <div className="p3">{cfg.dates}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -536,7 +539,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', sig1n: 'Director', sig1t: 'Chairman', sig2n: 'Principal', sig2t: 'Principal', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -596,10 +599,6 @@ export default function TeachersDayFrame() {
         <label>Batch<input style={inp} value={cfg.batch} onChange={e => setCfg({ ...cfg, batch: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Award message (Best Teacher Award style)<textarea style={{ ...inp, minHeight: 60 }} value={cfg.msg} onChange={e => setCfg({ ...cfg, msg: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Certificate message (Formal Certificate style)<textarea style={{ ...inp, minHeight: 60 }} value={cfg.certMsg} onChange={e => setCfg({ ...cfg, certMsg: e.target.value })} /></label>
-        <label>Signatory 1 name<input style={inp} value={cfg.sig1n} onChange={e => setCfg({ ...cfg, sig1n: e.target.value })} /></label>
-        <label>Signatory 1 title<input style={inp} value={cfg.sig1t} onChange={e => setCfg({ ...cfg, sig1t: e.target.value })} /></label>
-        <label>Signatory 2 name<input style={inp} value={cfg.sig2n} onChange={e => setCfg({ ...cfg, sig2n: e.target.value })} /></label>
-        <label>Signatory 2 title<input style={inp} value={cfg.sig2t} onChange={e => setCfg({ ...cfg, sig2t: e.target.value })} /></label>
         <label>Stamp date<input style={inp} value={cfg.stampDate} onChange={e => setCfg({ ...cfg, stampDate: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Quote (optional)<input style={inp} value={cfg.quote} onChange={e => setCfg({ ...cfg, quote: e.target.value })} /></label>
       </div>
