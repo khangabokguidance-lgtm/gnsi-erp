@@ -30,7 +30,7 @@ const CSS = `
 .tdf-ring{position:absolute;inset:0;border-radius:var(--r1);background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
 .tdf-ring2{width:100%;height:100%;border-radius:var(--r2);background:var(--bg3);padding:1.4mm}
 .tdf-photo{width:100%;height:100%;border-radius:var(--r3);overflow:hidden;background:#eef0f4;position:relative}
-.tdf-photo img:not(.tdf-pmark){width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a9afbd}
 .tdf-ph svg{width:34mm}
 .tdf-star{position:absolute;color:#d9b25a;font-size:7mm}
@@ -53,8 +53,6 @@ const CSS = `
 .tdf-halo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 .tdf-flour{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 1mm);pointer-events:none}
 .tdf-wm{position:absolute;left:50%;top:50%;width:150mm;height:150mm;object-fit:contain;transform:translate(-50%,-50%);opacity:.12;mix-blend-mode:var(--wmb);pointer-events:none;}
-.tdf-seal{position:absolute;left:50%;bottom:-8.5mm;width:17mm;height:17mm;transform:translateX(-50%);border-radius:50%;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.7mm solid #d9b25a;box-shadow:0 0 0 1mm var(--bg3),0 0 0 1.5mm #d9b25a,0 1.5mm 4mm #0009;padding:1.4mm;box-sizing:border-box;z-index:3}
-.tdf-pmark{position:absolute;right:3mm;bottom:3mm;width:14mm;height:14mm;object-fit:contain;padding:1.2mm;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.4mm solid #d9b25a;box-shadow:0 .8mm 2mm #0008;pointer-events:none;z-index:2}
 .tdf-aw{background:#fbf6e9!important}
 .tdf-aw:before{opacity:.05}
 .tdf-aw .tdf-awc{position:absolute;inset:20mm 24mm 18mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#2b2a33}
@@ -278,8 +276,8 @@ function Frame({ s, cfg }) {
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}<Emblem className="tdf-seal" />{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo"><Emblem className="tdf-pmark" />
-            <Emblem className="tdf-pmark" />
+          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+            
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
