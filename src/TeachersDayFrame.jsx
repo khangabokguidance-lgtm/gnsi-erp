@@ -168,6 +168,19 @@ const CSS = `
 .tdf-fm-ttl i{height:.5mm;flex:1;max-width:30mm;background:linear-gradient(90deg,transparent,#c79a3b)}
 .tdf-fm-ttl i:last-child{transform:scaleX(-1)}
 .tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:#c79a3b;transform:rotate(45deg)}
+.tdf-fm{background:radial-gradient(ellipse at 20% 0%,#2a5cc0aa,transparent 55%),radial-gradient(ellipse at 90% 100%,#1b4aa088,transparent 55%),linear-gradient(135deg,#0a2559,#123a80 45%,#061636)!important}
+.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,#dbe8ff99,transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
+.tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,#2b5dc4 0%,#0d2350 55%,#06143a 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-grat{background:linear-gradient(90deg,#1d3f87,#9a6f1c 50%,#1d3f87);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p1{background:linear-gradient(90deg,#7a4e12,#d8a93f 50%,#7a4e12);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2{background:linear-gradient(180deg,#2b5dc4,#0d2350);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2 b{background:linear-gradient(180deg,#f0cf74,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p3{background:linear-gradient(90deg,#142a5c,#2b5dc4,#142a5c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-ttl i{background:linear-gradient(90deg,transparent,#a77d2a,#f0cf74)}
+.tdf-fm-ttl b{background:linear-gradient(135deg,#f0cf74,#a77d2a)}
+.tdf-fm-nl{background:linear-gradient(90deg,transparent,#2b5dc4,#c79a3b,#2b5dc4,transparent)!important;height:.6mm!important}
+.tdf-fm-em{background:radial-gradient(circle at 35% 25%,#3a73d8,#1d4590 45%,#06142f)!important}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
