@@ -223,15 +223,17 @@ const resolveStyle = (k, shape) => {
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
 }
 // Colour themes for the Formal Certificate (hue-driven palette).
-const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
+const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], cobalt: ['Cobalt Blue', 214, 100], ocean: ['Ocean Blue', 203, 88], indigo: ['Indigo Blue', 242, 72], navydeep: ['Deep Navy', 222, 92], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
 const METALS = {
   gold: ['Gold', '#fff3c4 #f6e3a1 #f0cf74 #d8a93f #c79a3b #b8892b #a77d2a #8a5d12 #7a4e12 #6b4a0f'],
   rose: ['Rose Gold', '#fff0ec #f7d3c8 #eebfae #e0a590 #d08c78 #b87260 #a05a4a #8a4a3a #6e3a2c #55291f'],
   platinum: ['Platinum Silver', '#ffffff #f1f4f8 #dde3ea #c8d0da #b4bdc9 #9aa5b3 #808c9b #697585 #556070 #3d4654'],
+  champagne: ['Champagne Gold', '#ffffff #fff6dc #f7e6b4 #ecd28c #dfc075 #cfa95a #b8903f #96722c #735720 #523d15'],
   copper: ['Copper Bronze', '#ffe7c9 #f6caa0 #eab07a #d9925a #c97d45 #b0652f #954f22 #7a3f1a #5e3014 #47240e'],
 }
 const PRESETS = {
   navygold: ['Royal Navy & Gold', 'blue', 'gold'], burgundy: ['Burgundy & Rose Gold', 'wine', 'rose'], emeraldgold: ['Emerald & Gold', 'emerald', 'gold'],
+  cobaltchamp: ['Cobalt Blue & Champagne Gold', 'cobalt', 'champagne'], oceanplat: ['Ocean Blue & Platinum', 'ocean', 'platinum'], indigorose: ['Indigo & Rose Gold', 'indigo', 'rose'], deepnavy: ['Deep Navy & Champagne Gold', 'navydeep', 'champagne'], skycopper: ['Ocean Blue & Copper', 'ocean', 'copper'],
   midnight: ['Midnight Sapphire & Platinum', 'sapphire', 'platinum'], peacock: ['Peacock & Copper', 'peacock', 'copper'], obsidian: ['Obsidian Black & Gold', 'obsidian', 'gold'],
 }
 const metalVars = key => Object.fromEntries((METALS[key] || METALS.gold)[1].split(' ').map((c, i) => [`--m${i}`, c]))
