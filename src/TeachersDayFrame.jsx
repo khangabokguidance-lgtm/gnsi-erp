@@ -140,7 +140,7 @@ const CSS = `
 .tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:var(--tx1);margin-top:3mm;white-space:nowrap}
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:var(--tx1);margin-top:1.5mm}
 .tdf-fm-tag b{color:var(--m4);margin:0 2mm}
-.tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,var(--m7) 5%,var(--m1) 30%,var(--m4) 48%,var(--m0) 62%,var(--m7) 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-happy{font:400 17mm/1.05 'Great Vibes',cursive;padding:0 4mm;background:linear-gradient(100deg,var(--m8) 0%,var(--m5) 22%,var(--m3) 42%,var(--m2) 55%,var(--m5) 75%,var(--m8) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:.28mm var(--m8);filter:drop-shadow(0 .35mm .35mm #0004);margin-top:1mm;margin-bottom:-1mm}
 .tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:var(--tx0);letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:var(--tx2);margin-top:2.5mm}
 .tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,var(--m1),var(--m6) 40%,var(--m1) 60%,var(--m6));box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
@@ -169,7 +169,7 @@ const CSS = `
 .tdf-fm-ttl i:last-child{transform:scaleX(-1)}
 .tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:var(--m4);transform:rotate(45deg)}
 .tdf-fm{background:radial-gradient(ellipse at 20% 0%,var(--gl1),transparent 55%),radial-gradient(ellipse at 90% 100%,var(--gl2),transparent 55%),linear-gradient(135deg,var(--n1),var(--n2) 45%,var(--n3))!important}
-.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
+.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,color-mix(in srgb,var(--m1) 30%,transparent),transparent 50%),linear-gradient(180deg,var(--pn1),var(--pn2) 55%,var(--pn3))!important}
 .tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,var(--hl) 0%,var(--tx0) 55%,var(--tx00) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-grat{background:linear-gradient(90deg,var(--tx2),var(--m6) 50%,var(--tx2));-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -223,23 +223,26 @@ const resolveStyle = (k, shape) => {
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
 }
 // Colour themes for the Formal Certificate (hue-driven palette).
-const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
+const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], cobalt: ['Cobalt Blue', 214, 100], ocean: ['Ocean Blue', 203, 88], indigo: ['Indigo Blue', 242, 72], navydeep: ['Deep Navy', 222, 92], darkblue: ['Dark Blue', 221, 88, 0.58], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
 const METALS = {
   gold: ['Gold', '#fff3c4 #f6e3a1 #f0cf74 #d8a93f #c79a3b #b8892b #a77d2a #8a5d12 #7a4e12 #6b4a0f'],
   rose: ['Rose Gold', '#fff0ec #f7d3c8 #eebfae #e0a590 #d08c78 #b87260 #a05a4a #8a4a3a #6e3a2c #55291f'],
   platinum: ['Platinum Silver', '#ffffff #f1f4f8 #dde3ea #c8d0da #b4bdc9 #9aa5b3 #808c9b #697585 #556070 #3d4654'],
+  champagne: ['Champagne Gold', '#ffffff #fff6dc #f7e6b4 #ecd28c #dfc075 #cfa95a #b8903f #96722c #735720 #523d15'],
   copper: ['Copper Bronze', '#ffe7c9 #f6caa0 #eab07a #d9925a #c97d45 #b0652f #954f22 #7a3f1a #5e3014 #47240e'],
 }
 const PRESETS = {
   navygold: ['Royal Navy & Gold', 'blue', 'gold'], burgundy: ['Burgundy & Rose Gold', 'wine', 'rose'], emeraldgold: ['Emerald & Gold', 'emerald', 'gold'],
+  cobaltchamp: ['Cobalt Blue & Champagne Gold', 'cobalt', 'champagne'], oceanplat: ['Ocean Blue & Platinum', 'ocean', 'platinum'], indigorose: ['Indigo & Rose Gold', 'indigo', 'rose'], deepnavy: ['Deep Navy & Champagne Gold', 'navydeep', 'champagne'], skycopper: ['Ocean Blue & Copper', 'ocean', 'copper'],
+  darkgold: ['Dark Blue & Gold', 'darkblue', 'gold'], darkplat: ['Dark Blue & Platinum', 'darkblue', 'platinum'], darkchamp: ['Dark Blue & Champagne Gold', 'darkblue', 'champagne'],
   midnight: ['Midnight Sapphire & Platinum', 'sapphire', 'platinum'], peacock: ['Peacock & Copper', 'peacock', 'copper'], obsidian: ['Obsidian Black & Gold', 'obsidian', 'gold'],
 }
 const metalVars = key => Object.fromEntries((METALS[key] || METALS.gold)[1].split(' ').map((c, i) => [`--m${i}`, c]))
 const themeVars = key => {
-  const [, h, sat] = THEMES[key] || THEMES.blue, c = (sl, l, a) => `hsl(${h} ${Math.round(sat * sl)}% ${l}%${a ? ` / ${a}` : ''})`
+  const [, h, sat, dk = 1] = THEMES[key] || THEMES.blue, c = (sl, l, a, k = 1) => `hsl(${h} ${Math.round(sat * sl)}% ${l * k}%${a ? ` / ${a}` : ''})`
   return {
-    '--n1': c(.94, 21), '--n2': c(.94, 31), '--n3': c(1, 12), '--n4': c(.94, 17), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
-    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67'), '--gl2': c(.8, 38, '.53'), '--pt': `hsl(${h} 100% 93% / .6)`, '--gem1': `hsl(${h} 100% 75%)`,
+    '--n1': c(.94, 21, 0, dk), '--n2': c(.94, 31, 0, dk), '--n3': c(1, 12, 0, dk), '--n4': c(.94, 17, 0, dk), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
+    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67', dk), '--gl2': c(.8, 38, '.53', dk), '--pt': `hsl(${h} 100% 92% / .45)`, '--pn1': `hsl(${h} 55% 99.3%)`, '--pn2': `hsl(${h} 40% 97.2%)`, '--pn3': `hsl(${h} 32% 93.5%)`, '--gem1': `hsl(${h} 100% 75%)`,
     '--stf': `brightness(.55) sepia(1) hue-rotate(${h - 38}deg) saturate(5)`,
   }
 }
