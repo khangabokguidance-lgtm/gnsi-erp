@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import emblemUrl from './assets/gnsi-emblem.png'
 
 const FONT_URL =
-  'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Playfair+Display:ital,wght@0,700;0,900;1,500&display=swap'
+  'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Playfair+Display:ital,wght@0,700;0,900;1,500&family=Kaushan+Script&family=Caveat:wght@500;700&display=swap'
 
 // Real GNSI emblem (transparent cut-out of the official logo).
 const Emblem = ({ className }) => <img className={className} src={emblemUrl} alt="" />
@@ -86,6 +86,26 @@ const CSS = `
 .tdf-aw-oval img:not(.m){width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-aw-sprig{position:absolute;right:-9mm;bottom:2mm;width:22mm;height:70mm;pointer-events:none}
 .tdf-aw-sprig2{position:absolute;left:-9mm;top:4mm;width:20mm;height:50mm;pointer-events:none;transform:scaleX(-1) rotate(180deg)}
+.tdf-sp{background:#fffdf8!important}
+.tdf-sp:before{opacity:.0}
+.tdf-sp .tdf-spc{position:absolute;inset:20mm 22mm 18mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#2a2230}
+.tdf-sp-inst{display:flex;align-items:center;gap:3mm;font:700 3.3mm 'Cinzel',serif;letter-spacing:.9mm;color:#7a5a14}
+.tdf-sp-inst img{width:11mm;height:11mm;object-fit:contain;padding:1mm;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.4mm solid #d9b25a}
+.tdf-sp-happy{font:400 15mm/1 'Great Vibes',cursive;color:#c0392b;margin-top:9mm}
+.tdf-sp-td{font:400 27mm/.9 'Kaushan Script',cursive;color:#241b2d;margin-top:-1mm;text-shadow:.5mm .5mm 0 #d9b25a66}
+.tdf-sp-td i{color:#c0392b;font-style:normal}
+.tdf-sp-ph{position:relative;width:112mm;height:128mm;margin-top:8mm;flex-shrink:0}
+.tdf-sp-ph svg.bl{position:absolute;inset:-7mm;width:calc(100% + 14mm);height:calc(100% + 14mm)}
+.tdf-sp-img{position:absolute;inset:0;clip-path:url(#tdfBlob);background:#e9ecf1}
+.tdf-sp-img img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-sp-img .tdf-ph{color:#a9afbd}
+.tdf-sp-name{font:700 10mm 'Playfair Display',serif;color:#241b2d;margin-top:9mm;letter-spacing:.3mm}
+.tdf-sp-des{font:italic 600 5.4mm 'Cormorant Garamond',serif;color:#9a6f1c;margin-top:1mm}
+.tdf-sp-q{font:500 8.6mm/1.12 'Caveat',cursive;color:#2d2433;margin-top:6mm;max-width:150mm;transform:rotate(-1.5deg)}
+.tdf-sp-ft{margin-top:auto;width:100%;border-top:.35mm solid #d9b25a;padding-top:3.5mm;display:flex;justify-content:space-between;align-items:center;font:700 3.6mm 'Cinzel',serif;letter-spacing:.5mm;color:#241b2d}
+.tdf-sp-ft span{color:#9a6f1c;font:400 8mm 'Great Vibes',cursive;letter-spacing:0}
+.tdf-sp-ft b{font:900 5mm 'Cinzel',serif;color:#9a6f1c}
+.tdf-sp-ft sup{font-size:.55em;line-height:0;vertical-align:super}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -103,6 +123,7 @@ const STYLES = {
 }
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
+  splash: { label: '🎨 Painted Portrait (white, brush edge)', bg: ['#fffdf8', '#fffdf8', '#f2ead6'], pw: '112mm', ph: '128mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#241b2d', nm: '#241b2d', ac: '#9a6f1c', ts: 'none', wmb: 'multiply' },
   award: { label: '🏆 Best Teacher Award (certificate)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '78mm', ph: '94mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply' },
   corelnavy: { label: '🎨 Vector Masterpiece (navy & gold)', bg: ['#1a3a78', '#0d2350', '#050f26'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
   corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply', vec: true, ribbon: true, bokeh: true },
@@ -220,6 +241,58 @@ const Sprig = ({ className }) => (
   </svg>
 )
 
+// Hand-painted irregular edge (deterministic noise) for the Painted Portrait style.
+const blobPath = (seed, n = 140, amp = 0.022) => {
+  const pts = []
+  for (let i = 0; i < n; i++) {
+    const t = (i / n) * Math.PI * 2, c = Math.cos(t), sn = Math.sin(t)
+    const k = 5.5, r = 1 / Math.pow(Math.pow(Math.abs(c), k) + Math.pow(Math.abs(sn), k), 1 / k)
+    const noise = Math.sin(t * 9 + seed) * .5 + Math.sin(t * 23 + seed * 2.3) * .3 + Math.sin(t * 57 + seed * 1.7) * .2
+    const rr = r * (0.47 + amp * noise)
+    pts.push([0.5 + c * rr, 0.5 + sn * rr].map(v => v.toFixed(4)).join(' '))
+  }
+  return 'M' + pts.join('L') + 'Z'
+}
+const BLOB_A = blobPath(1), BLOB_B = blobPath(4.2, 140, .03), BLOB_C = blobPath(7.7, 140, .03)
+
+function SplashFrame({ s, cfg }) {
+  return (
+    <div className="tdf-page tdf-sp" style={styleVars(cfg.style, cfg.shape)}>
+      <svg width="0" height="0" style={{ position: 'absolute' }}><defs>
+        <clipPath id="tdfBlob" clipPathUnits="objectBoundingBox"><path d={BLOB_A} /></clipPath>
+      </defs></svg>
+      <div className="tdf-b2" style={{ inset: '9mm', border: '.4mm solid #d9b25a' }} />
+      <div className="tdf-spc">
+        <div className="tdf-sp-inst"><Emblem />GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
+        <div className="tdf-sp-happy">Happy</div>
+        <div className="tdf-sp-td">Teachers <i>Day</i></div>
+        <div className="tdf-sp-ph">
+          <svg className="bl" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ filter: 'blur(.6mm)' }}>
+            <defs>
+              <radialGradient id="tdfW1" cx=".35" cy=".3" r=".8"><stop offset="0" stopColor="#f7a928" /><stop offset=".6" stopColor="#e8801a" /><stop offset="1" stopColor="#f4c968" /></radialGradient>
+              <radialGradient id="tdfW2" cx=".7" cy=".75" r=".7"><stop offset="0" stopColor="#d9b25a" /><stop offset="1" stopColor="#f6e3a1" /></radialGradient>
+            </defs>
+            <g transform="translate(.05 .05) scale(.9)">
+              <path d={BLOB_C} fill="url(#tdfW2)" opacity=".75" transform="translate(.03 .035) scale(1.02)" transformOrigin="50% 50%" />
+              <path d={BLOB_B} fill="url(#tdfW1)" opacity=".92" transform="translate(-.02 -.012) scale(1.02)" />
+            </g>
+          </svg>
+          <div className="tdf-sp-img">
+            {s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
+          </div>
+        </div>
+        <div className="tdf-sp-name">{s.name}</div>
+        {s.desig && <div className="tdf-sp-des">{s.desig}</div>}
+        {cfg.quote && <div className="tdf-sp-q">{cfg.quote}</div>}
+        <div className="tdf-sp-ft">
+          <div>{cfg.dates}</div>
+          <div><span>presented by</span> <b>{cfg.batch}</b> Batch Students</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AwardFrame({ s, cfg }) {
   return (
     <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape)}>
@@ -261,6 +334,7 @@ function AwardFrame({ s, cfg }) {
 
 function Frame({ s, cfg }) {
   if (cfg.style === 'award') return <AwardFrame s={s} cfg={cfg} />
+  if (cfg.style === 'splash') return <SplashFrame s={s} cfg={cfg} />
   const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
