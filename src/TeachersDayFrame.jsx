@@ -140,7 +140,7 @@ const CSS = `
 .tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:var(--tx1);margin-top:3mm;white-space:nowrap}
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:var(--tx1);margin-top:1.5mm}
 .tdf-fm-tag b{color:var(--m4);margin:0 2mm}
-.tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,var(--m7) 5%,var(--m1) 30%,var(--m4) 48%,var(--m0) 62%,var(--m7) 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-happy{font:400 17mm/1.05 'Great Vibes',cursive;padding:0 4mm;background:linear-gradient(100deg,var(--m8) 0%,var(--m5) 22%,var(--m3) 42%,var(--m2) 55%,var(--m5) 75%,var(--m8) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:.28mm var(--m8);filter:drop-shadow(0 .35mm .35mm #0004);margin-top:1mm;margin-bottom:-1mm}
 .tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:var(--tx0);letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:var(--tx2);margin-top:2.5mm}
 .tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,var(--m1),var(--m6) 40%,var(--m1) 60%,var(--m6));box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
