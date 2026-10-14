@@ -7,7 +7,7 @@ const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap'
 
 const CSS = `
-.tdf-page{width:210mm;height:297mm;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,#17356f 0%,#0d2350 38%,#07142e 80%);font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
+.tdf-page{width:210mm;height:297mm;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,var(--bg1) 0%,var(--bg2) 38%,var(--bg3) 80%);font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
 .tdf-page:before{content:"";position:absolute;inset:0;opacity:.07;background:repeating-linear-gradient(45deg,#d9b25a 0 1px,transparent 1px 14px),repeating-linear-gradient(-45deg,#d9b25a 0 1px,transparent 1px 14px)}
 .tdf-b1,.tdf-b2,.tdf-b3{position:absolute;pointer-events:none}
 .tdf-b1{inset:7mm;border:1.6mm solid transparent;border-image:linear-gradient(135deg,#f6e3a1,#a77d2a,#f6e3a1,#a77d2a) 1}
@@ -15,7 +15,7 @@ const CSS = `
 .tdf-corner{position:absolute;width:30mm;height:30mm;pointer-events:none}
 .tdf-corner svg{width:100%;height:100%}
 .tdf-content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#f6e3a1}
-.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm #07142e,0 0 0 1.8mm #d9b25a}
+.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
 .tdf-inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:#d9b25a}
 .tdf-inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:#f6e3a1;font-weight:500;margin-top:1mm}
 .tdf-rule{display:flex;align-items:center;gap:3mm;margin-top:3.5mm}
@@ -23,10 +23,10 @@ const CSS = `
 .tdf-rule b{width:2.2mm;height:2.2mm;background:#d9b25a;transform:rotate(45deg)}
 .tdf-happy{font:400 22mm/1 'Great Vibes',cursive;margin-top:5mm;background:linear-gradient(180deg,#fff3c4,#d9b25a 55%,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-td{font:900 10.5mm 'Cinzel',serif;letter-spacing:2.2mm;margin-top:1mm;color:#f6e3a1;text-shadow:0 .5mm 1mm #000a}
-.tdf-photo-wrap{position:relative;margin-top:7mm;width:104mm;height:128mm}
-.tdf-ring{position:absolute;inset:0;border-radius:52mm 52mm 4mm 4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
-.tdf-ring2{width:100%;height:100%;border-radius:50mm 50mm 2.5mm 2.5mm;background:#07142e;padding:1.4mm}
-.tdf-photo{width:100%;height:100%;border-radius:48.6mm 48.6mm 1.4mm 1.4mm;overflow:hidden;background:#eef0f4;position:relative}
+.tdf-photo-wrap{position:relative;margin-top:7mm;width:var(--pw);height:var(--ph)}
+.tdf-ring{position:absolute;inset:0;border-radius:var(--r1);background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
+.tdf-ring2{width:100%;height:100%;border-radius:var(--r2);background:var(--bg3);padding:1.4mm}
+.tdf-photo{width:100%;height:100%;border-radius:var(--r3);overflow:hidden;background:#eef0f4;position:relative}
 .tdf-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a9afbd}
 .tdf-ph svg{width:34mm}
@@ -40,6 +40,7 @@ const CSS = `
 .tdf-pres{font:500 3.6mm 'Cinzel',serif;letter-spacing:1.2mm;margin-top:4mm;color:#d9b25a}
 .tdf-batch{font:400 11mm/1.1 'Great Vibes',cursive;color:#f6e3a1;margin-top:1mm}
 .tdf-batch b{font:900 9mm 'Cinzel',serif;color:#d9b25a}
+.tdf-orn{position:absolute;inset:-5mm;border:.4mm solid #d9b25a;border-radius:var(--r1);pointer-events:none;display:var(--orn)}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -47,6 +48,18 @@ const CSS = `
   .tdf-print{display:block!important}
 }
 `
+
+const STYLES = {
+  arch:   { label: 'Royal Arch (navy)',      bg: ['#17356f', '#0d2350', '#07142e'], pw: '104mm', ph: '128mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none' },
+  round:  { label: 'Round Medallion (navy)', bg: ['#17356f', '#0d2350', '#07142e'], pw: '112mm', ph: '112mm', r: ['50%', '50%', '50%'], orn: 'block' },
+  rect:   { label: 'Classic Rectangle (navy)', bg: ['#17356f', '#0d2350', '#07142e'], pw: '104mm', ph: '128mm', r: ['3mm', '2mm', '1mm'], orn: 'block' },
+  maroon: { label: 'Maroon Heritage (arch)', bg: ['#7a1d2e', '#55101e', '#2f0710'], pw: '104mm', ph: '128mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none' },
+  maroonround: { label: 'Maroon Heritage (round)', bg: ['#7a1d2e', '#55101e', '#2f0710'], pw: '112mm', ph: '112mm', r: ['50%', '50%', '50%'], orn: 'block' },
+}
+const styleVars = k => {
+  const t = STYLES[k] || STYLES.arch
+  return { '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+}
 
 const Corner = ({ flip }) => (
   <div className="tdf-corner" style={{ ...flip.pos, transform: flip.t }}>
@@ -67,7 +80,7 @@ const CORNERS = [
 
 function Frame({ s, cfg }) {
   return (
-    <div className="tdf-page">
+    <div className="tdf-page" style={styleVars(cfg.style)}>
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
       <div className="tdf-content">
@@ -77,7 +90,7 @@ function Frame({ s, cfg }) {
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          <div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          <div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
@@ -106,7 +119,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -156,6 +169,9 @@ export default function TeachersDayFrame() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10, marginBottom: 14 }}>
         <label>Dates<input style={inp} value={cfg.dates} onChange={e => setCfg({ ...cfg, dates: e.target.value })} /></label>
+        <label>Frame style<select style={inp} value={cfg.style} onChange={e => setCfg({ ...cfg, style: e.target.value })}>
+          {Object.entries(STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select></label>
         <label>Batch<input style={inp} value={cfg.batch} onChange={e => setCfg({ ...cfg, batch: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Quote (optional)<input style={inp} value={cfg.quote} onChange={e => setCfg({ ...cfg, quote: e.target.value })} /></label>
       </div>
