@@ -54,6 +54,7 @@ import AdminLinkStaff     from './AdminLinkStaff'
 import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
+import TeachersDayFrame from './TeachersDayFrame'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
@@ -153,6 +154,7 @@ const ALL_GROUPS = [
       { id: 'checklist',   label: 'Checklist',    icon: '✅' },
       { id: 'invitation',  label: 'Invitation',   icon: '✉️' },
       { id: 'certificate', label: 'Certificates', icon: '📜' },
+      { id: 'teachersday',  label: "Teachers' Day", icon: '🎓' },
       { id: 'admin',       label: 'Admin',        icon: '🔐' },
       { id: 'student360',  label: 'Student 360°', icon: '🔍' },
       { id: 'system',      label: 'System',       icon: '⚙️' },
@@ -1015,6 +1017,7 @@ export default function App() {
     student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} onNavigate={setActive} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
+    teachersday:       canAccess('teachersday') ? <TeachersDayFrame /> : <AccessDenied />,
     help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
   }
 
