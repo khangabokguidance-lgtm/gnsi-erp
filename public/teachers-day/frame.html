@@ -55,14 +55,14 @@ body{font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:e
 .pres{font:500 3.6mm 'Cinzel',serif;letter-spacing:1.2mm;margin-top:4mm;color:var(--gold)}
 .batch{font:400 11mm/1.1 'Great Vibes',cursive;color:var(--gold2);margin-top:1mm}
 .batch b{font:900 9mm 'Cinzel',serif;color:var(--gold)}
-@media print{html,body{background:none}.bar{display:none}.stage{padding:0}.page{box-shadow:none}[contenteditable]:hover{background:none}}
+.page{break-after:page}.stage{break-inside:avoid}@media print{.stage{gap:0!important}html,body{background:none}.bar{display:none}.stage{padding:0}.page{box-shadow:none}[contenteditable]:hover{background:none}}
 </style></head><body>
 <div class="bar">
  <label>📷 Upload Staff Photo<input type="file" id="file" accept="image/*"></label>
  <button onclick="window.print()">🖨 Print / Save PDF (A4)</button>
- <span>Click name / designation / quote to edit. In print dialog: Paper A4, Margins None, enable Background graphics.</span>
+ <select id="sel" style="padding:6px"><option>Loading website staff…</option></select><button onclick="loadAll()">⬇ All staff (1 page each)</button><span id="msg"></span><span>Click name / designation / quote to edit. In print dialog: Paper A4, Margins None, enable Background graphics.</span>
 </div>
-<div class="stage"><div class="page">
+<div class="stage" id="stage"><div class="page">
  <div class="b1"></div><div class="b2"></div><div class="b3"></div>
  <div class="corner c1"><svg viewBox="0 0 100 100"><g fill="none" stroke="#d9b25a" stroke-width="1.6"><path d="M4 96V4h92"/><path d="M12 80V12h68"/><path d="M12 12c20 0 30 10 30 30M12 12c0 20 10 30 30 30"/><circle cx="12" cy="12" r="5" fill="#d9b25a"/><path d="M20 40c8-2 14 2 16 10M40 20c-2 8 2 14 10 16"/></g></svg></div>
  <div class="corner c2"><svg viewBox="0 0 100 100"><use href="#co"/></svg></div>
@@ -73,8 +73,8 @@ body{font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:e
   <div class="happy">Happy</div>
   <div class="td">TEACHERS' DAY</div>
   <div class="photo-wrap">
-   <div class="ring"><div class="ring2"><div class="photo" id="photo" title="Click to upload photo">
-     <div class="ph" id="ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 22c0-5 4-8 9-8s9 3 9 8z"/></svg>Click to add staff photo</div>
+   <div class="ring"><div class="ring2"><div class="photo" title="Click to upload photo">
+     <div class="ph" ><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 22c0-5 4-8 9-8s9 3 9 8z"/></svg>Click to add staff photo</div>
    </div></div></div>
    <span class="star" style="left:-9mm;top:40mm">✦</span><span class="star" style="right:-9mm;top:60mm">✦</span>
    <span class="star" style="left:-6mm;bottom:8mm;font-size:5mm">✦</span><span class="star" style="right:-6mm;bottom:20mm;font-size:5mm">✦</span>
@@ -92,9 +92,24 @@ body{font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:e
  <div class="corner c4"><svg viewBox="0 0 100 100"><use href="#co"/></svg></div>
 </div></div>
 <svg width="0" height="0" style="position:absolute"><defs><g id="co" fill="none" stroke="#d9b25a" stroke-width="1.6"><path d="M4 96V4h92"/><path d="M12 80V12h68"/><path d="M12 12c20 0 30 10 30 30M12 12c0 20 10 30 30 30"/><circle cx="12" cy="12" r="5" fill="#d9b25a"/><path d="M20 40c8-2 14 2 16 10M40 20c-2 8 2 14 10 16"/></g></defs></svg>
+<script src="faculty-config.js"></script>
 <script>
-const f=document.getElementById('file'),p=document.getElementById('photo');
-p.onclick=()=>f.click();
-f.onchange=()=>{const r=f.files[0];if(!r)return;const u=new FileReader();u.onload=e=>{p.innerHTML='<img src="'+e.target.result+'">'};u.readAsDataURL(r)};
+const stage=document.getElementById('stage'),tpl=stage.firstElementChild.cloneNode(true),msg=document.getElementById('msg');
+const file=document.getElementById('file');let staff=[];
+function bind(pg){const p=pg.querySelector('.photo');p.onclick=()=>{file.onchange=()=>{const r=file.files[0];if(!r)return;const u=new FileReader();u.onload=e=>{p.innerHTML='<img src="'+e.target.result+'">'};u.readAsDataURL(r);file.value=''};file.click()}}
+function fill(pg,s){const ph=s.photo_url||s.image_url||s.photo||'';
+ pg.querySelector('.name').textContent=(s.name||'').toUpperCase();
+ pg.querySelector('.desig').textContent=[s.role,s.subject].filter(Boolean).join(' · ');
+ if(ph)pg.querySelector('.photo').innerHTML='<img crossorigin="anonymous" src="'+ph+'">'}
+function show(list){stage.style.flexDirection='column';stage.style.alignItems='center';stage.style.gap='20px';stage.innerHTML='';
+ list.forEach(s=>{const pg=tpl.cloneNode(true);stage.appendChild(pg);bind(pg);fill(pg,s)})}
+function loadAll(){show(staff)}
+bind(stage.firstElementChild);
+(async()=>{const sel=document.getElementById('sel');try{
+ const r=await fetch(GNSI_DB.url+'/rest/v1/website_faculty?select=*&order=sort_order,name',{headers:{apikey:GNSI_DB.key,Authorization:'Bearer '+GNSI_DB.key}});
+ staff=await r.json();if(!Array.isArray(staff))throw new Error(JSON.stringify(staff));
+ sel.innerHTML='<option value="">— choose website staff —</option>'+staff.map((s,i)=>'<option value="'+i+'">'+(s.name||'?')+'</option>').join('');
+ sel.onchange=()=>{if(sel.value!=='')show([staff[sel.value]])};
+}catch(e){sel.innerHTML='<option>Could not load staff (offline?)</option>';msg.textContent=e.message}})();
 </script>
 </body></html>
