@@ -1,19 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
-import { LOGO_BASE64 } from './logo'
+import emblemUrl from './assets/gnsi-emblem.png'
 
 const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap'
 
-const EMBLEM_URL = 'https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem-new.png'
-
-// Real GNSI emblem (website PNG); falls back to the bundled logo if it can't load.
-function Emblem({ className, style }) {
-  const [bad, setBad] = useState(false)
-  return <img className={className} style={style} alt="" crossOrigin={bad ? undefined : 'anonymous'}
-    data-fb={bad ? '1' : undefined} src={bad ? `data:image/jpeg;base64,${LOGO_BASE64}` : EMBLEM_URL} onError={() => setBad(true)} />
-}
+// Real GNSI emblem (transparent cut-out of the official logo).
+const Emblem = ({ className }) => <img className={className} src={emblemUrl} alt="" />
 
 const CSS = `
 .tdf-page{width:210mm;height:297mm;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,var(--bg1) 0%,var(--bg2) 38%,var(--bg3) 80%);font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
@@ -24,7 +18,7 @@ const CSS = `
 .tdf-corner{position:absolute;width:30mm;height:30mm;pointer-events:none}
 .tdf-corner svg{width:100%;height:100%}
 .tdf-content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--tx)}
-.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
+.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:contain;padding:1.6mm;box-sizing:border-box;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
 .tdf-inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:var(--ac)}
 .tdf-inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:var(--tx);font-weight:500;margin-top:1mm}
 .tdf-rule{display:flex;align-items:center;gap:3mm;margin-top:3.5mm}
@@ -58,11 +52,9 @@ const CSS = `
 .tdf-scroll{position:absolute;width:11mm;pointer-events:none}
 .tdf-halo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 .tdf-flour{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 1mm);pointer-events:none}
-.tdf-wm{position:absolute;left:50%;top:50%;width:150mm;height:150mm;object-fit:contain;transform:translate(-50%,-50%);opacity:.07;mix-blend-mode:var(--wmb);pointer-events:none;filter:grayscale(1) contrast(1.1)}
-.tdf-seal{position:absolute;left:50%;bottom:-8.5mm;width:17mm;height:17mm;transform:translateX(-50%);border-radius:50%;object-fit:contain;background:radial-gradient(circle,#fff 0,#fff 62%,#f6e3a1 100%);border:.7mm solid #d9b25a;box-shadow:0 0 0 1mm var(--bg3),0 0 0 1.5mm #d9b25a,0 1.5mm 4mm #0009;padding:.8mm;box-sizing:border-box;z-index:3}
-.tdf-pmark{position:absolute;right:3mm;bottom:3mm;width:13mm;height:13mm;object-fit:contain;opacity:.8;mix-blend-mode:screen;filter:drop-shadow(0 0 1mm #0008) brightness(1.15);pointer-events:none;z-index:2}
-.tdf-wm[data-fb]{display:none}
-.tdf-pmark[data-fb]{mix-blend-mode:normal;border-radius:50%;background:#fff;padding:.5mm;filter:none}
+.tdf-wm{position:absolute;left:50%;top:50%;width:150mm;height:150mm;object-fit:contain;transform:translate(-50%,-50%);opacity:.12;mix-blend-mode:var(--wmb);pointer-events:none;}
+.tdf-seal{position:absolute;left:50%;bottom:-8.5mm;width:17mm;height:17mm;transform:translateX(-50%);border-radius:50%;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.7mm solid #d9b25a;box-shadow:0 0 0 1mm var(--bg3),0 0 0 1.5mm #d9b25a,0 1.5mm 4mm #0009;padding:1.4mm;box-sizing:border-box;z-index:3}
+.tdf-pmark{position:absolute;right:3mm;bottom:3mm;width:14mm;height:14mm;object-fit:contain;padding:1.2mm;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.4mm solid #d9b25a;box-shadow:0 .8mm 2mm #0008;pointer-events:none;z-index:2}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
