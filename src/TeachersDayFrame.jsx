@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
-import { LOGO_BASE64 } from './logo'
+import emblemUrl from './assets/gnsi-emblem.png'
 
 const FONT_URL =
-  'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap'
+  'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Playfair+Display:ital,wght@0,700;0,900;1,500&display=swap'
+
+// Real GNSI emblem (transparent cut-out of the official logo).
+const Emblem = ({ className }) => <img className={className} src={emblemUrl} alt="" />
 
 const CSS = `
 .tdf-page{width:210mm;height:297mm;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,var(--bg1) 0%,var(--bg2) 38%,var(--bg3) 80%);font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
@@ -15,7 +18,7 @@ const CSS = `
 .tdf-corner{position:absolute;width:30mm;height:30mm;pointer-events:none}
 .tdf-corner svg{width:100%;height:100%}
 .tdf-content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--tx)}
-.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
+.tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:contain;padding:1.6mm;box-sizing:border-box;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
 .tdf-inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:var(--ac)}
 .tdf-inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:var(--tx);font-weight:500;margin-top:1mm}
 .tdf-rule{display:flex;align-items:center;gap:3mm;margin-top:3.5mm}
@@ -27,11 +30,11 @@ const CSS = `
 .tdf-ring{position:absolute;inset:0;border-radius:var(--r1);background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
 .tdf-ring2{width:100%;height:100%;border-radius:var(--r2);background:var(--bg3);padding:1.4mm}
 .tdf-photo{width:100%;height:100%;border-radius:var(--r3);overflow:hidden;background:#eef0f4;position:relative}
-.tdf-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-photo img:not(.tdf-pmark){width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a9afbd}
 .tdf-ph svg{width:34mm}
 .tdf-star{position:absolute;color:#d9b25a;font-size:7mm}
-.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:var(--nmt);letter-spacing:.8mm;color:var(--nm);text-shadow:var(--ts);max-width:165mm}
+.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:calc(var(--nmt) + 6mm);letter-spacing:.8mm;color:var(--nm);text-shadow:var(--ts);max-width:165mm}
 .tdf-desig{font:italic 600 6.2mm 'Cormorant Garamond',serif;color:var(--ac);margin-top:1.5mm}
 .tdf-quote{font:italic 500 5.2mm/1.3 'Cormorant Garamond',serif;margin-top:5mm;max-width:150mm;color:var(--tx)}
 .tdf-foot{margin-top:auto;width:100%;padding-top:4mm}
@@ -49,6 +52,42 @@ const CSS = `
 .tdf-scroll{position:absolute;width:11mm;pointer-events:none}
 .tdf-halo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 .tdf-flour{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 1mm);pointer-events:none}
+.tdf-wm{position:absolute;left:50%;top:50%;width:150mm;height:150mm;object-fit:contain;transform:translate(-50%,-50%);opacity:.12;mix-blend-mode:var(--wmb);pointer-events:none;}
+.tdf-seal{position:absolute;left:50%;bottom:-8.5mm;width:17mm;height:17mm;transform:translateX(-50%);border-radius:50%;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.7mm solid #d9b25a;box-shadow:0 0 0 1mm var(--bg3),0 0 0 1.5mm #d9b25a,0 1.5mm 4mm #0009;padding:1.4mm;box-sizing:border-box;z-index:3}
+.tdf-pmark{position:absolute;right:3mm;bottom:3mm;width:14mm;height:14mm;object-fit:contain;padding:1.2mm;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.4mm solid #d9b25a;box-shadow:0 .8mm 2mm #0008;pointer-events:none;z-index:2}
+.tdf-aw{background:#fbf6e9!important}
+.tdf-aw:before{opacity:.05}
+.tdf-aw .tdf-awc{position:absolute;inset:20mm 24mm 18mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#2b2a33}
+.tdf-aw-rib{position:absolute;left:26mm;top:14mm;width:15mm;height:60mm;background:linear-gradient(90deg,#0a1a40,#16336e 50%,#0a1a40);clip-path:polygon(0 0,100% 0,100% 100%,50% 88%,0 100%);box-shadow:0 2mm 3mm #0004}
+.tdf-aw-seal{position:absolute;left:21mm;top:50mm;width:26mm;height:26mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4,#d9b25a 55%,#8a6414);padding:2.2mm;box-shadow:0 1.5mm 3mm #0006;z-index:3}
+.tdf-aw-seal div{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:.5mm solid #f6e3a1;padding:1.6mm;box-sizing:border-box}
+.tdf-aw-seal img{width:100%;height:100%;object-fit:contain}
+.tdf-aw-inst{font:700 3.4mm 'Cinzel',serif;letter-spacing:1mm;color:#9a6f1c;margin-top:2mm}
+.tdf-aw-the{font:600 4mm 'Cinzel',serif;letter-spacing:1.5mm;color:#0d2350;margin-top:11mm;display:flex;align-items:center;gap:3mm}
+.tdf-aw-the i{width:16mm;height:.3mm;background:#b8892b}
+.tdf-aw-best{font:900 34mm/.95 'Playfair Display',serif;color:#0d2350;letter-spacing:-.5mm}
+.tdf-aw-teacher{font:400 25mm/1 'Great Vibes',cursive;margin-top:-11mm;background:linear-gradient(180deg,#d8a93f,#9a6f1c);-webkit-background-clip:text;background-clip:text;color:transparent;position:relative}
+.tdf-aw-award{font:700 6mm 'Cinzel',serif;letter-spacing:2mm;color:#0d2350;margin-top:1mm}
+.tdf-aw-pres{font:italic 500 5mm 'Cormorant Garamond',serif;color:#5a3f10;margin-top:8mm}
+.tdf-aw-name{font:italic 700 12mm/1.1 'Playfair Display',serif;color:#0d2350;margin-top:2mm;max-width:160mm}
+.tdf-aw-line{width:60mm;height:.4mm;background:linear-gradient(90deg,transparent,#b8892b,transparent);margin-top:3mm}
+.tdf-aw-msg{font:500 4.6mm/1.45 'Cormorant Garamond',serif;color:#3b3a44;margin-top:5mm;max-width:132mm}
+.tdf-aw-bot{margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end}
+.tdf-aw-left{flex:1;min-width:0;text-align:left;padding-bottom:6mm;padding-right:4mm}
+.tdf-aw-left .u{font:italic 500 4.4mm/1.4 'Cormorant Garamond',serif;color:#3b3a44}
+.tdf-aw-left .sg{font:400 7mm/1.1 'Great Vibes',cursive;color:#9a6f1c;margin-top:7mm}
+.tdf-aw-left .dt{display:inline-block;margin-top:5mm;border:.35mm solid #b8892b;padding:1.8mm 5mm;font:700 3.6mm 'Cinzel',serif;letter-spacing:.5mm;color:#0d2350}
+.tdf-aw-left .pb{font:500 3mm 'Cinzel',serif;letter-spacing:1mm;color:#9a6f1c;margin-top:3mm}
+.tdf-aw-left .bt{font:400 9mm/1.1 'Great Vibes',cursive;color:#0d2350}
+.tdf-aw-left .bt b{font:900 7mm 'Cinzel',serif;color:#9a6f1c}
+.tdf-aw-left .bt sup,.tdf-aw-left .dt sup{font-size:.55em;line-height:0;vertical-align:super}
+.tdf-aw-ph{position:relative;width:66mm;height:84mm;margin-right:6mm;flex-shrink:0}
+.tdf-aw-wash{position:absolute;inset:-6mm;background:radial-gradient(ellipse at 30% 25%,#e7c777aa,transparent 55%),radial-gradient(ellipse at 75% 70%,#d9b25a88,transparent 55%),radial-gradient(ellipse at 50% 50%,#f1dfae,transparent 70%);filter:blur(2.5mm);border-radius:50%}
+.tdf-aw-oval{position:absolute;inset:0;border-radius:50%;padding:1.6mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 2mm 6mm #0004}
+.tdf-aw-oval div{width:100%;height:100%;border-radius:50%;overflow:hidden;background:#eef0f4;border:1mm solid #fbf6e9}
+.tdf-aw-oval img:not(.m){width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-aw-sprig{position:absolute;right:-9mm;bottom:2mm;width:22mm;height:70mm;pointer-events:none}
+.tdf-aw-sprig2{position:absolute;left:-9mm;top:4mm;width:20mm;height:50mm;pointer-events:none;transform:scaleX(-1) rotate(180deg)}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -66,15 +105,16 @@ const STYLES = {
 }
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
+  award: { label: '🏆 Best Teacher Award (certificate)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '78mm', ph: '94mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply' },
   corelnavy: { label: '🎨 Vector Masterpiece (navy & gold)', bg: ['#1a3a78', '#0d2350', '#050f26'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
-  corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', vec: true, ribbon: true, bokeh: true },
+  corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply', vec: true, ribbon: true, bokeh: true },
   corelmaroon: { label: '🎨 Vector Masterpiece (maroon & gold)', bg: ['#8a2236', '#55101e', '#2a050d'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
-  ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', laurel: true, ribbon: true, bokeh: true },
+  ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply', laurel: true, ribbon: true, bokeh: true },
   aurora: { label: '✨ Midnight Aurora (round, laurel)', bg: ['#14505c', '#08262f', '#030d14'], pw: '98mm', ph: '98mm', mt: '15mm', nmt: '15mm', r: ['50%', '50%', '50%'], orn: 'block', tx: '#d8f3ee', nm: '#fff', ac: '#e6c46a', laurel: true, ribbon: true, bokeh: true },
   emerald: { label: '✨ Emerald Luxe (arch, laurel)', bg: ['#118060', '#0a4a38', '#042a20'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', ac: '#e2bf68', laurel: true, ribbon: true, bokeh: true },
 })
 // Passport-photo shape: 7:9 (35 x 45 mm) portrait rectangle, scaled up to fill the frame.
-const PASSPORT = { pw: '63mm', ph: '81mm', r: ['3mm', '2mm', '1mm'], orn: 'block' }
+const PASSPORT = { pw: '61mm', ph: '78mm', r: ['3mm', '2mm', '1mm'], orn: 'block' }
 const resolveStyle = (k, shape) => {
   const t = { ...BASE, ...(STYLES[k] || STYLES.arch) }
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
@@ -82,7 +122,7 @@ const resolveStyle = (k, shape) => {
 const styleVars = (k, shape) => {
   const t = resolveStyle(k, shape)
   const g = t.g
-  return { '--mt': t.mt, '--nmt': t.nmt, '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+  return { '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
 
 const Corner = ({ flip }) => (
@@ -170,7 +210,59 @@ const Flourish = () => (
 
 const BOKEH = [[8, 12, 26], [78, 9, 20], [88, 40, 30], [4, 55, 22], [90, 78, 24], [10, 86, 28], [50, 94, 18], [30, 5, 14]]
 
+const Sprig = ({ className }) => (
+  <svg className={className} viewBox="0 0 22 70" fill="none">
+    <path d="M12 69C9 52 14 34 8 2" stroke="#b8892b" strokeWidth=".7" />
+    {[8, 16, 24, 32, 40, 48, 56].map((y, i) => (
+      <g key={y}>
+        <ellipse cx={i % 2 ? 6 : 15} cy={64 - y} rx="5" ry="1.9" fill="#d9b25a" opacity=".85" transform={`rotate(${i % 2 ? -35 : 35} ${i % 2 ? 6 : 15} ${64 - y})`} />
+        <ellipse cx={i % 2 ? 15 : 6} cy={60 - y} rx="4" ry="1.6" fill="#b8892b" opacity=".7" transform={`rotate(${i % 2 ? 40 : -40} ${i % 2 ? 15 : 6} ${60 - y})`} />
+      </g>
+    ))}
+  </svg>
+)
+
+function AwardFrame({ s, cfg }) {
+  return (
+    <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape)}>
+      <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
+      {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
+      <div className="tdf-aw-rib" />
+      <div className="tdf-aw-seal"><div><Emblem /></div></div>
+      <div className="tdf-awc">
+        <div className="tdf-aw-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
+        <div className="tdf-aw-the"><i />THE<i /></div>
+        <div className="tdf-aw-best">BEST</div>
+        <div className="tdf-aw-teacher">Teacher</div>
+        <div className="tdf-aw-award">• AWARD •</div>
+        <div className="tdf-aw-pres">is presented to</div>
+        <div className="tdf-aw-name">{s.name}</div>
+        <div className="tdf-aw-line" />
+        {s.desig && <div style={{ font: "italic 600 5mm 'Cormorant Garamond',serif", color: '#9a6f1c', marginTop: '2mm' }}>{s.desig}</div>}
+        <div className="tdf-aw-msg">{cfg.msg}</div>
+        <div className="tdf-aw-bot">
+          <div className="tdf-aw-left">
+            <div className="u">Awarded unanimously.<br />No other nominations were required.</div>
+            <div className="sg">— Signed, every student you ever taught.</div>
+            <div className="dt">TEACHERS&apos; DAY · {cfg.dates}</div>
+            <div className="pb">WITH GRATITUDE, PRESENTED BY</div>
+            <div className="bt"><b>{cfg.batch}</b> Batch Students</div>
+          </div>
+          <div className="tdf-aw-ph">
+            <div className="tdf-aw-wash" />
+            <Sprig className="tdf-aw-sprig" /><Sprig className="tdf-aw-sprig2" />
+            <div className="tdf-aw-oval"><div>
+              {s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Frame({ s, cfg }) {
+  if (cfg.style === 'award') return <AwardFrame s={s} cfg={cfg} />
   const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
@@ -178,14 +270,16 @@ function Frame({ s, cfg }) {
       {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
+      <Emblem className="tdf-wm" />
       <div className="tdf-content">
-        <img className="tdf-logo" src={`data:image/jpeg;base64,${LOGO_BASE64}`} alt="" />
+        <Emblem className="tdf-logo" />
         <div className="tdf-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE<small>— GNSI —</small></div>
         <div className="tdf-rule"><i /><b /><i /></div>
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.vec && <Flourish />}{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}<Emblem className="tdf-seal" />{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo"><Emblem className="tdf-pmark" />
+            <Emblem className="tdf-pmark" />
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
@@ -214,7 +308,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', shape: 'passport',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -272,6 +366,7 @@ export default function TeachersDayFrame() {
           <option value="style">Style default (arch / round)</option>
         </select></label>
         <label>Batch<input style={inp} value={cfg.batch} onChange={e => setCfg({ ...cfg, batch: e.target.value })} /></label>
+        <label style={{ gridColumn: '1/-1' }}>Award message (Best Teacher Award style)<textarea style={{ ...inp, minHeight: 60 }} value={cfg.msg} onChange={e => setCfg({ ...cfg, msg: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Quote (optional)<input style={inp} value={cfg.quote} onChange={e => setCfg({ ...cfg, quote: e.target.value })} /></label>
       </div>
 
