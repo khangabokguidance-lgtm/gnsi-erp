@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>GNSI – Teachers' Day Photo Frame 2026</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+@page{size:A4 portrait;margin:0}
+:root{--navy:#07142e;--navy2:#0d2350;--gold:#d9b25a;--gold2:#f6e3a1;--gold3:#a77d2a}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#2a2f3a}
+body{font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.bar{position:fixed;top:0;left:0;right:0;background:#111;color:#eee;padding:8px 14px;font:13px system-ui;display:flex;gap:12px;align-items:center;flex-wrap:wrap;z-index:9}
+.bar button,.bar label{background:var(--gold);color:#1a1200;border:0;padding:6px 12px;border-radius:6px;font-weight:700;cursor:pointer}
+.bar input[type=file]{display:none}
+.stage{padding:60px 0 20px;display:flex;justify-content:center}
+.page{width:210mm;height:297mm;position:relative;overflow:hidden;background:
+ radial-gradient(ellipse at 50% 38%,#17356f 0%,var(--navy2) 38%,var(--navy) 80%);
+ box-shadow:0 10px 40px #000a}
+.page:before{content:"";position:absolute;inset:0;opacity:.07;
+ background:repeating-linear-gradient(45deg,var(--gold) 0 1px,transparent 1px 14px),repeating-linear-gradient(-45deg,var(--gold) 0 1px,transparent 1px 14px)}
+.b1,.b2,.b3{position:absolute;pointer-events:none}
+.b1{inset:7mm;border:1.6mm solid transparent;border-image:linear-gradient(135deg,var(--gold2),var(--gold3),var(--gold2),var(--gold3)) 1}
+.b2{inset:11.5mm;border:.5mm solid var(--gold)}
+.b3{inset:14mm;border:.25mm dashed #d9b25a99}
+.corner{position:absolute;width:30mm;height:30mm;pointer-events:none}
+.corner svg{width:100%;height:100%}
+.c1{top:9mm;left:9mm}.c2{top:9mm;right:9mm;transform:scaleX(-1)}
+.c3{bottom:9mm;left:9mm;transform:scaleY(-1)}.c4{bottom:9mm;right:9mm;transform:scale(-1)}
+.content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--gold2)}
+.logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid var(--gold);object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm var(--navy),0 0 0 1.8mm var(--gold)}
+.inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:var(--gold)}
+.inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:var(--gold2);font-weight:500;margin-top:1mm}
+.rule{display:flex;align-items:center;gap:3mm;margin:3.5mm 0 0;width:100%;justify-content:center}
+.rule i{height:.3mm;width:38mm;background:linear-gradient(90deg,transparent,var(--gold))}
+.rule i:last-child{transform:scaleX(-1)}
+.rule b{width:2.2mm;height:2.2mm;background:var(--gold);transform:rotate(45deg)}
+.happy{font:400 22mm/1 'Great Vibes',cursive;margin-top:5mm;background:linear-gradient(180deg,#fff3c4,#d9b25a 55%,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 .6mm .6mm #0008)}
+.td{font:900 10.5mm 'Cinzel',serif;letter-spacing:2.2mm;margin-top:1mm;color:var(--gold2);text-shadow:0 .5mm 1mm #000a}
+.photo-wrap{position:relative;margin-top:7mm;width:104mm;height:128mm}
+.ring{position:absolute;inset:0;border-radius:52mm 52mm 4mm 4mm;background:linear-gradient(135deg,var(--gold2),var(--gold3) 40%,var(--gold2) 60%,var(--gold3));padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
+.ring2{width:100%;height:100%;border-radius:50mm 50mm 2.5mm 2.5mm;background:var(--navy);padding:1.4mm}
+.photo{width:100%;height:100%;border-radius:48.6mm 48.6mm 1.4mm 1.4mm;overflow:hidden;background:#eef0f4 center/cover no-repeat;position:relative;cursor:pointer}
+.photo .ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#6b7387;font:600 4mm 'Cinzel',serif;gap:3mm}
+.photo .ph svg{width:34mm;opacity:.5}
+.photo img{width:100%;height:100%;object-fit:cover;display:block}
+.star{position:absolute;color:var(--gold);font-size:7mm;filter:drop-shadow(0 0 2mm #d9b25a)}
+.name{font:700 9mm 'Cinzel',serif;margin-top:8mm;letter-spacing:.8mm;color:#fff;text-shadow:0 .4mm .8mm #000}
+.desig{font:italic 600 6.2mm 'Cormorant Garamond',serif;color:var(--gold);margin-top:1.5mm;letter-spacing:.4mm}
+[contenteditable]{outline:none}
+[contenteditable]:hover{background:#ffffff14}
+.quote{font:italic 500 5.2mm/1.3 'Cormorant Garamond',serif;margin-top:5mm;max-width:150mm;color:var(--gold2)}
+.foot{margin-top:auto;width:100%;padding-top:4mm}sup{font-size:.55em;line-height:0;letter-spacing:0;vertical-align:super}
+.dates{display:inline-flex;align-items:center;gap:4mm;border:.4mm solid var(--gold);padding:2.6mm 9mm;background:linear-gradient(90deg,#d9b25a22,#d9b25a44,#d9b25a22);font:700 5mm 'Cinzel',serif;letter-spacing:.6mm;color:#fff}
+.dates em{font-style:normal;color:var(--gold);font-size:7mm}
+.pres{font:500 3.6mm 'Cinzel',serif;letter-spacing:1.2mm;margin-top:4mm;color:var(--gold)}
+.batch{font:400 11mm/1.1 'Great Vibes',cursive;color:var(--gold2);margin-top:1mm}
+.batch b{font:900 9mm 'Cinzel',serif;color:var(--gold)}
+@media print{html,body{background:none}.bar{display:none}.stage{padding:0}.page{box-shadow:none}[contenteditable]:hover{background:none}}
+</style></head><body>
+<div class="bar">
+ <label>📷 Upload Staff Photo<input type="file" id="file" accept="image/*"></label>
+ <button onclick="window.print()">🖨 Print / Save PDF (A4)</button>
+ <span>Click name / designation / quote to edit. In print dialog: Paper A4, Margins None, enable Background graphics.</span>
+</div>
+<div class="stage"><div class="page">
+ <div class="b1"></div><div class="b2"></div><div class="b3"></div>
+ <div class="corner c1"><svg viewBox="0 0 100 100"><g fill="none" stroke="#d9b25a" stroke-width="1.6"><path d="M4 96V4h92"/><path d="M12 80V12h68"/><path d="M12 12c20 0 30 10 30 30M12 12c0 20 10 30 30 30"/><circle cx="12" cy="12" r="5" fill="#d9b25a"/><path d="M20 40c8-2 14 2 16 10M40 20c-2 8 2 14 10 16"/></g></svg></div>
+ <div class="corner c2"><svg viewBox="0 0 100 100"><use href="#co"/></svg></div>
+ <div class="content">
+  <img class="logo" src="logo.jpg" alt="GNSI" onerror="this.style.visibility='hidden'">
+  <div class="inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE<small>— GNSI —</small></div>
+  <div class="rule"><i></i><b></b><i></i></div>
+  <div class="happy">Happy</div>
+  <div class="td">TEACHERS' DAY</div>
+  <div class="photo-wrap">
+   <div class="ring"><div class="ring2"><div class="photo" id="photo" title="Click to upload photo">
+     <div class="ph" id="ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5"/><path d="M3 22c0-5 4-8 9-8s9 3 9 8z"/></svg>Click to add staff photo</div>
+   </div></div></div>
+   <span class="star" style="left:-9mm;top:40mm">✦</span><span class="star" style="right:-9mm;top:60mm">✦</span>
+   <span class="star" style="left:-6mm;bottom:8mm;font-size:5mm">✦</span><span class="star" style="right:-6mm;bottom:20mm;font-size:5mm">✦</span>
+  </div>
+  <div class="name" contenteditable="true">STAFF NAME</div>
+  <div class="desig" contenteditable="true">Designation · Subject</div>
+  <div class="quote" contenteditable="true">“A good teacher is like a candle — it consumes itself to light the way for others.”</div>
+  <div class="foot">
+   <div class="dates"><em>✦</em> 16<sup>th</sup> &amp; 17<sup>th</sup> OCTOBER 2026 <em>✦</em></div>
+   <div class="pres">WITH GRATITUDE, PRESENTED BY</div>
+   <div class="batch"><b>10<sup style="font-size:.5em">th</sup></b> Batch Students</div>
+  </div>
+ </div>
+ <div class="corner c3"><svg viewBox="0 0 100 100"><use href="#co"/></svg></div>
+ <div class="corner c4"><svg viewBox="0 0 100 100"><use href="#co"/></svg></div>
+</div></div>
+<svg width="0" height="0" style="position:absolute"><defs><g id="co" fill="none" stroke="#d9b25a" stroke-width="1.6"><path d="M4 96V4h92"/><path d="M12 80V12h68"/><path d="M12 12c20 0 30 10 30 30M12 12c0 20 10 30 30 30"/><circle cx="12" cy="12" r="5" fill="#d9b25a"/><path d="M20 40c8-2 14 2 16 10M40 20c-2 8 2 14 10 16"/></g></defs></svg>
+<script>
+const f=document.getElementById('file'),p=document.getElementById('photo');
+p.onclick=()=>f.click();
+f.onchange=()=>{const r=f.files[0];if(!r)return;const u=new FileReader();u.onload=e=>{p.innerHTML='<img src="'+e.target.result+'">'};u.readAsDataURL(r)};
+</script>
+</body></html>
