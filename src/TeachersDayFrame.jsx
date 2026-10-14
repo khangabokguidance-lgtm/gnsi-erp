@@ -126,36 +126,36 @@ const CSS = `
 .tdf-lx .tdf-sp-icons svg{filter:grayscale(1) sepia(1) saturate(3.5) brightness(1.25) hue-rotate(-8deg)}
 .tdf-lx .tdf-sp-img{background:#1a1a22}
 .tdf-lx .tdf-sp-deco svg{filter:grayscale(1) sepia(1) saturate(3) brightness(1.25)}
-.tdf-fm{background:radial-gradient(ellipse at 50% 30%,#14346e,#0a1d46 60%,#061330)!important}
+.tdf-fm{background:radial-gradient(ellipse at 50% 30%,#14346e,var(--n4) 60%,#061330)!important}
 .tdf-fm:before{opacity:0}
 .tdf-fm-gold{position:absolute;inset:6mm;clip-path:polygon(10mm 0,calc(100% - 10mm) 0,100% 10mm,100% calc(100% - 10mm),calc(100% - 10mm) 100%,10mm 100%,0 calc(100% - 10mm),0 10mm);background:linear-gradient(135deg,#f6e3a1,#a77d2a 30%,#f6e3a1 55%,#b8892b 80%,#f6e3a1)}
-.tdf-fm-in{position:absolute;inset:8.4mm;clip-path:polygon(8.5mm 0,calc(100% - 8.5mm) 0,100% 8.5mm,100% calc(100% - 8.5mm),calc(100% - 8.5mm) 100%,8.5mm 100%,0 calc(100% - 8.5mm),0 8.5mm);background:#0a1d46}
+.tdf-fm-in{position:absolute;inset:8.4mm;clip-path:polygon(8.5mm 0,calc(100% - 8.5mm) 0,100% 8.5mm,100% calc(100% - 8.5mm),calc(100% - 8.5mm) 100%,8.5mm 100%,0 calc(100% - 8.5mm),0 8.5mm);background:var(--n4)}
 .tdf-fm-pn{position:absolute;inset:10.6mm;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm);background:radial-gradient(ellipse at 50% 35%,#fffefa,#fbf7ec 70%,#f3ead3)}
 .tdf-fm-ln{position:absolute;inset:14.5mm;border:.35mm solid #c79a3b;clip-path:polygon(6mm 0,calc(100% - 6mm) 0,100% 6mm,100% calc(100% - 6mm),calc(100% - 6mm) 100%,6mm 100%,0 calc(100% - 6mm),0 6mm)}
-.tdf-fmc{position:absolute;inset:18mm 22mm 17mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#142a5c}
+.tdf-fmc{position:absolute;inset:18mm 22mm 17mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--tx1)}
 .tdf-fm-top{width:100%;padding:0 4mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:flex-start}
 .tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:#7a4e12;padding-top:5mm}
 .tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:#7a4e12;letter-spacing:.3mm;padding-top:3mm}
-.tdf-fm-em{width:23mm;height:23mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
-.tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:#142a5c;margin-top:3mm;white-space:nowrap}
-.tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:#142a5c;margin-top:1.5mm}
+.tdf-fm-em{width:23mm;height:23mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,var(--hl3),#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
+.tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:var(--tx1);margin-top:3mm;white-space:nowrap}
+.tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:var(--tx1);margin-top:1.5mm}
 .tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
 .tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,#8a5d12 5%,#f6e3a1 30%,#c99a35 48%,#fff3c4 62%,#8a5d12 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
-.tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
-.tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:#1d3f87;margin-top:2.5mm}
+.tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:var(--tx0);letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
+.tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:var(--tx2);margin-top:2.5mm}
 .tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
 .tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:1mm;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
 .tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
-.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3mm}
+.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:var(--tx2);margin-top:3mm}
 .tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
-.tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
+.tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,var(--tx2),transparent);margin-top:1.5mm}
 .tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
-.tdf-fm-msg{font:500 3.8mm/1.34 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
+.tdf-fm-msg{font:500 3.8mm/1.34 'Cormorant Garamond',serif;color:var(--tx2);margin-top:3.5mm;max-width:140mm}
 .tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1mm;padding-bottom:1.5mm}
 .tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:#7a4e12}
-.tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:#0d2350}
+.tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:var(--tx0)}
 .tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
-.tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:#142a5c;border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
+.tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:var(--tx1);border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
 .tdf-fm-stamp{width:19mm;height:19mm;flex-shrink:0}
 .tdf-fm-guil{position:absolute;inset:10.6mm;opacity:.5;pointer-events:none;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm)}
 .tdf-fm-wm{position:absolute;left:50%;top:52%;width:138mm;height:138mm;transform:translate(-50%,-50%);object-fit:contain;opacity:.07;mix-blend-mode:multiply;filter:grayscale(1) brightness(.35);pointer-events:none}
@@ -168,24 +168,24 @@ const CSS = `
 .tdf-fm-ttl i{height:.5mm;flex:1;max-width:30mm;background:linear-gradient(90deg,transparent,#c79a3b)}
 .tdf-fm-ttl i:last-child{transform:scaleX(-1)}
 .tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:#c79a3b;transform:rotate(45deg)}
-.tdf-fm{background:radial-gradient(ellipse at 20% 0%,#2a5cc0aa,transparent 55%),radial-gradient(ellipse at 90% 100%,#1b4aa088,transparent 55%),linear-gradient(135deg,#0a2559,#123a80 45%,#061636)!important}
-.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,#dbe8ff99,transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
-.tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,#2b5dc4 0%,#0d2350 55%,#06143a 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm{background:radial-gradient(ellipse at 20% 0%,var(--gl1),transparent 55%),radial-gradient(ellipse at 90% 100%,var(--gl2),transparent 55%),linear-gradient(135deg,var(--n1),var(--n2) 45%,var(--n3))!important}
+.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
+.tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,var(--hl) 0%,var(--tx0) 55%,var(--tx00) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-grat{background:linear-gradient(90deg,#1d3f87,#9a6f1c 50%,#1d3f87);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-grat{background:linear-gradient(90deg,var(--tx2),#9a6f1c 50%,var(--tx2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-sg .p1{background:linear-gradient(90deg,#7a4e12,#d8a93f 50%,#7a4e12);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-sg .p2{background:linear-gradient(180deg,#2b5dc4,#0d2350);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2{background:linear-gradient(180deg,var(--hl),var(--tx0));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-sg .p2 b{background:linear-gradient(180deg,#f0cf74,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-sg .p3{background:linear-gradient(90deg,#142a5c,#2b5dc4,#142a5c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p3{background:linear-gradient(90deg,var(--tx1),var(--hl),var(--tx1));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-ttl i{background:linear-gradient(90deg,transparent,#a77d2a,#f0cf74)}
 .tdf-fm-ttl b{background:linear-gradient(135deg,#f0cf74,#a77d2a)}
-.tdf-fm-nl{background:linear-gradient(90deg,transparent,#2b5dc4,#c79a3b,#2b5dc4,transparent)!important;height:.6mm!important}
-.tdf-fm-em{background:radial-gradient(circle at 35% 25%,#3a73d8,#1d4590 45%,#06142f)!important}
+.tdf-fm-nl{background:linear-gradient(90deg,transparent,var(--hl),#c79a3b,var(--hl),transparent)!important;height:.6mm!important}
+.tdf-fm-em{background:radial-gradient(circle at 35% 25%,var(--hl2),var(--hl3) 45%,var(--n3))!important}
 .tdf-fm-shine{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 30%,#ffffff1f 42%,#ffffff38 47%,#ffffff1f 52%,transparent 64%);mix-blend-mode:screen}
-.tdf-fm-gem{position:absolute;width:4.2mm;height:4.2mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#7fb0ff 35%,#1d4590 75%,#061636);border:.5mm solid #f0cf74;box-shadow:0 0 1.5mm #f6e3a1;pointer-events:none;transform:translate(-50%,-50%)}
+.tdf-fm-gem{position:absolute;width:4.2mm;height:4.2mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--gem1) 35%,var(--hl3) 75%,var(--n3));border:.5mm solid #f0cf74;box-shadow:0 0 1.5mm #f6e3a1;pointer-events:none;transform:translate(-50%,-50%)}
 .tdf-fm-rib{position:relative;width:128mm;height:9mm;margin-top:2mm;flex-shrink:0}
 .tdf-fm-rib svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 .6mm .6mm #0005)}
-.tdf-fm-rib span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 3.2mm 'Cinzel',serif;letter-spacing:1mm;color:#0a1d46;text-shadow:0 .2mm 0 #ffffff88}
+.tdf-fm-rib span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 3.2mm 'Cinzel',serif;letter-spacing:1mm;color:var(--n4);text-shadow:0 .2mm 0 #ffffff88}
 .tdf-fm-flr{position:absolute;pointer-events:none}
 .tdf-fm-sc{position:absolute;width:9mm;height:62mm;pointer-events:none}
 .tdf-print{display:none}
@@ -222,10 +222,20 @@ const resolveStyle = (k, shape) => {
   const t = { ...BASE, ...(STYLES[k] || STYLES.arch) }
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
 }
-const styleVars = (k, shape) => {
+// Colour themes for the Formal Certificate (hue-driven palette).
+const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], orange: ['Saffron Orange', 22, 85] }
+const themeVars = key => {
+  const [, h, sat] = THEMES[key] || THEMES.blue, c = (sl, l, a) => `hsl(${h} ${Math.round(sat * sl)}% ${l}%${a ? ` / ${a}` : ''})`
+  return {
+    '--n1': c(.94, 21), '--n2': c(.94, 31), '--n3': c(1, 12), '--n4': c(.94, 17), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
+    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67'), '--gl2': c(.8, 38, '.53'), '--pt': `hsl(${h} 100% 93% / .6)`, '--gem1': `hsl(${h} 100% 75%)`,
+    '--stf': `brightness(.55) sepia(1) hue-rotate(${h - 38}deg) saturate(5)`,
+  }
+}
+const styleVars = (k, shape, theme) => {
   const t = resolveStyle(k, shape)
   const g = t.g
-  return { '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+  return { ...(k === 'formal' ? themeVars(theme) : {}), '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
 
 const Corner = ({ flip }) => (
@@ -382,7 +392,7 @@ function SplashFrame({ s, cfg }) {
   const lux = cfg.style === 'luxe'
   const W = lux ? ['#fff3c4', '#d9b25a', '#a77d2a', '#f6e3a1', '#d9b25a'] : ['#f7a928', '#e8801a', '#f4c968', '#d9b25a', '#f6e3a1']
   return (
-    <div className={`tdf-page tdf-sp${lux ? ' tdf-lx' : ''}`} style={styleVars(cfg.style, cfg.shape)}>
+    <div className={`tdf-page tdf-sp${lux ? ' tdf-lx' : ''}`} style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
       <svg width="0" height="0" style={{ position: 'absolute' }}><defs>
         <clipPath id="tdfBlob" clipPathUnits="objectBoundingBox"><path d={BLOB_A} /></clipPath>
       </defs></svg>
@@ -434,12 +444,12 @@ function Stamp({ date }) {
   return (
     <svg className="tdf-fm-stamp" viewBox="0 0 100 100" fill="none">
       <defs><path id="tdfArc" d="M50 50m-37 0a37 37 0 1 1 74 0" /><path id="tdfArcB" d="M8 50a42 42 0 0 0 84 0" /></defs>
-      <circle cx="50" cy="50" r="47" stroke="#1d3f87" strokeWidth="1.6" /><circle cx="50" cy="50" r="43.500" stroke="#1d3f87" strokeWidth=".6" /><circle cx="50" cy="50" r="27" stroke="#1d3f87" strokeWidth=".6" />
-      <text fontSize="5.600" fontWeight="700" fill="#1d3f87" fontFamily="Cinzel,serif"><textPath href="#tdfArc" startOffset="50%" textAnchor="middle">GUIDANCE NAVODAYA &amp; SAINIK</textPath></text>
-      <text fontSize="6" fontWeight="700" fill="#1d3f87" letterSpacing="1.200" fontFamily="Cinzel,serif"><textPath href="#tdfArcB" startOffset="50%" textAnchor="middle">INSTITUTE</textPath></text>
-      <image href={emblemUrl} x="30" y="26" width="40" height="34" preserveAspectRatio="xMidYMid meet" style={{ filter: 'brightness(.55) sepia(1) hue-rotate(185deg) saturate(5)' }} />
-      <text x="50" y="76" textAnchor="middle" fontSize="8" fontWeight="700" fill="#1d3f87" fontFamily="Playfair Display,serif">{date}</text>
-      <text x="14" y="58" fontSize="6" fill="#1d3f87">★</text><text x="80" y="58" fontSize="6" fill="#1d3f87">★</text>
+      <circle cx="50" cy="50" r="47" stroke="var(--tx2)" strokeWidth="1.6" /><circle cx="50" cy="50" r="43.500" stroke="var(--tx2)" strokeWidth=".6" /><circle cx="50" cy="50" r="27" stroke="var(--tx2)" strokeWidth=".6" />
+      <text fontSize="5.600" fontWeight="700" fill="var(--tx2)" fontFamily="Cinzel,serif"><textPath href="#tdfArc" startOffset="50%" textAnchor="middle">GUIDANCE NAVODAYA &amp; SAINIK</textPath></text>
+      <text fontSize="6" fontWeight="700" fill="var(--tx2)" letterSpacing="1.200" fontFamily="Cinzel,serif"><textPath href="#tdfArcB" startOffset="50%" textAnchor="middle">INSTITUTE</textPath></text>
+      <image href={emblemUrl} x="30" y="26" width="40" height="34" preserveAspectRatio="xMidYMid meet" style={{ filter: 'var(--stf)' }} />
+      <text x="50" y="76" textAnchor="middle" fontSize="8" fontWeight="700" fill="var(--tx2)" fontFamily="Playfair Display,serif">{date}</text>
+      <text x="14" y="58" fontSize="6" fill="var(--tx2)">★</text><text x="80" y="58" fontSize="6" fill="var(--tx2)">★</text>
     </svg>
   )
 }
@@ -450,7 +460,7 @@ const Rule = () => (
 function FormalFrame({ s, cfg }) {
   const yr = (cfg.dates.match(/\d{4}/) || ['2026'])[0]
   return (
-    <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape)}>
+    <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
       <div className="tdf-fm-gold" /><div className="tdf-fm-in" /><div className="tdf-fm-pn" />
       <svg className="tdf-fm-guil" width="100%" height="100%"><defs>
         <pattern id="tdfGu" width="14" height="14" patternUnits="userSpaceOnUse"><g fill="none" stroke="#c79a3b" strokeWidth=".18">{[1.5, 3, 4.5, 6].map(r => <circle key={r} cx="7" cy="7" r={r} />)}<circle cx="0" cy="0" r="4" /><circle cx="14" cy="14" r="4" /><circle cx="14" cy="0" r="4" /><circle cx="0" cy="14" r="4" /></g></pattern>
@@ -506,7 +516,7 @@ function FormalFrame({ s, cfg }) {
 
 function AwardFrame({ s, cfg }) {
   return (
-    <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape)}>
+    <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
       <div className="tdf-aw-rib" />
@@ -550,7 +560,7 @@ function Frame({ s, cfg }) {
   const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
-    <div className="tdf-page" style={styleVars(cfg.style, cfg.shape)}>
+    <div className="tdf-page" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
       {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
@@ -592,7 +602,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', theme: 'blue', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -644,6 +654,9 @@ export default function TeachersDayFrame() {
         <label>Dates<input style={inp} value={cfg.dates} onChange={e => setCfg({ ...cfg, dates: e.target.value })} /></label>
         <label>Frame style<select style={inp} value={cfg.style} onChange={e => setCfg({ ...cfg, style: e.target.value })}>
           {Object.entries(STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select></label>
+        <label>Colour theme (Formal Certificate)<select style={inp} value={cfg.theme} onChange={e => setCfg({ ...cfg, theme: e.target.value })}>
+          {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
         </select></label>
         <label>Photo shape<select style={inp} value={cfg.shape} onChange={e => setCfg({ ...cfg, shape: e.target.value })}>
           <option value="passport">Passport photo (35 × 45 mm ratio)</option>
