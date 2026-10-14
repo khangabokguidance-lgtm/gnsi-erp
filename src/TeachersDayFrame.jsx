@@ -73,8 +73,14 @@ Object.assign(STYLES, {
   aurora: { label: '✨ Midnight Aurora (round, laurel)', bg: ['#14505c', '#08262f', '#030d14'], pw: '98mm', ph: '98mm', mt: '15mm', nmt: '15mm', r: ['50%', '50%', '50%'], orn: 'block', tx: '#d8f3ee', nm: '#fff', ac: '#e6c46a', laurel: true, ribbon: true, bokeh: true },
   emerald: { label: '✨ Emerald Luxe (arch, laurel)', bg: ['#118060', '#0a4a38', '#042a20'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', ac: '#e2bf68', laurel: true, ribbon: true, bokeh: true },
 })
-const styleVars = k => {
+// Passport-photo shape: 7:9 (35 x 45 mm) portrait rectangle, scaled up to fill the frame.
+const PASSPORT = { pw: '63mm', ph: '81mm', r: ['3mm', '2mm', '1mm'], orn: 'block' }
+const resolveStyle = (k, shape) => {
   const t = { ...BASE, ...(STYLES[k] || STYLES.arch) }
+  return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
+}
+const styleVars = (k, shape) => {
+  const t = resolveStyle(k, shape)
   const g = t.g
   return { '--mt': t.mt, '--nmt': t.nmt, '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
@@ -165,10 +171,10 @@ const Flourish = () => (
 const BOKEH = [[8, 12, 26], [78, 9, 20], [88, 40, 30], [4, 55, 22], [90, 78, 24], [10, 86, 28], [50, 94, 18], [30, 5, 14]]
 
 function Frame({ s, cfg }) {
-  const st = { ...BASE, ...(STYLES[cfg.style] || STYLES.arch) }
+  const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
-    <div className="tdf-page" style={styleVars(cfg.style)}>
+    <div className="tdf-page" style={styleVars(cfg.style, cfg.shape)}>
       {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
@@ -179,7 +185,7 @@ function Frame({ s, cfg }) {
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.vec && <Flourish />}{st.laurel && <Laurel w={pw} h={ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.vec && <Flourish />}{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
@@ -208,7 +214,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -260,6 +266,10 @@ export default function TeachersDayFrame() {
         <label>Dates<input style={inp} value={cfg.dates} onChange={e => setCfg({ ...cfg, dates: e.target.value })} /></label>
         <label>Frame style<select style={inp} value={cfg.style} onChange={e => setCfg({ ...cfg, style: e.target.value })}>
           {Object.entries(STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select></label>
+        <label>Photo shape<select style={inp} value={cfg.shape} onChange={e => setCfg({ ...cfg, shape: e.target.value })}>
+          <option value="passport">Passport photo (35 × 45 mm ratio)</option>
+          <option value="style">Style default (arch / round)</option>
         </select></label>
         <label>Batch<input style={inp} value={cfg.batch} onChange={e => setCfg({ ...cfg, batch: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Quote (optional)<input style={inp} value={cfg.quote} onChange={e => setCfg({ ...cfg, quote: e.target.value })} /></label>
