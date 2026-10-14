@@ -169,7 +169,7 @@ const CSS = `
 .tdf-fm-ttl i:last-child{transform:scaleX(-1)}
 .tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:var(--m4);transform:rotate(45deg)}
 .tdf-fm{background:radial-gradient(ellipse at 20% 0%,var(--gl1),transparent 55%),radial-gradient(ellipse at 90% 100%,var(--gl2),transparent 55%),linear-gradient(135deg,var(--n1),var(--n2) 45%,var(--n3))!important}
-.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
+.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,color-mix(in srgb,var(--m1) 30%,transparent),transparent 50%),linear-gradient(180deg,var(--pn1),var(--pn2) 55%,var(--pn3))!important}
 .tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,var(--hl) 0%,var(--tx0) 55%,var(--tx00) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-grat{background:linear-gradient(90deg,var(--tx2),var(--m6) 50%,var(--tx2));-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -242,7 +242,7 @@ const themeVars = key => {
   const [, h, sat, dk = 1] = THEMES[key] || THEMES.blue, c = (sl, l, a, k = 1) => `hsl(${h} ${Math.round(sat * sl)}% ${l * k}%${a ? ` / ${a}` : ''})`
   return {
     '--n1': c(.94, 21, 0, dk), '--n2': c(.94, 31, 0, dk), '--n3': c(1, 12, 0, dk), '--n4': c(.94, 17, 0, dk), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
-    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67', dk), '--gl2': c(.8, 38, '.53', dk), '--pt': `hsl(${h} 100% 93% / .6)`, '--gem1': `hsl(${h} 100% 75%)`,
+    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67', dk), '--gl2': c(.8, 38, '.53', dk), '--pt': `hsl(${h} 100% 92% / .45)`, '--pn1': `hsl(${h} 55% 99.3%)`, '--pn2': `hsl(${h} 40% 97.2%)`, '--pn3': `hsl(${h} 32% 93.5%)`, '--gem1': `hsl(${h} 100% 75%)`,
     '--stf': `brightness(.55) sepia(1) hue-rotate(${h - 38}deg) saturate(5)`,
   }
 }
