@@ -126,6 +126,37 @@ const CSS = `
 .tdf-lx .tdf-sp-icons svg{filter:grayscale(1) sepia(1) saturate(3.5) brightness(1.25) hue-rotate(-8deg)}
 .tdf-lx .tdf-sp-img{background:#1a1a22}
 .tdf-lx .tdf-sp-deco svg{filter:grayscale(1) sepia(1) saturate(3) brightness(1.25)}
+.tdf-fm{background:radial-gradient(ellipse at 50% 30%,#14346e,#0a1d46 60%,#061330)!important}
+.tdf-fm:before{opacity:0}
+.tdf-fm-gold{position:absolute;inset:6mm;clip-path:polygon(10mm 0,calc(100% - 10mm) 0,100% 10mm,100% calc(100% - 10mm),calc(100% - 10mm) 100%,10mm 100%,0 calc(100% - 10mm),0 10mm);background:linear-gradient(135deg,#f6e3a1,#a77d2a 30%,#f6e3a1 55%,#b8892b 80%,#f6e3a1)}
+.tdf-fm-in{position:absolute;inset:8.4mm;clip-path:polygon(8.5mm 0,calc(100% - 8.5mm) 0,100% 8.5mm,100% calc(100% - 8.5mm),calc(100% - 8.5mm) 100%,8.5mm 100%,0 calc(100% - 8.5mm),0 8.5mm);background:#0a1d46}
+.tdf-fm-pn{position:absolute;inset:10.6mm;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm);background:radial-gradient(ellipse at 50% 35%,#fffefa,#fbf7ec 70%,#f3ead3)}
+.tdf-fm-ln{position:absolute;inset:14.5mm;border:.35mm solid #c79a3b;clip-path:polygon(6mm 0,calc(100% - 6mm) 0,100% 6mm,100% calc(100% - 6mm),calc(100% - 6mm) 100%,6mm 100%,0 calc(100% - 6mm),0 6mm)}
+.tdf-fmc{position:absolute;inset:18mm 22mm 17mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#142a5c}
+.tdf-fm-top{width:100%;display:flex;justify-content:space-between;align-items:flex-start}
+.tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:#7a4e12;padding-top:5mm}
+.tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:#7a4e12;letter-spacing:.3mm;padding-top:3mm}
+.tdf-fm-em{width:30mm;height:30mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
+.tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:#142a5c;margin-top:3mm;white-space:nowrap}
+.tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:#142a5c;margin-top:1.5mm}
+.tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
+.tdf-fm-happy{font:400 17mm/1 'Great Vibes',cursive;background:linear-gradient(180deg,#d8a93f,#8a5d12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-title{font:900 15mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
+.tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:#1d3f87;margin-top:2.5mm}
+.tdf-fm-ph{width:46mm;height:46mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
+.tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
+.tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:4mm}
+.tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
+.tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
+.tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
+.tdf-fm-msg{font:500 4.3mm/1.4 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
+.tdf-fm-sg{margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end}
+.tdf-fm-sg .b{width:56mm;text-align:center}
+.tdf-fm-sg .s{font:400 9mm/1 'Great Vibes',cursive;color:#1d3f87;border-bottom:.35mm solid #1d3f87;padding-bottom:1mm;min-height:10mm}
+.tdf-fm-sg .n{font:700 4mm 'Playfair Display',serif;color:#142a5c;margin-top:1mm}
+.tdf-fm-sg .t{font:500 3.4mm/1.25 'Cormorant Garamond',serif;color:#1d3f87}
+.tdf-fm-stamp{width:36mm;height:36mm;flex-shrink:0}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -143,6 +174,7 @@ const STYLES = {
 }
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
+  formal: { label: '📜 Formal Certificate (navy & gold border)', bg: ['#14346e', '#0a1d46', '#061330'], pw: '46mm', ph: '46mm', r: ['50%', '50%', '50%'], orn: 'none' },
   luxe: { label: '👑 Luxe Gold Foil (black & gold, brush photo)', bg: ['#24242e', '#101015', '#050507'], pw: '104mm', ph: '118mm', r: ['50%', '50%', '50%'], orn: 'none' },
   splash: { label: '🎨 Painted Portrait (white, brush edge)', bg: ['#fffdf8', '#fffdf8', '#f2ead6'], pw: '112mm', ph: '128mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#241b2d', nm: '#241b2d', ac: '#9a6f1c', ts: 'none', wmb: 'multiply' },
   award: { label: '🏆 Best Teacher Award (certificate)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '78mm', ph: '94mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply' },
@@ -367,6 +399,55 @@ function SplashFrame({ s, cfg }) {
   )
 }
 
+function Stamp({ date }) {
+  return (
+    <svg className="tdf-fm-stamp" viewBox="0 0 100 100" fill="none">
+      <defs><path id="tdfArc" d="M50 50m-37 0a37 37 0 1 1 74 0" /><path id="tdfArcB" d="M8 50a42 42 0 0 0 84 0" /></defs>
+      <circle cx="50" cy="50" r="47" stroke="#1d3f87" strokeWidth="1.6" /><circle cx="50" cy="50" r="43.500" stroke="#1d3f87" strokeWidth=".6" /><circle cx="50" cy="50" r="27" stroke="#1d3f87" strokeWidth=".6" />
+      <text fontSize="5.600" fontWeight="700" fill="#1d3f87" fontFamily="Cinzel,serif"><textPath href="#tdfArc" startOffset="50%" textAnchor="middle">GUIDANCE NAVODAYA &amp; SAINIK</textPath></text>
+      <text fontSize="6" fontWeight="700" fill="#1d3f87" letterSpacing="1.200" fontFamily="Cinzel,serif"><textPath href="#tdfArcB" startOffset="50%" textAnchor="middle">INSTITUTE</textPath></text>
+      <image href={emblemUrl} x="30" y="26" width="40" height="34" preserveAspectRatio="xMidYMid meet" style={{ filter: 'brightness(.55) sepia(1) hue-rotate(185deg) saturate(5)' }} />
+      <text x="50" y="76" textAnchor="middle" fontSize="8" fontWeight="700" fill="#1d3f87" fontFamily="Playfair Display,serif">{date}</text>
+      <text x="14" y="58" fontSize="6" fill="#1d3f87">★</text><text x="80" y="58" fontSize="6" fill="#1d3f87">★</text>
+    </svg>
+  )
+}
+const Rule = () => (
+  <svg width="40mm" height="3mm" viewBox="0 0 70 4" fill="none" stroke="#c79a3b" strokeWidth=".4"><path d="M2 2H28M42 2H68" /><path d="M35 .3l2.200 1.700L35 3.700 32.800 2z" fill="#c79a3b" /><circle cx="30" cy="2" r=".7" fill="#c79a3b" /><circle cx="40" cy="2" r=".7" fill="#c79a3b" /></svg>
+)
+
+function FormalFrame({ s, cfg }) {
+  const yr = (cfg.dates.match(/\d{4}/) || ['2026'])[0]
+  return (
+    <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape)}>
+      <div className="tdf-fm-gold" /><div className="tdf-fm-in" /><div className="tdf-fm-pn" /><div className="tdf-fm-ln" />
+      <div className="tdf-fmc">
+        <div className="tdf-fm-top">
+          <div className="l">A Brighter<br />Tomorrow Begins<br />with a Great Teacher.<div style={{ marginTop: '3mm' }}><Rule /></div></div>
+          <Emblem className="tdf-fm-em" />
+          <div className="r">TEACH<br />INSPIRE<br />EMPOWER<br />TRANSFORM<div style={{ marginTop: '2mm' }}><Rule /></div></div>
+        </div>
+        <div className="tdf-fm-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
+        <div className="tdf-fm-tag">EDUCATION<b>◆</b>EXCELLENCE<b>◆</b>EMPOWERMENT</div>
+        <div className="tdf-fm-happy">Happy</div>
+        <div className="tdf-fm-title">TEACHERS&apos; DAY {yr}</div>
+        <div className="tdf-fm-grat">WITH GRATITUDE AND APPRECIATION</div>
+        <div className="tdf-fm-ph"><div>{s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}</div></div>
+        <div className="tdf-fm-pre">This certificate is proudly presented to</div>
+        <div className="tdf-fm-name">{s.name}</div>
+        <div className="tdf-fm-nl" />
+        {s.desig && <div className="tdf-fm-des">{s.desig}</div>}
+        <div className="tdf-fm-msg">{cfg.certMsg}</div>
+        <div className="tdf-fm-sg">
+          <div className="b"><div className="s">{cfg.sig1n}</div><div className="n">{cfg.sig1n}</div><div className="t">{cfg.sig1t}<br />GNSI</div></div>
+          <Stamp date={cfg.stampDate} />
+          <div className="b"><div className="s">{cfg.sig2n}</div><div className="n">{cfg.sig2n}</div><div className="t">{cfg.sig2t}<br />GNSI</div></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AwardFrame({ s, cfg }) {
   return (
     <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape)}>
@@ -407,6 +488,7 @@ function AwardFrame({ s, cfg }) {
 }
 
 function Frame({ s, cfg }) {
+  if (cfg.style === 'formal') return <FormalFrame s={s} cfg={cfg} />
   if (cfg.style === 'award') return <AwardFrame s={s} cfg={cfg} />
   if (cfg.style === 'splash' || cfg.style === 'luxe') return <SplashFrame s={s} cfg={cfg} />
   const st = resolveStyle(cfg.style, cfg.shape)
@@ -454,7 +536,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', sig1n: 'Director', sig1t: 'Chairman', sig2n: 'Principal', sig2t: 'Principal', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -513,6 +595,12 @@ export default function TeachersDayFrame() {
         </select></label>
         <label>Batch<input style={inp} value={cfg.batch} onChange={e => setCfg({ ...cfg, batch: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Award message (Best Teacher Award style)<textarea style={{ ...inp, minHeight: 60 }} value={cfg.msg} onChange={e => setCfg({ ...cfg, msg: e.target.value })} /></label>
+        <label style={{ gridColumn: '1/-1' }}>Certificate message (Formal Certificate style)<textarea style={{ ...inp, minHeight: 60 }} value={cfg.certMsg} onChange={e => setCfg({ ...cfg, certMsg: e.target.value })} /></label>
+        <label>Signatory 1 name<input style={inp} value={cfg.sig1n} onChange={e => setCfg({ ...cfg, sig1n: e.target.value })} /></label>
+        <label>Signatory 1 title<input style={inp} value={cfg.sig1t} onChange={e => setCfg({ ...cfg, sig1t: e.target.value })} /></label>
+        <label>Signatory 2 name<input style={inp} value={cfg.sig2n} onChange={e => setCfg({ ...cfg, sig2n: e.target.value })} /></label>
+        <label>Signatory 2 title<input style={inp} value={cfg.sig2t} onChange={e => setCfg({ ...cfg, sig2t: e.target.value })} /></label>
+        <label>Stamp date<input style={inp} value={cfg.stampDate} onChange={e => setCfg({ ...cfg, stampDate: e.target.value })} /></label>
         <label style={{ gridColumn: '1/-1' }}>Quote (optional)<input style={inp} value={cfg.quote} onChange={e => setCfg({ ...cfg, quote: e.target.value })} /></label>
       </div>
 
