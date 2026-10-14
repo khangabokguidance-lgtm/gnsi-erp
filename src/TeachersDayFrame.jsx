@@ -136,32 +136,32 @@ const CSS = `
 .tdf-fm-top{width:100%;padding:0 4mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:flex-start}
 .tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:#7a4e12;padding-top:5mm}
 .tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:#7a4e12;letter-spacing:.3mm;padding-top:3mm}
-.tdf-fm-em{width:30mm;height:30mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
+.tdf-fm-em{width:23mm;height:23mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
 .tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:#142a5c;margin-top:3mm;white-space:nowrap}
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:#142a5c;margin-top:1.5mm}
 .tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
-.tdf-fm-happy{font:400 17mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,#8a5d12 5%,#f6e3a1 30%,#c99a35 48%,#fff3c4 62%,#8a5d12 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,#8a5d12 5%,#f6e3a1 30%,#c99a35 48%,#fff3c4 62%,#8a5d12 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
 .tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:#1d3f87;margin-top:2.5mm}
-.tdf-fm-ph{width:38mm;height:38mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
-.tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
+.tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
+.tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:1mm;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
 .tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
-.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:6mm}
+.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3mm}
 .tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
 .tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
 .tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
-.tdf-fm-msg{font:500 4.1mm/1.38 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
+.tdf-fm-msg{font:500 3.8mm/1.34 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
 .tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1mm;padding-bottom:1.5mm}
 .tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:#7a4e12}
 .tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:#0d2350}
 .tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
 .tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:#142a5c;border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
-.tdf-fm-stamp{width:22mm;height:22mm;flex-shrink:0}
+.tdf-fm-stamp{width:19mm;height:19mm;flex-shrink:0}
 .tdf-fm-guil{position:absolute;inset:10.6mm;opacity:.5;pointer-events:none;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm)}
 .tdf-fm-wm{position:absolute;left:50%;top:52%;width:138mm;height:138mm;transform:translate(-50%,-50%);object-fit:contain;opacity:.07;mix-blend-mode:multiply;filter:grayscale(1) brightness(.35);pointer-events:none}
 .tdf-fm-orn{position:absolute;width:17mm;height:17mm;pointer-events:none}
 .tdf-fm-div{display:flex;justify-content:center;margin-top:2mm}
-.tdf-fm-phw{position:relative;margin-top:6mm;flex-shrink:0}
+.tdf-fm-phw{position:relative;margin-top:4mm;flex-shrink:0}
 .tdf-fm-phw .tdf-laurel{z-index:0}
 .tdf-fm-phw .tdf-fm-ph{position:relative;z-index:1;margin-top:0}
 .tdf-fm-ttl{display:flex;align-items:center;gap:4mm;width:100%;justify-content:center}
@@ -461,7 +461,7 @@ function FormalFrame({ s, cfg }) {
       <div className="tdf-fm-ln" />
       {[[105, 8.4], [8.4, 148.5], [201.6, 148.5], [105, 288.6]].map(([x, y], i) => <div key={i} className="tdf-fm-gem" style={{ left: `${x / 2.1}%`, top: `${y / 2.97}%` }} />)}
       {[0, 1].map(i => (
-        <svg key={i} className="tdf-fm-sc" viewBox="0 0 14 64" fill="none" stroke="#b8892b" strokeWidth="1" strokeLinecap="round" style={{ [i ? 'right' : 'left']: '19mm', top: '118mm', transform: i ? 'scaleX(-1)' : 'none' }}>
+        <svg key={i} className="tdf-fm-sc" viewBox="0 0 14 64" fill="none" stroke="#b8892b" strokeWidth="1" strokeLinecap="round" style={{ [i ? 'right' : 'left']: '19mm', top: '112mm', transform: i ? 'scaleX(-1)' : 'none' }}>
           <path d="M7 2C2 8 12 12 7 20C3 26 11 30 7 38C4 44 12 48 9 56M9 56C13 62 6 64 4 59C3 56 6 54 8 56" /><circle cx="7" cy="2" r="1.3" fill="#b8892b" /><circle cx="7" cy="20" r="1" fill="#b8892b" /><circle cx="7" cy="38" r="1" fill="#b8892b" />
         </svg>
       ))}
@@ -484,11 +484,11 @@ function FormalFrame({ s, cfg }) {
             <path d="M8 .5h112" stroke="#fff8d8" strokeWidth=".3" /><path d="M10 1.700h108v6.600H10z" fill="none" stroke="#8a6414" strokeWidth=".25" /></svg>
           <span>WITH GRATITUDE AND APPRECIATION</span>
         </div>
-        <div className="tdf-fm-phw"><Laurel w={32} h={30} />
+        <div className="tdf-fm-phw">
         <div className="tdf-fm-ph"><div>{s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}</div></div></div>
         <div className="tdf-fm-pre">This certificate is proudly presented to</div>
         <div className="tdf-fm-name">{s.name}</div>
-        <div className="tdf-fm-nl" /><div className="tdf-fm-div"><Rule /></div>
+        <div className="tdf-fm-nl" />
         {s.desig && <div className="tdf-fm-des">{s.desig}</div>}
         <div className="tdf-fm-msg">{cfg.certMsg}</div>
         <div className="tdf-fm-sg">
