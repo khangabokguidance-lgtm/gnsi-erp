@@ -45,6 +45,10 @@ const CSS = `
 .tdf-laurel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;overflow:visible}
 .tdf-bokeh{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .tdf-bokeh i{position:absolute;border-radius:50%;background:radial-gradient(circle,var(--ac),transparent 70%);opacity:.28}
+.tdf-crest{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% - 2mm);pointer-events:none}
+.tdf-scroll{position:absolute;width:11mm;pointer-events:none}
+.tdf-halo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.tdf-flour{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 1mm);pointer-events:none}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -62,6 +66,9 @@ const STYLES = {
 }
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
+  corelnavy: { label: '🎨 Vector Masterpiece (navy & gold)', bg: ['#1a3a78', '#0d2350', '#050f26'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
+  corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', vec: true, ribbon: true, bokeh: true },
+  corelmaroon: { label: '🎨 Vector Masterpiece (maroon & gold)', bg: ['#8a2236', '#55101e', '#2a050d'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
   ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', laurel: true, ribbon: true, bokeh: true },
   aurora: { label: '✨ Midnight Aurora (round, laurel)', bg: ['#14505c', '#08262f', '#030d14'], pw: '98mm', ph: '98mm', mt: '15mm', nmt: '15mm', r: ['50%', '50%', '50%'], orn: 'block', tx: '#d8f3ee', nm: '#fff', ac: '#e6c46a', laurel: true, ribbon: true, bokeh: true },
   emerald: { label: '✨ Emerald Luxe (arch, laurel)', bg: ['#118060', '#0a4a38', '#042a20'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', ac: '#e2bf68', laurel: true, ribbon: true, bokeh: true },
@@ -111,6 +118,50 @@ function Laurel({ w, h }) {
     </svg>
   )
 }
+// ── CorelDRAW-style vector ornaments (filigree crest, side scrolls, mandala halo, flourish) ──
+const HALF = 'M50 31C57 31 60 24 68 23C77 22 82 29 77 34C73 37 68 33 71 29M50 31C53 21 59 13 71 11C82 10 90 16 87 22C85 26 80 25 81 21M50 31C47 22 42 14 36 9M50 31C46 27 40 27 35 31C30 35 24 33 23 28M50 31C56 35 62 36 66 33';
+const Crest = ({ w }) => (
+  <svg className="tdf-crest" width={`${w}mm`} height={`${w * 0.42}mm`} viewBox="0 0 100 42" fill="none" stroke="url(#tdfG)" strokeWidth="1.3" strokeLinecap="round">
+    <defs><linearGradient id="tdfG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f6e3a1" /><stop offset=".5" stopColor="#d9b25a" /><stop offset="1" stopColor="#a77d2a" /></linearGradient></defs>
+    <path d={HALF} /><path d={HALF} transform="translate(100 0) scale(-1 1)" />
+    <path d="M50 4C46 11 46 20 50 28C54 20 54 11 50 4Z" fill="url(#tdfG)" />
+    <path d="M50 31l4 5-4 5-4-5z" fill="url(#tdfG)" /><circle cx="50" cy="1.6" r="1.6" fill="#f6e3a1" />
+    {[[68, 23], [71, 11], [36, 9], [64, 33]].map(([x, y], i) => <g key={i}><circle cx={x} cy={y} r="1.3" fill="#f6e3a1" /><circle cx={100 - x} cy={y} r="1.3" fill="#f6e3a1" /></g>)}
+  </svg>
+)
+const SCROLL = 'M7 2C2 8 12 12 7 20C3 26 11 30 7 38C4 44 12 48 9 56M9 56C13 62 6 64 4 59C3 56 6 54 8 56';
+const Scrolls = ({ h }) => (
+  <>
+    {[0, 1].map(i => (
+      <svg key={i} className="tdf-scroll" style={{ [i ? 'right' : 'left']: '-12mm', transform: i ? 'scaleX(-1)' : 'none', height: `${h * 0.55}mm`, top: `${h * 0.22}mm` }}
+        viewBox="0 0 14 64" preserveAspectRatio="none" fill="none" stroke="url(#tdfG)" strokeWidth="1.3" strokeLinecap="round">
+        <path d={SCROLL} /><circle cx="7" cy="2" r="1.2" fill="#f6e3a1" /><circle cx="7" cy="20" r="1" fill="#d9b25a" /><circle cx="7" cy="38" r="1" fill="#d9b25a" />
+      </svg>
+    ))}
+  </>
+)
+const Halo = ({ w, h }) => {
+  const R = Math.max(w, h) / 2 + 16, W = R * 2 + 4, rays = []
+  for (let i = 0; i < 72; i++) {
+    const a = (i / 72) * Math.PI * 2, r0 = R - (i % 2 ? 9 : 14)
+    rays.push(<line key={i} x1={R + 2 + Math.cos(a) * r0} y1={R + 2 + Math.sin(a) * r0} x2={R + 2 + Math.cos(a) * R} y2={R + 2 + Math.sin(a) * R} strokeWidth={i % 2 ? '.35' : '.6'} />)
+  }
+  const petals = []
+  for (let i = 0; i < 24; i++) petals.push(<ellipse key={i} cx={0} cy={-(R - 22)} rx="2.2" ry="7" transform={`translate(${R + 2} ${R + 2}) rotate(${i * 15})`} />)
+  return (
+    <svg className="tdf-halo" width={`${W}mm`} height={`${W}mm`} viewBox={`0 0 ${W} ${W}`} fill="none" stroke="#d9b25a" style={{ opacity: .45 }}>
+      <circle cx={R + 2} cy={R + 2} r={R} strokeWidth=".4" /><circle cx={R + 2} cy={R + 2} r={R - 15} strokeWidth=".3" strokeDasharray="1 1.4" />
+      {rays}<g strokeWidth=".35" fill="#d9b25a22">{petals}</g>
+    </svg>
+  )
+}
+const Flourish = () => (
+  <svg className="tdf-flour" width="70mm" height="9mm" viewBox="0 0 70 9" fill="none" stroke="url(#tdfG)" strokeWidth=".7" strokeLinecap="round">
+    <path d="M35 4.5H22C16 4.5 14 1 9 1C4 1 3 5 6 6C9 7 10 4 8 3M35 4.5H48C54 4.5 56 1 61 1C66 1 67 5 64 6C61 7 60 4 62 3" />
+    <path d="M35 1l3.5 3.5L35 8l-3.5-3.5z" fill="url(#tdfG)" />
+  </svg>
+)
+
 const BOKEH = [[8, 12, 26], [78, 9, 20], [88, 40, 30], [4, 55, 22], [90, 78, 24], [10, 86, 28], [50, 94, 18], [30, 5, 14]]
 
 function Frame({ s, cfg }) {
@@ -128,7 +179,7 @@ function Frame({ s, cfg }) {
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          {st.laurel && <Laurel w={pw} h={ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.vec && <Flourish />}{st.laurel && <Laurel w={pw} h={ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
