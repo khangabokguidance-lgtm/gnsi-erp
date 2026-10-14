@@ -111,6 +111,21 @@ const CSS = `
 .tdf-sp-icons{display:flex;gap:5mm;align-items:center;margin-top:5mm}
 .tdf-sp-icons svg{width:9mm;height:9mm}
 .tdf-sp-swoosh{width:120mm;height:7mm;margin-top:1mm}
+.tdf-lx{background:radial-gradient(ellipse at 50% 35%,#24242e 0%,#101015 55%,#050507 100%)!important}
+.tdf-lx:before{opacity:.05}
+.tdf-lx .tdf-spc{color:#f6e3a1}
+.tdf-lx .tdf-sp-inst{color:#e2bf68}
+.tdf-lx .tdf-sp-happy{color:#e2bf68;background:linear-gradient(180deg,#fff3c4,#d9b25a 55%,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-lx .tdf-sp-td{color:#f6e3a1;background:linear-gradient(180deg,#fff7d6 5%,#e8c66a 45%,#a77d2a 55%,#f6e3a1 90%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;filter:drop-shadow(0 .6mm .8mm #000a)}
+.tdf-lx .tdf-sp-td i{color:transparent}
+.tdf-lx .tdf-sp-name{color:#fff;text-shadow:0 .5mm 1mm #000}
+.tdf-lx .tdf-sp-des{color:#e2bf68}
+.tdf-lx .tdf-sp-q{color:#f6e3a1}
+.tdf-lx .tdf-sp-ft{color:#f6e3a1;border-color:#d9b25a}
+.tdf-lx .tdf-sp-ft span,.tdf-lx .tdf-sp-ft b{color:#e2bf68}
+.tdf-lx .tdf-sp-icons svg{filter:grayscale(1) sepia(1) saturate(3.5) brightness(1.25) hue-rotate(-8deg)}
+.tdf-lx .tdf-sp-img{background:#1a1a22}
+.tdf-lx .tdf-sp-deco svg{filter:grayscale(1) sepia(1) saturate(3) brightness(1.25)}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -128,6 +143,7 @@ const STYLES = {
 }
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
+  luxe: { label: '👑 Luxe Gold Foil (black & gold, brush photo)', bg: ['#24242e', '#101015', '#050507'], pw: '104mm', ph: '118mm', r: ['50%', '50%', '50%'], orn: 'none' },
   splash: { label: '🎨 Painted Portrait (white, brush edge)', bg: ['#fffdf8', '#fffdf8', '#f2ead6'], pw: '112mm', ph: '128mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#241b2d', nm: '#241b2d', ac: '#9a6f1c', ts: 'none', wmb: 'multiply' },
   award: { label: '🏆 Best Teacher Award (certificate)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '78mm', ph: '94mm', r: ['50%', '50%', '50%'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply' },
   corelnavy: { label: '🎨 Vector Masterpiece (navy & gold)', bg: ['#1a3a78', '#0d2350', '#050f26'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
@@ -291,14 +307,33 @@ const SplashDeco = () => (
   </div>
 )
 
+const DecoCorner = ({ style }) => (
+  <svg viewBox="0 0 60 60" width="34mm" height="34mm" style={{ position: 'absolute', pointerEvents: 'none', ...style }} fill="none" stroke="url(#tdfG)" strokeWidth=".7">
+    {[56, 46, 36, 26, 16].map(r => <path key={r} d={`M2 ${r + 2}A${r} ${r} 0 0 0 ${r + 2} 2`} />)}
+    {[0, 15, 30, 45, 60, 75, 90].map(a => <line key={a} x1="2" y1="2" x2={2 + 58 * Math.cos(a * Math.PI / 180)} y2={2 + 58 * Math.sin(a * Math.PI / 180)} strokeWidth=".35" />)}
+    <circle cx="2" cy="2" r="3" fill="url(#tdfG)" />
+  </svg>
+)
+
 function SplashFrame({ s, cfg }) {
+  const lux = cfg.style === 'luxe'
+  const W = lux ? ['#fff3c4', '#d9b25a', '#a77d2a', '#f6e3a1', '#d9b25a'] : ['#f7a928', '#e8801a', '#f4c968', '#d9b25a', '#f6e3a1']
   return (
-    <div className="tdf-page tdf-sp" style={styleVars(cfg.style, cfg.shape)}>
+    <div className={`tdf-page tdf-sp${lux ? ' tdf-lx' : ''}`} style={styleVars(cfg.style, cfg.shape)}>
       <svg width="0" height="0" style={{ position: 'absolute' }}><defs>
         <clipPath id="tdfBlob" clipPathUnits="objectBoundingBox"><path d={BLOB_A} /></clipPath>
       </defs></svg>
       <SplashDeco />
-      <div className="tdf-b2" style={{ inset: '9mm', border: '.4mm solid #d9b25a' }} />
+      {lux && <>
+        <svg width="0" height="0" style={{ position: 'absolute' }}><defs><linearGradient id="tdfG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f6e3a1" /><stop offset=".5" stopColor="#d9b25a" /><stop offset="1" stopColor="#a77d2a" /></linearGradient></defs></svg>
+        <div className="tdf-b1" style={{ inset: '7mm' }} />
+        <div className="tdf-b3" style={{ inset: '14mm', borderStyle: 'solid', borderWidth: '.25mm' }} />
+        <DecoCorner style={{ top: '9mm', left: '9mm' }} />
+        <DecoCorner style={{ top: '9mm', right: '9mm', transform: 'scaleX(-1)' }} />
+        <DecoCorner style={{ bottom: '9mm', left: '9mm', transform: 'scaleY(-1)' }} />
+        <DecoCorner style={{ bottom: '9mm', right: '9mm', transform: 'scale(-1)' }} />
+      </>}
+      <div className="tdf-b2" style={{ inset: '11.5mm', border: '.4mm solid #d9b25a' }} />
       <div className="tdf-spc">
         <div className="tdf-sp-inst"><Emblem />GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
         <SchoolIcons />
@@ -308,8 +343,8 @@ function SplashFrame({ s, cfg }) {
         <div className="tdf-sp-ph">
           <svg className="bl" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ filter: 'blur(.6mm)' }}>
             <defs>
-              <radialGradient id="tdfW1" cx=".35" cy=".3" r=".8"><stop offset="0" stopColor="#f7a928" /><stop offset=".6" stopColor="#e8801a" /><stop offset="1" stopColor="#f4c968" /></radialGradient>
-              <radialGradient id="tdfW2" cx=".7" cy=".75" r=".7"><stop offset="0" stopColor="#d9b25a" /><stop offset="1" stopColor="#f6e3a1" /></radialGradient>
+              <radialGradient id="tdfW1" cx=".35" cy=".3" r=".8"><stop offset="0" stopColor={W[0]} /><stop offset=".6" stopColor={W[1]} /><stop offset="1" stopColor={W[2]} /></radialGradient>
+              <radialGradient id="tdfW2" cx=".7" cy=".75" r=".7"><stop offset="0" stopColor={W[3]} /><stop offset="1" stopColor={W[4]} /></radialGradient>
             </defs>
             <g transform="translate(.05 .05) scale(.9)">
               <path d={BLOB_C} fill="url(#tdfW2)" opacity=".75" transform="translate(.03 .035) scale(1.02)" transformOrigin="50% 50%" />
@@ -373,7 +408,7 @@ function AwardFrame({ s, cfg }) {
 
 function Frame({ s, cfg }) {
   if (cfg.style === 'award') return <AwardFrame s={s} cfg={cfg} />
-  if (cfg.style === 'splash') return <SplashFrame s={s} cfg={cfg} />
+  if (cfg.style === 'splash' || cfg.style === 'luxe') return <SplashFrame s={s} cfg={cfg} />
   const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
