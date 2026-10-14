@@ -223,7 +223,7 @@ const resolveStyle = (k, shape) => {
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
 }
 // Colour themes for the Formal Certificate (hue-driven palette).
-const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], cobalt: ['Cobalt Blue', 214, 100], ocean: ['Ocean Blue', 203, 88], indigo: ['Indigo Blue', 242, 72], navydeep: ['Deep Navy', 222, 92], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
+const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], cobalt: ['Cobalt Blue', 214, 100], ocean: ['Ocean Blue', 203, 88], indigo: ['Indigo Blue', 242, 72], navydeep: ['Deep Navy', 222, 92], darkblue: ['Dark Blue', 221, 88, 0.58], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
 const METALS = {
   gold: ['Gold', '#fff3c4 #f6e3a1 #f0cf74 #d8a93f #c79a3b #b8892b #a77d2a #8a5d12 #7a4e12 #6b4a0f'],
   rose: ['Rose Gold', '#fff0ec #f7d3c8 #eebfae #e0a590 #d08c78 #b87260 #a05a4a #8a4a3a #6e3a2c #55291f'],
@@ -234,14 +234,15 @@ const METALS = {
 const PRESETS = {
   navygold: ['Royal Navy & Gold', 'blue', 'gold'], burgundy: ['Burgundy & Rose Gold', 'wine', 'rose'], emeraldgold: ['Emerald & Gold', 'emerald', 'gold'],
   cobaltchamp: ['Cobalt Blue & Champagne Gold', 'cobalt', 'champagne'], oceanplat: ['Ocean Blue & Platinum', 'ocean', 'platinum'], indigorose: ['Indigo & Rose Gold', 'indigo', 'rose'], deepnavy: ['Deep Navy & Champagne Gold', 'navydeep', 'champagne'], skycopper: ['Ocean Blue & Copper', 'ocean', 'copper'],
+  darkgold: ['Dark Blue & Gold', 'darkblue', 'gold'], darkplat: ['Dark Blue & Platinum', 'darkblue', 'platinum'], darkchamp: ['Dark Blue & Champagne Gold', 'darkblue', 'champagne'],
   midnight: ['Midnight Sapphire & Platinum', 'sapphire', 'platinum'], peacock: ['Peacock & Copper', 'peacock', 'copper'], obsidian: ['Obsidian Black & Gold', 'obsidian', 'gold'],
 }
 const metalVars = key => Object.fromEntries((METALS[key] || METALS.gold)[1].split(' ').map((c, i) => [`--m${i}`, c]))
 const themeVars = key => {
-  const [, h, sat] = THEMES[key] || THEMES.blue, c = (sl, l, a) => `hsl(${h} ${Math.round(sat * sl)}% ${l}%${a ? ` / ${a}` : ''})`
+  const [, h, sat, dk = 1] = THEMES[key] || THEMES.blue, c = (sl, l, a, k = 1) => `hsl(${h} ${Math.round(sat * sl)}% ${l * k}%${a ? ` / ${a}` : ''})`
   return {
-    '--n1': c(.94, 21), '--n2': c(.94, 31), '--n3': c(1, 12), '--n4': c(.94, 17), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
-    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67'), '--gl2': c(.8, 38, '.53'), '--pt': `hsl(${h} 100% 93% / .6)`, '--gem1': `hsl(${h} 100% 75%)`,
+    '--n1': c(.94, 21, 0, dk), '--n2': c(.94, 31, 0, dk), '--n3': c(1, 12, 0, dk), '--n4': c(.94, 17, 0, dk), '--tx0': c(.9, 19), '--tx00': c(1, 12), '--tx1': c(.75, 23), '--tx2': c(.7, 34),
+    '--hl': c(.75, 48), '--hl2': c(.8, 57), '--hl3': c(.75, 34), '--gl1': c(.75, 50, '.67', dk), '--gl2': c(.8, 38, '.53', dk), '--pt': `hsl(${h} 100% 93% / .6)`, '--gem1': `hsl(${h} 100% 75%)`,
     '--stf': `brightness(.55) sepia(1) hue-rotate(${h - 38}deg) saturate(5)`,
   }
 }
