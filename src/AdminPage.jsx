@@ -54,6 +54,7 @@ const ALL_MODULES = [
   { key: 'checklist',        label: 'Checklist',          icon: '✅'  },
   { key: 'invitation',       label: 'Invitation',         icon: '✉️' },
   { key: 'certificate',      label: 'Certificates',       icon: '📜'  },
+  { key: 'teachersday',      label: "Teachers' Day",      icon: '🎓'  },
   { key: 'system',           label: 'System',             icon: '⚙️' },
 ]
 
