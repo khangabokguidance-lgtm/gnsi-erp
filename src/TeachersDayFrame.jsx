@@ -140,13 +140,13 @@ const CSS = `
 .tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:#142a5c;margin-top:3mm;white-space:nowrap}
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:#142a5c;margin-top:1.5mm}
 .tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
-.tdf-fm-happy{font:400 17mm/1 'Great Vibes',cursive;background:linear-gradient(180deg,#d8a93f,#8a5d12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-happy{font:400 17mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,#8a5d12 5%,#f6e3a1 30%,#c99a35 48%,#fff3c4 62%,#8a5d12 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
 .tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:#1d3f87;margin-top:2.5mm}
-.tdf-fm-ph{width:42mm;height:42mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
+.tdf-fm-ph{width:38mm;height:38mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
 .tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
 .tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
-.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:7mm}
+.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:6mm}
 .tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
 .tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
 .tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
@@ -156,12 +156,12 @@ const CSS = `
 .tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:#0d2350}
 .tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
 .tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:#142a5c;border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
-.tdf-fm-stamp{width:25mm;height:25mm;flex-shrink:0}
+.tdf-fm-stamp{width:22mm;height:22mm;flex-shrink:0}
 .tdf-fm-guil{position:absolute;inset:10.6mm;opacity:.5;pointer-events:none;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm)}
 .tdf-fm-wm{position:absolute;left:50%;top:52%;width:138mm;height:138mm;transform:translate(-50%,-50%);object-fit:contain;opacity:.07;mix-blend-mode:multiply;filter:grayscale(1) brightness(.35);pointer-events:none}
 .tdf-fm-orn{position:absolute;width:17mm;height:17mm;pointer-events:none}
 .tdf-fm-div{display:flex;justify-content:center;margin-top:2mm}
-.tdf-fm-phw{position:relative;margin-top:7mm;flex-shrink:0}
+.tdf-fm-phw{position:relative;margin-top:6mm;flex-shrink:0}
 .tdf-fm-phw .tdf-laurel{z-index:0}
 .tdf-fm-phw .tdf-fm-ph{position:relative;z-index:1;margin-top:0}
 .tdf-fm-ttl{display:flex;align-items:center;gap:4mm;width:100%;justify-content:center}
@@ -181,6 +181,13 @@ const CSS = `
 .tdf-fm-ttl b{background:linear-gradient(135deg,#f0cf74,#a77d2a)}
 .tdf-fm-nl{background:linear-gradient(90deg,transparent,#2b5dc4,#c79a3b,#2b5dc4,transparent)!important;height:.6mm!important}
 .tdf-fm-em{background:radial-gradient(circle at 35% 25%,#3a73d8,#1d4590 45%,#06142f)!important}
+.tdf-fm-shine{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 30%,#ffffff1f 42%,#ffffff38 47%,#ffffff1f 52%,transparent 64%);mix-blend-mode:screen}
+.tdf-fm-gem{position:absolute;width:4.2mm;height:4.2mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#7fb0ff 35%,#1d4590 75%,#061636);border:.5mm solid #f0cf74;box-shadow:0 0 1.5mm #f6e3a1;pointer-events:none;transform:translate(-50%,-50%)}
+.tdf-fm-rib{position:relative;width:128mm;height:9mm;margin-top:2mm;flex-shrink:0}
+.tdf-fm-rib svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 .6mm .6mm #0005)}
+.tdf-fm-rib span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 3.2mm 'Cinzel',serif;letter-spacing:1mm;color:#0a1d46;text-shadow:0 .2mm 0 #ffffff88}
+.tdf-fm-flr{position:absolute;pointer-events:none}
+.tdf-fm-sc{position:absolute;width:9mm;height:62mm;pointer-events:none}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -452,7 +459,14 @@ function FormalFrame({ s, cfg }) {
         <rect width="100%" height="100%" fill="url(#tdfGu)" mask="url(#tdfGm)" /></svg>
       <Emblem className="tdf-fm-wm" />
       <div className="tdf-fm-ln" />
+      {[[105, 8.4], [8.4, 148.5], [201.6, 148.5], [105, 288.6]].map(([x, y], i) => <div key={i} className="tdf-fm-gem" style={{ left: `${x / 2.1}%`, top: `${y / 2.97}%` }} />)}
+      {[0, 1].map(i => (
+        <svg key={i} className="tdf-fm-sc" viewBox="0 0 14 64" fill="none" stroke="#b8892b" strokeWidth="1" strokeLinecap="round" style={{ [i ? 'right' : 'left']: '19mm', top: '118mm', transform: i ? 'scaleX(-1)' : 'none' }}>
+          <path d="M7 2C2 8 12 12 7 20C3 26 11 30 7 38C4 44 12 48 9 56M9 56C13 62 6 64 4 59C3 56 6 54 8 56" /><circle cx="7" cy="2" r="1.3" fill="#b8892b" /><circle cx="7" cy="20" r="1" fill="#b8892b" /><circle cx="7" cy="38" r="1" fill="#b8892b" />
+        </svg>
+      ))}
       {CORNERS.map((c, i) => <div key={i} className="tdf-fm-orn" style={{ ...Object.fromEntries(Object.entries(c.pos).map(([k, v]) => [k, `calc(${v} + 5mm)`])), transform: c.t }}><svg viewBox="0 0 100 100" width="100%" height="100%"><g fill="none" stroke="#b8892b" strokeWidth="1.8"><path d="M6 94V6h88" /><path d="M16 78V16h62" /><path d="M16 16c18 0 28 9 28 27M16 16c0 18 9 28 27 28" /><circle cx="16" cy="16" r="5" fill="#b8892b" /><path d="M24 44c8-2 13 2 15 9M44 24c-2 8 2 13 9 15" /></g></svg></div>)}
+      <div className="tdf-fm-shine" />
       <div className="tdf-fmc">
         <div className="tdf-fm-top">
           <div className="l">A Brighter<br />Tomorrow Begins<br />with a Great Teacher.<div style={{ marginTop: '3mm' }}><Rule /></div></div>
@@ -463,8 +477,14 @@ function FormalFrame({ s, cfg }) {
         <div className="tdf-fm-tag">EDUCATION<b>◆</b>EXCELLENCE<b>◆</b>EMPOWERMENT</div>
         <div className="tdf-fm-happy">Happy</div>
         <div className="tdf-fm-ttl"><i /><b /><div className="tdf-fm-title" style={{ marginTop: 0 }}>TEACHERS&apos; DAY {yr}</div><b /><i /></div>
-        <div className="tdf-fm-grat">WITH GRATITUDE AND APPRECIATION</div>
-        <div className="tdf-fm-phw"><Laurel w={36} h={34} />
+        <div className="tdf-fm-rib">
+          <svg viewBox="0 0 128 11" preserveAspectRatio="none"><defs><linearGradient id="tdfRb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff3c4" /><stop offset=".45" stopColor="#e0b64f" /><stop offset="1" stopColor="#a77d2a" /></linearGradient><linearGradient id="tdfRb2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#c99a35" /><stop offset="1" stopColor="#7a5a14" /></linearGradient></defs>
+            <path d="M0 2.500h12v7H0l3-3.500z" fill="url(#tdfRb2)" /><path d="M128 2.500h-12v7h12l-3-3.500z" fill="url(#tdfRb2)" />
+            <path d="M8 .5h112v9H8z" fill="url(#tdfRb)" /><path d="M8 9.500l4-1.500v1.500zM120 9.500l-4-1.500v1.500z" fill="#6b4a0f" />
+            <path d="M8 .5h112" stroke="#fff8d8" strokeWidth=".3" /><path d="M10 1.700h108v6.600H10z" fill="none" stroke="#8a6414" strokeWidth=".25" /></svg>
+          <span>WITH GRATITUDE AND APPRECIATION</span>
+        </div>
+        <div className="tdf-fm-phw"><Laurel w={32} h={30} />
         <div className="tdf-fm-ph"><div>{s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}</div></div></div>
         <div className="tdf-fm-pre">This certificate is proudly presented to</div>
         <div className="tdf-fm-name">{s.name}</div>
