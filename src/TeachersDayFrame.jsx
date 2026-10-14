@@ -128,34 +128,34 @@ const CSS = `
 .tdf-lx .tdf-sp-deco svg{filter:grayscale(1) sepia(1) saturate(3) brightness(1.25)}
 .tdf-fm{background:radial-gradient(ellipse at 50% 30%,#14346e,var(--n4) 60%,#061330)!important}
 .tdf-fm:before{opacity:0}
-.tdf-fm-gold{position:absolute;inset:6mm;clip-path:polygon(10mm 0,calc(100% - 10mm) 0,100% 10mm,100% calc(100% - 10mm),calc(100% - 10mm) 100%,10mm 100%,0 calc(100% - 10mm),0 10mm);background:linear-gradient(135deg,#f6e3a1,#a77d2a 30%,#f6e3a1 55%,#b8892b 80%,#f6e3a1)}
+.tdf-fm-gold{position:absolute;inset:6mm;clip-path:polygon(10mm 0,calc(100% - 10mm) 0,100% 10mm,100% calc(100% - 10mm),calc(100% - 10mm) 100%,10mm 100%,0 calc(100% - 10mm),0 10mm);background:linear-gradient(135deg,var(--m1),var(--m6) 30%,var(--m1) 55%,var(--m5) 80%,var(--m1))}
 .tdf-fm-in{position:absolute;inset:8.4mm;clip-path:polygon(8.5mm 0,calc(100% - 8.5mm) 0,100% 8.5mm,100% calc(100% - 8.5mm),calc(100% - 8.5mm) 100%,8.5mm 100%,0 calc(100% - 8.5mm),0 8.5mm);background:var(--n4)}
 .tdf-fm-pn{position:absolute;inset:10.6mm;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm);background:radial-gradient(ellipse at 50% 35%,#fffefa,#fbf7ec 70%,#f3ead3)}
-.tdf-fm-ln{position:absolute;inset:14.5mm;border:.35mm solid #c79a3b;clip-path:polygon(6mm 0,calc(100% - 6mm) 0,100% 6mm,100% calc(100% - 6mm),calc(100% - 6mm) 100%,6mm 100%,0 calc(100% - 6mm),0 6mm)}
+.tdf-fm-ln{position:absolute;inset:14.5mm;border:.35mm solid var(--m4);clip-path:polygon(6mm 0,calc(100% - 6mm) 0,100% 6mm,100% calc(100% - 6mm),calc(100% - 6mm) 100%,6mm 100%,0 calc(100% - 6mm),0 6mm)}
 .tdf-fmc{position:absolute;inset:18mm 22mm 17mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--tx1)}
 .tdf-fm-top{width:100%;padding:0 4mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:flex-start}
-.tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:#7a4e12;padding-top:5mm}
-.tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:#7a4e12;letter-spacing:.3mm;padding-top:3mm}
-.tdf-fm-em{width:23mm;height:23mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,var(--hl3),#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
+.tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:var(--m8);padding-top:5mm}
+.tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:var(--m8);letter-spacing:.3mm;padding-top:3mm}
+.tdf-fm-em{width:23mm;height:23mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,var(--hl3),#08183a);border:1mm solid var(--m3);box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm var(--m4)}
 .tdf-fm-inst{font:900 8.2mm 'Playfair Display',serif;letter-spacing:-.1mm;color:var(--tx1);margin-top:3mm;white-space:nowrap}
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:var(--tx1);margin-top:1.5mm}
-.tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
-.tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,#8a5d12 5%,#f6e3a1 30%,#c99a35 48%,#fff3c4 62%,#8a5d12 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
+.tdf-fm-tag b{color:var(--m4);margin:0 2mm}
+.tdf-fm-happy{font:400 14mm/1 'Great Vibes',cursive;background:linear-gradient(100deg,var(--m7) 5%,var(--m1) 30%,var(--m4) 48%,var(--m0) 62%,var(--m7) 95%);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
 .tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:var(--tx0);letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:var(--tx2);margin-top:2.5mm}
-.tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
+.tdf-fm-ph{width:54mm;height:69mm;margin-top:0;border-radius:2mm;padding:1.4mm;background:linear-gradient(135deg,var(--m1),var(--m6) 40%,var(--m1) 60%,var(--m6));box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
 .tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:1mm;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
 .tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:var(--tx2);margin-top:3mm}
 .tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
 .tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,var(--tx2),transparent);margin-top:1.5mm}
-.tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
+.tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:var(--m8);margin-top:1.5mm}
 .tdf-fm-msg{font:500 3.8mm/1.34 'Cormorant Garamond',serif;color:var(--tx2);margin-top:3.5mm;max-width:140mm}
 .tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1mm;padding-bottom:1.5mm}
-.tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:#7a4e12}
+.tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:var(--m8)}
 .tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:var(--tx0)}
-.tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
-.tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:var(--tx1);border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
+.tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:var(--m4)}
+.tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:var(--tx1);border-top:.35mm solid var(--m4);padding-top:1.5mm;margin-top:.5mm}
 .tdf-fm-stamp{width:19mm;height:19mm;flex-shrink:0}
 .tdf-fm-guil{position:absolute;inset:10.6mm;opacity:.5;pointer-events:none;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm)}
 .tdf-fm-wm{position:absolute;left:50%;top:52%;width:138mm;height:138mm;transform:translate(-50%,-50%);object-fit:contain;opacity:.07;mix-blend-mode:multiply;filter:grayscale(1) brightness(.35);pointer-events:none}
@@ -165,24 +165,24 @@ const CSS = `
 .tdf-fm-phw .tdf-laurel{z-index:0}
 .tdf-fm-phw .tdf-fm-ph{position:relative;z-index:1;margin-top:0}
 .tdf-fm-ttl{display:flex;align-items:center;gap:4mm;width:100%;justify-content:center}
-.tdf-fm-ttl i{height:.5mm;flex:1;max-width:30mm;background:linear-gradient(90deg,transparent,#c79a3b)}
+.tdf-fm-ttl i{height:.5mm;flex:1;max-width:30mm;background:linear-gradient(90deg,transparent,var(--m4))}
 .tdf-fm-ttl i:last-child{transform:scaleX(-1)}
-.tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:#c79a3b;transform:rotate(45deg)}
+.tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:var(--m4);transform:rotate(45deg)}
 .tdf-fm{background:radial-gradient(ellipse at 20% 0%,var(--gl1),transparent 55%),radial-gradient(ellipse at 90% 100%,var(--gl2),transparent 55%),linear-gradient(135deg,var(--n1),var(--n2) 45%,var(--n3))!important}
 .tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,var(--pt),transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
 .tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,var(--hl) 0%,var(--tx0) 55%,var(--tx00) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-grat{background:linear-gradient(90deg,var(--tx2),#9a6f1c 50%,var(--tx2));-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-sg .p1{background:linear-gradient(90deg,#7a4e12,#d8a93f 50%,#7a4e12);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-grat{background:linear-gradient(90deg,var(--tx2),var(--m6) 50%,var(--tx2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p1{background:linear-gradient(90deg,var(--m8),var(--m3) 50%,var(--m8));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-sg .p2{background:linear-gradient(180deg,var(--hl),var(--tx0));-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-sg .p2 b{background:linear-gradient(180deg,#f0cf74,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2 b{background:linear-gradient(180deg,var(--m2),var(--m6));-webkit-background-clip:text;background-clip:text;color:transparent}
 .tdf-fm-sg .p3{background:linear-gradient(90deg,var(--tx1),var(--hl),var(--tx1));-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-fm-ttl i{background:linear-gradient(90deg,transparent,#a77d2a,#f0cf74)}
-.tdf-fm-ttl b{background:linear-gradient(135deg,#f0cf74,#a77d2a)}
-.tdf-fm-nl{background:linear-gradient(90deg,transparent,var(--hl),#c79a3b,var(--hl),transparent)!important;height:.6mm!important}
+.tdf-fm-ttl i{background:linear-gradient(90deg,transparent,var(--m6),var(--m2))}
+.tdf-fm-ttl b{background:linear-gradient(135deg,var(--m2),var(--m6))}
+.tdf-fm-nl{background:linear-gradient(90deg,transparent,var(--hl),var(--m4),var(--hl),transparent)!important;height:.6mm!important}
 .tdf-fm-em{background:radial-gradient(circle at 35% 25%,var(--hl2),var(--hl3) 45%,var(--n3))!important}
 .tdf-fm-shine{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 30%,#ffffff1f 42%,#ffffff38 47%,#ffffff1f 52%,transparent 64%);mix-blend-mode:screen}
-.tdf-fm-gem{position:absolute;width:4.2mm;height:4.2mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--gem1) 35%,var(--hl3) 75%,var(--n3));border:.5mm solid #f0cf74;box-shadow:0 0 1.5mm #f6e3a1;pointer-events:none;transform:translate(-50%,-50%)}
+.tdf-fm-gem{position:absolute;width:4.2mm;height:4.2mm;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,var(--gem1) 35%,var(--hl3) 75%,var(--n3));border:.5mm solid var(--m2);box-shadow:0 0 1.5mm var(--m1);pointer-events:none;transform:translate(-50%,-50%)}
 .tdf-fm-rib{position:relative;width:128mm;height:9mm;margin-top:2mm;flex-shrink:0}
 .tdf-fm-rib svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 .6mm .6mm #0005)}
 .tdf-fm-rib span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 3.2mm 'Cinzel',serif;letter-spacing:1mm;color:var(--n4);text-shadow:0 .2mm 0 #ffffff88}
@@ -223,7 +223,18 @@ const resolveStyle = (k, shape) => {
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
 }
 // Colour themes for the Formal Certificate (hue-driven palette).
-const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], orange: ['Saffron Orange', 22, 85] }
+const THEMES = { blue: ['Royal Blue', 219, 80], maroon: ['Maroon', 346, 70], emerald: ['Emerald', 156, 75], purple: ['Royal Purple', 272, 60], teal: ['Teal', 186, 75], charcoal: ['Charcoal', 220, 10], wine: ['Wine Burgundy', 338, 62], sapphire: ['Sapphire Blue', 226, 95], peacock: ['Peacock Teal', 194, 90], obsidian: ['Obsidian Black', 240, 14], orange: ['Saffron Orange', 22, 85] }
+const METALS = {
+  gold: ['Gold', '#fff3c4 #f6e3a1 #f0cf74 #d8a93f #c79a3b #b8892b #a77d2a #8a5d12 #7a4e12 #6b4a0f'],
+  rose: ['Rose Gold', '#fff0ec #f7d3c8 #eebfae #e0a590 #d08c78 #b87260 #a05a4a #8a4a3a #6e3a2c #55291f'],
+  platinum: ['Platinum Silver', '#ffffff #f1f4f8 #dde3ea #c8d0da #b4bdc9 #9aa5b3 #808c9b #697585 #556070 #3d4654'],
+  copper: ['Copper Bronze', '#ffe7c9 #f6caa0 #eab07a #d9925a #c97d45 #b0652f #954f22 #7a3f1a #5e3014 #47240e'],
+}
+const PRESETS = {
+  navygold: ['Royal Navy & Gold', 'blue', 'gold'], burgundy: ['Burgundy & Rose Gold', 'wine', 'rose'], emeraldgold: ['Emerald & Gold', 'emerald', 'gold'],
+  midnight: ['Midnight Sapphire & Platinum', 'sapphire', 'platinum'], peacock: ['Peacock & Copper', 'peacock', 'copper'], obsidian: ['Obsidian Black & Gold', 'obsidian', 'gold'],
+}
+const metalVars = key => Object.fromEntries((METALS[key] || METALS.gold)[1].split(' ').map((c, i) => [`--m${i}`, c]))
 const themeVars = key => {
   const [, h, sat] = THEMES[key] || THEMES.blue, c = (sl, l, a) => `hsl(${h} ${Math.round(sat * sl)}% ${l}%${a ? ` / ${a}` : ''})`
   return {
@@ -232,10 +243,10 @@ const themeVars = key => {
     '--stf': `brightness(.55) sepia(1) hue-rotate(${h - 38}deg) saturate(5)`,
   }
 }
-const styleVars = (k, shape, theme) => {
+const styleVars = (k, shape, theme, metal) => {
   const t = resolveStyle(k, shape)
   const g = t.g
-  return { ...(k === 'formal' ? themeVars(theme) : {}), '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+  return { ...(k === 'formal' ? { ...themeVars(theme), ...metalVars(metal) } : {}), '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
 
 const Corner = ({ flip }) => (
@@ -392,7 +403,7 @@ function SplashFrame({ s, cfg }) {
   const lux = cfg.style === 'luxe'
   const W = lux ? ['#fff3c4', '#d9b25a', '#a77d2a', '#f6e3a1', '#d9b25a'] : ['#f7a928', '#e8801a', '#f4c968', '#d9b25a', '#f6e3a1']
   return (
-    <div className={`tdf-page tdf-sp${lux ? ' tdf-lx' : ''}`} style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
+    <div className={`tdf-page tdf-sp${lux ? ' tdf-lx' : ''}`} style={styleVars(cfg.style, cfg.shape, cfg.theme, cfg.metal)}>
       <svg width="0" height="0" style={{ position: 'absolute' }}><defs>
         <clipPath id="tdfBlob" clipPathUnits="objectBoundingBox"><path d={BLOB_A} /></clipPath>
       </defs></svg>
@@ -454,16 +465,16 @@ function Stamp({ date }) {
   )
 }
 const Rule = () => (
-  <svg width="40mm" height="3mm" viewBox="0 0 70 4" fill="none" stroke="#c79a3b" strokeWidth=".4"><path d="M2 2H28M42 2H68" /><path d="M35 .3l2.200 1.700L35 3.700 32.800 2z" fill="#c79a3b" /><circle cx="30" cy="2" r=".7" fill="#c79a3b" /><circle cx="40" cy="2" r=".7" fill="#c79a3b" /></svg>
+  <svg width="40mm" height="3mm" viewBox="0 0 70 4" fill="none" stroke="var(--m4)" strokeWidth=".4"><path d="M2 2H28M42 2H68" /><path d="M35 .3l2.200 1.700L35 3.700 32.800 2z" fill="var(--m4)" /><circle cx="30" cy="2" r=".7" fill="var(--m4)" /><circle cx="40" cy="2" r=".7" fill="var(--m4)" /></svg>
 )
 
 function FormalFrame({ s, cfg }) {
   const yr = (cfg.dates.match(/\d{4}/) || ['2026'])[0]
   return (
-    <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
+    <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape, cfg.theme, cfg.metal)}>
       <div className="tdf-fm-gold" /><div className="tdf-fm-in" /><div className="tdf-fm-pn" />
       <svg className="tdf-fm-guil" width="100%" height="100%"><defs>
-        <pattern id="tdfGu" width="14" height="14" patternUnits="userSpaceOnUse"><g fill="none" stroke="#c79a3b" strokeWidth=".18">{[1.5, 3, 4.5, 6].map(r => <circle key={r} cx="7" cy="7" r={r} />)}<circle cx="0" cy="0" r="4" /><circle cx="14" cy="14" r="4" /><circle cx="14" cy="0" r="4" /><circle cx="0" cy="14" r="4" /></g></pattern>
+        <pattern id="tdfGu" width="14" height="14" patternUnits="userSpaceOnUse"><g fill="none" stroke="var(--m4)" strokeWidth=".18">{[1.5, 3, 4.5, 6].map(r => <circle key={r} cx="7" cy="7" r={r} />)}<circle cx="0" cy="0" r="4" /><circle cx="14" cy="14" r="4" /><circle cx="14" cy="0" r="4" /><circle cx="0" cy="14" r="4" /></g></pattern>
         <radialGradient id="tdfGf" cx=".5" cy=".5" r=".6"><stop offset=".55" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#fff" stopOpacity="1" /></radialGradient>
         <mask id="tdfGm"><rect width="100%" height="100%" fill="url(#tdfGf)" /></mask></defs>
         <rect width="100%" height="100%" fill="url(#tdfGu)" mask="url(#tdfGm)" /></svg>
@@ -471,11 +482,11 @@ function FormalFrame({ s, cfg }) {
       <div className="tdf-fm-ln" />
       {[[105, 8.4], [8.4, 148.5], [201.6, 148.5], [105, 288.6]].map(([x, y], i) => <div key={i} className="tdf-fm-gem" style={{ left: `${x / 2.1}%`, top: `${y / 2.97}%` }} />)}
       {[0, 1].map(i => (
-        <svg key={i} className="tdf-fm-sc" viewBox="0 0 14 64" fill="none" stroke="#b8892b" strokeWidth="1" strokeLinecap="round" style={{ [i ? 'right' : 'left']: '19mm', top: '112mm', transform: i ? 'scaleX(-1)' : 'none' }}>
-          <path d="M7 2C2 8 12 12 7 20C3 26 11 30 7 38C4 44 12 48 9 56M9 56C13 62 6 64 4 59C3 56 6 54 8 56" /><circle cx="7" cy="2" r="1.3" fill="#b8892b" /><circle cx="7" cy="20" r="1" fill="#b8892b" /><circle cx="7" cy="38" r="1" fill="#b8892b" />
+        <svg key={i} className="tdf-fm-sc" viewBox="0 0 14 64" fill="none" stroke="var(--m5)" strokeWidth="1" strokeLinecap="round" style={{ [i ? 'right' : 'left']: '19mm', top: '112mm', transform: i ? 'scaleX(-1)' : 'none' }}>
+          <path d="M7 2C2 8 12 12 7 20C3 26 11 30 7 38C4 44 12 48 9 56M9 56C13 62 6 64 4 59C3 56 6 54 8 56" /><circle cx="7" cy="2" r="1.3" fill="var(--m5)" /><circle cx="7" cy="20" r="1" fill="var(--m5)" /><circle cx="7" cy="38" r="1" fill="var(--m5)" />
         </svg>
       ))}
-      {CORNERS.map((c, i) => <div key={i} className="tdf-fm-orn" style={{ ...Object.fromEntries(Object.entries(c.pos).map(([k, v]) => [k, `calc(${v} + 5mm)`])), transform: c.t }}><svg viewBox="0 0 100 100" width="100%" height="100%"><g fill="none" stroke="#b8892b" strokeWidth="1.8"><path d="M6 94V6h88" /><path d="M16 78V16h62" /><path d="M16 16c18 0 28 9 28 27M16 16c0 18 9 28 27 28" /><circle cx="16" cy="16" r="5" fill="#b8892b" /><path d="M24 44c8-2 13 2 15 9M44 24c-2 8 2 13 9 15" /></g></svg></div>)}
+      {CORNERS.map((c, i) => <div key={i} className="tdf-fm-orn" style={{ ...Object.fromEntries(Object.entries(c.pos).map(([k, v]) => [k, `calc(${v} + 5mm)`])), transform: c.t }}><svg viewBox="0 0 100 100" width="100%" height="100%"><g fill="none" stroke="var(--m5)" strokeWidth="1.8"><path d="M6 94V6h88" /><path d="M16 78V16h62" /><path d="M16 16c18 0 28 9 28 27M16 16c0 18 9 28 27 28" /><circle cx="16" cy="16" r="5" fill="var(--m5)" /><path d="M24 44c8-2 13 2 15 9M44 24c-2 8 2 13 9 15" /></g></svg></div>)}
       <div className="tdf-fm-shine" />
       <div className="tdf-fmc">
         <div className="tdf-fm-top">
@@ -488,10 +499,10 @@ function FormalFrame({ s, cfg }) {
         <div className="tdf-fm-happy">Happy</div>
         <div className="tdf-fm-ttl"><i /><b /><div className="tdf-fm-title" style={{ marginTop: 0 }}>TEACHERS&apos; DAY {yr}</div><b /><i /></div>
         <div className="tdf-fm-rib">
-          <svg viewBox="0 0 128 11" preserveAspectRatio="none"><defs><linearGradient id="tdfRb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff3c4" /><stop offset=".45" stopColor="#e0b64f" /><stop offset="1" stopColor="#a77d2a" /></linearGradient><linearGradient id="tdfRb2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#c99a35" /><stop offset="1" stopColor="#7a5a14" /></linearGradient></defs>
+          <svg viewBox="0 0 128 11" preserveAspectRatio="none"><defs><linearGradient id="tdfRb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--m0)" /><stop offset=".45" stopColor="var(--m3)" /><stop offset="1" stopColor="var(--m6)" /></linearGradient><linearGradient id="tdfRb2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--m4)" /><stop offset="1" stopColor="var(--m8)" /></linearGradient></defs>
             <path d="M0 2.500h12v7H0l3-3.500z" fill="url(#tdfRb2)" /><path d="M128 2.500h-12v7h12l-3-3.500z" fill="url(#tdfRb2)" />
-            <path d="M8 .5h112v9H8z" fill="url(#tdfRb)" /><path d="M8 9.500l4-1.500v1.500zM120 9.500l-4-1.500v1.500z" fill="#6b4a0f" />
-            <path d="M8 .5h112" stroke="#fff8d8" strokeWidth=".3" /><path d="M10 1.700h108v6.600H10z" fill="none" stroke="#8a6414" strokeWidth=".25" /></svg>
+            <path d="M8 .5h112v9H8z" fill="url(#tdfRb)" /><path d="M8 9.500l4-1.500v1.500zM120 9.500l-4-1.500v1.500z" fill="var(--m9)" />
+            <path d="M8 .5h112" stroke="var(--m0)" strokeWidth=".3" /><path d="M10 1.700h108v6.600H10z" fill="none" stroke="var(--m7)" strokeWidth=".25" /></svg>
           <span>WITH GRATITUDE AND APPRECIATION</span>
         </div>
         <div className="tdf-fm-phw">
@@ -516,7 +527,7 @@ function FormalFrame({ s, cfg }) {
 
 function AwardFrame({ s, cfg }) {
   return (
-    <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
+    <div className="tdf-page tdf-aw" style={styleVars(cfg.style, cfg.shape, cfg.theme, cfg.metal)}>
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
       <div className="tdf-aw-rib" />
@@ -560,7 +571,7 @@ function Frame({ s, cfg }) {
   const st = resolveStyle(cfg.style, cfg.shape)
   const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
-    <div className="tdf-page" style={styleVars(cfg.style, cfg.shape, cfg.theme)}>
+    <div className="tdf-page" style={styleVars(cfg.style, cfg.shape, cfg.theme, cfg.metal)}>
       {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
@@ -602,7 +613,7 @@ export default function TeachersDayFrame() {
   const [manual, setManual] = useState([])
   const [loading, setLoading] = useState(true)
   const [cfg, setCfg] = useState({
-    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', theme: 'blue', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
+    dates: '16th & 17th OCTOBER 2026', batch: '10th', style: 'arch', theme: 'blue', metal: 'gold', certMsg: 'In sincere appreciation of your dedication, passion and invaluable contributions to the education and growth of our students. Teachers are the heart of the institute. Your guidance, compassion and tireless efforts shape brighter minds and a better tomorrow. Thank you for inspiring, supporting and empowering every learner to dream, grow and achieve.', stampDate: '16.10.2026', msg: 'For explaining it a second time, and a third, without ever making anyone feel small. For knowing which student needed asking twice. For turning a subject on a timetable into something worth staying awake for. And for the lessons that were never once on the syllabus.', shape: 'passport',
     quote: '“A good teacher is like a candle — it consumes itself to light the way for others.”',
   })
   const [search, setSearch] = useState('')
@@ -654,6 +665,13 @@ export default function TeachersDayFrame() {
         <label>Dates<input style={inp} value={cfg.dates} onChange={e => setCfg({ ...cfg, dates: e.target.value })} /></label>
         <label>Frame style<select style={inp} value={cfg.style} onChange={e => setCfg({ ...cfg, style: e.target.value })}>
           {Object.entries(STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select></label>
+        <label>✨ Premium colour preset (Formal Certificate)<select style={inp} value="" onChange={e => { const p = PRESETS[e.target.value]; if (p) setCfg({ ...cfg, theme: p[1], metal: p[2] }) }}>
+          <option value="">— choose a preset —</option>
+          {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
+        </select></label>
+        <label>Metal accent<select style={inp} value={cfg.metal} onChange={e => setCfg({ ...cfg, metal: e.target.value })}>
+          {Object.entries(METALS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
         </select></label>
         <label>Colour theme (Formal Certificate)<select style={inp} value={cfg.theme} onChange={e => setCfg({ ...cfg, theme: e.target.value })}>
           {Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
