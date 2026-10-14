@@ -133,7 +133,7 @@ const CSS = `
 .tdf-fm-pn{position:absolute;inset:10.6mm;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm);background:radial-gradient(ellipse at 50% 35%,#fffefa,#fbf7ec 70%,#f3ead3)}
 .tdf-fm-ln{position:absolute;inset:14.5mm;border:.35mm solid #c79a3b;clip-path:polygon(6mm 0,calc(100% - 6mm) 0,100% 6mm,100% calc(100% - 6mm),calc(100% - 6mm) 100%,6mm 100%,0 calc(100% - 6mm),0 6mm)}
 .tdf-fmc{position:absolute;inset:18mm 22mm 17mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#142a5c}
-.tdf-fm-top{width:100%;display:flex;justify-content:space-between;align-items:flex-start}
+.tdf-fm-top{width:100%;padding:0 4mm;box-sizing:border-box;display:flex;justify-content:space-between;align-items:flex-start}
 .tdf-fm-top .l{width:46mm;text-align:left;font:italic 500 4.2mm/1.25 'Cormorant Garamond',serif;color:#7a4e12;padding-top:5mm}
 .tdf-fm-top .r{width:46mm;text-align:right;font:600 4mm/1.3 'Cormorant Garamond',serif;color:#7a4e12;letter-spacing:.3mm;padding-top:3mm}
 .tdf-fm-em{width:30mm;height:30mm;border-radius:50%;padding:3mm;box-sizing:border-box;object-fit:contain;background:radial-gradient(circle at 50% 40%,#1d4590,#08183a);border:1mm solid #d9b25a;box-shadow:0 0 0 1.2mm #fbf7ec,0 0 0 1.8mm #c79a3b}
@@ -141,22 +141,46 @@ const CSS = `
 .tdf-fm-tag{font:600 3.3mm 'Cinzel',serif;letter-spacing:1.1mm;color:#142a5c;margin-top:1.5mm}
 .tdf-fm-tag b{color:#c79a3b;margin:0 2mm}
 .tdf-fm-happy{font:400 17mm/1 'Great Vibes',cursive;background:linear-gradient(180deg,#d8a93f,#8a5d12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-top:2mm}
-.tdf-fm-title{font:900 15mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
+.tdf-fm-title{font:900 13mm/1 'Playfair Display',serif;color:#0d2350;letter-spacing:-.3mm;margin-top:-2mm;white-space:nowrap}
 .tdf-fm-grat{font:600 3.6mm 'Cinzel',serif;letter-spacing:1.5mm;color:#1d3f87;margin-top:2.5mm}
-.tdf-fm-ph{width:46mm;height:46mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
+.tdf-fm-ph{width:42mm;height:42mm;margin-top:4mm;border-radius:50%;padding:1.4mm;background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);box-shadow:0 1.5mm 4mm #0004;flex-shrink:0}
 .tdf-fm-ph>div{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:.9mm solid #fbf7ec;background:#eef0f4}
 .tdf-fm-ph img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
-.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:4mm}
+.tdf-fm-pre{font:500 5mm 'Cormorant Garamond',serif;color:#1d3f87;margin-top:7mm}
 .tdf-fm-name{font:400 11mm/1.1 'Kaushan Script',cursive;color:#111;margin-top:1mm;max-width:165mm}
 .tdf-fm-nl{width:140mm;height:.4mm;background:linear-gradient(90deg,transparent,#1d3f87,transparent);margin-top:1.5mm}
 .tdf-fm-des{font:italic 600 4.8mm 'Cormorant Garamond',serif;color:#7a4e12;margin-top:1.5mm}
-.tdf-fm-msg{font:500 4.3mm/1.4 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
-.tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1.5mm}
+.tdf-fm-msg{font:500 4.1mm/1.38 'Cormorant Garamond',serif;color:#1d3f87;margin-top:3.5mm;max-width:140mm}
+.tdf-fm-sg{margin-top:auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:1mm;padding-bottom:1.5mm}
 .tdf-fm-sg .p1{font:600 3.4mm 'Cinzel',serif;letter-spacing:1.4mm;color:#7a4e12}
 .tdf-fm-sg .p2{font:400 11mm/1.1 'Great Vibes',cursive;color:#0d2350}
 .tdf-fm-sg .p2 b{font:900 8.5mm 'Cinzel',serif;color:#c79a3b}
 .tdf-fm-sg .p3{font:700 3.6mm 'Cinzel',serif;letter-spacing:.8mm;color:#142a5c;border-top:.35mm solid #c79a3b;padding-top:1.5mm;margin-top:.5mm}
-.tdf-fm-stamp{width:30mm;height:30mm;flex-shrink:0}
+.tdf-fm-stamp{width:25mm;height:25mm;flex-shrink:0}
+.tdf-fm-guil{position:absolute;inset:10.6mm;opacity:.5;pointer-events:none;clip-path:polygon(7mm 0,calc(100% - 7mm) 0,100% 7mm,100% calc(100% - 7mm),calc(100% - 7mm) 100%,7mm 100%,0 calc(100% - 7mm),0 7mm)}
+.tdf-fm-wm{position:absolute;left:50%;top:52%;width:138mm;height:138mm;transform:translate(-50%,-50%);object-fit:contain;opacity:.07;mix-blend-mode:multiply;filter:grayscale(1) brightness(.35);pointer-events:none}
+.tdf-fm-orn{position:absolute;width:17mm;height:17mm;pointer-events:none}
+.tdf-fm-div{display:flex;justify-content:center;margin-top:2mm}
+.tdf-fm-phw{position:relative;margin-top:7mm;flex-shrink:0}
+.tdf-fm-phw .tdf-laurel{z-index:0}
+.tdf-fm-phw .tdf-fm-ph{position:relative;z-index:1;margin-top:0}
+.tdf-fm-ttl{display:flex;align-items:center;gap:4mm;width:100%;justify-content:center}
+.tdf-fm-ttl i{height:.5mm;flex:1;max-width:30mm;background:linear-gradient(90deg,transparent,#c79a3b)}
+.tdf-fm-ttl i:last-child{transform:scaleX(-1)}
+.tdf-fm-ttl b{width:2.2mm;height:2.2mm;background:#c79a3b;transform:rotate(45deg)}
+.tdf-fm{background:radial-gradient(ellipse at 20% 0%,#2a5cc0aa,transparent 55%),radial-gradient(ellipse at 90% 100%,#1b4aa088,transparent 55%),linear-gradient(135deg,#0a2559,#123a80 45%,#061636)!important}
+.tdf-fm-pn{background:radial-gradient(ellipse at 50% 0%,#dbe8ff99,transparent 45%),radial-gradient(ellipse at 50% 100%,#f1d9a066,transparent 50%),linear-gradient(180deg,#fffefa,#fbf6e8 55%,#f4e9cd)!important}
+.tdf-fm-inst,.tdf-fm-title{background:linear-gradient(180deg,#2b5dc4 0%,#0d2350 55%,#06143a 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-name{padding:0 5mm 1.5mm;background:linear-gradient(180deg,#2b2b3a,#000 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-grat{background:linear-gradient(90deg,#1d3f87,#9a6f1c 50%,#1d3f87);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p1{background:linear-gradient(90deg,#7a4e12,#d8a93f 50%,#7a4e12);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2{background:linear-gradient(180deg,#2b5dc4,#0d2350);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p2 b{background:linear-gradient(180deg,#f0cf74,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-sg .p3{background:linear-gradient(90deg,#142a5c,#2b5dc4,#142a5c);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-fm-ttl i{background:linear-gradient(90deg,transparent,#a77d2a,#f0cf74)}
+.tdf-fm-ttl b{background:linear-gradient(135deg,#f0cf74,#a77d2a)}
+.tdf-fm-nl{background:linear-gradient(90deg,transparent,#2b5dc4,#c79a3b,#2b5dc4,transparent)!important;height:.6mm!important}
+.tdf-fm-em{background:radial-gradient(circle at 35% 25%,#3a73d8,#1d4590 45%,#06142f)!important}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -420,7 +444,15 @@ function FormalFrame({ s, cfg }) {
   const yr = (cfg.dates.match(/\d{4}/) || ['2026'])[0]
   return (
     <div className="tdf-page tdf-fm" style={styleVars(cfg.style, cfg.shape)}>
-      <div className="tdf-fm-gold" /><div className="tdf-fm-in" /><div className="tdf-fm-pn" /><div className="tdf-fm-ln" />
+      <div className="tdf-fm-gold" /><div className="tdf-fm-in" /><div className="tdf-fm-pn" />
+      <svg className="tdf-fm-guil" width="100%" height="100%"><defs>
+        <pattern id="tdfGu" width="14" height="14" patternUnits="userSpaceOnUse"><g fill="none" stroke="#c79a3b" strokeWidth=".18">{[1.5, 3, 4.5, 6].map(r => <circle key={r} cx="7" cy="7" r={r} />)}<circle cx="0" cy="0" r="4" /><circle cx="14" cy="14" r="4" /><circle cx="14" cy="0" r="4" /><circle cx="0" cy="14" r="4" /></g></pattern>
+        <radialGradient id="tdfGf" cx=".5" cy=".5" r=".6"><stop offset=".55" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#fff" stopOpacity="1" /></radialGradient>
+        <mask id="tdfGm"><rect width="100%" height="100%" fill="url(#tdfGf)" /></mask></defs>
+        <rect width="100%" height="100%" fill="url(#tdfGu)" mask="url(#tdfGm)" /></svg>
+      <Emblem className="tdf-fm-wm" />
+      <div className="tdf-fm-ln" />
+      {CORNERS.map((c, i) => <div key={i} className="tdf-fm-orn" style={{ ...Object.fromEntries(Object.entries(c.pos).map(([k, v]) => [k, `calc(${v} + 5mm)`])), transform: c.t }}><svg viewBox="0 0 100 100" width="100%" height="100%"><g fill="none" stroke="#b8892b" strokeWidth="1.8"><path d="M6 94V6h88" /><path d="M16 78V16h62" /><path d="M16 16c18 0 28 9 28 27M16 16c0 18 9 28 27 28" /><circle cx="16" cy="16" r="5" fill="#b8892b" /><path d="M24 44c8-2 13 2 15 9M44 24c-2 8 2 13 9 15" /></g></svg></div>)}
       <div className="tdf-fmc">
         <div className="tdf-fm-top">
           <div className="l">A Brighter<br />Tomorrow Begins<br />with a Great Teacher.<div style={{ marginTop: '3mm' }}><Rule /></div></div>
@@ -430,12 +462,13 @@ function FormalFrame({ s, cfg }) {
         <div className="tdf-fm-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
         <div className="tdf-fm-tag">EDUCATION<b>◆</b>EXCELLENCE<b>◆</b>EMPOWERMENT</div>
         <div className="tdf-fm-happy">Happy</div>
-        <div className="tdf-fm-title">TEACHERS&apos; DAY {yr}</div>
+        <div className="tdf-fm-ttl"><i /><b /><div className="tdf-fm-title" style={{ marginTop: 0 }}>TEACHERS&apos; DAY {yr}</div><b /><i /></div>
         <div className="tdf-fm-grat">WITH GRATITUDE AND APPRECIATION</div>
-        <div className="tdf-fm-ph"><div>{s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}</div></div>
+        <div className="tdf-fm-phw"><Laurel w={36} h={34} />
+        <div className="tdf-fm-ph"><div>{s.photo ? <img src={s.photo} alt="" /> : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}</div></div></div>
         <div className="tdf-fm-pre">This certificate is proudly presented to</div>
         <div className="tdf-fm-name">{s.name}</div>
-        <div className="tdf-fm-nl" />
+        <div className="tdf-fm-nl" /><div className="tdf-fm-div"><Rule /></div>
         {s.desig && <div className="tdf-fm-des">{s.desig}</div>}
         <div className="tdf-fm-msg">{cfg.certMsg}</div>
         <div className="tdf-fm-sg">
