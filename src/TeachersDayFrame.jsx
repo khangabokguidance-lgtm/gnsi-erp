@@ -6,6 +6,15 @@ import { LOGO_BASE64 } from './logo'
 const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&display=swap'
 
+const EMBLEM_URL = 'https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem-new.png'
+
+// Real GNSI emblem (website PNG); falls back to the bundled logo if it can't load.
+function Emblem({ className, style }) {
+  const [bad, setBad] = useState(false)
+  return <img className={className} style={style} alt="" crossOrigin={bad ? undefined : 'anonymous'}
+    data-fb={bad ? '1' : undefined} src={bad ? `data:image/jpeg;base64,${LOGO_BASE64}` : EMBLEM_URL} onError={() => setBad(true)} />
+}
+
 const CSS = `
 .tdf-page{width:210mm;height:297mm;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,var(--bg1) 0%,var(--bg2) 38%,var(--bg3) 80%);font-family:'Cormorant Garamond',Georgia,serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
 .tdf-page:before{content:"";position:absolute;inset:0;opacity:.07;background:repeating-linear-gradient(45deg,#d9b25a 0 1px,transparent 1px 14px),repeating-linear-gradient(-45deg,#d9b25a 0 1px,transparent 1px 14px)}
@@ -27,11 +36,11 @@ const CSS = `
 .tdf-ring{position:absolute;inset:0;border-radius:var(--r1);background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
 .tdf-ring2{width:100%;height:100%;border-radius:var(--r2);background:var(--bg3);padding:1.4mm}
 .tdf-photo{width:100%;height:100%;border-radius:var(--r3);overflow:hidden;background:#eef0f4;position:relative}
-.tdf-photo img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
+.tdf-photo img:not(.tdf-pmark){width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .tdf-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a9afbd}
 .tdf-ph svg{width:34mm}
 .tdf-star{position:absolute;color:#d9b25a;font-size:7mm}
-.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:var(--nmt);letter-spacing:.8mm;color:var(--nm);text-shadow:var(--ts);max-width:165mm}
+.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:calc(var(--nmt) + 6mm);letter-spacing:.8mm;color:var(--nm);text-shadow:var(--ts);max-width:165mm}
 .tdf-desig{font:italic 600 6.2mm 'Cormorant Garamond',serif;color:var(--ac);margin-top:1.5mm}
 .tdf-quote{font:italic 500 5.2mm/1.3 'Cormorant Garamond',serif;margin-top:5mm;max-width:150mm;color:var(--tx)}
 .tdf-foot{margin-top:auto;width:100%;padding-top:4mm}
@@ -49,6 +58,11 @@ const CSS = `
 .tdf-scroll{position:absolute;width:11mm;pointer-events:none}
 .tdf-halo{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
 .tdf-flour{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 1mm);pointer-events:none}
+.tdf-wm{position:absolute;left:50%;top:50%;width:150mm;height:150mm;object-fit:contain;transform:translate(-50%,-50%);opacity:.07;mix-blend-mode:var(--wmb);pointer-events:none;filter:grayscale(1) contrast(1.1)}
+.tdf-seal{position:absolute;left:50%;bottom:-8.5mm;width:17mm;height:17mm;transform:translateX(-50%);border-radius:50%;object-fit:contain;background:radial-gradient(circle,#fff 0,#fff 62%,#f6e3a1 100%);border:.7mm solid #d9b25a;box-shadow:0 0 0 1mm var(--bg3),0 0 0 1.5mm #d9b25a,0 1.5mm 4mm #0009;padding:.8mm;box-sizing:border-box;z-index:3}
+.tdf-pmark{position:absolute;right:3mm;bottom:3mm;width:13mm;height:13mm;object-fit:contain;opacity:.8;mix-blend-mode:screen;filter:drop-shadow(0 0 1mm #0008) brightness(1.15);pointer-events:none;z-index:2}
+.tdf-wm[data-fb]{display:none}
+.tdf-pmark[data-fb]{mix-blend-mode:normal;border-radius:50%;background:#fff;padding:.5mm;filter:none}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -67,14 +81,14 @@ const STYLES = {
 const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
 Object.assign(STYLES, {
   corelnavy: { label: '🎨 Vector Masterpiece (navy & gold)', bg: ['#1a3a78', '#0d2350', '#050f26'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
-  corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', vec: true, ribbon: true, bokeh: true },
+  corelivory: { label: '🎨 Vector Masterpiece (ivory & gold)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply', vec: true, ribbon: true, bokeh: true },
   corelmaroon: { label: '🎨 Vector Masterpiece (maroon & gold)', bg: ['#8a2236', '#55101e', '#2a050d'], pw: '74mm', ph: '84mm', r: ['37mm 37mm 4mm 4mm', '35mm 35mm 2.5mm 2.5mm', '33.6mm 33.6mm 1.4mm 1.4mm'], orn: 'none', mt: '14mm', nmt: '10mm', vec: true, ribbon: true, bokeh: true },
-  ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', laurel: true, ribbon: true, bokeh: true },
+  ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', wmb: 'multiply', laurel: true, ribbon: true, bokeh: true },
   aurora: { label: '✨ Midnight Aurora (round, laurel)', bg: ['#14505c', '#08262f', '#030d14'], pw: '98mm', ph: '98mm', mt: '15mm', nmt: '15mm', r: ['50%', '50%', '50%'], orn: 'block', tx: '#d8f3ee', nm: '#fff', ac: '#e6c46a', laurel: true, ribbon: true, bokeh: true },
   emerald: { label: '✨ Emerald Luxe (arch, laurel)', bg: ['#118060', '#0a4a38', '#042a20'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', ac: '#e2bf68', laurel: true, ribbon: true, bokeh: true },
 })
 // Passport-photo shape: 7:9 (35 x 45 mm) portrait rectangle, scaled up to fill the frame.
-const PASSPORT = { pw: '63mm', ph: '81mm', r: ['3mm', '2mm', '1mm'], orn: 'block' }
+const PASSPORT = { pw: '61mm', ph: '78mm', r: ['3mm', '2mm', '1mm'], orn: 'block' }
 const resolveStyle = (k, shape) => {
   const t = { ...BASE, ...(STYLES[k] || STYLES.arch) }
   return shape === 'passport' ? { ...t, ...PASSPORT, mt: t.laurel || t.vec ? '14mm' : t.mt, nmt: t.laurel || t.vec ? '10mm' : t.nmt } : t
@@ -82,7 +96,7 @@ const resolveStyle = (k, shape) => {
 const styleVars = (k, shape) => {
   const t = resolveStyle(k, shape)
   const g = t.g
-  return { '--mt': t.mt, '--nmt': t.nmt, '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+  return { '--mt': t.mt, '--nmt': t.nmt, '--wmb': t.wmb || 'screen', '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
 
 const Corner = ({ flip }) => (
@@ -178,14 +192,16 @@ function Frame({ s, cfg }) {
       {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
+      <Emblem className="tdf-wm" />
       <div className="tdf-content">
-        <img className="tdf-logo" src={`data:image/jpeg;base64,${LOGO_BASE64}`} alt="" />
+        <Emblem className="tdf-logo" />
         <div className="tdf-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE<small>— GNSI —</small></div>
         <div className="tdf-rule"><i /><b /><i /></div>
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.vec && <Flourish />}{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}<Emblem className="tdf-seal" />{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo"><Emblem className="tdf-pmark" />
+            <Emblem className="tdf-pmark" />
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
