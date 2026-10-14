@@ -14,16 +14,16 @@ const CSS = `
 .tdf-b2{inset:11.5mm;border:.5mm solid #d9b25a}.tdf-b3{inset:14mm;border:.25mm dashed #d9b25a99}
 .tdf-corner{position:absolute;width:30mm;height:30mm;pointer-events:none}
 .tdf-corner svg{width:100%;height:100%}
-.tdf-content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:#f6e3a1}
+.tdf-content{position:absolute;inset:18mm 20mm;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--tx)}
 .tdf-logo{width:22mm;height:22mm;border-radius:50%;border:.8mm solid #d9b25a;object-fit:cover;background:#fff;box-shadow:0 0 0 1.2mm var(--bg3),0 0 0 1.8mm #d9b25a}
-.tdf-inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:#d9b25a}
-.tdf-inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:#f6e3a1;font-weight:500;margin-top:1mm}
+.tdf-inst{font:700 4.6mm 'Cinzel',serif;letter-spacing:.9mm;margin-top:4mm;color:var(--ac)}
+.tdf-inst small{display:block;font-size:2.8mm;letter-spacing:.7mm;color:var(--tx);font-weight:500;margin-top:1mm}
 .tdf-rule{display:flex;align-items:center;gap:3mm;margin-top:3.5mm}
 .tdf-rule i{height:.3mm;width:38mm;background:linear-gradient(90deg,transparent,#d9b25a)}.tdf-rule i:last-child{transform:scaleX(-1)}
 .tdf-rule b{width:2.2mm;height:2.2mm;background:#d9b25a;transform:rotate(45deg)}
-.tdf-happy{font:400 22mm/1 'Great Vibes',cursive;margin-top:5mm;background:linear-gradient(180deg,#fff3c4,#d9b25a 55%,#a77d2a);-webkit-background-clip:text;background-clip:text;color:transparent}
-.tdf-td{font:900 10.5mm 'Cinzel',serif;letter-spacing:2.2mm;margin-top:1mm;color:#f6e3a1;text-shadow:0 .5mm 1mm #000a}
-.tdf-photo-wrap{position:relative;margin-top:7mm;width:var(--pw);height:var(--ph)}
+.tdf-happy{font:400 22mm/1 'Great Vibes',cursive;margin-top:5mm;background:linear-gradient(180deg,var(--g1),var(--g2) 55%,var(--g3));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tdf-td{font:900 10.5mm 'Cinzel',serif;letter-spacing:2.2mm;margin-top:1mm;color:var(--tx);text-shadow:var(--ts)}
+.tdf-photo-wrap{flex-shrink:0;position:relative;margin-top:var(--mt);width:var(--pw);height:var(--ph)}
 .tdf-ring{position:absolute;inset:0;border-radius:var(--r1);background:linear-gradient(135deg,#f6e3a1,#a77d2a 40%,#f6e3a1 60%,#a77d2a);padding:2.4mm;box-shadow:0 3mm 9mm #000c,0 0 14mm #d9b25a55}
 .tdf-ring2{width:100%;height:100%;border-radius:var(--r2);background:var(--bg3);padding:1.4mm}
 .tdf-photo{width:100%;height:100%;border-radius:var(--r3);overflow:hidden;background:#eef0f4;position:relative}
@@ -31,16 +31,20 @@ const CSS = `
 .tdf-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a9afbd}
 .tdf-ph svg{width:34mm}
 .tdf-star{position:absolute;color:#d9b25a;font-size:7mm}
-.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:8mm;letter-spacing:.8mm;color:#fff;text-shadow:0 .4mm .8mm #000;max-width:165mm}
-.tdf-desig{font:italic 600 6.2mm 'Cormorant Garamond',serif;color:#d9b25a;margin-top:1.5mm}
-.tdf-quote{font:italic 500 5.2mm/1.3 'Cormorant Garamond',serif;margin-top:5mm;max-width:150mm;color:#f6e3a1}
+.tdf-name{font:700 9mm 'Cinzel',serif;margin-top:var(--nmt);letter-spacing:.8mm;color:var(--nm);text-shadow:var(--ts);max-width:165mm}
+.tdf-desig{font:italic 600 6.2mm 'Cormorant Garamond',serif;color:var(--ac);margin-top:1.5mm}
+.tdf-quote{font:italic 500 5.2mm/1.3 'Cormorant Garamond',serif;margin-top:5mm;max-width:150mm;color:var(--tx)}
 .tdf-foot{margin-top:auto;width:100%;padding-top:4mm}
-.tdf-dates{display:inline-block;border:.4mm solid #d9b25a;padding:2.6mm 9mm;background:linear-gradient(90deg,#d9b25a22,#d9b25a44,#d9b25a22);font:700 5mm 'Cinzel',serif;letter-spacing:.6mm;color:#fff}
+.tdf-dates{display:inline-block;border:.4mm solid #d9b25a;padding:2.6mm 9mm;background:linear-gradient(90deg,#d9b25a22,#d9b25a44,#d9b25a22);font:700 5mm 'Cinzel',serif;letter-spacing:.6mm;color:var(--nm)}
 .tdf-dates sup,.tdf-batch sup{font-size:.55em;line-height:0;vertical-align:super;letter-spacing:0}
-.tdf-pres{font:500 3.6mm 'Cinzel',serif;letter-spacing:1.2mm;margin-top:4mm;color:#d9b25a}
-.tdf-batch{font:400 11mm/1.1 'Great Vibes',cursive;color:#f6e3a1;margin-top:1mm}
-.tdf-batch b{font:900 9mm 'Cinzel',serif;color:#d9b25a}
+.tdf-pres{font:500 3.6mm 'Cinzel',serif;letter-spacing:1.2mm;margin-top:4mm;color:var(--ac)}
+.tdf-batch{font:400 11mm/1.1 'Great Vibes',cursive;color:var(--tx);margin-top:1mm}
+.tdf-batch b{font:900 9mm 'Cinzel',serif;color:var(--ac)}
 .tdf-orn{position:absolute;inset:-5mm;border:.4mm solid #d9b25a;border-radius:var(--r1);pointer-events:none;display:var(--orn)}
+.tdf-rb{padding:1.6mm 16mm;border-top:.35mm solid var(--ac);border-bottom:.35mm solid var(--ac);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--ac) 22%,transparent),transparent)}
+.tdf-laurel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;overflow:visible}
+.tdf-bokeh{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.tdf-bokeh i{position:absolute;border-radius:50%;background:radial-gradient(circle,var(--ac),transparent 70%);opacity:.28}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -56,9 +60,16 @@ const STYLES = {
   maroon: { label: 'Maroon Heritage (arch)', bg: ['#7a1d2e', '#55101e', '#2f0710'], pw: '104mm', ph: '128mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none' },
   maroonround: { label: 'Maroon Heritage (round)', bg: ['#7a1d2e', '#55101e', '#2f0710'], pw: '112mm', ph: '112mm', r: ['50%', '50%', '50%'], orn: 'block' },
 }
+const BASE = { mt: '7mm', nmt: '8mm', tx: '#f6e3a1', nm: '#fff', ac: '#d9b25a', g: ['#fff3c4', '#d9b25a', '#a77d2a'], ts: '0 .5mm 1mm #000a' }
+Object.assign(STYLES, {
+  ivory: { label: '✨ Ivory Royale (light, laurel)', bg: ['#fffdf6', '#f6edd6', '#e6d7ab'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', tx: '#5a3f10', nm: '#0d2350', ac: '#9a6f1c', g: ['#d8a93f', '#9a6f1c', '#6b4a0f'], ts: 'none', laurel: true, ribbon: true, bokeh: true },
+  aurora: { label: '✨ Midnight Aurora (round, laurel)', bg: ['#14505c', '#08262f', '#030d14'], pw: '98mm', ph: '98mm', mt: '15mm', nmt: '15mm', r: ['50%', '50%', '50%'], orn: 'block', tx: '#d8f3ee', nm: '#fff', ac: '#e6c46a', laurel: true, ribbon: true, bokeh: true },
+  emerald: { label: '✨ Emerald Luxe (arch, laurel)', bg: ['#118060', '#0a4a38', '#042a20'], pw: '96mm', ph: '116mm', mt: '15mm', nmt: '15mm', r: ['52mm 52mm 4mm 4mm', '50mm 50mm 2.5mm 2.5mm', '48.6mm 48.6mm 1.4mm 1.4mm'], orn: 'none', ac: '#e2bf68', laurel: true, ribbon: true, bokeh: true },
+})
 const styleVars = k => {
-  const t = STYLES[k] || STYLES.arch
-  return { '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
+  const t = { ...BASE, ...(STYLES[k] || STYLES.arch) }
+  const g = t.g
+  return { '--mt': t.mt, '--nmt': t.nmt, '--tx': t.tx, '--nm': t.nm, '--ac': t.ac, '--ts': t.ts, '--g1': g[0], '--g2': g[1], '--g3': g[2], '--bg1': t.bg[0], '--bg2': t.bg[1], '--bg3': t.bg[2], '--pw': t.pw, '--ph': t.ph, '--r1': t.r[0], '--r2': t.r[1], '--r3': t.r[2], '--orn': t.orn }
 }
 
 const Corner = ({ flip }) => (
@@ -78,9 +89,36 @@ const CORNERS = [
   { pos: { bottom: '9mm', right: '9mm' }, t: 'scale(-1)' },
 ]
 
+function Laurel({ w, h }) {
+  const W = w + 34, H = h + 34, cx = W / 2, cy = H / 2, rx = w / 2 + 7, ry = h / 2 + 7, N = 15
+  const leaves = []
+  for (let side = 0; side < 2; side++) {
+    for (let i = 0; i < N; i++) {
+      const f = 0.2 + (i / (N - 1)) * 0.6, a = f * Math.PI
+      const sg = side ? 1 : -1
+      const x = cx + sg * rx * Math.sin(a), y = cy + ry * Math.cos(a)
+      const tan = Math.atan2(-ry * Math.sin(a), sg * rx * Math.cos(a)) * 180 / Math.PI
+      const sz = 5.2 - (i / N) * 1.6
+      for (const o of [-1, 1]) {
+        leaves.push(<ellipse key={`${side}-${i}-${o}`} cx={0} cy={0} rx={sz} ry={sz / 2.6} fill="url(#tdfLeaf)" transform={`translate(${x} ${y}) rotate(${tan + o * 38 + 180 * (side ? 0 : 1)}) translate(${sz} 0)`} />)
+      }
+    }
+  }
+  return (
+    <svg className="tdf-laurel" width={`${W}mm`} height={`${H}mm`} viewBox={`0 0 ${W} ${H}`}>
+      <defs><linearGradient id="tdfLeaf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f6e3a1" /><stop offset=".55" stopColor="#d9b25a" /><stop offset="1" stopColor="#a77d2a" /></linearGradient></defs>
+      {leaves}
+    </svg>
+  )
+}
+const BOKEH = [[8, 12, 26], [78, 9, 20], [88, 40, 30], [4, 55, 22], [90, 78, 24], [10, 86, 28], [50, 94, 18], [30, 5, 14]]
+
 function Frame({ s, cfg }) {
+  const st = { ...BASE, ...(STYLES[cfg.style] || STYLES.arch) }
+  const pw = parseFloat(st.pw), ph = parseFloat(st.ph)
   return (
     <div className="tdf-page" style={styleVars(cfg.style)}>
+      {st.bokeh && <div className="tdf-bokeh">{BOKEH.map(([l, t, z], i) => <i key={i} style={{ left: l + '%', top: t + '%', width: z + 'mm', height: z + 'mm' }} />)}</div>}
       <div className="tdf-b1" /><div className="tdf-b2" /><div className="tdf-b3" />
       {CORNERS.map((c, i) => <Corner key={i} flip={c} />)}
       <div className="tdf-content">
@@ -90,7 +128,7 @@ function Frame({ s, cfg }) {
         <div className="tdf-happy">Happy</div>
         <div className="tdf-td">TEACHERS&apos; DAY</div>
         <div className="tdf-photo-wrap">
-          <div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
+          {st.laurel && <Laurel w={pw} h={ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
             {s.photo
               ? <img src={s.photo} alt="" />
               : <div className="tdf-ph"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.5" /><path d="M3 22c0-5 4-8 9-8s9 3 9 8z" /></svg></div>}
@@ -98,7 +136,7 @@ function Frame({ s, cfg }) {
           <span className="tdf-star" style={{ left: '-9mm', top: '40mm' }}>✦</span>
           <span className="tdf-star" style={{ right: '-9mm', top: '60mm' }}>✦</span>
         </div>
-        <div className="tdf-name">{(s.name || '').toUpperCase()}</div>
+        <div className={`tdf-name${st.ribbon ? ' tdf-rb' : ''}`}>{(s.name || '').toUpperCase()}</div>
         <div className="tdf-desig">{s.desig}</div>
         {cfg.quote && <div className="tdf-quote">{cfg.quote}</div>}
         <div className="tdf-foot">
