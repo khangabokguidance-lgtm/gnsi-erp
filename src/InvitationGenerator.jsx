@@ -75,40 +75,28 @@ const DEFAULT_P1 = {
   script: 'ꯒꯤꯗꯦꯟꯁ ꯅꯕꯣꯗꯌ & ꯁꯥꯏꯅꯤꯛ ꯏꯟꯁ꯭ꯇꯤꯇꯨꯠ',
   callig: 'Invitation',
   cord:   'You are cordially invited for the pleasure of your kind presence at',
-  evt:    "Fresher's Meet cum Felicitation Programme",
-  yr:     '– 2026', mon: 'June', day: '14', ord: 'th', year: '2026',
-  venue:  'Khangabok Sorok Wangma\nCommunity Hall',
+  evt:    "Teachers' Day Celebration cum Cultural Meet",
+  yr:     '– 2026', mon: 'October', day: '16 & 17', ord: '', year: '2026',
+  venue:  'Venue to be announced',
   vnote:  'Thoubal District, Manipur', anni: '10',
   quote:  '"Your esteemed presence will highly grace and inspire our Institute."',
-  fsub:   'Programme Overleaf',
-  aname:  'Moirangthem Manglemjao Singh',
-  arole:  'Chairman, Guidance Khangabok',
+  fsub:   'Presented by 10th Batch Students',
+  msg:    'Your presence will honour our teachers and make this celebration truly memorable.',
+  aname:  '',
+  arole:  '',
 }
 
 const DEFAULT_P2 = {
   inst: 'Guidance Navodaya & Sainik Institute', acc: 'Navodaya',
   addr: 'Khangabok Sorok Wangma · Thoubal District · Manipur – 795138',
-  progTtl: 'Programme', date: 'Friday, 15th May 2026', time: '09:00 AM',
-  venue: 'Premises of the Institute',
-  ftrl: 'Organising Committee · Guidance, Khangabok', ftrr: 'R.S.V.P.',
+  progTtl: 'Programme', date: 'Friday 16th & Saturday 17th October 2026', time: '',
+  venue: '',
+  ftrl: 'Organising Committee · Guidance, Khangabok', ftrr: 'Presented by 10th Batch Students',
 }
 
-const DEFAULT_MEMBERS = [
-  { name: 'Dr. Leimapokpam Romesh Singh', role: 'Principal, GNSI' },
-  { name: 'Kh. Inaocha Singh',            role: 'Secretary, GNSI Alumni Association' },
-  { name: 'N. Priyobarta Singh',           role: 'Head, Academic Affairs' },
-]
+const DEFAULT_MEMBERS = []
 
-const DEFAULT_PROGS = [
-  { time: '09:00 AM', name: 'Inaugural Ceremony & Welcome Address', sub: 'By Principal, GNSI' },
-  { time: '09:30 AM', name: 'Lamp Lighting & Saraswati Puja',       sub: '' },
-  { time: '10:00 AM', name: 'Introduction of Fresh Students',        sub: 'Batch 2025–26' },
-  { time: '10:30 AM', name: 'Felicitation of Top Performers',        sub: 'JNVST & AISSEE Qualifiers' },
-  { time: '11:15 AM', name: 'Cultural Performances',                 sub: "Students' Choir & Dance" },
-  { time: '12:00 PM', name: 'Presidential Address',                  sub: 'By Chairman, GNSI' },
-  { time: '12:30 PM', name: 'Vote of Thanks',                        sub: 'Secretary, Organising Committee' },
-  { time: '01:00 PM', name: 'Lunch & Fellowship',                    sub: '' },
-]
+const DEFAULT_PROGS = []
 
 const DEFAULT_FC = {
   inst:    '#ffffff', addr:    'rgba(224,188,106,0.75)', scr:     '#F5DFA0',
@@ -203,7 +191,9 @@ body{background:#fff;display:flex;gap:0}
 .d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:var(--fc-dname,#07102a);line-height:1.25}
 .d-name.anchor{font-size:var(--fs-aname)}
 .d-role{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-drole);color:var(--fc-drole,#7a4e08);letter-spacing:1px;text-transform:uppercase;line-height:1.3}
-.ftr{background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 36px;text-align:center;position:relative;flex-shrink:0;overflow:hidden}
+.inv-msg{flex:1;display:flex;align-items:center;justify-content:center;padding:0 44px;text-align:center}
+.inv-msg-t{font-family:'Playfair Display',serif;font-style:italic;font-size:15px;line-height:1.7;color:var(--navy);border-top:1px solid var(--gold);border-bottom:1px solid var(--gold);padding:14px 10px;max-width:300px}
+.ftr{margin-top:auto;background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 36px;text-align:center;position:relative;flex-shrink:0;overflow:hidden}
 .ftr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:2;background:linear-gradient(90deg,transparent 0%,var(--gold) 20%,var(--gold3) 50%,var(--gold) 80%,transparent 100%)}
 .ftr::after{content:'';position:absolute;inset:0;z-index:0;background:repeating-linear-gradient(-55deg,transparent 0px,transparent 18px,rgba(196,150,42,.04) 18px,rgba(196,150,42,.04) 19px),radial-gradient(ellipse 70% 150% at 50% 50%,rgba(196,150,42,.07) 0%,transparent 70%)}
 .ftr-q{font-family:'EB Garamond',serif;font-style:italic;font-size:var(--fs-quote);color:var(--fc-quote,#ffffff);line-height:1.65;position:relative;z-index:1}
@@ -335,7 +325,8 @@ function InvCard({ p1, members, colors, lessInk }) {
             <div className="vn-note">{p1.vnote}</div>
           </div>
         </div>
-        <div className="dig-sec">
+        {allMembers.length === 0 && p1.msg && <div className="inv-msg"><div className="inv-msg-t">{p1.msg}</div></div>}
+        {allMembers.length > 0 && <div className="dig-sec">
           <div className="dig-hd-wrap"><div className="dig-hd-row"><div className="dig-hd-line l"/><div className="dig-hd-lbl">Presidium Members</div><div className="dig-hd-line r"/></div></div>
           <div className="dig-list">
             {allMembers.map((m, i) => (
@@ -347,7 +338,7 @@ function InvCard({ p1, members, colors, lessInk }) {
               </div>
             ))}
           </div>
-        </div>
+        </div>}
         <div className="ftr"><div className="ftr-q">{p1.quote}</div><div className="ftr-s">{p1.fsub}</div></div>
       </div>
     </div>
@@ -369,7 +360,7 @@ function ProgCard({ p2, progs, colors, lessInk }) {
         </div>
         <div className="gold-rule"/>
         <div className="p2-prog-hd"><div className="p2-prog-hd-row"><div className="p2-prog-hl l"/><div className="p2-prog-ttl">{p2.progTtl}</div><div className="p2-prog-hl r"/></div></div>
-        <div className="p2-date-bar"><div className="p2-date-txt"><strong>{p2.date}</strong> &nbsp;·&nbsp; Commencing at <strong>{p2.time}</strong> &nbsp;·&nbsp; {p2.venue}</div></div>
+        <div className="p2-date-bar"><div className="p2-date-txt"><strong>{p2.date}</strong>{p2.time && <> &nbsp;·&nbsp; Commencing at <strong>{p2.time}</strong></>}{p2.venue && <> &nbsp;·&nbsp; {p2.venue}</>}</div></div>
         <div className="p2-body"><div className="p2-items">
           {progs.map((pg, i) => (
             <div className="p2-item" key={i}>
@@ -631,6 +622,7 @@ function P1Content({ p1, sp1, members, updMember, addMember, delMember, T }) {
       ))}
       <button style={T.addBtn} onClick={addMember}>+ Add Member</button>
       <div style={{...T.sh, marginTop:12}}>Footer</div>
+      <Field label="Message (shown when no members)"><Inp textarea value={p1.msg || ''} onChange={v => sp1('msg',v)}/></Field>
       <Field label="Quote"><Inp textarea value={p1.quote} onChange={v => sp1('quote',v)}/></Field>
       <Field label="Sub Label"><Inp value={p1.fsub} onChange={v => sp1('fsub',v)}/></Field>
       <div style={{...T.sh, marginTop:12}}>Anniversary</div>
