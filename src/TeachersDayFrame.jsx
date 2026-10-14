@@ -94,7 +94,7 @@ const CSS = `
 .tdf-sp-happy{font:400 15mm/1 'Great Vibes',cursive;color:#c0392b;margin-top:9mm}
 .tdf-sp-td{font:400 27mm/.9 'Kaushan Script',cursive;color:#241b2d;margin-top:-1mm;text-shadow:.5mm .5mm 0 #d9b25a66}
 .tdf-sp-td i{color:#c0392b;font-style:normal}
-.tdf-sp-ph{position:relative;width:112mm;height:128mm;margin-top:8mm;flex-shrink:0}
+.tdf-sp-ph{position:relative;width:104mm;height:118mm;margin-top:6mm;flex-shrink:0}
 .tdf-sp-ph svg.bl{position:absolute;inset:-7mm;width:calc(100% + 14mm);height:calc(100% + 14mm)}
 .tdf-sp-img{position:absolute;inset:0;clip-path:url(#tdfBlob);background:#e9ecf1}
 .tdf-sp-img img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
@@ -106,6 +106,11 @@ const CSS = `
 .tdf-sp-ft span{color:#9a6f1c;font:400 8mm 'Great Vibes',cursive;letter-spacing:0}
 .tdf-sp-ft b{font:900 5mm 'Cinzel',serif;color:#9a6f1c}
 .tdf-sp-ft sup{font-size:.55em;line-height:0;vertical-align:super}
+.tdf-sp-deco{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.tdf-sp-wash{position:absolute;border-radius:50%;filter:blur(7mm)}
+.tdf-sp-icons{display:flex;gap:5mm;align-items:center;margin-top:5mm}
+.tdf-sp-icons svg{width:9mm;height:9mm}
+.tdf-sp-swoosh{width:120mm;height:7mm;margin-top:1mm}
 .tdf-print{display:none}
 @media print{
   @page{size:A4 portrait;margin:0}
@@ -255,17 +260,51 @@ const blobPath = (seed, n = 140, amp = 0.022) => {
 }
 const BLOB_A = blobPath(1), BLOB_B = blobPath(4.2, 140, .03), BLOB_C = blobPath(7.7, 140, .03)
 
+const SPL = [[18, 150, 3.2, '#f7a928'], [26, 168, 1.8, '#c0392b'], [12, 190, 2.4, '#d9b25a'], [188, 140, 3, '#c0392b'], [196, 170, 2, '#f7a928'], [184, 196, 3.4, '#d9b25a'], [30, 120, 1.5, '#d9b25a'], [180, 118, 1.6, '#f7a928'], [22, 215, 2, '#f7a928'], [190, 222, 2.2, '#c0392b']]
+const Stroke = ({ d, c, w = 1 }) => <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" />
+const SchoolIcons = () => (
+  <div className="tdf-sp-icons">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 20l1-5L17 3l4 4L9 19z" fill="#f7a928" stroke="#7a5a14" strokeWidth="1" /><path d="M4 20l1-5 4 4z" fill="#f6e3a1" stroke="#7a5a14" strokeWidth="1" /><path d="M15 5l4 4" stroke="#c0392b" strokeWidth="1.6" /></svg>
+    <svg viewBox="0 0 24 24" fill="none"><path d="M3 5c4-1.5 7-.5 9 1 2-1.5 5-2.5 9-1v13c-4-1.5-7-.5-9 1-2-1.5-5-2.5-9-1z" fill="#fff" stroke="#241b2d" strokeWidth="1.2" /><path d="M12 6v13" stroke="#241b2d" strokeWidth="1.2" /><path d="M5 9c2-.5 4 0 5 .8M5 12c2-.5 4 0 5 .8M14 9.8c1-.8 3-1.3 5-.8M14 12.8c1-.8 3-1.3 5-.8" stroke="#c0392b" strokeWidth=".8" /></svg>
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 7c-3-3-9-1-8 6 .7 5 4 8 6 7 1-.4 1.5-.6 2-.6s1 .2 2 .6c2 1 5.3-2 6-7 1-7-5-9-8-6z" fill="#c0392b" /><path d="M12 7c0-2 1-4 3-5" stroke="#5a7d2a" strokeWidth="1.6" strokeLinecap="round" /><path d="M13 4c2-1 4 0 4 0s-1 2-4 2z" fill="#5a7d2a" /></svg>
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 2a6.5 6.5 0 00-3.5 12c.8.6 1 1.4 1 2.5h5c0-1.100.2-1.900 1-2.500A6.500 6.500 0 0012 2z" fill="#f6e3a1" stroke="#9a6f1c" strokeWidth="1.2" /><path d="M9.500 19h5M10.500 21.500h3" stroke="#241b2d" strokeWidth="1.4" strokeLinecap="round" /><path d="M12 6v6M9.500 8.500L12 6l2.500 2.500" stroke="#c0392b" strokeWidth="1" /></svg>
+    <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="8" width="20" height="8" rx="1" fill="#f7a928" stroke="#7a5a14" strokeWidth="1.1" transform="rotate(-20 12 12)" /><path d="M6 9l1 2M10 8l1 2M14 7l1 2M18 6l1 2" stroke="#7a5a14" strokeWidth="1" transform="rotate(-20 12 12) translate(0 .6)" /></svg>
+  </div>
+)
+const SplashDeco = () => (
+  <div className="tdf-sp-deco">
+    <div className="tdf-sp-wash" style={{ left: '-30mm', top: '-25mm', width: '90mm', height: '70mm', background: 'radial-gradient(circle,#f7a92866,transparent 70%)' }} />
+    <div className="tdf-sp-wash" style={{ right: '-35mm', bottom: '-20mm', width: '100mm', height: '90mm', background: 'radial-gradient(circle,#d9b25a77,transparent 70%)' }} />
+    <div className="tdf-sp-wash" style={{ right: '-25mm', top: '45mm', width: '60mm', height: '60mm', background: 'radial-gradient(circle,#c0392b2e,transparent 70%)' }} />
+    <svg width="210mm" height="297mm" viewBox="0 0 210 297" style={{ position: 'absolute', inset: 0 }}>
+      {SPL.map(([x, y, r, c], i) => <circle key={i} cx={x} cy={y} r={r} fill={c} opacity=".75" />)}
+      {/* streamers */}
+      <Stroke d="M10 40C26 52 8 66 22 80C32 90 18 100 24 112" c="#f7a928" w="1.4" />
+      <Stroke d="M16 36C30 48 14 64 26 76" c="#c0392b" w="1" />
+      <Stroke d="M200 36C184 48 202 62 188 76C178 86 192 96 186 108" c="#d9b25a" w="1.4" />
+      <Stroke d="M194 34C180 46 196 60 184 72" c="#c0392b" w="1" />
+      {/* sparkles */}
+      {[[40, 62, 3], [170, 66, 2.4], [33, 238, 2.6], [176, 244, 3.2], [100, 22, 2]].map(([x, y, r], i) => (
+        <path key={i} d={`M${x} ${y - r * 2}L${x + r * .5} ${y - r * .5}L${x + r * 2} ${y}L${x + r * .5} ${y + r * .5}L${x} ${y + r * 2}L${x - r * .5} ${y + r * .5}L${x - r * 2} ${y}L${x - r * .5} ${y - r * .5}Z`} fill="#d9b25a" opacity=".85" />
+      ))}
+    </svg>
+  </div>
+)
+
 function SplashFrame({ s, cfg }) {
   return (
     <div className="tdf-page tdf-sp" style={styleVars(cfg.style, cfg.shape)}>
       <svg width="0" height="0" style={{ position: 'absolute' }}><defs>
         <clipPath id="tdfBlob" clipPathUnits="objectBoundingBox"><path d={BLOB_A} /></clipPath>
       </defs></svg>
+      <SplashDeco />
       <div className="tdf-b2" style={{ inset: '9mm', border: '.4mm solid #d9b25a' }} />
       <div className="tdf-spc">
         <div className="tdf-sp-inst"><Emblem />GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
-        <div className="tdf-sp-happy">Happy</div>
+        <SchoolIcons />
+        <div className="tdf-sp-happy" style={{ marginTop: '2mm' }}>Happy</div>
         <div className="tdf-sp-td">Teachers <i>Day</i></div>
+        <svg className="tdf-sp-swoosh" viewBox="0 0 120 7" preserveAspectRatio="none" fill="none"><path d="M2 4C30 1 60 6 118 2" stroke="url(#tdfSw)" strokeWidth="1.6" strokeLinecap="round" /><path d="M20 6C50 4 80 7 105 4" stroke="#c0392b" strokeWidth=".7" strokeLinecap="round" /><defs><linearGradient id="tdfSw"><stop offset="0" stopColor="#f7a928" /><stop offset="1" stopColor="#d9b25a" /></linearGradient></defs></svg>
         <div className="tdf-sp-ph">
           <svg className="bl" viewBox="0 0 1 1" preserveAspectRatio="none" style={{ filter: 'blur(.6mm)' }}>
             <defs>
