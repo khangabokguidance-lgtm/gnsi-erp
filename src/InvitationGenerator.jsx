@@ -231,6 +231,15 @@ body{background:#fff;display:flex;gap:0}
 @media print{@page{size:A4 landscape;margin:0}body{width:297mm;height:210mm;overflow:hidden}.page-shell,.page2-shell{width:148.5mm;height:210mm}}
 `
 
+// PRINT_CARD_CSS is written for the standalone export/print window, where it owns <body>.
+// Injected into the live app it must NOT touch the page itself: the universal reset and
+// `body{display:flex}` leaked into the whole ERP, shrinking the app shell and collapsing this page.
+const LIVE_CARD_CSS = PRINT_CARD_CSS
+  .replace('*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}',
+    '.page-shell *,.page-shell *::before,.page-shell *::after,.page2-shell *,.page2-shell *::before,.page2-shell *::after{box-sizing:border-box;margin:0;padding:0}')
+  .replace('body{background:#fff;display:flex;gap:0}', '')
+  .replace('body{width:297mm;height:210mm;overflow:hidden}', '')
+
 const LESS_INK_CSS = `
 .less-ink .hdr,.less-ink .ftr{background:#fff !important;border:1.5px solid var(--navy)}
 .less-ink .hdr::before{display:none}
@@ -888,7 +897,7 @@ export default function InvitationGenerator({ currentUser }) {
         </span>
       </div>
       <div style={{ flex:1, overflow:'auto', padding: phone ? 12 : 24, display:'flex', flexDirection:'column', alignItems:'center', background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)' }}>
-        <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+        <style>{`${LIVE_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
         {renderCards()}
       </div>
     </div>
@@ -898,7 +907,7 @@ export default function InvitationGenerator({ currentUser }) {
     <div style={{
       display:'flex', flexDirection:'column',
       height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
-      background:'#0a0d14', overflow:'hidden', minWidth:0, width:'100%', maxWidth:'100%', contain:'inline-size',
+      background:'#0a0d14', overflow:'hidden', minWidth:0, width:'100%', maxWidth:'100%',
       position: fullscreen ? 'fixed' : 'relative',
       inset: fullscreen ? 0 : 'auto',
       zIndex: fullscreen ? 9999 : 'auto',
@@ -996,7 +1005,7 @@ export default function InvitationGenerator({ currentUser }) {
           A4 Landscape · 297 × 210 mm · Two A5 Cards
         </div>
 
-        <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
+        <style>{`${LIVE_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
 
         {renderCards()}
       </div>
