@@ -551,7 +551,7 @@ $('#exGo').onclick=()=>{const o=exOpts();if(o.tooBig)return;closeExport();runExp
 async function runExport(o){
  sel={kind:'none'};renderPage();renderInsp();const z=zoom,fm=fitMode;document.body.classList.add('exporting');
  try{toast('Preparing '+o.fmt.toUpperCase()+' ('+o.w+' × '+o.h+' px)… large sizes can take a little while');await document.fonts.ready;setZoom(1);await new Promise(r=>setTimeout(r,120));
-  const opt={pixelRatio:o.ratio,cacheBust:true,backgroundColor:'#ffffff',style:{transform:'none',left:'0',top:'0'}};let blob,ext=o.fmt==='jpg'?'jpg':o.fmt==='tif'?'tif':o.fmt;
+  const opt={pixelRatio:o.ratio,cacheBust:true,backgroundColor:(/gradient|url\(/i.test(S.page.bg||'')?undefined:(S.page.bg||'#ffffff')),style:{transform:'none',left:'0',top:'0'}};let blob,ext=o.fmt==='jpg'?'jpg':o.fmt==='tif'?'tif':o.fmt;
   const retry=async fn=>{try{return await fn(opt)}catch(e1){toast('Made without web fonts (offline?)');return await fn(Object.assign({skipFonts:true},opt))}};
   if(o.fmt==='png'){const url=await retry(x=>htmlToImage.toPng(pg,x));blob=pngDpiBlob(url,o.dpi)}
   else if(o.fmt==='jpg'){const url=await retry(x=>htmlToImage.toJpeg(pg,Object.assign({quality:o.q},x)));blob=new Blob([jpgDpi(b64bytes(url),o.dpi)],{type:'image/jpeg'})}
