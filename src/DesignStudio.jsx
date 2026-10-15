@@ -8,9 +8,11 @@ import TeachersDayFrame from './TeachersDayFrame'
 // (fonts, logos and export libraries are embedded, so it works offline and has no
 // dependency on the portal's data). The other tabs reuse the existing modules.
 const BANNER_URL = '/design-studio/banner-maker.html'
+const INV_URL = '/design-studio/invitation-maker.html'
 
 const TABS = [
   { id: 'banner',      label: 'Banner Maker',  icon: '🖼️', perm: 'designstudio' },
+  { id: 'invmaker',    label: 'Invitation Maker', icon: '💌', perm: 'designstudio' },
   { id: 'invitation',  label: 'Invitation',    icon: '✉️', perm: 'invitation' },
   { id: 'certificate', label: 'Certificates',  icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
@@ -38,6 +40,15 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
         <iframe title="Banner Maker" src={BANNER_URL} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
       </div>
     ),
+    invmaker: (
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', background: '#f7f3e8', borderBottom: `1px solid ${GOLD}55`, fontSize: 12, color: NAVY }}>
+          <span style={{ flex: 1 }}>Invitation Maker — standalone editor.</span>
+          <button onClick={() => window.open(INV_URL, '_blank')} style={btn}>Open in new tab</button>
+        </div>
+        <iframe title="Invitation Maker" src={INV_URL} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
+      </div>
+    ),
     invitation:  <InvitationGenerator currentUser={currentUser} />,
     certificate: <CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} />,
     teachersday: <TeachersDayFrame />,
@@ -55,7 +66,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: active.id === 'banner' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>{body}</div>
+      <div style={{ flex: 1, minHeight: 0, overflow: (active.id === 'banner' || active.id === 'invmaker') ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>{body}</div>
     </div>
   )
 }
