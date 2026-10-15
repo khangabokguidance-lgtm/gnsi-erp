@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { isAdminRole } from './roles'
 
@@ -77,10 +77,12 @@ const DEFAULT_P1 = {
   cord:   'You are cordially invited for the pleasure of your kind presence at',
   evt:    "Teachers' Day Celebration cum Cultural Meet",
   yr:     '– 2026', mon: 'October', day: '16 & 17', ord: '', year: '2026',
-  venue:  'Venue to be announced',
-  vnote:  'Thoubal District, Manipur', anni: '10',
+  time:   '10:00 A.M.',
+  venue:  'The Institute Playground',
+  vnote:  'Khangabok Sorok Wangma, Thoubal District, Manipur', anni: '10',
   quote:  '"Your esteemed presence will highly grace and inspire our Institute."',
-  fsub:   'Presented by 10th Batch Students',
+  fsub:   'Organised by 10th Batch Students',
+  closing:'have kindly consented to grace the function as the Chief Guest, the President and the Guests of Honour respectively.',
   msg:    'Your presence will honour our teachers and make this celebration truly memorable.',
   aname:  '',
   arole:  '',
@@ -89,14 +91,27 @@ const DEFAULT_P1 = {
 const DEFAULT_P2 = {
   inst: 'Guidance Navodaya & Sainik Institute', acc: 'Navodaya',
   addr: 'Khangabok Sorok Wangma · Thoubal District · Manipur – 795138',
-  progTtl: 'Programme', date: 'Friday 16th & Saturday 17th October 2026', time: '',
-  venue: '',
-  ftrl: 'Organising Committee · Guidance, Khangabok', ftrr: 'Presented by 10th Batch Students',
+  progTtl: 'Programme', date: 'Friday 16th & Saturday 17th October 2026', time: '10:00 A.M.',
+  venue: 'The Institute Playground',
+  ftrl: 'Organised by: 10th Batch Students · Guidance Navodaya & Sainik Institute, Khangabok', ftrr: '',
 }
 
-const DEFAULT_MEMBERS = []
+const DEFAULT_MEMBERS = [
+  { title: 'Chief Guest',     name: 'Name of the Chief Guest',     role: 'Designation' },
+  { title: 'President',       name: 'Name of the President',       role: 'Designation' },
+  { title: 'Guest of Honour', name: 'Name of the Guest of Honour', role: 'Designation' },
+]
 
-const DEFAULT_PROGS = []
+// Programme order carried over from the 2025 Teachers' Day invitation — edit freely.
+const DEFAULT_PROGS = [
+  ['10:00 AM', 'Assembly of the students'], ['', 'Arrival of the teachers, invitees and VIPs'], ['', 'VIPs take the chairs'],
+  ['', 'Garlanding & Gift Presentation to the VIPs'], ['', 'Candle Lighting'], ['', 'Opening Song by Students choir group'],
+  ['', 'Welcome Address'], ['', 'Key Note Address by Founder, Guidance'], ['', 'Cultural Programme'],
+  ['', 'Speech by the Special Invitees'], ['', 'Gift Presentation to the Teaching and Non-Teaching Staff'],
+  ['', 'Speech by the Guests of Honour'], ['', 'Speech by the Chief Guest'],
+  ['', 'Felicitation of Meritorious Students in Navodaya & Sainik Entrance Examinations'],
+  ['', 'Speech by the President'], ['', 'Cultural Programme'], ['', 'Vote of Thanks'], ['', 'Light Refreshment'],
+].map(([time, name]) => ({ time, name, sub: '' }))
 
 const DEFAULT_FC = {
   inst:    '#ffffff', addr:    'rgba(224,188,106,0.75)', scr:     '#F5DFA0',
@@ -191,6 +206,13 @@ body{background:#fff;display:flex;gap:0}
 .d-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:700;font-size:var(--fs-dname);color:var(--fc-dname,#07102a);line-height:1.25}
 .d-name.anchor{font-size:var(--fs-aname)}
 .d-role{font-family:'Cinzel',serif;font-weight:600;font-size:var(--fs-drole);color:var(--fc-drole,#7a4e08);letter-spacing:1px;text-transform:uppercase;line-height:1.3}
+.dig-list{display:flex!important;flex-direction:column;align-items:center;width:100%}
+.dig-item{justify-content:center;border-bottom:none!important;width:100%}
+.dig-txt{align-items:center;text-align:center}
+.d-title{align-self:center;display:block;width:max-content;max-width:100%;margin:7px auto 3px;font-family:'Cinzel',serif;font-weight:700;font-size:6.5px;letter-spacing:3px;text-transform:uppercase;color:#fff;background:linear-gradient(90deg,transparent,#0B1730 18%,#0B1730 82%,transparent);padding:2.5px 26px}
+.dig-item.first{padding-top:0}
+.dig-close{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:9px;line-height:1.45;text-align:center;color:var(--navy);padding:6px 24px 0}
+.dt-time{font-family:'Cinzel',serif;font-weight:700;font-size:7px;letter-spacing:2px;color:var(--gold);margin-top:3px;text-align:right}
 .inv-msg{flex:1;display:flex;align-items:center;justify-content:center;padding:0 44px;text-align:center}
 .inv-msg-t{font-family:'Playfair Display',serif;font-style:italic;font-size:15px;line-height:1.7;color:var(--navy);border-top:1px solid var(--gold);border-bottom:1px solid var(--gold);padding:14px 10px;max-width:300px}
 .ftr{margin-top:auto;background:linear-gradient(160deg,#060e22 0%,#0a1835 40%,#0d1e45 70%,#07102a 100%);padding:9px 36px;text-align:center;position:relative;flex-shrink:0;overflow:hidden}
@@ -324,6 +346,7 @@ function InvCard({ p1, members, colors, lessInk }) {
               <div className="dt-lbl">Date</div>
               <div className="dt-mon">{p1.mon}</div>
               <div className="dt-yr">{p1.year}</div>
+              {p1.time && <div className="dt-time">{p1.time}</div>}
             </div>
             <div className="dt-row"><span className="dt-day">{p1.day}</span><span className="dt-sup">{p1.ord}</span></div>
           </div>
@@ -336,17 +359,21 @@ function InvCard({ p1, members, colors, lessInk }) {
         </div>
         {allMembers.length === 0 && p1.msg && <div className="inv-msg"><div className="inv-msg-t">{p1.msg}</div></div>}
         {allMembers.length > 0 && <div className="dig-sec">
-          <div className="dig-hd-wrap"><div className="dig-hd-row"><div className="dig-hd-line l"/><div className="dig-hd-lbl">Presidium Members</div><div className="dig-hd-line r"/></div></div>
+          <div className="dig-hd-wrap"><div className="dig-hd-row"><div className="dig-hd-line l"/><div className="dig-hd-lbl">Distinguished Guests</div><div className="dig-hd-line r"/></div></div>
           <div className="dig-list">
             {allMembers.map((m, i) => (
-              <div className="dig-item" key={i}>
+              <React.Fragment key={i}>
+              {m.title && m.title !== allMembers[i-1]?.title && <div className="d-title">{m.title}</div>}
+              <div className="dig-item">
                 <div className="dig-txt">
                   <div className={`d-name${m.anchor ? ' anchor' : ''}`}>{m.name}</div>
                   <div className="d-role">{m.role}</div>
                 </div>
               </div>
+              </React.Fragment>
             ))}
           </div>
+          {p1.closing && <div className="dig-close">{p1.closing}</div>}
         </div>}
         <div className="ftr"><div className="ftr-q">{p1.quote}</div><div className="ftr-s">{p1.fsub}</div></div>
       </div>
@@ -612,6 +639,7 @@ function P1Content({ p1, sp1, members, updMember, addMember, delMember, T }) {
       <div style={{...T.sh, marginTop:12}}>Date &amp; Venue</div>
       <Field label="Month"><Inp value={p1.mon} onChange={v => sp1('mon',v)}/></Field>
       <Field label="Day"><Inp value={p1.day} onChange={v => sp1('day',v)}/></Field>
+      <Field label="Time"><Inp value={p1.time || ''} onChange={v => sp1('time',v)}/></Field>
       <Field label="Ord"><Inp value={p1.ord} onChange={v => sp1('ord',v)}/></Field>
       <Field label="Year"><Inp value={p1.year} onChange={v => sp1('year',v)}/></Field>
       <Field label="Venue"><Inp textarea value={p1.venue} onChange={v => sp1('venue',v)}/></Field>
@@ -624,12 +652,15 @@ function P1Content({ p1, sp1, members, updMember, addMember, delMember, T }) {
         <div key={i} style={T.dc}>
           <div style={T.dcLbl}>Member {i+2}</div>
           <button style={T.remBtn} onClick={() => delMember(i)}>✕</button>
+          <Inp value={m.title || ''} onChange={v => updMember(i,'title',v)}/>
+          <div style={{marginTop:4}}/>
           <Inp value={m.name} onChange={v => updMember(i,'name',v)}/>
           <div style={{marginTop:4}}/>
           <Inp value={m.role} onChange={v => updMember(i,'role',v)}/>
         </div>
       ))}
       <button style={T.addBtn} onClick={addMember}>+ Add Member</button>
+      <Field label="Guest closing line"><Inp textarea value={p1.closing || ''} onChange={v => sp1('closing',v)}/></Field>
       <div style={{...T.sh, marginTop:12}}>Footer</div>
       <Field label="Message (shown when no members)"><Inp textarea value={p1.msg || ''} onChange={v => sp1('msg',v)}/></Field>
       <Field label="Quote"><Inp textarea value={p1.quote} onChange={v => sp1('quote',v)}/></Field>
@@ -818,7 +849,7 @@ export default function InvitationGenerator({ currentUser }) {
     setColors(p => ({ ...p, [k]: v }))
   }
   const updMember = (i, k, v) => setMembers(prev => prev.map((m, idx) => idx===i ? {...m,[k]:v} : m))
-  const addMember = () => setMembers(prev => [...prev, { name:'', role:'' }])
+  const addMember = () => setMembers(prev => [...prev, { title:'', name:'', role:'' }])
   const delMember = i => setMembers(prev => prev.filter((_,idx) => idx!==i))
   const updProg = (i, k, v) => setProgs(prev => prev.map((p, idx) => idx===i ? {...p,[k]:v} : p))
   const addProg = () => setProgs(prev => [...prev, { time:'', name:'', sub:'' }])
