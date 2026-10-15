@@ -743,6 +743,31 @@ export default function App() {
 
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 
+  // Full screen for the whole portal (works for every module). Entering full screen
+  // folds the sidebar to its icon rail for more room — the sidebar stays usable —
+  // and leaving restores whatever width it had before.
+  const [isFs, setIsFs] = useState(false)
+  const fsPrevCollapsed = useRef(null)
+  useEffect(() => {
+    const onFs = () => {
+      const on = !!document.fullscreenElement
+      setIsFs(on)
+      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return true }) }
+      else if (fsPrevCollapsed.current !== null) { setSidebarCollapsed(fsPrevCollapsed.current); fsPrevCollapsed.current = null }
+    }
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }, [])
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'F11' && document.documentElement.requestFullscreen) { e.preventDefault(); toggleFullscreen() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleFullscreen])
+
   const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
 
   const fetchSharedStaff = useCallback(async () => {
@@ -1064,6 +1089,8 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" onClick={toggleFullscreen} title={isFs ? 'Exit full screen (F11 / Esc)' : 'Full screen (F11)'}
+              style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>{isFs ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {active !== 'help' && (
               <button type="button" title="Step-by-step guide for this page" onClick={() => { try { sessionStorage.setItem('gnsi_help_open', active) } catch { /* storage unavailable */ } setActive('help') }}
                 style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>📖 Help for this page</button>
