@@ -30,7 +30,7 @@ import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
 import LearningHub from './LearningHub'
 import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
-import { NavIcon } from './navIcons'
+import { NavIcon, AppIcon } from './navIcons'
 import TabIcons from './TabIcons'
 import MultiLoginWatch from './MultiLoginWatch'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
@@ -317,7 +317,7 @@ function CollapsedNav({ activePage, onNavigate, allowedModules }) {
               fontSize: 18, position: 'relative', transition: 'all .12s' }}
             onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
             onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-            <NavIcon id={item.id} size={19} />
+            <AppIcon id={item.id} size={30} />
             {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />}
             {badge && <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
           </button>
@@ -335,7 +335,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
     <div style={{ position: 'relative' }} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPinHov(false) }}>
       <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, rgba(201,162,75,0.20) 0%, rgba(201,162,75,0.04) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: UI_FONT }}>
         {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
-        <span style={{ display: 'flex', flexShrink: 0, opacity: isActive ? 1 : 0.85, color: isActive ? D.accentLight : 'inherit' }}><NavIcon id={item.id} size={compact ? 16 : 18} /></span>
+        <span style={{ display: 'flex', flexShrink: 0 }}><AppIcon id={item.id} size={compact ? 24 : 28} /></span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
         {badge && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>}
         {isPinned && !hov && <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>}
