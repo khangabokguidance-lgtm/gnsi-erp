@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
@@ -30,12 +30,30 @@ const TEMPLATES = [
   { id: 'a4',        name: 'A4 Poster',           size: '210 × 297 mm',          cat: 'Posters' },
 ]
 
-export default function DesignStudio({ currentUser, perms, canAccess }) {
+export default function DesignStudio({ currentUser, perms, canAccess, topOffset = 0 }) {
   const tools = TOOLS.filter(t => !t.perm || !canAccess || canAccess(t.perm))
   const [tool, setTool] = useState('home')
   const [tpl, setTpl] = useState('')
   const [nonce, setNonce] = useState(0)     // remounts the editor iframe when a new template is picked
   const [focus, setFocus] = useState(false)
+  const root = useRef(null)
+
+  // Full screen is app-level: the whole portal goes full screen and the ERP sidebar
+  // stays (folded to its icon rail), like a desktop design app. Nothing is overlaid.
+  useEffect(() => {
+    const sync = () => setFocus(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  const toggleFull = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }, [])
+  useEffect(() => {
+    const k = e => { if (e.key === 'F11') { e.preventDefault(); toggleFull() } }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [toggleFull])
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
 
@@ -103,9 +121,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   }[cur.id]
 
   return (
-    <div style={focus
-      ? { position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', background: INK }
-      : { display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
+    <div ref={root} style={{ display: 'flex', height: `calc(100vh - ${topOffset}px)`, minHeight: 520, background: INK }}>
       <nav style={{ width: 84, flex: 'none', background: RAIL, borderRight: `1px solid ${LINE}`, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4 }}>
         <div title="Design Studio" style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg,#b8892b,${GOLD})`, display: 'grid', placeItems: 'center', fontSize: 22, marginBottom: 10 }}>🎨</div>
         {tools.map(t => (
@@ -117,7 +133,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setFocus(f => !f)} title={focus ? 'Exit full screen' : 'Full screen'}
+        <button onClick={toggleFull} title={focus ? 'Exit full screen (F11)' : 'Full screen (F11)'}
           style={{ width: 72, padding: '10px 0', border: 0, cursor: 'pointer', borderRadius: 12, background: 'transparent', color: MUT }}>
           <div style={{ fontSize: 20 }}>{focus ? '🗗' : '⛶'}</div>
           <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>{focus ? 'Exit' : 'Full screen'}</div>
@@ -130,6 +146,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
             <b style={{ color: GOLD }}>{cur.icon} {cur.label}</b>
             <span style={{ color: MUT }}>Design Studio</span>
             <span style={{ flex: 1 }} />
+            <button onClick={toggleFull} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>{focus ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {(cur.id === 'banner' || cur.id === 'invmaker') && (
               <button onClick={() => window.open(`${BASE}/${cur.id === 'banner' ? 'banner-maker' : 'invitation-maker'}.html`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
             )}
