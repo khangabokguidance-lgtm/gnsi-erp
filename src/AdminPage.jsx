@@ -52,6 +52,7 @@ const ALL_MODULES = [
   { key: 'website',          label: 'Website Manager',    icon: '🌐'  },
   { key: 'reports',          label: 'Reports',            icon: '📊'  },
   { key: 'checklist',        label: 'Checklist',          icon: '✅'  },
+  { key: 'designstudio',     label: 'Design Studio',      icon: '🎨'  },
   { key: 'invitation',       label: 'Invitation',         icon: '✉️' },
   { key: 'certificate',      label: 'Certificates',       icon: '📜'  },
   { key: 'teachersday',      label: "Teachers' Day",      icon: '🎓'  },
