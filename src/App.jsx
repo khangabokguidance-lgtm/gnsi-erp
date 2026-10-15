@@ -55,6 +55,7 @@ import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
+import DesignStudio from './DesignStudio'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
@@ -152,6 +153,7 @@ const ALL_GROUPS = [
     items: [
       { id: 'reports',     label: 'Reports',      icon: '📊' },
       { id: 'checklist',   label: 'Checklist',    icon: '✅' },
+      { id: 'designstudio', label: 'Design Studio', icon: '🎨' },
       { id: 'invitation',  label: 'Invitation',   icon: '✉️' },
       { id: 'certificate', label: 'Certificates', icon: '📜' },
       { id: 'teachersday',  label: "Teachers' Day", icon: '🎓' },
@@ -1018,6 +1020,7 @@ export default function App() {
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
     teachersday:       canAccess('teachersday') ? <TeachersDayFrame /> : <AccessDenied />,
+    designstudio:      canAccess('designstudio') || canAccess('invitation') || canAccess('certificate') || canAccess('teachersday') ? <DesignStudio currentUser={currentUser} perms={perms} canAccess={canAccess} /> : <AccessDenied />,
     help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
   }
 
