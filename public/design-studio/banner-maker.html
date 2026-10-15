@@ -141,7 +141,7 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
  <button class="btn" id="bRedo" title="Redo (Ctrl+Y)">↷</button>
  <select id="pgSel" title="Page size"></select>
  <button class="btn" id="bSwap" title="Swap portrait / landscape">⟳ Rotate page</button>
- <div class="sp"></div>
+ <div class="sp"></div><button class="btn" id="bFull" title="Full screen (F11)">⛶ Full screen</button>
  <button class="btn" id="bNew">New</button>
  <button class="btn" id="bOpen">Open</button>
  <button class="btn" id="bSave">Save</button>
@@ -1181,6 +1181,7 @@ document.addEventListener('keydown',e=>{
  if(m){e.preventDefault();it.x+=m[0];it.y+=m[1];paint(elOf(it.id),it);syncPos();clearTimeout(keydown.t);keydown.t=setTimeout(commit,400)}
 });
 function keydown(){}
+$('#bFull').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>toast('Full screen blocked — press F11'))};document.addEventListener('fullscreenchange',()=>{$('#bFull').textContent=document.fullscreenElement?'🗗 Exit full screen':'⛶ Full screen'});
 
 /* ===== ADVANCED TOOLS: multi-select, align/distribute, effects, gradients, shapes, smart guides ===== */
 const CLIPS={star:'polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',triangle:'polygon(50% 0,100% 100%,0 100%)',hexagon:'polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)',arrow:'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',kite:'polygon(50% 0,100% 50%,50% 100%,0 50%)'};
