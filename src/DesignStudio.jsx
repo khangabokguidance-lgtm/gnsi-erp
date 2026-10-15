@@ -30,7 +30,7 @@ const TEMPLATES = [
   { id: 'a4',        name: 'A4 Poster',           size: '210 × 297 mm',          cat: 'Posters' },
 ]
 
-export default function DesignStudio({ currentUser, perms, canAccess }) {
+export default function DesignStudio({ currentUser, perms, canAccess, topOffset = 0 }) {
   const tools = TOOLS.filter(t => !t.perm || !canAccess || canAccess(t.perm))
   const [tool, setTool] = useState('home')
   const [tpl, setTpl] = useState('')
@@ -38,21 +38,17 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const [focus, setFocus] = useState(false)
   const root = useRef(null)
 
-  // Real browser full screen (hides tabs, address bar and the ERP chrome).
-  // Falls back to a fixed full-window overlay where the Fullscreen API is blocked.
+  // Full screen is app-level: the whole portal goes full screen and the ERP sidebar
+  // stays (folded to its icon rail), like a desktop design app. Nothing is overlaid.
   useEffect(() => {
     const sync = () => setFocus(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', sync)
-    return () => { document.removeEventListener('fullscreenchange', sync); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) }
+    return () => document.removeEventListener('fullscreenchange', sync)
   }, [])
-  const toggleFull = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) { await document.exitFullscreen(); return }
-      if (focus) { setFocus(false); return }           // overlay fallback is on -> turn it off
-      if (root.current?.requestFullscreen) await root.current.requestFullscreen()
-      else setFocus(true)
-    } catch { setFocus(f => !f) }
-  }, [focus])
+  const toggleFull = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }, [])
   useEffect(() => {
     const k = e => { if (e.key === 'F11') { e.preventDefault(); toggleFull() } }
     window.addEventListener('keydown', k)
@@ -125,9 +121,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   }[cur.id]
 
   return (
-    <div ref={root} style={focus
-      ? { position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', background: INK }
-      : { display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
+    <div ref={root} style={{ display: 'flex', height: `calc(100vh - ${topOffset}px)`, minHeight: 520, background: INK }}>
       <nav style={{ width: 84, flex: 'none', background: RAIL, borderRight: `1px solid ${LINE}`, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4 }}>
         <div title="Design Studio" style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg,#b8892b,${GOLD})`, display: 'grid', placeItems: 'center', fontSize: 22, marginBottom: 10 }}>🎨</div>
         {tools.map(t => (

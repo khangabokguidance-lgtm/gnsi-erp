@@ -758,6 +758,17 @@ export default function App() {
     document.addEventListener('fullscreenchange', onFs)
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
+  // Design Studio behaves like desktop design software: the portal's top bar is
+  // hidden (the studio has its own) and the sidebar folds to its icon rail to give
+  // the canvas the space; both are restored when leaving the module.
+  const studioPrevCollapsed = useRef(null)
+  useEffect(() => {
+    if (active === 'designstudio') {
+      setSidebarCollapsed(c => { if (studioPrevCollapsed.current === null) studioPrevCollapsed.current = c; return true })
+    } else if (studioPrevCollapsed.current !== null) {
+      setSidebarCollapsed(studioPrevCollapsed.current); studioPrevCollapsed.current = null
+    }
+  }, [active])
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
     else document.documentElement.requestFullscreen?.().catch(() => {})
@@ -1042,7 +1053,7 @@ export default function App() {
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
     teachersday:       canAccess('teachersday') ? <TeachersDayFrame /> : <AccessDenied />,
-    designstudio:      canAccess('designstudio') || canAccess('invitation') || canAccess('certificate') || canAccess('teachersday') ? <DesignStudio currentUser={currentUser} perms={perms} canAccess={canAccess} /> : <AccessDenied />,
+    designstudio:      canAccess('designstudio') || canAccess('invitation') || canAccess('certificate') || canAccess('teachersday') ? <DesignStudio currentUser={currentUser} perms={perms} canAccess={canAccess} topOffset={isMobile ? 56 : 0} /> : <AccessDenied />,
     help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
   }
 
@@ -1079,7 +1090,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(p => !p)}
       />
-      {!isMobile && (
+      {!isMobile && active !== 'designstudio' && (
         <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 60, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid #E8E1D0', boxShadow: '0 4px 18px rgba(11,30,61,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)', fontFamily: UI_FONT }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}><span style={{ color: D.accentLight, display: 'flex' }}><NavIcon id={active} size={18} /></span></span>
@@ -1107,7 +1118,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <main className="app-content" style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 60, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+      <main className="app-content" style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : (active === 'designstudio' ? 0 : 60), transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
         {secureOff && currentUser && (
           <div role="alert" style={{ margin: isMobile ? '10px 12px 0' : '16px 28px 0', padding: '12px 16px', borderRadius: 14, background: '#fff4e5', border: '1px solid #f5c26b', color: '#7a4a00', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: UI_FONT }}>
             <span style={{ fontSize: 20 }}>⚠️</span>
