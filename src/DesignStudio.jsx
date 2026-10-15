@@ -4,21 +4,25 @@ import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
 
 // Design Studio — a Canva/Photoshop-style workspace.
-//   left rail  : tools (Home, Banner Maker, Invitation Maker, Invitation, Certificates, Teachers' Day)
+//   left rail  : tools (Home, Banner Maker, Backdrop Maker, Invitation Maker, Invitation, Certificates, Teachers' Day)
 //   home       : start-a-design gallery (opens Banner Maker on the chosen template)
 //   focus mode : takes over the whole screen, like a real design app
-// The two makers are self-contained editors served from /design-studio/*.html.
+// The makers are self-contained editors served from /design-studio/*.html.
 const BASE = '/design-studio'
 const INK = '#14161b', RAIL = '#0e1013', PANEL = '#1b1e25', LINE = '#2a2e38', GOLD = '#d8b25a', MUT = '#9aa3b5'
 
 const TOOLS = [
   { id: 'home',        label: 'Home',        icon: '🏠', perm: null },
   { id: 'banner',      label: 'Banners',     icon: '🖼️', perm: 'designstudio' },
-  { id: 'invmaker',    label: 'Invites',     icon: '💌', perm: 'designstudio' },
+  { id: 'backdrop',    label: 'Backdrop',    icon: '🧱', perm: 'designstudio' },
+  { id: 'invmaker',   label: 'Invites',     icon: '💌', perm: 'designstudio' },
   { id: 'invitation',  label: 'Invitation',  icon: '✉️', perm: 'invitation' },
   { id: 'certificate', label: 'Certificates', icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
 ]
+
+// self-contained editor page behind each iframe tool (used by "Open in new tab")
+const MAKER_FILE = { banner: 'banner-maker.html', backdrop: 'backdrop-maker.html', invmaker: 'invitation-maker.html' }
 
 const TEMPLATES = [
   { id: 'gnsi',      name: 'GNSI Premium',        size: '7 × 21 ft · Landscape', cat: 'Banners' },
@@ -96,6 +100,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const body = {
     home,
     banner:      frame('banner-maker.html', tpl ? `#tpl=${tpl}` : ''),
+    backdrop:    frame('backdrop-maker.html'),
     invmaker:    frame('invitation-maker.html'),
     invitation:  <div style={light}><InvitationGenerator currentUser={currentUser} /></div>,
     certificate: <div style={light}><CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} /></div>,
@@ -130,8 +135,8 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
             <b style={{ color: GOLD }}>{cur.icon} {cur.label}</b>
             <span style={{ color: MUT }}>Design Studio</span>
             <span style={{ flex: 1 }} />
-            {(cur.id === 'banner' || cur.id === 'invmaker') && (
-              <button onClick={() => window.open(`${BASE}/${cur.id === 'banner' ? 'banner-maker' : 'invitation-maker'}.html`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
+            {MAKER_FILE[cur.id] && (
+              <button onClick={() => window.open(`${BASE}/${MAKER_FILE[cur.id]}`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
             )}
           </div>
         )}
