@@ -183,6 +183,9 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
   </div>
   <h4>Images</h4>
   <div class="grid2"><div class="add" data-add="image">🖼 Logo / Photo</div></div>
+  <h4>Draw</h4>
+  <div class="row"><button class="btn sm" id="drawBtn">✏️ Brush: off</button><input type="color" id="drawCol" value="#e7c35a" style="flex:none" title="Brush colour"><input type="number" id="drawW" value="8" min="1" max="80" title="Brush size"></div>
+  <div class="hint">Turn the brush on, then drag on the banner. Each stroke becomes an editable element. <kbd>Esc</kbd> exits.</div>
   <h4>Shortcuts</h4>
   <div class="hint">Double-click text to edit · <kbd>Esc</kbd> done<br><kbd>Del</kbd> delete · <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate<br><kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd> copy / paste<br>Arrows nudge (<kbd>Shift</kbd> = 10px)<br><kbd>Ctrl</kbd>+scroll zoom · <kbd>Ctrl</kbd>+<kbd>S</kbd> save file</div>
  </div>
@@ -218,6 +221,9 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
   <div class="row"><label>Colour</label><input type="color" id="frCol"></div>
   <div class="row"><label>Thickness</label><input type="number" id="frW" min="1" max="40"></div>
   <div class="row"><label>Inset</label><input type="number" id="frIn" min="0" max="400"></div>
+  <h4>Guides</h4>
+  <div class="row"><button class="btn sm" id="gAddV">+ Vertical</button><button class="btn sm" id="gAddH">+ Horizontal</button><button class="btn sm" id="gClr">Clear</button></div>
+  <div class="hint">Drag a guide to move it; drag it off the banner or double-click to delete. Elements snap to guides.</div>
   <h4>Helpers</h4>
   <div class="row"><label><input type="checkbox" id="snapC" checked> Snap</label><label style="width:auto"><input type="checkbox" id="gridC"> Grid</label><label style="width:auto"><input type="checkbox" id="safeC"> Safe margin</label></div>
   <h4>Printing</h4>
@@ -262,7 +268,7 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
   <div class="row"><input type="text" id="verName" placeholder="Version name…"><button class="btn sm" id="verSave" style="flex:none">Save</button></div>
   <div id="verList"></div>
  </div>
- <div class="pane" id="p-lay"><div id="layers"></div></div>
+ <div class="pane" id="p-lay"><div id="layers"></div><h4 style="margin-top:22px">History</h4><div id="hist"></div></div>
 </aside>
 
 <main id="work">
@@ -332,7 +338,21 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
    <div class="row"><label>Saturation</label><input type="range" data-k="st.fxsat" data-fxd="100" min="0" max="200" step="1"></div>
    <div class="row"><label>Grayscale</label><input type="range" data-k="st.fxgr" data-fxd="0" min="0" max="100" step="1"></div>
    <div class="row"><label>Hue</label><input type="range" data-k="st.fxhu" data-fxd="0" min="-180" max="180" step="1"></div>
+   <div class="row"><label>Blend</label><select data-k="st.fxmix"><option value="">Normal</option><option>multiply</option><option>screen</option><option>overlay</option><option>soft-light</option><option>hard-light</option><option>color-dodge</option><option>darken</option><option>lighten</option><option>difference</option></select></div>
+   <div class="row"><label>Sepia</label><input type="range" data-k="st.fxsp" data-fxd="0" min="0" max="100" step="1"></div>
+   <div class="row"><label>Skew</label><input type="number" data-k="st.fxskx" placeholder="X°" min="-60" max="60"><input type="number" data-k="st.fxsky" placeholder="Y°" min="-60" max="60"></div>
+   <div class="row"><button class="btn sm" id="eyeD">🎯 Pick colour from screen</button></div>
    <div class="row"><button class="tb" data-tg="st.fxfx" style="flex:none">⇋ Flip H</button><button class="tb" data-tg="st.fxfy" style="flex:none">⇅ Flip V</button><button class="btn sm" id="fxReset">Reset effects</button></div>
+  </div>
+  <div class="sec i-only">
+   <h4>Photo tools</h4>
+   <div class="grid4" id="phPre"></div>
+   <div class="row"><label>Zoom</label><input type="range" data-k="st.zm" data-fxd="100" min="100" max="400" step="1"></div>
+   <div class="row"><label>Pan X</label><input type="range" data-k="st.pnx" data-fxd="0" min="-100" max="100" step="1"></div>
+   <div class="row"><label>Pan Y</label><input type="range" data-k="st.pny" data-fxd="0" min="-100" max="100" step="1"></div>
+   <div class="row"><label>Tolerance</label><input type="range" id="bgTol" min="5" max="80" value="30"></div>
+   <div class="row"><button class="btn sm" id="rmWhite">Remove white</button><button class="btn sm" id="rmCorner">Remove corner colour</button></div>
+   <div style="color:var(--mut);font-size:12px">Cuts out a solid-colour background and keeps the rest transparent. Use Undo to revert.</div>
   </div>
   <div class="sec">
    <div class="grid2">
@@ -738,7 +758,7 @@ function render(){
  $$('.it',page).forEach(e=>e.remove());
  S.items.forEach(it=>page.appendChild(mkEl(it)));
  const ipp=P.ipp||0.03;$('#pgStyle').textContent=`@page{size:${(P.w*ipp).toFixed(3)}in ${(P.h*ipp).toFixed(3)}in;margin:0}@media print{#page{zoom:${(ipp*96).toFixed(4)}!important}}`;page.classList.toggle('safe',!!P.safe);
- applyZoom();decorate();
+ applyZoom();decorate();paintGuides();
 }
 function decorate(){
  $$('.it',page).forEach(el=>{
@@ -749,7 +769,7 @@ function decorate(){
 function applyZoom(){
  page.style.transform=`scale(${zoom})`;page.style.setProperty('--hs',Math.max(8,10/zoom)+'px');
  holder.style.width=S.page.w*zoom+'px';holder.style.height=S.page.h*zoom+'px';
- $('#zVal').textContent=Math.round(zoom*100)+'%';
+ $('#zVal').textContent=Math.round(zoom*100)+'%';if(typeof paintGuides==='function')paintGuides();
 }
 const setZoom=z=>{zoom=Math.min(3,Math.max(.15,z));applyZoom()};
 const fit=()=>setZoom(Math.min((scroller.clientWidth-80)/S.page.w,(scroller.clientHeight-100)/S.page.h));
@@ -833,6 +853,7 @@ function startOp(e,it,el,mode){
     S.items.forEach(q=>{if(q.id===it.id||q.hide)return;const qe=elOf(q.id);if(!qe)return;const qw=qe.offsetWidth,qh=qe.offsetHeight;
      [q.x,q.x+qw/2,q.x+qw].forEach(c=>xs.forEach(m=>{const d=c-m;if(Math.abs(d)<g&&(ax==null||Math.abs(d)<Math.abs(ax.d)))ax={d,c}}));
      [q.y,q.y+qh/2,q.y+qh].forEach(c=>ys.forEach(m=>{const d=c-m;if(Math.abs(d)<g&&(ay==null||Math.abs(d)<Math.abs(ay.d)))ay={d,c}}))});
+    (S.page.guides||[]).forEach(q=>{if(q.o==='v')xs.forEach(m=>{const d=q.p-m;if(Math.abs(d)<g&&(ax==null||Math.abs(d)<Math.abs(ax.d)))ax={d,c:q.p}});else ys.forEach(m=>{const d=q.p-m;if(Math.abs(d)<g&&(ay==null||Math.abs(d)<Math.abs(ay.d)))ay={d,c:q.p}})});
     if(ax){nx+=ax.d;gV.style.left=ax.c+'px';gV.style.display='block'}if(ay){ny+=ay.d;gH.style.top=ay.c+'px';gH.style.display='block'}}
    it.x=Math.round(nx);it.y=Math.round(ny);
   }else if(mode==='rot'){
@@ -1135,14 +1156,14 @@ function keydown(){}
 const CLIPS={star:'polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',triangle:'polygon(50% 0,100% 100%,0 100%)',hexagon:'polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)',arrow:'polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%)',kite:'polygon(50% 0,100% 50%,50% 100%,0 50%)'};
 function paintFx(el,it){
  const s=it.st||{},d=el.style,tx=el.querySelector('.tx');
- let tf='rotate('+(it.rot||0)+'deg)';if(s.fxfx)tf+=' scaleX(-1)';if(s.fxfy)tf+=' scaleY(-1)';d.transform=tf;
+ let tf='rotate('+(it.rot||0)+'deg)';if(s.fxfx)tf+=' scaleX(-1)';if(s.fxfy)tf+=' scaleY(-1)';if(s.fxskx||s.fxsky)tf+=' skew('+(s.fxskx||0)+'deg,'+(s.fxsky||0)+'deg)';d.transform=tf;
  const f=[],n=v=>v!=null&&v!==''&&!isNaN(v);
  if(s.fxsb>0||s.fxsx||s.fxsy)f.push('drop-shadow('+(s.fxsx||0)+'px '+(s.fxsy||0)+'px '+(s.fxsb||0)+'px '+(s.fxsc||'#000000')+')');
  if(s.fxbl>0)f.push('blur('+s.fxbl+'px)');
  if(n(s.fxbr)&&+s.fxbr!==100)f.push('brightness('+s.fxbr+'%)');
  if(n(s.fxct)&&+s.fxct!==100)f.push('contrast('+s.fxct+'%)');
  if(n(s.fxsat)&&+s.fxsat!==100)f.push('saturate('+s.fxsat+'%)');
- if(s.fxgr>0)f.push('grayscale('+s.fxgr+'%)');
+ if(s.fxgr>0)f.push('grayscale('+s.fxgr+'%)');if(s.fxsp>0)f.push('sepia('+s.fxsp+'%)');
  if(s.fxhu)f.push('hue-rotate('+s.fxhu+'deg)');
  d.filter=f.length?f.join(' '):'none';
  if(tx){tx.style.webkitTextStroke=s.fxstk>0?s.fxstk+'px '+(s.fxstc||'#000000'):'';tx.style.paintOrder='stroke fill'}
@@ -1268,6 +1289,68 @@ $('#verSave').onclick=()=>{stopEdit();const L=vLoad();L.push({name:$('#verName')
  while(L.length>12)L.shift();
  try{localStorage.setItem(VK,JSON.stringify(L));$('#verName').value='';toast('Version saved')}catch(e){toast('Not enough browser storage — use Save to download instead')}vRender()};
 vRender();
+
+/* ===== PHOTOSHOP PACK: blend, photo filters, crop/pan, bg removal, brush, eyedropper, history, guides ===== */
+const PH=[['Original',{}],['B&W',{fxgr:100,fxct:110}],['Sepia',{fxsp:80,fxbr:105}],['Vivid',{fxsat:150,fxct:112}],['Warm',{fxsp:25,fxsat:120,fxhu:-10}],['Cool',{fxhu:12,fxsat:110,fxbr:102}],['Fade',{fxct:85,fxbr:112,fxsat:85}],['Drama',{fxct:140,fxsat:90,fxbr:92}],['Auto',{fxct:108,fxsat:112,fxbr:104}]];
+PH.forEach(([n,o])=>{const d=document.createElement('div');d.className='add';d.style.cssText='padding:8px 2px;font-size:11px;min-height:0';d.textContent=n;
+ d.onclick=()=>{const it=cur();if(!it)return;['fxbr','fxct','fxsat','fxgr','fxhu','fxsp'].forEach(k=>delete it.st[k]);Object.assign(it.st,o);paint(elOf(it.id),it);syncInspector();commit()};$('#phPre').appendChild(d)});
+function keyOut(mode){
+ const it=cur();if(!it||it.type!=='image'||!it.src){toast('Select an image first');return}
+ const im=new Image();im.onload=()=>{
+  let w=im.naturalWidth,h=im.naturalHeight;const sc=Math.min(1,2000/Math.max(w,h));w=Math.round(w*sc);h=Math.round(h*sc);
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+  let d;try{d=x.getImageData(0,0,w,h)}catch(e){toast('This image cannot be edited');return}
+  const a=d.data;let kr=255,kg=255,kb=255;if(mode==='corner'&&a[3]>0){kr=a[0];kg=a[1];kb=a[2]}
+  const tol=(+$('#bgTol').value||30)*4.4;
+  for(let i=0;i<a.length;i+=4){const dr=a[i]-kr,dg=a[i+1]-kg,db=a[i+2]-kb,dist=Math.sqrt(dr*dr+dg*dg+db*db);
+   if(dist<tol*.6)a[i+3]=0;else if(dist<tol)a[i+3]=Math.round(a[i+3]*(dist-tol*.6)/(tol*.4))}
+  x.putImageData(d,0,0);it.src=c.toDataURL('image/png');paint(elOf(it.id),it);commit();toast('Background removed')};
+ im.src=it.src;
+}
+$('#rmWhite').onclick=()=>keyOut('white');$('#rmCorner').onclick=()=>keyOut('corner');
+const _pfx2=paintFx;
+paintFx=function(el,it){_pfx2(el,it);const s=it.st||{};
+ el.style.mixBlendMode=s.fxmix||'normal';
+ if(it.type==='image'){const im=el.querySelector('img');if(im){const z=(s.zm||100)/100;im.style.transform=(z!==1||s.pnx||s.pny)?'translate('+(s.pnx||0)+'%,'+(s.pny||0)+'%) scale('+z+')':'';im.style.transformOrigin='50% 50%'}}
+};
+$('#eyeD').onclick=async()=>{if(!window.EyeDropper){toast('Colour picker needs Chrome or Edge');return}
+ try{const r=await new EyeDropper().open(),it=cur();if(!it)return;if(it.type==='text')set(it,'st.color',r.sRGBHex);else set(it,'st.bg',r.sRGBHex);paint(elOf(it.id),it);syncInspector();commit()}catch(e){}};
+let drawOn=false;
+$('#drawBtn').onclick=()=>{drawOn=!drawOn;const b=$('#drawBtn');b.textContent='✏️ Brush: '+(drawOn?'ON':'off');b.classList.toggle('act',drawOn);page.style.cursor=drawOn?'crosshair':'';if(drawOn){stopEdit();ms.clear();select(null)}};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawOn)$('#drawBtn').click()},true);
+page.addEventListener('pointerdown',e=>{
+ if(!drawOn||e.button!==0)return;e.preventDefault();e.stopImmediatePropagation();
+ const r=page.getBoundingClientRect(),P=ev=>[(ev.clientX-r.left)/zoom,(ev.clientY-r.top)/zoom];
+ const pts=[P(e)],W=+$('#drawW').value||8,C=$('#drawCol').value,ns='http://www.w3.org/2000/svg';
+ const sv=document.createElementNS(ns,'svg');sv.style.cssText='position:absolute;left:0;top:0;width:'+S.page.w+'px;height:'+S.page.h+'px;z-index:99998;pointer-events:none;overflow:visible';
+ const pa=document.createElementNS(ns,'path');[['fill','none'],['stroke',C],['stroke-width',W],['stroke-linecap','round'],['stroke-linejoin','round']].forEach(([k,v])=>pa.setAttribute(k,v));sv.appendChild(pa);page.appendChild(sv);
+ const ds=p=>{if(p.length<2)return'M'+p[0][0]+' '+p[0][1]+'l0.01 0';let d='M'+p[0][0]+' '+p[0][1];for(let i=1;i<p.length-1;i++){d+=' Q'+p[i][0]+' '+p[i][1]+' '+(p[i][0]+p[i+1][0])/2+' '+(p[i][1]+p[i+1][1])/2}const l=p[p.length-1];return d+' L'+l[0]+' '+l[1]};
+ const mv=ev=>{pts.push(P(ev));pa.setAttribute('d',ds(pts))};
+ const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);sv.remove();
+  const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),pad=W/2+2,X0=Math.floor(Math.min(...xs)-pad),Y0=Math.floor(Math.min(...ys)-pad),w=Math.ceil(Math.max(...xs)+pad)-X0,h=Math.ceil(Math.max(...ys)+pad)-Y0;
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+X0+' '+Y0+' '+w+' '+h+'"><path d="'+ds(pts)+'" fill="none" stroke="'+C+'" stroke-width="'+W+'" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const it=IMG(0,0,Math.max(w,4),Math.max(h,4));it.src='data:image/svg+xml;utf8,'+encodeURIComponent(svg);it.fit='fill';addItem(it);it.x=X0;it.y=Y0;paint(elOf(it.id),it);commit();select(null);decorate();syncInspector()};
+ window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);
+},true);
+const _rl=renderLayers;
+renderLayers=function(){_rl();renderHist()};
+function renderHist(){const b=$('#hist');if(!b)return;b.innerHTML='';const n=hist.length;
+ for(let i=n-1;i>=Math.max(0,n-40);i--){const d=document.createElement('div');d.className='layer'+(i===hp?' on':'');d.innerHTML='<span>'+(i===0?'Opening state':'Step '+i)+'</span>';d.onclick=()=>{hp=i;restore(hist[i])};b.appendChild(d)}}
+renderHist();
+function paintGuides(){
+ if(!S)return;$$('.gdl',page).forEach(x=>x.remove());
+ (S.page.guides||[]).forEach((g,i)=>{const v=g.o==='v',d=document.createElement('div');d.className='guide gdl '+(v?'v':'h2');
+  const t=Math.max(1,2/zoom),hw=t+10/zoom,gr=(dir)=>'linear-gradient('+dir+',transparent '+((hw-t)/2)+'px,#06b6d4 '+((hw-t)/2)+'px,#06b6d4 '+((hw+t)/2)+'px,transparent '+((hw+t)/2)+'px)';
+  d.style.cssText='display:block;pointer-events:auto;z-index:9997;cursor:'+(v?'ew-resize':'ns-resize')+';'+(v?'left:'+(g.p-hw/2)+'px;width:'+hw+'px;background:'+gr('90deg'):'top:'+(g.p-hw/2)+'px;height:'+hw+'px;background:'+gr('180deg'));
+  d.onpointerdown=e=>{e.stopPropagation();e.preventDefault();const r=page.getBoundingClientRect();
+   const mv=ev=>{g.p=Math.round(v?(ev.clientX-r.left)/zoom:(ev.clientY-r.top)/zoom);if(v)d.style.left=(g.p-hw/2)+'px';else d.style.top=(g.p-hw/2)+'px'};
+   const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);if(g.p<0||g.p>(v?S.page.w:S.page.h)){S.page.guides.splice(i,1);paintGuides()}commit()};
+   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)};
+  d.ondblclick=()=>{S.page.guides.splice(i,1);paintGuides();commit()};page.appendChild(d)});
+}
+$('#gAddV').onclick=()=>{(S.page.guides=S.page.guides||[]).push({o:'v',p:Math.round(S.page.w/2)});paintGuides();commit()};
+$('#gAddH').onclick=()=>{(S.page.guides=S.page.guides||[]).push({o:'h',p:Math.round(S.page.h/2)});paintGuides();commit()};
+$('#gClr').onclick=()=>{S.page.guides=[];paintGuides();commit()};
 
 
 /* ---------- init ---------- */
