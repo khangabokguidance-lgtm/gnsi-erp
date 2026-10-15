@@ -313,6 +313,7 @@ function CollapsedNav({ activePage, onNavigate, allowedModules }) {
             style={{ width: 44, height: 40, borderRadius: 9, flexShrink: 0,
               border: isActive ? `1px solid ${D.accentBorder}` : '1px solid transparent',
               background: isActive ? D.bgActive : 'transparent',
+              color: isActive ? D.accentLight : D.textSecondary,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 18, position: 'relative', transition: 'all .12s' }}
             onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
