@@ -744,15 +744,14 @@ export default function App() {
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 
   // Full screen for the whole portal (works for every module). Entering full screen
-  // folds the sidebar to its icon rail for more room — the sidebar stays usable —
-  // and leaving restores whatever width it had before.
+  // opens the sidebar with every module visible, and leaving restores its previous width.
   const [isFs, setIsFs] = useState(false)
   const fsPrevCollapsed = useRef(null)
   useEffect(() => {
     const onFs = () => {
       const on = !!document.fullscreenElement
       setIsFs(on)
-      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return true }) }
+      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return false }) }
       else if (fsPrevCollapsed.current !== null) { setSidebarCollapsed(fsPrevCollapsed.current); fsPrevCollapsed.current = null }
     }
     document.addEventListener('fullscreenchange', onFs)
@@ -1070,6 +1069,10 @@ export default function App() {
       <style>{SHELL_CSS}</style>
       <TabIcons />
       {currentUser && <MultiLoginWatch currentUser={currentUser} />}
+      {isFs && (
+        <button type="button" onClick={toggleFullscreen} title="Return to normal view (Esc / F11)"
+          style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999, background: '#0B1E3D', color: '#E2C57E', border: '1px solid #E2C57E', borderRadius: 999, padding: '9px 16px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,.35)' }}>🗗 Return to app</button>
+      )}
       <Sidebar
         activePage={active}
         setActivePage={setActive}
