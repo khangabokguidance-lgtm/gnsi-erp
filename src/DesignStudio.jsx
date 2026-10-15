@@ -1,74 +1,151 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
 
-// Design Studio — one home for every design / print tool.
-// Banner Maker is a self-contained editor served from /design-studio/banner-maker.html
-// (fonts, logos and export libraries are embedded, so it works offline and has no
-// dependency on the portal's data). The other tabs reuse the existing modules.
-const BANNER_URL = '/design-studio/banner-maker.html'
-const INV_URL = '/design-studio/invitation-maker.html'
+// Design Studio — a Canva/Photoshop-style workspace.
+//   left rail  : tools (Home, Banner Maker, Invitation Maker, Invitation, Certificates, Teachers' Day)
+//   home       : start-a-design gallery (opens Banner Maker on the chosen template)
+//   focus mode : takes over the whole screen, like a real design app
+// The two makers are self-contained editors served from /design-studio/*.html.
+const BASE = '/design-studio'
+const INK = '#14161b', RAIL = '#0e1013', PANEL = '#1b1e25', LINE = '#2a2e38', GOLD = '#d8b25a', MUT = '#9aa3b5'
 
-const TABS = [
-  { id: 'banner',      label: 'Banner Maker',  icon: '🖼️', perm: 'designstudio' },
-  { id: 'invmaker',    label: 'Invitation Maker', icon: '💌', perm: 'designstudio' },
-  { id: 'invitation',  label: 'Invitation',    icon: '✉️', perm: 'invitation' },
-  { id: 'certificate', label: 'Certificates',  icon: '📜', perm: 'certificate' },
+const TOOLS = [
+  { id: 'home',        label: 'Home',        icon: '🏠', perm: null },
+  { id: 'banner',      label: 'Banners',     icon: '🖼️', perm: 'designstudio' },
+  { id: 'invmaker',    label: 'Invites',     icon: '💌', perm: 'designstudio' },
+  { id: 'invitation',  label: 'Invitation',  icon: '✉️', perm: 'invitation' },
+  { id: 'certificate', label: 'Certificates', icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
 ]
 
-const NAVY = '#0B1E3D', GOLD = '#C9A24B'
+const TEMPLATES = [
+  { id: 'gnsi',      name: 'GNSI Premium',        size: '7 × 21 ft · Landscape', cat: 'Banners' },
+  { id: 'portrait4', name: 'Portrait Banner',     size: '4 × 8 ft · Portrait',   cat: 'Banners' },
+  { id: 'stepP4',    name: 'Step & Repeat',       size: '4 × 8 ft · Portrait',   cat: 'Media walls' },
+  { id: 'step',      name: 'Step & Repeat Wall',  size: '7 × 21 ft · Landscape', cat: 'Media walls' },
+  { id: 'grid',      name: 'Checkerboard Wall',   size: '7 × 21 ft · Landscape', cat: 'Media walls' },
+  { id: 'red',       name: 'Red Carpet',          size: '7 × 21 ft · Landscape', cat: 'Banners' },
+  { id: 'a4',        name: 'A4 Poster',           size: '210 × 297 mm',          cat: 'Posters' },
+]
 
 export default function DesignStudio({ currentUser, perms, canAccess }) {
-  const visible = TABS.filter(t => !canAccess || canAccess(t.perm))
-  const [tab, setTab] = useState(visible[0]?.id)
-  const [full, setFull] = useState(false)
-  if (!visible.length) return <div style={{ padding: 24 }}>You don’t have access to Design Studio.</div>
-  const active = visible.find(t => t.id === tab) || visible[0]
+  const tools = TOOLS.filter(t => !t.perm || !canAccess || canAccess(t.perm))
+  const [tool, setTool] = useState('home')
+  const [tpl, setTpl] = useState('')
+  const [nonce, setNonce] = useState(0)     // remounts the editor iframe when a new template is picked
+  const [focus, setFocus] = useState(false)
+  const [q, setQ] = useState('')
+  const [cat, setCat] = useState('All')
+
+  const canBanner = tools.some(t => t.id === 'banner')
+  const cats = ['All', ...Array.from(new Set(TEMPLATES.map(t => t.cat)))]
+  const list = useMemo(() => TEMPLATES.filter(t =>
+    (cat === 'All' || t.cat === cat) && (t.name + t.size + t.cat).toLowerCase().includes(q.toLowerCase())), [q, cat])
+
+  const open = (id, template = '') => { setTpl(template); setNonce(n => n + 1); setTool(id) }
+  const cur = tools.find(t => t.id === tool) || tools[0]
+
+  const frame = (file, hash = '') => (
+    <iframe key={file + hash + nonce} title={file} src={`${BASE}/${file}${hash}`}
+      style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
+  )
+
+  const home = (
+    <div style={{ flex: 1, overflow: 'auto', background: INK, color: '#eef1f8' }}>
+      <div style={{ padding: '44px 56px 28px', background: 'radial-gradient(900px 300px at 20% 0%,#27427f55,transparent),linear-gradient(180deg,#171b27,#14161b)', borderBottom: `1px solid ${LINE}` }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 34, fontWeight: 700, color: GOLD }}>What will you design today?</div>
+        <div style={{ color: MUT, marginTop: 6, fontSize: 15 }}>Banners, media walls, posters, invitations and certificates — all in one studio.</div>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search designs, sizes…"
+          style={{ marginTop: 22, width: 'min(560px,100%)', padding: '14px 18px', borderRadius: 999, border: `1px solid ${LINE}`, background: PANEL, color: '#fff', fontSize: 15, outline: 'none' }} />
+        <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+          {tools.filter(t => t.id !== 'home').map(t => (
+            <button key={t.id} onClick={() => open(t.id)} style={quick}>{t.icon} {t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {canBanner && (
+        <div style={{ padding: '28px 56px 56px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginRight: 10 }}>Start from a template</div>
+            {cats.map(c => (
+              <button key={c} onClick={() => setCat(c)} style={{ ...chip, ...(c === cat ? chipOn : null) }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 22 }}>
+            <button onClick={() => open('banner', 'blank')} style={card}>
+              <div style={{ ...thumb, display: 'grid', placeItems: 'center', fontSize: 44, color: GOLD, background: '#222733' }}>＋</div>
+              <div style={cardT}>Blank canvas</div><div style={cardS}>Custom size</div>
+            </button>
+            {list.map(t => (
+              <button key={t.id} onClick={() => open('banner', t.id)} style={card}>
+                <div style={{ ...thumb, background: '#0b0d12' }}>
+                  <img src={`${BASE}/thumbs/${t.id}.jpg`} alt={t.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
+                </div>
+                <div style={cardT}>{t.name}</div><div style={cardS}>{t.size}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 
   const body = {
-    banner: (
-      <div style={full
-        ? { position: 'fixed', inset: 0, zIndex: 3000, background: '#fff', display: 'flex', flexDirection: 'column' }
-        : { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', background: '#f7f3e8', borderBottom: `1px solid ${GOLD}55`, fontSize: 12, color: NAVY }}>
-          <span style={{ flex: 1 }}>Full editor — text, images, shapes, templates (7×21 ft, 4×8 ft portrait, A4…), export PNG / TIFF / PDF. Designs auto-save in this browser.</span>
-          <button onClick={() => window.open(BANNER_URL, '_blank')} style={btn}>Open in new tab</button>
-          <button onClick={() => setFull(f => !f)} style={btn}>{full ? 'Exit full screen' : 'Full screen'}</button>
-        </div>
-        <iframe title="Banner Maker" src={BANNER_URL} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
-      </div>
-    ),
-    invmaker: (
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', background: '#f7f3e8', borderBottom: `1px solid ${GOLD}55`, fontSize: 12, color: NAVY }}>
-          <span style={{ flex: 1 }}>Invitation Maker — standalone editor.</span>
-          <button onClick={() => window.open(INV_URL, '_blank')} style={btn}>Open in new tab</button>
-        </div>
-        <iframe title="Invitation Maker" src={INV_URL} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
-      </div>
-    ),
-    invitation:  <InvitationGenerator currentUser={currentUser} />,
-    certificate: <CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} />,
-    teachersday: <TeachersDayFrame />,
-  }[active.id]
+    home,
+    banner:      frame('banner-maker.html', tpl ? `#tpl=${tpl}` : ''),
+    invmaker:    frame('invitation-maker.html'),
+    invitation:  <div style={light}><InvitationGenerator currentUser={currentUser} /></div>,
+    certificate: <div style={light}><CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} /></div>,
+    teachersday: <div style={light}><TeachersDayFrame /></div>,
+  }[cur.id]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', minHeight: 560 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 0', background: NAVY, borderBottom: `3px solid ${GOLD}`, flexWrap: 'wrap' }}>
-        <div style={{ color: GOLD, fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 18, marginRight: 14, paddingBottom: 8 }}>🎨 Design Studio</div>
-        {visible.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ border: 0, cursor: 'pointer', padding: '9px 16px', borderRadius: '10px 10px 0 0', fontWeight: 600, fontSize: 13,
-              background: t.id === active.id ? '#fff' : 'transparent', color: t.id === active.id ? NAVY : '#dfe6f5' }}>
-            {t.icon} {t.label}
+    <div style={focus
+      ? { position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', background: INK }
+      : { display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
+      <nav style={{ width: 84, flex: 'none', background: RAIL, borderRight: `1px solid ${LINE}`, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4 }}>
+        <div title="Design Studio" style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg,#b8892b,${GOLD})`, display: 'grid', placeItems: 'center', fontSize: 22, marginBottom: 10 }}>🎨</div>
+        {tools.map(t => (
+          <button key={t.id} onClick={() => { setTpl(''); setTool(t.id) }} title={t.label}
+            style={{ width: 72, padding: '10px 0 8px', border: 0, cursor: 'pointer', borderRadius: 12, color: t.id === cur.id ? '#fff' : MUT,
+              background: t.id === cur.id ? '#272c38' : 'transparent', borderLeft: `3px solid ${t.id === cur.id ? GOLD : 'transparent'}` }}>
+            <div style={{ fontSize: 22 }}>{t.icon}</div>
+            <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>{t.label}</div>
           </button>
         ))}
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: (active.id === 'banner' || active.id === 'invmaker') ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>{body}</div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setFocus(f => !f)} title={focus ? 'Exit full screen' : 'Full screen'}
+          style={{ width: 72, padding: '10px 0', border: 0, cursor: 'pointer', borderRadius: 12, background: 'transparent', color: MUT }}>
+          <div style={{ fontSize: 20 }}>{focus ? '🗗' : '⛶'}</div>
+          <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>{focus ? 'Exit' : 'Full screen'}</div>
+        </button>
+      </nav>
+      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {cur.id !== 'home' && (
+          <div style={{ height: 44, flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', background: PANEL, borderBottom: `1px solid ${LINE}`, color: '#dfe5f3', fontSize: 13 }}>
+            <button onClick={() => setTool('home')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>← Home</button>
+            <b style={{ color: GOLD }}>{cur.icon} {cur.label}</b>
+            <span style={{ color: MUT }}>Design Studio</span>
+            <span style={{ flex: 1 }} />
+            {(cur.id === 'banner' || cur.id === 'invmaker') && (
+              <button onClick={() => window.open(`${BASE}/${cur.id === 'banner' ? 'banner-maker' : 'invitation-maker'}.html`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
+            )}
+          </div>
+        )}
+        {body}
+      </main>
     </div>
   )
 }
 
-const btn = { border: `1px solid ${GOLD}`, background: '#fff', color: NAVY, borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }
+const light = { flex: 1, overflow: 'auto', background: '#fff' }
+const quick = { border: `1px solid ${LINE}`, background: PANEL, color: '#eef1f8', borderRadius: 999, padding: '9px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }
+const chip = { border: `1px solid ${LINE}`, background: 'transparent', color: MUT, borderRadius: 999, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }
+const chipOn = { background: GOLD, color: '#1a1a1a', borderColor: GOLD }
+const card = { border: `1px solid ${LINE}`, background: PANEL, borderRadius: 14, padding: 12, cursor: 'pointer', textAlign: 'left', color: '#eef1f8', transition: 'transform .15s, border-color .15s' }
+const thumb = { height: 170, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }
+const cardT = { marginTop: 10, fontWeight: 700, fontSize: 14 }
+const cardS = { color: MUT, fontSize: 12, marginTop: 2 }
