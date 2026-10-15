@@ -77,6 +77,8 @@ const P = {
   warning: <><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></>,
   stamp: <><path d="M9 12V8a3 3 0 016 0v4"/><path d="M5 12h14v4H5z"/><path d="M4 20h16"/></>,
   rupeeSearch: <><circle cx="10.5" cy="10.5" r="7"/><path d="M21 21l-5.5-5.5"/><path d="M8 7.5h5M8 10h5M9.5 7.5c2 0 2.5 1 2.5 2.5s-1 2.5-2.5 2.5H8l4 3"/></>,
+  designstudio: <><path d="M12 3a9 9 0 100 18c1.4 0 2-1 1.6-2.2-.4-1.2.3-2.3 1.6-2.3H17a4 4 0 004-4c0-5-4-9.5-9-9.5z"/><circle cx="7.5" cy="11" r=".9"/><circle cx="10" cy="7" r=".9"/><circle cx="14.5" cy="7" r=".9"/></>,
+  teachersday: <><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/></>,
   grid: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
 }
 
@@ -85,6 +87,38 @@ export function NavIcon({ id, size = 24, stroke = 1.8 }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {body}
+    </svg>
+  )
+}
+
+
+// ── App-style icons (rounded colour tile + white glyph, like WhatsApp / phone home screens) ──
+const C = {
+  dashboard: ['#818cf8', '#4f46e5'], students: ['#fbbf24', '#d97706'], admissions: ['#38bdf8', '#0369a1'], bulkadmission: ['#22d3ee', '#0e7490'],
+  fees: ['#4ade80', '#15803d'], accounts: ['#2dd4bf', '#0f766e'], studentfeeledger: ['#a3e635', '#4d7c0f'], feesetup: ['#94a3b8', '#475569'],
+  construction: ['#fb923c', '#c2410c'], attendance: ['#34d399', '#047857'], exams: ['#f87171', '#b91c1c'], timetable: ['#a78bfa', '#6d28d9'],
+  teaching: ['#f472b6', '#be185d'], courses: ['#60a5fa', '#1d4ed8'], learninghub: ['#c084fc', '#7e22ce'], studylockers: ['#facc15', '#a16207'],
+  kitchen: ['#fdba74', '#ea580c'], staff: ['#38bdf8', '#0284c7'], hr: ['#818cf8', '#4338ca'], leave: ['#f9a8d4', '#db2777'], hostel: ['#22d3ee', '#0891b2'],
+  awards: ['#fcd34d', '#b45309'], faceattendance: ['#67e8f9', '#0e7490'], reception: ['#6ee7b7', '#059669'], notice: ['#fb7185', '#be123c'],
+  social: ['#e879f9', '#a21caf'], connect: ['#4ade80', '#128c7e'], website: ['#60a5fa', '#2563eb'], store: ['#fb923c', '#ea580c'],
+  reports: ['#a78bfa', '#7c3aed'], checklist: ['#2dd4bf', '#0d9488'], invitation: ['#fb7185', '#e11d48'], certificate: ['#fbbf24', '#d97706'],
+  teachersday: ['#fbbf24', '#b45309'], designstudio: ['#f472b6', '#7c3aed'], admin: ['#64748b', '#1e293b'], student360: ['#38bdf8', '#0369a1'],
+  system: ['#94a3b8', '#334155'], adminlink: ['#a78bfa', '#6d28d9'], help: ['#38bdf8', '#0284c7'], questionbank: ['#c084fc', '#7e22ce'],
+  studymaterial: ['#fbbf24', '#b45309'], teachingaids: ['#60a5fa', '#1d4ed8'], entrance: ['#fcd34d', '#b45309'],
+}
+const FALLBACK = [['#60a5fa', '#2563eb'], ['#34d399', '#059669'], ['#f472b6', '#db2777'], ['#fbbf24', '#d97706'], ['#a78bfa', '#7c3aed'], ['#fb923c', '#ea580c']]
+const pick = id => C[id] || FALLBACK[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % FALLBACK.length]
+
+export function AppIcon({ id, size = 28 }) {
+  const [a, b] = pick(id)
+  const body = P[id] || <><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 12h6"/></>
+  const gid = 'ai-' + id
+  return (
+    <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true" style={{ display: 'block', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.35))' }}>
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a}/><stop offset="1" stopColor={b}/></linearGradient></defs>
+      <rect width="40" height="40" rx="11" fill={`url(#${gid})`}/>
+      <path d="M0 14C0 6 5 0 14 0h12c9 0 14 6 14 14v2C28 10 12 10 0 16z" fill="#fff" opacity=".14"/>
+      <g transform="translate(8 8)" fill="rgba(255,255,255,.22)" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{body}</g>
     </svg>
   )
 }
