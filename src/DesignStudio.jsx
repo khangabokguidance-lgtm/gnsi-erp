@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
@@ -36,6 +36,28 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const [tpl, setTpl] = useState('')
   const [nonce, setNonce] = useState(0)     // remounts the editor iframe when a new template is picked
   const [focus, setFocus] = useState(false)
+  const root = useRef(null)
+
+  // Real browser full screen (hides tabs, address bar and the ERP chrome).
+  // Falls back to a fixed full-window overlay where the Fullscreen API is blocked.
+  useEffect(() => {
+    const sync = () => setFocus(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    return () => { document.removeEventListener('fullscreenchange', sync); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) }
+  }, [])
+  const toggleFull = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) { await document.exitFullscreen(); return }
+      if (focus) { setFocus(false); return }           // overlay fallback is on -> turn it off
+      if (root.current?.requestFullscreen) await root.current.requestFullscreen()
+      else setFocus(true)
+    } catch { setFocus(f => !f) }
+  }, [focus])
+  useEffect(() => {
+    const k = e => { if (e.key === 'F11') { e.preventDefault(); toggleFull() } }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [toggleFull])
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
 
@@ -103,7 +125,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   }[cur.id]
 
   return (
-    <div style={focus
+    <div ref={root} style={focus
       ? { position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', background: INK }
       : { display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
       <nav style={{ width: 84, flex: 'none', background: RAIL, borderRight: `1px solid ${LINE}`, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4 }}>
@@ -117,7 +139,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setFocus(f => !f)} title={focus ? 'Exit full screen' : 'Full screen'}
+        <button onClick={toggleFull} title={focus ? 'Exit full screen (F11)' : 'Full screen (F11)'}
           style={{ width: 72, padding: '10px 0', border: 0, cursor: 'pointer', borderRadius: 12, background: 'transparent', color: MUT }}>
           <div style={{ fontSize: 20 }}>{focus ? '🗗' : '⛶'}</div>
           <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>{focus ? 'Exit' : 'Full screen'}</div>
@@ -130,6 +152,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
             <b style={{ color: GOLD }}>{cur.icon} {cur.label}</b>
             <span style={{ color: MUT }}>Design Studio</span>
             <span style={{ flex: 1 }} />
+            <button onClick={toggleFull} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>{focus ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {(cur.id === 'banner' || cur.id === 'invmaker') && (
               <button onClick={() => window.open(`${BASE}/${cur.id === 'banner' ? 'banner-maker' : 'invitation-maker'}.html`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
             )}
