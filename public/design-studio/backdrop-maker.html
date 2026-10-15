@@ -113,8 +113,9 @@ h4:first-child{margin-top:2px}
  <button class="btn" id="bNew">New</button>
  <button class="btn" id="bOpen">Open</button>
  <button class="btn" id="bSave">Save</button>
- <select id="expScale" title="PNG quality" style="width:auto"><option value="1">PNG 1×</option><option value="2">PNG 2×</option><option value="3" selected>PNG 3×</option><option value="4">PNG 4×</option></select>
+ <select id="expScale" title="Export quality for PNG and TIFF" style="width:auto"><option value="1">Quality 1×</option><option value="2">Quality 2×</option><option value="3" selected>Quality 3×</option><option value="4">Quality 4×</option></select>
  <button class="btn gold" id="bPng">Download PNG</button>
+ <button class="btn gold" id="bTif">Download TIFF</button>
  <button class="btn pri" id="bPdf">PDF / Print</button>
 </header>
 
@@ -127,7 +128,8 @@ h4:first-child{margin-top:2px}
   <h4>Page</h4>
   <div class="row"><label>Size</label><div class="f"><select id="pgSel"></select></div></div>
   <div class="row"><label>Width / Height</label><div class="f"><input type="number" id="pgW" min="200" max="6000" step="10"><input type="number" id="pgH" min="200" max="6000" step="10"></div></div>
-  <div class="hint" style="margin:-2px 0 8px">Working size in px — 100 px = 1 ft. PNG is exported at the quality you choose on top.</div>
+  <div class="hint" style="margin:-2px 0 4px">Working size in px — 100 px = 1 ft.</div>
+  <div class="hint" id="expInfo" style="margin:0 0 8px;color:#6b5a28"></div>
   <div class="row"><label>Background</label><div class="f"><input type="color" id="pgBg"></div></div>
   <div class="row"><label>Frame colour</label><div class="f"><input type="color" id="pgFr"><input type="number" id="pgFw" min="0" max="40" title="Frame width"></div></div>
   <h4>Grid</h4>
@@ -179,10 +181,10 @@ h4:first-child{margin-top:2px}
 'use strict';
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
 const uid=()=>Math.random().toString(36).slice(2,8);
-const A='backdrop-assets/',KEY='gnsi_backdrop_v1';
+const A='backdrop-assets/',KEY='gnsi_backdrop_v2';
 const FONTS={'Cinzel':"'Cinzel',serif",'Montserrat':"'Montserrat',sans-serif",'Playfair Display':"'Playfair Display',serif",'Poppins':"'Poppins',sans-serif",'Oswald':"'Oswald',sans-serif",'Bebas Neue':"'Bebas Neue',sans-serif",'Great Vibes':"'Great Vibes',cursive",'Pinyon Script':"'Pinyon Script',cursive",'Inter':"Inter,sans-serif",'Noto Sans Meetei Mayek':"'Noto Sans Meetei Mayek',sans-serif"};
 const fam=f=>FONTS[f]||FONTS.Montserrat;
-const PAGES=[['16 × 8 ft (2:1)',1600,800],['21 × 7 ft (3:1)',2100,700],['12 × 8 ft (3:2)',1200,800],['8 × 8 ft (square)',800,800],['8 × 4 ft (2:1)',800,400],['4 × 8 ft (portrait)',400,800]];
+const PAGES=[['14 × 8 ft (7:4)',1400,800],['8 × 14 ft (portrait)',800,1400],['16 × 8 ft (2:1)',1600,800],['21 × 7 ft (3:1)',2100,700],['12 × 8 ft (3:2)',1200,800],['8 × 8 ft (square)',800,800],['8 × 4 ft (2:1)',800,400],['4 × 8 ft (portrait)',400,800]];
 const BUILTIN=[{id:'icon',name:'GNSI icon',src:A+'icon.jpg'},{id:'emblem',name:'Guidance emblem',src:A+'emblem.jpg'},{id:'banner',name:'Celebrating 10 years',src:A+'banner.jpg'},{id:'teacher',name:'Happy Teacher Day',src:A+'teacher.jpg'},{id:'sq',name:'Guidance (square)',src:A+'sq.jpg'},{id:'wide',name:'Guidance (wide)',src:A+'wide.jpg'}];
 let lib=BUILTIN.map(x=>({...x}));
 const imgSrc=id=>(lib.find(x=>x.id===id)||{}).src||'';
@@ -212,7 +214,7 @@ const mk=(key,c,r)=>Object.assign({id:uid(),key,c,r,lock:false},clone(PRESETS[ke
 
 /* ---------- state ---------- */
 const defaultState=()=>({v:1,
- page:{w:1600,h:800,bg:'#0a1330',fr:'#d4a63a',fw:6,pad:24,gap:12},
+ page:{w:1400,h:800,bg:'#0a1330',fr:'#d4a63a',fw:6,pad:24,gap:12},
  grid:{cols:11,rows:9},
  pool:SEQ.slice(),
  header:{show:true,h:72,bg:'#0f1b3d',bd:'#d4a63a',title:'GUIDANCE NAVODAYA & SAINIK INSTITUTE',sub:'KHANGABOK SOROK WANGMA, THOUBAL, MANIPUR – 795138',tc:'#f0c75e',sc:'#ffffff',ts:30,ss:12,tf:'Cinzel',sf:'Montserrat',lines:true},
@@ -360,7 +362,8 @@ function renderLeft(){
  const P=S.page;
  $('#pgSel').innerHTML=PAGES.map(p=>`<option value="${p[1]}x${p[2]}"${p[1]===P.w&&p[2]===P.h?' selected':''}>${p[0]}</option>`).join('')+(PAGES.some(p=>p[1]===P.w&&p[2]===P.h)?'':`<option selected>Custom ${P.w} × ${P.h}</option>`);
  $('#pgW').value=P.w;$('#pgH').value=P.h;$('#pgBg').value=hex(P.bg);$('#pgFr').value=hex(P.fr);$('#pgFw').value=P.fw;
- $('#gC').value=S.grid.cols;$('#gR').value=S.grid.rows;$('#gG').value=P.gap;$('#gP').value=P.pad;$('#shH').checked=S.header.show;$('#shF').checked=S.footer.show}
+ $('#gC').value=S.grid.cols;$('#gR').value=S.grid.rows;$('#gG').value=P.gap;$('#gP').value=P.pad;$('#shH').checked=S.header.show;$('#shF').checked=S.footer.show;expInfo()}
+function expInfo(){const r=+$('#expScale').value,P=S.page;$('#expInfo').textContent=`Print size ${+(P.w/100).toFixed(2)} × ${+(P.h/100).toFixed(2)} ft · export ${Math.round(P.w*r)} × ${Math.round(P.h*r)} px (${+(r*100/12).toFixed(1)} dpi)`}
 function renderAll(){renderPage();renderInsp();renderLeft()}
 
 /* ---------- history & persistence ---------- */
@@ -460,7 +463,7 @@ $('#libList').addEventListener('click',e=>{
  const l=e.target.closest('[data-lib]'),t=selTile();if(l){if(t&&t.type==='image')edit(()=>{t.img=l.dataset.lib});else toast('Select an image tile first, then click the image')}});
 
 /* ---------- toolbar ---------- */
-$('#bUndo').onclick=undo;$('#bRedo').onclick=doRedo;
+$('#expScale').onchange=expInfo;$('#bUndo').onclick=undo;$('#bRedo').onclick=doRedo;
 $('#zIn').onclick=()=>setZoom(zoom*1.15);$('#zOut').onclick=()=>setZoom(zoom/1.15);$('#zFit').onclick=fit;
 scroller.addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();setZoom(zoom*(e.deltaY<0?1.08:1/1.08))}},{passive:false});
 window.addEventListener('resize',()=>{if(fitMode)fit()});
@@ -470,15 +473,39 @@ function download(name,url){const a=document.createElement('a');a.href=url;a.dow
 $('#bSave').onclick=()=>{const b=new Blob([JSON.stringify({gnsiBackdrop:1,S,lib:lib.filter(x=>x.src.startsWith('data:'))})],{type:'application/json'});const u=URL.createObjectURL(b);download(`backdrop-${stamp()}.json`,u);setTimeout(()=>URL.revokeObjectURL(u),3000);toast('Saved to a file')};
 $('#bOpen').onclick=()=>{$('#fileJson').value='';$('#fileJson').click()};
 $('#fileJson').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const P=JSON.parse(r.result);if(!P.S||!P.S.tiles)throw 0;lib=BUILTIN.map(x=>({...x})).concat(P.lib||[]);hist.length=0;redo.length=0;loadS(P.S);persist();toast('Backdrop opened')}catch(x){alert('This is not a Backdrop Maker file.')}};r.readAsText(f)};
-async function exportPNG(){
+/* ---------- PNG (with print DPI) and TIFF writers ---------- */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=u=>{let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function pngDpiBlob(dataUrl,dpi){
+ const bin=atob(dataUrl.split(',')[1]),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+ const ppm=Math.round(dpi/0.0254),ch=new Uint8Array(21),dv=new DataView(ch.buffer);
+ dv.setUint32(0,9);ch.set([0x70,0x48,0x59,0x73],4);dv.setUint32(8,ppm);dv.setUint32(12,ppm);ch[16]=1;dv.setUint32(17,crc32(ch.subarray(4,17)));
+ const out=new Uint8Array(u.length+21);out.set(u.subarray(0,33),0);out.set(ch,33);out.set(u.subarray(33),54);return new Blob([out],{type:'image/png'})}
+function tiffBlob(cv,dpi){
+ const w=cv.width,h=cv.height,px=cv.getContext('2d').getImageData(0,0,w,h).data;
+ const N=12,ifd=8,extra=ifd+2+N*12+4,bps=extra,xr=extra+6,yr=extra+14,data=extra+22,len=w*h*3;
+ const buf=new ArrayBuffer(data+len),dv=new DataView(buf),u8=new Uint8Array(buf);
+ dv.setUint8(0,0x49);dv.setUint8(1,0x49);dv.setUint16(2,42,true);dv.setUint32(4,8,true);
+ let p=ifd;dv.setUint16(p,N,true);p+=2;
+ const ent=(tag,type,count,val)=>{dv.setUint16(p,tag,true);dv.setUint16(p+2,type,true);dv.setUint32(p+4,count,true);if(type===3&&count===1)dv.setUint16(p+8,val,true);else dv.setUint32(p+8,val,true);p+=12};
+ ent(256,4,1,w);ent(257,4,1,h);ent(258,3,3,bps);ent(259,3,1,1);ent(262,3,1,2);ent(273,4,1,data);ent(277,3,1,3);ent(278,4,1,h);ent(279,4,1,len);ent(282,5,1,xr);ent(283,5,1,yr);ent(296,3,1,2);
+ dv.setUint32(p,0,true);
+ dv.setUint16(bps,8,true);dv.setUint16(bps+2,8,true);dv.setUint16(bps+4,8,true);
+ dv.setUint32(xr,Math.round(dpi*100),true);dv.setUint32(xr+4,100,true);dv.setUint32(yr,Math.round(dpi*100),true);dv.setUint32(yr+4,100,true);
+ let o=data;for(let i=0;i<px.length;i+=4){u8[o++]=px[i];u8[o++]=px[i+1];u8[o++]=px[i+2]}
+ return new Blob([buf],{type:'image/tiff'})}
+async function exportImage(kind){
  sel={kind:'none'};renderPage();renderInsp();const z=zoom,fm=fitMode;document.body.classList.add('exporting');
- try{toast('Preparing PNG… large sizes can take a little while');await document.fonts.ready;setZoom(1);await new Promise(r=>setTimeout(r,120));
-  const ratio=+$('#expScale').value;let url;const opt={pixelRatio:ratio,cacheBust:true,style:{transform:'none',left:'0',top:'0'}};
-  try{url=await htmlToImage.toPng(pg,opt)}catch(e1){url=await htmlToImage.toPng(pg,Object.assign({skipFonts:true},opt));toast('PNG made without web fonts (offline?)')}
-  download(`backdrop-${stamp()}.png`,url);toast('PNG downloaded')}
- catch(e){alert('Could not create the PNG at this size. Try a lower PNG quality, or use “PDF / Print” → Save as PDF.')}
+ try{toast('Preparing '+kind.toUpperCase()+'… large sizes can take a little while');await document.fonts.ready;setZoom(1);await new Promise(r=>setTimeout(r,120));
+  const ratio=+$('#expScale').value,dpi=ratio*100/12,dims=`${Math.round(S.page.w*ratio)} × ${Math.round(S.page.h*ratio)} px`;
+  const opt={pixelRatio:ratio,cacheBust:true,style:{transform:'none',left:'0',top:'0'}};let blob;
+  if(kind==='png'){let url;try{url=await htmlToImage.toPng(pg,opt)}catch(e1){url=await htmlToImage.toPng(pg,Object.assign({skipFonts:true},opt));toast('Made without web fonts (offline?)')}blob=pngDpiBlob(url,dpi)}
+  else{let cv;try{cv=await htmlToImage.toCanvas(pg,opt)}catch(e1){cv=await htmlToImage.toCanvas(pg,Object.assign({skipFonts:true},opt));toast('Made without web fonts (offline?)')}blob=tiffBlob(cv,dpi)}
+  const u=URL.createObjectURL(blob);download(`backdrop-${+(S.page.w/100).toFixed(1)}x${+(S.page.h/100).toFixed(1)}ft-${stamp()}.${kind==='png'?'png':'tif'}`,u);setTimeout(()=>URL.revokeObjectURL(u),10000);
+  toast(kind.toUpperCase()+' downloaded · '+dims)}
+ catch(e){alert('Could not create the '+kind.toUpperCase()+' at this size. Try a lower quality (1× or 2×), or use “PDF / Print” → Save as PDF.')}
  finally{document.body.classList.remove('exporting');if(fm)fit();else setZoom(z)}}
-$('#bPng').onclick=exportPNG;
+$('#bPng').onclick=()=>exportImage('png');$('#bTif').onclick=()=>exportImage('tif');
 $('#bPdf').onclick=()=>{sel={kind:'none'};renderPage();toast('In the print window choose “Save as PDF”, margins: None, Background graphics: ON');setTimeout(()=>window.print(),600)};
 document.addEventListener('keydown',e=>{
  const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
