@@ -151,7 +151,7 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
 
 <div class="app">
 <aside id="left">
- <div class="tabs"><button data-tab="add" class="on">Add</button><button data-tab="pg">Page</button><button data-tab="tpl">Templates</button><button data-tab="lay">Layers</button></div>
+ <div class="tabs"><button data-tab="add" class="on">Add</button><button data-tab="pg">Page</button><button data-tab="tpl">Templates</button><button data-tab="lay">Layers</button><button data-tab="prem">Premium</button></div>
 
  <div class="pane on" id="p-add">
   <h4>Banner text</h4>
@@ -198,7 +198,15 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
    <div class="sw" data-bg="maroon" style="background:radial-gradient(ellipse at 50% 40%,#7a1424,#240509)" title="Maroon"></div>
    <div class="sw" data-bg="forest" style="background:radial-gradient(ellipse at 50% 40%,#0f4a3a,#04140f)" title="Forest"></div>
    <div class="sw" data-bg="black" style="background:radial-gradient(ellipse at 50% 40%,#1b1b1f,#050506)" title="Black"></div>
-   <div class="sw" data-bg="white" style="background:#fff" title="Pure white"></div>
+<div class="sw" data-bg="sunburst" style="background:repeating-conic-gradient(from 0deg at 50% 62%,rgba(231,195,90,.16) 0 4deg,rgba(231,195,90,0) 4deg 9deg),radial-gradient(ellipse 90% 140% at 50% 40%,#1d3166 0%,#0e1b42 55%,#050a1c 100%)" title="Sunburst"></div>
+   <div class="sw" data-bg="lattice" style="background:repeating-linear-gradient(45deg,rgba(231,195,90,.12) 0 1px,transparent 1px 22px),repeating-linear-gradient(-45deg,rgba(231,195,90,.12) 0 1px,transparent 1px 22px),radial-gradient(ellipse 90% 140% at 50% 40%,#1d3166 0%,#0b1634 70%,#050a1c 100%)" title="Lattice"></div>
+   <div class="sw" data-bg="royalred" style="background:repeating-linear-gradient(45deg,rgba(231,195,90,.10) 0 1px,transparent 1px 22px),repeating-linear-gradient(-45deg,rgba(231,195,90,.10) 0 1px,transparent 1px 22px),radial-gradient(ellipse 90% 140% at 50% 40%,#9b1b30 0%,#5a0d1b 60%,#2a0610 100%)" title="Royalred"></div>
+   <div class="sw" data-bg="blackgold" style="background:radial-gradient(ellipse 60% 80% at 50% 50%,rgba(231,195,90,.22),rgba(231,195,90,0) 70%),linear-gradient(135deg,#0a0a0c,#1b1710 50%,#0a0a0c)" title="Blackgold"></div>
+   <div class="sw" data-bg="emerald" style="background:repeating-conic-gradient(from 0deg at 50% 100%,rgba(231,195,90,.10) 0 3deg,transparent 3deg 8deg),radial-gradient(ellipse 90% 140% at 50% 40%,#0f5a47 0%,#093a2d 55%,#031a13 100%)" title="Emerald"></div>
+   <div class="sw" data-bg="silk" style="background:linear-gradient(115deg,#ffffff 0%,#f3efe6 28%,#ffffff 46%,#ece6d8 70%,#ffffff 100%)" title="Silk"></div>
+   <div class="sw" data-bg="sky" style="background:linear-gradient(180deg,#0b2a66 0%,#2b6cc4 45%,#cfe4ff 100%)" title="Sky"></div>
+   <div class="sw" data-bg="sunset" style="background:linear-gradient(180deg,#2b1055 0%,#7a1f5c 40%,#e5593f 78%,#f7b955 100%)" title="Sunset"></div>
+      <div class="sw" data-bg="white" style="background:#fff" title="Pure white"></div>
    <div class="sw" data-bg="pearl" style="background:radial-gradient(ellipse at 50% 0,#fff,#f6f7fb)" title="Pearl white"></div>
    <div class="sw" data-bg="ivory" style="background:linear-gradient(180deg,#fffefb,#faf5ea)" title="Ivory"></div>
   </div>
@@ -235,6 +243,25 @@ kbd{background:#f3f4f8;border:1px solid var(--line);border-radius:4px;padding:0 
   <div class="tpl" data-tpl="blank"><b>Blank · royal navy</b><span>Empty 8×24 ft page with gold frame</span></div>
  </div>
 
+
+ <div class="pane" id="p-prem">
+  <h4>Brand kit · logos</h4>
+  <div class="grid3" id="brandLogos"></div>
+  <h4>Brand colours</h4>
+  <div class="chips" id="brandCols"></div>
+  <div class="hint" style="margin-top:6px">Click a colour to apply it to the selected element's text / fill.</div>
+  <h4>Text styles</h4>
+  <div class="grid2" id="txtStyles"></div>
+  <div class="hint" style="margin-top:6px">Applies to the selected text — or adds a new text with that style.</div>
+  <h4>Ornaments</h4>
+  <div class="grid2" id="orns"></div>
+  <h4>Photo masks &amp; frames</h4>
+  <div class="grid3" id="masks"></div>
+  <div class="hint" style="margin-top:6px">Select a photo or logo first.</div>
+  <h4>Versions</h4>
+  <div class="row"><input type="text" id="verName" placeholder="Version name…"><button class="btn sm" id="verSave" style="flex:none">Save</button></div>
+  <div id="verList"></div>
+ </div>
  <div class="pane" id="p-lay"><div id="layers"></div></div>
 </aside>
 
@@ -1171,6 +1198,76 @@ document.addEventListener('keydown',e=>{
  if(ms.size>1&&e.key.startsWith('Arrow')){e.preventDefault();const st=e.shiftKey?10:1,m={ArrowLeft:[-st,0],ArrowRight:[st,0],ArrowUp:[0,-st],ArrowDown:[0,st]}[e.key];
   [...ms].map(byId).filter(i=>i&&!i.locked).forEach(i=>{i.x+=m[0];i.y+=m[1];paint(elOf(i.id),i)});syncPos();clearTimeout(keydown.t2);keydown.t2=setTimeout(commit,400)}
 },true);
+Object.assign(BG,{"sunburst": "repeating-conic-gradient(from 0deg at 50% 62%,rgba(231,195,90,.16) 0 4deg,rgba(231,195,90,0) 4deg 9deg),radial-gradient(ellipse 90% 140% at 50% 40%,#1d3166 0%,#0e1b42 55%,#050a1c 100%)", "lattice": "repeating-linear-gradient(45deg,rgba(231,195,90,.12) 0 1px,transparent 1px 22px),repeating-linear-gradient(-45deg,rgba(231,195,90,.12) 0 1px,transparent 1px 22px),radial-gradient(ellipse 90% 140% at 50% 40%,#1d3166 0%,#0b1634 70%,#050a1c 100%)", "royalred": "repeating-linear-gradient(45deg,rgba(231,195,90,.10) 0 1px,transparent 1px 22px),repeating-linear-gradient(-45deg,rgba(231,195,90,.10) 0 1px,transparent 1px 22px),radial-gradient(ellipse 90% 140% at 50% 40%,#9b1b30 0%,#5a0d1b 60%,#2a0610 100%)", "blackgold": "radial-gradient(ellipse 60% 80% at 50% 50%,rgba(231,195,90,.22),rgba(231,195,90,0) 70%),linear-gradient(135deg,#0a0a0c,#1b1710 50%,#0a0a0c)", "emerald": "repeating-conic-gradient(from 0deg at 50% 100%,rgba(231,195,90,.10) 0 3deg,transparent 3deg 8deg),radial-gradient(ellipse 90% 140% at 50% 40%,#0f5a47 0%,#093a2d 55%,#031a13 100%)", "silk": "linear-gradient(115deg,#ffffff 0%,#f3efe6 28%,#ffffff 46%,#ece6d8 70%,#ffffff 100%)", "sky": "linear-gradient(180deg,#0b2a66 0%,#2b6cc4 45%,#cfe4ff 100%)", "sunset": "linear-gradient(180deg,#2b1055 0%,#7a1f5c 40%,#e5593f 78%,#f7b955 100%)"});
+
+/* ===== PREMIUM: brand kit, text styles, ornaments, masks, versions ===== */
+Object.assign(CLIPS,{hexagon:CLIPS.hexagon,circle:'circle(50% at 50% 50%)',star:CLIPS.star});
+const _pfx=paintFx;
+paintFx=function(el,it){_pfx(el,it);const m=it.st&&it.st.mask;if(m&&CLIPS[m]&&it.type==='image'){el.style.clipPath=CLIPS[m]}};
+const GSVG='<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f6a14"/><stop offset=".5" stop-color="#f3d77a"/><stop offset="1" stop-color="#a67c1d"/></linearGradient></defs>';
+const svgW=(vb,body)=>'<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+vb+'">'+GSVG+body+'</svg>';
+const leaf=(cx,cy,ang,l)=>'<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+l/2+'" ry="'+l/4.2+'" transform="rotate('+ang+' '+cx+' '+cy+')" fill="url(#g)"/>';
+function laurel(){let b='';for(let i=0;i<11;i++){const a=(110+i*13)*Math.PI/180,r=78,cx=100+r*Math.cos(a),cy=100+r*Math.sin(a);b+=leaf(cx,cy,(a*180/Math.PI)+90-28,28)+leaf(200-cx,cy,-((a*180/Math.PI)+90-28)+0,28)}return svgW('0 0 200 200','<g>'+b+'</g>')}
+function seal(){let b='';for(let i=0;i<28;i++){const a=i*Math.PI*2/28;b+='<circle cx="'+(100+84*Math.cos(a))+'" cy="'+(100+84*Math.sin(a))+'" r="9" fill="url(#g)"/>'}return svgW('0 0 200 200',b+'<circle cx="100" cy="100" r="84" fill="url(#g)"/><circle cx="100" cy="100" r="68" fill="#0b1634"/><circle cx="100" cy="100" r="62" fill="none" stroke="url(#g)" stroke-width="2"/><text x="100" y="116" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="58" fill="url(#g)">10</text><text x="100" y="140" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="15" letter-spacing="3" fill="#f3d77a">YEARS</text><text x="100" y="62" text-anchor="middle" font-family="Georgia,serif" font-size="9" letter-spacing="1" fill="#f3d77a">CELEBRATING</text>')}
+const ORN=[
+ ['Flourish divider','0 0 400 40',400,40,'<g fill="none" stroke="url(#g)" stroke-width="2.4" stroke-linecap="round"><path d="M8 20H150M250 20H392"/><path d="M150 20C165 6 176 6 188 20C176 34 165 34 150 20ZM250 20C235 6 224 6 212 20C224 34 235 34 250 20Z"/></g><path d="M200 8L214 20L200 32L186 20Z" fill="url(#g)"/><circle cx="8" cy="20" r="3" fill="url(#g)"/><circle cx="392" cy="20" r="3" fill="url(#g)"/>'],
+ ['Star row','0 0 300 40',300,40,[0,1,2,3,4].map(i=>'<polygon transform="translate('+(i*60+30)+' 20) scale('+(i==2?1.25:0.9)+')" points="0,-16 4.7,-5 16,-4.5 7.5,3 10,15 0,8.5 -10,15 -7.5,3 -16,-4.5 -4.7,-5" fill="url(#g)"/>').join('')],
+ ['Scroll ribbon','0 0 420 110',420,110,'<path d="M20 30H400L380 55L400 80H20L40 55Z" fill="#7a5510"/><path d="M60 20H360V76H60Z" fill="url(#g)"/><path d="M60 76L60 96L84 76ZM360 76L360 96L336 76Z" fill="#6b4a0c"/><path d="M60 28H360M60 68H360" stroke="#fff3c4" stroke-opacity=".55"/>'],
+ ['Ornate frame','0 0 400 300',400,300,'<g fill="none" stroke="url(#g)" stroke-width="4"><path d="M24 8H376L392 24V276L376 292H24L8 276V24Z"/><path d="M36 20H364L380 36V264L364 280H36L20 264V36Z" stroke-width="1.6"/></g><g fill="url(#g)"><path d="M8 24L24 8L8 8Z"/><rect x="190" y="2" width="20" height="20" transform="rotate(45 200 12)"/><rect x="190" y="278" width="20" height="20" transform="rotate(45 200 288)"/></g>'],
+ ['Laurel wreath',null,260,260,null,laurel],
+ ['10 Years seal',null,260,260,null,seal],
+ ['Sun rays','0 0 400 400',420,420,Array.from({length:24},(_,i)=>'<path d="M200 200L'+(200+300*Math.cos(i*Math.PI/12))+' '+(200+300*Math.sin(i*Math.PI/12))+'L'+(200+300*Math.cos((i+.5)*Math.PI/12))+' '+(200+300*Math.sin((i+.5)*Math.PI/12))+'Z" fill="#f3d77a" fill-opacity=".35"/>').join('')]
+];
+const orns=$('#orns');
+ORN.forEach(([name,vb,w,h,body,fn])=>{
+ const svg=fn?fn():svgW(vb,body),src='data:image/svg+xml;utf8,'+encodeURIComponent(svg);
+ const d=document.createElement('div');d.className='add';d.style.cssText='padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px';
+ d.innerHTML='<img src="'+src+'" style="max-width:100%;max-height:44px;background:#0b1634;border-radius:6px;padding:3px"><span>'+name+'</span>';
+ d.onclick=()=>{const it=IMG(0,0,w,h);it.src=src;addItem(it)};orns.appendChild(d);
+});
+const BL=[['Full logo',LOGOFULL,300,483],['Emblem',LOGO_EMB,280,289],['10 Years',LOGO10,480,209],['Logo + 10',LOGO2W,200,317],['GNSI tile',LOGO_SM,200,200],['Gold logo',LOGO_BIG,260,420]];
+const bl=$('#brandLogos');
+BL.forEach(([n,src,w,h])=>{const d=document.createElement('div');d.className='add';d.style.cssText='padding:6px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px';
+ d.innerHTML='<img src="'+src+'" style="max-width:100%;max-height:48px;background:#0b1634;border-radius:6px;padding:3px"><span>'+n+'</span>';
+ d.onclick=()=>{const it=IMG(0,0,w,h);it.src=src;addItem(it)};bl.appendChild(d)});
+[['#0b1634','Navy'],['#14213d','Deep navy'],['#e7c35a','Gold'],['#b8892b','Brass'],['#fff7e0','Cream'],['#c1121f','Crimson'],['#ffffff','White'],['#2f4a8f','Royal blue']].forEach(([c,n])=>{
+ const d=document.createElement('div');d.className='chip';d.style.cssText='background:'+c+';width:34px;height:34px';d.title=n;
+ d.onclick=()=>{const it=cur();if(!it)return;if(it.type==='text')set(it,'st.color',c);else set(it,'st.bg',c);paint(elOf(it.id),it);syncInspector();commit()};$('#brandCols').appendChild(d)});
+const TS=[
+ ['Gold foil',{foil:FOIL.gold,ts:1},'background:linear-gradient(180deg,#fff3c4,#b8892b);-webkit-background-clip:text;color:transparent;font-weight:800'],
+ ['Silver chrome',{foil:FOIL.silver,ts:1},'background:linear-gradient(180deg,#fff,#8a94ab);-webkit-background-clip:text;color:transparent;font-weight:800'],
+ ['Rose gold',{foil:FOIL.rose,ts:1},'background:linear-gradient(180deg,#ffe3d6,#b4694f);-webkit-background-clip:text;color:transparent;font-weight:800'],
+ ['Embossed',{color:'#f5e7b8',fxstk:1,fxstc:'#7a5510',fxsy:4,fxsb:5,fxsc:'#000000'},'color:#f5e7b8;text-shadow:0 2px 3px #000;font-weight:800'],
+ ['Neon blue',{color:'#e0f2fe',fxsb:16,fxsc:'#38bdf8'},'color:#e0f2fe;text-shadow:0 0 8px #38bdf8,0 0 16px #38bdf8;font-weight:800'],
+ ['Crimson glow',{color:'#fee2e2',fxsb:14,fxsc:'#ef4444'},'color:#fee2e2;text-shadow:0 0 8px #ef4444,0 0 14px #ef4444;font-weight:800'],
+ ['Gold outline',{color:'rgba(0,0,0,0)',fxstk:2.5,fxstc:'#e7c35a'},'color:transparent;-webkit-text-stroke:1.5px #e7c35a;font-weight:800'],
+ ['Pop shadow',{color:'#ffffff',fxsx:6,fxsy:6,fxsb:0,fxsc:'#b91c1c'},'color:#fff;text-shadow:3px 3px 0 #b91c1c;font-weight:800']
+];
+const ts=$('#txtStyles');
+TS.forEach(([n,o,css])=>{const d=document.createElement('div');d.className='add';d.style.cssText='background:#0b1634;border:0;padding:14px 6px;font:700 15px Cinzel,serif';const sp=document.createElement('span');sp.style.cssText=css;sp.textContent=n;d.appendChild(sp);
+ d.onclick=()=>{let it=cur();if(!it||it.type!=='text'){it=addItem(PRE.heading());it.html='Your text';}
+  Object.keys(it.st).filter(k=>k.startsWith('fx')||k==='foil'||k==='ts').forEach(k=>delete it.st[k]);Object.assign(it.st,o);
+  const el=elOf(it.id);const tx=el.querySelector('.tx');tx.innerHTML=it.html;paint(el,it);syncInspector();commit()};ts.appendChild(d)});
+[['None',null],['Circle','circle'],['Rounded','rounded'],['Hexagon','hexagon'],['Star','star'],['Gold ring','ring']].forEach(([n,m])=>{
+ const d=document.createElement('div');d.className='add';d.style.cssText='padding:10px 4px;font-size:12px';d.textContent=n;
+ d.onclick=()=>{const it=cur();if(!it||it.type!=='image'){toast('Select a photo or logo first');return}
+  const s=it.st;
+  if(m==='ring'){if(s.bw){s.bw=0}else{s.bw=Math.max(4,Math.round(it.w/60));s.bc='#e7c35a'}}
+  else{delete s.mask;s.br=0;if(m==='circle'){s.mask='circle'}else if(m==='rounded'){s.br=Math.round(Math.min(it.w,it.h||it.w)*.12)}else if(m){s.mask=m}}
+  paint(elOf(it.id),it);syncInspector();commit()};$('#masks').appendChild(d)});
+const VK='bannerMaker.versions';
+const vLoad=()=>{try{return JSON.parse(localStorage.getItem(VK)||'[]')}catch(e){return[]}};
+function vRender(){const L=vLoad(),box=$('#verList');box.innerHTML='';
+ if(!L.length){box.innerHTML='<div class="hint">No saved versions yet.</div>';return}
+ L.slice().reverse().forEach((v,ri)=>{const i=L.length-1-ri,r=document.createElement('div');r.className='row';r.style.cssText='border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin:6px 0;flex-wrap:nowrap';
+  r.innerHTML='<div style="flex:2;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+v.name.replace(/[<>&]/g,'')+'</b><span style="color:var(--mut);font-size:11px">'+new Date(v.t).toLocaleString()+'</span></div><button class="btn sm" data-r style="flex:none">Restore</button><button class="btn sm danger" data-d style="flex:none">✕</button>';
+  r.querySelector('[data-r]').onclick=()=>{loadState(JSON.parse(v.j),'Restored “'+v.name+'”')};
+  r.querySelector('[data-d]').onclick=()=>{L.splice(i,1);try{localStorage.setItem(VK,JSON.stringify(L))}catch(e){}vRender()};
+  box.appendChild(r)})}
+$('#verSave').onclick=()=>{stopEdit();const L=vLoad();L.push({name:$('#verName').value.trim()||('Version '+(L.length+1)),t:Date.now(),j:JSON.stringify(S)});
+ while(L.length>12)L.shift();
+ try{localStorage.setItem(VK,JSON.stringify(L));$('#verName').value='';toast('Version saved')}catch(e){toast('Not enough browser storage — use Save to download instead')}vRender()};
+vRender();
 
 
 /* ---------- init ---------- */
