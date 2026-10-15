@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Backdrop Maker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Oswald:wght@400;600;700&family=Bebas+Neue&family=Great+Vibes&family=Pinyon+Script&family=Inter:wght@400;500;600;700&family=Noto+Sans+Meetei+Mayek:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style id="pgStyle"></style>
 <style>
 :root{--ink:#14213d;--mut:#6b7280;--line:#e6e8f0;--gold:#b8892b;--acc:#2563eb;--bg:#eef0f5}
@@ -549,10 +548,17 @@ $('#exFmts').addEventListener('change',syncEx);$('#exQ').oninput=syncEx;
 $('#exPreset').onchange=e=>{if(e.target.value!=='custom')$('#exDpi').value=e.target.value;syncEx()};
 $('#exDpi').oninput=()=>{const v=$('#exDpi').value;const pr=$('#exPreset');pr.value=[...pr.options].some(o=>o.value===v)?v:'custom';syncEx()};
 $('#exGo').onclick=()=>{const o=exOpts();if(o.tooBig)return;closeExport();runExport(o)};
+let _fontCss=null;
+async function fontEmbedCSS(){if(_fontCss!==null)return _fontCss;
+ try{const base=new URL('fonts/fonts.css',location.href).href;const css=await (await fetch(base)).text();const seen={};
+  const urls=[...css.matchAll(/url\(([^)]+\.woff2)\)/g)].map(m=>m[1]);let out=css;
+  await Promise.all(urls.map(async u=>{if(seen[u])return;seen[u]=1;const b=await (await fetch(new URL(u,base).href)).blob();
+   const d=await new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});out=out.split('url('+u+')').join('url('+d+')')}));
+  _fontCss=out}catch(e){_fontCss=''}return _fontCss}
 async function runExport(o){
  sel={kind:'none'};renderPage();renderInsp();const z=zoom,fm=fitMode;document.body.classList.add('exporting');
  try{toast('Preparing '+o.fmt.toUpperCase()+' ('+o.w+' × '+o.h+' px)… large sizes can take a little while');await document.fonts.ready;setZoom(1);await new Promise(r=>setTimeout(r,120));
-  const opt={pixelRatio:o.ratio,cacheBust:true,backgroundColor:(/gradient|url\(/i.test(S.page.bg||'')?undefined:(S.page.bg||'#ffffff')),style:{transform:'none',left:'0',top:'0'}};let blob,ext=o.fmt==='jpg'?'jpg':o.fmt==='tif'?'tif':o.fmt;
+  const fcss=await fontEmbedCSS();const opt={pixelRatio:o.ratio,fontEmbedCSS:fcss||undefined,cacheBust:true,backgroundColor:(/gradient|url\(/i.test(S.page.bg||'')?undefined:(S.page.bg||'#ffffff')),style:{transform:'none',left:'0',top:'0'}};let blob,ext=o.fmt==='jpg'?'jpg':o.fmt==='tif'?'tif':o.fmt;
   const retry=async fn=>{try{return await fn(opt)}catch(e1){toast('Made without web fonts (offline?)');return await fn(Object.assign({skipFonts:true},opt))}};
   if(o.fmt==='png'){const url=await retry(x=>htmlToImage.toPng(pg,x));blob=pngDpiBlob(url,o.dpi)}
   else if(o.fmt==='jpg'){const url=await retry(x=>htmlToImage.toJpeg(pg,Object.assign({quality:o.q},x)));blob=new Blob([jpgDpi(b64bytes(url),o.dpi)],{type:'image/jpeg'})}
