@@ -14,7 +14,8 @@ function useMobile() {
   return m
 }
 
-const TODAY = new Date().toISOString().split('T')[0]
+const localISO = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0]
+const TODAY = localISO()
 
 const defaultForm = {
   title: '', description: '', category: 'General', audience: 'All',
@@ -143,7 +144,10 @@ function NoticeForm({ initial, onSave, onCancel, saving, mobile }) {
 }
 
 // ─── Main Notice ──────────────────────────────────────────────────────────────
-function Notice() {
+function Notice({ perms }) {
+  const canAdd = perms?.add !== false
+  const canEdit = perms?.edit !== false
+  const canDelete = perms?.delete !== false
   const mobile = useMobile()
   const [notices, setNotices] = useState([])
   const [loading, setLoading] = useState(true)
@@ -171,16 +175,22 @@ function Notice() {
   useEffect(() => { fetchNotices() }, [fetchNotices])
 
   useEffect(() => {
+    if (!canEdit) return
     const expiredIds = notices.filter(n => n.expiry_date && n.expiry_date < TODAY && n.status === 'Published').map(n => n.id)
     if (!expiredIds.length) return
     supabase.from('notices').update({ status: 'Expired' }).in('id', expiredIds).then(() => fetchNotices())
-  }, [notices, fetchNotices])
+  }, [notices, fetchNotices, canEdit])
 
   const handleSave = async (form) => {
     setSaving(true)
     let error
-    if (form.id) { const { id, created_at, ...payload } = form; ;({ error } = await supabase.from('notices').update(payload).eq('id', form.id)) }
-    else { ;({ error } = await supabase.from('notices').insert([form])) }
+    // Empty date strings are invalid for Postgres date columns; also mirror
+    // fields used by the public website (body / notice_date / is_archived).
+    const clean = { ...form, expiry_date: form.expiry_date || null, publish_date: form.publish_date || null }
+    clean.body = clean.description
+    clean.notice_date = clean.publish_date || TODAY
+    if (form.id) { const { id, created_at, ...payload } = clean; ;({ error } = await supabase.from('notices').update(payload).eq('id', form.id)) }
+    else { ;({ error } = await supabase.from('notices').insert([clean])) }
     if (error) alert('Error: ' + error.message)
     else { setShowForm(false); setEditNotice(null); fetchNotices() }
     setSaving(false)
@@ -195,17 +205,20 @@ function Notice() {
 
   const handleTogglePin = async (notice) => {
     const { error } = await supabase.from('notices').update({ pinned: !notice.pinned }).eq('id', notice.id)
-    if (!error) fetchNotices()
+    if (error) alert(error.message)
+    else fetchNotices()
   }
 
   const handleTogglePublic = async (notice) => {
     const { error } = await supabase.from('notices').update({ is_public: !notice.is_public }).eq('id', notice.id)
-    if (!error) fetchNotices()
+    if (error) alert(error.message)
+    else fetchNotices()
   }
 
   const handleToggleStatus = async (notice) => {
     const { error } = await supabase.from('notices').update({ status: notice.status === 'Published' ? 'Draft' : 'Published' }).eq('id', notice.id)
-    if (!error) fetchNotices()
+    if (error) alert(error.message)
+    else fetchNotices()
   }
 
   const handleDuplicate = async (notice) => {
@@ -264,9 +277,9 @@ function Notice() {
         subtitle="Publish circulars and announcements · public notices appear on the website"
         icon={<span style={{ fontSize: mobile ? 20 : 24 }}>📢</span>}
         actions={
-          <button className={'px-hbtn' + (showForm ? '' : ' gold')} onClick={() => { setEditNotice(null); setShowForm(v => !v) }}>
+          canAdd ? <button className={'px-hbtn' + (showForm ? '' : ' gold')} onClick={() => { setEditNotice(null); setShowForm(v => !v) }}>
             {showForm ? '✖ Cancel' : '➕ Add Notice'}
-          </button>
+          </button> : null
         }
         stats={[
           { label: 'Total', value: stats.total, sub: `${stats.pinned} pinned` },
@@ -290,7 +303,7 @@ function Notice() {
         </div>
       )}
 
-      {(showForm || editNotice) && (
+      {canEdit && (showForm || editNotice) && (
         <NoticeForm initial={editNotice} onSave={handleSave} onCancel={() => { setShowForm(false); setEditNotice(null) }} saving={saving} mobile={mobile} />
       )}
 
@@ -328,7 +341,7 @@ function Notice() {
 
       {/* Card view */}
       {viewMode === 'cards' && (
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(min(300px,100%), 1fr))', gap: 14 }}>
           {loading && <div style={{ color: '#64748b', padding: 24 }}>Loading…</div>}
           {filteredNotices.map(item => {
             const warn = expiryWarning(item.expiry_date)
@@ -356,11 +369,11 @@ function Notice() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, paddingTop: 10, borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
                   <button onClick={() => setPreviewNotice(item)} style={{ ...btnBase, background: '#eff6ff', color: '#2563eb', flex: 1 }}>👁 View</button>
-                  <button onClick={() => { setEditNotice(item); setShowForm(false) }} style={{ ...btnBase, background: '#f0fdf4', color: '#166534', flex: 1 }}>✏️ Edit</button>
-                  <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>
-                  <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>
-                  <button onClick={() => handleDuplicate(item)} style={{ ...btnBase, background: '#faf5ff', color: '#7c3aed' }}>⧉</button>
-                  <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>
+                  {canEdit && <button onClick={() => { setEditNotice(item); setShowForm(false) }} style={{ ...btnBase, background: '#f0fdf4', color: '#166534', flex: 1 }}>✏️ Edit</button>}
+                  {canEdit && <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>}
+                  {canEdit && <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>}
+                  {canAdd && <button onClick={() => handleDuplicate(item)} style={{ ...btnBase, background: '#faf5ff', color: '#7c3aed' }}>⧉</button>}
+                  {canDelete && <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>}
                 </div>
               </div>
             )
@@ -407,11 +420,11 @@ function Notice() {
                       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={() => setPreviewNotice(item)} style={{ ...btnBase, background: '#eff6ff', color: '#2563eb' }}>👁</button>
-                          <button onClick={() => { setEditNotice(item); setShowForm(false) }} style={{ ...btnBase, background: '#f0fdf4', color: '#166534' }}>✏️</button>
-                          <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>
-                          <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>
-                          <button onClick={() => handleToggleStatus(item)} style={{ ...btnBase, background: '#f8fafc', color: '#475569' }}>{item.status === 'Published' ? '⏸' : '▶'}</button>
-                          <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>
+                          {canEdit && <button onClick={() => { setEditNotice(item); setShowForm(false) }} style={{ ...btnBase, background: '#f0fdf4', color: '#166534' }}>✏️</button>}
+                          {canEdit && <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>}
+                          {canEdit && <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>}
+                          {canEdit && <button onClick={() => handleToggleStatus(item)} style={{ ...btnBase, background: '#f8fafc', color: '#475569' }}>{item.status === 'Published' ? '⏸' : '▶'}</button>}
+                          {canDelete && <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>}
                         </div>
                       </td>
                     </tr>

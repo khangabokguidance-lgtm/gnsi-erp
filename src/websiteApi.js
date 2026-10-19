@@ -72,13 +72,21 @@ export async function saveSettings(cfg) {
 export async function getActiveNotices(limit = 3) {
   const { data, error } = await supabase
     .from('notices')
-    .select('id,title,body,priority,notice_date,created_at')
+    .select('id,title,body,description,priority,notice_date,created_at')
     .eq('is_archived', false)
+    .eq('is_public', true)
+    .eq('status', 'Published')
     .order('notice_date', { ascending: false })
     .limit(limit);
 
   if (error) return [];
-  return data || [];
+  // ERP notices store text in `description`; website ones in `body`.
+  // Urgent (ERP) is treated as High (website) so the red marker shows.
+  return (data || []).map((n) => ({
+    ...n,
+    body: n.body || n.description || '',
+    priority: n.priority === 'Urgent' ? 'High' : n.priority,
+  }));
 }
 
 export async function getAllNotices(limit = 40) {
@@ -98,6 +106,11 @@ export async function saveNotice(form, editingId = null) {
     body: form.body,
     priority: form.priority || 'Medium',
     notice_date: form.notice_date,
+    // keep the ERP-side columns in sync so the notice shows in both places
+    description: form.body,
+    publish_date: form.notice_date,
+    is_public: true,
+    status: 'Published',
     is_archived: false,
   };
 
@@ -685,6 +698,8 @@ export async function getLiveKPIs() {
       .from('notices')
       .select('title')
       .eq('is_archived', false)
+      .eq('is_public', true)
+      .eq('status', 'Published')
       .order('created_at', { ascending: false })
       .limit(1),
     import('./studentQueries')
