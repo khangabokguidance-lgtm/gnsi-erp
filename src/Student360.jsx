@@ -36,6 +36,7 @@ import RegistrationCard from './RegistrationCard'
 import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
 import { TABLE_REGISTRY } from './tableRegistry'
 import AdminIntelligence from './AdminIntelligencePage'
+import StudentChart from './StudentChart'
 
 // ── Pagination-safe fetch — same helper as Fees.jsx's fetchAllRows() ───────
 // Supabase/PostgREST caps any query with no .range() at 1000 rows, silently
@@ -511,6 +512,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               in one strip, before drilling into the section cards below. */}
           <StudentDashboardStrip profile={profile} dues={dues} selected={selected} />
 
+          {/* Patient-chart panel — risk index, follow-ups, cross-module timeline */}
+          <StudentChart profile={profile} dues={dues} student={rawStudent || selected} onNavigate={onNavigate} />
+
           {/* Visual charts — attendance trend, exam marks, fee breakdown */}
           <StudentCharts profile={profile} />
 
@@ -533,7 +537,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           </div>
 
           {/* Grid of module sections */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(300px,100%),1fr))', gap: 14 }}>
 
             {/* Student Profile — the raw Students.jsx row (name, status,
                 course/batch, DOB, parents, contact, medical/notes, etc.).
@@ -936,7 +940,7 @@ function StudentCharts({ profile }) {
   if (!hasAttendance && !hasExams && !hasFees) return null
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 14 }}>
       {hasAttendance && (
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '14px 16px', gridColumn: hasExams || hasFees ? 'span 2' : 'span 1' }}>
           <div style={{ fontSize: 12.5, fontWeight: 750, color: NAVY, marginBottom: 10 }}>📋 Attendance Trend (running %)</div>
@@ -1299,6 +1303,16 @@ const FLAG_FIX_MAP = {
   // half-fixed.
   house_no_allocation: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
   allocation_no_house: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  // Cross-module detail drift (lib/crossModuleChecks.js). Correcting the
+  // students row is the fix: editField() cascades it to admissions.
+  hostel_house_differs: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  adm_name_differs: { tableKey: 'students', field: 'name', label: 'Name' },
+  adm_course_differs: { tableKey: 'students', field: 'course', label: 'Course' },
+  adm_batch_differs: { tableKey: 'students', field: 'batch', label: 'Batch / Class' },
+  adm_hostel_type_differs: { tableKey: 'students', field: 'hostel_type', label: 'Hostel type' },
+  adm_house_differs: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  dayscholar_has_room: { tableKey: 'students', field: 'hostel_type', label: 'Hostel type' },
+  boarder_no_room: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
 }
 
 // Inline fix control for a mismatch row — lets staff correct the
@@ -1957,7 +1971,7 @@ function SchoolOverview({ onOpenStudent }) {
         <KpiCard icon="⚠️" label="No fee payment on record" value={data.noPaymentStudents.length} color={data.noPaymentStudents.length > 0 ? RED : GREEN} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 14 }}>
 
         {/* Enrollment by course */}
         <Section icon="🎓" title="Enrollment by Course" accent={NAVY}

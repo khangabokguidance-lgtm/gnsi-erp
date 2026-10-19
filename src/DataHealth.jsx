@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react'
+import { PremiumStyles, PremiumHero, PremiumCard, PX } from './premiumUI'
+import { editField } from './editEngine'
+import { QUICK_FIXES, validateQuickFix } from './lib/dataHealthFix'
 
 // Student data health dashboard: read-only checks over active students.
 
@@ -73,35 +76,91 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-export default function DataHealth({ students = [], isAdmin }) {
+const TODAY = () => new Date().toLocaleDateString('en-CA')
+
+// One row's "Quick fix" panel — one input per fixable failed check. Writes go
+// through editEngine.editField (audit log + admissions sync), never straight to
+// the table, so a fix here leaves the same trail as a fix in Student 360.
+function QuickFix({ st, fails, onSaved }) {
+  const fixable = fails.filter(k => QUICK_FIXES[k])
+  const [vals, setVals] = useState({})
+  const [busy, setBusy] = useState(null)
+  const [err, setErr] = useState({})
+  if (!fixable.length) return <div style={{ fontSize: 12, color: PX.sub }}>These issues need a manual fix in the Students module (open the student and correct them there).</div>
+
+  const save = async k => {
+    const fix = QUICK_FIXES[k]
+    const v = validateQuickFix(k, vals[k], TODAY())
+    if (!v.ok) { setErr(e => ({ ...e, [k]: v.error })); return }
+    setBusy(k); setErr(e => ({ ...e, [k]: null }))
+    try {
+      await editField({ tableKey: 'students', rowId: st.id, field: fix.field, oldValue: st[fix.field] ?? null, newValue: v.value, studentContext: { id: st.id, name: st.name, gcc_no: st.gcc_no } })
+      onSaved(st.id, fix.field, v.value)
+    } catch (e) {
+      setErr(x => ({ ...x, [k]: e?.message || 'Save failed — try again.' }))
+    }
+    setBusy(null)
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
+      {fixable.map(k => {
+        const fix = QUICK_FIXES[k]
+        const set = v => setVals(x => ({ ...x, [k]: v }))
+        const common = { value: vals[k] ?? '', onChange: e => set(e.target.value), className: 'px-input', 'aria-label': fix.label, disabled: busy === k }
+        return (
+          <div key={k}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: PX.sub, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>{fix.label}</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {fix.type === 'select'
+                ? <select {...common}><option value="">Choose…</option>{fix.options.map(o => <option key={o}>{o}</option>)}</select>
+                : <input {...common} type={fix.type === 'date' ? 'date' : 'text'} placeholder={fix.type === 'text' ? `Enter ${fix.label.toLowerCase()}` : undefined} onKeyDown={e => e.key === 'Enter' && save(k)} />}
+              <button type="button" className="px-btn" disabled={busy === k || !String(vals[k] ?? '').trim()} onClick={() => save(k)}>{busy === k ? 'Saving…' : 'Save'}</button>
+            </div>
+            {err[k] && <div role="alert" style={{ marginTop: 5, fontSize: 11.5, color: PX.bad }}>{err[k]}</div>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function DataHealth({ students = [], isAdmin, embedded = false }) {
   const [filter, setFilter] = useState(null)
   const [q, setQ] = useState('')
+  const [open, setOpen] = useState(null)
+  const [patches, setPatches] = useState({})   // id -> { column: value } applied after a successful quick fix
+  const [toast, setToast] = useState(null)
 
   const result = useMemo(() => {
-    const todayStr = new Date().toLocaleDateString('en-CA')
-    const active = (students || []).filter(x => !x.deleted_at && (!s(x.status) || s(x.status).toLowerCase() === 'active'))
-    const rows = runChecks(active, todayStr)
+    const active = (students || [])
+      .filter(x => !x.deleted_at && (!s(x.status) || s(x.status).toLowerCase() === 'active'))
+      .map(x => (patches[x.id] ? { ...x, ...patches[x.id] } : x))
+    const rows = runChecks(active, TODAY())
     const counts = {}
     for (const r of rows) for (const k of r.fails) counts[k] = (counts[k] || 0) + 1
     const withIssues = rows.filter(r => r.fails.length)
     return { total: rows.length, counts, withIssues }
-  }, [students])
+  }, [students, patches])
 
-  if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
+  if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: PX.faint }}>🔒 Admin only</div>
 
   const label = k => CHECKS.find(c => c.key === k)?.label || k
   const score = result.total ? Math.round(((result.total - result.withIssues.length) / result.total) * 100) : 100
-  const scoreColor = score >= 90 ? '#16a34a' : score >= 70 ? '#b45309' : '#dc2626'
+  const scoreTone = score >= 90 ? '#86efac' : score >= 70 ? '#fcd34d' : '#fca5a5'
   const needle = q.trim().toLowerCase()
   const shown = result.withIssues.filter(r => {
     if (filter && !r.fails.includes(filter)) return false
     return !needle || [r.st.name, r.st.gcc_no, r.st.course, r.st.batch, r.st.class_name].some(v => s(v).toLowerCase().includes(needle))
   })
   const activeCheck = CHECKS.find(c => c.key === filter)
+  const failing = CHECKS.filter(c => result.counts[c.key]).length
 
-  const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-  const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
-  const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
+  const onSaved = (id, field, value) => {
+    setPatches(p => ({ ...p, [id]: { ...p[id], [field]: value } }))
+    setToast('Saved — record re-checked.')
+    setTimeout(() => setToast(null), 2500)
+  }
 
   const exportCsv = () => downloadCsv(shown.map(r => ({
     gcc_no: r.st.gcc_no ?? '', name: r.st.name ?? '', course: r.st.course ?? '', batch: r.st.batch || r.st.class_name || '',
@@ -109,71 +168,95 @@ export default function DataHealth({ students = [], isAdmin }) {
   })), 'student_data_health.csv')
 
   return (
-    <div>
-      <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '14px 16px', marginBottom: 14, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: NAVY }}>🩺 Student data health</div>
-          <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 2 }}>Checks on {result.total} active students. Read-only — fix records in the Students module.</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 34, fontWeight: 900, color: scoreColor, lineHeight: 1 }}>{score}%</div>
-          <div style={{ fontSize: 11, color: '#5d6b82' }}>{result.total - result.withIssues.length} of {result.total} students clean</div>
-        </div>
-      </div>
+    <div className="px-root" style={{ minHeight: 0, background: 'transparent' }}>
+      <PremiumStyles />
+      <style>{`.dh-table{min-width:640px}@media (max-width:640px){.dh-table{min-width:0}.dh-table td{min-width:0!important}.dh-hide-sm{display:none}.dh-table td,.dh-table th{padding-left:10px;padding-right:10px}}`}</style>
+      {!embedded && (
+      <PremiumHero eyebrow="GNSI · Data quality" title="Student data health"
+        subtitle={`Automatic checks on ${result.total} active students — fix simple gaps right here`}
+        icon={<span style={{ fontSize: 24 }}>🩺</span>}
+        actions={<button className="px-hbtn" disabled={!shown.length} onClick={exportCsv}>⬇ Export CSV</button>}
+        stats={[
+          { label: 'Health score', value: `${score}%`, sub: 'students with no issues', tone: scoreTone },
+          { label: 'Clean', value: result.total - result.withIssues.length, sub: `of ${result.total}` },
+          { label: 'Need attention', value: result.withIssues.length, sub: 'students', tone: result.withIssues.length ? '#fca5a5' : undefined },
+          { label: 'Checks failing', value: failing, sub: `of ${CHECKS.length}`, tone: failing ? '#fcd34d' : undefined },
+        ]} />
+      )}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+      {toast && <div role="status" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 50, background: PX.ok, color: '#fff', padding: '10px 16px', borderRadius: 12, fontSize: 13, fontWeight: 600, boxShadow: '0 12px 28px -12px rgba(0,0,0,.4)' }}>✓ {toast}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 10, marginBottom: 16 }}>
         {CHECKS.map(c => {
           const cnt = result.counts[c.key] || 0
           const on = filter === c.key
+          const fixable = !!QUICK_FIXES[c.key]
           return (
-            <button key={c.key} onClick={() => setFilter(on ? null : c.key)} style={{
-              flex: '1 1 170px', textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
-              border: `1px solid ${on ? NAVY : '#e8e3d8'}`, background: on ? '#eef2fa' : 'white',
+            <button key={c.key} type="button" aria-pressed={on} onClick={() => { setFilter(on ? null : c.key); setOpen(null) }} style={{
+              textAlign: 'left', padding: '12px 14px', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${on ? PX.navy : PX.line}`, background: on ? '#eef2fa' : '#fff',
+              boxShadow: on ? '0 0 0 3px rgba(19,42,79,.08)' : '0 1px 2px rgba(19,42,79,.05)',
             }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: cnt ? '#dc2626' : '#16a34a' }}>{cnt}</div>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#14213d' }}>{c.label}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontFamily: PX.serif, fontSize: 24, fontWeight: 600, color: cnt ? PX.bad : PX.ok, fontVariantNumeric: 'tabular-nums' }}>{cnt || '✓'}</span>
+                {cnt > 0 && fixable && <span style={{ fontSize: 10, fontWeight: 700, color: PX.warn, background: PX.warnBg, borderRadius: 99, padding: '2px 8px' }}>Quick fix</span>}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: PX.ink2, marginTop: 4 }}>{c.label}</div>
             </button>
           )
         })}
       </div>
 
       {activeCheck && (
-        <div style={{ padding: '10px 14px', marginBottom: 12, background: '#eef2fa', border: '1px solid #c7d4ee', borderRadius: 10, fontSize: 12.5, color: NAVY }}>
-          <b>{activeCheck.label}:</b> {activeCheck.fix}
+        <div style={{ padding: '11px 15px', marginBottom: 14, background: PX.goldBg, border: `1px solid ${PX.goldLine}`, borderRadius: 12, fontSize: 12.5, color: PX.ink2 }}>
+          <b>How to fix “{activeCheck.label}”:</b> {QUICK_FIXES[activeCheck.key] ? 'press Fix on a row below and enter the correct value.' : activeCheck.fix}
         </div>
       )}
 
-      <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #e8e3d8', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 160, fontSize: 14, fontWeight: 800, color: NAVY }}>Students with issues ({shown.length})</div>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" style={{ padding: '7px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 12.5, minWidth: 160 }} />
-          {filter && <button style={btn} onClick={() => setFilter(null)}>Clear filter</button>}
-          <button style={btn} disabled={!shown.length} onClick={exportCsv}>⬇ Export CSV</button>
-        </div>
+      <PremiumCard title={`Students with issues (${shown.length})`} subtitle="Press Fix to correct a record without leaving this screen"
+        right={<div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', flex: '1 1 220px', justifyContent: 'flex-end' }}>
+          <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" aria-label="Search students" style={{ flex: '1 1 150px', minWidth: 0, maxWidth: 240 }} />
+          {filter && <button className="px-btn ghost" onClick={() => setFilter(null)}>Clear filter</button>}
+          {embedded && <button className="px-btn ghost" disabled={!shown.length} onClick={exportCsv}>⬇ Export CSV</button>}
+        </div>} bodyStyle={{ padding: 0 }}>
         {shown.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontWeight: 700, fontSize: 13 }}>✓ No students match — data looks healthy.</div>
+          <div style={{ padding: 44, textAlign: 'center', color: PX.ok, fontWeight: 700, fontSize: 13.5 }}>✓ No students match — data looks healthy.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['GCC', 'Name', 'Course', 'Batch', 'Failed checks'].map(h => <th key={h} style={{ ...head, textAlign: 'left' }}>{h}</th>)}</tr></thead>
+            <table className="px-table dh-table">
+              <thead><tr>{['GCC', 'Name', 'Course', 'Batch', 'Issues', ''].map(h => <th key={h} className={h === 'Course' || h === 'Batch' ? 'dh-hide-sm' : undefined}>{h}</th>)}</tr></thead>
               <tbody>
-                {shown.slice(0, 500).map(r => (
-                  <tr key={r.st.id ?? `${r.st.gcc_no}-${r.st.name}`}>
-                    <td style={{ ...cell, fontWeight: 700 }}>{s(r.st.gcc_no) || '—'}</td>
-                    <td style={cell}>{s(r.st.name) || '—'}</td>
-                    <td style={cell}>{s(r.st.course) || '—'}</td>
-                    <td style={cell}>{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
-                    <td style={{ ...cell, whiteSpace: 'normal', minWidth: 220 }}>
-                      {r.fails.map(k => <span key={k} style={{ display: 'inline-block', margin: '2px 4px 2px 0', padding: '2px 8px', borderRadius: 99, background: '#fef2f2', color: '#991b1b', fontSize: 11, fontWeight: 700 }}>{label(k)}</span>)}
-                    </td>
-                  </tr>
-                ))}
+                {shown.slice(0, 500).map(r => {
+                  const id = r.st.id ?? `${r.st.gcc_no}-${r.st.name}`
+                  const isOpen = open === id
+                  return [
+                    <tr key={id}>
+                      <td style={{ fontWeight: 700 }}>{s(r.st.gcc_no) || '—'}</td>
+                      <td>{s(r.st.name) || '—'}</td>
+                      <td className="dh-hide-sm">{s(r.st.course) || '—'}</td>
+                      <td className="dh-hide-sm">{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
+                      <td style={{ whiteSpace: 'normal', minWidth: 220 }}>
+                        {r.fails.map(k => <span key={k} style={{ display: 'inline-block', margin: '2px 4px 2px 0', padding: '2px 9px', borderRadius: 99, background: PX.badBg, color: PX.bad, fontSize: 11, fontWeight: 700 }}>{label(k)}</span>)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button type="button" className={isOpen ? 'px-btn ghost' : 'px-btn'} style={{ padding: '6px 14px', fontSize: 12.5 }} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : id)}>{isOpen ? 'Close' : 'Fix'}</button>
+                      </td>
+                    </tr>,
+                    isOpen && (
+                      <tr key={id + '-fix'}>
+                        <td colSpan={6} style={{ background: PX.tint, padding: '14px 18px' }}>
+                          <QuickFix st={r.st} fails={r.fails} onSaved={onSaved} />
+                        </td>
+                      </tr>
+                    ),
+                  ]
+                })}
               </tbody>
             </table>
           </div>
         )}
-        {shown.length > 500 && <div style={{ padding: '8px 16px', fontSize: 11, color: '#5d6b82' }}>Showing first 500; export CSV for all.</div>}
-      </div>
+        {shown.length > 500 && <div style={{ padding: '10px 20px', fontSize: 11.5, color: PX.sub }}>Showing first 500; export CSV for all.</div>}
+      </PremiumCard>
     </div>
   )
 }
