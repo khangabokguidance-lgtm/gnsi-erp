@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{--bg:#fafafa;--card:#fff;--ink:#0f172a;--mute:#64748b;--faint:#94a3b8;--line:#eceff3;--acc:#4f46e5;--accbg:#eef2ff;--ok:#059669;--okbg:#ecfdf5;--warn:#d97706;--warnbg:#fffbeb;--bad:#dc2626;--badbg:#fef2f2}
+*{box-sizing:border-box}body{margin:0;width:1440px;height:900px;background:var(--bg);font:14px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);display:grid;grid-template-columns:232px 1fr 400px;overflow:hidden}
+nav{background:#fff;border-right:1px solid var(--line);padding:18px 14px;display:flex;flex-direction:column;gap:2px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;padding:4px 8px 18px}.logo i{width:28px;height:28px;border-radius:8px;background:var(--acc);display:block}
+.nv{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--mute);font-weight:500}.nv.on{background:var(--accbg);color:var(--acc);font-weight:600}.nv b{width:16px;height:16px;border-radius:4px;background:currentColor;opacity:.35;display:block}
+.sec{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;padding:16px 10px 6px}
+main{padding:22px 28px;overflow:hidden}
+.top{gap:16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+h1{font-size:22px;margin:0;white-space:nowrap;letter-spacing:-.02em}.sub{color:var(--mute);font-size:13px}
+.srch{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;width:240px;color:var(--faint)}.srch kbd{margin-left:auto;font:11px system-ui;background:#f4f5f7;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.btn{white-space:nowrap;background:var(--acc);color:#fff;border-radius:10px;padding:9px 14px;font-weight:600;margin-left:10px}.btn.g{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.k{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}.k span{font-size:12px;color:var(--mute)}.k b{display:block;font-size:26px;letter-spacing:-.02em;margin-top:2px}.k i{font-style:normal;font-size:12px}
+.up{color:var(--ok)}.dn{color:var(--bad)}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:14px}.tabs div{padding:8px 0;color:var(--mute);font-weight:500}.tabs .on{color:var(--acc);border-bottom:2px solid var(--acc);font-weight:600}
+.tools{display:flex;gap:8px;margin-bottom:12px}.chip{background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--mute)}.chip.on{background:var(--accbg);border-color:#c7d2fe;color:var(--acc);font-weight:600}
+.tbl{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:2.2fr 1fr 1.1fr 1fr 1fr;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line)}.row:last-child{border:0}
+.row.h{background:#fafbfc;color:var(--faint);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;padding:9px 16px}
+.row.sel{background:var(--accbg)}
+.who{display:flex;align-items:center;gap:11px}.av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12px}.who small{display:block;color:var(--faint);font-size:12px}
+.pill{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}.pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.ok{background:var(--okbg);color:var(--ok)}.wa{background:var(--warnbg);color:var(--warn)}.ba{background:var(--badbg);color:var(--bad)}
+.spark{display:flex;align-items:flex-end;gap:2px;height:22px}.spark i{width:5px;border-radius:2px;background:#c7d2fe;display:block}.spark i.l{background:#fca5a5}
+aside{background:#fff;border-left:1px solid var(--line);padding:22px;overflow:hidden}
+.ph{display:flex;gap:14px;align-items:center;margin-bottom:14px}.ph .av{width:56px;height:56px;font-size:18px;background:var(--accbg);color:var(--acc)}.ph h2{margin:0;font-size:18px;letter-spacing:-.01em}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.mini div{border:1px solid var(--line);border-radius:12px;padding:10px 12px}.mini span{font-size:11.5px;color:var(--mute)}.mini b{display:block;font-size:18px}
+.risk{background:var(--accbg);border-radius:14px;padding:14px;display:flex;gap:14px;align-items:center;margin-bottom:14px}.risk .n{font-size:34px;font-weight:700;color:var(--acc);letter-spacing:-.03em}
+.bar{height:6px;background:#dbe0ff;border-radius:4px;overflow:hidden;margin-top:6px;width:200px}.bar i{display:block;height:100%;width:62%;background:var(--acc)}
+.ttl{font-size:11.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px}
+.todo{display:flex;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;font-size:13px}.todo i{width:8px;height:8px;border-radius:50%;flex:none}.todo span{margin-left:auto;color:var(--acc);font-weight:600;font-size:12px}
+.tl{border-left:2px solid var(--line);margin-left:5px;padding-left:16px}.tl div{position:relative;margin-bottom:10px;font-size:13px}.tl div:before{content:"";position:absolute;left:-22px;top:5px;width:8px;height:8px;border-radius:50%;background:#fff;border:2px solid var(--acc)}.tl small{color:var(--faint);display:block;font-size:12px}
+</style></head><body>
+<nav><div class="logo"><i></i>GNSI</div>
+<div class="nv"><b></b>Dashboard</div><div class="nv on"><b></b>Students</div><div class="nv"><b></b>Admissions</div><div class="nv"><b></b>Fees</div><div class="nv"><b></b>Attendance</div><div class="nv"><b></b>Exams</div><div class="nv"><b></b>Hostel</div>
+<div class="sec">Workspace</div><div class="nv"><b></b>Notices</div><div class="nv"><b></b>Reports</div><div class="nv"><b></b>Settings</div></nav>
+
+<main>
+<div class="top"><div><h1>Students</h1><div class="sub" style="white-space:nowrap">2026–27 · 412 enrolled</div></div>
+<div style="display:flex;align-items:center"><div class="srch">⌕ Search students<kbd>⌘K</kbd></div><div class="btn g">Export</div><div class="btn">+ New admission</div></div></div>
+<div class="kpis">
+<div class="k"><span>Active students</span><b>398</b><i class="up">▲ 12 this month</i></div>
+<div class="k"><span>Avg. attendance</span><b>86%</b><i class="dn">▼ 2% vs last month</i></div>
+<div class="k"><span>Fee dues</span><b>₹3.2L</b><i class="dn">41 students overdue</i></div>
+<div class="k"><span>Records needing fixes</span><b>27</b><i style="color:var(--acc)">Review →</i></div></div>
+<div class="tabs"><div>Courses</div><div class="on">All students</div><div>Scholarship / Waiver</div><div>Data quality</div></div>
+<div class="tools"><span class="chip on">All</span><span class="chip">Navodaya</span><span class="chip">Sainik</span><span class="chip">JEE</span><span class="chip">Boarders</span><span class="chip">Fee overdue</span><span class="chip">Low attendance</span><span class="chip" style="margin-left:auto">Sort: GCC ▾</span></div>
+<div class="tbl">
+<div class="row h"><div>Student</div><div>Course</div><div>Attendance</div><div>Fees</div><div>Status</div></div>
+<div class="row sel"><div class="who"><div class="av" style="background:#e0e7ff;color:#4f46e5">AS</div><div><b>Ahanthem Singh</b><small>GCC-1001 · Class 6</small></div></div><div>Navodaya</div><div class="spark"><i style="height:90%"></i><i style="height:80%"></i><i style="height:40%" class="l"></i><i style="height:85%"></i><i style="height:70%"></i><i style="height:35%" class="l"></i><i style="height:80%"></i></div><div><span class="pill ba">₹4,500 due</span></div><div><span class="pill ok">Active</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#fce7f3;color:#be185d">LD</div><div><b>Laishram Devi</b><small>GCC-1002 · Class 7</small></div></div><div>Sainik</div><div class="spark"><i style="height:95%"></i><i style="height:90%"></i><i style="height:92%"></i><i style="height:88%"></i><i style="height:94%"></i><i style="height:90%"></i><i style="height:96%"></i></div><div><span class="pill ok">Paid</span></div><div><span class="pill ok">Active</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#dcfce7;color:#15803d">TK</div><div><b>Thoudam Kumar</b><small>GCC-1003 · Class 8</small></div></div><div>JEE</div><div class="spark"><i style="height:70%"></i><i style="height:50%" class="l"></i><i style="height:60%"></i><i style="height:45%" class="l"></i><i style="height:55%"></i><i style="height:40%" class="l"></i><i style="height:60%"></i></div><div><span class="pill wa">Due soon</span></div><div><span class="pill ok">Active</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#fef3c7;color:#b45309">NM</div><div><b>Nongmaithem M</b><small>GCC-1004 · Class 9</small></div></div><div>NEET</div><div class="spark"><i style="height:85%"></i><i style="height:88%"></i><i style="height:80%"></i><i style="height:90%"></i><i style="height:86%"></i><i style="height:84%"></i><i style="height:92%"></i></div><div><span class="pill ok">Paid</span></div><div><span class="pill ok">Active</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#e0f2fe;color:#0369a1">KR</div><div><b>Khumanthem R</b><small>GCC-1005 · Class 6</small></div></div><div>Navodaya</div><div class="spark"><i style="height:90%"></i><i style="height:75%"></i><i style="height:80%"></i><i style="height:85%"></i><i style="height:78%"></i><i style="height:82%"></i><i style="height:88%"></i></div><div><span class="pill ok">Paid</span></div><div><span class="pill wa">On leave</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#f3e8ff;color:#7e22ce">OS</div><div><b>Oinam Sana</b><small>GCC-1006 · Class 7</small></div></div><div>Sainik</div><div class="spark"><i style="height:92%"></i><i style="height:94%"></i><i style="height:90%"></i><i style="height:96%"></i><i style="height:92%"></i><i style="height:95%"></i><i style="height:93%"></i></div><div><span class="pill ok">Paid</span></div><div><span class="pill ok">Active</span></div></div>
+<div class="row"><div class="who"><div class="av" style="background:#ffe4e6;color:#be123c">YB</div><div><b>Yumnam Bebe</b><small>GCC-1007 · Class 8</small></div></div><div>JEE</div><div class="spark"><i style="height:60%"></i><i style="height:65%"></i><i style="height:55%" class="l"></i><i style="height:70%"></i><i style="height:62%"></i><i style="height:58%"></i><i style="height:66%"></i></div><div><span class="pill ba">₹9,000 due</span></div><div><span class="pill ok">Active</span></div></div>
+</div></main>
+
+<aside>
+<div class="ph"><div class="av">AS</div><div><h2>Ahanthem Singh</h2><div class="sub">GCC-1001 · Class 6 · Tamenglong</div></div></div>
+<div class="tabs" style="gap:16px;margin-bottom:6px;font-size:13px"><div class="on">Overview</div><div>Fees</div><div>Attendance</div><div>Exams</div><div>Docs</div></div>
+<div class="mini"><div><span>Attendance</span><b style="color:var(--warn)">72%</b></div><div><span>Last exam</span><b>81%</b></div><div><span>Fee due</span><b style="color:var(--bad)">₹4.5k</b></div></div>
+<div class="risk"><div class="n">62</div><div><b>Moderate risk</b><div class="sub">Attendance and fees need attention</div><div class="bar"><i></i></div></div></div>
+<div class="ttl">Follow-ups</div>
+<div class="todo"><i style="background:var(--bad)"></i>Call guardian about ₹4,500 fee<span>Fees →</span></div>
+<div class="todo"><i style="background:var(--warn)"></i>Attendance below 75%<span>Attendance →</span></div>
+<div class="todo"><i style="background:var(--warn)"></i>Aadhaar copy missing<span>Documents →</span></div>
+<div class="ttl">Activity</div>
+<div class="tl"><div>Fee instalment ₹3,000<small>02 Oct · Accounts</small></div><div>Absent 2 days<small>28–29 Sep · Class teacher</small></div><div>Mock Test 2 · Rank #14<small>25 Sep · Exams</small></div><div>Hostel room assigned<small>12 Apr · Warden</small></div></div>
+</aside></body></html>

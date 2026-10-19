@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;width:1400px;background:#eef3f7;font:14px system-ui,sans-serif;color:#0f172a}
+.top{background:#164e63;color:#fff;padding:14px 28px;display:flex;justify-content:space-between}.top b{font-size:18px}.top span{opacity:.8}
+.main{display:grid;grid-template-columns:1fr 300px;gap:18px;padding:18px 28px}
+.box{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px}
+h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+.ev{font-size:12.5px;padding:7px 0;border-bottom:1px solid #f1f5f9}.ev:last-child{border:0}.ev b{color:#0e7490}
+.leg span{display:inline-block;margin-right:12px;font-size:12px}.leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+</style></head><body>
+<div class="top"><b>GNSI · One Student, One Record — Module Interconnection</b><span>Hospital-information-system model: Student = Patient · Admission = Registration</span></div>
+<div class="main"><div class="box">
+<svg viewBox="0 0 960 700" width="100%">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0e7490"/></marker></defs>
+<g stroke="#0e7490" stroke-width="2" fill="none" marker-end="url(#a)">
+<path d="M190 130 L400 290"/><path d="M480 120 L480 255"/><path d="M770 130 L560 290"/>
+<path d="M190 560 L400 410"/><path d="M480 590 L480 440"/><path d="M770 560 L560 410"/>
+<path d="M205 345 L370 345" stroke-dasharray="6 4"/><path d="M755 345 L590 345" stroke-dasharray="6 4"/></g>
+<!-- centre -->
+<rect x="360" y="260" width="240" height="170" rx="18" fill="#164e63"/>
+<text x="480" y="295" text-anchor="middle" fill="#fff" font-size="13" opacity=".75">MASTER RECORD (MPI)</text>
+<text x="480" y="328" text-anchor="middle" fill="#fff" font-size="22" font-weight="700">STUDENT 360</text>
+<text x="480" y="352" text-anchor="middle" fill="#a5f3fc" font-size="13">GNSI-2026-0142</text>
+<text x="480" y="378" text-anchor="middle" fill="#fff" font-size="12" opacity=".85">Single source of truth</text>
+<text x="480" y="398" text-anchor="middle" fill="#fff" font-size="12" opacity=".85">Risk index · Alerts · Timeline</text>
+<!-- nodes -->
+<g font-size="13">
+<rect x="40" y="50" width="300" height="80" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="60" y="78" font-weight="700" font-size="15">1 · Reception / Admission</text><text x="60" y="98" fill="#64748b">Enquiry → registration → ID issued</text><text x="60" y="116" fill="#64748b">≈ Hospital registration desk</text>
+<rect x="330" y="-10" width="0" height="0"/>
+<rect x="340" y="50" width="280" height="70" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="360" y="78" font-weight="700" font-size="15">2 · Entrance / Mock Tests</text><text x="360" y="98" fill="#64748b">Scores feed academic profile</text>
+<rect x="640" y="50" width="280" height="80" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="660" y="78" font-weight="700" font-size="15">3 · Exams &amp; Results</text><text x="660" y="98" fill="#64748b">Marks, report cards, ranks</text><text x="660" y="116" fill="#64748b">≈ Laboratory / diagnostics</text>
+<rect x="40" y="300" width="165" height="90" rx="12" fill="#fff" stroke="#d97706" stroke-width="2"/><text x="55" y="328" font-weight="700" font-size="15">Documents</text><text x="55" y="348" fill="#64748b">Aadhaar, TC, birth</text><text x="55" y="366" fill="#64748b">≈ Medical records</text>
+<rect x="755" y="300" width="165" height="90" rx="12" fill="#fff" stroke="#d97706" stroke-width="2"/><text x="770" y="328" font-weight="700" font-size="15">Mismatch Log</text><text x="770" y="348" fill="#64748b">Data-quality checks</text><text x="770" y="366" fill="#64748b">≈ Audit &amp; QA</text>
+<rect x="40" y="560" width="300" height="80" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="60" y="588" font-weight="700" font-size="15">4 · Fee Ledger / Billing</text><text x="60" y="608" fill="#64748b">Invoices, concessions, receipts</text><text x="60" y="626" fill="#64748b">≈ Hospital billing / cashier</text>
+<rect x="340" y="590" width="280" height="70" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="360" y="618" font-weight="700" font-size="15">5 · Hostel</text><text x="360" y="638" fill="#64748b">Rooms, compliance ≈ Ward/bed</text>
+<rect x="640" y="560" width="280" height="80" rx="12" fill="#fff" stroke="#0e7490" stroke-width="2"/><text x="660" y="588" font-weight="700" font-size="15">6 · Attendance / Timetable</text><text x="660" y="608" fill="#64748b">Daily presence, class schedule</text><text x="660" y="626" fill="#64748b">≈ Visits / appointments</text>
+</g>
+<g font-size="11" fill="#0e7490" font-weight="600"><text x="215" y="190" transform="rotate(35 215 190)">creates student + ID</text><text x="486" y="195">auto-links scores</text><text x="700" y="215" transform="rotate(-35 700 215)">results out</text><text x="215" y="500" transform="rotate(-35 215 500)">bills on admission</text><text x="486" y="520">bed → hostel charge</text><text x="660" y="500" transform="rotate(35 660 500)">absence → alert</text></g>
+<!-- outer ring -->
+<rect x="40" y="445" width="880" height="1" fill="none"/>
+<rect x="340" y="140" width="280" height="90" rx="12" fill="#ecfeff" stroke="#67e8f9" stroke-dasharray="5 4"/><text x="480" y="168" text-anchor="middle" font-weight="700" font-size="14">Parents · Notices · WhatsApp</text><text x="480" y="190" text-anchor="middle" fill="#64748b" font-size="12">Guardian view · alerts pushed</text>
+</svg>
+<div class="leg" style="margin-top:8px"><span><i style="background:#0e7490"></i>Core clinical-style module</span><span><i style="background:#d97706"></i>Support / compliance</span><span>── data flow &nbsp; ┄ checks</span></div>
+</div>
+<div>
+<div class="box" style="margin-bottom:14px"><h4>How modules talk to each other</h4>
+<div class="ev"><b>Admission</b> → creates the master record and issues the Student ID</div>
+<div class="ev"><b>Fee Ledger</b> → balance and overdue flag appear on Student 360</div>
+<div class="ev"><b>Attendance</b> below 75% → alert + guardian notice</div>
+<div class="ev"><b>Hostel</b> bed assigned → hostel fee added to ledger</div>
+<div class="ev"><b>Exams</b> result published → Parents Portal updates</div>
+<div class="ev"><b>Documents</b> missing → checklist item on timeline</div>
+<div class="ev"><b>Mismatch Log</b> → flags conflicts between modules</div></div>
+<div class="box"><h4>Hospital → School mapping</h4>
+<div class="ev">Patient ID → Student ID</div><div class="ev">Registration → Admission</div><div class="ev">Billing / cashier → Fee Ledger</div><div class="ev">Ward &amp; bed → Hostel room</div><div class="ev">Lab report → Exam result</div><div class="ev">Visit log → Attendance</div><div class="ev">Audit trail → Activity log</div></div>
+</div></div></body></html>
