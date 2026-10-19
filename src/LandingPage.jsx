@@ -36,11 +36,13 @@ const adminBlockPhoto = 'data:image/webp;base64,UklGRt5NAQBXRUJQVlA4INJNAQCwcwSd
 // TODO: consider moving to Supabase storage for consistency with other site assets
 const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
 
-// GNSI logo/emblem (crest + "GNSI" wordmark + tagline, square format) —
-// used in the nav bar, favicon, and header. Lives in the gnsi-public
-// bucket's "emblem" folder (same bucket as TEN_YEARS_BANNER_URL/
-// RESULT_POSTER_URL below).
-const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem-new.png";
+// GNSI logo (crest + "GUIDANCE NAVODAYA & SAINIK INSTITUTE" wordmark, square,
+// navy background). Served from /public so it ships with the app:
+//   EMBLEM_URL      — full logo with wordmark, for large placements
+//   EMBLEM_MARK_URL — crest only, for the nav bar and favicon where the
+//                     wordmark would be unreadable
+const EMBLEM_URL = "/gnsi-logo.png";
+const EMBLEM_MARK_URL = "/gnsi-logo-mark.png";
 
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
@@ -2066,8 +2068,8 @@ window.submitGrievance = async () => {
   />
   <meta name="theme-color" content="#0A0A0A" />
   <link rel="canonical" href="https://guidancekhangabok.in" />
-  <link rel="icon" type="image/png" href={EMBLEM_URL} />
-  <link rel="apple-touch-icon" href={EMBLEM_URL} />
+  <link rel="icon" type="image/png" href={EMBLEM_MARK_URL} />
+  <link rel="apple-touch-icon" href={EMBLEM_MARK_URL} />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
   <link
@@ -2245,7 +2247,7 @@ window.submitGrievance = async () => {
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
         <span className="nv-crest">
           {!emblemFailed ? (
-            <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
+            <img src={EMBLEM_MARK_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
           ) : (
             <span
               aria-label="GNSI"
@@ -2301,7 +2303,7 @@ window.submitGrievance = async () => {
     <div className="mob-menu-hd">
       <div className="mob-menu-brand">
         {!emblemFailed && (
-          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
+          <img src={EMBLEM_MARK_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
         )}
         <span>GNSI</span>
       </div>
