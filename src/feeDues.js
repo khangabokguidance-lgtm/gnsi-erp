@@ -24,6 +24,7 @@ import {
 } from './feeEngine'
 import { sessionOfDate, sessionOfMonth } from './feeLedgerModel'
 import { instituteNow, admRowKind, excludeRepeaterFees } from './lib/feeMath'
+import { writtenOffFor } from './lib/refundLedger'
 
 // True when a signed-in staff session exists (Supabase Auth, Phase 1).
 async function hasStaffSession() {
@@ -215,7 +216,11 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     return m
   }
   // Standing concessions (fee_concession_register) also reduce what is owed.
-  const standing = (await loadStanding()).conc.get(String(parseInt(student.gcc_no) || 0)) || []
+  const standingAll = await loadStanding()
+  const gccKey = String(parseInt(student.gcc_no) || 0)
+  const standing = standingAll.conc.get(gccKey) || []
+  // Dues written off in Refunds & Transfers, in this session.
+  const writtenOff = writtenOffFor(gccKey, standingAll.refunds.get(gccKey) || [], sessionYear, sessionOfDate)
   const settle = (expected, p, standingAmt = 0) => {
     const paidAmount = p?.paid || 0, waived = p?.waived || 0
     let due = Math.max(0, expected - paidAmount - waived - standingAmt)
@@ -270,7 +275,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     }
   }
   const arrears = arrearsBySession.reduce((t, a) => t + a.due, 0)
-  const sessionDue = admissionDue + flatFeeDue + courseFeeDue
+  const sessionDue = Math.max(0, admissionDue + flatFeeDue + courseFeeDue - writtenOff)
   const totalDue = sessionDue + arrears
 
   return {
@@ -281,6 +286,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     courseFee: { items: courseFeeItems, due: courseFeeDue },
     totalPaid,           // all sessions, all time
     sessionPaid,         // this session only (compare with sessionDue)
+    writtenOff,          // dues written off this session (already taken out of sessionDue)
     sessionDue,          // this session only
     arrears,             // earlier sessions, brought forward
     arrearsBySession,

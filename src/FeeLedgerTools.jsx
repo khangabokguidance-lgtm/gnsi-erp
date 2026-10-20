@@ -8,10 +8,10 @@ import { printStatement } from './feeLedgerActions'
 const INK = '#1d3a78', RED = '#b42318', GREEN = '#146c3a', SUB = '#6b7690'
 
 // ── Account statement ────────────────────────────────────────────────────────
-export function StatementView({ student, entries, reg, session, openingBalance, rates }) {
+export function StatementView({ student, entries, reg, session, openingBalance, rates, extraLines = [] }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const st = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance, from: from || null, to: to || null }), [student, entries, session, reg, openingBalance, from, to])
+  const st = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance, from: from || null, to: to || null, extraLines }), [student, entries, session, reg, openingBalance, from, to, extraLines])
   const bal = v => <span style={{ color: v > 0 ? RED : v < 0 ? GREEN : INK }}>{v < 0 ? `${fmt(-v)} Cr` : `${fmt(v)}${v > 0 ? ' Dr' : ''}`}</span>
   return (
     <div className="frb-sec">

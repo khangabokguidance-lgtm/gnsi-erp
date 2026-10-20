@@ -104,3 +104,43 @@ test('late entry: joined mid-session, fees start from the joining month', () => 
   assert.equal(by[3].started, false)
   assert.equal(by[5].skippedJoiningMonth, true)             // joined June, first paid August
 })
+
+import { applyPaymentToPlan, removePaymentFromPlan, planDone } from '../src/lib/planPayments.js'
+import { refundStatementLines, writtenOffFor } from '../src/lib/refundLedger.js'
+
+const mkPlan = () => [1, 2, 3].map(no => ({ no, due_date: `2026-0${no + 5}-10`, amount: 1000, paid_amount: 0, paid_date: null, receipt_no: null }))
+
+test('plan: payments fill the oldest instalment first, partial and spill-over', () => {
+  let r = applyPaymentToPlan(mkPlan(), { ref: 'a', amount: 1500, date: '2026-06-01', receipt: 'R1' })
+  assert.equal(r.applied, 1500)
+  assert.deepEqual(r.installments.map(i => i.paid_amount), [1000, 500, 0])
+  r = applyPaymentToPlan(r.installments, { ref: 'b', amount: 5000, date: '2026-07-01', receipt: 'R2' })
+  assert.equal(r.applied, 1500)                       // only 1500 was still owed
+  assert.ok(planDone(r.installments))
+})
+
+test('plan: the same fee row is never applied twice; revert takes it back', () => {
+  const once = applyPaymentToPlan(mkPlan(), { ref: 'a', amount: 800, date: '2026-06-01', receipt: 'R1' })
+  const twice = applyPaymentToPlan(once.installments, { ref: 'a', amount: 800, date: '2026-06-01', receipt: 'R1' })
+  assert.equal(twice.applied, 0)
+  const back = removePaymentFromPlan(twice.installments, 'a')
+  assert.equal(back.removed, 800)
+  assert.deepEqual(back.installments.map(i => i.paid_amount), [0, 0, 0])
+  assert.ok(!planDone(back.installments))
+})
+
+test('refunds on the ledger: refund, sibling transfer both ways, write-off, carry-credit ignored', () => {
+  const rows = [
+    { kind: 'Refund to parent', status: 'paid', gcc: '5', amount: 2000, decided_at: '2026-08-01T10:00:00Z', reason: 'left' },
+    { kind: 'Refund to parent', status: 'approved', gcc: '5', amount: 900, decided_at: '2026-08-02T10:00:00Z' },   // not paid yet
+    { kind: 'Adjust to sibling GCC', status: 'approved', gcc: '5', target_gcc: '9', amount: 700, decided_at: '2026-08-03T10:00:00Z' },
+    { kind: 'Write-off dues', status: 'approved', gcc: '5', amount: 300, decided_at: '2026-09-01T10:00:00Z' },
+    { kind: 'Carry credit to next session', status: 'approved', gcc: '5', amount: 100, decided_at: '2026-09-02T10:00:00Z' },
+  ]
+  const src = refundStatementLines(5, rows)
+  assert.deepEqual(src.map(l => [l.debit, l.credit]), [[2000, 0], [700, 0], [0, 300]])
+  assert.deepEqual(refundStatementLines('09', rows).map(l => [l.debit, l.credit]), [[0, 700]])
+  const sessionOf = d => (d >= '2026-04-01' ? '2026-2027' : '2025-2026')
+  assert.equal(writtenOffFor(5, rows, '2026-2027', sessionOf), 300)
+  assert.equal(writtenOffFor(5, rows, '2025-2026', sessionOf), 0)
+})

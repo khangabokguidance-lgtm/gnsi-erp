@@ -5,6 +5,7 @@
 
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
 import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
+import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planPayments'
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, BATCH_ALIASES } from './courseMap'
@@ -664,6 +665,29 @@ export const mirrorToFeeInvoice = async ({
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8a. INSTALMENT PLAN SYNC — a fee payment ticks off the student's plan
+// ═══════════════════════════════════════════════════════════════════════════
+// Best-effort and never blocks a payment: if the plan table is missing or the
+// update fails the payment stands and the plan can still be edited by hand.
+// `add` = [{ ref, amount, date, receipt }] (ref = fee row id); `removeRef` takes a
+// reverted row's money back off the plan.
+export const syncInstallmentPlan = async (gcc, { add = [], removeRef = null } = {}) => {
+  try {
+    const keys = [...new Set([String(gcc), gccStr(gcc)])]
+    const { data, error } = await supabase.from('fee_installment_plans').select('*').in('gcc', keys).in('status', ['active', 'completed']).order('created_at', { ascending: false })
+    if (error || !data?.length) return
+    const plan = (add.length ? data.find(p => p.status === 'active') : data.find(p => (p.installments || []).some(i => (i.payments || []).some(x => x.ref === removeRef)))) || null
+    if (!plan) return
+    let inst = plan.installments || [], changed = false
+    for (const a of add) { const r = applyPaymentToPlan(inst, a); if (r.applied > 0) { inst = r.installments; changed = true } }
+    if (removeRef) { const r = removePaymentFromPlan(inst, removeRef); if (r.removed > 0) { inst = r.installments; changed = true } }
+    if (!changed) return
+    await supabase.from('fee_installment_plans').update({ installments: inst, status: planDone(inst) ? 'completed' : 'active' }).eq('id', plan.id)
+  } catch (e) { console.warn('syncInstallmentPlan failed (payment is unaffected):', e?.message || e) }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 8b. REVERT FEE COLLECTION — admin-only undo of a single collected item
 // ═══════════════════════════════════════════════════════════════════════════
@@ -735,6 +759,7 @@ export const revertFeeCollection = async ({
 
   const { error } = await supabase.from(table).update(updates).eq('id', id)
   if (error) throw error
+  if ((table === TABLES.admFlatFees || table === TABLES.admCourseFees) && originalRow?.adm_app_id) await syncInstallmentPlan(originalRow.adm_app_id, { removeRef: id })
 
   // ✦ Fix: previously this audit_log write only ran INSIDE the
   // `if (accountSourceRef && accountSourceType)` block below — a revert
@@ -1164,7 +1189,7 @@ export const collectFee = async ({
   }
 
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
-  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = repeater.excluded.map(i => `${i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item')} (repeater — waived)`)
+  const planPayments = [], admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = repeater.excluded.map(i => `${i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item')} (repeater — waived)`)
 
   // ✦ Admin-visible audit trail for every successful collection — not just
   // reverts/corrections/deletes/underpayments. Previously collectFee wrote
@@ -1340,6 +1365,7 @@ export const collectFee = async ({
         })
       }
       else if (!item.isBalance) await clearConcession(TABLES.admFlatFees, flatId)
+      planPayments.push({ ref: flatId, amount: item.amount, date: payDate, receipt: receiptNo })
       flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
@@ -1419,6 +1445,7 @@ export const collectFee = async ({
         })
       }
       else if (!item.isBalance) await clearConcession(TABLES.admCourseFees, recId)
+      planPayments.push({ ref: recId, amount: item.amount, date: payDate, receipt: receiptNo })
       crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
@@ -1447,6 +1474,8 @@ export const collectFee = async ({
         subtotal: item.amount })
     }
   }
+
+  if (planPayments.length) await syncInstallmentPlan(gcc, { add: planPayments })
 
   // Build receipt sections
   if (admItems.length)  sections.unshift({ title: 'Admission Package',           color: '#4f46e5', items: admItems,  subtotal: admItems.reduce((s, i) => s + i.amount, 0) })

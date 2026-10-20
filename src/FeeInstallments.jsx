@@ -1,6 +1,8 @@
 // FeeInstallments.jsx — installment plans for students who cannot clear dues at once.
 // Table: fee_installment_plans (supabase/migrations/20261008_fee_reminders_installments.sql).
-// Plans are a record/agreement only; money is still collected in Fee Payment.
+// Money is collected in Fee Payment; each flat/course payment for the student is then
+// applied to the oldest unpaid instalment automatically (and taken off again if reverted).
+// Instalments can still be marked paid by hand here (e.g. a payment made before the plan).
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import StudentJump from './StudentJump'

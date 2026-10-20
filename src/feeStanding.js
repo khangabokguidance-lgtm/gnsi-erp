@@ -7,7 +7,7 @@ import { planState } from './lib/standingMath'
 
 let cache = null, cacheAt = 0, inflight = null
 const TTL = 60000
-const EMPTY = { conc: new Map(), plans: new Map() }
+const EMPTY = { conc: new Map(), plans: new Map(), refunds: new Map() }
 
 export function getCachedStanding() { return cache || EMPTY }
 
@@ -15,7 +15,7 @@ export function loadStanding({ force = false } = {}) {
   if (!force && cache && Date.now() - cacheAt < TTL) return Promise.resolve(cache)
   if (inflight) return inflight
   inflight = (async () => {
-    const out = { conc: new Map(), plans: new Map() }
+    const out = { conc: new Map(), plans: new Map(), refunds: new Map() }
     try {
       const { data, error } = await supabase.from('fee_concession_register').select('*').eq('status', 'active')
       if (!error) for (const r of data || []) { const g = gccStr(r.gcc); if (!out.conc.has(g)) out.conc.set(g, []); out.conc.get(g).push(r) }
@@ -24,6 +24,15 @@ export function loadStanding({ force = false } = {}) {
       const { data, error } = await supabase.from('fee_installment_plans').select('id, gcc, status, installments').eq('status', 'active')
       const today = new Date().toLocaleDateString('en-CA')
       if (!error) for (const p of data || []) { const st = planState(p, today); if (st) out.plans.set(gccStr(p.gcc), st) }
+    } catch { /* table not there yet */ }
+    try {
+      // Approved / paid refunds, transfers and write-offs, filed under the source and the target GCC.
+      const { data, error } = await supabase.from('fee_refunds').select('*').in('status', ['approved', 'paid'])
+      if (!error) for (const r of data || []) for (const k of new Set([gccStr(r.gcc), r.target_gcc ? gccStr(r.target_gcc) : null])) {
+        if (!k) continue
+        if (!out.refunds.has(k)) out.refunds.set(k, [])
+        out.refunds.get(k).push(r)
+      }
     } catch { /* table not there yet */ }
     cache = out; cacheAt = Date.now(); inflight = null
     return out
