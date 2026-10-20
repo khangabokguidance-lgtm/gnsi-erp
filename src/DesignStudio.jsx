@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
@@ -47,6 +47,14 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const cats = ['All', ...Array.from(new Set(TEMPLATES.map(t => t.cat)))]
   const list = useMemo(() => TEMPLATES.filter(t =>
     (cat === 'All' || t.cat === cat) && (t.name + t.size + t.cat).toLowerCase().includes(q.toLowerCase())), [q, cat])
+
+  // Esc leaves full screen
+  useEffect(() => {
+    if (!focus) return
+    const onKey = e => { if (e.key === 'Escape') setFocus(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [focus])
 
   const open = (id, template = '') => { setTpl(template); setNonce(n => n + 1); setTool(id) }
   const cur = tools.find(t => t.id === tool) || tools[0]
@@ -135,6 +143,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
             <b style={{ color: GOLD }}>{cur.icon} {cur.label}</b>
             <span style={{ color: MUT }}>Design Studio</span>
             <span style={{ flex: 1 }} />
+            <button onClick={() => setFocus(f => !f)} title={focus ? 'Exit full screen (Esc)' : 'Full screen — more room for the canvas'} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>{focus ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {MAKER_FILE[cur.id] && (
               <button onClick={() => window.open(`${BASE}/${MAKER_FILE[cur.id]}`, '_blank')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>Open in new tab ↗</button>
             )}
