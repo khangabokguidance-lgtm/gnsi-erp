@@ -5,6 +5,7 @@ import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { courseOf } from './courseMap'
+import { monthlyCollection, keepRow } from './lib/reportMath'
 
 // Course to show for a student: the resolved course (a blank course on a
 // Udaan / Pragati batch counts as Foundation), else what is saved.
@@ -1457,7 +1458,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             <div style={{fontWeight:800,fontSize:13,color:'#1e3a6e',marginBottom:10}}>👨‍🎓 Select Student</div>
             <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2}/>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginTop:8}}>
-              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select>
+              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=><option key={c}>{c}</option>)}</select>
               <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Hostel</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select>
               <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option></select>
             </div>
@@ -1487,19 +1488,21 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
 
 
 // ── Reports Export Tab ────────────────────────────────────────────────────────
-function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo}){
+function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo,scopeGccs=null}){
   const stu=gcc=>students.find(s=>String(s.gcc_no)===String(gcc))
+  // Course / hostel / status filters and the date range apply to every register and summary.
+  // scopeGccs = set of GCC numbers kept by the filters (null = no filter).
+  const keep=keepRow({scope:scopeGccs,from:afDateFrom||'',to:afDateTo||''})
+  adm_flat_fees=adm_flat_fees.filter(r=>r.paid&&!r.reverted&&keep(r))
+  adm_course_fees=adm_course_fees.filter(r=>!r.reverted&&keep(r))
+  adm_fee_collections=adm_fee_collections.filter(r=>!r.reverted&&keep(r))
   const feeStatusRows=liveRows.map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Admission Fee':s.admTotal||0,'Flat Fees':s.flatTotal||0,'Course Fees':s.crsfTotal||0,'Total Paid':s.grandTotal,'Status':s.liveStatus,'Repeater':s.is_repeater?'Yes':'No'}))
-  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'Pending'}))
+  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'No payment yet','Note':s.is_repeater?'Repeater (admission waived)':(s.admission_date&&sessionOfDate(s.admission_date)===getSessionYear()&&new Date(s.admission_date).getMonth()!==3?`Late entry — joined ${String(s.admission_date).slice(0,10)}`:'')}))
   const flatRows=adm_flat_fees.filter(r=>r.paid).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Hostel Type':s?.hostel_type||'—','Month':r.month||'—','Year':r.year||'—','Amount':r.amount||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const crsfRows=adm_course_fees.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':r.course||'—','Hostel Type':s?.hostel_type||'—','For Month':r.for_month||'—','Year':r.year||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const admRows=adm_fee_collections.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Fee Type':r.fee_type||'—','Description':r.description||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
-  const courseRows=['Sainik','Navodaya','Foundation','Combined Course'].map(c=>{const ss=liveRows.filter(s=>s.course===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
-  const monthMap={};const addToMonth=(mk,type,amt)=>{if(!monthMap[mk])monthMap[mk]={'Month':mk,'Flat Fee':0,'Course Fee':0,'Admission Fee':0};monthMap[mk][type]=(monthMap[mk][type]||0)+amt}
-  adm_flat_fees.forEach(r=>{if(r.month&&r.year)addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0)})
-  adm_course_fees.forEach(r=>{if(r.for_month&&r.year)addToMonth(`${r.for_month} ${r.year}`,'Course Fee',Number(r.amount_paid)||0)})
-  adm_fee_collections.forEach(r=>{if(r.pay_date){const d=new Date(r.pay_date+'T00:00:00');addToMonth(`${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`,'Admission Fee',Number(r.amount_paid)||0)}})
-  const monthlyRows=Object.values(monthMap).map(m=>({...m,'Total':(m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)}))
+  const courseRows=['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=>{const ss=liveRows.filter(s=>courseOf(s)===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
+  const monthlyRows=monthlyCollection({flat:adm_flat_fees,course:adm_course_fees,adm:adm_fee_collections})   // collected per month, by payment date
   const from=afDateFrom||'2020-01-01',to=afDateTo||todayStr,inRange=d=>d&&d>=from&&d<=to
   const dailyRows=[
     ...adm_flat_fees.filter(r=>r.paid && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
@@ -1513,18 +1516,22 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[lastExport,setLastExport]=useState(null)
   const n=v=>Number(v||0).toLocaleString('en-IN')
   const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
-  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
+  const filtersOn=courseF!=='All'||hostelF!=='All'||statusF!=='All'
+  const scopeGccs=useMemo(()=>filtersOn?new Set(filteredLive.map(s=>String(parseInt(s.gcc_no)||0))):null,[filtersOn,filteredLive])
+  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo,scopeGccs}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr,scopeGccs])
   // Month-wise dues (same figures as the Fee Dashboard card) for the two Dues Reports below.
   const { monthwiseDues } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
   const duesLoading = monthwiseDues.some(m => m.loading)
   const dueSummaryRows = useMemo(() => duesSummaryRows(monthwiseDues), [monthwiseDues])
   const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || courseOf(st) === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
-  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  // Header tiles and report totals follow the filters: they are summed from the same rows the reports export.
+  const sumOf=(rows,k)=>rows.reduce((t,r)=>t+(Number(r[k])||0),0)
+  const admTotal=sumOf(reports.admRows,'Amount Paid'),flatTotal=sumOf(reports.flatRows,'Amount'),crsfTotal=sumOf(reports.crsfRows,'Amount Paid'),grandTotal=admTotal+flatTotal+crsfTotal
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
     {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a6e',reports:[
-      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':students.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
-      {id:'pending',name:'Pending Fee Students',desc:'Students who have not made any payment yet',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
+      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':filteredLive.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
+      {id:'pending',name:'Students With No Payment Yet',desc:'Students who have paid nothing so far (includes repeaters and late entries — see the Note column). For who owes money, use the Dues Reports below.',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
     ]},
     {group:'Collection Registers',icon:'📋',color:'#166534',reports:[
       {id:'flat_register',name:'Flat Fee Register',desc:'All monthly flat fee payments with dates, mode and reference',rows:()=>reports.flatRows,meta:()=>({'Total Records':reports.flatRows.length,'Total Amount':`₹${n(flatTotal)}`,'Generated':todayStr})},
@@ -1551,7 +1558,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:36}}>📤</div>
           <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Reports &amp; Export Centre</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div></div>
-          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:students.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:filteredLive.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
         </div>
       </div>
       <div style={{background:'#faf8f3',border:'1px solid #e8e3d8',borderRadius:12,padding:'14px 18px',marginBottom:20}}>
@@ -1563,6 +1570,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date From</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3}/></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date To</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3}/></div>
         </div>
+        <div style={{fontSize:11,color:'#5d6b82',marginTop:10}}>Course, hostel type and status limit every report below, and the date range limits every payment register and summary (by payment date). The two Dues Reports use the course and hostel filters only — dues are not date-based.</div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
           <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Today</button>
           <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #d1fae5',background:'#ecfdf5',color:'#059669',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 This Month</button>

@@ -144,3 +144,25 @@ test('refunds on the ledger: refund, sibling transfer both ways, write-off, carr
   assert.equal(writtenOffFor(5, rows, '2026-2027', sessionOf), 300)
   assert.equal(writtenOffFor(5, rows, '2025-2026', sessionOf), 0)
 })
+
+import { monthlyCollection, keepRow } from '../src/lib/reportMath.js'
+
+test('monthly collection: by payment date, oldest first, locale-free names', () => {
+  const rows = monthlyCollection({
+    flat: [{ month: 'February', year: 2027, amount: 47000, pay_date: '2026-12-20' }],       // paid in advance in December
+    course: [{ for_month: 'August', year: 2026, amount_paid: 5000, pay_date: '2026-08-05' }, { for_month: 'September', year: 2026, amount_paid: 5000 }],  // no pay_date → fee month
+    adm: [{ amount_paid: 6000, pay_date: '2026-08-02' }],
+  })
+  assert.deepEqual(rows.map(r => r.Month), ['August 2026', 'September 2026', 'December 2026'])
+  assert.equal(rows[0]['Course Fee'], 5000); assert.equal(rows[0]['Admission Fee'], 6000); assert.equal(rows[0].Total, 11000)
+  assert.equal(rows[2]['Flat Fee'], 47000)
+})
+
+test('report filters: scope by student and by payment date', () => {
+  const keep = keepRow({ scope: new Set(['5']), from: '2026-08-01', to: '2026-08-31' })
+  assert.ok(keep({ adm_app_id: '05', pay_date: '2026-08-10' }))
+  assert.ok(!keep({ adm_app_id: '6', pay_date: '2026-08-10' }))     // other student
+  assert.ok(!keep({ adm_app_id: '5', pay_date: '2026-09-01' }))     // outside range
+  assert.ok(!keep({ adm_app_id: '5' }))                             // no date while a range is set
+  assert.ok(keepRow()({ adm_app_id: '9' }))                         // no filters keeps everything
+})
