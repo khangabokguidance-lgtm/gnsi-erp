@@ -47,6 +47,7 @@ import { useVerifiedAdmin } from './useVerifiedAdmin'
 import FeeReminders from './FeeReminders'
 import FeeInstallments from './FeeInstallments'
 import FeeDayClose from './FeeDayClose'
+import FeeLateEntries from './FeeLateEntries'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
@@ -5085,6 +5086,7 @@ export default function Fees() {
     // not just admin/accounts, could open and export it. Restricted the
     // same way anomaly/activity/warnings already are below.
     ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
@@ -5763,6 +5765,7 @@ export default function Fees() {
           onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
       {tab === 'reminders' && isAdmin && <FeeReminders students={students} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />}
       {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
