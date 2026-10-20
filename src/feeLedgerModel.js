@@ -5,7 +5,7 @@
 // session, Feb/Mar are flat-fee months, a month isn't due until it starts, and
 // months before admission aren't charged.
 import { standingWaiver } from './lib/standingMath'
-import { instituteNow, admRowKind } from './lib/feeMath'
+import { instituteNow, admRowKind, excludeRepeaterFees } from './lib/feeMath'
 import { getInstitute, feeDueDay, ordinal, sysValue } from './systemSettings'
 import {
   MONTHS_LIST, isFlatFeeMonth, feeMonthYearForSession, sessionStartYear,
@@ -109,7 +109,7 @@ export function buildRegister(student, entries, session, rates, now = instituteN
   const admEntries = entries.filter(x => x.kind === 'admission')
   const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
   // A repeater's admission fee is waived.
-  const admExpected = student.is_repeater ? 0 : Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
+  const admExpected = Number(excludeRepeaterFees(student.is_repeater, [{ kind: 'admission', amount: Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE) }]).items[0]?.amount ?? 0)
   const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
   const admission = admSession === session
     ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }

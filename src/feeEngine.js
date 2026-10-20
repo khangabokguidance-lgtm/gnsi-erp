@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
-import { balanceSuffix, balanceRowId } from './lib/feeMath'
+import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, BATCH_ALIASES } from './courseMap'
@@ -1075,12 +1075,19 @@ export const collectFee = async ({
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
   txnRef = null, collectedBy = 'Admin', staffId = null,
   studentId = null, receiptNo, items = [], skipClashCheck = false,
+  isRepeater = false, // repeaters pay no admission fee or admission items — those lines are left out
   skipHold = false,   // true for money already received (online) or an admin-approved request being collected
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
   if (!receiptNo) throw new Error('collectFee: receiptNo is required')
   if (!items.length) throw new Error('collectFee: at least one item is required')
+  const repeater = excludeRepeaterFees(isRepeater, items)
+  items = repeater.items
+  if (!items.length) {
+    if (repeater.excluded.length) return { sections: [], total: 0, skipped: repeater.excluded.map(i => i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item') + ' (repeater — waived)') }
+    throw new Error('collectFee: at least one item is required')
+  }
   assertSanePayDate(payDate)
   for (const it of items) {
     it.amount = assertSaneAmount(it.amount, `${it.label || it.kind || 'Fee'} amount`)
@@ -1157,7 +1164,7 @@ export const collectFee = async ({
   }
 
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
-  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []
+  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = repeater.excluded.map(i => `${i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item')} (repeater — waived)`)
 
   // ✦ Admin-visible audit trail for every successful collection — not just
   // reverts/corrections/deletes/underpayments. Previously collectFee wrote

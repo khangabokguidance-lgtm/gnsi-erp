@@ -23,7 +23,7 @@ import {
   MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession, normalizeSessionYear,
 } from './feeEngine'
 import { sessionOfDate, sessionOfMonth } from './feeLedgerModel'
-import { instituteNow, admRowKind } from './lib/feeMath'
+import { instituteNow, admRowKind, excludeRepeaterFees } from './lib/feeMath'
 
 // True when a signed-in staff session exists (Supabase Auth, Phase 1).
 async function hasStaffSession() {
@@ -195,7 +195,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   const admissionRows = (admFeeRows.data || []).filter(r => admRowKind(r) === 'admission')
   const admissionPaidAmount = admissionRows.reduce((s, r) => s + Number(r.amount_paid || 0), 0)
   // A repeater's admission fee is waived (as the collection screens say).
-  const admissionExpected = student.is_repeater ? 0 : (rates.admissionFee ?? ADM_FEE_BASE)
+  const admissionExpected = excludeRepeaterFees(student.is_repeater, [{ kind: 'admission', amount: rates.admissionFee ?? ADM_FEE_BASE }]).items[0]?.amount ?? 0
   const admissionPaid = admissionPaidAmount >= admissionExpected
   const admissionDue = Math.max(0, admissionExpected - admissionPaidAmount)
 

@@ -3546,7 +3546,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
       className: student.batch || '', course: student.course || '',
       hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
-      studentId: student.id, receiptNo, items,
+      studentId: student.id, receiptNo, items, isRepeater,
       skipHold: !!(mode || ref),   // online / already-received money is never held back
     })
 

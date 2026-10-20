@@ -70,3 +70,13 @@ test('institute clock reads as IST whatever the device zone', () => {
   const n = instituteNow(new Date('2026-03-31T20:00:00Z'))   // 01:30 IST on 1 April
   assert.equal(n.getMonth(), 3); assert.equal(n.getDate(), 1)
 })
+
+import { excludeRepeaterFees, repeaterWaivedTotal } from '../src/lib/feeMath.js'
+
+test('repeater: admission and items excluded, monthly fees kept', () => {
+  const items = [{ kind: 'admission', amount: 6000 }, { kind: 'item', amount: 3000 }, { kind: 'flat', amount: 100 }, { kind: 'course', amount: 50 }, { kind: 'advance', amount: 10 }]
+  const r = excludeRepeaterFees(true, items)
+  assert.deepEqual(r.items.map(i => i.kind), ['flat', 'course', 'advance'])
+  assert.equal(repeaterWaivedTotal(items), 9000)
+  assert.equal(excludeRepeaterFees(false, items).items.length, 5)
+})

@@ -778,7 +778,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -859,7 +859,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -950,7 +950,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -979,7 +979,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--', className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Nothing owed, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
