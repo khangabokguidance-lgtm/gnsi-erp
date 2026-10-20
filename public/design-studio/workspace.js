@@ -1,29 +1,38 @@
 // workspace.js — more room for the canvas in the Backdrop / Banner / Invitation makers.
-//  • narrower side panels that scale with the window (clamp) instead of fixed / growing widths
-//  • header buttons to hide the left panel, the right inspector, or both ("Canvas only"); remembered
-//  • if the page was fitted to the window, it is re-fitted after the panels or window change size
+//  • the inspector is no longer a permanent right-hand column: it floats as a ribbon ABOVE the
+//    canvas and only appears while something is selected (✕ closes it until the next selection)
+//  • narrower, window-scaled left panel with a header button (◧) to hide it
+//  • a fitted page is re-fitted when the panel or window changes size
 (function () {
   var app = document.querySelector('.app'), header = document.querySelector('header'), scroller = document.getElementById('scroller')
-  if (!app || !header || !scroller) return
+  var work = document.getElementById('work'), right = document.getElementById('right')
+  if (!app || !header || !scroller || !work || !right) return
   var KEY = 'ds_panels', st = {}
   try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {} } catch (e) { st = {} }
 
+  var initialFit = wasFitted()   // measure before the layout changes
   var css = document.createElement('style')
   css.textContent =
-    '.app{grid-template-columns:clamp(210px,17vw,280px) minmax(0,1fr) clamp(230px,20vw,300px)!important}' +
-    '.app.hl{grid-template-columns:minmax(0,1fr) clamp(230px,20vw,300px)!important}' +
-    '.app.hr{grid-template-columns:clamp(210px,17vw,280px) minmax(0,1fr)!important}' +
-    '.app.hl.hr{grid-template-columns:minmax(0,1fr)!important}' +
-    '.app.hl>#left,.app.hr>#right{display:none}' +
-    '.dsp{display:inline-flex;gap:4px;margin-left:auto;align-items:center}' +
-    '.dsp .btn{white-space:nowrap}'
-
-  // Was the page fitted to the window before our narrower panels change its size?
-  // (evaluated after the helpers below are defined — see the call before apply(false))
+    '.app{grid-template-columns:clamp(210px,17vw,280px) minmax(0,1fr)!important}' +
+    '.app.hl{grid-template-columns:minmax(0,1fr)!important}' +
+    '.app.hl>#left{display:none}' +
+    // the inspector ribbon: floats over the top of the canvas, so selecting never moves the page
+    '#work>#right{position:absolute;left:10px;right:10px;top:8px;z-index:30;display:none;flex-direction:column;border:1px solid var(--line,#e5e7ee);border-radius:12px;box-shadow:0 10px 30px rgba(20,28,60,.18);overflow:hidden;background:#fff}' +
+    '#work>#right.show{display:flex}' +
+    '#work>#right>.tabs{display:flex;align-items:center;border-bottom:1px solid var(--line,#e5e7ee)}' +
+    '#work>#right>.tabs button{padding:7px 14px;border-bottom:0!important;flex:0 0 auto}' +
+    '#work>#right .rib-x{margin-left:auto;margin-right:8px;border:0;background:none;font-size:16px;cursor:pointer;color:var(--mut,#667)}' +
+    '#work>#right #insp,#work>#right #insBody{display:block!important;column-width:240px;column-gap:22px;column-fill:auto;height:clamp(110px,22vh,210px);overflow-x:auto;overflow-y:hidden;padding:10px 14px 12px}' +
+    '#work>#right #insEmpty{display:none!important}' +
+    '#work>#right .sec,#work>#right .row,#work>#right .chk{break-inside:avoid}' +
+    '#work>#right h4{break-after:avoid;margin-top:6px}' +
+    '.dsp{display:inline-flex;gap:4px;align-items:center;flex:none}.dsp .btn{white-space:nowrap}'
+  document.head.appendChild(css)
+  work.insertBefore(right, work.firstChild)
 
   // The pages keep their zoom state private, so read it from the screen: the page counts as
-  // "fitted" when it fills the canvas on one axis (leaving the usual margin), and refitting is
-  // a click on the page's own Fit button.
+  // "fitted" when it fills the canvas on one axis (leaving the usual margin); refitting is a
+  // click on the page's own Fit button.
   function wasFitted() {
     var pg = document.getElementById('pg') || document.getElementById('page')
     if (!pg) return false
@@ -38,33 +47,44 @@
     }) })
   }
 
-  var initialFit = wasFitted()   // measure first, then change the layout
-  document.head.appendChild(css)
+  // ── inspector ribbon: show only while something is selected ──
+  var dismissed = false
+  function hasSelection() {
+    var empty = document.getElementById('insEmpty')                 // banner / invitation
+    if (empty) return empty.style.display === 'none'   // set inline by the page; our CSS hides #insEmpty itself
+    var t = document.getElementById('inspTitle')                    // backdrop: title is "Inspector" when nothing is selected
+    return !!t && t.textContent.trim() !== 'Inspector'
+  }
+  function syncRibbon() {
+    var sel = hasSelection()
+    if (!sel) dismissed = false
+    right.classList.toggle('show', sel && !dismissed)
+  }
+  var tabs = right.querySelector('.tabs')
+  if (tabs) { var x = document.createElement('button'); x.className = 'rib-x'; x.type = 'button'; x.textContent = '✕'; x.title = 'Close the inspector (reopens when you select something else)'; x.onclick = function () { dismissed = true; syncRibbon() }; tabs.appendChild(x) }
+  new MutationObserver(syncRibbon).observe(right, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] })
 
+  // ── left panel toggle ──
   function apply(wasFit) {
-    app.classList.toggle('hl', !!st.l); app.classList.toggle('hr', !!st.r)
-    bl.classList.toggle('on', !!st.l); br.classList.toggle('on', !!st.r); bc.classList.toggle('on', !!st.l && !!st.r)
-    try { localStorage.setItem(KEY, JSON.stringify(st)) } catch (e) { /* storage blocked */ }
+    app.classList.toggle('hl', !!st.l)
+    bl.classList.toggle('on', !!st.l)
+    try { localStorage.setItem(KEY, JSON.stringify({ l: !!st.l })) } catch (e) { /* storage blocked */ }
     refit(wasFit)
   }
   function mk(label, title) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = label; b.title = title; b.type = 'button'; return b }
-  var bl = mk('◧ Panel', 'Hide / show the left panel'), br = mk('Inspector ◨', 'Hide / show the inspector'), bc = mk('⤢ Canvas only', 'Hide both panels for the biggest workspace')
+  var bl = mk('◧', 'Hide / show the left panel for the biggest canvas')
   bl.onclick = function () { var f = wasFitted(); st.l = !st.l; apply(f) }
-  br.onclick = function () { var f = wasFitted(); st.r = !st.r; apply(f) }
-  bc.onclick = function () { var f = wasFitted(); var both = st.l && st.r; st.l = st.r = !both; apply(f) }
   var wrap = document.createElement('span'); wrap.className = 'dsp'
-  wrap.appendChild(bl); wrap.appendChild(bc); wrap.appendChild(br)
-  header.appendChild(wrap)
+  wrap.appendChild(bl)
+  header.insertBefore(wrap, header.children[1] || null)   // next to the title: the right end of the header is already full
 
   // Keep a fitted page fitted when the window (or browser zoom) changes.
-  var last = scroller.clientWidth + 'x' + scroller.clientHeight
+  var last = scroller.clientWidth + 'x' + scroller.clientHeight, fittedBefore = true
   if (window.ResizeObserver) new ResizeObserver(function () {
     var now = scroller.clientWidth + 'x' + scroller.clientHeight
-    if (now !== last) { last = now; if (wasFittedBefore) refit(true) }
+    if (now !== last) { last = now; if (fittedBefore) refit(true) }
   }).observe(scroller)
-  // wasFitted() can't be evaluated after the size already changed, so remember it after each fit-relevant moment.
-  var wasFittedBefore = true
-  setInterval(function () { var s = scroller.clientWidth + 'x' + scroller.clientHeight; if (s === last) wasFittedBefore = wasFitted() }, 500)
+  setInterval(function () { if (scroller.clientWidth + 'x' + scroller.clientHeight === last) fittedBefore = wasFitted() }, 500)
 
-  apply(initialFit)
+  apply(initialFit); syncRibbon()
 })()
