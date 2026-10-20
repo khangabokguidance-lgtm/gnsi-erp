@@ -18,7 +18,7 @@ import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
-import { canonicalBatch, courseOf } from './courseMap'
+import { canonicalBatch, courseOf, COURSE_ORDER } from './courseMap'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -95,7 +95,7 @@ const CLASS_OPTIONS    = ['Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pra
 // course on a known batch is filled in (Udaan → Foundation).
 const classOf = s => canonicalBatch(s?.batch || s?.class_name)
 const courseFor = s => s?.course || (courseOf(s) !== 'Unassigned' ? courseOf(s) : '')
-const COURSES          = ['Sainik','Navodaya','Foundation','Combined Course']
+const COURSES          = COURSE_ORDER
 const HOSTEL_TYPES     = ['Boarder','Day Scholar','Day Boarder']
 const SOURCE_OPTIONS   = ['Walk-in','Phone Call','WhatsApp','Referral / Word of Mouth','Facebook / Instagram','Website','Google Search','School Fair / Event','Pamphlet / Poster','Other']
 const PURPOSE_OPTIONS  = ['Admission Enquiry','Fee Payment','Meet Student','Meet Principal','Meet Teacher / Staff','Meet Warden','Document Submission','Item Delivery','Parent Teacher Meeting','General Visit','Other']

@@ -29,7 +29,8 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { printApplicationReceipt as printApplicationReceiptDoc } from './applicationReceipt'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
-import { canonicalBatch } from './courseMap'
+import { canonicalBatch, courseStructure } from './courseMap'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
 
@@ -464,13 +465,12 @@ const RELIGIONS = ['--','Hindu','Muslim','Christian','Meitei Sanamahism','Buddhi
 const MOTHER_TONGUES = ['--','Meitei','Bengali','Nepali','Hindi','Tangkul','Thadou','Other']
 const QUOTA_TYPES = ['--','Open','Sports','Defence Ward','Staff Ward','NRI','Other']
 const REFERRAL_SOURCES = ['--','Social Media','Newspaper Ad','Alumni','Walk-in','Teacher Referral','Parent Referral','Other']
-const COURSE_STRUCTURE = {
-  // Plain 'Lakshya' is the older, unsplit batch — not offered for new admissions.
-  Navodaya:          { subtypes:['Lakshya A','Lakshya B','Umeed'], color:T.indigo[600], bg:T.indigo[50]  },
-  Sainik:            { subtypes:['Achiever','Leader','Champion'],  color:T.emerald[600],bg:T.emerald[50] },
-  Foundation:        { subtypes:['Udaan','Pragati'],                 color:T.violet[600], bg:T.violet[50]  },
-  'Combined Course': { subtypes:[],                               color:T.amber[600],  bg:T.amber[50]   },
-}
+const COURSE_STRUCTURE = courseStructure({
+  Navodaya:          { color:T.indigo[600], bg:T.indigo[50]  },
+  Sainik:            { color:T.emerald[600],bg:T.emerald[50] },
+  Foundation:        { color:T.violet[600], bg:T.violet[50]  },
+  'Combined Course': { color:T.amber[600],  bg:T.amber[50]   },
+}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'] })   // batches come from courseMap's one standard list
 const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati','Class 6','Class 7','Class 8','Class 9','Class 10']
 const HOSTEL_TYPES = ['Day Scholar','Boarder','Day Boarder']
 const HOSTEL_STYLES = {
@@ -4026,6 +4026,7 @@ function StudentLedgerView({ apps, darkMode }) {
 
 
 export default function Admissions() {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   const isMobile = useMobile()
   const isTablet = useTablet()
   const [moduleView,     setModuleView]    = useState('newApplication') // 'newApplication' | 'applications' | 'ledger'

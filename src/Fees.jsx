@@ -4,7 +4,7 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
-import { courseOf } from './courseMap'
+import { courseOf, courseStructure } from './courseMap'
 import { monthlyCollection, keepRow } from './lib/reportMath'
 
 // Course to show for a student: the resolved course (a blank course on a
@@ -59,6 +59,7 @@ import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
 import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -199,12 +200,7 @@ const DRESS_ITEMS = [
   { id: 'dk5', name: 'Track Suit Set 2', price: 600 },
 ]
 
-const COURSE_STRUCTURE = {
-  Navodaya:          { subtypes: ['Lakshya A', 'Lakshya B', 'Lakshya', 'Umeed'] }, // 'Lakshya' = older unsplit records
-  Sainik:            { subtypes: ['Achiever', 'Leader', 'Champion'] },
-  Foundation:        { subtypes: ['Udaan', 'Pragati'] },
-  'Combined Course': { subtypes: [] },
-}
+const COURSE_STRUCTURE = courseStructure({}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'], includeLegacy: true })   // 'Lakshya' kept for older records
 
 const ADM_FEE_BASE   = 6000
 const PROSPECTUS_FEE = 200
@@ -4672,6 +4668,7 @@ function PastStudentDuesTab({ isAdmin, onCollect, feeRows }) {
 }
 
 export default function Fees() {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   useSystemSettings() // Razorpay / WhatsApp switches apply as soon as they're saved
   const w        = useWindowWidth()
   const isMobile = w < 768

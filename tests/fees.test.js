@@ -166,3 +166,21 @@ test('report filters: scope by student and by payment date', () => {
   assert.ok(!keep({ adm_app_id: '5' }))                             // no date while a range is set
   assert.ok(keepRow()({ adm_app_id: '9' }))                         // no filters keeps everything
 })
+
+import { mergeLiveBatches } from '../src/lib/courseCatalog.js'
+
+test('course batches: new Active batches are added to the standard lists, nothing removed', () => {
+  const s = { Sainik: { subtypes: ['Achiever', 'Leader'] }, 'Combined Course': ['—'], Foundation: ['Udaan'] }
+  const rows = [
+    { course: 'Sainik', subtype: 'Champion', status: 'Active' },
+    { course: 'Sainik', subtype: 'Leader', status: 'Active' },            // already there
+    { course: 'Sainik', subtype: 'Old batch', status: 'Closed' },          // not active
+    { course: 'Combined Course', subtype: 'Combo A', status: 'Active' },   // replaces the placeholder
+    { course: 'Mystery', subtype: 'X', status: 'Active' },                 // unknown course is ignored
+  ]
+  assert.equal(mergeLiveBatches(s, rows), true)
+  assert.deepEqual(s.Sainik.subtypes, ['Achiever', 'Leader', 'Champion'])
+  assert.deepEqual(s['Combined Course'], ['Combo A'])
+  assert.deepEqual(s.Foundation, ['Udaan'])
+  assert.equal(mergeLiveBatches(s, rows), false)                          // second run changes nothing
+})

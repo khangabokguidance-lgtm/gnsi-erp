@@ -18,7 +18,8 @@ import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
-import { courseOf, batchOf, canonicalBatch, isStandardBatch, handoffToAttendance, takeStudentsHandoff } from './courseMap'
+import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff } from './courseMap'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -551,14 +552,12 @@ async function uploadPhotoToGoogleDriveStudents(file, identifier) {
 }
 
 
-const COURSE_STRUCTURE = {
-  // Plain 'Lakshya' is the older, unsplit batch — not offered for new records. A
-  // student who already has it keeps it as the form's current value.
-  Navodaya:         { subtypes:['Lakshya A','Lakshya B','Umeed'], color:'#2563EB', bg:'#EFF6FF' },
-  Sainik:           { subtypes:['Achiever','Leader','Champion'], color:'#059669', bg:'#ECFDF5' },
-  Foundation:       { subtypes:['Udaan','Pragati'],                color:'#7C3AED', bg:'#F5F3FF' },
-  'Combined Course':{ subtypes:[],                               color:'#D97706', bg:'#FFFBEB' },
-}
+const COURSE_STRUCTURE = courseStructure({
+  Navodaya:         { color:'#2563EB', bg:'#EFF6FF' },
+  Sainik:           { color:'#059669', bg:'#ECFDF5' },
+  Foundation:       { color:'#7C3AED', bg:'#F5F3FF' },
+  'Combined Course':{ color:'#D97706', bg:'#FFFBEB' },
+}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'] })   // batches come from courseMap's one standard list
 
 const PROMOTION_MAP = { 'Lakshya':'Umeed','Lakshya A':'Umeed','Lakshya B':'Umeed','Achiever':'Leader','Leader':'Champion','Udaan':'Pragati' }
 const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati']
@@ -5096,6 +5095,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
 }
 
 export default function Students({ onNavigate: goToModule } = {}) {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   const { role, can, user }=usePermissions()
   const isMobile=useIsMobile()
 

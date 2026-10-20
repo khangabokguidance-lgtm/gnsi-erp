@@ -7,7 +7,7 @@ import { supabase } from './supabase'
 import { StaffAvatar } from './staffPhotos'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
-import { courseOf, canonicalBatch, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { courseOf, canonicalBatch, courseBatchLists, takeAttendanceHandoff, handoffToStudents } from './courseMap'
 import { drawPremiumCertificate, certificatePdf } from './premiumCertificate'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -17,12 +17,7 @@ import {
 
 // ─── COURSE STRUCTURE ────────────────────────────────────────
 
-const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Pragati', 'Udaan'],
-  'Combined Course': ['—'],
-}
+const COURSE_STRUCTURE = courseBatchLists()
 const COURSES      = Object.keys(COURSE_STRUCTURE)
 const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 
