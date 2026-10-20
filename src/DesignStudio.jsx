@@ -40,6 +40,9 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const [tpl, setTpl] = useState('')
   const [nonce, setNonce] = useState(0)     // remounts the editor iframe when a new template is picked
   const [focus, setFocus] = useState(false)
+  // The tool rail floats over the studio and can be tucked away for a bigger workspace (remembered).
+  const [railHidden, setRailHidden] = useState(() => { try { return localStorage.getItem('ds_rail') === 'hidden' } catch { return false } })
+  const setRail = hidden => { setRailHidden(hidden); try { localStorage.setItem('ds_rail', hidden ? 'hidden' : 'open') } catch { /* storage blocked */ } }
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
 
@@ -118,8 +121,14 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   return (
     <div style={focus
       ? { position: 'fixed', inset: 0, zIndex: 3000, display: 'flex', background: INK }
-      : { display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
-      <nav style={{ width: 84, flex: 'none', background: RAIL, borderRight: `1px solid ${LINE}`, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4 }}>
+      : { position: 'relative', display: 'flex', height: 'calc(100vh - 60px)', minHeight: 580, background: INK, borderRadius: 0 }}>
+      {railHidden && (
+        <button onClick={() => setRail(false)} title="Show the tool rail" aria-label="Show the tool rail"
+          style={{ position: 'absolute', left: 10, top: 10, zIndex: 60, width: 44, height: 44, borderRadius: 14, border: `1px solid ${LINE}`, background: RAIL, color: '#fff', fontSize: 20, cursor: 'pointer', boxShadow: '0 10px 28px rgba(0,0,0,.35)' }}>☰</button>
+      )}
+      <nav style={{ position: 'absolute', left: 10, top: 10, bottom: 10, zIndex: 60, width: 84, background: RAIL, border: `1px solid ${LINE}`, borderRadius: 18, boxShadow: '0 16px 40px rgba(0,0,0,.40)', overflowY: 'auto', overflowX: 'hidden',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', gap: 4, transition: 'transform .2s ease, opacity .2s ease',
+        ...(railHidden ? { transform: 'translateX(calc(-100% - 20px))', opacity: 0, pointerEvents: 'none' } : null) }}>
         <div title="Design Studio" style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg,#b8892b,${GOLD})`, display: 'grid', placeItems: 'center', fontSize: 22, marginBottom: 10 }}>🎨</div>
         {tools.map(t => (
           <button key={t.id} onClick={() => { setTpl(''); setTool(t.id) }} title={t.label}
@@ -130,13 +139,18 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
+        <button onClick={() => setRail(true)} title="Hide the rail for more room"
+          style={{ width: 72, padding: '10px 0', border: 0, cursor: 'pointer', borderRadius: 12, background: 'transparent', color: MUT }}>
+          <div style={{ fontSize: 20 }}>⇤</div>
+          <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>Hide</div>
+        </button>
         <button onClick={() => setFocus(f => !f)} title={focus ? 'Exit full screen' : 'Full screen'}
           style={{ width: 72, padding: '10px 0', border: 0, cursor: 'pointer', borderRadius: 12, background: 'transparent', color: MUT }}>
           <div style={{ fontSize: 20 }}>{focus ? '🗗' : '⛶'}</div>
           <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600 }}>{focus ? 'Exit' : 'Full screen'}</div>
         </button>
       </nav>
-      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', marginLeft: railHidden ? 0 : 104, transition: 'margin-left .2s ease' }}>
         {cur.id !== 'home' && (
           <div style={{ height: 44, flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', background: PANEL, borderBottom: `1px solid ${LINE}`, color: '#dfe5f3', fontSize: 13 }}>
             <button onClick={() => setTool('home')} style={{ ...quick, padding: '5px 12px', fontSize: 12 }}>← Home</button>
