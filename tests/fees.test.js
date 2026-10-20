@@ -80,3 +80,27 @@ test('repeater: admission and items excluded, monthly fees kept', () => {
   assert.equal(repeaterWaivedTotal(items), 9000)
   assert.equal(excludeRepeaterFees(false, items).items.length, 5)
 })
+
+import { detectLateEntryStudents } from '../src/lib/lateEntry.js'
+
+test('late entry: joined mid-session, fees start from the joining month', () => {
+  const students = [
+    { gcc_no: 1, name: 'Early', admission_date: '2026-04-10' },
+    { gcc_no: 2, name: 'Late paid', admission_date: '2026-08-12' },
+    { gcc_no: 3, name: 'Late none', admission_date: '2026-09-02' },
+    { gcc_no: 4, name: 'Last session', admission_date: '2025-08-01' },
+    { gcc_no: 5, name: 'Late skipped', admission_date: '2026-06-20' },
+  ]
+  const course = [
+    { adm_app_id: '2', for_month: 'August', year: 2026, amount_paid: 5000, reverted: false },
+    { adm_app_id: '5', for_month: 'August', year: 2026, amount_paid: 5000, reverted: false },
+    { adm_app_id: '5', for_month: 'June', year: 2026, amount_paid: 5000, reverted: true },
+  ]
+  const r = detectLateEntryStudents(students, course, [], '2026-2027')
+  assert.deepEqual(r.map(x => x.gcc_no), [3, 5, 2])         // not-started first
+  const by = Object.fromEntries(r.map(x => [x.gcc_no, x]))
+  assert.equal(by[2].firstFeeMonth, 'August 2026'); assert.equal(by[2].started, true); assert.equal(by[2].skippedJoiningMonth, false)
+  assert.equal(by[2].monthsNotCharged.length, 4)
+  assert.equal(by[3].started, false)
+  assert.equal(by[5].skippedJoiningMonth, true)             // joined June, first paid August
+})
