@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import StudentJump from './StudentJump'
+import { NAVY, cell, head, cardFlush as card, btn } from './feeTheme'
 
 // Admin "Fees activity digest": read-only summary of fee corrections, reverts,
 // concessions, short-payments and hostel-type changes for the last 7 / 30 days,
 // with a "Needs attention" list of suspicious patterns.
 
-const NAVY = '#1e3a6e'
 const n = v => Number(v || 0).toLocaleString('en-IN')
 const norm = v => String(v || '').trim().toLowerCase()
 
@@ -104,8 +104,6 @@ function downloadCsv(rows, filename) {
 
 const fmtAt = s => { const d = new Date(s); return isNaN(d) ? (s || '—') : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) }
 
-const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
 
 const Tile = ({ label, value, sub, color = NAVY }) => (
   <div style={{ flex: '1 1 150px', background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, padding: '12px 14px' }}>
@@ -218,8 +216,6 @@ export default function FeeDigest({ students = [], isAdmin, onCollect, onLedger 
     receipt: e.receipt, old_amount: e.oldAmt ?? '', new_amount: e.newAmt ?? '', amount_or_shortfall: e.amount ?? '', detail: e.detail,
   }))
 
-  const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
-  const card = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }
 
   const k = model?.kpi
   const activeFlag = model?.flags.find(f => f.key === openFlag)

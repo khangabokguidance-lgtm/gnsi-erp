@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import StudentJump from './StudentJump'
+import { NAVY, cell, head, cardFlush as card, btn } from './feeTheme'
 
 // April-changeover PLANNER. Read-only: nothing here writes to the database.
 // Plan choices are local component state; checklist ticks live in localStorage.
 
-const NAVY = '#1e3a6e'
 const n = v => Number(v || 0).toLocaleString('en-IN')
 const s = v => String(v ?? '').trim()
 const LS_KEY = 'gnsi_session_rollover_checklist'
@@ -101,11 +101,7 @@ export default function SessionRollover({ students = [], liveRows = [], isAdmin,
     next_session: sess.next, plan: choiceOf(p), repeater: p.repeater ? 'Yes' : 'No', dues_carried_forward: p.due,
   })), `session_rollover_plan_${sess.next}.csv`)
 
-  const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-  const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
-  const card = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }
   const cardHead = { padding: '12px 16px', borderBottom: '1px solid #e8e3d8', fontSize: 14, fontWeight: 800, color: NAVY }
-  const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
   const choiceColor = { Promote: '#16a34a', Repeat: '#b45309', Leaving: '#dc2626' }
 
   return (

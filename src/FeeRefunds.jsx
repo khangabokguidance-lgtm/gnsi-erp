@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { upsertAccount } from './feeEngine'
 import { CONCESSION_SELF_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
 import StudentJump from './StudentJump'
+import { cardFlush as card, inputFull as inp, label as lbl, btn, btnPrimary, cell, head } from './feeTheme'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_refunds/.test(err.message || ''))
 const SETUP_MSG = 'Run supabase/migrations/20261009_fee_dayclose_refunds_register.sql in the Supabase SQL editor to switch on refunds.'
@@ -25,13 +26,6 @@ function downloadCsv(rows, filename) {
   a.download = `${filename}.csv`; a.click(); URL.revokeObjectURL(a.href)
 }
 
-const card = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }
-const inp = { padding: '8px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', width: '100%' }
-const lbl = { fontSize: 11, fontWeight: 700, color: '#5d6b82', display: 'block' }
-const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
-const btnPrimary = { ...btn, background: '#1e3a6e', color: 'white', border: '1px solid #1e3a6e' }
-const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
 
 export default function FeeRefunds({ students, liveRows, isAdmin, currentUser, onCollect, onLedger }) {
   const me = currentUser?.userName || currentUser?.name || 'Admin'

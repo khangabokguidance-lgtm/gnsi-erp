@@ -4,20 +4,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { loadStanding } from './feeStanding'
 import { supabase } from './supabase'
 import StudentJump from './StudentJump'
+import { NAVY, BORDER, card, label, input, btnFn as btn, th, td } from './feeTheme'
 
 const n = v => Number(v || 0).toLocaleString('en-IN')
-const NAVY = '#1e3a6e'
-const BORDER = '#e8e3d8'
 const INSTITUTE = 'Guidance Navodaya & Sainik Institute (GNSI)'
 const SETUP_MSG = 'Run supabase/migrations/20261008_fee_reminders_installments.sql in the Supabase SQL editor to switch on reminder history and promise-to-pay.'
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_reminders/.test(err.message || ''))
 
-const card = { background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, padding: 14 }
-const label = { fontSize: 10, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4, display: 'block' }
-const input = { padding: '7px 10px', border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, background: '#fff', minWidth: 0 }
-const btn = (bg = NAVY, fg = '#fff') => ({ padding: '7px 13px', borderRadius: 8, border: 'none', background: bg, color: fg, fontWeight: 700, fontSize: 12, cursor: 'pointer' })
-const th = { padding: '8px 10px', textAlign: 'left', fontSize: 10.5, fontWeight: 800, color: '#fff', background: NAVY, whiteSpace: 'nowrap' }
-const td = { padding: '8px 10px', fontSize: 12, borderBottom: `1px solid ${BORDER}`, verticalAlign: 'top' }
 
 const DEFAULT_TEMPLATE = `Dear Parent,
 
