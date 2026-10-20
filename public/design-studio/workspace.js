@@ -11,7 +11,6 @@
   var KEY = 'ds_panels', st = {}
   try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {} } catch (e) { st = {} }
 
-  var initialFit = wasFitted()   // measure before the layout changes
   var css = document.createElement('style')
   css.textContent =
     // the left panel floats as a rounded card over the editor; the canvas keeps the room beside it,
@@ -40,16 +39,21 @@
   document.head.appendChild(css)
   work.insertBefore(right, work.firstChild)
 
-  // The pages keep their zoom state private, so read it from the screen: the page counts as
-  // "fitted" when it fills the canvas on one axis (leaving the usual margin); refitting is a
-  // click on the page's own Fit button.
-  function wasFitted() {
-    var pg = document.getElementById('pg') || document.getElementById('page')
-    if (!pg) return false
-    var r = pg.getBoundingClientRect(), w = scroller.clientWidth, h = scroller.clientHeight
-    if (!r.width || r.width > w + 2 || r.height > h + 2) return false
-    return (r.width >= w - 130 && r.width <= w - 30) || (r.height >= h - 150 && r.height <= h - 30)
-  }
+  // Is the page "fitted to the window" (so it should re-fit when the layout changes)? The pages keep their
+  // zoom private, so we track the user's intent: true at load (the pages fit themselves), false as soon as
+  // they zoom with +, −, 100%, Ctrl+wheel / pinch or the + / − keys, true again when they press Fit.
+  // Re-fitting is a click on the page's own Fit button.
+  var fitted = true
+  function wasFitted() { return fitted }
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('#zIn,#zOut,#z100,#zFit') : null
+    if (t) fitted = t.id === 'zFit'
+  }, true)
+  scroller.addEventListener('wheel', function (e) { if (e.ctrlKey || e.metaKey) fitted = false }, { passive: true, capture: true })
+  document.addEventListener('keydown', function (e) {
+    var el = e.target, typing = el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+    if (!typing && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '_' || ((e.ctrlKey || e.metaKey) && (e.key === '0')))) fitted = e.key === '0'
+  }, true)
   function refit(wasFit) {
     if (!wasFit) return
     requestAnimationFrame(function () { requestAnimationFrame(function () {
@@ -91,13 +95,13 @@
   wrap.appendChild(bl)
   header.insertBefore(wrap, header.children[1] || null)   // next to the title: the right end of the header is already full
 
-  // Keep a fitted page fitted when the window (or browser zoom) changes.
-  var last = scroller.clientWidth + 'x' + scroller.clientHeight, fittedBefore = true
+  // Keep a fitted page fitted when the window (or browser zoom) changes. Only while it is still
+  // "fitted": zooming adds scrollbars, which changes the size too, and must not snap the page back.
+  var last = scroller.clientWidth + 'x' + scroller.clientHeight
   if (window.ResizeObserver) new ResizeObserver(function () {
     var now = scroller.clientWidth + 'x' + scroller.clientHeight
-    if (now !== last) { last = now; if (fittedBefore) refit(true) }
+    if (now !== last) { last = now; if (fitted) refit(true) }
   }).observe(scroller)
-  setInterval(function () { if (scroller.clientWidth + 'x' + scroller.clientHeight === last) fittedBefore = wasFitted() }, 500)
 
-  apply(initialFit); syncRibbon()
+  apply(true); syncRibbon()
 })()
