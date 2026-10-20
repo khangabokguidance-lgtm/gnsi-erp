@@ -530,7 +530,7 @@ function MiniLogout({ onLogout }) {
   )
 }
 
-function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, collapsed, onToggleCollapse }) {
+function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, collapsed, onToggleCollapse, onBackToMenu }) {
   const isMobile    = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
@@ -587,6 +587,9 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
+        {onBackToMenu && (
+          <button onClick={onBackToMenu} aria-label="Back to the main menu" title="Back to the main menu" style={{ background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: D.accentLight, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>← Menu</button>
+        )}
         <img src={brandLogo()} alt="Logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><BrandTitle accent={D.accent} /></div>
@@ -714,6 +717,13 @@ export default function App() {
   // rather than pages: 'hub' / 'logs' / 'syllabusmgr' live inside Teaching.
   const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [setActive])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
+  // While a module is open the sidebar tucks into its icon rail so the module gets the room; the main
+  // menu keeps the width the user chose. Toggling inside a module is temporary (reset when you go back
+  // or open the next module from the menu).
+  const inModule = active !== 'dashboard'
+  const [railOverride, setRailOverride] = useState(null)
+  useEffect(() => { setRailOverride(null) }, [inModule])
+  const railCollapsed = railOverride ?? (inModule ? true : sidebarCollapsed)
   const [showLogin,        setShowLogin]        = useState(false)
   const [permMap,          setPermMap]          = useState({})
   const [permLoading,      setPermLoading]      = useState(false)
@@ -751,8 +761,8 @@ export default function App() {
     const onFs = () => {
       const on = !!document.fullscreenElement
       setIsFs(on)
-      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return false }) }
-      else if (fsPrevCollapsed.current !== null) { setSidebarCollapsed(fsPrevCollapsed.current); fsPrevCollapsed.current = null }
+      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return false }); setRailOverride(false) }
+      else { if (fsPrevCollapsed.current !== null) { setSidebarCollapsed(fsPrevCollapsed.current); fsPrevCollapsed.current = null }; setRailOverride(null) }
     }
     document.addEventListener('fullscreenchange', onFs)
     return () => document.removeEventListener('fullscreenchange', onFs)
@@ -767,7 +777,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleFullscreen])
 
-  const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
+  const sidebarW = isMobile ? 0 : (railCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
 
   const fetchSharedStaff = useCallback(async () => {
     const columns = isAdmin ? '*' : 'id, name, designation, department, role, phone, joining_date, status'
@@ -1079,12 +1089,17 @@ export default function App() {
         onLogout={handleLogout}
         currentUser={currentUser}
         permMap={permMap}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(p => !p)}
+        collapsed={railCollapsed}
+        onToggleCollapse={() => { const next = !railCollapsed; setRailOverride(next); if (!inModule) setSidebarCollapsed(next) }}
+        onBackToMenu={inModule ? () => setActive('dashboard') : null}
       />
       {!isMobile && (
         <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 60, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid #E8E1D0', boxShadow: '0 4px 18px rgba(11,30,61,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)', fontFamily: UI_FONT }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {inModule && (
+              <button type="button" onClick={() => setActive('dashboard')} title="Back to the main menu"
+                style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>← Main menu</button>
+            )}
             <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}><span style={{ color: D.accentLight, display: 'flex' }}><NavIcon id={active} size={18} /></span></span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>{ALL_GROUPS.find(g => g.items.some(i => i.id === active))?.group || 'CORE'}</div>
