@@ -73,7 +73,7 @@ export function toEntries(student, admRows, flatRows, crsRows) {
 // rates: the session's rates object, or a function (month, year) → rates when
 // the student's hostel type changed mid-session (see hostelHistory.js), so each
 // month is expected at the type in effect that month.
-export function buildRegister(student, entries, session, rates, now = instituteNow(), standing = []) {
+export function buildRegister(student, entries, session, rates, now = instituteNow(), standing = [], writtenOff = 0) {
   const rateAt = (month, year) => (typeof rates === 'function' ? rates(month, year) : rates)
   const start = sessionStartYear(session)
   const admissionDate = student.admission_date || null
@@ -119,8 +119,9 @@ export function buildRegister(student, entries, session, rates, now = instituteN
   // reported on its own rather than inside totalPaid.
   const advancePaid = other.filter(x => x.kind === 'advance').reduce((s, x) => s + x.amount, 0)
   const totalPaid = rows.reduce((s, r) => s + r.paidAmt, 0) + (admission?.paidAmt || 0) + other.reduce((s, x) => s + x.amount, 0) - advancePaid
-  const totalDue = rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0)
-  return { start, rows, admission, other, totalPaid, advancePaid, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
+  // Dues the institute has written off (Refunds & Transfers) lower the balance, never below 0.
+  const totalDue = Math.max(0, rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0) - (Number(writtenOff) || 0))
+  return { start, rows, admission, other, totalPaid, advancePaid, writtenOff: Number(writtenOff) || 0, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
 }
 
 // ── Account statement (Dr/Cr) ───────────────────────────────────────────────
@@ -129,9 +130,10 @@ export function buildRegister(student, entries, session, rates, now = instituteN
 // admission date; every payment is a credit. Kit/advance payments are
 // charged and paid in the same line. Opening balance = the previous session's
 // unpaid dues brought forward.
-export function buildStatement(student, entries, session, reg, { openingBalance = 0, from = null, to = null } = {}) {
+export function buildStatement(student, entries, session, reg, { openingBalance = 0, from = null, to = null, extraLines = [] } = {}) {
   const lines = []
   const sessStart = `${sessionStartYear(session)}-04-01`
+  const sessEnd = `${sessionStartYear(session) + 1}-04-01`
   if (reg.admission) {
     const date = student.admission_date || reg.admission.paid[0]?.date || sessStart
     lines.push({ date: iso(date) < sessStart ? sessStart : iso(date), kind: 'charge', particulars: 'Admission fee charged', debit: reg.admission.expected, credit: 0 })
@@ -145,6 +147,8 @@ export function buildStatement(student, entries, session, reg, { openingBalance 
   for (const x of paidIn) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Received — ${x.particulars}${x.period && x.period !== 'One-time' ? ` (${x.period})` : ''}`, debit: 0, credit: x.amount, receipt: x.receipt, mode: x.mode, note: x.note })
   // An approved low-fee concession settles the rest of that month's charge.
   for (const x of paidIn.filter(p => p.concession > 0)) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Concession approved — ${x.particulars} (${x.period})`, debit: 0, credit: x.concession, receipt: x.receipt, note: 'Low-fee concession approved by admin' })
+  // Refunds / transfers / write-offs recorded in Refunds & Transfers, dated inside this session.
+  for (const x of extraLines) if (x.date >= sessStart && x.date < sessEnd) lines.push(x)
   // Charges before payments on the same day, then by date.
   lines.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === 'charge' ? -1 : 1))
 

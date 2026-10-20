@@ -18,9 +18,10 @@ import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './fee
 import { printFeeReceipt } from './premiumReceipt'
 import { instNameHTML, instAddressHTML, getInstitute, whatsappEnabled } from './systemSettings'
 import { ledgerUrl } from './ledgerLink'
-import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
+import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText, sessionOfDate } from './feeLedgerModel'
 import { StatementView, InsightsView } from './FeeLedgerTools'
 import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
+import { refundStatementLines, writtenOffFor } from './lib/refundLedger'
 
 // Reprint one receipt with every line that was paid on it.
 function reprintReceipt(student, entries, receiptNo) {
@@ -143,13 +144,16 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   const curRates = typeof rates === 'function' ? rates.current : rates
   // Standing concessions (Concession Register) reduce what this ledger shows as due.
   const [standingEntries, setStandingEntries] = useState([])
+  const [refundRows, setRefundRows] = useState([])
   useEffect(() => {
     let live = true
-    loadStanding().then(st => { if (live) setStandingEntries(st.conc.get(String(parseInt(student.gcc_no) || 0)) || []) }).catch(() => {})
+    loadStanding().then(st => { if (!live) return; const k = String(parseInt(student.gcc_no) || 0); setStandingEntries(st.conc.get(k) || []); setRefundRows(st.refunds.get(k) || []) }).catch(() => {})
     return () => { live = false }
   }, [student.gcc_no])
-  const reg = useMemo(() => buildRegister(student, entries, session, rates, new Date(), standingEntries), [student, entries, session, rates, standingEntries])
-  const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
+  const writtenOff = useMemo(() => writtenOffFor(student.gcc_no, refundRows, session, sessionOfDate), [student.gcc_no, refundRows, session])
+  const refundLines = useMemo(() => refundStatementLines(student.gcc_no, refundRows), [student.gcc_no, refundRows])
+  const reg = useMemo(() => buildRegister(student, entries, session, rates, undefined, standingEntries, writtenOff), [student, entries, session, rates, standingEntries, writtenOff])
+  const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance, extraLines: refundLines }), [student, entries, session, reg, openingBalance, refundLines])
   const q = bookQuery.trim().toLowerCase()
   const book = (bookScope === 'all' ? entries : entries.filter(x => x.session === session))
     .filter(x => !q || [x.receipt, x.particulars, x.period, x.mode, x.by, x.ref, String(x.amount), fmtDate(x.date)].some(v => String(v || '').toLowerCase().includes(q)))
@@ -237,7 +241,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           ))}
         </div>
 
-        {pane === 'statement' && <StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} />}
+        {pane === 'statement' && <StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} extraLines={refundLines} />}
         {pane === 'insights' && <InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} />}
 
         {pane === 'register' && <>

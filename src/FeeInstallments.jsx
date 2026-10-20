@@ -1,21 +1,17 @@
 // FeeInstallments.jsx — installment plans for students who cannot clear dues at once.
 // Table: fee_installment_plans (supabase/migrations/20261008_fee_reminders_installments.sql).
-// Plans are a record/agreement only; money is still collected in Fee Payment.
+// Money is collected in Fee Payment; each flat/course payment for the student is then
+// applied to the oldest unpaid instalment automatically (and taken off again if reverted).
+// Instalments can still be marked paid by hand here (e.g. a payment made before the plan).
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
+import StudentJump from './StudentJump'
+import { NAVY, BORDER, card, label, input, btnFn as btn, th, td } from './feeTheme'
 
 const n = v => Number(v || 0).toLocaleString('en-IN')
-const NAVY = '#1e3a6e'
-const BORDER = '#e8e3d8'
 const SETUP_MSG = 'Run supabase/migrations/20261008_fee_reminders_installments.sql in the Supabase SQL editor to switch on installment plans.'
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_installment_plans/.test(err.message || ''))
 
-const card = { background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, padding: 14 }
-const label = { fontSize: 10, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4, display: 'block' }
-const input = { padding: '7px 10px', border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, background: '#fff', minWidth: 0 }
-const btn = (bg = NAVY, fg = '#fff') => ({ padding: '7px 13px', borderRadius: 8, border: 'none', background: bg, color: fg, fontWeight: 700, fontSize: 12, cursor: 'pointer' })
-const th = { padding: '7px 10px', textAlign: 'left', fontSize: 10.5, fontWeight: 800, color: '#fff', background: NAVY, whiteSpace: 'nowrap' }
-const td = { padding: '6px 10px', fontSize: 12, borderBottom: `1px solid ${BORDER}`, verticalAlign: 'middle' }
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const fmtDate = d => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')
@@ -67,7 +63,7 @@ async function fetchPlans() {
   return { data: data || [], error }
 }
 
-export default function FeeInstallments({ students = [], liveRows = [], isAdmin, currentUser }) {
+export default function FeeInstallments({ students = [], liveRows = [], isAdmin, currentUser, onCollect, onLedger }) {
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
@@ -287,7 +283,7 @@ export default function FeeInstallments({ students = [], liveRows = [], isAdmin,
           <div key={p.id} style={card}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>{p.student_name} <span style={{ fontWeight: 600, fontSize: 11.5, color: '#6b7280' }}>GCC-{p.gcc}</span></div>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>{p.student_name} <span style={{ fontWeight: 600, fontSize: 11.5, color: '#6b7280' }}>GCC-{p.gcc}</span><StudentJump gcc={p.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></div>
                 <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>₹{n(p.total_amount)} · recorded paid ₹{n(paid)} · created {fmtDate(p.created_at)}{p.created_by ? ` by ${p.created_by}` : ''}</div>
                 {p.reason && <div style={{ fontSize: 11.5, marginTop: 3 }}>{p.reason}</div>}
               </div>

@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
+import StudentJump from './StudentJump'
+import { NAVY, cell, head, btn } from './feeTheme'
 
 // Student data health dashboard: read-only checks over active students.
 
-const NAVY = '#1e3a6e'
 const s = v => String(v ?? '').trim()
 const digitsOf = v => String(v ?? '').replace(/\D/g, '')
 
@@ -73,7 +74,7 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-export default function DataHealth({ students = [], isAdmin }) {
+export default function DataHealth({ students = [], isAdmin, onCollect, onLedger }) {
   const [filter, setFilter] = useState(null)
   const [q, setQ] = useState('')
 
@@ -99,9 +100,6 @@ export default function DataHealth({ students = [], isAdmin }) {
   })
   const activeCheck = CHECKS.find(c => c.key === filter)
 
-  const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-  const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
-  const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
 
   const exportCsv = () => downloadCsv(shown.map(r => ({
     gcc_no: r.st.gcc_no ?? '', name: r.st.name ?? '', course: r.st.course ?? '', batch: r.st.batch || r.st.class_name || '',
@@ -160,7 +158,7 @@ export default function DataHealth({ students = [], isAdmin }) {
                 {shown.slice(0, 500).map(r => (
                   <tr key={r.st.id ?? `${r.st.gcc_no}-${r.st.name}`}>
                     <td style={{ ...cell, fontWeight: 700 }}>{s(r.st.gcc_no) || '—'}</td>
-                    <td style={cell}>{s(r.st.name) || '—'}</td>
+                    <td style={cell}>{s(r.st.name) || '—'}<StudentJump student={r.st} onCollect={onCollect} onLedger={onLedger} /></td>
                     <td style={cell}>{s(r.st.course) || '—'}</td>
                     <td style={cell}>{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
                     <td style={{ ...cell, whiteSpace: 'normal', minWidth: 220 }}>
