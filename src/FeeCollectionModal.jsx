@@ -16,6 +16,7 @@ import {
 import { confirmFeeMonthOpen } from './monthLock'
 import { useFeeCollectionPresence } from './feePresence'
 import FeeClashBanner from './FeeClashBanner'
+import FeeBalanceCollect from './FeeBalanceCollect'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 
 const FEE_ITEMS = [
@@ -777,7 +778,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -858,7 +859,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -949,7 +950,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -966,6 +967,25 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       onSaved?.()
     } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
+  }
+
+  const saveBalance = async items => {
+    if (saving) return
+    if (!isStudentActive) return alert(inactiveStatusMsg)
+    if (!(await preflight())) throw new Error('Cancelled.')
+    setSaving(true); setError(null)
+    try {
+      const rNo = rcptNo()
+      const { sections, total, skipped } = await collectFee({
+        gcc, studentName: name, admNo: admNo || '--', className: batch || '', course: course || '',
+        hostelType, payDate, payMode, txnRef: txnRef || null,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
+      })
+      if (skipped?.length) setError(`Nothing owed, skipped: ${skipped.join(', ')}`)
+      if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      if (total > 0) { setSaved({ rcpt: rNo, items: 'Balance of part-paid month(s)', total }); setPaymentToast({ amount: total, label: 'Balance payment' }) }
+      onSaved?.()
+    } finally { setSaving(false) }
   }
 
   const handleClose = () => typeof onClose === 'function' && onClose()
@@ -1178,6 +1198,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             {tabBtn('admission', 'Admission', '🎓')}
             {tabBtn('flat',      'Monthly Flat Fee', '📅')}
             {tabBtn('course',    'Course Fee', '📚')}
+            {tabBtn('balance',   'Part-paid Balance', '➕')}
           </div>
         </div>
 
@@ -1436,6 +1457,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           )}
 
           {/* ── Course fee tab ── */}
+          {tab === 'balance' && (
+            <FeeBalanceCollect student={{ gcc_no: gcc, course, batch, hostel_type: hostelType, admission_date: admissionDate, is_repeater: isRepeater, session: student?.session }}
+              saving={saving} disabled={!collectedBy.trim() || !admissionDate} onCollect={saveBalance} />
+          )}
+
           {tab === 'course' && (
             <div>
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:9, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#1d4ed8' }}>
@@ -1720,6 +1746,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           <button type="button" onClick={handleClose} style={{ padding:'11px 20px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
+            hidden={tab==='balance'}
             disabled={blocked}
             style={{ padding:'11px 24px', borderRadius:12, border: blocked ? 'none' : '1px solid #a37f2e', fontSize:13.5, fontWeight:800,
               cursor: blocked ? 'not-allowed' : 'pointer',

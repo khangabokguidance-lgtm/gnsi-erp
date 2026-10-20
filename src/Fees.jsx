@@ -47,6 +47,7 @@ import { useVerifiedAdmin } from './useVerifiedAdmin'
 import FeeReminders from './FeeReminders'
 import FeeInstallments from './FeeInstallments'
 import FeeDayClose from './FeeDayClose'
+import FeeLateEntries from './FeeLateEntries'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
@@ -1302,8 +1303,8 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
     setSaving(true)
     try{
       let aRef=null,aType=null
-      if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
-      if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
+      if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc, row.month, row.year, row.id)}
+      if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc, row.for_month, row.year, row.id)}
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';aRef=row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null}
       await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null})
       showToast(`📅 Date corrected to ${newDate}`,'#1e3a6e');onRefresh()
@@ -3300,11 +3301,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const handleRevertFlat = (month, year) => {
     const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
-    doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee' })
+    doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year, r.id), accountSourceType: 'flat_fee' })
   }
 
   const handleRevertCourseFee = (r) => {
-    doRevert({ table: 'adm_course_fees', id: r.id, label: `${r.course} ${r.for_month} course fee — ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee' })
+    doRevert({ table: 'adm_course_fees', id: r.id, label: `${r.course} ${r.for_month} course fee — ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year, r.id), accountSourceType: 'course_fee' })
   }
 
   // ── Admin-only: fix a mistakenly-entered payment date (without reverting) ──
@@ -3345,11 +3346,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const handleFixFlatDate = (month, year) => {
     const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
-    handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
+    handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year, r.id), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
   }
 
   const handleFixCourseDate = (r) => {
-    handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
+    handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year, r.id), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
   }
 
   // Builds the pending-charge line items from current form state — shared by
@@ -3546,7 +3547,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
       className: student.batch || '', course: student.course || '',
       hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
-      studentId: student.id, receiptNo, items,
+      studentId: student.id, receiptNo, items, isRepeater,
       skipHold: !!(mode || ref),   // online / already-received money is never held back
     })
 
@@ -5085,6 +5086,7 @@ export default function Fees() {
     // not just admin/accounts, could open and export it. Restricted the
     // same way anomaly/activity/warnings already are below.
     ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
@@ -5763,6 +5765,7 @@ export default function Fees() {
           onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
       {tab === 'reminders' && isAdmin && <FeeReminders students={students} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />}
       {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}

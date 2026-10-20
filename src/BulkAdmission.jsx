@@ -26,6 +26,7 @@ import {
 } from './feeEngine'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
+import { excludeRepeaterFees } from './lib/feeMath'
 import { printFeeReceipts } from './premiumReceipt'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -224,6 +225,16 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
     const skippedAll = []
     const staffId = currentUser?.userName || currentUser?.name || null
 
+    // Repeaters pay no admission fee or admission items. The flag lives on the
+    // students table; if it can't be read, stop rather than charge a repeater.
+    const repeaterGcc = new Set()
+    {
+      const nums = selectedList.map(x => parseInt(x.gcc_no)).filter(Number.isFinite)
+      const { data, error } = await supabase.from('students').select('gcc_no').in('gcc_no', nums).eq('is_repeater', true)
+      if (error) { setSaving(false); return setSaveError('Could not check which students are repeaters: ' + error.message) }
+      for (const r of data || []) repeaterGcc.add(parseInt(r.gcc_no))
+    }
+
     for (let i = 0; i < selectedList.length; i++) {
       const s     = selectedList[i]
       const gc    = gccStr(s.gcc_no)
@@ -235,11 +246,14 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
 
       // Same kinds/labels as FeeCollectionModal, so collectFee writes the
       // standard fee rows AND their Accounts entries with the keys Fees uses.
-      const items = [
+      const allItems = [
         its.admission  && { kind: 'admission', label: 'Admission Fee',  amount: amts.admission  || DEFAULT_ADM_FEE },
         its.dress      && { kind: 'item',      label: 'Dress Fee',      amount: amts.dress      || DEFAULT_DRESS   },
         its.prospectus && { kind: 'item',      label: 'Prospectus Fee', amount: amts.prospectus || DEFAULT_PROSP   },
       ].filter(Boolean)
+      const isRepeater = repeaterGcc.has(parseInt(s.gcc_no))
+      if (isRepeater && excludeRepeaterFees(true, allItems).excluded.length) skippedAll.push(`GCC-${gc}: repeater — admission fee and items waived`)
+      const items = excludeRepeaterFees(isRepeater, allItems).items
 
       if (!items.length) { setProgress(p => ({ ...p, done: p.done + 1 })); continue }
 
@@ -251,7 +265,7 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
           hostelType: s.hostel_type || 'Day Scholar',
           payDate, payMode, txnRef: txnRef || null,
           collectedBy: collectedBy.trim(), staffId,
-          receiptNo: rcpt, items,
+          receiptNo: rcpt, items, isRepeater,
         })
         if (skipped?.length) skippedAll.push(`GCC-${gc}: ${skipped.join(', ')}`)
         const recorded = items.filter(it => !(skipped || []).includes(it.label))

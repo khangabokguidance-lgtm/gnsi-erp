@@ -1921,6 +1921,7 @@ function BulkFeeModal({ students, selectedIds, can, currentUser, isAdmin, onClos
             payMode:method,
             collectedBy:collectorName,
             receiptNo:rcptNo('BULK'),
+            isRepeater:!!s.is_repeater,
             items:[{kind:'course',course:s.course||'',subtype:s.batch||'',month:monthName,year:yr,amount:Number(amount)}],
           })
         }catch(e){console.error('collectFee failed for',s.name,e);errors++}
