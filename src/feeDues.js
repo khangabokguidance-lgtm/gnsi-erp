@@ -22,7 +22,8 @@ import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
   MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession, normalizeSessionYear,
 } from './feeEngine'
-import { sessionOfDate } from './feeLedgerModel'
+import { sessionOfDate, sessionOfMonth } from './feeLedgerModel'
+import { instituteNow, admRowKind } from './lib/feeMath'
 
 // True when a signed-in staff session exists (Supabase Auth, Phase 1).
 async function hasStaffSession() {
@@ -36,7 +37,7 @@ async function hasStaffSession() {
 // student's admission date. This mirrors getFlatFees' own admission-date
 // rule (isPreAdmissionMonth) so flat and course fee agree on what counts
 // as "before admission."
-function courseFeeDueMonths(admissionDate, sessionYear, now = new Date()) {
+function courseFeeDueMonths(admissionDate, sessionYear, now = instituteNow()) {
   return MONTHS_LIST.filter(isCourseFeeMonth).map(month => ({
     month,
     // April–December in the session's start year, January in the next —
@@ -48,7 +49,7 @@ function courseFeeDueMonths(admissionDate, sessionYear, now = new Date()) {
 
 // A fee month is only due once it has begun — never bill a month that
 // hasn't arrived yet (collecting one early is an authorised advance).
-function hasMonthStarted(month, year, now = new Date()) {
+function hasMonthStarted(month, year, now = instituteNow()) {
   const calMonth = new Date(`${month} 1, ${year}`).getMonth()
   return new Date(year, calMonth, 1) <= now
 }
@@ -85,10 +86,20 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   // function" for every single student (confirmed in the wild), which
   // is worse than the bug this wrapping was meant to fix. Promise.resolve()
   // coerces it into a real native Promise first, which always has .catch().
-  const wrap = (p, label) => Promise.resolve(p).catch(e => {
-    console.error(`getStudentDues(${gcc}): ${label} query failed —`, e.message)
-    return { data: null, error: e, _failed: true }
-  })
+  // A query builder can be awaited again to re-send it, so each source gets one
+  // retry before it is reported as failed (a dropped connection is usually brief).
+  // A resolved result carrying `.error` (Supabase's usual failure shape) counts as failed too.
+  const wrap = async (p, label) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await p
+        if (!r?.error) return r
+        if (attempt) { console.error(`getStudentDues(${gcc}): ${label} query failed —`, r.error.message); return { data: null, error: r.error, _failed: true } }
+      } catch (e) {
+        if (attempt) { console.error(`getStudentDues(${gcc}): ${label} query failed —`, e.message); return { data: null, error: e, _failed: true } }
+      }
+    }
+  }
 
   // ✦ getFeeRates/getFlatFees are wrapped the same way as the three raw
   // Supabase calls below. Previously they weren't — if either threw (e.g.
@@ -119,7 +130,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     flatQ   = Promise.resolve({ data: preloaded.flat || [] })
     courseQ = Promise.resolve({ data: preloaded.course || [] })
   } else if (staff) {
-    admQ    = supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false)
+    admQ    = supabase.from('adm_fee_collections').select('amount_paid, description, fee_type, pay_date').eq('adm_app_id', gcc).eq('reverted', false)
     flatQ   = supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
     courseQ = supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false)
   } else {
@@ -181,7 +192,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   // rows — identified by fee_type === 'admission', with description ===
   // 'Admission Fee' as a fallback for any legacy row written before
   // fee_type existed on this table.
-  const admissionRows = (admFeeRows.data || []).filter(r => r.description === 'Admission Fee' || r.fee_type === 'admission')
+  const admissionRows = (admFeeRows.data || []).filter(r => admRowKind(r) === 'admission')
   const admissionPaidAmount = admissionRows.reduce((s, r) => s + Number(r.amount_paid || 0), 0)
   // A repeater's admission fee is waived (as the collection screens say).
   const admissionExpected = student.is_repeater ? 0 : (rates.admissionFee ?? ADM_FEE_BASE)
@@ -230,10 +241,16 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   })
   const courseFeeDue = courseFeeItems.reduce((s, i) => s + i.due, 0)
 
-  const totalPaid =
-    (admFeeRows.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0) +
-    (flatFeeRows.data || []).reduce((s, r) => s + Number(r.amount || 0), 0) +
-    (courseFeeRows.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0)
+  // totalPaid: every fee payment on record, all sessions (advance deposits excluded,
+  // as in the ledger). sessionPaid: only payments belonging to `sessionYear`.
+  const sum = (rows, amt, inSession = () => true) => (rows || []).reduce((s, r) => s + (inSession(r) ? Number(amt(r)) || 0 : 0), 0)
+  const notAdvance = r => admRowKind(r) !== 'advance'
+  const admPaidAll = (admFeeRows.data || []).filter(notAdvance)
+  const totalPaid = sum(admPaidAll, r => r.amount_paid) + sum(flatFeeRows.data, r => r.amount) + sum(courseFeeRows.data, r => r.amount_paid)
+  const sessionPaid =
+    sum(admPaidAll, r => r.amount_paid, r => sessionOfDate(r.pay_date) === sessionYear) +
+    sum(flatFeeRows.data, r => r.amount, r => sessionOfMonth(r.month, r.year) === sessionYear) +
+    sum(courseFeeRows.data, r => r.amount_paid, r => sessionOfMonth(r.for_month, r.year) === sessionYear)
 
   // Earlier sessions' unpaid flat/course fees (admission is counted above, once).
   const arrearsBySession = []
@@ -262,7 +279,8 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     admission: { expected: admissionExpected, paid: admissionPaid, paidAmount: admissionPaidAmount, due: admissionDue },
     flatFee: { items: flatFeeItems, due: flatFeeDue },
     courseFee: { items: courseFeeItems, due: courseFeeDue },
-    totalPaid,
+    totalPaid,           // all sessions, all time
+    sessionPaid,         // this session only (compare with sessionDue)
     sessionDue,          // this session only
     arrears,             // earlier sessions, brought forward
     arrearsBySession,
@@ -275,6 +293,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     // this is non-empty — surfacing that beats silently showing a wrong
     // number as if it were reliable.
     failedSources,
+    incomplete: failedSources.length > 0,
   }
 }
 

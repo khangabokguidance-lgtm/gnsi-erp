@@ -48,3 +48,25 @@ test('instalment plan state', () => {
   assert.equal(planState({ ...plan, status: 'cancelled' }, '2026-10-03'), null)
   assert.equal(planState({ ...plan, installments: plan.installments.map(i => ({ ...i, paid_amount: i.amount })) }, '2026-10-03'), null)
 })
+
+import { admRowKind, balanceRowId, balanceSuffix, isBalanceRowId, instituteNow } from '../src/lib/feeMath.js'
+
+test('admission rows: one rule for dues and ledger', () => {
+  assert.equal(admRowKind({ fee_type: 'admission' }), 'admission')
+  assert.equal(admRowKind({ fee_type: null, description: 'Admission Fee' }), 'admission')
+  assert.equal(admRowKind({ fee_type: 'advance' }), 'advance')
+  assert.equal(admRowKind({ fee_type: 'item', description: 'Prospectus' }), 'item')
+  assert.equal(admRowKind({ fee_type: null, description: 'Dress Kit — Shirt' }), 'item')   // legacy unknown row is not admission
+})
+
+test('balance rows: ids and account refs', () => {
+  const id = balanceRowId('12_course_aug_2026', 1)
+  assert.equal(id, '12_course_aug_2026_b1')
+  assert.ok(isBalanceRowId(id)); assert.ok(!isBalanceRowId('12_course_aug_2026'))
+  assert.equal(balanceSuffix(id), '_b1'); assert.equal(balanceSuffix('12_course_aug_2026'), '')
+})
+
+test('institute clock reads as IST whatever the device zone', () => {
+  const n = instituteNow(new Date('2026-03-31T20:00:00Z'))   // 01:30 IST on 1 April
+  assert.equal(n.getMonth(), 3); assert.equal(n.getDate(), 1)
+})
