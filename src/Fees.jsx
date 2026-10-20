@@ -5072,6 +5072,9 @@ export default function Fees() {
   // Fees hub — a payments-app style icon grid, grouped. Admin-only entries
   // are hidden from other staff (the security gates noted below still apply).
   const [hubOpen, setHubOpen] = useState(false)
+  // Shared jumps so every tab that names a student can lead to the next action.
+  const goCollect = st => { setPresetCollectStudent(st); setTab('payment') }
+  const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
   const TABS = [
     // Non-admin staff only get what they need at the counter: Fee Payment,
     // Student Ledger and Verify Receipt. Everything else is admin-only.
@@ -5712,7 +5715,7 @@ export default function Fees() {
           onRefresh={loadAll}
           onCollect={() => { setTab('payment') }}
           initialSelected={presetFixStudent}
-          initialCardTab={presetFixStudent ? 'revert' : undefined}
+          initialCardTab={presetFixStudent ? (presetFixStudent._cardTab || 'revert') : undefined}
           adminCount={adminCount}
         />
       )}
@@ -5764,16 +5767,16 @@ export default function Fees() {
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
           onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
-      {tab === 'reminders' && isAdmin && <FeeReminders students={students} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />}
-      {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'reminders' && isAdmin && <FeeReminders students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
+      {tab === 'installments' && isAdmin && <FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'refunds' && isAdmin && <FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'dayClose' && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'verify' && <ReceiptVerify />}
-      {tab === 'digest' && isAdmin && <FeeDigest students={students} isAdmin={isAdmin} />}
-      {tab === 'dataHealth' && isAdmin && <DataHealth students={students} isAdmin={isAdmin} />}
-      {tab === 'rollover' && isAdmin && <SessionRollover students={students} liveRows={liveRows} isAdmin={isAdmin} />}
+      {tab === 'digest' && isAdmin && <FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} />}
+      {tab === 'dataHealth' && isAdmin && <DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} />}
+      {tab === 'rollover' && isAdmin && <SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} />}
       {tab === 'hostelIssues' && (
         <HostelIssues students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshHostelIssues(); refreshLowFeePending(); loadAll() }} />

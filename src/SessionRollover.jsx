@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import StudentJump from './StudentJump'
 
 // April-changeover PLANNER. Read-only: nothing here writes to the database.
 // Plan choices are local component state; checklist ticks live in localStorage.
@@ -38,7 +39,7 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-export default function SessionRollover({ students = [], liveRows = [], isAdmin }) {
+export default function SessionRollover({ students = [], liveRows = [], isAdmin, onCollect, onLedger }) {
   const [choices, setChoices] = useState({})
   const [checks, setChecks] = useState(readChecks)
   const [q, setQ] = useState('')
@@ -182,7 +183,7 @@ export default function SessionRollover({ students = [], liveRows = [], isAdmin 
                   return (
                     <tr key={p.id}>
                       <td style={{ ...cell, fontWeight: 700 }}>{p.gcc || '—'}</td>
-                      <td style={cell}>{p.name}</td>
+                      <td style={cell}>{p.name}<StudentJump gcc={p.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></td>
                       <td style={cell}>{p.course}</td>
                       <td style={cell}>{p.batch}</td>
                       <td style={cell}>{p.repeater ? 'Yes' : '—'}</td>

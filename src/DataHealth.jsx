@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import StudentJump from './StudentJump'
 
 // Student data health dashboard: read-only checks over active students.
 
@@ -73,7 +74,7 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-export default function DataHealth({ students = [], isAdmin }) {
+export default function DataHealth({ students = [], isAdmin, onCollect, onLedger }) {
   const [filter, setFilter] = useState(null)
   const [q, setQ] = useState('')
 
@@ -160,7 +161,7 @@ export default function DataHealth({ students = [], isAdmin }) {
                 {shown.slice(0, 500).map(r => (
                   <tr key={r.st.id ?? `${r.st.gcc_no}-${r.st.name}`}>
                     <td style={{ ...cell, fontWeight: 700 }}>{s(r.st.gcc_no) || '—'}</td>
-                    <td style={cell}>{s(r.st.name) || '—'}</td>
+                    <td style={cell}>{s(r.st.name) || '—'}<StudentJump student={r.st} onCollect={onCollect} onLedger={onLedger} /></td>
                     <td style={cell}>{s(r.st.course) || '—'}</td>
                     <td style={cell}>{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
                     <td style={{ ...cell, whiteSpace: 'normal', minWidth: 220 }}>

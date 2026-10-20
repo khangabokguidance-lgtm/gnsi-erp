@@ -7,7 +7,7 @@ import { detectLateEntryStudents } from './lib/lateEntry'
 const inr = n => `₹${Number(n || 0).toLocaleString('en-IN')}`
 const fmtD = d => d ? new Date(d + 'T00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
-export default function FeeLateEntries({ students = [], adm_flat_fees = [], adm_course_fees = [], onCollect }) {
+export default function FeeLateEntries({ students = [], adm_flat_fees = [], adm_course_fees = [], onCollect, onLedger }) {
   const session = getSessionYear()
   const [filter, setFilter] = useState('notStarted')   // notStarted | skipped | all
   const [q, setQ] = useState('')
@@ -50,7 +50,7 @@ export default function FeeLateEntries({ students = [], adm_flat_fees = [], adm_
                   : r.skippedJoiningMonth ? <span style={{ color: '#b45309', fontWeight: 700 }}>Started {r.firstPaidMonth} — joining month unpaid</span>
                   : <span style={{ color: '#146c3a', fontWeight: 700 }}>Started {r.firstPaidMonth}</span>}</td>
                 <td style={{ textAlign: 'right' }}>{inr(r.totalPaid)}</td>
-                <td style={{ textAlign: 'right' }}>{r.student && onCollect && <button type="button" onClick={() => onCollect(r.student)} style={{ padding: '6px 12px', fontWeight: 700, cursor: 'pointer' }}>Collect</button>}</td>
+                <td style={{ textAlign: 'right' }}>{r.student && onLedger && <button type="button" onClick={() => onLedger(r.student)} style={{ padding: '6px 12px', fontWeight: 700, cursor: 'pointer', marginRight: 6 }}>Ledger</button>}{r.student && onCollect && <button type="button" onClick={() => onCollect(r.student)} style={{ padding: '6px 12px', fontWeight: 700, cursor: 'pointer' }}>Collect</button>}</td>
               </tr>))}</tbody>
           </table>
         </div>

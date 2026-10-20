@@ -3,6 +3,7 @@
 // Plans are a record/agreement only; money is still collected in Fee Payment.
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
+import StudentJump from './StudentJump'
 
 const n = v => Number(v || 0).toLocaleString('en-IN')
 const NAVY = '#1e3a6e'
@@ -67,7 +68,7 @@ async function fetchPlans() {
   return { data: data || [], error }
 }
 
-export default function FeeInstallments({ students = [], liveRows = [], isAdmin, currentUser }) {
+export default function FeeInstallments({ students = [], liveRows = [], isAdmin, currentUser, onCollect, onLedger }) {
   const [plans, setPlans] = useState([])
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
@@ -287,7 +288,7 @@ export default function FeeInstallments({ students = [], liveRows = [], isAdmin,
           <div key={p.id} style={card}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>{p.student_name} <span style={{ fontWeight: 600, fontSize: 11.5, color: '#6b7280' }}>GCC-{p.gcc}</span></div>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>{p.student_name} <span style={{ fontWeight: 600, fontSize: 11.5, color: '#6b7280' }}>GCC-{p.gcc}</span><StudentJump gcc={p.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></div>
                 <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>₹{n(p.total_amount)} · recorded paid ₹{n(paid)} · created {fmtDate(p.created_at)}{p.created_by ? ` by ${p.created_by}` : ''}</div>
                 {p.reason && <div style={{ fontSize: 11.5, marginTop: 3 }}>{p.reason}</div>}
               </div>

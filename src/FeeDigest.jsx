@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import StudentJump from './StudentJump'
 
 // Admin "Fees activity digest": read-only summary of fee corrections, reverts,
 // concessions, short-payments and hostel-type changes for the last 7 / 30 days,
@@ -115,7 +116,7 @@ const Tile = ({ label, value, sub, color = NAVY }) => (
 )
 
 
-const EntryTable = ({ list, students }) => (
+const EntryTable = ({ list, students, onCollect, onLedger }) => (
   <div style={{ overflowX: 'auto' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead><tr>{['When', 'Action', 'By', 'GCC', 'Student', 'Amount', 'Detail'].map(h => <th key={h} style={{ ...head, textAlign: 'left' }}>{h}</th>)}</tr></thead>
@@ -126,7 +127,7 @@ const EntryTable = ({ list, students }) => (
             <td style={cell}>{LABELS[e.action] || e.action}{e.status ? ` (${e.status})` : ''}</td>
             <td style={cell}>{e.by}</td>
             <td style={cell}>{e.gcc ? `GCC-${e.gcc}` : '—'}</td>
-            <td style={cell}>{e.student || (students || []).find(s => String(s.gcc_no) === e.gcc)?.name || '—'}</td>
+            <td style={cell}>{e.student || (students || []).find(s => String(s.gcc_no) === e.gcc)?.name || '—'}<StudentJump gcc={e.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></td>
             <td style={cell}>{e.oldAmt != null && e.newAmt != null ? `₹${n(e.oldAmt)} → ₹${n(e.newAmt)}` : e.amount ? `₹${n(e.amount)}` : '—'}</td>
             <td style={{ ...cell, whiteSpace: 'normal', minWidth: 140 }}>{e.detail || '—'}</td>
           </tr>
@@ -137,7 +138,7 @@ const EntryTable = ({ list, students }) => (
 )
 
 
-export default function FeeDigest({ students = [], isAdmin }) {
+export default function FeeDigest({ students = [], isAdmin, onCollect, onLedger }) {
   const [days, setDays] = useState(7)
   const [data, setData] = useState(null)
   const [openFlag, setOpenFlag] = useState(null)
@@ -278,7 +279,7 @@ export default function FeeDigest({ students = [], isAdmin }) {
                   <span style={{ flex: 1 }}>{activeFlag.entries.length} underlying entr{activeFlag.entries.length > 1 ? 'ies' : 'y'}</span>
                   <button style={btn} onClick={() => downloadCsv(exportRows(activeFlag.entries), `fee_digest_flag_${activeFlag.key}.csv`)}>⬇ CSV</button>
                 </div>
-                <EntryTable list={activeFlag.entries} students={students} />
+                <EntryTable list={activeFlag.entries} students={students} onCollect={onCollect} onLedger={onLedger} />
               </div>
             )}
           </div>
@@ -304,7 +305,7 @@ export default function FeeDigest({ students = [], isAdmin }) {
 
           <div style={card}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #e8e3d8', fontSize: 14, fontWeight: 800, color: NAVY }}>All entries ({model.all.length})</div>
-            {model.all.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#8a93a6', fontSize: 13 }}>No entries.</div> : <EntryTable list={model.all.slice(0, 300)} students={students} />}
+            {model.all.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#8a93a6', fontSize: 13 }}>No entries.</div> : <EntryTable list={model.all.slice(0, 300)} students={students} onCollect={onCollect} onLedger={onLedger} />}
             {model.all.length > 300 && <div style={{ padding: '8px 16px', fontSize: 11, color: '#5d6b82' }}>Showing first 300; export CSV for all.</div>}
           </div>
         </>

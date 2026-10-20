@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
 import { upsertAccount } from './feeEngine'
 import { CONCESSION_SELF_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
+import StudentJump from './StudentJump'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_refunds/.test(err.message || ''))
 const SETUP_MSG = 'Run supabase/migrations/20261009_fee_dayclose_refunds_register.sql in the Supabase SQL editor to switch on refunds.'
@@ -32,7 +33,7 @@ const btnPrimary = { ...btn, background: '#1e3a6e', color: 'white', border: '1px
 const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
 const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
 
-export default function FeeRefunds({ students, liveRows, isAdmin, currentUser }) {
+export default function FeeRefunds({ students, liveRows, isAdmin, currentUser, onCollect, onLedger }) {
   const me = currentUser?.userName || currentUser?.name || 'Admin'
   const [rows, setRows] = useState([])
   const [setup, setSetup] = useState(false)
@@ -219,7 +220,7 @@ export default function FeeRefunds({ students, liveRows, isAdmin, currentUser })
                   <tr key={r.id}>
                     <td style={cell}>{String(r.created_at || '').slice(0, 10)}</td>
                     <td style={{ ...cell, fontWeight: 700 }}>{r.gcc}</td>
-                    <td style={cell}>{r.student_name || '—'}</td>
+                    <td style={cell}>{r.student_name || '—'}<StudentJump gcc={r.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></td>
                     <td style={cell}>{r.kind}{r.target_gcc ? ` → ${r.target_gcc}` : ''}</td>
                     <td style={{ ...cell, fontWeight: 700 }}>₹{n(r.amount)}</td>
                     <td style={cell}><span title={r.decision_note || ''} style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: bg, color: fg }}>{r.status}</span></td>
