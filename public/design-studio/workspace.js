@@ -1,7 +1,8 @@
 // workspace.js — more room for the canvas in the Backdrop / Banner / Invitation makers.
 //  • the inspector is no longer a permanent right-hand column: it floats as a ribbon ABOVE the
 //    canvas and only appears while something is selected (✕ closes it until the next selection)
-//  • narrower, window-scaled left panel with a header button (◧) to hide it
+//  • the left panel floats as a rounded card (roomier padding); ◧ or the ☰ Tools handle hides / shows it,
+//    and the canvas takes the full width while it is hidden
 //  • a fitted page is re-fitted when the panel or window changes size
 (function () {
   var app = document.querySelector('.app'), header = document.querySelector('header'), scroller = document.getElementById('scroller')
@@ -13,9 +14,18 @@
   var initialFit = wasFitted()   // measure before the layout changes
   var css = document.createElement('style')
   css.textContent =
-    '.app{grid-template-columns:clamp(210px,17vw,280px) minmax(0,1fr)!important}' +
-    '.app.hl{grid-template-columns:minmax(0,1fr)!important}' +
-    '.app.hl>#left{display:none}' +
+    // the left panel floats as a rounded card over the editor; the canvas keeps the room beside it,
+    // and when the panel is hidden the canvas takes the whole width
+    '.app{position:relative;--lw:clamp(230px,18vw,290px);grid-template-columns:minmax(0,1fr)!important}' +
+    '.app>#left{position:absolute;left:12px;top:12px;bottom:12px;width:var(--lw);z-index:35;border:1px solid var(--line,#e5e7ee);border-radius:16px;box-shadow:0 14px 40px rgba(20,28,60,.20);overflow:hidden;transition:transform .2s ease,opacity .2s ease}' +
+    '.app>#work{margin-left:calc(var(--lw) + 24px)}' +
+    '.app.hl>#left{transform:translateX(calc(-100% - 24px));opacity:0;pointer-events:none}' +
+    '.app.hl>#work{margin-left:0}' +
+    '.app>#left .pane{padding:16px 18px 44px}' +
+    '.app>#left .row{margin-bottom:11px}' +
+    '.app>#left h4{margin-top:20px}' +
+    '.dsp-tab{position:absolute;left:12px;top:12px;z-index:34;display:none;padding:9px 14px;border:1px solid var(--line,#e5e7ee);border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(20,28,60,.16);cursor:pointer;font-weight:700}' +
+    '.app.hl>.dsp-tab{display:block}' +
     // the inspector ribbon: floats over the top of the canvas, so selecting never moves the page
     '#work>#right{position:absolute;left:10px;right:10px;top:8px;z-index:30;display:none;flex-direction:column;border:1px solid var(--line,#e5e7ee);border-radius:12px;box-shadow:0 10px 30px rgba(20,28,60,.18);overflow:hidden;background:#fff}' +
     '#work>#right.show{display:flex}' +
@@ -74,6 +84,9 @@
   function mk(label, title) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = label; b.title = title; b.type = 'button'; return b }
   var bl = mk('◧', 'Hide / show the left panel for the biggest canvas')
   bl.onclick = function () { var f = wasFitted(); st.l = !st.l; apply(f) }
+  var tab = document.createElement('button'); tab.type = 'button'; tab.className = 'dsp-tab'; tab.textContent = '☰ Tools'; tab.title = 'Show the tools panel'
+  tab.onclick = function () { var f = wasFitted(); st.l = false; apply(f) }
+  app.appendChild(tab)
   var wrap = document.createElement('span'); wrap.className = 'dsp'
   wrap.appendChild(bl)
   header.insertBefore(wrap, header.children[1] || null)   // next to the title: the right end of the header is already full
