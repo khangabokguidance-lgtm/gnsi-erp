@@ -143,21 +143,23 @@ const SECTION_MODULE_DEFAULT = {
   hostel:      'hostel',
   houses:      'hostel',
   operations:  'staff',
-  batches:     'timetable',
-  doubts:      'doubts',
+  batches:     'courses',
+  doubts:      'teaching',
   parents:     'reception',
-  material:    'studymaterial',
+  material:    'learninghub',
   results:     'exams',
-  teaching:    'teachingaids',
+  teaching:    'teaching',
   feesetup:    'feesetup',
   feeledger:   'fees',
-  entrance:    'admissions',
+  entrance:    'learninghub',
   lockers:     'studylockers',
-  syllabus:    'syllabus',
-  qbank:       'questionbank',
+  syllabus:    'teaching',
+  qbank:       'learninghub',
   social:      'social',
   connect:     'connect',
   expenses:    'accounts',
+  intel:       'reports',
+  centre:      'reports',
 }
 
 // Per-KPI overrides — only where the card's data doesn't belong to its
@@ -313,35 +315,44 @@ function Tip({ active, payload, label }) {
 
 function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, trend, onClick }) {
   const [hover, setHover] = useState(false)
+  const live = !!onClick
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => onClick && setHover(true)}
+      role={live ? "button" : undefined}
+      tabIndex={live ? 0 : undefined}
+      onKeyDown={live ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
+      onMouseEnter={() => live && setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => live && setHover(true)}
+      onBlur={() => setHover(false)}
       style={{
-      background:T.bgCard,
-      border:`1px solid ${hover ? color+'55' : T.border}`,
-      borderRadius:16,padding:"18px 18px 16px",
+      background:`linear-gradient(160deg, ${T.bgCard} 55%, ${color}0f)`,
+      border:`1px solid ${hover ? color+'66' : T.border}`,
+      borderRadius:18,padding:"18px 18px 16px",
       display:"flex",flexDirection:"column",gap:8,
-      position:"relative",overflow:"hidden",
-      boxShadow: hover ? SHADOW_HI : SHADOW,
-      transform: hover ? "translateY(-3px)" : "none",
-      cursor: onClick ? "pointer" : "default",
+      position:"relative",overflow:"hidden",outline:"none",
+      boxShadow: hover ? `0 14px 32px ${color}26, 0 2px 6px rgba(19,26,43,.06)` : SHADOW,
+      transform: hover ? "translateY(-4px)" : "none",
+      cursor: live ? "pointer" : "default",
       transition: "box-shadow .2s ease, border-color .2s ease, transform .2s ease",
     }}>
-      <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${color}, ${color}55)`}}/>
-      <div style={{position:"absolute",right:-28,top:-28,width:90,height:90,borderRadius:"50%",background:`${color}0d`}}/>
+      <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${color}, ${color}33)`}}/>
+      <div style={{position:"absolute",right:-28,top:-28,width:100,height:100,borderRadius:"50%",background:`${color}12`,transform:hover?"scale(1.25)":"none",transition:"transform .3s ease"}}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative"}}>
-        <span style={{width:36,height:36,borderRadius:11,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:17,background:`${color}14`,border:`1px solid ${color}30`}}>{icon}</span>
+        <span style={{width:38,height:38,borderRadius:12,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,background:`${color}1a`,border:`1px solid ${color}38`}}>{icon}</span>
         <Badge label={label} color={color}/>
       </div>
-      <div style={{fontSize:27,fontWeight:700,color:T.ink,letterSpacing:"-.01em",lineHeight:1,fontFamily:SERIF,position:"relative"}}>
+      <div style={{fontSize:28,fontWeight:700,color:T.ink,letterSpacing:"-.01em",lineHeight:1,fontFamily:SERIF,position:"relative"}}>
         {isMoney ? fmt(value) : <Counter value={value}/>}
       </div>
       {sub && <div style={{fontSize:11.5,color:T.inkSub}}>{sub}</div>}
       {trend!==undefined && <div style={{fontSize:11,fontWeight:700,color:trend>=0?T.emerald:T.rose}}>{trend>=0?"▲":"▼"} {Math.abs(trend)}% vs last month</div>}
       {progress!==undefined && <ProgressBar value={progress} max={progressMax} color={color}/>}
-      {onClick && <div style={{fontSize:10.5,fontWeight:600,color:T.inkSub,opacity:hover?1:0,transition:"opacity .15s ease",marginTop:-2}}>View details →</div>}
+      {live && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10.5,fontWeight:700,color,marginTop:-2,letterSpacing:".04em",textTransform:"uppercase"}}>
+        <span style={{opacity:hover?1:.7}}>Open module</span>
+        <span style={{width:20,height:20,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:hover?color:`${color}1a`,color:hover?"#fff":color,transition:"all .2s ease",transform:hover?"translateX(2px)":"none"}}>→</span>
+      </div>}
     </div>
   )
 }
