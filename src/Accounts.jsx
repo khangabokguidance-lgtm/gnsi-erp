@@ -320,7 +320,7 @@ const AC_CSS = `
 .ac-tab:hover{color:${AC.ink};background:#f3f0e8!important;filter:none!important}
 .ac-tab.on{background:linear-gradient(180deg,${AC.navy2},${AC.navy})!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
 .ac-tab .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.ac-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ac-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .ac-group{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:13px 16px;border-radius:16px;border:1px solid ${AC.line};background:#fff;cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s;min-width:0}
 .ac-group:hover{transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(19,42,79,.45)}
 .ac-group.on{background:linear-gradient(135deg,#0e203f,${AC.navy} 60%,${AC.navy2});border-color:${AC.navy};box-shadow:0 14px 28px -16px rgba(19,42,79,.7)}
@@ -3433,37 +3433,38 @@ function Accounts({role,userId}){
       </div>
     )}
 
-    {/* ── tabs — grouped into Books / Analysis / Controls / Reports so 16
-         screens read as four clear areas instead of one long strip ── */}
+    {/* ── tabs — 19 screens under five areas (Entries / Statements / Insights / Budgets & Approvals / Audit);
+         the pills under the area switch between its related screens ── */}
     {(()=>{
       const all=[
-        {id:'transactions',label:'Transactions',group:'books'},
-        {id:'daily',label:'Daily Book',group:'books'},
-        {id:'expenditure',label:'Expenditure',group:'books'},
-        {id:'expdaybook',label:'Expenditure Day Book',group:'books'},
-        {id:'iereg',label:'Income & Expenditure',group:'books'},
-        ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'books'}]:[]),
-        ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'books'}]:[]),
-        {id:'analytics',label:'Analytics',group:'analysis'},
-        {id:'income',label:'Income Analysis',group:'analysis'},
-        ...(isAdmin?[{id:'forecast',label:'Forecast',group:'analysis'}]:[]),
-        ...(isAdmin?[{id:'staffspend',label:'Staff Spend',group:'analysis'}]:[]),
-        ...(isAdmin?[{id:'savings',label:'Savings Tracker',group:'analysis'}]:[]),
-        {id:'budgets',label:'Budgets',group:'controls'},
+        {id:'transactions',label:'Transactions',group:'entries'},
+        {id:'daily',label:'Daily Book',group:'entries'},
+        {id:'expenditure',label:'Expenditure',group:'entries'},
+        {id:'expdaybook',label:'Expenditure Day Book',group:'entries'},
+        {id:'iereg',label:'Income & Expenditure',group:'statements'},
+        ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'statements'}]:[]),
+        ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'statements'}]:[]),
+        {id:'analytics',label:'Analytics',group:'insights'},
+        {id:'income',label:'Income Analysis',group:'insights'},
+        ...(isAdmin?[{id:'forecast',label:'Forecast',group:'insights'}]:[]),
+        ...(isAdmin?[{id:'staffspend',label:'Staff Spend',group:'insights'}]:[]),
+        ...(isAdmin?[{id:'savings',label:'Savings Tracker',group:'insights'}]:[]),
+        {id:'budgets',label:'Budgets',group:'budgets'},
         // Approval queue: admin-only to act on, so only admins see it.
-        ...(isAdmin?[{id:'approvals',label:'Approvals',group:'controls',badge:pendingApprovals.length}]:[]),
-        ...(isAdmin?[{id:'fraud',label:'For Admin',group:'controls',badge:digestItems.length}]:[]),
+        ...(isAdmin?[{id:'approvals',label:'Approvals',group:'budgets',badge:pendingApprovals.length}]:[]),
+        ...(isAdmin?[{id:'fraud',label:'For Admin',group:'audit',badge:digestItems.length}]:[]),
         // Course-wise fee collection + anomaly detection across the whole ledger.
-        ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'controls'}]:[]),
+        ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'audit'}]:[]),
         // Every user's inserts/edits/deletes — admin-only visibility.
-        ...(isAdmin?[{id:'timeline',label:'Activity Log',group:'controls'}]:[]),
-        {id:'reports',label:'Reports & Exports',group:'reports'},
+        ...(isAdmin?[{id:'timeline',label:'Activity Log',group:'audit'}]:[]),
+        {id:'reports',label:'Reports & Exports',group:'statements'},
       ]
       const GROUPS=[
-        {id:'books',label:'Books',sub:'Day-to-day entries'},
-        {id:'analysis',label:'Analysis',sub:'Trends & insight'},
-        {id:'controls',label:'Controls',sub:'Budgets, approvals, audit'},
-        {id:'reports',label:'Reports',sub:'Statements & exports'},
+        {id:'entries',label:'Entries',sub:'Add & review daily entries'},
+        {id:'statements',label:'Statements',sub:'Reports, balance sheet, closing'},
+        {id:'insights',label:'Insights',sub:'Trends, forecasts, spending'},
+        {id:'budgets',label:'Budgets & Approvals',sub:'Limits and sign-off'},
+        {id:'audit',label:'Audit',sub:'Alerts & activity (admin)'},
       ].filter(g=>all.some(t=>t.group===g.id))
       const current=all.find(t=>t.id===activeTab)||all[0]
       const grp=current.group
@@ -3472,7 +3473,7 @@ function Accounts({role,userId}){
         <div style={{marginBottom:18}}>
           {isMobile && createPortal(
             <nav className="ac-bottom" role="tablist" aria-label="Accounts areas">
-              <style>{`.ac-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+              <style>{`.ac-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
 body:has(.ac-bottom){padding-bottom:76px}
 .ac-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer;position:relative}
 .ac-nb .ac-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
@@ -3482,7 +3483,7 @@ body:has(.ac-bottom){padding-bottom:76px}
 .ac-nb .ac-badge{position:absolute;top:0;right:calc(50% - 28px)}`}</style>
               {GROUPS.map(g=>{
                 const on=g.id===grp, b=groupBadge(g.id)
-                const icon={books:'accounts',analysis:'pulse',controls:'shield',reports:'reports'}[g.id]
+                const icon={entries:'accounts',statements:'reports',insights:'pulse',budgets:'stamp',audit:'shield'}[g.id]
                 return (
                   <button key={g.id} type="button" role="tab" aria-selected={on} className={'ac-nb'+(on?' on':'')}
                     onClick={()=>{ if(!on) setActiveTab(all.find(t=>t.group===g.id).id); window.scrollTo({top:0}) }}>
