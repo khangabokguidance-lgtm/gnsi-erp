@@ -80,7 +80,6 @@ const SecIcon = ({ id, fallback, size = 20 }) => SEC_ICON[id] ? <NavIcon id={SEC
 
 const SECTION_TABS = [
   { id: 'overview',   icon: '📊', label: 'Overview' },
-  { id: 'security',   icon: '🛡️', label: '360° Health' },
   { id: 'intel',      icon: '🧠', label: 'Intelligence' },
   { id: 'finance',    icon: '💰', label: 'Finance' },
   { id: 'students',   icon: '🎓', label: 'Students' },
@@ -2734,11 +2733,6 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               color:"#0B1E3D",fontSize:12.5,fontWeight:800,
               cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(201,162,75,.35)",
             }}>🔔 Enable Notifications</button>
-            <button onClick={() => goToSection('security')} style={{
-              padding:"10px 18px",borderRadius:999,position:"relative",
-              border:"1px solid rgba(226,197,126,.5)",background:"rgba(255,255,255,.08)",
-              color:"#fff",fontSize:12.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
-            }}>🛡️ 360° Health Check</button>
           </div>
 
           {/* Daily Briefing — rule-based summary (getDailyBriefing →
@@ -2925,10 +2919,6 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
-        <div ref={setSectionRef('security')} className="dash-section" style={{display: activeSection === 'security' ? 'block' : 'none'}}>
-          {activeSection === 'security' && <SecurityCenter onNavigate={onNavigate}/>}
-        </div>
-
         {/* ═══ ADMIN INTELLIGENCE ═════════════════════════════ */}
         <div ref={setSectionRef('intel')} className="dash-section" style={{display: activeSection === 'intel' ? 'block' : 'none'}}>
           {activeSection === 'intel' && <AdminIntelligence onOpenStudent={() => onNavigate?.('students')}/>}
