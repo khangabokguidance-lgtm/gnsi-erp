@@ -11,6 +11,7 @@ import {
 } from "recharts"
 import { supabase } from "./supabase"
 import AdminIntelligence from "./AdminIntelligencePage"
+import AdminCentre from './AdminCentre'
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
@@ -75,11 +76,12 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
 // for that section (see the grep of every <div ref={setSectionRef('id')}>
 // below). Order here is the order tabs render in the nav bar and follows
 // the order sections actually appear on the page.
-const SEC_ICON = { overview:'overview', security:'shield', intel:'intel', finance:'fees', students:'students', dropout:'dropout', admissions:'admissions', staff:'staff', attendance:'attendance', academic:'courses', tests:'exams', enquiry:'search', hostel:'hostel', houses:'awards', operations:'feesetup', batches:'batches', doubts:'doubts', parents:'parents', material:'studymaterial', results:'awards', teaching:'teaching', feesetup:'card', feeledger:'studentfeeledger', entrance:'entrance', lockers:'studylockers', syllabus:'syllabus', qbank:'questionbank', social:'social', connect:'connect', expenses:'expenses' }
+const SEC_ICON = { centre:'dashboard', overview:'overview', security:'shield', intel:'intel', finance:'fees', students:'students', dropout:'dropout', admissions:'admissions', staff:'staff', attendance:'attendance', academic:'courses', tests:'exams', enquiry:'search', hostel:'hostel', houses:'awards', operations:'feesetup', batches:'batches', doubts:'doubts', parents:'parents', material:'studymaterial', results:'awards', teaching:'teaching', feesetup:'card', feeledger:'studentfeeledger', entrance:'entrance', lockers:'studylockers', syllabus:'syllabus', qbank:'questionbank', social:'social', connect:'connect', expenses:'expenses' }
 const SecIcon = ({ id, fallback, size = 20 }) => SEC_ICON[id] ? <NavIcon id={SEC_ICON[id]} size={size} /> : fallback
 
 const SECTION_TABS = [
-  { id: 'overview',   icon: '📊', label: 'Overview' },
+  { id: 'centre',     icon: '🧭', label: 'Command Centre' },
+  { id: 'overview',   icon: '📊', label: 'Classic Overview' },
   { id: 'intel',      icon: '🧠', label: 'Intelligence' },
   { id: 'finance',    icon: '💰', label: 'Finance' },
   { id: 'students',   icon: '🎓', label: 'Students' },
@@ -405,7 +407,7 @@ function TableWrap({ children }) {
 // Phone: payments-app style bottom navigation (four key sections + an "All" sheet
 // with a searchable icon grid of every section) replaces the scrolling pill row.
 const BOTTOM_MAIN = [
-  { id: 'overview', label: 'Home', icon: 'dashboard' },
+  { id: 'centre', label: 'Home', icon: 'dashboard' },
   { id: 'finance', label: 'Finance', icon: 'accounts' },
   { id: 'students', label: 'Students', icon: 'students' },
   { id: 'intel', label: 'Insights', icon: 'radar' },
@@ -2499,7 +2501,7 @@ export function SecurityCenter({ onNavigate } = {}) {
 }
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
-export default function GNSIDashboard({ scrollToSection, onNavigate }) {
+export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -2508,7 +2510,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   const sectionRefs = useRef({})
   const setSectionRef = (id) => (el) => { if (el) sectionRefs.current[id] = el }
-  const [activeSection, setActiveSection] = useState('overview')
+  const [activeSection, setActiveSection] = useState('centre')
 
   // Collapsible sections — every section except Overview (the landing
   // summary, always shown open) starts collapsed so the page loads
@@ -2518,7 +2520,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   // only runs once, not on every render.
   const [collapsedSections, setCollapsedSections] = useState(() => {
     const initial = {}
-    SECTION_TABS.forEach(t => { if (t.id !== 'overview') initial[t.id] = true })
+    SECTION_TABS.forEach(t => { if (t.id !== 'overview' && t.id !== 'centre') initial[t.id] = true })
     return initial
   })
   const toggleSection = useCallback(id => {
@@ -2692,6 +2694,10 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
       <div style={{padding:"20px clamp(12px,2.2vw,28px)",maxWidth:1500,margin:"0 auto"}}>
 
         {/* ═══ OVERVIEW ════════════════════════════════════════ */}
+        <div ref={setSectionRef('centre')} className="dash-section" style={{display: activeSection === 'centre' ? 'block' : 'none'}}>
+          {activeSection === 'centre' && <AdminCentre data={data} briefing={dailyBriefing} currentUser={currentUser} onNavigate={onNavigate} onOpenSection={goToSection}/>}
+        </div>
+
         <div ref={setSectionRef('overview')} className="dash-section" style={{display: activeSection === 'overview' ? 'block' : 'none'}}>
           <div style={{
             display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16,

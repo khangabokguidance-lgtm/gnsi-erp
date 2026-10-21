@@ -197,3 +197,34 @@ test('month-wise dues: admission counts in the month of the admission date', () 
   assert.deepEqual(w(null), { year: 2026, month: 3 })              // no date at all → April
   assert.deepEqual(w(null, { firstPaymentDate: '2026-02-10' }), { year: 2026, month: 1 })   // no admission date, but a payment date
 })
+
+import { crossModuleChecks } from '../src/lib/crossChecks.js'
+
+test('cross-module checks: each link reports the records that do not line up', () => {
+  const helpers = {
+    courseOf: s => s.course || 'Unassigned', batchOf: s => s.batch || 'No batch', canonicalBatch: b => b,
+    sourceRef: { flatFee: (g, m, y, id) => `flat_${g}_${m}_${y}`, courseFee: (g, m, y, id) => `course_${g}_${m}_${y}`, admission: g => `adm_${g}` },
+  }
+  const students = [
+    { id: 1, gcc_no: 10, name: 'A', course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder', admission_date: '2026-04-02' },
+    { id: 2, gcc_no: 11, name: 'B', course: 'Sainik', batch: 'Leader', hostel_type: 'Day Scholar' },                 // no rate, no admission date
+    { id: 3, gcc_no: 12, name: 'C', hostel_type: 'Boarder', admission_date: '2026-04-02' },                         // no course; boarder, no bed
+    { id: 4, gcc_no: 13, name: 'D', course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder', status: 'Left' },  // not active: ignored
+  ]
+  const r = crossModuleChecks({
+    ...helpers, students,
+    admissions: [{ id: 'a1', gcc_no: 99, applicant_name: 'Z', status: 'Enrolled' }, { id: 'a2', gcc_no: 10, applicant_name: 'A', status: 'Enrolled' }, { id: 'a3', gcc_no: 98, status: 'Admitted' }],
+    feeStructures: [{ course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder' }],
+    allocations: [{ student_id: 1, status: 'Active' }],
+    courseRows: [{ id: 'c1', adm_app_id: 10, for_month: 'August', year: 2026, amount_paid: 5000, pay_date: '2026-08-05' },
+                 { id: 'c2', adm_app_id: 10, for_month: 'September', year: 2026, amount_paid: 5000, pay_date: '2026-09-05' }],
+    accountRefs: new Set(['course_10_August_2026|course_fee']), sessionStart: '2026-04-01',
+  })
+  const by = Object.fromEntries(r.map(c => [c.key, c.items.map(i => i.id)]))
+  assert.deepEqual(by.adm_no_student, ['a1'])          // Enrolled but no student; 'Admitted' is not expected to have one yet
+  assert.deepEqual(by.stu_no_course, [3])
+  assert.deepEqual(by.stu_no_rate, [2])                // C has no course so it is reported once, under "no course"
+  assert.deepEqual(by.stu_no_admdate, [2])
+  assert.deepEqual(by.boarder_no_bed, [3])
+  assert.deepEqual(by.pay_no_account, ['c2'])
+})
