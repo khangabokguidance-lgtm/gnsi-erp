@@ -5,7 +5,7 @@ import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { courseOf, courseStructure } from './courseMap'
-import { monthlyCollection, keepRow } from './lib/reportMath'
+import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 
 // Course to show for a student: the resolved course (a blank course on a
 // Udaan / Pragati batch counts as Foundation), else what is saved.
@@ -1830,15 +1830,12 @@ function StudentSearch({ students, onSelect, placeholder }) {
 // Every month of the current April–March session so far (April → this month).
 // Shared by the Fee Dashboard's Month-wise Dues card (and its export menu) and
 // the Reports & Export Centre, so every number comes from one place.
-// Does this student's admission fee fall in month `m`? It is charged on the
-// admission date (or the first admission payment, else the session start), never
-// before the session starts — the same rule the student's own ledger uses.
-function admissionFallsIn(student, reg, m) {
-  const sessStart = new Date(Number(String(m.session).slice(0, 4)), 3, 1)
-  const raw = student.admission_date || reg.admission?.paid?.[0]?.date
-  let d = raw ? new Date(String(raw).slice(0, 10) + 'T00:00:00') : sessStart
-  if (Number.isNaN(d.getTime()) || d < sessStart) d = sessStart
-  return d.getFullYear() === Number(m.year) && d.toLocaleString('default', { month: 'long' }) === m.fullMon
+// Does this student's admission fee fall in month `m`? It is counted in the month of the admission
+// date (a student admitted in January shows in January, even if the fee is still unpaid), not pushed to
+// April; see admissionMonth in lib/reportMath.js. `a` = { student, adm: reg.admission, start: session start year }.
+function admissionFallsIn(a, m, rangeStart) {
+  const w = admissionMonth({ admissionDate: a.student.admission_date, firstPaymentDate: a.adm.paid?.[0]?.date, sessionStartYear: a.start, rangeStart })
+  return w.year === Number(m.year) && w.month === new Date(`${m.fullMon} 1, 2000`).getMonth()
 }
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
   const [now] = useState(() => new Date())
@@ -1884,6 +1881,13 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
   }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
 
   const monthwiseDues = useMemo(() => duesMonths.map(m => {
+    // Each student's admission fee lives in one session's register; find it once, whichever session that is.
+    const admByGcc = new Map()
+    for (const items of Object.values(duesLedgers || {})) for (const { student, reg } of items) {
+      const g = gccStr(student.gcc_no)
+      if (reg.admission && reg.admission.expected > 0 && !admByGcc.has(g)) admByGcc.set(g, { student, adm: reg.admission, start: reg.start })
+    }
+    const rangeStart = new Date(duesMonths[0].year, 0, 1)
     const perStudent = []
     let head = null
     for (const { student, reg } of duesLedgers?.[m.session] || []) {
@@ -1901,8 +1905,9 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       if (monthly) head = head || r.head
       // Admission part: charged in the month the student was admitted (the same
       // date the student's own ledger charges it on), whether unpaid or part-paid.
-      const adm = reg.admission && reg.admission.expected > 0 && admissionFallsIn(student, reg, m)
-        ? { expected: reg.admission.expected, paid: reg.admission.paidAmt, due: reg.admission.due }
+      const a = admByGcc.get(gccStr(student.gcc_no))
+      const adm = a && admissionFallsIn(a, m, rangeStart)
+        ? { expected: a.adm.expected, paid: a.adm.paidAmt, due: a.adm.due }
         : null
       if (!monthly && !adm) continue
       perStudent.push({

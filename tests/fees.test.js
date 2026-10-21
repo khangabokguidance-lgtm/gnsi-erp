@@ -184,3 +184,16 @@ test('course batches: new Active batches are added to the standard lists, nothin
   assert.deepEqual(s.Foundation, ['Udaan'])
   assert.equal(mergeLiveBatches(s, rows), false)                          // second run changes nothing
 })
+
+import { admissionMonth } from '../src/lib/reportMath.js'
+
+test('month-wise dues: admission counts in the month of the admission date', () => {
+  const rangeStart = new Date(2026, 0, 1)   // card starts January 2026
+  const w = (admissionDate, extra = {}) => admissionMonth({ admissionDate, sessionStartYear: 2026, rangeStart, ...extra })
+  assert.deepEqual(w('2026-01-20'), { year: 2026, month: 0 })      // admitted in January for the coming session: January, not April
+  assert.deepEqual(w('2026-02-03'), { year: 2026, month: 1 })
+  assert.deepEqual(w('2026-05-12'), { year: 2026, month: 4 })      // a genuine May admission
+  assert.deepEqual(w('2025-08-01'), { year: 2026, month: 3 })      // before the card's range → April of the session
+  assert.deepEqual(w(null), { year: 2026, month: 3 })              // no date at all → April
+  assert.deepEqual(w(null, { firstPaymentDate: '2026-02-10' }), { year: 2026, month: 1 })   // no admission date, but a payment date
+})

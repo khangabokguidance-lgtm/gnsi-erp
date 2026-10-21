@@ -25,3 +25,15 @@ export function monthlyCollection({ flat = [], course = [], adm = [] }) {
 // (`scope` = Set of GCC keys, null = everyone) and payment date inside [from, to].
 export const keepRow = ({ scope = null, from = '', to = '' } = {}) => r =>
   (!scope || scope.has(String(parseInt(r.adm_app_id) || 0))) && (!from || (!!r.pay_date && r.pay_date >= from)) && (!to || (!!r.pay_date && r.pay_date <= to))
+
+// Which calendar month the Month-wise Dues card counts a student's one-time admission fee in:
+// the month of the admission date (or, without one, of the first admission payment), exactly as
+// it happened — a student admitted in January for the coming session shows in January. Only a
+// date before the card's first month, or no date at all, falls back to April of the session
+// start. Returns { year, month } (month 0–11).
+export function admissionMonth({ admissionDate, firstPaymentDate, sessionStartYear, rangeStart }) {
+  const parse = v => { if (!v) return null; const d = new Date(String(v).slice(0, 10) + 'T00:00:00'); return Number.isNaN(d.getTime()) ? null : d }
+  const d = parse(admissionDate) || parse(firstPaymentDate)
+  if (d && d >= rangeStart) return { year: d.getFullYear(), month: d.getMonth() }
+  return { year: sessionStartYear, month: 3 }
+}
