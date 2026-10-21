@@ -228,3 +228,33 @@ test('cross-module checks: each link reports the records that do not line up', (
   assert.deepEqual(by.boarder_no_bed, [3])
   assert.deepEqual(by.pay_no_account, ['c2'])
 })
+
+import { reconcileIncomeCollection } from '../src/lib/incomeCollection.js'
+test('income vs collection: explains each kind of gap by receipt', () => {
+  const acc = (id, amt, receipt, extra = {}) => ({ id, type: 'Income', amount: amt, source_type: 'course_fee', entry_date: '2026-10-05', payment_date: '2026-10-05', note: `Oct · ${receipt}`, ...extra })
+  const fee = (receipt, amt, date = '2026-10-05') => ({ amount: amt, receipt_no: receipt, pay_date: date, student_name: receipt })
+  const r = reconcileIncomeCollection({
+    from: '2026-10-01', to: '2026-10-31',
+    accounts: [
+      acc(1, 1000, 'GNSI-1'),
+      acc(2, 500, 'GNSI-2'),                                   // fee says 700 → mismatch
+      acc(3, 800, 'GNSI-3', { is_soft_deleted: true }),       // deleted
+      acc(4, 900, 'GNSI-4', { status: 'Pending' }),           // awaiting approval
+      acc(5, 600, 'GNSI-5', { payment_date: '2026-11-02' }),  // dated outside period
+      acc(6, 300, 'GNSI-9'),                                   // orphan
+      { id: 7, type: 'Income', amount: 250, source_type: 'store_sale', entry_date: '2026-10-06' },
+    ],
+    feePayments: [fee('GNSI-1', 1000), fee('GNSI-2', 700), fee('GNSI-3', 800), fee('GNSI-4', 900), fee('GNSI-5', 600), fee('GNSI-6', 400), { amount: 100, pay_date: '2026-10-07' }],
+  })
+  assert.equal(r.accountsFee, 1800)
+  assert.equal(r.split.store, 250)
+  assert.equal(r.accountsTotal, 2050)
+  assert.equal(r.feeTotal, 4500)
+  assert.equal(r.gap, 2700)
+  assert.deepEqual([r.missing, r.deleted, r.pending, r.moved, r.mismatch, r.orphan].map(x => x.length), [1, 1, 1, 1, 1, 1])
+  assert.equal(r.mismatch[0].diff, -200)
+  assert.equal(r.noReceipt.total, 100)
+  // The gap is fully explained: missing+deleted+pending+moved+no-receipt − mismatch(diff) − orphan
+  const explained = r.totals.missing + r.totals.deleted + r.totals.pending + r.totals.moved + r.noReceipt.total - r.totals.mismatch - r.totals.orphan
+  assert.equal(explained, r.gap)
+})

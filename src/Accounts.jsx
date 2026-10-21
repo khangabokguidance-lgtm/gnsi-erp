@@ -16,6 +16,7 @@ import { AccountsDashboardBanking } from './AccountsDashboardBanking'
 import ExpenseDayBook from './ExpenseDayBook'
 import { printAccountVoucher } from './premiumReceipt'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
+import FeeIncomeCollection from './FeeIncomeCollection'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
@@ -3443,6 +3444,7 @@ function Accounts({role,userId}){
         {id:'expdaybook',label:'Expenditure Day Book',group:'entries'},
         {id:'iereg',label:'Income & Expenditure',group:'statements'},
         ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'statements'}]:[]),
+        ...(isAdmin?[{id:'incomecheck',label:'Income vs Collection',group:'statements'}]:[]),
         ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'statements'}]:[]),
         {id:'analytics',label:'Analytics',group:'insights'},
         {id:'income',label:'Income Analysis',group:'insights'},
@@ -4528,6 +4530,7 @@ body:has(.ac-bottom){padding-bottom:76px}
       </div>
     )}
 
+    {activeTab==='incomecheck'&&isAdmin&&<FeeIncomeCollection/>}
     {activeTab==='reconciliation'&&isAdmin&&(
       <div>
         <div style={{backgroundColor:'#2e3b52',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
