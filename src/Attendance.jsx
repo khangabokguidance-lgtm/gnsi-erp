@@ -2347,7 +2347,7 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
           padding: '18px 22px 16px', textAlign: 'center', color: '#fff', position: 'relative',
         }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.15em', opacity: .8, marginBottom: 3 }}>GNSI · OFFICIAL</div>
-          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: 'Georgia, serif', letterSpacing: '.01em' }}>Attendance Receipt</div>
+          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: '.01em' }}>Attendance Receipt</div>
           <div style={{ fontSize: 11.5, opacity: .85, marginTop: 4, fontWeight: 600 }}>
             {fmtDate(sessionInfo.session_date)}{sessionInfo.class_name ? ` · ${sessionInfo.class_name}` : ''}
           </div>

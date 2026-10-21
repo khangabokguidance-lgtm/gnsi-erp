@@ -490,7 +490,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: UI_FONT }} />
-          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', flexShrink: 0 }}>/</span>}
+          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", flexShrink: 0 }}>/</span>}
         </div>
       </div>
 
@@ -512,7 +512,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
       <div style={{ padding: '8px 8px 12px', borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 7px' }}>
-          <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>{' '}to search</span>
+          <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 9 }}>/</span>{' '}to search</span>
           <span style={{ fontSize: 10, color: D.textFaint }}>v2.2 · © {new Date().getFullYear()} GNSI</span>
         </div>
         <LogoutButton onLogout={onLogout} />

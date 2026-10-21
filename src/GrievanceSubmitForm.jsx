@@ -94,7 +94,7 @@ export default function GrievanceSubmitForm({ studentId, studentName, onSubmitte
 
   return (
     <form onSubmit={handleSubmit} style={card}>
-      <h3 style={{ margin: '0 0 4px', color: NAVY, fontFamily: 'Georgia, serif' }}>
+      <h3 style={{ margin: '0 0 4px', color: NAVY, fontFamily: "'Playfair Display',Georgia,serif" }}>
         Raise a Concern
       </h3>
       <p style={{ margin: '0 0 16px', fontSize: 12, color: '#777' }}>
@@ -162,7 +162,7 @@ function Field({ label, children, style }) {
 
 const card = {
   background: '#fff', border: `1px solid ${GOLD}`, borderRadius: 10,
-  padding: 20, maxWidth: 480, fontFamily: 'Georgia, serif',
+  padding: 20, maxWidth: 480, fontFamily: "'Playfair Display',Georgia,serif",
   boxShadow: '0 2px 10px rgba(11,30,61,0.08)',
 };
 const inputStyle = {

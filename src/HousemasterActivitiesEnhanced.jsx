@@ -630,7 +630,7 @@ function DailyTaskChecklist({ staffProfiles, houses }) {
                 Progress — {selectedHM.name} {selectedHouse ? `· ${selectedHouse}` : ''}
                 {syncing && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>saving…</span>}
               </span>
-              <span style={{ fontSize: 12, fontFamily: 'monospace', color: pct === 100 ? '#16a34a' : '#0369a1', fontWeight: 700 }}>
+              <span style={{ fontSize: 12, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color: pct === 100 ? '#16a34a' : '#0369a1', fontWeight: 700 }}>
                 {completedTotal}/{totalTasks} total · {completedMandatory}/{mandatoryTasks.length} mandatory
               </span>
             </div>

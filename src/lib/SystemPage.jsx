@@ -271,7 +271,7 @@ function AppearanceSection() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input type="color" value={s[k] ?? "#1D4ED8"} onChange={e => u(k, e.target.value)}
                     style={{ width: 36, height: 36, borderRadius: 6, border: "1px solid #D1D5DB", cursor: "pointer", padding: 2 }} />
-                  <span style={{ fontSize: 12, color: "#6B7280", fontFamily: "monospace" }}>{s[k] ?? "#1D4ED8"}</span>
+                  <span style={{ fontSize: 12, color: "#6B7280", fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{s[k] ?? "#1D4ED8"}</span>
                 </div>
               </div>
             ))}

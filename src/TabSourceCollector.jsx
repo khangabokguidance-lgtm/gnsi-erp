@@ -140,7 +140,7 @@ function SourceCard({ source, onExtract, onDelete, extracting }) {
         </div>
       </div>
       {expanded && source.content && (
-        <div style={{ marginTop: '12px', padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#374151', fontFamily: 'monospace', lineHeight: '1.7', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div style={{ marginTop: '12px', padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#374151', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", lineHeight: '1.7', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {source.content.slice(0, 3000)}{source.content.length > 3000 ? '\n\n... [truncated]' : ''}
         </div>
       )}

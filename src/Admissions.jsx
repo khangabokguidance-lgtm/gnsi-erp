@@ -1088,7 +1088,7 @@ const styles = {
     border:`1px solid ${N.border}`, fontSize:13,
     outline:'none', boxSizing:'border-box',
     backgroundColor:'#FFFFFF',
-    color:N.text, fontFamily:'system-ui,sans-serif',
+    color:N.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
     boxShadow:'none',
     transition:'box-shadow .15s, border-color .15s',
   },
@@ -1701,7 +1701,7 @@ function WABlastModal({ apps, onClose }) {
             <option value="fee_due">Fee Due Reminder</option>
           </select>
         </div>
-        <div style={{ padding:'12px 14px', background:'#DCF8C6', borderRadius:10, fontSize:12, color:'#128C7E', fontFamily:'monospace', whiteSpace:'pre-wrap', marginBottom:14, maxHeight:180, overflowY:'auto' }}>
+        <div style={{ padding:'12px 14px', background:'#DCF8C6', borderRadius:10, fontSize:12, color:'#128C7E', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", whiteSpace:'pre-wrap', marginBottom:14, maxHeight:180, overflowY:'auto' }}>
           {previewMsg}
         </div>
         <div style={{ fontSize:12, color:T.slate[500], marginBottom:12 }}>
@@ -3054,8 +3054,8 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     return (
       <tr style={{ background:selected?T.indigo[50]:bg, borderBottom:`1px solid ${bd}`, fontSize:12 }}>
         <td style={{ padding:'8px 10px' }}><input type="checkbox" checked={!!selected} onChange={()=>onSelect(a.id)} style={{ cursor:'pointer' }} /></td>
-        <td style={{ padding:'8px 10px', fontFamily:'monospace', color:T.indigo[600] }}>{a.gcc}</td>
-        <td style={{ padding:'8px 10px', fontFamily:'monospace', color:T.slate[400] }}>{a.admNo||'—'}</td>
+        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.indigo[600] }}>{a.gcc}</td>
+        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.slate[400] }}>{a.admNo||'—'}</td>
         <td style={{ padding:'8px 10px', fontWeight:700, color:T.slate[800] }}>{a.name}</td>
         <td style={{ padding:'8px 10px' }}>{a.course||'—'}{a.subtype?` · ${a.subtype}`:''}</td>
         <td style={{ padding:'8px 10px' }}>{a.cls||'—'}</td>
@@ -3106,8 +3106,8 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
               {a.name}
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-              {a.gcc   && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
-              {a.admNo && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
+              {a.gcc   && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
+              {a.admNo && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
               {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
               {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
               {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
@@ -3253,7 +3253,7 @@ function CSVImportModal({ onClose, onImport }) {
         <div style={{ fontSize:12, color:T.slate[500], marginBottom:8 }}>
           Paste CSV with headers: name, gcc_no, gender, dob, course, batch, house, hostel_type, session, phone, father_name, status
         </div>
-        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} style={{ ...styles.inp, fontFamily:'monospace', fontSize:11 }} placeholder="Paste CSV here…" />
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} style={{ ...styles.inp, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:11 }} placeholder="Paste CSV here…" />
         {error && <div style={{ color:T.rose[600], fontSize:12, marginTop:4 }}>{error}</div>}
         <div style={{ display:'flex', gap:10, marginTop:10 }}>
           <button onClick={()=>parseCSV(raw)} style={{ padding:'9px 18px', borderRadius:9, background:T.indigo[600], color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer' }}>Parse</button>
@@ -4635,7 +4635,7 @@ export default function Admissions() {
   const tx   = darkMode ? T.slate[100] : T.slate[900]
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily:'system-ui,sans-serif' }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <div style={{ width:22, height:22, border:`2.5px solid ${T.slate[200]}`, borderTopColor:T.indigo[600], borderRadius:'50%', animation:'spin .7s linear infinite' }} />
       <span style={{ fontWeight:600 }}>Loading admissions…</span>
     </div>

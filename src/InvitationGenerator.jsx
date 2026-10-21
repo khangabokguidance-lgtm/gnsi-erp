@@ -966,7 +966,7 @@ export default function InvitationGenerator({ currentUser }) {
           <input type="range" min={0.3} max={1.2} step={0.02} value={previewZoom}
             onChange={e => setPreviewZoom(Number(e.target.value))}
             style={{ width:80, height:2, accentColor:'#C4962A', cursor:'pointer' }}/>
-          <span style={{ fontFamily:'monospace', fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right' }}>{Math.round(previewZoom * 100)}%</span>
+          <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right' }}>{Math.round(previewZoom * 100)}%</span>
           <button onClick={() => setPreviewZoom(0.72)}
             style={{ background:'none', border:'none', color:'rgba(196,150,42,0.4)', cursor:'pointer', fontFamily:"'Cinzel',serif", fontSize:'6.5px', letterSpacing:'1px', textTransform:'uppercase', padding:'2px 4px' }}>Reset</button>
         </div>}

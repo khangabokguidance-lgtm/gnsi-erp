@@ -433,7 +433,7 @@ function CourseDurationForm({ courses, subtypesFor, settings, onSaved, showToast
           <label style={S.label}>Holidays to exclude (one YYYY-MM-DD per line)</label>
           <textarea value={form.holidays_text} onChange={e=>setForm(f=>({...f,holidays_text:e.target.value}))}
             rows={4} placeholder={'2026-08-15\n2026-10-02\n2026-11-01'}
-            style={{ ...S.input, resize:'vertical', fontFamily:'monospace', fontSize:12 }}/>
+            style={{ ...S.input, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }}/>
         </div>
 
         <div style={{ display:'flex', gap:8 }}>
@@ -1377,7 +1377,7 @@ const staffName = _name
               </select>
             </div>
           </div>
-          <textarea value={csvText} onChange={e=>setCsvText(e.target.value)} rows={10} placeholder={"Fractions, 2026-06-01, important|exam\nDecimals\nRatio and Proportion, 2026-06-08"} style={{ ...S.input, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:12 }}/>
+          <textarea value={csvText} onChange={e=>setCsvText(e.target.value)} rows={10} placeholder={"Fractions, 2026-06-01, important|exam\nDecimals\nRatio and Proportion, 2026-06-08"} style={{ ...S.input, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:12 }}/>
           <button onClick={handleCSVImport} style={S.btn('#a7771f')}>📥 Import Topics</button>
         </div>
       )}

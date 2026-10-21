@@ -2182,7 +2182,7 @@ function StaffAccountTool({ f, onDone, log }) {
             {(f.id === "weak_hash" || f.id === "staff_unlinked") && (<>
               <input type="checkbox" checked={!!sel[u.id]} onChange={e => setSel(s => ({ ...s, [u.id]: e.target.checked }))} title="Select for bulk generate"/>
               <input type="text" placeholder="new password" value={pw[u.id] || ""} onChange={e => setPw(s => ({ ...s, [u.id]: e.target.value }))}
-                style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily:"monospace"}}/>
+                style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace"}}/>
               <button disabled={busy === u.id} onClick={() => setPw(s => ({ ...s, [u.id]: genPw() }))} title="Generate a new password"
                 style={{border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,borderRadius:999,padding:"4px 9px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>🎲</button>
               <button disabled={busy === u.id} onClick={() => reset(u)} style={{border:"none",background:"#0f7a52",color:"#fff",borderRadius:999,padding:"4px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>Set</button>

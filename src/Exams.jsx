@@ -3618,7 +3618,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                   return (
                     <div key={et.id}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "white", border: "1px solid #FDE68A", borderRadius: 6, marginBottom: 5, flexWrap: "wrap" }}>
-                        <span style={{ fontFamily: "monospace", fontSize: 10.5, color: "#78716C", wordBreak: "break-all" }}>{et.id}</span>
+                        <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 10.5, color: "#78716C", wordBreak: "break-all" }}>{et.id}</span>
                         <span style={{ fontWeight: 700, fontSize: 12, color: count ? "#0F6E56" : "#A32D2D", whiteSpace: "nowrap" }}>
                           {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
                         </span>

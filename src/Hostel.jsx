@@ -5399,7 +5399,7 @@ function MaintenanceTab({ lockHouse, currentHousemaster, currentUser, autoOpenFo
                   <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a6e' }}>{r.category}</td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.room_number || '—'}</td>
                   <td style={{ padding: '11px 14px', color: '#374151', maxWidth: 200 }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.description}>{r.description}</div></td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.assigned_to || '—'}</td>
@@ -8042,7 +8042,7 @@ create table if not exists day_scholar_records (
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
                     <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -8056,7 +8056,7 @@ create table if not exists day_scholar_records (
                         : <span style={{ color: '#94a3b8' }}>—</span>}
                     </td>
                     <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.pickup_point || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, fontFamily: 'monospace' }}>{r.vehicle_number || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.vehicle_number || '—'}</td>
                     <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -8371,7 +8371,7 @@ function ScheduleTab({ currentUser }) {
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', textDecoration: isDone ? 'line-through' : 'none' }}>{r.activity}</span>
                     <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: cs.bg, color: cs.color, fontWeight: '700' }}>{r.category}</span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>{r.from_time}{r.to_time ? ` → ${r.to_time}` : ''}</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.from_time}{r.to_time ? ` → ${r.to_time}` : ''}</div>
                 </div>
                 {adminMode && (
                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -8423,8 +8423,8 @@ function ScheduleTab({ currentUser }) {
                 return (
                   <tr key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1 }}>
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a6e' }}>{r.from_time}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, fontWeight: 600, color: '#1e3a6e' }}>{r.from_time}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
                       <span style={{ fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
@@ -9179,7 +9179,7 @@ function DisciplineTab({ students, lockHouse, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -9620,7 +9620,7 @@ function SickbayTab({ students, lockHouse, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -10029,7 +10029,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           onMouseLeave={e => e.currentTarget.style.background = 'white'}
                         >
                           <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
@@ -10069,7 +10069,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                   <tbody>
                     {houseDropouts.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #fef2f2' }}>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#94a3b8' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#7c2d12' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#b45309', fontSize: 12, fontWeight: 700 }}>🚪 Unassigned/Dropout</td>
                         <td style={{ padding: '9px 14px' }}>
@@ -10368,7 +10368,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
                         <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}</td>
@@ -13844,7 +13844,7 @@ function StudentTransferTab({ students, currentUser, canDropout = true }) {
                   </td>
                   <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
-                  <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
                   <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
                   <td style={{ padding: '9px 14px' }}>
                     {currentHouse !== '—' ? (

@@ -838,7 +838,7 @@ function WarningLetterGenerator({ staff, records }) {
           <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#2e3b52', marginBottom: '5px' }}>Subject</label>
           <input value={customSubject} onChange={e => setCustomSubject(e.target.value)} style={{ ...styles.input, marginBottom: '10px' }} />
           <textarea value={preview} onChange={e => setPreview(e.target.value)} rows={12}
-            style={{ ...styles.input, lineHeight: '1.7', fontFamily: 'Georgia, serif', backgroundColor: '#fafaf8', resize: 'vertical' }} />
+            style={{ ...styles.input, lineHeight: '1.7', fontFamily: "'Playfair Display',Georgia,serif", backgroundColor: '#fafaf8', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
             <button onClick={copyToClipboard}
               style={{ padding: '9px 16px', borderRadius: '8px', backgroundColor: copied ? '#dcfce7' : '#eef2f9', color: copied ? '#16a34a' : '#1e3a6e', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>

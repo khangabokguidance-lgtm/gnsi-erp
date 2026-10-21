@@ -376,7 +376,7 @@ function ConfirmDialog({ title, body, confirmWord, confirmLabel = "Delete", onCo
         <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 800, color: "#111827" }}>{title}</h3>
         <p style={{ margin: "0 0 14px", fontSize: 13, color: "#6B7280" }}>{body}</p>
         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>
-          Type <span style={{ fontFamily: "monospace", color: "#991B1B" }}>{confirmWord}</span> to confirm
+          Type <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color: "#991B1B" }}>{confirmWord}</span> to confirm
         </label>
         <input
           autoFocus
@@ -653,7 +653,7 @@ function AppearanceSection() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <input type="color" value={s[k] ?? "#1D4ED8"} onChange={e => update(k, e.target.value)}
                     style={{ width: 34, height: 34, borderRadius: 7, border: "1.5px solid #D1D5DB", cursor: "pointer", padding: 2, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: "#6B7280", fontFamily: "monospace" }}>{s[k] ?? "#1D4ED8"}</span>
+                  <span style={{ fontSize: 11, color: "#6B7280", fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{s[k] ?? "#1D4ED8"}</span>
                 </div>
               </div>
             ))}

@@ -1053,7 +1053,7 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
                     </div>
                   </td>
                   <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{byCat.get(p.category_id) || '—'}</td>
-                  <td style={{ padding: '9px 12px', color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>{p.sku || '—'}{p.barcode ? ` · ${p.barcode}` : ''}</td>
+                  <td style={{ padding: '9px 12px', color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11 }}>{p.sku || '—'}{p.barcode ? ` · ${p.barcode}` : ''}</td>
                   <td style={{ padding: '9px 12px', fontWeight: 800, color: onSale ? '#dc2626' : NAVY }}>₹{n(price)}{onSale && <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: 'white', background: '#dc2626', padding: '1px 5px', borderRadius: 4 }}>SALE</span>}</td>
                   <td style={{ padding: '9px 12px', color: '#94a3b8' }}>{onSale ? <span style={{ textDecoration: 'line-through' }}>₹{n(p.price)}</span> : p.mrp ? `₹${n(p.mrp)}` : '—'}</td>
                   {hasCost && (() => { const m = marginPct(p); return (
@@ -1277,7 +1277,7 @@ function LabelsModal({ products, onClose }) {
       <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
         {shown.map(p => (
           <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5 }}>
-            <div style={{ flex: 1 }}><b>{p.name}</b>{p.size ? ` — ${p.size}` : ''} <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: 11 }}>{p.barcode || p.sku || `GNSI${String(p.id).padStart(6, '0')}`}</span></div>
+            <div style={{ flex: 1 }}><b>{p.name}</b>{p.size ? ` — ${p.size}` : ''} <span style={{ color: '#94a3b8', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11 }}>{p.barcode || p.sku || `GNSI${String(p.id).padStart(6, '0')}`}</span></div>
             <input type="number" min={0} max={500} value={copies[p.id] ?? 0} onChange={e => setCopies(c => ({ ...c, [p.id]: Math.max(0, Math.min(500, parseInt(e.target.value, 10) || 0)) }))} style={{ ...inp, width: 70, padding: '5px 8px' }} />
           </div>
         ))}
@@ -1492,7 +1492,7 @@ function ListingEditor({ product, products, categories, onClose, onSaved, showTo
                     <tbody>{siblings.map(s => (
                       <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9', background: s.id === product.id ? '#fbf6ea' : 'white' }}>
                         <td style={{ padding: '6px 8px', fontWeight: 700 }}>{s.size || '—'}</td>
-                        <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#64748b' }}>{s.sku || '—'}</td>
+                        <td style={{ padding: '6px 8px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color: '#64748b' }}>{s.sku || '—'}</td>
                         <td style={{ padding: '6px 8px' }}>₹{n(effPrice(s))}</td>
                         <td style={{ padding: '6px 8px', fontWeight: 700, color: s.stock <= 0 ? '#dc2626' : s.stock <= (s.reorder_level ?? 5) ? '#d97706' : '#16a34a' }}>{s.stock}</td>
                         <td style={{ padding: '6px 8px' }}>{s.online_visible ? '🌐' : '—'}</td>
@@ -1975,7 +1975,7 @@ function SalesTab({ isAdmin, currentUser, showToast, onSaleDone, refreshKey }) {
                 const stC = s.status === 'paid' ? ['#dcfce7', '#16a34a'] : s.status === 'due' ? ['#ffedd5', '#c2410c'] : ['#f1f5f9', '#64748b']
                 return [
                   <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: s.status === 'void' ? .55 : 1, cursor: 'pointer' }} onClick={() => setOpen(isOpen ? null : s.id)}>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 700, color: NAVY, fontSize: 12 }}>{s.bill_no}{s.source === 'online' && ' 🌐'}</td>
+                    <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: NAVY, fontSize: 12 }}>{s.bill_no}{s.source === 'online' && ' 🌐'}</td>
                     <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{s.sale_date}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 600 }}>{s.customer_name || 'Walk-in'}{s.gcc_no && <span style={{ color: '#94a3b8', fontWeight: 400 }}> · GCC-{s.gcc_no}</span>}</td>
                     <td style={{ padding: '9px 12px', color: '#64748b' }}>{items.reduce((a, i) => a + i.qty, 0)}</td>
@@ -2586,7 +2586,7 @@ function PromotionsTab({ currentUser, showToast }) {
                   <div key={p.id} style={{ ...card, padding: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: NAVY, fontFamily: 'monospace' }}>{p.code}</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: NAVY, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{p.code}</div>
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                           {p.kind === 'percent' ? `${p.value}% off` : `₹${n(p.value)} off`}
                           {p.max_discount ? ` (max ₹${n(p.max_discount)})` : ''}
@@ -2655,7 +2655,7 @@ function PromotionsTab({ currentUser, showToast }) {
           <div style={{ ...card, width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto', padding: 20 }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 14 }}>{editing.id ? 'Edit promo code' : 'New promo code'}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Code *</label><input value={form.code} onChange={e => f('code', e.target.value.toUpperCase())} style={{ ...inp, fontFamily: 'monospace' }} placeholder="e.g. WELCOME10" /></div>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Code *</label><input value={form.code} onChange={e => f('code', e.target.value.toUpperCase())} style={{ ...inp, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }} placeholder="e.g. WELCOME10" /></div>
               <div><label style={lbl}>Type</label>
                 <select value={form.kind} onChange={e => f('kind', e.target.value)} style={inp}><option value="percent">Percent %</option><option value="flat">Flat ₹</option></select></div>
               <div><label style={lbl}>Value *</label><input type="number" min={0} value={form.value} onChange={e => f('value', e.target.value)} style={inp} placeholder={form.kind === 'percent' ? '10' : '100'} /></div>
@@ -2739,7 +2739,7 @@ function CameraScanner({ onCode, onClose }) {
           {hits.map(h => (
             <div key={h.at} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12.5 }}>
               <span style={{ fontWeight: 700, color: h.name ? '#166534' : '#b91c1c' }}>{h.name ? `✓ ${h.name}` : '✗ Not in the product list'}</span>
-              <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}>{h.code}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color: '#94a3b8' }}>{h.code}</span>
             </div>
           ))}
         </>
@@ -2872,7 +2872,7 @@ function ProductInsights({ product, onClose }) {
           <div style={{ maxHeight: 180, overflowY: 'auto' }}>
             {rows.slice().sort((a, b) => b.store_sales.sale_date.localeCompare(a.store_sales.sale_date)).slice(0, 25).map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12.5 }}>
-                <span><b style={{ fontFamily: 'monospace', color: NAVY }}>{r.store_sales.bill_no}</b> · {r.store_sales.sale_date} · {r.store_sales.customer_name || 'Walk-in'}</span><span>×{r.qty} · ₹{n(r.amount)}</span>
+                <span><b style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color: NAVY }}>{r.store_sales.bill_no}</b> · {r.store_sales.sale_date} · {r.store_sales.customer_name || 'Walk-in'}</span><span>×{r.qty} · ₹{n(r.amount)}</span>
               </div>
             ))}
             {rows.length === 0 && <div style={{ color: '#94a3b8', fontSize: 12.5, padding: 10 }}>No sales in the last 90 days.</div>}
@@ -3266,7 +3266,7 @@ ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.p?.name)}${r.p?.size ? ' 
             <tbody>
               {purchases.map(p => (
                 <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700, color: NAVY }}>{p.purchase_no}</td>
+                  <td style={{ padding: '7px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: NAVY }}>{p.purchase_no}</td>
                   <td style={{ padding: '7px 10px', color: '#64748b' }}>{p.purchase_date}</td>
                   <td style={{ padding: '7px 10px' }}>{p.supplier_name || '—'}</td>
                   <td style={{ padding: '7px 10px', color: '#64748b' }}>{p.invoice_no || '—'}</td>

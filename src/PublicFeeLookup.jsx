@@ -355,7 +355,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
               <div style={{ background: C.cream, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1rem 1.1rem', marginBottom: '1.2rem' }}>
                 <div style={{ fontWeight: 700, color: C.navy, fontSize: '1.05rem' }}>{student.name}</div>
                 <div style={{ display: 'flex', gap: '.6rem', flexWrap: 'wrap', marginTop: '.35rem', fontSize: '.82rem', color: C.mist }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.navy }}>GCC-{student.gcc_no}</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: C.navy }}>GCC-{student.gcc_no}</span>
                   {(student.class_name || student.batch) && <span>{student.class_name || student.batch}</span>}
                   {student.course && <span>{student.course}</span>}
                   {student.hostel_type && <span>{student.hostel_type}</span>}
@@ -425,7 +425,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                     {upi.upi_qr_url && <img src={upi.upi_qr_url} alt="UPI QR" style={{ width: 72, height: 72, background: '#fff', borderRadius: 4, padding: 4, flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none' }} />}
                     <div>
                       <div style={{ fontSize: '.68rem', textTransform: 'uppercase', color: C.mist, fontWeight: 700 }}>UPI ID</div>
-                      <div style={{ fontFamily: 'monospace', fontWeight: 700, color: C.navy }}>{upi.upi_id}</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: C.navy }}>{upi.upi_id}</div>
                     </div>
                   </div>
                 ) : (

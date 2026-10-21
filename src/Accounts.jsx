@@ -3560,7 +3560,7 @@ body:has(.ac-bottom){padding-bottom:76px}
             {[{label:'Total Days',value:dailyGroups.length,isCurrency:false},{label:dailyIsIncome?'Payments Received':'Total Entries',value:dailyFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:dailyBankAmt,color:'#f87171'}].map(c=>(
               <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'12px 14px'}}>
                 <p style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.6px',margin:'0 0 6px'}}>{c.label}</p>
-                <p style={{fontFamily:'monospace',fontSize: isMobile ? 16 : 20,fontWeight:600,color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+                <p style={{fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize: isMobile ? 16 : 20,fontWeight:600,color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
               </div>
             ))}
           </div>
@@ -4980,7 +4980,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                         <span style={{fontSize:11,color:'#8a93a6'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
                       </div>
                       <div style={{fontSize:12,color:'#5d6b82',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
-                      {log.new_values&&<div style={{fontSize:11,color:'#8a93a6',marginTop:4,fontFamily:'monospace',background:'#faf8f3',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
+                      {log.new_values&&<div style={{fontSize:11,color:'#8a93a6',marginTop:4,fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",background:'#faf8f3',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
                     </div>
                   </div>
                 )

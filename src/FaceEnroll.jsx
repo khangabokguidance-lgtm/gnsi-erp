@@ -328,7 +328,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
           <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
             <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>👁 Blink now…</span>
             {liveEar !== null && (
-              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: 'monospace' }}>
+              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>
                 EAR {liveEar.toFixed(2)}
               </span>
             )}

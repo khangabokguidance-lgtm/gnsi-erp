@@ -70,7 +70,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
   const home = (
     <div style={{ flex: 1, overflow: 'auto', background: INK, color: '#eef1f8' }}>
       <div style={{ padding: '44px 56px 28px', background: 'radial-gradient(900px 300px at 20% 0%,#27427f55,transparent),linear-gradient(180deg,#171b27,#14161b)', borderBottom: `1px solid ${LINE}` }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 34, fontWeight: 700, color: GOLD }}>What will you design today?</div>
+        <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 34, fontWeight: 700, color: GOLD }}>What will you design today?</div>
         <div style={{ color: MUT, marginTop: 6, fontSize: 15 }}>Banners, media walls, posters, invitations and certificates — all in one studio.</div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search designs, sizes…"
           style={{ marginTop: 22, width: 'min(560px,100%)', padding: '14px 18px', borderRadius: 999, border: `1px solid ${LINE}`, background: PANEL, color: '#fff', fontSize: 15, outline: 'none' }} />

@@ -435,7 +435,7 @@ function GrievanceSection({ isAdmin }) {
       {filtered.map(r => (
         <div key={r.id} className="conn-card" style={{ padding: '16px', marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-            <div><span style={{ fontFamily: 'monospace', fontSize: 11, background: '#f1f5f9', padding: '2px 8px', borderRadius: 4, color: '#475569', marginRight: 8 }}>{r.ticket_no || `TKT-${r.id}`}</span><strong style={{ fontSize: 13 }}>{r.subject}</strong></div>
+            <div><span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, background: '#f1f5f9', padding: '2px 8px', borderRadius: 4, color: '#475569', marginRight: 8 }}>{r.ticket_no || `TKT-${r.id}`}</span><strong style={{ fontSize: 13 }}>{r.subject}</strong></div>
             {statusBadge(r.status)}
           </div>
           <div style={{ fontSize: 13, color: '#334155', marginBottom: 8 }}>{r.message}</div>

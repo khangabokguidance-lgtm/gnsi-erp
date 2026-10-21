@@ -29,7 +29,7 @@ const S = {
   keys: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(46px, 1fr))', gap:5 },
   key: { padding:'4px 2px', borderRadius:7, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', textAlign:'center', fontFamily:'inherit', lineHeight:1.15 },
   char: { display:'block', fontSize:19, fontFamily:"'Noto Sans Meetei Mayek', sans-serif", color:'#0f172a' },
-  code: { display:'block', fontSize:10.5, fontFamily:'monospace', color:'#0f766e', fontWeight:700 },
+  code: { display:'block', fontSize:10.5, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:'#0f766e', fontWeight:700 },
 }
 
 /** On/off switch for BMEI04 typing, plus a button to show the key pad. */

@@ -337,7 +337,7 @@ function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Report Title</div><input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:600,outline:'none',background:'white',color:'#92400e'}} /></div>
-        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily:'monospace'}} /></div>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace"}} /></div>
       </div>
       <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#8a93a6':'linear-gradient(135deg,#1e3a6e,#132a4f)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
         {transactions.length===0?'No transactions — select a date range above':`Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
@@ -857,7 +857,7 @@ function AuditWarningsTab({ isAdmin }) {
                 return (
                   <tr key={e.id} style={{ borderBottom: '1px solid #f3f0e8' }}>
                     <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{v.student_name || '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
                     <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
@@ -998,7 +998,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
                     </td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                       {r.snap?.student_name || '—'}
-                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: 'monospace' }}>{r.table_name} · {r.record_id}</div>
+                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.table_name} · {r.record_id}</div>
                     </td>
                     <td style={{ padding: '9px 12px', color: '#4b5870' }}>{amt != null ? `₹${Number(amt).toLocaleString('en-IN')}` : '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#4b5870', fontSize: 12, maxWidth: 220 }}>{r.reason}</td>
@@ -1093,7 +1093,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
   const critCount=cnt('CRITICAL'),highCount=cnt('HIGH'),medCount=cnt('MEDIUM'),lowCount=cnt('LOW')
   const pendingCount=flags.filter(f=>(reviews[f.id]?.verdict||'pending')==='pending').length
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:40}}>{critCount>0?'🚨':highCount>0?'⚠️':'✅'}</div>
@@ -1335,7 +1335,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['#','Type','Description','Amount','Date','Mode','Ref','By'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily:'monospace',fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
+                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
                 <tfoot><tr style={{background:'#1e3a6e'}}><td colSpan={3} style={{padding:'10px 12px',fontWeight:800,color:'white',fontSize:12}}>Total Paid</td><td style={{padding:'10px 12px',fontWeight:900,color:'#6ee7b7',fontSize:13}}>₹{n(grandTotal)}</td><td colSpan={4}/></tr></tfoot>
               </table>
             </div>
@@ -1420,7 +1420,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['Type','Description','Amount','Date','Mode','Actions'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
+                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
               </table>
             </div>
           )}
@@ -1549,7 +1549,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const doExport=(report,format)=>{const rows=report.rows(),meta=report.meta();if(!rows?.length){alert('No data to export for this report.');return};const filename=`GNSI_${report.id}_${todayStr}`,title=`${report.name} — GNSI`;if(format==='csv'){exportCSV(rows,filename);setLastExport(`✅ ${report.name} CSV exported`)}if(format==='tsv'){exportTSV(rows,filename);setLastExport(`✅ ${report.name} TSV exported`)}if(format==='json'){exportJSON(rows,filename);setLastExport(`✅ ${report.name} JSON exported`)}if(format==='xls'){exportXLS(rows,filename,report.name);setLastExport(`✅ ${report.name} XLS exported`)}if(format==='print'){exportPrintHTML(rows,filename,title,meta);setLastExport(`✅ ${report.name} Print opened`)}}
   const FmtBtn=({label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:36}}>📤</div>
@@ -5409,7 +5409,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background = '#faf8f3'}
                       onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                       <td style={{ padding: '10px 14px', color: '#8a93a6', fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
@@ -5562,7 +5562,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#fbf6e8'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5622,7 +5622,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5678,7 +5678,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                       onMouseLeave={e => e.currentTarget.style.background='white'}>
                       <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                      <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
+                      <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                         <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}

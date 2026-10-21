@@ -39,7 +39,7 @@ const inp = {
   width: '100%', padding: '9px 12px', borderRadius: 8,
   border: `1.5px solid ${T.slate[200]}`, fontSize: 13,
   outline: 'none', boxSizing: 'border-box', backgroundColor: '#fff',
-  color: T.slate[800], fontFamily: 'system-ui,sans-serif',
+  color: T.slate[800], fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
   transition: 'border-color .15s',
 }
 const label = {
@@ -212,7 +212,7 @@ function SessionCard({ s, admCount, onActivate, onDeactivate, onLock, onUnlock, 
         {/* Left: Name + meta */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 18, fontWeight: 900, color: T.slate[900], fontFamily: 'Georgia, serif', letterSpacing: '-.02em' }}>
+            <span style={{ fontSize: 18, fontWeight: 900, color: T.slate[900], fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: '-.02em' }}>
               {s.session_name}
             </span>
             <SessionBadge session={s} />
@@ -432,14 +432,14 @@ export default function Sessions() {
   const totalAdms      = Object.values(admCounts).reduce((a, b) => a + b, 0)
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 14, color: T.slate[500], fontFamily: 'system-ui,sans-serif' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 14, color: T.slate[500], fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <div style={{ width: 22, height: 22, border: `2.5px solid ${T.slate[200]}`, borderTopColor: T.indigo[600], borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
       <span style={{ fontWeight: 600 }}>Loading sessions…</span>
     </div>
   )
 
   return (
-    <div style={{ padding: '0 24px 32px', fontFamily: 'system-ui,sans-serif', background: T.slate[50], minHeight: '100vh' }}>
+    <div style={{ padding: '0 24px 32px', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", background: T.slate[50], minHeight: '100vh' }}>
       <style>{`@keyframes spin { to { transform:rotate(360deg) } } select:focus,input:focus,textarea:focus { border-color:${T.indigo[400]} !important; box-shadow:0 0 0 3px ${T.indigo[100]}; }`}</style>
 
       {toast && <Toast msg={toast.msg} color={toast.color} />}
