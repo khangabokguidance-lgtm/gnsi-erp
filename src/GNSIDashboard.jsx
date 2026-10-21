@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { NavIcon } from "./navIcons"
 import {
@@ -12,6 +12,7 @@ import {
 import { supabase } from "./supabase"
 import AdminIntelligence from "./AdminIntelligencePage"
 import AdminCentre from './AdminCentre'
+import { computeDuesSnapshot } from './duesSnapshot'
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
@@ -793,6 +794,7 @@ function getDailyBriefing(data, max = 5) {
 // The last loaded dashboard, reused for a few minutes (see load() below).
 const DASHBOARD_CACHE_MS = 5 * 60 * 1000
 let dashboardCache = null
+let duesCache = null   // { at, snap } — school-wide dues from the fee engine
 
 async function loadAllData() {
   const today = todayStr(), nowD = new Date()
@@ -2513,11 +2515,42 @@ export function SecurityCenter({ onNavigate } = {}) {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser }) {
-  const [data, setData] = useState(null)
+  const [rawData, setData] = useState(null)
+  const [dues, setDues] = useState(() => duesCache?.snap || null)
+  const [duesBusy, setDuesBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [now, setNow] = useState(new Date())
   const [liveTotal, setLiveTotal] = useState(0)
+
+  // Fee Pending / Defaulters / Aging come from the fee engine (rates × months owed − payments) — the same
+  // numbers the Fees module shows — instead of the old, unused fee_invoices table.
+  const data = useMemo(() => {
+    if (!rawData || !dues) return rawData
+    const a = dues.aging
+    return {
+      ...rawData,
+      feePending: dues.total,
+      feeAging: [
+        { bucket: '1 month behind', amount: a.one.amount, count: a.one.count, color: T.amber },
+        { bucket: '2 months behind', amount: a.two.amount, count: a.two.count, color: T.orange },
+        { bucket: '3+ months behind', amount: a.three.amount, count: a.three.count, color: T.rose },
+      ],
+      defaulters: dues.top.map(d => ({ name: d.name, gcc: `GCC-${d.gcc}`, due: d.due, course: d.course, status: `${d.months} mo overdue` })),
+      duesMeta: { count: dues.count, of: dues.of, partial: dues.partial },
+    }
+  }, [rawData, dues])
+  useEffect(() => {
+    if (!rawData || duesBusy) return
+    if (duesCache && Date.now() - duesCache.at < DASHBOARD_CACHE_MS) { setDues(duesCache.snap); return }
+    let live = true
+    setDuesBusy(true)
+    computeDuesSnapshot().then(snap => { duesCache = { at: Date.now(), snap }; if (live) setDues(snap) })
+      .catch(e => console.warn('Dues snapshot failed:', e.message))
+      .finally(() => live && setDuesBusy(false))
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawData])
 
   const sectionRefs = useRef({})
   const setSectionRef = (id) => (el) => { if (el) sectionRefs.current[id] = el }
@@ -2816,7 +2849,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
                 // FIX: feePending is hardcoded to 0 (fee_invoices pending-calc isn't wired
                 // up yet — see feePending definition). A 0-max progress bar always rendered
                 // as a misleading "100% collected" bar. Show an honest note instead.
-                <div style={{fontSize:11,color:T.inkSub}}>Pending amount not tracked yet</div>
+                <div style={{fontSize:11,color:T.inkSub}}>{dues?"No fees pending":"Working out pending dues…"}</div>
               )}
             </div>
             <div className="fee-banner-meta">
@@ -2887,7 +2920,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
               )}
             </Panel>
             <Panel title="⚠️ Defaulters" accent={T.rose}>
-              {data.defaulters.length===0?<div style={{color:T.emerald,fontSize:13,fontWeight:600}}>✅ No outstanding fees!</div>:(
+              {data.defaulters.length===0?<div style={{color:dues?T.emerald:T.inkSub,fontSize:13,fontWeight:600}}>{dues?"✅ No outstanding fees!":"Working out dues…"}</div>:(
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {data.defaulters.map((d,i)=>(
                     <div key={i} style={{padding:"8px 10px",borderRadius:9,background:`${T.rose}08`,border:`1px solid ${T.rose}20`}}>
@@ -2948,7 +2981,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
         <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('finance', "Total Collected")} icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
-            <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
+            <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.duesMeta?`${data.duesMeta.count} of ${data.duesMeta.of} students owe${data.duesMeta.partial?" · lower bound (some data failed)":""}`:"Working out…"}/>
             <KPI onClick={kpiClick('finance', "Admission Fee")} icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
             <KPI onClick={kpiClick('finance', "Flat Fee")} icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
             <KPI onClick={kpiClick('finance', "Course Fee")} icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
@@ -2967,7 +3000,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
               </ResponsiveContainer>
             </Panel>
             <Panel title="Fee Aging Buckets">
-              {data.feeAging.every(f=>f.amount===0)?<EmptyState msg="No outstanding invoices"/>:data.feeAging.map(f=>(
+              {data.feeAging.every(f=>f.amount===0)?<EmptyState msg={dues?"No outstanding fees":"Working out dues…"}/>:data.feeAging.map(f=>(
                 <div key={f.bucket} style={{marginBottom:13}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:T.inkSub}}>{f.bucket}</span><span style={{fontSize:13,fontWeight:800,color:f.color}}>{fmt(f.amount)}</span></div>
                   <ProgressBar value={f.amount} max={data.feePending||1} color={f.color} height={7}/>
@@ -2976,7 +3009,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
             </Panel>
           </div>
           <Panel title="Fee Defaulters">
-            {data.defaulters.length===0?<div style={{color:T.emerald,fontWeight:600,fontSize:13}}>✅ No outstanding invoices!</div>:(
+            {data.defaulters.length===0?<div style={{color:dues?T.emerald:T.inkSub,fontWeight:600,fontSize:13}}>{dues?"✅ No outstanding fees!":"Working out dues…"}</div>:(
               <TableWrap>
                 <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:480}}>
                   <thead><tr>{["Student","GCC","Course","Due","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>

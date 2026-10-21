@@ -2,12 +2,10 @@
 // modules connect (with live cross-module checks), and a Report Centre to export every module's data.
 // Read-only: nothing here changes a record. Rendered by GNSIDashboard (admins only).
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { courseOf, batchOf, canonicalBatch } from './courseMap'
-import { getSessionYear, sourceRef, gccStr } from './feeEngine'
-import { getDuesForStudents } from './feeDues'
-import { loadHostelHistory } from './hostelHistory'
+import { getSessionYear, sourceRef } from './feeEngine'
+import { computeDuesSnapshot, fetchAll } from './duesSnapshot'
 import { crossModuleChecks } from './lib/crossChecks'
 
 const INK = '#0b1730', NAVY = '#132a4f', GOLD_LT = '#e2c57e', SUB = '#6a7592', BG = '#eef0f6'
@@ -18,18 +16,6 @@ const inr = n => `₹${Number(n || 0).toLocaleString('en-IN')}`
 const compact = n => { const v = Number(n || 0); return v >= 1e7 ? `₹${(v / 1e7).toFixed(2)}Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)}L` : inr(v) }
 const LEVEL = { critical: ['🔴', '#b23a48'], warning: ['🟡', '#8a6a1f'], good: ['🟢', '#1e7a55'], info: ['🔵', '#2c5aa0'] }
 
-// Every row of a table (a plain select stops at 1000 rows).
-async function fetchAll(table, select = '*', filters = []) {
-  let all = []
-  for (let from = 0; ; from += 1000) {
-    let q = supabase.from(table).select(select)
-    for (const [c, op, v] of filters) q = q[op](c, v)
-    const { data, error } = await q.range(from, from + 999)
-    if (error) throw new Error(`${table}: ${error.message}`)
-    all = all.concat(data || [])
-    if (!data || data.length < 1000) return all
-  }
-}
 const csvOf = rows => {
   if (!rows.length) return ''
   const cols = [...new Set(rows.flatMap(r => Object.keys(r)))]
@@ -70,18 +56,8 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
   const workOutDues = async () => {
     setPending({ busy: true, done: 0, total: 0 })
     try {
-      const students = (await fetchAll('students', '*')).filter(s => (!s.status || s.status === 'Active') && !s.deleted_at && gccStr(s.gcc_no) !== '0')
-      const [adm, flat, course] = await Promise.all([
-        fetchAll('adm_fee_collections', 'amount_paid, description, fee_type, pay_date, adm_app_id', [['reverted', 'eq', false]]),
-        fetchAll('adm_flat_fees', '*', [['reverted', 'eq', false], ['paid', 'eq', true]]),
-        fetchAll('adm_course_fees', '*', [['reverted', 'eq', false]]),
-      ])
-      const by = (rows, col) => { const m = new Map(); for (const r of rows) { const g = gccStr(r[col]); if (!m.has(g)) m.set(g, []); m.get(g).push(r) } return m }
-      const [ai, fi, ci, hist] = [by(adm, 'adm_app_id'), by(flat, 'adm_app_id'), by(course, 'adm_app_id'), await loadHostelHistory()]
-      const preload = s => { const g = gccStr(s.gcc_no); return { adm: ai.get(g) || [], flat: fi.get(g) || [], course: ci.get(g) || [], ...(hist.failed ? {} : { history: hist.map.get(g) || [] }) } }
-      const res = await getDuesForStudents(students, getSessionYear(), { preload, onProgress: p => setPending({ busy: true, ...p }) })
-      const owing = res.filter(r => r.dues?.totalDue > 0)
-      setPending({ total: owing.reduce((t, r) => t + r.dues.totalDue, 0), count: owing.length, of: students.length, partial: res.some(r => r.dues?.incomplete) })
+      const r = await computeDuesSnapshot(p => setPending({ busy: true, ...p }))
+      setPending({ total: r.total, count: r.count, of: r.of, partial: r.partial })
     } catch (e) { setPending({ error: e.message || 'Could not work out dues' }) }
   }
   const collected = (data.monthlyFees || []).map(m => m.collected)
