@@ -453,6 +453,57 @@ const N = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ADM_STATUSES = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
+// ─── Premium clinical theme for the Applications screen (calm white surfaces, teal + navy, hairline borders) ───
+const P = { page:'#F4F7FA', card:'#FFFFFF', line:'#E3E9F0', soft:'#F8FAFC', ink:'#0E1B2C', sub:'#5A6B7F', mute:'#8A97A8',
+  teal:'#0E7C86', tealDark:'#0A5F68', tealSoft:'#E6F4F5', navy:'#0B2545', serif:"'Source Serif 4','Playfair Display',Georgia,serif" }
+const PRO_CSS = `
+.pro-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:6px 2px 18px}
+.pro-eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${P.teal}}
+.pro-title{font-family:${P.serif};font-size:32px;line-height:1.1;font-weight:600;color:${P.navy};margin:4px 0 4px;letter-spacing:-.01em}
+.pro-sub{font-size:13px;color:${P.sub}}
+.pro-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pro-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${P.line};background:#fff;color:${P.ink};font:600 12.5px/1 inherit;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+.pro-btn:hover{border-color:${P.teal};box-shadow:0 2px 10px rgba(14,124,134,.12)}
+.pro-btn.on{background:${P.tealSoft};border-color:${P.teal};color:${P.tealDark}}
+.pro-btn.primary{background:${P.teal};border-color:${P.teal};color:#fff;padding:10px 18px;box-shadow:0 4px 14px rgba(14,124,134,.28)}
+.pro-btn.primary:hover{background:${P.tealDark};border-color:${P.tealDark}}
+.pro-seg{display:inline-flex;border:1px solid ${P.line};border-radius:10px;background:#fff;padding:3px;gap:2px}
+.pro-seg button{border:0;background:transparent;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.pro-seg button.on{background:${P.tealSoft};box-shadow:inset 0 0 0 1px ${P.teal}55}
+.pro-session{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:${P.card};border:1px solid ${P.line};border-radius:14px;padding:10px 16px;margin-bottom:14px;font-size:12.5px;color:${P.sub}}
+.pro-session select{font:600 12.5px inherit;font-family:inherit;padding:5px 10px;border-radius:8px;border:1px solid ${P.line};background:#fff;color:${P.ink}}
+.pro-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pro-kpis{display:grid;gap:12px;margin-bottom:12px}
+.pro-kpi{position:relative;text-align:left;background:${P.card};border:1px solid ${P.line};border-radius:16px;padding:14px 16px 12px;cursor:pointer;font-family:inherit;transition:transform .15s,box-shadow .15s,border-color .15s;overflow:hidden}
+.pro-kpi:hover{transform:translateY(-2px);box-shadow:0 10px 26px -14px rgba(11,37,69,.35)}
+.pro-kpi.on{border-color:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 22%,transparent)}
+.pro-kpi .k-label{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${P.mute}}
+.pro-kpi .k-num{font-family:${P.serif};font-size:30px;font-weight:600;color:${P.ink};line-height:1.1;margin-top:6px;font-variant-numeric:tabular-nums}
+.pro-kpi .k-sub{font-size:11.5px;color:${P.sub};margin-top:2px}
+.pro-kpi .k-bar{height:4px;border-radius:99px;background:${P.line};margin-top:10px;overflow:hidden}
+.pro-kpi .k-bar>i{display:block;height:100%;border-radius:99px;background:var(--c)}
+.pro-dist{display:flex;height:8px;border-radius:99px;overflow:hidden;background:${P.line};margin-bottom:18px;gap:2px}
+.pro-dist>span{min-width:0;transition:flex .4s}
+.pro-panel{background:${P.card};border:1px solid ${P.line};border-radius:18px;padding:16px 18px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px}
+.pro-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;border:1px solid ${P.line};background:#fff;color:${P.sub};font:600 11.5px/1 inherit;font-family:inherit;cursor:pointer;transition:all .12s;white-space:nowrap}
+.pro-chip:hover{border-color:${P.teal};color:${P.tealDark}}
+.pro-chip.on{background:${P.tealSoft};border-color:${P.teal};color:${P.tealDark}}
+.pro-chip em{font-style:normal;font-size:10px;font-weight:700;background:${P.soft};border-radius:99px;padding:1px 6px;color:${P.mute}}
+.pro-chip.on em{background:#fff;color:${P.tealDark}}
+.pro-label{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:${P.mute};min-width:54px}
+.pro-table{width:100%;border-collapse:collapse;font-size:13px}
+.pro-table th{padding:12px 14px!important;background:${P.soft}!important;color:${P.sub}!important;font-size:10.5px!important;font-weight:700!important;letter-spacing:.1em!important;text-transform:uppercase;border-bottom:1px solid ${P.line};position:sticky;top:0;white-space:nowrap}
+.pro-table td{padding:12px 14px!important;border-bottom:1px solid ${P.soft}}
+.pro-table tbody tr{transition:background .12s}
+.pro-table tbody tr:hover{background:${P.tealSoft}55!important}
+.pro-card{background:${P.card};border:1px solid ${P.line};border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative;min-width:0;width:100%;transition:transform .15s,box-shadow .15s,border-color .15s}
+.pro-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(11,37,69,.4);border-color:${P.teal}66}
+.pro-card.sel{border-color:${P.teal};box-shadow:0 0 0 2px ${P.teal}33}
+.pro-mini{padding:7px 4px;border-radius:9px;border:1px solid ${P.line};background:#fff;font:700 11px/1 inherit;font-family:inherit;cursor:pointer;text-align:center;width:100%;transition:all .12s}
+.pro-mini:hover{border-color:currentColor;background:${P.soft}}
+.pro-field{font-size:10px;font-weight:700;color:${P.mute};text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
+@media (max-width:640px){.pro-title{font-size:26px}.pro-actions{width:100%}.pro-btn.primary{order:-1;width:100%;justify-content:center}.pro-btn{padding:8px 11px}}
+`
 const STAT_META = {
   'Applied':      { color:T.indigo[600], bg:T.indigo[50],  icon:'◎' },
   'Under Review': { color:T.amber[600],  bg:T.amber[50],   icon:'◐' },
@@ -1076,7 +1127,7 @@ function mapFromDB(row) {
 const styles = {
   inp: {
     width:'100%', padding:'10px 14px', borderRadius:10,
-    border:`1px solid ${N.border}`, fontSize:13,
+    border:`1px solid ${P.line}`, fontSize:13,
     outline:'none', boxSizing:'border-box',
     backgroundColor:'#FFFFFF',
     color:N.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
@@ -1224,18 +1275,14 @@ function PillStrip({ label, options, value, onChange, colorFn, countFn }) {
   const isMobile = useMobile()
   return (
     <div style={{ display:'flex', alignItems:'center', gap:isMobile?6:8, flexWrap:'wrap' }}>
-      <span style={{ fontSize:9, fontWeight:800, color:N.muted, textTransform:'uppercase', letterSpacing:'.12em', whiteSpace:'nowrap', minWidth:isMobile?40:52 }}>{label}</span>
+      <span className="pro-label">{label}</span>
       {['All', ...options].map(opt => {
         const active = value === opt
-        const accent = colorFn ? colorFn(opt) : N.indigo
         const count  = countFn ? countFn(opt) : null
         return (
-          <button key={opt} onClick={() => onChange(active ? 'All' : opt)} className="neo-pill"
-            style={{ padding:'5px 13px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', background:N.bg, boxShadow:active?N.inset('sm'):N.shadow('sm'), color:active?accent:N.muted2, transition:'all .15s', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
+          <button key={opt} type="button" onClick={() => onChange(active ? 'All' : opt)} className={'pro-chip' + (active ? ' on' : '')}>
             {opt}
-            {count !== null && opt !== 'All' && (
-              <span style={{ fontSize:9, background:active?accent+'20':N.bg2, color:active?accent:N.muted, borderRadius:99, padding:'0 5px', fontWeight:800, boxShadow:active?'none':N.shadow('sm') }}>{count}</span>
-            )}
+            {count !== null && opt !== 'All' && <em>{count}</em>}
           </button>
         )
       })}
@@ -3108,11 +3155,13 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
   // ── Table row mode ──────────────────────────────────────────────────────────
   if (tableMode) {
     return (
-      <tr style={{ background:selected?T.indigo[50]:bg, borderBottom:`1px solid ${bd}`, fontSize:12 }}>
+      <tr style={{ background:selected?P.tealSoft:'#fff', fontSize:13 }}>
         <td style={{ padding:'8px 10px' }}><input type="checkbox" checked={!!selected} onChange={()=>onSelect(a.id)} style={{ cursor:'pointer' }} /></td>
-        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.indigo[600] }}>{a.gcc}</td>
+        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:P.teal, fontWeight:600 }}>{a.gcc}</td>
         <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.slate[400] }}>{a.admNo||'—'}</td>
-        <td style={{ padding:'8px 10px', fontWeight:700, color:T.slate[800] }}>{a.name}</td>
+        <td style={{ padding:'8px 10px', fontWeight:700, color:P.ink, cursor:'pointer' }} onClick={()=>onDetail(a)}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}><Avatar name={a.name} size={30} photoUrl={a.photoUrl} /><span>{a.name}</span></div>
+        </td>
         <td style={{ padding:'8px 10px' }}>{a.course||'—'}{a.subtype?` · ${a.subtype}`:''}</td>
         <td style={{ padding:'8px 10px' }}>{a.cls||'—'}</td>
         <td style={{ padding:'8px 10px' }}>{a.house||'—'}</td>
@@ -3122,8 +3171,8 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
         <td style={{ padding:'8px 10px' }}>{a.phone||'—'}</td>
         <td style={{ padding:'8px 6px' }}>
           <div style={{ display:'flex', gap:'4px' }}>
-            <button onClick={()=>onDetail(a)} style={{ padding:'3px 8px', borderRadius:5, background:T.sky[50], color:T.sky[600], border:`1px solid ${T.sky[200]}`, fontSize:10, fontWeight:700, cursor:'pointer' }}>View</button>
-            <button onClick={()=>onEdit(a)}   style={{ padding:'3px 8px', borderRadius:5, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:10, fontWeight:700, cursor:'pointer' }}>Edit</button>
+            <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}55`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
+            <button onClick={()=>onEdit(a)}   style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
           </div>
         </td>
       </tr>
@@ -3132,22 +3181,8 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
 
   // ── Grid card mode ──────────────────────────────────────────────────────────
   return (
-    <div style={{
-      background: N.bg,
-      borderRadius: 22,
-      overflow: 'hidden',
-      boxShadow: selected ? N.inset('md') : N.shadow('lg'),
-      transition: 'box-shadow .2s, transform .2s',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'relative',
-      minWidth: 0,
-      width: '100%',
-    }}
-      onMouseEnter={e => { if(!selected){ e.currentTarget.style.boxShadow='8px 8px 20px rgba(174,179,208,0.7), -8px -8px 20px rgba(255,255,255,0.95)'; e.currentTarget.style.transform='translateY(-4px)' } }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}
-    >
-      <div style={{ height:4, background: STAT_META[a.status]?.color || N.muted, borderRadius:'22px 22px 0 0' }} />
+    <div className={'pro-card' + (selected ? ' sel' : '')}>
+      <div style={{ height:3, background: STAT_META[a.status]?.color || P.mute }} />
 
       {/* Card body */}
       <div style={{ padding:'14px 14px', display:'flex', flexDirection:'column', gap:10, flex:1, minWidth:0 }}>
@@ -3158,11 +3193,11 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
             style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
           <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
           <div style={{ flex: 1, minWidth: 0, cursor: 'pointer', overflow:'hidden' }} onClick={() => onDetail(a)}>
-  <div style={{ fontWeight: 800, fontSize: 13, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+  <div style={{ fontWeight: 700, fontSize: 14.5, color: P.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily:P.serif }}>
               {a.name}
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-              {a.gcc   && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
+              {a.gcc   && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: P.teal, fontWeight: 700 }}>#{a.gcc}</span>}
               {a.admNo && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
               {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
               {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
@@ -3175,21 +3210,21 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
         {/* Row 2: info grid 2×2 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: T.slate[600] }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Course</div>
+            <div className="pro-field">Course</div>
             <div style={{ fontWeight: 600, color: COURSE_STRUCTURE[a.course]?.color || T.slate[700], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {a.course || '—'}{a.subtype ? ` · ${a.subtype}` : ''}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Class</div>
+            <div className="pro-field">Class</div>
             <div style={{ fontWeight: 600 }}>{a.cls || '—'}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>House</div>
+            <div className="pro-field">House</div>
             <div style={{ fontWeight: 600 }}>{a.house || '—'}{a.bedNumber ? ` · ${a.bedNumber}` : ''}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Session</div>
+            <div className="pro-field">Session</div>
             <div style={{ fontWeight: 600 }}>{a.session || '—'}</div>
           </div>
         </div>
@@ -3210,23 +3245,19 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
 
         {/* Row 4: action row */}
     
-<div style={{ borderTop:`2px solid ${N.bg2}`, paddingTop:8 }}>
+<div style={{ borderTop:`1px solid ${P.line}`, paddingTop:10 }}>
   {actionBtn && (
-    <div style={{ marginBottom:6 }}>{actionBtn}</div>
+    <div style={{ marginBottom:8 }}>{actionBtn}</div>
   )}
-  <div style={{ display:'grid', gridTemplateColumns:canDelete?'repeat(5,1fr)':'repeat(4,1fr)', gap:5 }}>
+  <div style={{ display:'grid', gridTemplateColumns:canDelete?'repeat(5,1fr)':'repeat(4,1fr)', gap:6 }}>
     {[
-      { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
-      { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
-      { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
-      { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
-      ...(canDelete ? [{ label:'Del', color:N.rose, fn:e=>{e.stopPropagation();onDelete(a.id)} }] : []),
+      { label:'View',  color:P.teal,    fn:e=>{e.stopPropagation();onDetail(a)} },
+      { label:'Quick', color:'#B45309', fn:e=>{e.stopPropagation();onQuickEdit(a)} },
+      { label:'Edit',  color:P.sub,     fn:e=>{e.stopPropagation();onEdit(a)} },
+      { label:'WhatsApp', color:'#15803D', fn:e=>{e.stopPropagation();onWAMsg(a)} },
+      ...(canDelete ? [{ label:'Delete', color:'#B42318', fn:e=>{e.stopPropagation();onDelete(a.id)} }] : []),
     ].map(b=>(
-      <button key={b.label} onClick={b.fn}
-        style={{ padding:'6px 4px', borderRadius:8, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', textAlign:'center', transition:'box-shadow .12s', width:'100%' }}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
-      >{b.label}</button>
+      <button key={b.label} onClick={b.fn} className="pro-mini" style={{ color:b.color }}>{b.label}</button>
     ))}
   </div>
 </div>
@@ -4095,6 +4126,8 @@ export default function Admissions({ onNavigate } = {}) {
   const [filterHostel,   setHostel]        = useState('All')
   const [filterHouse,    setFilterHouse]   = useState('All')
   const [filterLink,     setFilterLink]    = useState('All')
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
+  const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
   const [rawAdm, setRawAdm] = useState([])
   const [stuRows, setStuRows] = useState([])
   const [advFilters,     setAdvFilters]    = useState({})
@@ -4877,174 +4910,58 @@ export default function Admissions({ onNavigate } = {}) {
           <SessionManager darkMode={darkMode} onChanged={loadAll} />
         ) : (
         <>
-        {/* ── Dark gradient stats card (Accounts-style treasury card) ── */}
-        <div style={{
-          position:'relative', borderRadius:16, padding:isMobile?'16px':'20px 24px', marginBottom:18,
-          color:'#fff', overflow:'hidden',
-          background:'radial-gradient(120% 140% at 100% 0%, #1C3A6B 0%, #132B52 42%, #0B1E3D 80%)',
-          boxShadow:'0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10)',
-        }}>
-          <div style={{ position:'absolute', left:0, right:0, top:0, height:3, background:'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
-          <div style={{ position:'absolute', top:'-60%', right:'-20%', width:'60%', height:'220%', pointerEvents:'none',
-            background:'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)', transform:'rotate(8deg)' }} />
-          <div style={{ position:'relative', zIndex:1 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-              <div>
-                <p style={{ fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:0, marginBottom:2 }}>Total Applications</p>
-                <p style={{ fontSize:12, fontWeight:500, color:'rgba(255,255,255,.8)', margin:0 }}>
-                  {activeSession ? `Session ${activeSession.session_name}` : 'All sessions'}
-                </p>
-              </div>
-              <div style={{ width:32, height:20, borderRadius:4, background:'linear-gradient(135deg,#D4AF6A 0%,#B8915A 100%)', boxShadow:'0 2px 8px rgba(212,175,106,.25)', flexShrink:0 }} />
-            </div>
-
-            <p style={{ fontSize:isMobile?24:32, fontWeight:600, margin:'8px 0 12px 0', fontFamily:"'Courier New',monospace", lineHeight:1.1 }}>
-              {scopedApps.length}
-            </p>
-
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:isMobile?10:16 }}>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Admitted</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Admitted']||0}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Enrolled</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Enrolled']||0}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Pending</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#FF8A8A' }}>{(byStatus['Applied']||0)+(byStatus['Under Review']||0)}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Revenue/mo</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'rgba(255,255,255,.9)' }}>₹{fmt(monthlyRevenue)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Header */}
-        <div style={{ padding: isMobile?'0 0 12px':'0 0 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'flex-start', justifyContent:'space-between', gap:isMobile?12:14 }}>
+        <style>{PRO_CSS}</style>
+        {/* ── Registry header ── */}
+        <div className="pro-head">
           <div>
-            <div style={{ fontSize:13, color:T.slate[500], display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-              {['Applied','Under Review','Admitted','Fee Collection','Enrolled → Student'].map((s,i,arr) => (
-                <span key={s} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontWeight:600, color:[T.indigo[600],T.amber[600],T.violet[600],T.amber[500],T.emerald[600]][i] }}>{s}</span>
-                  {i < arr.length-1 && <span style={{ color:T.slate[300] }}>›</span>}
-                </span>
-              ))}
+            <div className="pro-eyebrow">Admissions registry</div>
+            <h1 className="pro-title">Applications</h1>
+            <div className="pro-sub">
+              {filterSession === 'All' ? 'All sessions' : `Session ${filterSession}`} · {scopedApps.length} application{scopedApps.length === 1 ? '' : 's'}
+              {' · '}<span title="Monthly flat-fee revenue of enrolled students">₹{fmt(monthlyRevenue)}/mo enrolled</span>
+              {' · '}Role: <strong style={{ color:P.ink }}>{userRole}</strong>
             </div>
-            <div style={{ marginTop:6, display:'flex', gap:12, fontSize:11, color:T.slate[400], flexWrap:'wrap' }}>
-              <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
-            </div>
-            {!isMobile && <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
-              Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>/</kbd> Search &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>V</kbd> Toggle view &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>D</kbd> Dark mode &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
+            {!isMobile && <div style={{ marginTop:6, fontSize:11, color:P.mute }}>
+              Shortcuts: <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>N</kbd> new ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>/</kbd> search ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>V</kbd> view ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>Esc</kbd> close
             </div>}
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(7,auto)', gap:8, alignItems:'center' }}>
-           <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->{darkMode?'☀️':'🌙'}</button>
-
-<div style={{ display:'flex', gap:2, background:N.bg2, borderRadius:12, padding:3, boxShadow: viewChosen ? 'none' : `0 0 0 2px ${T.sky[400]}`, transition:'box-shadow .2s' }} title={viewChosen ? "Toggle view (V)" : "Pick a view before opening a record (V)"}>
-  {[['card','🃏'],['table','📋'],['kanban','🗂️'],['gallery','🖼️']].map(([key,icon]) => (
-    <button key={key} onClick={()=>chooseLayout(key)}
-      style={{ padding:'7px 10px', borderRadius:9, border:'none', background: layoutMode===key?N.bg:'transparent',
-        boxShadow: layoutMode===key?N.shadow('sm'):'none', fontSize:14, cursor:'pointer', color:N.text2, transition:'all .15s' }}>
-      {icon}
-    </button>
-  ))}
-</div>
-
-
-<button onClick={()=>setShowAnalytics(v=>!v)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showAnalytics?N.inset('sm'):N.shadow('sm'), color:showAnalytics?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
-  📊 Analytics
-</button>
-
-<button onClick={()=>setShowReports(v=>!v)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showReports?N.inset('sm'):N.shadow('sm'), color:showReports?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
-  📑 Reports
-</button>
-
-{checkPermission(userRole,'create') && (
-<button onClick={()=>setShowCSVImport(true)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->📥 Import</button>
-)}
-
-{checkPermission(userRole,'export') && (
-<button onClick={()=>secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->📤 Export</button>
-)}
-
-{checkPermission(userRole,'bulk') && (
-<button onClick={handleAutoAssignHouse}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->🏠 Auto-Assign</button>
-)}
-
-{checkPermission(userRole,'create') && (
-<button onClick={()=>{ setEditing(null); setFormOpen(true) }}
-  style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 14px rgba(29,29,31,.25)', transition:'all .2s' }}
-  onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 6px 20px rgba(29,29,31,.32)'; e.currentTarget.style.transform='translateY(-2px)' }}
-  onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 4px 14px rgba(29,29,31,.25)'; e.currentTarget.style.transform='translateY(0)' }}
->
-  <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
-</button>
-)}
+          <div className="pro-actions">
+            <div className="pro-seg" title={viewChosen ? 'Change layout' : 'Pick a layout to open records'} style={viewChosen ? undefined : { boxShadow:`0 0 0 2px ${P.teal}` }}>
+              {[['card','🃏','Cards'],['table','📋','Table'],['kanban','🗂️','Board'],['gallery','🖼️','Gallery']].map(([key, icon, t]) => (
+                <button key={key} type="button" title={t} className={layoutMode === key ? 'on' : ''} onClick={() => chooseLayout(key)}>{icon}</button>
+              ))}
+            </div>
+            <button type="button" className={'pro-btn' + (showInsights ? ' on' : '')} onClick={() => setShowInsights(v => !v)}>📈 Insights</button>
+            <button type="button" className={'pro-btn' + (showAnalytics ? ' on' : '')} onClick={() => setShowAnalytics(v => !v)}>📊 Analytics</button>
+            <button type="button" className={'pro-btn' + (showReports ? ' on' : '')} onClick={() => setShowReports(v => !v)}>📑 Reports</button>
+            {checkPermission(userRole,'create') && <button type="button" className="pro-btn" onClick={() => setShowCSVImport(true)}>📥 Import</button>}
+            {checkPermission(userRole,'export') && <button type="button" className="pro-btn" onClick={() => secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}>📤 Export</button>}
+            {checkPermission(userRole,'bulk') && <button type="button" className="pro-btn" onClick={handleAutoAssignHouse}>🏠 Auto-assign</button>}
+            <button type="button" className="pro-btn" title="Toggle dark mode (D)" onClick={() => setDarkMode(v => !v)}>{darkMode ? '☀️' : '🌙'}</button>
+            {checkPermission(userRole,'create') && <button type="button" className="pro-btn primary" onClick={() => { setEditing(null); setFormOpen(true) }}>＋ New application</button>}
           </div>
         </div>
 
-        {/* Active session banner */}
-       {activeSession && (
-  <div style={{ marginBottom:18, padding:'12px 20px', borderRadius:16, background:N.bg, boxShadow:N.shadow('sm'), display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-      <div style={{ width:9, height:9, borderRadius:'50%', background:activeSession.is_locked?N.rose:N.emerald, boxShadow:`0 0 0 3px ${activeSession.is_locked?'rgba(225,29,72,.18)':'rgba(5,150,105,.18)'}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }} />
-      <span style={{ fontSize:13, fontWeight:700, color:activeSession.is_locked?N.rose:N.emerald }}>
-        {activeSession.is_locked?'Session Locked':'Active Session'}: <strong>{activeSession.session_name}</strong>
-      </span>
-
-      {/* Session changer — switches which session THIS view (Admissions
-          module only) is filtered to and defaults new applications into.
-          Does not touch the global active session used by other modules. */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:4 }}>
-        <span style={{ fontSize:11, color:N.muted }}>Viewing:</span>
-        <select
-          value={filterSession}
-          onChange={e => setSession(e.target.value)}
-          title="Change which session this view is filtered to (Admissions only — does not affect other modules)"
-          style={{ fontSize:12, fontWeight:700, padding:'4px 10px', borderRadius:8, border:`1px solid ${N.border}`, background:'#fff', color:N.text, cursor:'pointer' }}
-        >
-          <option value="All">All sessions</option>
-          {sessionOptions.includes(activeSession.session_name)
-            ? null
-            : <option value={activeSession.session_name}>{activeSession.session_name} (active)</option>}
-          {sessionOptions.map(s => (
-            <option key={s} value={s}>{s}{s === activeSession.session_name ? ' (active)' : ''}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-    {activeSession.is_locked
-      ? <span style={{ fontSize:12, color:N.rose, fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>
-      : <span style={{ fontSize:12, color:N.muted }}>Revenue (enrolled): <strong style={{ color:N.emerald }}>₹{fmt(monthlyRevenue)}/mo</strong></span>
-    }
-  </div>
-)}
+        {/* Session bar */}
+        {activeSession && (
+          <div className="pro-session">
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+              <span className="pro-dot" style={{ background: activeSession.is_locked ? '#B42318' : '#15803D', boxShadow:`0 0 0 4px ${activeSession.is_locked ? '#B4231822' : '#15803D22'}` }} />
+              <strong style={{ color: activeSession.is_locked ? '#B42318' : '#15803D' }}>{activeSession.is_locked ? 'Session locked' : 'Active session'}: {activeSession.session_name}</strong>
+              <span style={{ color:P.mute }}>Viewing</span>
+              <select value={filterSession} onChange={e => setSession(e.target.value)}
+                title="Change which session this view is filtered to (Admissions only — does not affect other modules)">
+                <option value="All">All sessions</option>
+                {sessionOptions.includes(activeSession.session_name) ? null : <option value={activeSession.session_name}>{activeSession.session_name} (active)</option>}
+                {sessionOptions.map(x => <option key={x} value={x}>{x}{x === activeSession.session_name ? ' (active)' : ''}</option>)}
+              </select>
+            </div>
+            {activeSession.is_locked && <span style={{ color:'#B42318', fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>}
+          </div>
+        )}
 
         {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
@@ -5053,34 +4970,30 @@ export default function Admissions({ onNavigate } = {}) {
         {showReports && <ReportGenerator apps={apps} cols={cols} sessionOptions={sessionOptions} courseOptions={courseOptions} />}
 
         {/* Dashboard — default view */}
-        <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
+        {showInsights && <Dashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
-        {/* KPI Strip */}
-        <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)', gap:isMobile?10:12, marginBottom:18 }}>
-  {[
-    { label:'Total', value:scopedApps.length, color:N.text, accent:`linear-gradient(90deg,${N.gold},${N.goldDark})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
-    { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
-    { label:'Under Review', value:byStatus['Under Review']||0, color:N.amber,   accent:N.amber,   filter:'Under Review' },
-    { label:'Admitted',     value:byStatus['Admitted']||0,     color:N.violet,  accent:N.violet,  filter:'Admitted' },
-    { label:'Enrolled',     value:byStatus['Enrolled']||0,     color:N.emerald, accent:N.emerald, filter:'Enrolled' },
-    { label:'Rejected',     value:byStatus['Rejected']||0,     color:N.rose,    accent:N.rose,    filter:'Rejected' },
-    { label:'Waitlisted',   value:byStatus['Waitlisted']||0,   color:N.muted2,  accent:N.muted2,  filter:'Waitlisted' },
-  ].map(k => {
-    const isActive = filterStatus === k.filter
-    return (
-      <div key={k.label} onClick={()=>setFilter(isActive?'All':k.filter)}
-        style={{ borderRadius:18, padding:'14px 14px 12px', background:N.bg, boxShadow:isActive?N.inset('md'):N.shadow('md'), cursor:'pointer', transition:'all .2s', position:'relative', overflow:'hidden' }}
-        onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.boxShadow=N.shadow('lg') }}
-        onMouseLeave={e=>{ e.currentTarget.style.boxShadow=isActive?N.inset('md'):N.shadow('md') }}
-      >
-        <div style={{ position:'absolute', top:0, left:'14px', right:'14px', height:'3px', borderRadius:'0 0 3px 3px', background:k.accent }} />
-        <div style={{ fontSize:24, fontWeight:900, color:k.color, lineHeight:1, marginTop:4, marginBottom:4 }}>{k.value}</div>
-        <div style={{ fontSize:9, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>{k.label}</div>
-        {k.sub && <div style={{ fontSize:10, color:N.muted2, marginTop:3 }}>{k.sub}</div>}
-      </div>
-    )
-  })}
-</div>
+        {/* Pipeline */}
+        <div className="pro-kpis" style={{ gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)' }}>
+          {[
+            { label:'Total', value:scopedApps.length, color:P.navy, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
+            ...ADM_STATUSES.map(st => ({ label:st, value:byStatus[st]||0, color:STAT_META[st]?.color || P.mute, filter:st })),
+          ].map(k => {
+            const on = filterStatus === k.filter
+            const share = scopedApps.length ? Math.round((k.value / scopedApps.length) * 100) : 0
+            return (
+              <button key={k.label} type="button" className={'pro-kpi' + (on ? ' on' : '')} style={{ '--c':k.color }} onClick={() => setFilter(on ? 'All' : k.filter)}>
+                <div className="k-label">{k.label}</div>
+                <div className="k-num">{k.value}</div>
+                <div className="k-sub">{k.sub || `${share}% of total`}</div>
+                <div className="k-bar"><i style={{ width:`${k.filter === 'All' ? 100 : share}%` }} /></div>
+              </button>
+            )
+          })}
+        </div>
+        <div className="pro-dist" title="Share of applications by status">
+          {ADM_STATUSES.map(st => <span key={st} style={{ flex:byStatus[st]||0, background:STAT_META[st]?.color || P.mute }} title={`${st}: ${byStatus[st]||0}`} />)}
+        </div>
+
 
         {/* Form */}
         {formOpen && (
@@ -5103,17 +5016,13 @@ export default function Admissions({ onNavigate } = {}) {
         )}
 
         {/* Filter Panel */}
-        <div style={{ background:N.bg, borderRadius:isMobile?14:20, boxShadow:N.shadow('md'), padding:isMobile?'12px 14px':'16px 20px', marginBottom:16, display:'flex', flexDirection:'column', gap:isMobile?8:12 }}>
+        <div className="pro-panel" style={isMobile ? { padding:'12px 14px' } : undefined}>
           {sessionOptions.length > 0 && (
             <PillStrip label="Session" options={sessionOptions} value={filterSession} onChange={setSession} colorFn={()=>T.indigo[600]} />
           )}
           {courseOptions.length > 0 && (
             <PillStrip label="Course" options={courseOptions} value={filterCourse} onChange={setCourse} colorFn={c=>COURSE_STRUCTURE[c]?.color||T.slate[500]} />
           )}
-          {subtypeOptions.length > 0 && (
-            <PillStrip label="Batch" options={subtypeOptions} value={filterSubtype} onChange={setSubtype} colorFn={()=>T.violet[600]} />
-          )}
-          <PillStrip label="Hostel" options={HOSTEL_TYPES} value={filterHostel} onChange={setHostel} colorFn={h=>HOSTEL_STYLES[h]?.color||T.slate[500]} />
           <PillStrip label="Students" options={['Any issue', ...['No student record','Student not Enrolled','Status differs','Fields differ','Duplicate GCC'].filter(l => Object.entries(LINK_LABEL).some(([k, v]) => v === l && linkCounts[k]))]} value={filterLink} onChange={setFilterLink}
             colorFn={o => o === 'Any issue' ? T.rose[600] : T.amber[600]}
             countFn={o => o === 'Any issue' ? linkCounts.issues : (linkCounts[Object.keys(LINK_LABEL).find(k => LINK_LABEL[k] === o)] || 0)} />
@@ -5126,8 +5035,20 @@ export default function Admissions({ onNavigate } = {}) {
               </button>
             </div>
           )}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <button type="button" className={'pro-chip' + (showMoreFilters ? ' on' : '')} onClick={() => setShowMoreFilters(v => !v)}>
+              {showMoreFilters ? '▾' : '▸'} More filters{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length > 0 && <em>{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length}</em>}
+            </button>
+            <span style={{ fontSize:11, color:P.mute }}>Batch · Hostel · House</span>
+          </div>
+          {showMoreFilters && (<>
+          {subtypeOptions.length > 0 && (
+            <PillStrip label="Batch" options={subtypeOptions} value={filterSubtype} onChange={setSubtype} colorFn={()=>T.violet[600]} />
+          )}
+          <PillStrip label="Hostel" options={HOSTEL_TYPES} value={filterHostel} onChange={setHostel} colorFn={h=>HOSTEL_STYLES[h]?.color||T.slate[500]} />
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
+          </>)}
 
           <div style={{ display:'flex', flexDirection:isMobile?'column':'row', gap:isMobile?8:10, alignItems:isMobile?'stretch':'center', flexWrap:isMobile?'nowrap':'wrap' }}>
             <div style={{ flex:1, minWidth:200, position:'relative' }}>
@@ -5222,10 +5143,10 @@ export default function Admissions({ onNavigate } = {}) {
         {/* List / Table */}
         {filtered.length > 0 ? (
           layoutMode === 'table' ? (
-            <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <div style={{ background:P.card, border:`1px solid ${P.line}`, borderRadius:18, overflow:'auto', maxHeight:'72vh', WebkitOverflowScrolling:'touch' }}>
+              <table className="pro-table">
                 <thead>
-                  <tr style={{ background:darkMode?T.slate[700]:T.slate[50] }}>
+                  <tr>
                     <th style={{ padding:'10px 10px', textAlign:'left', color:T.slate[400], fontSize:11 }}>
                       <input type="checkbox" checked={selectedIds.size===filtered.length} onChange={toggleSelectAll} style={{ cursor:'pointer' }} />
                     </th>
