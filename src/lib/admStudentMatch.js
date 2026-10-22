@@ -2,14 +2,16 @@
 // Finds records that exist on one side only, duplicate GCC numbers, and shared fields that disagree.
 // The field list mirrors ADM_STUDENT_SYNC_FIELDS (Admissions.jsx) / STUDENT_ADM_SYNC_FIELDS (Students.jsx).
 
+// Only fields the Admissions form actually records AND the student record can legitimately change.
+// Left out on purpose: class_name and parent_phone (the Admissions form never writes them, so the application is always
+// blank there) and session (an application keeps the session it was made in; the student moves on at rollover).
 export const SYNC_FIELDS = [
   // [admissions column, students column, label, kind]
   ['applicant_name', 'name', 'Name', 'text'], ['dob', 'dob', 'Date of birth', 'date'], ['gender', 'gender', 'Gender', 'text'],
   ['blood_group', 'blood_group', 'Blood group', 'text'], ['course', 'course', 'Course', 'text'], ['batch', 'batch', 'Batch', 'text'],
-  ['class_name', 'class_name', 'Class', 'text'], ['house', 'house', 'House', 'text'], ['hostel_type', 'hostel_type', 'Hostel type', 'text'],
-  ['session', 'session', 'Session', 'text'], ['father_name', 'father_name', "Father's name", 'text'], ['mother_name', 'mother_name', "Mother's name", 'text'],
-  ['phone', 'phone', 'Phone', 'phone'], ['parent_phone', 'parent_phone', 'Parent phone', 'phone'], ['address', 'address', 'Address', 'text'],
-  ['prev_school', 'prev_school', 'Previous school', 'text'],
+  ['house', 'house', 'House', 'text'], ['hostel_type', 'hostel_type', 'Hostel type', 'text'],
+  ['father_name', 'father_name', "Father's name", 'text'], ['mother_name', 'mother_name', "Mother's name", 'text'],
+  ['phone', 'phone', 'Phone', 'phone'], ['address', 'address', 'Address', 'text'], ['prev_school', 'prev_school', 'Previous school', 'text'],
 ]
 
 export const gk = v => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? String(n) : '' }
@@ -41,6 +43,9 @@ export function matchAdmissionsStudents({ admissions = [], students = [] }) {
     for (const [ac, sc, label, kind] of SYNC_FIELDS) {
       const av = norm(a[ac], kind), sv = norm(s[sc], kind)
       if (av === sv) continue
+      // The student simply lacks a value the application has (the enrolment copy skips a few fields). Not a
+      // mismatch that "update from Students" could fix, so it is not reported.
+      if (!sv) continue
       fieldDiffs.push({ ...who(g, a, s), field: label, admCol: ac, stuCol: sc, adm: a[ac] ?? '', stu: s[sc] ?? '',
         type: !av ? 'blank in Admissions' : !sv ? 'blank in Students' : 'different' })
     }
@@ -70,7 +75,9 @@ export function admissionLinks({ admissions = [], students = [] }) {
   const liveStu = new Set(students.filter(isLive).map(s => gk(s.gcc_no)))
   for (const a of admissions) { const g = gk(a.gcc_no); if (g && liveStu.has(g)) set(g, 'ok') }
   for (const x of r.fieldDiffs) { set(x.gcc, 'diff'); const l = links.get(x.gcc); l.diffs = [...(l.diffs || []), x] }
-  for (const x of r.statusDiff) set(x.gcc, 'status', { note: `Admission says ${x.admStatus}, student is ${x.stuStatus}` })
+  // A student who left (Dropout / Inactive) keeps an Enrolled admission — status is deliberately never synced
+  // between the two tables — so this is history, not a problem.
+  for (const x of r.statusDiff) if (!links.has(x.gcc) || links.get(x.gcc).state === 'ok') links.set(x.gcc, { state: 'ok', note: `Student is ${x.stuStatus}` })
   for (const x of r.studentButNotEnrolled) set(x.gcc, 'notEnrolled', { note: `Student exists (${x.stuStatus}) but admission is ${x.admStatus}` })
   for (const x of r.duplicates) set(x.gcc, 'dup', { note: `${x.count} rows in ${x.where}` })
   for (const x of r.enrolledNoStudent) set(x.gcc, 'noStudent', { note: 'Marked Enrolled but there is no student with this GCC' })
