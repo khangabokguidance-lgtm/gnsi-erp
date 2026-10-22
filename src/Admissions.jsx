@@ -454,8 +454,15 @@ const N = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ADM_STATUSES = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
 // ─── Premium clinical theme for the Applications screen (calm white surfaces, teal + navy, hairline borders) ───
-const P = { page:'#F4F7FA', card:'#FFFFFF', line:'#E3E9F0', soft:'#F8FAFC', ink:'#0E1B2C', sub:'#5A6B7F', mute:'#8A97A8',
-  teal:'#0E7C86', tealDark:'#0A5F68', tealSoft:'#E6F4F5', navy:'#0B2545', serif:"'Source Serif 4','Playfair Display',Georgia,serif" }
+const P = { page:'var(--p-page)', card:'var(--p-card)', line:'var(--p-line)', soft:'var(--p-soft)', ink:'var(--p-ink)', sub:'var(--p-sub)', mute:'var(--p-mute)',
+  teal:'var(--p-accent)', tealDark:'var(--p-accent-dark)', tealSoft:'var(--p-accent-soft)', navy:'var(--p-navy)', total:'var(--p-total)', serif:"'Source Serif 4','Playfair Display',Georgia,serif" }
+// Two looks for the same screen, switched with the Design button. Clinical = white + teal; Executive = ivory + navy + gold.
+const THEMES = {
+  clinical:  { label:'Clinical',  vars:{ '--p-page':'#F4F7FA', '--p-card':'#FFFFFF', '--p-line':'#E3E9F0', '--p-soft':'#F8FAFC', '--p-ink':'#0E1B2C', '--p-sub':'#5A6B7F', '--p-mute':'#8A97A8',
+                '--p-accent':'#0E7C86', '--p-accent-dark':'#0A5F68', '--p-accent-soft':'#E6F4F5', '--p-navy':'#0B2545', '--p-total':'#0B2545' } },
+  executive: { label:'Executive', vars:{ '--p-page':'#FAF7F2', '--p-card':'#FFFFFF', '--p-line':'#E8DFCC', '--p-soft':'#FBF8F1', '--p-ink':'#14213D', '--p-sub':'#5E6477', '--p-mute':'#9A9382',
+                '--p-accent':'#B8915A', '--p-accent-dark':'#8F6D38', '--p-accent-soft':'#F6EEDC', '--p-navy':'#0B1B3A', '--p-total':'#E2C57E' } },
+}
 const PRO_CSS = `
 .pro-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:6px 2px 18px}
 .pro-eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${P.teal}}
@@ -463,13 +470,13 @@ const PRO_CSS = `
 .pro-sub{font-size:13px;color:${P.sub}}
 .pro-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .pro-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${P.line};background:#fff;color:${P.ink};font:600 12.5px/1 inherit;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
-.pro-btn:hover{border-color:${P.teal};box-shadow:0 2px 10px rgba(14,124,134,.12)}
+.pro-btn:hover{border-color:${P.teal};box-shadow:0 2px 10px color-mix(in srgb,${P.teal} 15%,transparent)}
 .pro-btn.on{background:${P.tealSoft};border-color:${P.teal};color:${P.tealDark}}
-.pro-btn.primary{background:${P.teal};border-color:${P.teal};color:#fff;padding:10px 18px;box-shadow:0 4px 14px rgba(14,124,134,.28)}
+.pro-btn.primary{background:${P.teal};border-color:${P.teal};color:#fff;padding:10px 18px;box-shadow:0 4px 14px color-mix(in srgb,${P.teal} 30%,transparent)}
 .pro-btn.primary:hover{background:${P.tealDark};border-color:${P.tealDark}}
 .pro-seg{display:inline-flex;border:1px solid ${P.line};border-radius:10px;background:#fff;padding:3px;gap:2px}
 .pro-seg button{border:0;background:transparent;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:14px}
-.pro-seg button.on{background:${P.tealSoft};box-shadow:inset 0 0 0 1px ${P.teal}55}
+.pro-seg button.on{background:${P.tealSoft};box-shadow:inset 0 0 0 1px color-mix(in srgb,${P.teal} 33%,transparent)}
 .pro-session{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:${P.card};border:1px solid ${P.line};border-radius:14px;padding:10px 16px;margin-bottom:14px;font-size:12.5px;color:${P.sub}}
 .pro-session select{font:600 12.5px inherit;font-family:inherit;padding:5px 10px;border-radius:8px;border:1px solid ${P.line};background:#fff;color:${P.ink}}
 .pro-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
@@ -495,12 +502,42 @@ const PRO_CSS = `
 .pro-table th{padding:12px 14px!important;background:${P.soft}!important;color:${P.sub}!important;font-size:10.5px!important;font-weight:700!important;letter-spacing:.1em!important;text-transform:uppercase;border-bottom:1px solid ${P.line};position:sticky;top:0;white-space:nowrap}
 .pro-table td{padding:12px 14px!important;border-bottom:1px solid ${P.soft}}
 .pro-table tbody tr{transition:background .12s}
-.pro-table tbody tr:hover{background:${P.tealSoft}55!important}
+.pro-table tbody tr:hover{background:color-mix(in srgb,${P.tealSoft} 35%,transparent)!important}
 .pro-card{background:${P.card};border:1px solid ${P.line};border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative;min-width:0;width:100%;transition:transform .15s,box-shadow .15s,border-color .15s}
-.pro-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(11,37,69,.4);border-color:${P.teal}66}
-.pro-card.sel{border-color:${P.teal};box-shadow:0 0 0 2px ${P.teal}33}
+.pro-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(11,37,69,.4);border-color:color-mix(in srgb,${P.teal} 40%,transparent)}
+.pro-card.sel{border-color:${P.teal};box-shadow:0 0 0 2px color-mix(in srgb,${P.teal} 20%,transparent)}
 .pro-mini{padding:7px 4px;border-radius:9px;border:1px solid ${P.line};background:#fff;font:700 11px/1 inherit;font-family:inherit;cursor:pointer;text-align:center;width:100%;transition:all .12s}
 .pro-mini:hover{border-color:currentColor;background:${P.soft}}
+.pro-hero{display:contents}
+.pro-theme.executive .pro-hero{display:block;background:radial-gradient(120% 140% at 100% 0%,#1C3A6B 0%,#10264A 45%,#0B1B3A 85%);border-radius:24px;padding:26px 28px 22px;margin-bottom:18px;position:relative;overflow:hidden;box-shadow:0 18px 40px -22px rgba(11,27,58,.7)}
+.pro-theme.executive .pro-hero::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,#B8915A,#E2C57E,#B8915A)}
+.pro-theme.executive .pro-eyebrow{color:#E2C57E;letter-spacing:.22em}
+.pro-theme.executive .pro-title{color:#fff;font-size:36px}
+.pro-theme.executive .pro-sub,.pro-theme.executive .pro-hero kbd{color:rgba(255,255,255,.72)!important}
+.pro-theme.executive .pro-sub strong{color:#fff!important}
+.pro-theme.executive .pro-hero kbd{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.18)!important}
+.pro-theme.executive .pro-hero .pro-head>div:first-child>div:last-child{color:rgba(255,255,255,.5)!important}
+.pro-theme.executive .pro-btn{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16);color:#fff}
+.pro-theme.executive .pro-btn:hover{border-color:#E2C57E;background:rgba(255,255,255,.12);box-shadow:none}
+.pro-theme.executive .pro-btn.on{background:rgba(226,197,126,.18);border-color:#E2C57E;color:#F3DDA6}
+.pro-theme.executive .pro-btn.primary{background:linear-gradient(135deg,#E2C57E,#B8915A);border-color:#B8915A;color:#1A1406;box-shadow:0 6px 18px rgba(184,145,90,.4)}
+.pro-theme.executive .pro-seg{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+.pro-theme.executive .pro-seg button.on{background:rgba(226,197,126,.22);box-shadow:inset 0 0 0 1px #E2C57E88}
+.pro-theme.executive .pro-session{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.7)}
+.pro-theme.executive .pro-session strong{color:#8FE0B0!important}
+.pro-theme.executive .pro-session select{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff}
+.pro-theme.executive .pro-session select option{color:#14213D}
+.pro-theme.executive .pro-kpi{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.pro-theme.executive .pro-kpi:hover{background:rgba(255,255,255,.1);box-shadow:0 12px 28px -16px rgba(0,0,0,.6)}
+.pro-theme.executive .pro-kpi.on{border-color:#E2C57E;box-shadow:0 0 0 2px rgba(226,197,126,.3)}
+.pro-theme.executive .pro-kpi .k-label{color:rgba(255,255,255,.55)}
+.pro-theme.executive .pro-kpi .k-num{color:#fff}
+.pro-theme.executive .pro-kpi .k-sub{color:rgba(255,255,255,.62)}
+.pro-theme.executive .pro-kpi .k-bar{background:rgba(255,255,255,.14)}
+.pro-theme.executive .pro-dist{background:rgba(255,255,255,.14);margin-bottom:0}
+.pro-theme.executive .pro-kpis{margin-bottom:14px}
+.pro-theme.executive .pro-table th{background:#14213D!important;color:#E2C57E!important}
+.pro-theme.executive .pro-panel,.pro-theme.executive .pro-card{box-shadow:0 10px 26px -20px rgba(20,33,61,.5)}
 .pro-field{font-size:10px;font-weight:700;color:${P.mute};text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
 @media (max-width:640px){.pro-title{font-size:26px}.pro-actions{width:100%}.pro-btn.primary{order:-1;width:100%;justify-content:center}.pro-btn{padding:8px 11px}}
 `
@@ -3171,7 +3208,7 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
         <td style={{ padding:'8px 10px' }}>{a.phone||'—'}</td>
         <td style={{ padding:'8px 6px' }}>
           <div style={{ display:'flex', gap:'4px' }}>
-            <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}55`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
+            <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
             <button onClick={()=>onEdit(a)}   style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
           </div>
         </td>
@@ -4127,6 +4164,8 @@ export default function Admissions({ onNavigate } = {}) {
   const [filterHouse,    setFilterHouse]   = useState('All')
   const [filterLink,     setFilterLink]    = useState('All')
   const [showMoreFilters, setShowMoreFilters] = useState(false)
+  const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
+  const toggleProTheme = () => setProThemeState(t => { const n = t === 'clinical' ? 'executive' : 'clinical'; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
   const [rawAdm, setRawAdm] = useState([])
   const [stuRows, setStuRows] = useState([])
@@ -4909,8 +4948,9 @@ export default function Admissions({ onNavigate } = {}) {
         ) : moduleView === 'sessions' ? (
           <SessionManager darkMode={darkMode} onChanged={loadAll} />
         ) : (
-        <>
+        <div className={'pro-theme ' + proTheme} style={THEMES[proTheme].vars}>
         <style>{PRO_CSS}</style>
+        <div className="pro-hero">
         {/* ── Registry header ── */}
         <div className="pro-head">
           <div>
@@ -4940,6 +4980,7 @@ export default function Admissions({ onNavigate } = {}) {
             {checkPermission(userRole,'create') && <button type="button" className="pro-btn" onClick={() => setShowCSVImport(true)}>📥 Import</button>}
             {checkPermission(userRole,'export') && <button type="button" className="pro-btn" onClick={() => secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}>📤 Export</button>}
             {checkPermission(userRole,'bulk') && <button type="button" className="pro-btn" onClick={handleAutoAssignHouse}>🏠 Auto-assign</button>}
+            <button type="button" className="pro-btn" title="Switch the screen design" onClick={toggleProTheme}>🎨 {THEMES[proTheme === 'clinical' ? 'executive' : 'clinical'].label}</button>
             <button type="button" className="pro-btn" title="Toggle dark mode (D)" onClick={() => setDarkMode(v => !v)}>{darkMode ? '☀️' : '🌙'}</button>
             {checkPermission(userRole,'create') && <button type="button" className="pro-btn primary" onClick={() => { setEditing(null); setFormOpen(true) }}>＋ New application</button>}
           </div>
@@ -4963,19 +5004,10 @@ export default function Admissions({ onNavigate } = {}) {
           </div>
         )}
 
-        {/* Analytics Dashboard */}
-        {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
-
-        {/* Report Generator — Phase A */}
-        {showReports && <ReportGenerator apps={apps} cols={cols} sessionOptions={sessionOptions} courseOptions={courseOptions} />}
-
-        {/* Dashboard — default view */}
-        {showInsights && <Dashboard apps={apps} cols={cols} darkMode={darkMode} />}
-
         {/* Pipeline */}
         <div className="pro-kpis" style={{ gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)' }}>
           {[
-            { label:'Total', value:scopedApps.length, color:P.navy, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
+            { label:'Total', value:scopedApps.length, color:P.total, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
             ...ADM_STATUSES.map(st => ({ label:st, value:byStatus[st]||0, color:STAT_META[st]?.color || P.mute, filter:st })),
           ].map(k => {
             const on = filterStatus === k.filter
@@ -4994,6 +5026,17 @@ export default function Admissions({ onNavigate } = {}) {
           {ADM_STATUSES.map(st => <span key={st} style={{ flex:byStatus[st]||0, background:STAT_META[st]?.color || P.mute }} title={`${st}: ${byStatus[st]||0}`} />)}
         </div>
 
+
+        </div>
+
+        {/* Analytics Dashboard */}
+        {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
+
+        {/* Report Generator — Phase A */}
+        {showReports && <ReportGenerator apps={apps} cols={cols} sessionOptions={sessionOptions} courseOptions={courseOptions} />}
+
+        {/* Dashboard — default view */}
+        {showInsights && <Dashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
         {/* Form */}
         {formOpen && (
@@ -5208,7 +5251,7 @@ export default function Admissions({ onNavigate } = {}) {
             Showing all {filtered.length} records · Switch to Table View for better performance with large lists
           </div>
         )}
-        </>
+        </div>
         )}
       </div>
     </>
