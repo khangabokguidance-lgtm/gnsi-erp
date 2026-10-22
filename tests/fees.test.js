@@ -418,3 +418,10 @@ test('entrance candidate → admission application row', () => {
   assert.equal(applicationFromCandidate({ student_name: 'X' }, { course: 'rms' }, { gcc: 1 }).course, null)
   assert.equal(candidateKey(' Asha Devi ', '2015-03-01T00:00:00Z'), candidateKey('asha devi', '2015-03-01'))
 })
+
+import { readFileSync } from 'node:fs'
+test('api/_entrance keeps byte-identical copies of the shared rule files in src/lib', () => {
+  for (const f of ['entranceReg.js', 'entranceNumbers.js']) {
+    assert.equal(readFileSync(new URL(`../api/_entrance/${f}`, import.meta.url), 'utf8'), readFileSync(new URL(`../src/lib/${f}`, import.meta.url), 'utf8'), `${f} differs — copy src/lib/${f} to api/_entrance/${f}`)
+  }
+})

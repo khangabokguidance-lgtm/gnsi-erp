@@ -2,8 +2,8 @@
 // Validates with the same rules as the browser form, stores photo + signature in the private bucket,
 // numbers the candidate, and saves the application (fee unpaid until Razorpay confirms it).
 import { db, send, only, body, EXAM_FIELDS, BUCKET, parseDataUrl, insertTolerant } from './_lib.js'
-import { registrationWindow, validateRegistration, candidatePayload, feeFor, MAX_PHOTO_KB, MAX_SIGN_KB } from '../../src/lib/entranceReg.js'
-import { applicationNo, nextApplicationSeq, nextRoll } from '../../src/lib/entranceNumbers.js'
+import { registrationWindow, validateRegistration, candidatePayload, feeFor, MAX_PHOTO_KB, MAX_SIGN_KB } from './entranceReg.js'
+import { applicationNo, nextApplicationSeq, nextRoll } from './entranceNumbers.js'
 
 const rand = () => Math.random().toString(36).slice(2, 8)
 

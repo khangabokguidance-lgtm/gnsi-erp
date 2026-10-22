@@ -3,7 +3,7 @@
 // as captured for this order and for at least the exam fee.
 import crypto from 'crypto'
 import { send, only, body, findCandidate, updateTolerant } from './_lib.js'
-import { feeFor } from '../../src/lib/entranceReg.js'
+import { feeFor } from './entranceReg.js'
 
 export default async function handler(req, res) {
   if (!only(req, res, 'POST')) return

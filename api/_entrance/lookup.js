@@ -1,6 +1,6 @@
 // POST /api/entrance/lookup  { applicationNo, dob }  → status and everything the admit card / confirmation slip shows.
 import { db, send, only, body, findCandidate, BUCKET } from './_lib.js'
-import { admitCardState, feeFor } from '../../src/lib/entranceReg.js'
+import { admitCardState, feeFor } from './entranceReg.js'
 
 const signed = async path => {
   if (!path || /^https?:/.test(path)) return path || ''

@@ -5,15 +5,13 @@
 //   POST ?action=verify                          confirm the payment, mark the fee paid
 //   POST ?action=lookup                          status / admit-card data (application no. + date of birth)
 // The handlers live in api/_entrance/ (a leading underscore keeps them from becoming functions of their own, so the
-// deployment holds one function here instead of five).
+// deployment holds one function here instead of five). Nothing in api/ imports from src/: the two shared rule files are
+// copied into api/_entrance/ (tests/fees.test.js fails if the copies drift from src/lib/).
 import exam from './_entrance/exam.js'
 import register from './_entrance/register.js'
 import createOrder from './_entrance/create-order.js'
 import verify from './_entrance/verify.js'
 import lookup from './_entrance/lookup.js'
-
-// register carries two images as base64, so the body limit is raised for the whole function.
-export const config = { api: { bodyParser: { sizeLimit: '2mb' } } }
 
 const routes = { exam, register, 'create-order': createOrder, verify, lookup }
 
