@@ -5110,27 +5110,48 @@ export default function Admissions({ onNavigate } = {}) {
           </div>
         )}
 
-        {/* Pipeline */}
-        <div className="pro-kpis" style={{ gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)' }}>
-          {[
-            { label:'Total', value:scopedApps.length, color:P.total, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
-            ...ADM_STATUSES.map(st => ({ label:st, value:byStatus[st]||0, color:STAT_META[st]?.color || P.mute, filter:st })),
-          ].map(k => {
-            const on = filterStatus === k.filter
-            const share = scopedApps.length ? Math.round((k.value / scopedApps.length) * 100) : 0
-            return (
-              <button key={k.label} type="button" className={'pro-kpi' + (on ? ' on' : '')} style={{ '--c':k.color }} onClick={() => setFilter(on ? 'All' : k.filter)}>
-                <div className="k-label">{k.label}</div>
-                <div className="k-num">{k.value}</div>
-                <div className="k-sub">{k.sub || `${share}% of total`}</div>
-                <div className="k-bar"><i style={{ width:`${k.filter === 'All' ? 100 : share}%` }} /></div>
-              </button>
-            )
-          })}
-        </div>
-        <div className="pro-dist" title="Share of applications by status">
-          {ADM_STATUSES.map(st => <span key={st} style={{ flex:byStatus[st]||0, background:STAT_META[st]?.color || P.mute }} title={`${st}: ${byStatus[st]||0}`} />)}
-        </div>
+        {/* Live numbers — only what the data actually has (a status nobody is in is not shown) */}
+        {(() => {
+          const n = scopedApps.length
+          const share = v => (n ? Math.round((v / n) * 100) : 0)
+          const gccOf = x => String(parseInt(x.gcc) || '')
+          const scopedSet = new Set(scopedApps.map(gccOf))
+          const paidRows = cols.filter(c => c.fee_type === 'admission' && !c.reverted && scopedSet.has(String(parseInt(c.adm_app_id) || '')))
+          const paidSet = new Set(paidRows.map(c => String(parseInt(c.adm_app_id) || '')))
+          const paidCount = scopedApps.filter(x => paidSet.has(gccOf(x))).length
+          const paidAmt = paidRows.reduce((t, c) => t + (Number(c.amount_paid) || 0), 0)
+          const withPhoto = scopedApps.filter(x => x.photoUrl || x.studentPhotoUrl).length
+          const toggle = (cur, val, set) => () => set(cur === val ? 'All' : val)
+          const courseCounts = Object.entries(scopedApps.reduce((m, x) => { if (x.course) m[x.course] = (m[x.course] || 0) + 1; return m }, {})).sort((x, y) => y[1] - x[1])
+          const cards = [
+            { key:'total', label:'Total applications', value:n, sub:`₹${fmt(monthlyRevenue)}/mo from enrolled`, color:P.total, on:filterStatus === 'All', go:() => setFilter('All'), bar:100 },
+            ...ADM_STATUSES.filter(st => byStatus[st]).map(st => ({ key:st, label:st, value:byStatus[st], sub:`${share(byStatus[st])}% of total`, color:STAT_META[st]?.color || P.mute, on:filterStatus === st, go:toggle(filterStatus, st, setFilter), bar:share(byStatus[st]) })),
+            ...HOSTEL_TYPES.map(h => ({ key:h, v:scopedApps.filter(x => x.hostel_type === h).length })).filter(h => h.v).map(h => ({ key:h.key, label:h.key, value:h.v, sub:`${share(h.v)}% of total`, color:HOSTEL_STYLES[h.key]?.color || P.mute, on:filterHostel === h.key, go:toggle(filterHostel, h.key, setHostel), bar:share(h.v) })),
+            ...courseCounts.slice(0, 4).map(([c, v]) => ({ key:'c-' + c, label:c, value:v, sub:`${share(v)}% of total`, color:COURSE_STRUCTURE[c]?.color || P.mute, on:filterCourse === c, go:toggle(filterCourse, c, setCourse), bar:share(v) })),
+            { key:'fee', label:'Admission fee paid', value:paidCount, sub:`₹${fmt(paidAmt)} collected · ${n - paidCount} unpaid`, color:'#15803D', on:advFilters.feeStatus === 'paid', go:() => setAdvFilters(f => ({ ...f, feeStatus: f.feeStatus === 'paid' ? '' : 'paid' })), bar:share(paidCount) },
+            { key:'photo', label:'Photo on file', value:withPhoto, sub:`${n - withPhoto} missing`, color:P.teal, on:filterPhoto === 'Missing', go:() => setFilterPhoto(filterPhoto === 'Missing' ? 'All' : 'Missing'), bar:share(withPhoto) },
+            ...(linkCounts.issues ? [{ key:'check', label:'To check vs Students', value:linkCounts.issues, sub:'differs from the student record', color:'#B42318', on:filterLink === 'Any issue', go:toggle(filterLink, 'Any issue', setFilterLink), bar:share(linkCounts.issues) }] : []),
+          ]
+          return (
+            <>
+              <div className="pro-kpis" style={{ gridTemplateColumns:isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fit,minmax(176px,1fr))' }}>
+                {cards.map(k => (
+                  <button key={k.key} type="button" className={'pro-kpi' + (k.on ? ' on' : '')} style={{ '--c':k.color }} onClick={k.go}>
+                    <div className="k-label">{k.label}</div>
+                    <div className="k-num">{k.value}</div>
+                    <div className="k-sub">{k.sub}</div>
+                    <div className="k-bar"><i style={{ width:`${k.bar}%` }} /></div>
+                  </button>
+                ))}
+              </div>
+              {courseCounts.length > 0 && (
+                <div className="pro-dist" title="Share of applications by course">
+                  {courseCounts.map(([c, v]) => <span key={c} style={{ flex:v, background:COURSE_STRUCTURE[c]?.color || P.mute }} title={`${c}: ${v}`} />)}
+                </div>
+              )}
+            </>
+          )
+        })()}
         {proTheme === 'portal' && (() => {
           const pending = (byStatus['Applied']||0) + (byStatus['Under Review']||0)
           const overdue = scopedApps.filter(x => x.followupDate && x.followupDate < today).length
