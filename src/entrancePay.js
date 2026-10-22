@@ -16,7 +16,9 @@ function loadCheckout() {
 }
 
 export async function api(path, body, method = 'POST') {
-  const res = await fetch(`/api/entrance/${path}`, method === 'GET' ? undefined : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  // one function, routed by ?action= (see api/entrance.js); path may carry its own query, e.g. 'exam?id=7'
+  const [action, qs] = path.split('?')
+  const res = await fetch(`/api/entrance?action=${action}${qs ? '&' + qs : ''}`, method === 'GET' ? undefined : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   let data = {}
   try { data = await res.json() } catch { /* non-JSON error page */ }
   if (!res.ok) { const e = new Error(data.error || `Request failed (${res.status})`); e.data = data; throw e }
