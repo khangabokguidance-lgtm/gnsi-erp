@@ -4,7 +4,8 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
-import { courseOf } from './courseMap'
+import { courseOf, courseStructure } from './courseMap'
+import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 
 // Course to show for a student: the resolved course (a blank course on a
 // Udaan / Pragati batch counts as Foundation), else what is saved.
@@ -53,11 +54,13 @@ import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
+import FeeIncomeCollection from './FeeIncomeCollection'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
 import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -198,12 +201,7 @@ const DRESS_ITEMS = [
   { id: 'dk5', name: 'Track Suit Set 2', price: 600 },
 ]
 
-const COURSE_STRUCTURE = {
-  Navodaya:          { subtypes: ['Lakshya A', 'Lakshya B', 'Lakshya', 'Umeed'] }, // 'Lakshya' = older unsplit records
-  Sainik:            { subtypes: ['Achiever', 'Leader', 'Champion'] },
-  Foundation:        { subtypes: ['Udaan', 'Pragati'] },
-  'Combined Course': { subtypes: [] },
-}
+const COURSE_STRUCTURE = courseStructure({}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'], includeLegacy: true })   // 'Lakshya' kept for older records
 
 const ADM_FEE_BASE   = 6000
 const PROSPECTUS_FEE = 200
@@ -340,7 +338,7 @@ function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Report Title</div><input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:600,outline:'none',background:'white',color:'#92400e'}} /></div>
-        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily:'monospace'}} /></div>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace"}} /></div>
       </div>
       <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#8a93a6':'linear-gradient(135deg,#1e3a6e,#132a4f)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
         {transactions.length===0?'No transactions — select a date range above':`Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
@@ -860,7 +858,7 @@ function AuditWarningsTab({ isAdmin }) {
                 return (
                   <tr key={e.id} style={{ borderBottom: '1px solid #f3f0e8' }}>
                     <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{v.student_name || '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
                     <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
@@ -1001,7 +999,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
                     </td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                       {r.snap?.student_name || '—'}
-                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: 'monospace' }}>{r.table_name} · {r.record_id}</div>
+                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.table_name} · {r.record_id}</div>
                     </td>
                     <td style={{ padding: '9px 12px', color: '#4b5870' }}>{amt != null ? `₹${Number(amt).toLocaleString('en-IN')}` : '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#4b5870', fontSize: 12, maxWidth: 220 }}>{r.reason}</td>
@@ -1096,7 +1094,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
   const critCount=cnt('CRITICAL'),highCount=cnt('HIGH'),medCount=cnt('MEDIUM'),lowCount=cnt('LOW')
   const pendingCount=flags.filter(f=>(reviews[f.id]?.verdict||'pending')==='pending').length
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:40}}>{critCount>0?'🚨':highCount>0?'⚠️':'✅'}</div>
@@ -1338,7 +1336,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['#','Type','Description','Amount','Date','Mode','Ref','By'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily:'monospace',fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
+                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
                 <tfoot><tr style={{background:'#1e3a6e'}}><td colSpan={3} style={{padding:'10px 12px',fontWeight:800,color:'white',fontSize:12}}>Total Paid</td><td style={{padding:'10px 12px',fontWeight:900,color:'#6ee7b7',fontSize:13}}>₹{n(grandTotal)}</td><td colSpan={4}/></tr></tfoot>
               </table>
             </div>
@@ -1423,7 +1421,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['Type','Description','Amount','Date','Mode','Actions'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
+                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
               </table>
             </div>
           )}
@@ -1457,7 +1455,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             <div style={{fontWeight:800,fontSize:13,color:'#1e3a6e',marginBottom:10}}>👨‍🎓 Select Student</div>
             <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2}/>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginTop:8}}>
-              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select>
+              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=><option key={c}>{c}</option>)}</select>
               <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Hostel</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select>
               <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option></select>
             </div>
@@ -1487,19 +1485,21 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
 
 
 // ── Reports Export Tab ────────────────────────────────────────────────────────
-function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo}){
+function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo,scopeGccs=null}){
   const stu=gcc=>students.find(s=>String(s.gcc_no)===String(gcc))
+  // Course / hostel / status filters and the date range apply to every register and summary.
+  // scopeGccs = set of GCC numbers kept by the filters (null = no filter).
+  const keep=keepRow({scope:scopeGccs,from:afDateFrom||'',to:afDateTo||''})
+  adm_flat_fees=adm_flat_fees.filter(r=>r.paid&&!r.reverted&&keep(r))
+  adm_course_fees=adm_course_fees.filter(r=>!r.reverted&&keep(r))
+  adm_fee_collections=adm_fee_collections.filter(r=>!r.reverted&&keep(r))
   const feeStatusRows=liveRows.map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Admission Fee':s.admTotal||0,'Flat Fees':s.flatTotal||0,'Course Fees':s.crsfTotal||0,'Total Paid':s.grandTotal,'Status':s.liveStatus,'Repeater':s.is_repeater?'Yes':'No'}))
-  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'Pending'}))
+  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'No payment yet','Note':s.is_repeater?'Repeater (admission waived)':(s.admission_date&&sessionOfDate(s.admission_date)===getSessionYear()&&new Date(s.admission_date).getMonth()!==3?`Late entry — joined ${String(s.admission_date).slice(0,10)}`:'')}))
   const flatRows=adm_flat_fees.filter(r=>r.paid).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Hostel Type':s?.hostel_type||'—','Month':r.month||'—','Year':r.year||'—','Amount':r.amount||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const crsfRows=adm_course_fees.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':r.course||'—','Hostel Type':s?.hostel_type||'—','For Month':r.for_month||'—','Year':r.year||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const admRows=adm_fee_collections.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Fee Type':r.fee_type||'—','Description':r.description||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
-  const courseRows=['Sainik','Navodaya','Foundation','Combined Course'].map(c=>{const ss=liveRows.filter(s=>s.course===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
-  const monthMap={};const addToMonth=(mk,type,amt)=>{if(!monthMap[mk])monthMap[mk]={'Month':mk,'Flat Fee':0,'Course Fee':0,'Admission Fee':0};monthMap[mk][type]=(monthMap[mk][type]||0)+amt}
-  adm_flat_fees.forEach(r=>{if(r.month&&r.year)addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0)})
-  adm_course_fees.forEach(r=>{if(r.for_month&&r.year)addToMonth(`${r.for_month} ${r.year}`,'Course Fee',Number(r.amount_paid)||0)})
-  adm_fee_collections.forEach(r=>{if(r.pay_date){const d=new Date(r.pay_date+'T00:00:00');addToMonth(`${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`,'Admission Fee',Number(r.amount_paid)||0)}})
-  const monthlyRows=Object.values(monthMap).map(m=>({...m,'Total':(m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)}))
+  const courseRows=['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=>{const ss=liveRows.filter(s=>courseOf(s)===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
+  const monthlyRows=monthlyCollection({flat:adm_flat_fees,course:adm_course_fees,adm:adm_fee_collections})   // collected per month, by payment date
   const from=afDateFrom||'2020-01-01',to=afDateTo||todayStr,inRange=d=>d&&d>=from&&d<=to
   const dailyRows=[
     ...adm_flat_fees.filter(r=>r.paid && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
@@ -1513,18 +1513,22 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[lastExport,setLastExport]=useState(null)
   const n=v=>Number(v||0).toLocaleString('en-IN')
   const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
-  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
+  const filtersOn=courseF!=='All'||hostelF!=='All'||statusF!=='All'
+  const scopeGccs=useMemo(()=>filtersOn?new Set(filteredLive.map(s=>String(parseInt(s.gcc_no)||0))):null,[filtersOn,filteredLive])
+  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo,scopeGccs}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr,scopeGccs])
   // Month-wise dues (same figures as the Fee Dashboard card) for the two Dues Reports below.
   const { monthwiseDues } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
   const duesLoading = monthwiseDues.some(m => m.loading)
   const dueSummaryRows = useMemo(() => duesSummaryRows(monthwiseDues), [monthwiseDues])
   const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || courseOf(st) === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
-  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  // Header tiles and report totals follow the filters: they are summed from the same rows the reports export.
+  const sumOf=(rows,k)=>rows.reduce((t,r)=>t+(Number(r[k])||0),0)
+  const admTotal=sumOf(reports.admRows,'Amount Paid'),flatTotal=sumOf(reports.flatRows,'Amount'),crsfTotal=sumOf(reports.crsfRows,'Amount Paid'),grandTotal=admTotal+flatTotal+crsfTotal
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
     {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a6e',reports:[
-      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':students.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
-      {id:'pending',name:'Pending Fee Students',desc:'Students who have not made any payment yet',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
+      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':filteredLive.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
+      {id:'pending',name:'Students With No Payment Yet',desc:'Students who have paid nothing so far (includes repeaters and late entries — see the Note column). For who owes money, use the Dues Reports below.',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
     ]},
     {group:'Collection Registers',icon:'📋',color:'#166534',reports:[
       {id:'flat_register',name:'Flat Fee Register',desc:'All monthly flat fee payments with dates, mode and reference',rows:()=>reports.flatRows,meta:()=>({'Total Records':reports.flatRows.length,'Total Amount':`₹${n(flatTotal)}`,'Generated':todayStr})},
@@ -1546,12 +1550,12 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const doExport=(report,format)=>{const rows=report.rows(),meta=report.meta();if(!rows?.length){alert('No data to export for this report.');return};const filename=`GNSI_${report.id}_${todayStr}`,title=`${report.name} — GNSI`;if(format==='csv'){exportCSV(rows,filename);setLastExport(`✅ ${report.name} CSV exported`)}if(format==='tsv'){exportTSV(rows,filename);setLastExport(`✅ ${report.name} TSV exported`)}if(format==='json'){exportJSON(rows,filename);setLastExport(`✅ ${report.name} JSON exported`)}if(format==='xls'){exportXLS(rows,filename,report.name);setLastExport(`✅ ${report.name} XLS exported`)}if(format==='print'){exportPrintHTML(rows,filename,title,meta);setLastExport(`✅ ${report.name} Print opened`)}}
   const FmtBtn=({label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:36}}>📤</div>
           <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Reports &amp; Export Centre</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div></div>
-          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:students.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:filteredLive.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
         </div>
       </div>
       <div style={{background:'#faf8f3',border:'1px solid #e8e3d8',borderRadius:12,padding:'14px 18px',marginBottom:20}}>
@@ -1563,6 +1567,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date From</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3}/></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date To</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3}/></div>
         </div>
+        <div style={{fontSize:11,color:'#5d6b82',marginTop:10}}>Course, hostel type and status limit every report below, and the date range limits every payment register and summary (by payment date). The two Dues Reports use the course and hostel filters only — dues are not date-based.</div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
           <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Today</button>
           <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #d1fae5',background:'#ecfdf5',color:'#059669',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 This Month</button>
@@ -1826,15 +1831,12 @@ function StudentSearch({ students, onSelect, placeholder }) {
 // Every month of the current April–March session so far (April → this month).
 // Shared by the Fee Dashboard's Month-wise Dues card (and its export menu) and
 // the Reports & Export Centre, so every number comes from one place.
-// Does this student's admission fee fall in month `m`? It is charged on the
-// admission date (or the first admission payment, else the session start), never
-// before the session starts — the same rule the student's own ledger uses.
-function admissionFallsIn(student, reg, m) {
-  const sessStart = new Date(Number(String(m.session).slice(0, 4)), 3, 1)
-  const raw = student.admission_date || reg.admission?.paid?.[0]?.date
-  let d = raw ? new Date(String(raw).slice(0, 10) + 'T00:00:00') : sessStart
-  if (Number.isNaN(d.getTime()) || d < sessStart) d = sessStart
-  return d.getFullYear() === Number(m.year) && d.toLocaleString('default', { month: 'long' }) === m.fullMon
+// Does this student's admission fee fall in month `m`? It is counted in the month of the admission
+// date (a student admitted in January shows in January, even if the fee is still unpaid), not pushed to
+// April; see admissionMonth in lib/reportMath.js. `a` = { student, adm: reg.admission, start: session start year }.
+function admissionFallsIn(a, m, rangeStart) {
+  const w = admissionMonth({ admissionDate: a.student.admission_date, firstPaymentDate: a.adm.paid?.[0]?.date, sessionStartYear: a.start, rangeStart })
+  return w.year === Number(m.year) && w.month === new Date(`${m.fullMon} 1, 2000`).getMonth()
 }
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
   const [now] = useState(() => new Date())
@@ -1880,6 +1882,13 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
   }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
 
   const monthwiseDues = useMemo(() => duesMonths.map(m => {
+    // Each student's admission fee lives in one session's register; find it once, whichever session that is.
+    const admByGcc = new Map()
+    for (const items of Object.values(duesLedgers || {})) for (const { student, reg } of items) {
+      const g = gccStr(student.gcc_no)
+      if (reg.admission && reg.admission.expected > 0 && !admByGcc.has(g)) admByGcc.set(g, { student, adm: reg.admission, start: reg.start })
+    }
+    const rangeStart = new Date(duesMonths[0].year, 0, 1)
     const perStudent = []
     let head = null
     for (const { student, reg } of duesLedgers?.[m.session] || []) {
@@ -1897,8 +1906,9 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       if (monthly) head = head || r.head
       // Admission part: charged in the month the student was admitted (the same
       // date the student's own ledger charges it on), whether unpaid or part-paid.
-      const adm = reg.admission && reg.admission.expected > 0 && admissionFallsIn(student, reg, m)
-        ? { expected: reg.admission.expected, paid: reg.admission.paidAmt, due: reg.admission.due }
+      const a = admByGcc.get(gccStr(student.gcc_no))
+      const adm = a && admissionFallsIn(a, m, rangeStart)
+        ? { expected: a.adm.expected, paid: a.adm.paidAmt, due: a.adm.due }
         : null
       if (!monthly && !adm) continue
       perStudent.push({
@@ -4664,6 +4674,7 @@ function PastStudentDuesTab({ isAdmin, onCollect, feeRows }) {
 }
 
 export default function Fees() {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   useSystemSettings() // Razorpay / WhatsApp switches apply as soon as they're saved
   const w        = useWindowWidth()
   const isMobile = w < 768
@@ -5106,6 +5117,7 @@ export default function Fees() {
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
     ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'incomeVsCollection', label: 'Income vs Collection', short: 'Income Check', icon: 'rupeeSearch', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
   ]
@@ -5399,7 +5411,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background = '#faf8f3'}
                       onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                       <td style={{ padding: '10px 14px', color: '#8a93a6', fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
@@ -5552,7 +5564,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#fbf6e8'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5612,7 +5624,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5668,7 +5680,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                       onMouseLeave={e => e.currentTarget.style.background='white'}>
                       <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                      <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
+                      <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                         <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}
@@ -5776,6 +5788,7 @@ export default function Fees() {
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
+      {tab === 'incomeVsCollection' && isAdmin && <FeeIncomeCollection />}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (

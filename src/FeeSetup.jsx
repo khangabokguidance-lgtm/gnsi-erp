@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero } from './premiumUI'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
   getFeeRates, saveStudentFlatFeeOverride, TABLES,
@@ -444,6 +445,7 @@ function StudentOverridesTab({ sessionYear }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function FeeSetup({ userRole }) {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses show up here to be priced
   const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 640px)').matches)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)')

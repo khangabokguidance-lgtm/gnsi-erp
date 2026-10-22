@@ -2009,7 +2009,7 @@ export function GatePassVerifyPage() {
 
   const containerStyle = {
     minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: '#f1f5f9', padding: '20px', fontFamily: 'system-ui, sans-serif',
+    background: '#f1f5f9', padding: '20px', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
   }
   const boxStyle = {
     background: 'white', borderRadius: '16px', padding: '32px',
@@ -3066,7 +3066,7 @@ function LeaveAnalyticsDashboard({ records, students }) {
                           {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
                         </td>
                         <td style={{ padding: '10px 12px', fontWeight: '600', color: '#1e293b' }}>{s.student_name}</td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: '#1a2f4d' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '10px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: '12px', color: '#1a2f4d' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '10px 12px', color: '#64748b' }}>{s.house || '—'}</td>
                         <td style={{ padding: '10px 12px', color: '#64748b' }}>{s.class_name || '—'}</td>
                         <td style={{ padding: '10px 12px' }}>
@@ -3899,14 +3899,14 @@ export function StudentSelfService() {
 
   if (!student) {
     return (
-      <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '20px', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
         <StudentLoginScreen onLogin={setStudent} />
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '20px', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <StudentSelfServicePortal student={student} onLogout={() => setStudent(null)} />
     </div>
   )

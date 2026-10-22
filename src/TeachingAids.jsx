@@ -1393,11 +1393,11 @@ export function ViewAidByToken({ token, currentUser, onClose }) {
   const watermarkLabel = `${currentUser?.name || 'GNSI Staff'} · ${new Date().toLocaleDateString('en-IN')}`
 
   if (state === 'loading') {
-    return <div style={{ padding: 60, textAlign: 'center', color: C.slate, fontFamily: 'system-ui,sans-serif' }}>⏳ Opening shared teaching aid…</div>
+    return <div style={{ padding: 60, textAlign: 'center', color: C.slate, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>⏳ Opening shared teaching aid…</div>
   }
   if (state === 'notfound') {
     return (
-      <div style={{ padding: 60, textAlign: 'center', fontFamily: 'system-ui,sans-serif' }}>
+      <div style={{ padding: 60, textAlign: 'center', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
         <div style={{ fontSize: 40, marginBottom: 10 }}>🔗</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: C.rose }}>Link not found</div>
         <div style={{ fontSize: 12, color: C.slate, marginTop: 6 }}>This teaching aid may have been deleted, or the link is incorrect.</div>
@@ -1407,7 +1407,7 @@ export function ViewAidByToken({ token, currentUser, onClose }) {
   }
   if (state === 'error') {
     return (
-      <div style={{ padding: 60, textAlign: 'center', fontFamily: 'system-ui,sans-serif' }}>
+      <div style={{ padding: 60, textAlign: 'center', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
         <div style={{ fontSize: 40, marginBottom: 10 }}>⚠️</div>
         <div style={{ fontSize: 15, fontWeight: 700, color: C.rose }}>Could not open this link</div>
         <div style={{ fontSize: 12, color: C.slate, marginTop: 6 }}>{errorMsg}</div>
@@ -1505,7 +1505,7 @@ export default function TeachingAids({ currentUser, perms }) {
   }
 
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", background: C.bg, minHeight: '100vh' }}>
       <GlobalGuardStyles />
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 

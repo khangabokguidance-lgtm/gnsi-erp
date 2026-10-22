@@ -288,7 +288,7 @@ function HistoryPanel({ type, onClose, onRestore, isAdmin }) {
               </div>
               {expanded === i && h.snapshot && (
                 <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, background: '#f8fafc' }}>
-                  <div style={{ fontSize: 11, color: C.textSm, fontFamily: 'monospace', maxHeight: 200, overflowY: 'auto' }}>
+                  <div style={{ fontSize: 11, color: C.textSm, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", maxHeight: 200, overflowY: 'auto' }}>
                     {JSON.stringify(h.snapshot, null, 2).slice(0, 800)}…
                   </div>
                 </div>
@@ -596,7 +596,7 @@ function EditableGrid({ type, batches, editable, currentUser, isAdmin }) {
                 )
                 return (
                   <tr key={ri} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700, background: '#f8fafc', borderRight: `2px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '8px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: C.navy, fontWeight: 700, background: '#f8fafc', borderRight: `2px solid ${C.border}`, whiteSpace: 'nowrap' }}>
                       {row.from_time}<br />
                       <span style={{ color: C.muted, fontSize: 11 }}>{row.to_time}</span>
                     </td>
@@ -662,7 +662,7 @@ function EditableGrid({ type, batches, editable, currentUser, isAdmin }) {
                   borderLeft: `4px solid ${s ? subjectColor(s.subject) : C.border}`,
                   opacity: s ? 1 : 0.5,
                 }}>
-                  <div style={{ minWidth: 130, fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700 }}>{row.from_time} – {row.to_time}</div>
+                  <div style={{ minWidth: 130, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: C.navy, fontWeight: 700 }}>{row.from_time} – {row.to_time}</div>
                   {s ? (
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: subjectColor(s.subject) }}>{s.subject}</div>
@@ -707,7 +707,7 @@ function EditableGrid({ type, batches, editable, currentUser, isAdmin }) {
                       background: 'white', borderRadius: 10, padding: '10px 16px', marginBottom: 8,
                       boxShadow: '0 1px 4px rgba(0,0,0,.06)', borderLeft: `4px solid ${p.color}`,
                     }}>
-                      <div style={{ fontFamily: 'monospace', fontSize: 12, color: C.navy, fontWeight: 700, minWidth: 130 }}>{s.from} – {s.to}</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: C.navy, fontWeight: 700, minWidth: 130 }}>{s.from} – {s.to}</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: subjectColor(s.subject) }}>{s.subject}</div>
                         <div style={{ fontSize: 12, color: p.color, fontWeight: 600 }}>{s.batch}</div>

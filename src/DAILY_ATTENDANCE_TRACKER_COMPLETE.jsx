@@ -1403,9 +1403,9 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
       )}
       <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 8, border: '1px dashed #cbd5e1' }}>
         <p style={{ margin: 0, fontSize: 12, color: '#374151', fontWeight: 600 }}>CSV Format:</p>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>staff_id,status</p>
-        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>101,Present</p>
-        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>102,Absent</p>
+        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>staff_id,status</p>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>101,Present</p>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>102,Absent</p>
       </div>
       {ToastEl}
     </div>
@@ -1475,7 +1475,7 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
   }
 
   if (loading) return (
-    <div style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       ⏳ Loading Attendance System...
     </div>
   )

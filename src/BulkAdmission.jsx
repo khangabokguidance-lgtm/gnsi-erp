@@ -469,7 +469,7 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: C.slate[900] }}>{s.applicant_name}</div>
                       <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                        <span style={{ fontWeight: 700, color: C.navy, fontFamily: 'monospace' }}>GCC-{gc}</span>
+                        <span style={{ fontWeight: 700, color: C.navy, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>GCC-{gc}</span>
                         {s.course && <span style={{ background: `${C.navy}12`, color: C.navy, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>{s.course}</span>}
                         {s.subtype && <span>{s.subtype}</span>}
                         {s.batch   && <span>· {s.batch}</span>}

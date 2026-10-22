@@ -2080,7 +2080,7 @@ window.submitGrievance = async () => {
     <span
       style={{
         color: "rgba(230,230,230,.85)",
-        fontFamily: 'Inter,sans-serif',
+        fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
         fontSize: ".65rem",
         letterSpacing: ".1em",
         textTransform: "uppercase"
@@ -2763,7 +2763,7 @@ window.submitGrievance = async () => {
           })}
         </div>
       ) : (
-        <p style={{ color: '#3A3A3A', fontFamily: 'Inter,sans-serif', fontSize: '.85rem' }}>
+        <p style={{ color: '#3A3A3A', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", fontSize: '.85rem' }}>
           Campus &amp; classroom videos coming soon.
         </p>
       )}
@@ -3720,7 +3720,7 @@ window.submitGrievance = async () => {
           <p
             style={{
               color: "#3A3A3A",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontSize: "clamp(0.7rem,1.9vw,0.78rem)",
               letterSpacing: ".06em",
               textTransform: "uppercase",
@@ -3962,7 +3962,7 @@ window.submitGrievance = async () => {
           style={{
             color: "var(--mist)",
             fontSize: "clamp(0.75rem,2vw,0.85rem)",
-            fontFamily: 'Inter,sans-serif',
+            fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
             letterSpacing: ".06em"
           }}
         >
@@ -4161,7 +4161,7 @@ window.submitGrievance = async () => {
           style={{
             color: "#3A3A3A",
             fontSize: "clamp(.65rem,1.8vw,.72rem)",
-            fontFamily: 'Inter,sans-serif',
+            fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
             letterSpacing: ".05em",
             textAlign: "center",
             marginTop: ".6rem"
@@ -5130,7 +5130,7 @@ window.submitGrievance = async () => {
         style={{
           color: "var(--mist)",
           fontSize: "clamp(.72rem,2vw,.8rem)",
-          fontFamily: 'Inter,sans-serif',
+          fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
           letterSpacing: ".06em",
           marginTop: "1.5rem"
         }}
@@ -5495,7 +5495,7 @@ window.submitGrievance = async () => {
             style={{
               color: "rgba(255,255,255,.75)",
               fontSize: "clamp(0.68rem,1.8vw,0.75rem)",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               marginTop: ".6rem",
               textAlign: "center"
             }}
@@ -5616,7 +5616,7 @@ window.submitGrievance = async () => {
           style={{
             color: "#3A3A3A",
             fontSize: "clamp(0.78rem,2.1vw,0.85rem)",
-            fontFamily: 'Inter,sans-serif',
+            fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
             letterSpacing: ".05em"
           }}
           className="reveal"
@@ -5721,7 +5721,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -5741,7 +5741,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -5789,7 +5789,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -5809,7 +5809,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -5844,7 +5844,7 @@ window.submitGrievance = async () => {
       <p
         style={{
           color: "#3A3A3A",
-          fontFamily: 'Inter,sans-serif',
+          fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
           fontSize: "clamp(.65rem,1.8vw,.72rem)",
           letterSpacing: ".06em",
           marginTop: "1.2rem",
@@ -6094,7 +6094,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -6110,7 +6110,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -6131,7 +6131,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",
@@ -6155,7 +6155,7 @@ window.submitGrievance = async () => {
           <label
             style={{
               display: "block",
-              fontFamily: 'Inter,sans-serif',
+              fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
               fontWeight: 700,
               fontSize: ".68rem",
               letterSpacing: ".12em",

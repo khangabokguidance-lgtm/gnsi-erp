@@ -16,6 +16,20 @@ export const COURSE_BATCHES = {
 }
 export const COURSE_ORDER = ['Sainik', 'Navodaya', 'Foundation', 'Combined Course']
 
+// Batches offered for NEW records: the standard list without the older unsplit 'Lakshya'
+// (kept only so existing rows still resolve).
+export const NEW_RECORD_BATCHES = Object.fromEntries(COURSE_ORDER.map(c => [c, COURSE_BATCHES[c].filter(b => b !== 'Lakshya')]))
+
+// The { course: { subtypes, ...extra } } shape the Admissions / Students / Fees screens use, built from
+// the one standard list above so they cannot drift apart. `extra` adds per-course fields (colours);
+// `order` keeps a screen's own course order; `includeLegacy` keeps the old unsplit 'Lakshya'.
+export const courseStructure = (extra = {}, { order = COURSE_ORDER, includeLegacy = false } = {}) =>
+  Object.fromEntries(order.map(c => [c, { subtypes: [...(includeLegacy ? COURSE_BATCHES : NEW_RECORD_BATCHES)[c]], ...(extra[c] || {}) }]))
+
+// Same, as plain { course: [batches] } with the '—' placeholder for a course without batches
+// (Fee Setup keys its rows on it).
+export const courseBatchLists = () => Object.fromEntries(COURSE_ORDER.map(c => [c, NEW_RECORD_BATCHES[c].length ? [...NEW_RECORD_BATCHES[c]] : ['—']]))
+
 const BATCH_TO_COURSE = (() => {
   const m = {}
   Object.entries(COURSE_BATCHES).forEach(([c, bs]) => bs.forEach(b => { m[b.toLowerCase()] = c }))

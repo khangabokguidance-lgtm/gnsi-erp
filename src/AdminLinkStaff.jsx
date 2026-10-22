@@ -250,10 +250,10 @@ export default function AdminLinkStaff() {
                     <td style={{ padding:'7px 10px', color:r.status==='created'?'#16a34a':'#dc2626', fontWeight:700 }}>
                       {r.status==='created'?'✅ Created':'❌ Failed'}
                     </td>
-                    <td style={{ padding:'7px 10px', fontFamily:'monospace', fontSize:11 }}>{r.email||'—'}</td>
+                    <td style={{ padding:'7px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:11 }}>{r.email||'—'}</td>
                     <td style={{ padding:'7px 10px' }}>
                       {r.password
-                        ? <span style={{ background:'#fef9c3', padding:'2px 8px', borderRadius:4, fontFamily:'monospace', fontWeight:700 }}>{r.password}</span>
+                        ? <span style={{ background:'#fef9c3', padding:'2px 8px', borderRadius:4, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight:700 }}>{r.password}</span>
                         : <span style={{ color:'#94a3b8', fontSize:11 }}>{r.error}</span>}
                     </td>
                   </tr>

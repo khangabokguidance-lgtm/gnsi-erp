@@ -7,7 +7,7 @@ import { supabase } from './supabase'
 import { StaffAvatar } from './staffPhotos'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
-import { courseOf, canonicalBatch, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { courseOf, canonicalBatch, courseBatchLists, takeAttendanceHandoff, handoffToStudents } from './courseMap'
 import { drawPremiumCertificate, certificatePdf } from './premiumCertificate'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -17,12 +17,7 @@ import {
 
 // ─── COURSE STRUCTURE ────────────────────────────────────────
 
-const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Pragati', 'Udaan'],
-  'Combined Course': ['—'],
-}
+const COURSE_STRUCTURE = courseBatchLists()
 const COURSES      = Object.keys(COURSE_STRUCTURE)
 const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 
@@ -2352,7 +2347,7 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
           padding: '18px 22px 16px', textAlign: 'center', color: '#fff', position: 'relative',
         }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.15em', opacity: .8, marginBottom: 3 }}>GNSI · OFFICIAL</div>
-          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: 'Georgia, serif', letterSpacing: '.01em' }}>Attendance Receipt</div>
+          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: '.01em' }}>Attendance Receipt</div>
           <div style={{ fontSize: 11.5, opacity: .85, marginTop: 4, fontWeight: 600 }}>
             {fmtDate(sessionInfo.session_date)}{sessionInfo.class_name ? ` · ${sessionInfo.class_name}` : ''}
           </div>

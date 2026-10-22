@@ -827,7 +827,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
                 fontSize: 10, color: D.textFaint,
                 background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`,
                 borderRadius: 4, padding: '2px 5px',
-                fontFamily: 'monospace', letterSpacing: '0.05em', flexShrink: 0,
+                fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", letterSpacing: '0.05em', flexShrink: 0,
               }}>/</span>
             )
           )}
@@ -901,7 +901,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
             padding: '0 10px 7px',
           }}>
             <span style={{ fontSize: 10, color: D.textFaint }}>
-              <span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>
+              <span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 9 }}>/</span>
               {' '}to search
             </span>
             <span style={{ fontSize: 10, color: D.textFaint }}>v2.1 · © {new Date().getFullYear()} GNSI</span>

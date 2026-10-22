@@ -18,7 +18,7 @@ import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
-import { canonicalBatch, courseOf } from './courseMap'
+import { canonicalBatch, courseOf, COURSE_ORDER } from './courseMap'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -95,7 +95,7 @@ const CLASS_OPTIONS    = ['Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pra
 // course on a known batch is filled in (Udaan → Foundation).
 const classOf = s => canonicalBatch(s?.batch || s?.class_name)
 const courseFor = s => s?.course || (courseOf(s) !== 'Unassigned' ? courseOf(s) : '')
-const COURSES          = ['Sainik','Navodaya','Foundation','Combined Course']
+const COURSES          = COURSE_ORDER
 const HOSTEL_TYPES     = ['Boarder','Day Scholar','Day Boarder']
 const SOURCE_OPTIONS   = ['Walk-in','Phone Call','WhatsApp','Referral / Word of Mouth','Facebook / Instagram','Website','Google Search','School Fair / Event','Pamphlet / Poster','Other']
 const PURPOSE_OPTIONS  = ['Admission Enquiry','Fee Payment','Meet Student','Meet Principal','Meet Teacher / Staff','Meet Warden','Document Submission','Item Delivery','Parent Teacher Meeting','General Visit','Other']
@@ -852,7 +852,7 @@ const StudentAutocomplete = React.memo(function StudentAutocomplete({ students, 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: active ? C.navy : C.slate[900], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: font }}>{s.name}</div>
                   <div style={{ fontSize: 11, color: C.slate[500], display: 'flex', gap: 8, marginTop: 1, flexWrap: 'wrap', fontFamily: font }}>
-                    {s.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.navy }}>GCC-{s.gcc_no}</span>}
+                    {s.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: C.navy }}>GCC-{s.gcc_no}</span>}
                     {s.batch  && <span>{s.batch}</span>}
                     {s.course && <span style={{ color: C.sky }}>{s.course}</span>}
                     {s.house  && <span style={{ color: C.emerald }}>🏠 {s.house}</span>}
@@ -882,7 +882,7 @@ function StudentChip({ student, onClear }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: '#166534', fontFamily: font }}>✓ {student.name}</div>
         <div style={{ fontSize: 11, color: C.slate[500], display: 'flex', gap: 8, marginTop: 1, flexWrap: 'wrap', fontFamily: font }}>
-          {student.gcc_no      && <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>GCC-{student.gcc_no}</span>}
+          {student.gcc_no      && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700 }}>GCC-{student.gcc_no}</span>}
           {student.batch       && <span>{student.batch}</span>}
           {student.course      && <span style={{ color: C.sky }}>{student.course}</span>}
           {student.house       && <span>🏠 {student.house}</span>}
@@ -1001,7 +1001,7 @@ function Student360({ students }) {
                 <div>
                   <div style={{ fontSize: mob ? 16 : 18, fontWeight: 700, color: 'white', fontFamily: font }}>{selected.name}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    {selected.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.gold, fontSize: 12 }}>GCC-{selected.gcc_no}</span>}
+                    {selected.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: C.gold, fontSize: 12 }}>GCC-{selected.gcc_no}</span>}
                     {selected.batch  && <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 12, fontFamily: font }}>{selected.batch}</span>}
                     {selected.course && <span style={{ color: '#b7c6e0', fontSize: 12, fontFamily: font }}>{selected.course}</span>}
                     {selected.house  && <span style={{ color: '#a5b4fc', fontSize: 12, fontFamily: font }}>🏠 {selected.house}</span>}

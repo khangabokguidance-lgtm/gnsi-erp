@@ -274,7 +274,7 @@ function StudentSearch({ students, onSelect, mobile }) {
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{s.name}</div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {s.gcc_no && <span style={{ fontWeight: 700, color: '#0B1E3D', fontFamily: 'monospace' }}>GCC-{s.gcc_no}</span>}
+                  {s.gcc_no && <span style={{ fontWeight: 700, color: '#0B1E3D', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>GCC-{s.gcc_no}</span>}
                   {s.batch && <span>{s.batch}</span>}
                   {s.course && <span>{s.course}</span>}
                   {s.hostel_type && <HostelTypeBadge type={s.hostel_type} />}
@@ -321,7 +321,7 @@ function LedgerSection({ title, icon, color, bg, rows, columns, emptyMsg, total,
               <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span>{fmtDate(row.pay_date)}</span>
                 {row.pay_mode && <span>{row.pay_mode}</span>}
-                {row.receipt_no && <span style={{ fontFamily: 'monospace', color }}>{row.receipt_no}</span>}
+                {row.receipt_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color }}>{row.receipt_no}</span>}
                 {row.hostel_type && <HostelTypeBadge type={row.hostel_type} />}
                 {row.course && <span>{row.course}</span>}
               </div>
@@ -501,7 +501,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
               <div>
                 <div className="gp-serif" style={{ fontSize: mobile ? 18 : 24, fontWeight: 700, color: 'white' }}>{selected.name}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {selected.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#C9A24B' }}>GCC-{selected.gcc_no}</span>}
+                  {selected.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: '#C9A24B' }}>GCC-{selected.gcc_no}</span>}
                   {selected.batch && <span>{selected.batch}</span>}
                   {selected.course && <span>{selected.course}</span>}
                   {selected.hostel_type && <HostelTypeBadge type={selected.hostel_type} />}

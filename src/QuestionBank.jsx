@@ -2380,7 +2380,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
 
           <label style={lS}>Paste Question Paper Text *</label>
           <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={14}
-            style={{ ...iS, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:14 }}
+            style={{ ...iS, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:14 }}
             placeholder={`Supported formats — any of these work:
 
 1. Which of the following is an improper fraction?
@@ -2437,7 +2437,7 @@ Answer: B`} />
                   </span>
                 </label>
                 <textarea value={answerKeyText} onChange={e => setAnswerKeyText(e.target.value)} rows={4}
-                  style={{ ...iS, fontFamily:'monospace', fontSize:12, marginBottom:8 }}
+                  style={{ ...iS, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:8 }}
                   placeholder="1-b, 2-c, 3-d, 4-a, 5-b..." />
                 <button onClick={applyAnswerKey} style={btn(C.green)}>✓ Apply Answer Key</button>
               </div>
@@ -3157,7 +3157,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
             <div style={{ marginTop:8 }}>
               <label style={lS}>BMEI04 keystrokes (to type in Word with the Bmei04 font)</label>
               <div style={{ padding:'8px 12px', borderRadius:7, background:'#f8fafc', border:'1px solid '+C.border,
-                fontFamily:'monospace', fontSize:13, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{keys}</div>
+                fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:13, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{keys}</div>
             </div>
           )}
         </div>
@@ -3279,7 +3279,7 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
           <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
           <textarea value={input} onChange={e => setInput(e.target.value)} rows={8}
             style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-              fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }}
+              fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }}
             placeholder={mode === 'toMayek' ? 'BMEI04 keystrokes, e.g. AepL (apple), mnipur (Manipur)' : 'Meetei Mayek text'} />
         </div>
         <div>
@@ -3508,7 +3508,7 @@ function DictSeedWordlistPanel({ showToast, currentStaffId }) {
       <textarea value={text} onChange={e => setText(e.target.value)} rows={10}
         placeholder={'apple\nball\ncat\ndog\n... or: apple, ball, cat, dog'}
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <label style={{ ...lS, marginTop:12 }}>Category (optional, applies to all seeded words)</label>
       <input value={category} onChange={e => setCategory(e.target.value)}
         placeholder="e.g. math, general, grammar" style={iS} />
@@ -3806,7 +3806,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 borderBottom:'1px solid '+C.border }}>
                 <div style={{ width: row.entry_type === 'sentence' ? 'min(40%, 360px)' : 140, flexShrink:0, fontWeight:700, fontSize:13, color:C.navy }}>{row.english}</div>
                 <input value={fillDrafts[row.id] || ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                  placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily:'monospace', fontSize:12 }} />
+                  placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }} />
                 <div style={{ minWidth:60, fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>
                   {fillDrafts[row.id] ? romanToMeetei(fillDrafts[row.id]) : ''}
                 </div>
@@ -3839,7 +3839,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
                   <div style={{ fontWeight:700, fontSize:13, color:C.navy, width: row.entry_type === 'sentence' ? 'min(100%, 420px)' : 140, flexShrink:0 }}>{row.english}</div>
                   <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>{row.mayek_unicode}</div>
-                  <div style={{ fontFamily:'monospace', fontSize:11, color:C.slate }}>{row.bmei04}</div>
+                  <div style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:11, color:C.slate }}>{row.bmei04}</div>
                   {REVIEWABLE_SOURCES.has(row.source) && (
                     <span style={{ fontSize:10, fontWeight:700, color: row.source === AI_DRAFT_SOURCE ? C.violet : C.teal, background: row.source === AI_DRAFT_SOURCE ? '#f3e8ff' : '#ecfeff', borderRadius:5, padding:'2px 6px' }}>
                       {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : row.source === AI_DRAFT_SOURCE ? 'AI DRAFT' : DRAFT_BY[row.source].replace(/^the /, '').toUpperCase()}
@@ -3853,7 +3853,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                     </span>
                     <button onClick={() => approve([row.id])} style={btnSm(C.green)}>✓ Approve</button>
                     <input value={fillDrafts[row.id] ?? ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                      placeholder="Correct BMEI04…" style={{ ...iS, width:180, fontFamily:'monospace', fontSize:12, padding:'5px 8px' }} />
+                      placeholder="Correct BMEI04…" style={{ ...iS, width:180, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, padding:'5px 8px' }} />
                     {fillDrafts[row.id] && <span style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:16 }}>{romanToMeetei(fillDrafts[row.id])}</span>}
                     {fillDrafts[row.id] && <button onClick={() => handleFillSave(row)} style={btnSm(C.navy)}>Save correction</button>}
                   </div>
@@ -3932,7 +3932,7 @@ function DictTranslatePanel({ showToast }) {
       <textarea value={input} onChange={e => setInput(e.target.value)} rows={4}
         placeholder="Type an English word or sentence..."
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <button onClick={handleTranslate} disabled={loading} style={{ ...btn(C.navy), marginTop:10 }}>
         {loading ? 'Translating...' : 'Translate'}
       </button>
@@ -4054,7 +4054,7 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
       <label style={{ ...lS, marginTop:12 }}>BMEI04 Keystrokes</label>
       <div style={{ display:'flex', gap:8 }}>
         <input value={bmei04} onChange={e => setBmei04(e.target.value)}
-          placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, flex:1, fontFamily:'monospace' }} />
+          placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, flex:1, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }} />
         <button onClick={suggest} disabled={!english.trim() || suggesting} style={btnSm(C.violet)}
           title="Fills this in with the offline translator on this computer. Check it before saving.">
           {suggesting ? 'Translating…' : '✨ Translate'}
@@ -4124,7 +4124,7 @@ function DictBulkImportPanel({ showToast, currentStaffId }) {
       <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={9}
         placeholder={'entry_type,english,bmei04,category\nword,apple,AepL,general\nsentence,find the value of x,...,math'}
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:12, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:12, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <button onClick={handleImport} disabled={importing} style={{ ...btn(C.navy), marginTop:10 }}>
         {importing ? 'Importing...' : 'Import CSV'}
       </button>
@@ -4233,7 +4233,7 @@ function DictBrowsePanel({ showToast, isAdmin }) {
                 </div>
                 {editingId === row.id ? (
                   <input value={editBmei04} onChange={e => setEditBmei04(e.target.value)}
-                    style={{ ...iS, marginTop:4, fontFamily:'monospace', fontSize:12 }} />
+                    style={{ ...iS, marginTop:4, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }} />
                 ) : (
                   <div style={{ fontSize:18, marginTop:2, fontFamily:'Noto Sans Meetei Mayek, sans-serif' }}>{row.mayek_unicode}</div>
                 )}

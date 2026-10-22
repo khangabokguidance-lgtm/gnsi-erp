@@ -24,7 +24,7 @@ const inp = {
   width:'100%', padding:'9px 12px', borderRadius:8,
   border:`1.5px solid ${T.slate[200]}`, fontSize:13,
   outline:'none', boxSizing:'border-box', backgroundColor:'#fff',
-  color:T.slate[800], fontFamily:'system-ui,sans-serif',
+  color:T.slate[800], fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
 }
 const lbl = {
   display:'block', fontSize:11, fontWeight:700, color:T.slate[500],
@@ -33,7 +33,7 @@ const lbl = {
 const btn = (bg, c='white', extra={}) => ({
   padding:'8px 18px', borderRadius:8, border:'none', cursor:'pointer',
   fontSize:13, fontWeight:700, background:bg, color:c,
-  fontFamily:'system-ui,sans-serif', ...extra,
+  fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", ...extra,
 })
 
 function Toast({ msg, color }) {
@@ -297,7 +297,7 @@ export default function AdmissionSessions() {
   const totalAdmissions = Object.values(admCounts).reduce((a, b) => a + b, 0)
 
   return (
-    <div style={{ padding:'24px', fontFamily:'system-ui,sans-serif', background:T.slate[50], minHeight:'100vh' }}>
+    <div style={{ padding:'24px', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", background:T.slate[50], minHeight:'100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
       {/* Header */}

@@ -8,7 +8,7 @@ import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
 import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planPayments'
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
-import { canonicalBatch, normalizeCourse, courseOf, BATCH_ALIASES } from './courseMap'
+import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
@@ -80,12 +80,7 @@ export const CURRENT_YEAR = (() => {
   return m >= 4 ? y : y - 1
 })()
 
-export const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Pragati', 'Udaan'],
-  'Combined Course': ['—'],
-}
+export const COURSE_STRUCTURE = courseBatchLists()   // one standard list, in courseMap.js
 
 // ✦ Session-year format normalizer — canonicalizes to "YYYY-YYYY".
 //   Some older student/admission records store session as "2026-27"
