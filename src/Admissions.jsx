@@ -996,11 +996,13 @@ async function uploadPhotoToGoogleDrive(file, gccNo) {
   if (!uploadData.id) throw new Error('Upload to Google Drive failed')
 
   // Make the file link-viewable so it works as a direct image URL.
-  await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
+  const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ role: 'reader', type: 'anyone' }),
   })
+  // A file that is not shared stays private: the saved link then shows a broken image to everyone but the uploader.
+  if (!permRes.ok) throw new Error('The photo uploaded but Google Drive would not make it viewable, so it would show as blank. Please try again.')
 
   // Drive's direct-image-embed URL format (works in <img src>, unlike the
   // normal "view" link which opens Drive's viewer page instead of the raw image).
@@ -1244,9 +1246,13 @@ function useKeyboardShortcuts({ onNew, onSearch, onEscape, onToggleView, onToggl
 }
 
 // ─── Shared UI ─────────────────────────────────────────────────────────────────
-function Avatar({ name, size=36, photoUrl }) {
-  if (photoUrl) return (
-    <img src={photoUrl} alt={name}
+// Tries the application's own photo, then the linked student's photo, then the placeholder — a link that fails to
+// load (private Drive file, expired link) no longer leaves a broken-image icon.
+function Avatar({ name, size=36, photoUrl, altUrl }) {
+  const [broken, setBroken] = useState([])
+  const url = [photoUrl, altUrl].find(u => u && !broken.includes(u))
+  if (url) return (
+    <img src={url} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(b => [...b, url])}
       style={{ width:size, height:size, borderRadius:'50%', objectFit:'cover', flexShrink:0, border:`2px solid ${T.slate[200]}` }} />
   )
   // Generic photo-placeholder icon (rounded square, mountain/sun graphic) —
@@ -3245,7 +3251,7 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
         <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:P.teal, fontWeight:600 }}>{a.gcc}</td>
         <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.slate[400] }}>{a.admNo||'—'}</td>
         <td style={{ padding:'8px 10px', fontWeight:700, color:P.ink, cursor:'pointer' }} onClick={()=>onDetail(a)}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}><Avatar name={a.name} size={30} photoUrl={a.photoUrl} /><span>{a.name}</span></div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}><Avatar name={a.name} size={30} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} /><span>{a.name}</span></div>
         </td>
         <td style={{ padding:'8px 10px' }}>{a.course||'—'}{a.subtype?` · ${a.subtype}`:''}</td>
         <td style={{ padding:'8px 10px' }}>{a.cls||'—'}</td>
@@ -3276,7 +3282,7 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth:0 }}>
           <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
             style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
-          <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
+          <Avatar name={a.name} size={42} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
           <div style={{ flex: 1, minWidth: 0, cursor: 'pointer', overflow:'hidden' }} onClick={() => onDetail(a)}>
   <div style={{ fontWeight: 700, fontSize: 14.5, color: P.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily:P.serif }}>
               {a.name}
@@ -3724,7 +3730,7 @@ function KanbanBoard({ apps, cols, onAdmit, onEnroll, onOpenFee, onDetail, isMob
                     onMouseEnter={e=>e.currentTarget.style.boxShadow=N.shadow('md')}
                     onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                      <Avatar name={a.name} size={28} photoUrl={a.photoUrl} />
+                      <Avatar name={a.name} size={28} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:T.slate[900], whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.name}</div>
                         <div style={{ fontSize:10, color:T.slate[400] }}>GCC-{a.gcc} · {a.course}{a.subtype?` · ${a.subtype}`:''}</div>
@@ -3777,7 +3783,7 @@ function GalleryCard({ a, onDetail, onSelect, selected }) {
       onMouseLeave={e=>{ e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}>
       <div style={{ position:'relative', paddingTop:'100%', background:`linear-gradient(135deg,${meta.color}15,${meta.color}05)` }}>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <Avatar name={a.name} size={72} photoUrl={a.photoUrl} />
+          <Avatar name={a.name} size={72} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
         </div>
         <input type="checkbox" checked={!!selected} onChange={e=>{e.stopPropagation();onSelect(a.id)}} onClick={e=>e.stopPropagation()}
           style={{ position:'absolute', top:8, left:8, cursor:'pointer' }} />
@@ -3813,7 +3819,13 @@ function GalleryGrid({ apps, onDetail, onSelect, selectedIds, isMobile, isTablet
 // with zero or two active sessions from a normal click.
 // ═════════════════════════════════════════════════════════════════════════════
 
-function SessionManager({ onChanged, darkMode }) {
+function SessionManager({ onChanged, darkMode, apps = [] }) {
+  // Seats used per session, from the applications themselves (the seat total alone never showed how full a session was).
+  const usage = useMemo(() => {
+    const m = {}
+    for (const a of apps) { const k = a.session || '—'; const u = m[k] || (m[k] = { total: 0, filled: 0 }); u.total++; if (a.status === 'Admitted' || a.status === 'Enrolled') u.filled++ }
+    return m
+  }, [apps])
   const [sessions, setSessions] = useState([])
   const [loading, setLoading]   = useState(true)
   const [creating, setCreating] = useState(false)
@@ -3953,7 +3965,7 @@ function SessionManager({ onChanged, darkMode }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
               <tr style={{ background:N.bg2 }}>
-                {['Session','Label','Dates','Seats','Status','Actions'].map(h => (
+                {['Session','Label','Dates','Applications','Seats filled','Status','Actions'].map(h => (
                   <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:700, color:N.muted2, fontSize:11, textTransform:'uppercase', letterSpacing:'.04em' }}>{h}</th>
                 ))}
               </tr>
@@ -3966,7 +3978,14 @@ function SessionManager({ onChanged, darkMode }) {
                   <td style={{ padding:'12px 14px', color:N.muted, fontSize:12 }}>
                     {s.start_date || s.end_date ? `${s.start_date||'?'} → ${s.end_date||'?'}` : '—'}
                   </td>
-                  <td style={{ padding:'12px 14px', color:N.muted }}>{s.total_seats ?? '—'}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>{usage[s.session_name]?.total ?? 0}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>
+                    {(() => {
+                      const f = usage[s.session_name]?.filled ?? 0
+                      const over = s.total_seats != null && f > s.total_seats
+                      return <span style={{ fontWeight:700, color: over ? T.rose[600] : N.muted }}>{f}{s.total_seats != null ? ` / ${s.total_seats}` : ''}{over ? ' — over' : ''}</span>
+                    })()}
+                  </td>
                   <td style={{ padding:'12px 14px' }}>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                       {s.is_active && (
@@ -4116,8 +4135,9 @@ function StudentLedgerView({ apps, darkMode }) {
               <div>
                 <div style={{ fontSize:18, fontWeight:800 }}>{selectedApp.name}</div>
                 <div style={{ fontSize:12, color:'rgba(255,255,255,.7)', marginTop:2 }}>
-                  GCC-{selectedApp.gcc} · {selectedApp.course}{selectedApp.subtype?` · ${selectedApp.subtype}`:''} · {selectedApp.hostel_type}
+                  GCC-{selectedApp.gcc} · {(student?.course || selectedApp.course) || '—'}{(student ? student.batch : selectedApp.subtype) ? ` · ${student ? student.batch : selectedApp.subtype}` : ''} · {student?.hostel_type || selectedApp.hostel_type}{student?.house ? ` · ${student.house}` : ''}
                 </div>
+                {student && <div style={{ fontSize:11, color:'rgba(255,255,255,.55)', marginTop:2 }}>Showing the live student record{student.status && student.status !== 'Active' ? ` · status: ${student.status}` : ''}</div>}
               </div>
               <div style={{ textAlign:'right' }}>
                 <div style={{ fontSize:22, fontWeight:800, fontFamily:"'Courier New',monospace" }}>₹{totalPaid.toLocaleString('en-IN')}</div>
@@ -4212,6 +4232,7 @@ export default function Admissions({ onNavigate } = {}) {
   const [filterHouse,    setFilterHouse]   = useState('All')
   const [filterLink,     setFilterLink]    = useState('All')
   const [showMoreFilters, setShowMoreFilters] = useState(false)
+  const [filterPhoto, setFilterPhoto] = useState('All')
   const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
   const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
@@ -4298,10 +4319,28 @@ export default function Admissions({ onNavigate } = {}) {
     const [admRows, colsRows, stuData] = await Promise.all([
       fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false }),
       fetchAllRows('adm_fee_collections', { orderCol: 'created_at', ascending: false }),
-      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at' }),
+      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at, photo_url, photo_path' }),
     ])
+    // The Students module keeps photos in private storage (photo_path) or as a link (photo_url); show whichever the
+    // linked student has when the application has none. Viewing links are temporary and are never saved.
+    const photoByGcc = new Map(), permanent = new Set()
+    const stored = []
+    for (const s of stuData) {
+      const g = String(parseInt(s.gcc_no) || '')
+      if (!g || s.deleted_at) continue
+      if (s.photo_url) { photoByGcc.set(g, s.photo_url); permanent.add(g) }
+      else if (s.photo_path) stored.push([g, s.photo_path])
+    }
+    for (let i = 0; i < stored.length; i += 200) {
+      try {
+        const part = stored.slice(i, i + 200)
+        const { data } = await supabase.storage.from('gnsi').createSignedUrls(part.map(x => x[1]), 86400)
+        const byPath = new Map((data || []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
+        for (const [g, path] of part) if (byPath.get(path)) photoByGcc.set(g, byPath.get(path))
+      } catch { /* photos are a nicety; the list still loads */ }
+    }
     setRawAdm(admRows)
-    setApps(admRows.map(mapFromDB))
+    setApps(admRows.map(mapFromDB).map(a => ({ ...a, studentPhotoUrl: photoByGcc.get(String(parseInt(a.gcc) || '')) || '', studentPhotoSaved: permanent.has(String(parseInt(a.gcc) || '')) })))
     setStuRows(stuData)
     setCols(colsRows)
     setLoading(false)
@@ -4410,6 +4449,8 @@ export default function Admissions({ onNavigate } = {}) {
       const matchHostel  = filterHostel  === 'All' || a.hostel_type === filterHostel
       const matchHouse   = filterHouse   === 'All' || a.house       === filterHouse
       const matchLinkSt  = matchLink(a)
+      const hasPhoto     = !!(a.photoUrl || a.studentPhotoUrl)
+      const matchPhotoSt = filterPhoto === 'All' || (filterPhoto === 'Missing' ? !hasPhoto : hasPhoto)
       const matchSearch  = !q || [a.name,a.phone,a.admNo,a.gcc,a.cls,a.house,a.father,a.course,a.subtype,a.session,a.hostel_type,a.whatsapp,a.mother,a.prevSchool]
         .some(f => f?.toString().toLowerCase().includes(q))
 
@@ -4441,7 +4482,7 @@ export default function Admissions({ onNavigate } = {}) {
         return af.feeStatus==='paid' ? paid : !paid
       })()
 
-      return matchLinkSt&&matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
+      return matchPhotoSt&&matchLinkSt&&matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
     })
 
     list = [...list].sort((a,b) => {
@@ -4452,10 +4493,10 @@ export default function Admissions({ onNavigate } = {}) {
       return 0
     })
     return list
-  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today, matchLink])
+  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today, matchLink, filterPhoto])
 
-  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse,filterLink].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
-  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setFilterLink('All');setAdvFilters({});setSearch('') }
+  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse,filterLink,filterPhoto].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
+  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setFilterLink('All');setFilterPhoto('All');setAdvFilters({});setSearch('') }
 
   const toggleSelect = id => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -4782,6 +4823,23 @@ export default function Admissions({ onNavigate } = {}) {
     showToast(`Updated ${ok} application${ok === 1 ? '' : 's'} from Students${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
   }
 
+  // The Students module can clear students.photo_url when it moves a photo to private storage, and (before this fix) that
+  // blank was copied onto the application. Where the student still has a saved photo link, put it back on the application.
+  const handleRestorePhotos = async () => {
+    if (!checkPermission(userRole, 'update')) { showToast('🚫 You do not have permission to edit applications', T.rose[600]); return }
+    const list = scopedApps.filter(x => !x.photoUrl && x.studentPhotoUrl && x.studentPhotoSaved)
+    if (!list.length) { showToast('No photos to restore.', T.amber[600]); return }
+    if (!confirm(`Restore ${list.length} photo${list.length > 1 ? 's' : ''} onto the applications from their student record?`)) return
+    let ok = 0, fail = 0
+    for (const x of list) {
+      const { error } = await supabase.from('admissions').update({ photo_url: x.studentPhotoUrl }).eq('gcc_no', parseInt(x.gcc))
+      if (error) fail++; else ok++
+    }
+    logAudit('RESTORE_PHOTOS', null, { count: ok }, userRole)
+    await loadAll()
+    showToast(`Restored ${ok} photo${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
+  }
+
   const handleCSVImport = async rows => {
     setShowCSVImport(false)
     let ok=0, fail=0, skipped=0
@@ -4994,7 +5052,7 @@ export default function Admissions({ onNavigate } = {}) {
         ) : moduleView === 'ledger' ? (
           <StudentLedgerView apps={apps} darkMode={darkMode} />
         ) : moduleView === 'sessions' ? (
-          <SessionManager darkMode={darkMode} onChanged={loadAll} />
+          <SessionManager darkMode={darkMode} onChanged={loadAll} apps={apps} />
         ) : (
         <div className={'pro-theme ' + proTheme} style={THEMES[proTheme].vars}>
         <style>{PRO_CSS}</style>
@@ -5136,6 +5194,25 @@ export default function Admissions({ onNavigate } = {}) {
               </button>
             </div>
           )}
+          {(() => {
+            const missing = scopedApps.filter(x => !x.photoUrl && !x.studentPhotoUrl).length
+            const restorable = scopedApps.filter(x => !x.photoUrl && x.studentPhotoUrl && x.studentPhotoSaved).length
+            return (
+              <>
+                <PillStrip label="Photo" options={['Missing', 'Has photo']} value={filterPhoto} onChange={setFilterPhoto}
+                  countFn={o => o === 'Missing' ? missing : scopedApps.length - missing} />
+                {restorable > 0 && checkPermission(userRole, 'update') && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+                    <span>{restorable} application{restorable > 1 ? 's have' : ' has'} no photo, but the linked student does.</span>
+                    <button type="button" onClick={handleRestorePhotos}
+                      style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                      ⬆ Restore {restorable} photo{restorable > 1 ? 's' : ''} from Students
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          })()}
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <button type="button" className={'pro-chip' + (showMoreFilters ? ' on' : '')} onClick={() => setShowMoreFilters(v => !v)}>
               {showMoreFilters ? '▾' : '▸'} More filters{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length > 0 && <em>{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length}</em>}
