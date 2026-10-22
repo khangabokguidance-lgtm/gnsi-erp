@@ -4048,6 +4048,14 @@ export default function Admissions() {
   const [feePanel,       setFeePanel]      = useState(null)
   const [toast,          setToast]         = useState(null)
   const [selectedIds,    setSelectedIds]   = useState(new Set())
+  // Deletes wait 5 s so they can be undone. Closing the tab inside that window would silently cancel them
+  // (the rows come back), so warn instead while any are pending.
+  const pendingDeletes = useRef(0)
+  useEffect(() => {
+    const warn = e => { if (pendingDeletes.current > 0) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
   const [showAnalytics,  setShowAnalytics] = useState(false)
   const [showReports,    setShowReports]   = useState(false)
   const [showAdvSearch,  setShowAdvSearch] = useState(false)
@@ -4344,6 +4352,7 @@ export default function Admissions() {
   }
 
   const handleAdmit = async id => {
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
     if (!confirm('Mark as Admitted?')) return
     const { error } = await supabase.from('admissions').update({ status:'Admitted' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
@@ -4356,6 +4365,7 @@ export default function Admissions() {
   const handleEnroll = async id => {
     const a = apps.find(x => String(x.id)===String(id))
     if (!a) return
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
     // FLOW FIX: `cols` holds every adm_fee_collections row, reverted ones
     // included — a reverted (refunded/undone) admission fee still counted as
     // "paid" and let the student be enrolled without an admission fee on the books.
@@ -4375,8 +4385,19 @@ export default function Admissions() {
       // harder-to-spot inconsistency than just stopping early.
       const { created, houseWarning } = await promoteToStudent(a)
 
-      const { error: admErr } = await supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
-      if (admErr) throw admErr
+      // The student row now exists, so the admission must end up Enrolled too. Retry once; if it still fails,
+      // remove the student row we just created (never one that already existed) so the two stay in step.
+      const markEnrolled = () => supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
+      let { error: admErr } = await markEnrolled()
+      if (admErr) ({ error: admErr } = await markEnrolled())
+      if (admErr) {
+        if (created) {
+          const { error: undoErr } = await supabase.from('students').delete().eq('gcc_no', parseInt(a.gcc))
+          if (undoErr) throw new Error(`Student record was created but the admission could not be marked Enrolled (${admErr.message}), and the student could not be removed (${undoErr.message}). Check GCC ${a.gcc} in Admissions ↔ Students.`)
+          throw new Error(`Could not mark the admission Enrolled (${admErr.message}). The new student record was removed — nothing changed, please try again.`)
+        }
+        throw admErr
+      }
 
       // FLOW FIX: Students → Fees. Fees refuses to collect anything until the
       // student has an Admission Date, and a freshly enrolled student often
@@ -4424,11 +4445,13 @@ export default function Admissions() {
     setApps(prev => prev.filter(x => String(x.id)!==String(id)))
 
     let deleted = false
+    pendingDeletes.current += 1
     showToast(`Deleted ${a?.name}`, T.rose[600], () => {
       deleted = true
       setApps(prev => [snapshot, ...prev])
     })
     setTimeout(async () => {
+      pendingDeletes.current -= 1
       if (!deleted) {
         const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
         if (error) { setApps(prev => [snapshot, ...prev]); showToast('Delete failed: '+error.message, T.rose[600]) }
@@ -4520,11 +4543,13 @@ export default function Admissions() {
     setApps(prev => prev.filter(a => !selectedIds.has(a.id)))
     clearSelection()
     let cancelled = false
+    pendingDeletes.current += 1
     showToast(`${ids.length} records deleted`, T.rose[600], () => {
       cancelled = true
       setApps(prev => [...snapshots, ...prev])
     })
     setTimeout(async () => {
+      pendingDeletes.current -= 1
       if (cancelled) return
       const { error } = await supabase.from('admissions').delete().in('gcc_no', ids.map(Number))
       if (error) { setApps(prev => [...snapshots, ...prev]); showToast('Bulk delete failed: '+error.message, T.rose[600]) }
