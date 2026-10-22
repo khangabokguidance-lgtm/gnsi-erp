@@ -32,6 +32,7 @@ import { printApplicationReceipt as printApplicationReceiptDoc } from './applica
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
+import { allocateStudent } from './hostelAllocation'
 import StudentLocker from './StudentLocker'
 import ExamRegistrationAdmin from './ExamRegistrationAdmin'
 import { printAdmissionConfirmation } from './admissionConfirmation'
@@ -4641,7 +4642,7 @@ export default function Admissions({ onNavigate } = {}) {
       // the status flip first (the old order) would have left a record
       // marked "Enrolled" with no student row and no seat — a worse,
       // harder-to-spot inconsistency than just stopping early.
-      const { created, houseWarning } = await promoteToStudent(a)
+      const { created, houseWarning, id: studentId } = await promoteToStudent(a)
 
       // The student row now exists, so the admission must end up Enrolled too. Retry once; if it still fails,
       // remove the student row we just created (never one that already existed) so the two stay in step.
@@ -4668,7 +4669,15 @@ export default function Admissions({ onNavigate } = {}) {
           .eq('gcc_no', parseInt(a.gcc)).is('admission_date', null)
       } catch (e) { console.warn('Enroll: could not set admission_date —', e?.message || e) }
 
+      // Hostel: a boarder needs a real allocation record (promoteToStudent only copies the house name onto the student),
+      // exactly as the Students module does when it saves a house. Best effort — the room is filled in from the Hostel module.
+      let hostelNote = ''
+      if (created && studentId && a.house && !DAY_SCHOLAR_HOUSES.includes(a.house)) {
+        try { await allocateStudent({ id: studentId, name: a.name, gcc_no: a.gcc, class_name: a.cls }, { hostelName: a.house, roomNumber: 'TBD', bedNumber: a.bedNumber || null }) }
+        catch (e) { hostelNote = `Enrolled, but the hostel allocation could not be created (${e.message || 'unknown error'}) — allocate ${a.house} in the Hostel module.`; console.warn('Enroll: hostel allocation failed —', e?.message || e) }
+      }
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
+      if (hostelNote) showToast(`⚠ ${hostelNote}`, T.amber[600])
       setJustEnrolled({ ...a, status:'Enrolled' })
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])

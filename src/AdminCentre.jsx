@@ -114,7 +114,9 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
 // ── Connections map + cross-module checks ──────────────────────────────────────────
 const FLOWS = [
   { title: 'Admission to money', nodes: [['Admissions', 'admissions'], ['Students', 'students'], ['Fees', 'fees'], ['Accounts', 'accounts']],
-    links: [['adm_no_student'], ['stu_no_rate', 'stu_no_admdate'], ['pay_no_account']] },
+    links: [['adm_no_student', 'enrolled_no_photo'], ['stu_no_rate', 'stu_no_admdate'], ['pay_no_account']] },
+  { title: 'Entrance to fees', nodes: [['Entrance', 'entrance'], ['Admissions', 'admissions'], ['Fees', 'fees']],
+    links: [['ent_no_application'], ['enrolled_no_admfee', 'adm_concession_not_in_fees', 'adm_plan_not_set']] },
   { title: 'Who is in which class', nodes: [['Courses', 'courses'], ['Students', 'students'], ['Hostel', 'hostel']],
     links: [['stu_no_course'], ['boarder_no_bed']] },
 ]
@@ -126,18 +128,25 @@ function Connections({ onNavigate }) {
     setState({ busy: true })
     try {
       const session = getSessionYear()
-      const [students, admissions, feeStructures, allocations, flatRows, courseRows, admRows, acct] = await Promise.all([
-        fetchAll('students', 'id, gcc_no, name, course, batch, class_name, hostel_type, admission_date, status, deleted_at'),
-        fetchAll('admissions', 'id, gcc_no, applicant_name, status'),
+      const [students, admissions, feeStructures, allocations, flatRows, courseRows, admRows, acct, concessions, plans, entCands, entResults] = await Promise.all([
+        fetchAll('students', 'id, gcc_no, name, course, batch, class_name, hostel_type, admission_date, status, deleted_at, photo_url, photo_path'),
+        fetchAll('admissions', 'id, gcc_no, applicant_name, dob, status, scholarship_pct, concession_amt, sibling_gcc, instalment_plan, photo_url'),
         fetchAll('fee_structures', 'course, batch, hostel_type', [['session_year', 'eq', session]]),
         fetchAll('hostel_allocations', 'student_id, status').catch(() => []),
         fetchAll('adm_flat_fees', 'id, adm_app_id, month, year, amount, paid, reverted, pay_date, receipt_no'),
         fetchAll('adm_course_fees', 'id, adm_app_id, for_month, year, amount_paid, reverted, pay_date, receipt_no'),
         fetchAll('adm_fee_collections', 'id, adm_app_id, fee_type, description, amount_paid, reverted, pay_date, receipt_no'),
         fetchAll('accounts', 'source_ref, source_type', [['is_soft_deleted', 'eq', false]]),
+        fetchAll('fee_concession_register', 'gcc', [['status', 'eq', 'active']]).catch(() => []),     // a table that is not there yet just means "none"
+        fetchAll('fee_installment_plans', 'gcc', [['status', 'eq', 'active']]).catch(() => []),
+        fetchAll('entrance_candidates', 'id, student_name, dob, application_no').catch(() => []),
+        fetchAll('entrance_results', 'candidate_id, result_status').catch(() => []),
       ])
+      const gk = v => String(parseInt(v) || 0)
+      const admittedIds = new Set(entResults.filter(r => r.result_status === 'Admitted').map(r => String(r.candidate_id)))
       const accountRefs = new Set(acct.map(a => `${a.source_ref}|${a.source_type}`))
       const checks = crossModuleChecks({ students, admissions, feeStructures, allocations, flatRows, courseRows, admRows, accountRefs,
+        concessionGccs: new Set(concessions.map(r => gk(r.gcc))), planGccs: new Set(plans.map(r => gk(r.gcc))), entranceAdmitted: entCands.filter(c => admittedIds.has(String(c.id))),
         sessionStart: `${session.slice(0, 4)}-04-01`, courseOf, batchOf, canonicalBatch, sourceRef })
       setState({ checks: Object.fromEntries(checks.map(c => [c.key, c])), at: new Date() })
     } catch (e) { setState({ error: e.message || 'Could not run the checks' }) }

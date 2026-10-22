@@ -376,3 +376,26 @@ test('entrance registration: window, validation, payload, admit-card state', () 
   assert.equal(admitCardState({ fee_status: 'Unpaid', status: 'Registered' }, { application_fee: 0 }).state, 'slip')
   assert.equal(sameDob('2014-05-10T00:00:00Z', '2014-05-10'), true); assert.equal(sameDob('', ''), false)
 })
+
+test('cross checks: promised concessions, instalment plans, admission fee, photos, entrance → application', () => {
+  const ids = { courseOf: () => 'Navodaya', batchOf: () => 'Umeed', canonicalBatch: b => b, sourceRef: { flatFee: () => 'x', courseFee: () => 'y', admission: g => `adm_${g}` } }
+  const checks = crossModuleChecks({
+    students: [{ gcc_no: 1, status: 'Active' }, { gcc_no: 2, status: 'Active', photo_path: 'p.jpg' }, { gcc_no: 3, status: 'Active' }],
+    admissions: [
+      { gcc_no: 1, status: 'Enrolled', applicant_name: 'A', scholarship_pct: 25 },
+      { gcc_no: 2, status: 'Enrolled', applicant_name: 'B', sibling_gcc: 9, instalment_plan: 'quarterly' },
+      { gcc_no: 3, status: 'Enrolled', applicant_name: 'C', photo_url: 'x', concession_amt: 500 },
+      { gcc_no: 4, status: 'Applied', applicant_name: 'D', dob: '2015-01-01' },
+    ],
+    admRows: [{ adm_app_id: 1, fee_type: 'admission', reverted: false }, { adm_app_id: 2, fee_type: 'admission', reverted: true }],
+    concessionGccs: new Set(['3']), planGccs: new Set(),
+    entranceAdmitted: [{ id: 'e1', student_name: 'D', dob: '2015-01-01' }, { id: 'e2', student_name: 'Z', dob: '2015-02-02', application_no: 'SA260009' }],
+    ...ids,
+  })
+  const by = k => checks.find(c => c.key === k).items.map(i => i.id)
+  assert.deepEqual(by('enrolled_no_admfee'), [2, 3])
+  assert.deepEqual(by('adm_concession_not_in_fees'), [1, 2])      // 3 has one in Fees
+  assert.deepEqual(by('adm_plan_not_set'), [2])
+  assert.deepEqual(by('enrolled_no_photo'), [1])                  // 2 has a student photo, 3 an application photo
+  assert.deepEqual(by('ent_no_application'), ['e2'])              // D already has an application
+})
