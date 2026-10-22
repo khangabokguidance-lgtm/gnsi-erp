@@ -20,6 +20,7 @@ import { NavIcon } from './navIcons'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import { compressImage, sizeNote } from './lib/imageCompress'
+import { admissionLinks, LINK_LABEL } from './lib/admStudentMatch'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
@@ -1074,13 +1075,6 @@ function mapFromDB(row) {
 }
 
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
-const sbApps = {
-  fetch: async () => {
-    const data = await fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false })
-    return data.map(mapFromDB)
-  },
-}
-
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
   inp: {
@@ -1135,6 +1129,17 @@ function Avatar({ name, size=36, photoUrl }) {
       </svg>
     </div>
   )
+}
+
+const LINK_TONE = { ok: ['#047857', '#ecfdf5'], noStudent: ['#b42318', '#fef3f2'], notEnrolled: ['#9a5b00', '#fffaeb'], status: ['#9a5b00', '#fffaeb'], diff: ['#9a5b00', '#fffaeb'], dup: ['#b42318', '#fef3f2'] }
+// Small "is this application in step with its Students record?" pill. Open applications with no student show nothing.
+function StudentLinkBadge({ link }) {
+  if (!link) return null
+  const [fg, bg] = LINK_TONE[link.state] || LINK_TONE.ok
+  const tip = link.state === 'diff' ? link.diffs.map(d => `${d.field}: Admissions "${d.adm || '—'}" vs Students "${d.stu || '—'}"`).join('\n') : (link.note || 'Admission and student record agree')
+  return <span title={tip} style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99, color:fg, background:bg, border:`1px solid ${fg}33`, whiteSpace:'nowrap' }}>
+    {link.state === 'ok' ? '🎓 ' : '⚠ '}{LINK_LABEL[link.state]}{link.state === 'diff' ? ` (${link.diffs.length})` : ''}
+  </span>
 }
 
 function StatusBadge({ status }) {
@@ -1366,7 +1371,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1404,6 +1409,18 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:11.5, fontWeight:700, color:T.emerald[700], background:T.emerald[50], border:`1px solid ${T.emerald[200]}`, borderRadius:8, padding:'5px 12px', marginBottom:14 }}>
           🎓 Enrolled — current student status: {linkedStudent.status}
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
+        </div>
+      )}
+      {link && link.state !== 'ok' && (
+        <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
+          {link.note && <div style={{ fontSize:12, color:T.slate[600] }}>{link.note}</div>}
+          {link.diffs?.length > 0 && (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, marginTop:4 }}>
+              <thead><tr>{['Field','Admissions','Students'].map(h => <th key={h} style={{ textAlign:'left', padding:'3px 6px', fontSize:10, textTransform:'uppercase', color:T.slate[500] }}>{h}</th>)}</tr></thead>
+              <tbody>{link.diffs.map(d => <tr key={d.field}><td style={{ padding:'3px 6px', fontWeight:700 }}>{d.field}</td><td style={{ padding:'3px 6px' }}>{String(d.adm || '—')}</td><td style={{ padding:'3px 6px' }}>{String(d.stu || '—')}</td></tr>)}</tbody>
+            </table>
+          )}
         </div>
       )}
       {(() => {
@@ -3017,7 +3034,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 }
 
 // ─── Application Card ──────────────────────────────────────────────────────────
-function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
+function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission' && !col.reverted)
   const cs      = COURSE_STRUCTURE[a.course]
@@ -3062,7 +3079,7 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
         <td style={{ padding:'8px 10px' }}>{a.house||'—'}</td>
         <td style={{ padding:'8px 10px' }}><HostelTypeBadge type={a.hostel_type} /></td>
         <td style={{ padding:'8px 10px' }}>{a.session||'—'}</td>
-        <td style={{ padding:'8px 10px' }}><StatusBadge status={a.status} /></td>
+        <td style={{ padding:'8px 10px' }}><div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'flex-start' }}><StatusBadge status={a.status} /><StudentLinkBadge link={link} /></div></td>
         <td style={{ padding:'8px 10px' }}>{a.phone||'—'}</td>
         <td style={{ padding:'8px 6px' }}>
           <div style={{ display:'flex', gap:'4px' }}>
@@ -3113,7 +3130,7 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
               {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
             </div>
           </div>
-          <StatusBadge status={a.status} />
+          <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end' }}><StatusBadge status={a.status} /><StudentLinkBadge link={link} /></div>
         </div>
 
         {/* Row 2: info grid 2×2 */}
@@ -4040,6 +4057,9 @@ export default function Admissions() {
   const [filterSubtype,  setSubtype]       = useState('All')
   const [filterHostel,   setHostel]        = useState('All')
   const [filterHouse,    setFilterHouse]   = useState('All')
+  const [filterLink,     setFilterLink]    = useState('All')
+  const [rawAdm, setRawAdm] = useState([])
+  const [stuRows, setStuRows] = useState([])
   const [advFilters,     setAdvFilters]    = useState({})
   const [sortBy,         setSortBy]        = useState('gcc')
   const [sortDir,        setSortDir]       = useState('desc')
@@ -4118,11 +4138,14 @@ export default function Admissions() {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [appsData, colsRows] = await Promise.all([
-      sbApps.fetch(),
+    const [admRows, colsRows, stuData] = await Promise.all([
+      fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false }),
       fetchAllRows('adm_fee_collections', { orderCol: 'created_at', ascending: false }),
+      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at' }),
     ])
-    if (appsData) setApps(appsData)
+    setRawAdm(admRows)
+    setApps(admRows.map(mapFromDB))
+    setStuRows(stuData)
     setCols(colsRows)
     setLoading(false)
   }, [])
@@ -4194,6 +4217,20 @@ export default function Admissions() {
     return c
   }, [apps])
 
+  // Admissions ↔ Students: one state per GCC (see lib/admStudentMatch.js) for the badges and the filter below.
+  const studentLinks = useMemo(() => admissionLinks({ admissions: rawAdm, students: stuRows }), [rawAdm, stuRows])
+  const linkCounts = useMemo(() => {
+    const c = { issues: 0, ok: 0 }
+    for (const l of studentLinks.values()) { if (l.state === 'ok') c.ok++; else c.issues++; c[l.state] = (c[l.state] || 0) + 1 }
+    return c
+  }, [studentLinks])
+  const matchLink = useCallback(a => {
+    if (filterLink === 'All') return true
+    const l = studentLinks.get(String(parseInt(a.gcc)))
+    if (filterLink === 'Any issue') return !!l && l.state !== 'ok'
+    return !!l && LINK_LABEL[l.state] === filterLink
+  }, [filterLink, studentLinks])
+
   const today = new Date().toISOString().slice(0,10)
 
   const filtered = useMemo(() => {
@@ -4205,6 +4242,7 @@ export default function Admissions() {
       const matchSubtype = filterSubtype === 'All' || canonicalBatch(a.subtype) === filterSubtype
       const matchHostel  = filterHostel  === 'All' || a.hostel_type === filterHostel
       const matchHouse   = filterHouse   === 'All' || a.house       === filterHouse
+      const matchLinkSt  = matchLink(a)
       const matchSearch  = !q || [a.name,a.phone,a.admNo,a.gcc,a.cls,a.house,a.father,a.course,a.subtype,a.session,a.hostel_type,a.whatsapp,a.mother,a.prevSchool]
         .some(f => f?.toString().toLowerCase().includes(q))
 
@@ -4236,7 +4274,7 @@ export default function Admissions() {
         return af.feeStatus==='paid' ? paid : !paid
       })()
 
-      return matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
+      return matchLinkSt&&matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
     })
 
     list = [...list].sort((a,b) => {
@@ -4247,10 +4285,10 @@ export default function Admissions() {
       return 0
     })
     return list
-  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today])
+  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today, matchLink])
 
-  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
-  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setAdvFilters({});setSearch('') }
+  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse,filterLink].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
+  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setFilterLink('All');setAdvFilters({});setSearch('') }
 
   const toggleSelect = id => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -4984,7 +5022,7 @@ export default function Admissions() {
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}
@@ -5009,6 +5047,9 @@ export default function Admissions() {
             <PillStrip label="Batch" options={subtypeOptions} value={filterSubtype} onChange={setSubtype} colorFn={()=>T.violet[600]} />
           )}
           <PillStrip label="Hostel" options={HOSTEL_TYPES} value={filterHostel} onChange={setHostel} colorFn={h=>HOSTEL_STYLES[h]?.color||T.slate[500]} />
+          <PillStrip label="Students" options={['Any issue', ...['No student record','Student not Enrolled','Status differs','Fields differ','Duplicate GCC'].filter(l => Object.entries(LINK_LABEL).some(([k, v]) => v === l && linkCounts[k]))]} value={filterLink} onChange={setFilterLink}
+            colorFn={o => o === 'Any issue' ? T.rose[600] : T.amber[600]}
+            countFn={o => o === 'Any issue' ? linkCounts.issues : (linkCounts[Object.keys(LINK_LABEL).find(k => LINK_LABEL[k] === o)] || 0)} />
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
 
@@ -5119,7 +5160,7 @@ export default function Admissions() {
                 </thead>
                 <tbody>
                   {filtered.map(a => (
-                    <AppCard key={a.id} a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                       onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
@@ -5145,7 +5186,7 @@ export default function Admissions() {
                   {a.status==='Waitlisted' && waitlistPositions[a.gcc] && (
                     <div style={{ fontSize:11, color:T.slate[500], fontWeight:700, marginBottom:2 }}>Waitlist #{waitlistPositions[a.gcc]}</div>
                   )}
-                  <AppCard a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                     onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />

@@ -58,3 +58,21 @@ export function matchAdmissionsStudents({ admissions = [], students = [] }) {
     enrolledNoStudent, studentNoAdmission, studentButNotEnrolled, duplicates, statusDiff, fieldDiffs, fieldCounts,
   }
 }
+
+// Per-GCC link state for badges and filters. state: 'ok' | 'noStudent' | 'notEnrolled' | 'status' | 'diff' | 'dup'
+// (GCCs with no student that are not Enrolled are simply absent — that is normal for an open application).
+export const LINK_LABEL = { ok: 'Linked', noStudent: 'No student record', notEnrolled: 'Student not Enrolled', status: 'Status differs', diff: 'Fields differ', dup: 'Duplicate GCC' }
+export function admissionLinks({ admissions = [], students = [] }) {
+  const r = matchAdmissionsStudents({ admissions, students })
+  const links = new Map()
+  const set = (g, state, extra = {}) => { const cur = links.get(g); if (!cur || RANK[state] > RANK[cur.state]) links.set(g, { ...(cur || {}), state, ...extra }) }
+  const RANK = { ok: 0, diff: 1, status: 2, notEnrolled: 3, dup: 4, noStudent: 5 }
+  const liveStu = new Set(students.filter(isLive).map(s => gk(s.gcc_no)))
+  for (const a of admissions) { const g = gk(a.gcc_no); if (g && liveStu.has(g)) set(g, 'ok') }
+  for (const x of r.fieldDiffs) { set(x.gcc, 'diff'); const l = links.get(x.gcc); l.diffs = [...(l.diffs || []), x] }
+  for (const x of r.statusDiff) set(x.gcc, 'status', { note: `Admission says ${x.admStatus}, student is ${x.stuStatus}` })
+  for (const x of r.studentButNotEnrolled) set(x.gcc, 'notEnrolled', { note: `Student exists (${x.stuStatus}) but admission is ${x.admStatus}` })
+  for (const x of r.duplicates) set(x.gcc, 'dup', { note: `${x.count} rows in ${x.where}` })
+  for (const x of r.enrolledNoStudent) set(x.gcc, 'noStudent', { note: 'Marked Enrolled but there is no student with this GCC' })
+  return links
+}

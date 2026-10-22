@@ -283,3 +283,16 @@ test('admissions vs students: one-sided records, duplicates and field difference
   assert.deepEqual(r.statusDiff.map(x => x.gcc), ['104'])
   assert.deepEqual(r.fieldDiffs.map(x => `${x.gcc}:${x.field}`), ['101:Batch'])   // name/phone/dob formatting differences are not mismatches
 })
+
+import { admissionLinks } from '../src/lib/admStudentMatch.js'
+test('admission links: per-GCC state for badges', () => {
+  const l = admissionLinks({
+    admissions: [{ gcc_no: 1, applicant_name: 'A', status: 'Enrolled', course: 'NVS' }, { gcc_no: 2, status: 'Enrolled' }, { gcc_no: 3, status: 'Applied' }, { gcc_no: 4, status: 'Applied' }],
+    students: [{ gcc_no: 1, name: 'A', status: 'Active', course: 'Sainik' }, { gcc_no: 4, name: 'D', status: 'Active' }],
+  })
+  assert.equal(l.get('1').state, 'diff')
+  assert.equal(l.get('1').diffs[0].field, 'Course')
+  assert.equal(l.get('2').state, 'noStudent')
+  assert.equal(l.has('3'), false)
+  assert.equal(l.get('4').state, 'notEnrolled')
+})
