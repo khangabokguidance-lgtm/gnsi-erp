@@ -34,6 +34,7 @@ import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, hand
 import { openStudentLedger } from './ledgerLink'
 import StudentLocker from './StudentLocker'
 import ExamRegistrationAdmin from './ExamRegistrationAdmin'
+import { printAdmissionConfirmation } from './admissionConfirmation'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
@@ -1273,11 +1274,12 @@ function Avatar({ name, size=36, photoUrl, altUrl }) {
 }
 
 // Jump from an application to the same person in every student-side module. Only shown once a student record exists.
-function StudentModuleLinks({ a, link, onNavigate, onOpenLocker }) {
+function StudentModuleLinks({ a, link, onNavigate, onOpenLocker, onPrintConfirmation }) {
   if (!onNavigate || !link || link.state === 'noStudent') return null
   const gcc = parseInt(a.gcc)
   const go = (fn, module) => () => { fn?.(); onNavigate(module) }
   const items = [
+    ...(onPrintConfirmation && a.status === 'Enrolled' ? [['🖨 Admission form', onPrintConfirmation]] : []),
     ...(onOpenLocker ? [['🔐 Document locker', onOpenLocker]] : []),
     ['🎓 Student profile', go(() => handoffToStudents({ gcc }), 'students')],
     ['📒 Fee ledger', () => { openStudentLedger(gcc) }],
@@ -1544,7 +1546,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onOpenLocker, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onOpenLocker, onPrintConfirmation, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1584,7 +1586,7 @@ function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onOpenLocker, onC
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
         </div>
       )}
-      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} onOpenLocker={onOpenLocker} />
+      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} onOpenLocker={onOpenLocker} onPrintConfirmation={onPrintConfirmation} />
       {link && link.state !== 'ok' && (
         <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
@@ -3214,7 +3216,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 }
 
 // ─── Application Card ──────────────────────────────────────────────────────────
-function AppCard({ a, link, onLocker, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
+function AppCard({ a, link, onLocker, onConfirm, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission' && !col.reverted)
   const cs      = COURSE_STRUCTURE[a.course]
@@ -3241,7 +3243,10 @@ function AppCard({ a, link, onLocker, cols, selected, onSelect, onEdit, onDelete
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <span style={{ fontSize:11, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</span>
-        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+          {onConfirm && <button onClick={e=>{e.stopPropagation();onConfirm(a)}} title="Print the admission confirmation & registration form" style={{ padding:'4px 10px', borderRadius:6, background:'#fff', color:T.slate[700], border:`1px solid ${T.slate[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Admission form</button>}
+        </div>
       </div>
     )
   }
@@ -3267,6 +3272,7 @@ function AppCard({ a, link, onLocker, cols, selected, onSelect, onEdit, onDelete
           <div style={{ display:'flex', gap:'4px' }}>
             <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
             <button onClick={()=>onEdit(a)}   style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+            {onConfirm && a.status === 'Enrolled' && <button onClick={()=>onConfirm(a)} title="Print the admission confirmation & registration form" style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Form</button>}
             {onLocker && <button onClick={()=>onLocker(a)} title="Open this student's document locker" style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.teal, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🔐 Locker</button>}
           </div>
         </td>
@@ -4238,6 +4244,7 @@ export default function Admissions({ onNavigate } = {}) {
   const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [filterPhoto, setFilterPhoto] = useState('All')
   const [lockerFor, setLockerFor] = useState(null)   // { student, app }
+  const [justEnrolled, setJustEnrolled] = useState(null)   // application just enrolled → offer the admission form
   const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
   const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
@@ -4662,6 +4669,7 @@ export default function Admissions({ onNavigate } = {}) {
       } catch (e) { console.warn('Enroll: could not set admission_date —', e?.message || e) }
 
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
+      setJustEnrolled({ ...a, status:'Enrolled' })
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
       sendStatusNotification({ ...a, status:'Enrolled' }, 'Enrolled')
@@ -4843,6 +4851,15 @@ export default function Admissions({ onNavigate } = {}) {
     logAudit('RESTORE_PHOTOS', null, { count: ok }, userRole)
     await loadAll()
     showToast(`Restored ${ok} photo${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
+  }
+
+  // The admission confirmation & registration form. Call from a click so the print window is allowed to open.
+  const printConfirmation = app => {
+    const gccN = String(parseInt(app.gcc) || '')
+    const student = stuRows.find(x => String(parseInt(x.gcc_no) || '') === gccN && !x.deleted_at)
+    const fees = cols.filter(c => String(parseInt(c.adm_app_id) || '') === gccN && !c.reverted)
+    const rates = getFeeRates(app.session || getSessionYear(), app.course, app.cls, app.hostel_type, app.gcc).then(r => ({ flatFee: r.flatFee, courseFee: r.courseFee }))
+    printAdmissionConfirmation({ app, student, fees, photo: app.photoUrl || app.studentPhotoUrl || '' }, rates)
   }
 
   // The locker belongs to the student record (documents are saved against students.id), so it opens once one exists.
@@ -5194,6 +5211,20 @@ export default function Admissions({ onNavigate } = {}) {
           <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} sessionOptions={sessionOptions} />
         )}
 
+        {justEnrolled && createPortal(
+          <div onClick={() => setJustEnrolled(null)} style={{ position:'fixed', inset:0, background:'rgba(11,30,61,.55)', zIndex:99998, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:18, padding:'26px 28px', width:'min(440px,100%)', textAlign:'center', boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
+              <div style={{ width:56, height:56, borderRadius:'50%', background:'#E8F7EE', color:'#15803D', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, margin:'0 auto 12px' }}>✓</div>
+              <div style={{ fontSize:19, fontWeight:700, color:'#0B1E3D' }}>Admission confirmed</div>
+              <div style={{ fontSize:13, color:'#475569', margin:'6px 0 18px', lineHeight:1.5 }}><b>{justEnrolled.name}</b> (GCC-{justEnrolled.gcc}) is now a student. Print the admission confirmation & registration form for the family to sign and keep.</div>
+              <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+                <button type="button" onClick={() => { printConfirmation(justEnrolled); setJustEnrolled(null) }} style={{ padding:'11px 22px', borderRadius:10, border:0, background:'#0B1E3D', color:'#fff', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>🖨 Print admission form</button>
+                <button type="button" onClick={() => setJustEnrolled(null)} style={{ padding:'11px 20px', borderRadius:10, border:'1px solid #CBD5E3', background:'#fff', color:'#475569', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>Later</button>
+              </div>
+              <div style={{ fontSize:11, color:'#7B8AA0', marginTop:12 }}>You can reprint it any time from the application's Detail panel.</div>
+            </div>
+          </div>, document.body)}
+
         {lockerFor && (
           <StudentLocker student={lockerFor.student} app={lockerFor.app} userName={getSessionInfo().userName}
             canWrite={checkPermission(userRole, 'update')} canVerify={checkPermission(userRole, 'update')} canDelete={checkPermission(userRole, 'delete')}
@@ -5202,7 +5233,7 @@ export default function Admissions({ onNavigate } = {}) {
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onOpenLocker={() => openLocker(detailApp)} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onOpenLocker={() => openLocker(detailApp)} onPrintConfirmation={() => printConfirmation(detailApp)} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}
@@ -5376,7 +5407,7 @@ export default function Admissions({ onNavigate } = {}) {
                 </thead>
                 <tbody>
                   {filtered.map(a => (
-                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} onConfirm={printConfirmation} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                       onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
@@ -5402,7 +5433,7 @@ export default function Admissions({ onNavigate } = {}) {
                   {a.status==='Waitlisted' && waitlistPositions[a.gcc] && (
                     <div style={{ fontSize:11, color:T.slate[500], fontWeight:700, marginBottom:2 }}>Waitlist #{waitlistPositions[a.gcc]}</div>
                   )}
-                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} onConfirm={printConfirmation} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                     onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />
