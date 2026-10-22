@@ -322,6 +322,6 @@ test('patch from student: copies filled student values, never blanks an applicat
     admissions: [{ gcc_no: 1, applicant_name: 'A', status: 'Enrolled', course: 'NVS', batch: 'Old', house: 'Loktak', phone: '9862012345' }],
     students: [{ gcc_no: 1, name: 'A', status: 'Active', course: 'Sainik', batch: 'New', house: '', phone: '9862012345' }],
   })
-  assert.deepEqual(patchFromStudent(l.get('1').diffs), { course: 'Sainik', batch: 'New' })   // house blank on student → untouched
+  assert.deepEqual(patchFromStudent(l.get('1').diffs), { course: 'Sainik', batch: 'New' })   // house blank on student → not even reported
   assert.equal(patchFromStudent([]), null)
 })
