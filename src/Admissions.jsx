@@ -33,6 +33,7 @@ import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWind
 import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
 import StudentLocker from './StudentLocker'
+import ExamRegistrationAdmin from './ExamRegistrationAdmin'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
@@ -5030,7 +5031,7 @@ export default function Admissions({ onNavigate } = {}) {
 .adm-nb.on{color:#fff;font-weight:800}
 .adm-nb.on .adm-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .adm-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
-              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['exam','Exam reg.','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
                 <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'adm-nb'+(moduleView===key?' on':'')} onClick={()=>{setModuleView(key);window.scrollTo({top:0})}}>
                   <span className="adm-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
                 </button>
@@ -5039,7 +5040,7 @@ export default function Admissions({ onNavigate } = {}) {
             document.body
           ) : null}
           {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
-            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
+            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['exam','🎫 Exam Registration'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
                   background: moduleView===key ? '#0B1E3D' : 'transparent',
@@ -5062,6 +5063,8 @@ export default function Admissions({ onNavigate } = {}) {
           />
         ) : moduleView === 'ledger' ? (
           <StudentLedgerView apps={apps} darkMode={darkMode} />
+        ) : moduleView === 'exam' ? (
+          <ExamRegistrationAdmin canWrite={checkPermission(userRole, 'create')} />
         ) : moduleView === 'sessions' ? (
           <SessionManager darkMode={darkMode} onChanged={loadAll} apps={apps} />
         ) : (

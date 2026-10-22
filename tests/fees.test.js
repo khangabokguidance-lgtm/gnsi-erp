@@ -352,3 +352,27 @@ test('locker: maps the Students module names, newest document is current, counts
   assert.equal(l.slots.find(s => s.type === 'Birth Certificate').current.id, 2)
   assert.deepEqual(l.counts, { required: 5, haveRequired: 2, verifiedRequired: 0, total: 4 })   // newest birth cert is unverified
 })
+
+import { registrationWindow, validateRegistration, candidatePayload, admitCardState, feeFor, sameDob } from '../src/lib/entranceReg.js'
+test('entrance registration: window, validation, payload, admit-card state', () => {
+  const exam = { status: 'Scheduled', app_open: '2026-11-01', app_close: '2026-12-15', application_fee: 500 }
+  assert.equal(registrationWindow(exam, '2026-10-30').open, false)
+  assert.equal(registrationWindow(exam, '2026-11-20').open, true)
+  assert.match(registrationWindow(exam, '2026-12-16').reason, /closed/)
+  assert.equal(registrationWindow({ ...exam, status: 'Cancelled' }, '2026-11-20').open, false)
+  assert.equal(feeFor(exam), 500); assert.equal(feeFor({}), 0)
+
+  const good = { student_name: 'Asha Devi', dob: '2014-05-10', gender: 'Girl', category: 'General', father_name: 'R Singh', mother_name: 'M Devi', phone: '98620 12345',
+    email: 'a@b.in', address: 'Khangabok Makhong', state: 'Manipur', district: 'Thoubal', pincode: '795146', class_studying: 'Class 5→6', school: 'Govt School', declared: true }
+  assert.deepEqual(validateRegistration(good, exam, { today: '2026-11-20', assets: { photo: true, signature: true } }), {})
+  const bad = validateRegistration({ ...good, phone: '12345', pincode: '12', dob: '2026-11-20', declared: false }, exam, { today: '2026-11-20' })
+  assert.deepEqual(Object.keys(bad).sort(), ['declared', 'dob', 'phone', 'photo', 'pincode', 'signature'])
+  const p = candidatePayload(good)
+  assert.equal(p.phone, '9862012345'); assert.equal(p.address, 'Khangabok Makhong, Thoubal, Manipur, 795146'); assert.equal(p.reg_details.nationality, 'Indian')
+
+  assert.equal(admitCardState({ fee_status: 'Unpaid' }, exam).state, 'pay')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Registered' }, exam).state, 'slip')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Hall Ticket Issued' }, exam).state, 'admit')
+  assert.equal(admitCardState({ fee_status: 'Unpaid', status: 'Registered' }, { application_fee: 0 }).state, 'slip')
+  assert.equal(sameDob('2014-05-10T00:00:00Z', '2014-05-10'), true); assert.equal(sameDob('', ''), false)
+})
