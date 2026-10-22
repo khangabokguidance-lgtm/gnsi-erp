@@ -325,3 +325,17 @@ test('patch from student: copies filled student values, never blanks an applicat
   assert.deepEqual(patchFromStudent(l.get('1').diffs), { course: 'Sainik', batch: 'New' })   // house blank on student → not even reported
   assert.equal(patchFromStudent([]), null)
 })
+
+import { planSessionMove } from '../src/lib/sessionMove.js'
+test('session move: only current students not already in the target move', () => {
+  const p = planSessionMove([
+    { id: 1, gcc_no: 12, name: 'A', status: 'Active', session: '2025-26' },
+    { id: 2, gcc_no: 11, name: 'B', session: null },                       // no status, no session → moves
+    { id: 3, gcc_no: 13, name: 'C', status: 'Active', session: ' 2026-27 ' },  // already there
+    { id: 4, gcc_no: 14, name: 'D', status: 'Dropout', session: '2025-26' },
+    { id: 5, gcc_no: 15, name: 'E', status: 'Active', session: '2025-26', deleted_at: '2026-01-01' },
+  ], '2026-27')
+  assert.deepEqual(p.moves.map(m => m.id), [2, 1])
+  assert.deepEqual(p.bySource, { '(none)': 1, '2025-26': 1 })
+  assert.equal(p.alreadyThere, 1); assert.equal(p.notCurrent, 2)
+})
