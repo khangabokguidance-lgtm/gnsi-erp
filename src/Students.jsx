@@ -18,7 +18,8 @@ import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
-import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff } from './courseMap'
+import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff, handoffToAdmissions, handoffToFees } from './courseMap'
+import { openStudentLedger } from './ledgerLink'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
@@ -2630,7 +2631,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
 }
 
 // ─── Student Detail Drawer ────────────────────────────────────────────────────
-function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, onPhotoChange, showToast }) {
+function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, onPhotoChange, showToast, onNavigate }) {
   const [tab,setTab]=useState('profile')
   const [notes,setNotes]=useState(student.notes||'')
   const [saving,setSaving]=useState(false)
@@ -2773,6 +2774,11 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               )}
             </div>
             <div style={{display:'flex',gap:6,flexShrink:0,position:'relative'}}>
+              {onNavigate&&(<>
+                <button className="st-hbtn" title="Open this student's admission record" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>{handoffToAdmissions({gcc:student.gcc_no});onNavigate('admissions')}}>📝 Admission</button>
+                <button className="st-hbtn" title="Open this student's fee ledger" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>openStudentLedger(student.gcc_no)}>📒 Ledger</button>
+                {can.fees&&<button className="st-hbtn" title="Collect a fee for this student" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>{handoffToFees({gcc:student.gcc_no});onNavigate('fees')}}>💳 Fee</button>}
+              </>)}
               <IfCan can={can.write}>
                 <button className="st-hbtn gold" style={{height:32,padding:'0 12px',fontSize:12.5}} onClick={()=>onEdit(student)}>✏ Edit</button>
               </IfCan>
@@ -5660,7 +5666,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} onPhotoChange={(id,patch)=>{setStudents(prev=>prev.map(x=>x.id===id?{...x,...patch}:x));setDetailPanel(d=>d&&d.id===id?{...d,...patch}:d)}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} onPhotoChange={(id,patch)=>{setStudents(prev=>prev.map(x=>x.id===id?{...x,...patch}:x));setDetailPanel(d=>d&&d.id===id?{...d,...patch}:d)}} showToast={showToast} onNavigate={goToModule}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}

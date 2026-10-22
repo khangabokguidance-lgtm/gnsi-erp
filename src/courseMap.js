@@ -115,3 +115,10 @@ export const takeAttendanceHandoff = () => take(KEY_ATT)
 // Students: { gcc }  → opens that student's profile
 export const handoffToStudents = v => put(KEY_STU, v)
 export const takeStudentsHandoff = () => take(KEY_STU)
+// Fees: { gcc } → opens Fee Payment for that student.  Admissions: { gcc } → opens that application's detail.
+const KEY_FEES = 'gnsi_handoff_fees'
+const KEY_ADM = 'gnsi_handoff_admissions'
+export const handoffToFees = v => put(KEY_FEES, v)
+export const takeFeesHandoff = () => take(KEY_FEES)
+export const handoffToAdmissions = v => put(KEY_ADM, v)
+export const takeAdmissionsHandoff = () => take(KEY_ADM)

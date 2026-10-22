@@ -296,3 +296,22 @@ test('admission links: per-GCC state for badges', () => {
   assert.equal(l.has('3'), false)
   assert.equal(l.get('4').state, 'notEnrolled')
 })
+
+import { countHouseOccupancy } from '../src/lib/houseOccupancy.js'
+test('house occupancy: no double count of enrolled, inactive students take no seat', () => {
+  const r = countHouseOccupancy({
+    houses: [{ name: 'Loktak', capacity: 3 }, { name: 'Block-B' }],
+    students: [
+      { gcc_no: 1, house: 'Loktak', status: 'Active' }, { gcc_no: 2, house: 'loktak ', status: 'Active' },
+      { gcc_no: 3, house: 'Loktak', status: 'Dropout' }, { gcc_no: 4, house: 'Loktak', status: 'Active', deleted_at: '2026-01-01' },
+    ],
+    admissions: [
+      { gcc_no: 1, house: 'Loktak', status: 'Enrolled' },   // has a student row already
+      { gcc_no: 5, house: 'Loktak', status: 'Admitted' },   // waiting seat
+      { gcc_no: 6, house: 'Loktak', status: 'Applied' }, { gcc_no: 7, house: 'Loktak', status: 'Rejected' },
+    ],
+  })
+  assert.equal(r[0].occupied, 3); assert.equal(r[0].studentCount, 2); assert.equal(r[0].applicantCount, 1)
+  assert.equal(r[0].isFull, true); assert.equal(r[1].capacity, 40)
+  assert.equal(countHouseOccupancy({ houses: [{ name: 'Loktak', capacity: 3 }], students: [], admissions: [{ gcc_no: 5, house: 'Loktak', status: 'Admitted' }], excludeGcc: '5' })[0].occupied, 0)
+})
