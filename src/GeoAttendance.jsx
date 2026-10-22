@@ -1044,7 +1044,7 @@ function usePushSubscription(currentStaff, isAdmin) {
       await navigator.serviceWorker.ready
       const existing = await reg.pushManager.getSubscription()
       if (existing) { subscriptionRef.current = existing; return }
-      const res = await fetch('/api/vapid-key')
+      const res = await fetch('/api/subscribe')
       const { publicKey } = await res.json()
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') return
