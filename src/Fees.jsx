@@ -4,7 +4,7 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
-import { courseOf, courseStructure } from './courseMap'
+import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 
 // Course to show for a student: the resolved course (a blank course on a
@@ -4696,6 +4696,7 @@ export default function Fees() {
   const isAdmin = useVerifiedAdmin(localIsAdmin)   // the database must agree the login really is an admin
   const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
+  const feesHandoff = useRef(takeFeesHandoff())   // e.g. Admissions → "Collect fee" for one student
   const [admissions,          setAdmissions]    = useState([])
   const [adm_fee_collections, setAdmFeeCols]    = useState([])
   const [adm_flat_fees,       setAdmFlatFees]   = useState([])
@@ -5086,6 +5087,13 @@ export default function Fees() {
   const [hubOpen, setHubOpen] = useState(false)
   // Shared jumps so every tab that names a student can lead to the next action.
   const goCollect = st => { setPresetCollectStudent(st); setTab('payment') }
+  useEffect(() => {
+    const h = feesHandoff.current
+    if (!h || !students.length) return
+    feesHandoff.current = null
+    const hit = students.find(x => String(parseInt(x.gcc_no) || 0) === String(parseInt(h.gcc) || 0))
+    if (hit) goCollect(hit)
+  }, [students]) // eslint-disable-line react-hooks/exhaustive-deps
   const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
   const TABS = [
     // Non-admin staff only get what they need at the counter: Fee Payment,

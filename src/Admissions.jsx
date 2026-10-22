@@ -30,7 +30,8 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { printApplicationReceipt as printApplicationReceiptDoc } from './applicationReceipt'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
-import { canonicalBatch, courseStructure } from './courseMap'
+import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
+import { openStudentLedger } from './ledgerLink'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
@@ -1127,6 +1128,29 @@ function Avatar({ name, size=36, photoUrl }) {
   )
 }
 
+// Jump from an application to the same person in every student-side module. Only shown once a student record exists.
+function StudentModuleLinks({ a, link, onNavigate }) {
+  if (!onNavigate || !link || link.state === 'noStudent') return null
+  const gcc = parseInt(a.gcc)
+  const go = (fn, module) => () => { fn?.(); onNavigate(module) }
+  const items = [
+    ['🎓 Student profile', go(() => handoffToStudents({ gcc }), 'students')],
+    ['📒 Fee ledger', () => { openStudentLedger(gcc) }],
+    ['💳 Collect fee', go(() => handoffToFees({ gcc }), 'fees')],
+    ['🗓 Attendance', go(() => handoffToAttendance({ page: 'student360', gcc }), 'attendance')],
+    ...(a.hostel_type && a.hostel_type !== 'Day Scholar' ? [['🏠 Hostel', () => onNavigate('hostel')]] : []),
+  ]
+  return (
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+      <span style={{ fontSize:10, fontWeight:800, color:T.slate[400], textTransform:'uppercase', letterSpacing:'.08em' }}>Open in</span>
+      {items.map(([label, fn]) => (
+        <button key={label} type="button" onClick={fn}
+          style={{ padding:'5px 11px', borderRadius:99, border:`1px solid ${T.indigo[200]}`, background:T.indigo[50], color:T.indigo[700], fontSize:11.5, fontWeight:700, cursor:'pointer' }}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
 const LINK_TONE = { ok: ['#047857', '#ecfdf5'], noStudent: ['#b42318', '#fef3f2'], notEnrolled: ['#9a5b00', '#fffaeb'], status: ['#9a5b00', '#fffaeb'], diff: ['#9a5b00', '#fffaeb'], dup: ['#b42318', '#fef3f2'] }
 // Small "is this application in step with its Students record?" pill. Open applications with no student show nothing.
 function StudentLinkBadge({ link }) {
@@ -1379,7 +1403,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, link, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onNavigate, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1419,6 +1443,7 @@ function DetailPanel({ a, link, onClose, onAddNote, darkMode, role, housemasters
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
         </div>
       )}
+      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} />
       {link && link.state !== 'ok' && (
         <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
@@ -4048,7 +4073,7 @@ function StudentLedgerView({ apps, darkMode }) {
 }
 
 
-export default function Admissions() {
+export default function Admissions({ onNavigate } = {}) {
   useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   const isMobile = useMobile()
   const isTablet = useTablet()
@@ -4157,6 +4182,16 @@ export default function Admissions() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // Hand-off from another module ("View admission" in a student's profile) → open that application's detail.
+  const admHandoff = useRef(takeAdmissionsHandoff())
+  useEffect(() => {
+    const h = admHandoff.current
+    if (!h || !apps.length) return
+    admHandoff.current = null
+    const hit = apps.find(x => String(parseInt(x.gcc)) === String(parseInt(h.gcc)))
+    if (hit) { setViewChosen?.(true); setDetailApp(hit) } else showToast(`No admission record for GCC ${h.gcc}`, T.amber[600])
+  }, [apps]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live cross-module sync — subscribe to Postgres changes on students
   // and admissions so this view refreshes automatically when the OTHER
@@ -5028,7 +5063,7 @@ export default function Admissions() {
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}

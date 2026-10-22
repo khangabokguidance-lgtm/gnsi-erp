@@ -1005,7 +1005,7 @@ export default function App() {
   const moduleMap = {
     // onNavigate: Students is edit-only now — its "New Admission" button sends staff to Admissions.
     students:          <Students          currentUser={currentUser} perms={perms('students')} onNavigate={setActive} />,
-    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}        />,
+    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')} onNavigate={setActive} />,
     // FIX: sessions/admissionsessions — admin only explicitly
     sessions:          isAdmin ? <Sessions          currentUser={currentUser} perms={perms('sessions')}          /> : <AccessDenied />,
     admissionsessions: isAdmin ? <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')} /> : <AccessDenied />,
