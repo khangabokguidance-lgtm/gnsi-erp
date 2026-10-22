@@ -20,7 +20,7 @@ import { NavIcon } from './navIcons'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import { compressImage, sizeNote } from './lib/imageCompress'
-import { admissionLinks, LINK_LABEL } from './lib/admStudentMatch'
+import { admissionLinks, LINK_LABEL, patchFromStudent } from './lib/admStudentMatch'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity, getHouseOccupancy } from './feeEngine'
@@ -1403,7 +1403,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, link, onNavigate, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1448,6 +1448,12 @@ function DetailPanel({ a, link, onNavigate, onClose, onAddNote, darkMode, role, 
         <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
           {link.note && <div style={{ fontSize:12, color:T.slate[600] }}>{link.note}</div>}
+          {onSyncFromStudent && patchFromStudent(link.diffs) && (
+            <button type="button" onClick={() => onSyncFromStudent(a.gcc)}
+              style={{ margin:'6px 0 2px', padding:'6px 12px', borderRadius:8, border:`1px solid ${T.amber[300] || T.amber[200]}`, background:'#fff', color:T.amber[700], fontSize:11.5, fontWeight:800, cursor:'pointer' }}>
+              ⬆ Update this application from Students
+            </button>
+          )}
           {link.diffs?.length > 0 && (
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, marginTop:4 }}>
               <thead><tr>{['Field','Admissions','Students'].map(h => <th key={h} style={{ textAlign:'left', padding:'3px 6px', fontSize:10, textTransform:'uppercase', color:T.slate[500] }}>{h}</th>)}</tr></thead>
@@ -4636,6 +4642,26 @@ export default function Admissions({ onNavigate } = {}) {
     }, 5000)
   }
 
+  // Once someone is enrolled, other modules (Attendance, Hostel, Exams, …) edit the STUDENT record directly, so the
+  // application drifts out of date. This brings the shared fields of the chosen applications back in line with their
+  // student (only fields the student has filled; status is never touched).
+  const handleSyncFromStudents = async gccs => {
+    if (!checkPermission(userRole, 'update')) { showToast('🚫 You do not have permission to edit applications', T.rose[600]); return }
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
+    const jobs = gccs.map(g => ({ g, patch: patchFromStudent(studentLinks.get(String(parseInt(g)))?.diffs) })).filter(j => j.patch)
+    if (!jobs.length) { showToast('Nothing to update — the students have no newer values.', T.amber[600]); return }
+    const fields = new Set(jobs.flatMap(j => Object.keys(j.patch))).size
+    if (!confirm(`Update ${jobs.length} application${jobs.length > 1 ? 's' : ''} from their Students record (${fields} field type${fields > 1 ? 's' : ''})?\n\nThe student's values replace the application's. Status is not changed.`)) return
+    let ok = 0, fail = 0
+    for (const { g, patch } of jobs) {
+      const { error } = await supabase.from('admissions').update(patch).eq('gcc_no', parseInt(g))
+      if (error) fail++; else ok++
+    }
+    logAudit('SYNC_FROM_STUDENTS', null, { count: ok, gccs: jobs.map(j => j.g) }, userRole)
+    await loadAll()
+    showToast(`Updated ${ok} application${ok === 1 ? '' : 's'} from Students${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
+  }
+
   const handleCSVImport = async rows => {
     setShowCSVImport(false)
     let ok=0, fail=0, skipped=0
@@ -5063,7 +5089,7 @@ export default function Admissions({ onNavigate } = {}) {
 
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}
@@ -5091,6 +5117,15 @@ export default function Admissions({ onNavigate } = {}) {
           <PillStrip label="Students" options={['Any issue', ...['No student record','Student not Enrolled','Status differs','Fields differ','Duplicate GCC'].filter(l => Object.entries(LINK_LABEL).some(([k, v]) => v === l && linkCounts[k]))]} value={filterLink} onChange={setFilterLink}
             colorFn={o => o === 'Any issue' ? T.rose[600] : T.amber[600]}
             countFn={o => o === 'Any issue' ? linkCounts.issues : (linkCounts[Object.keys(LINK_LABEL).find(k => LINK_LABEL[k] === o)] || 0)} />
+          {linkCounts.diff > 0 && checkPermission(userRole, 'update') && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+              <span>{linkCounts.diff} application{linkCounts.diff > 1 ? 's' : ''} are out of date with their student record.</span>
+              <button type="button" onClick={() => handleSyncFromStudents(filtered.filter(x => studentLinks.get(String(parseInt(x.gcc)))?.state === 'diff').map(x => x.gcc))}
+                style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                ⬆ Update the {filtered.filter(x => studentLinks.get(String(parseInt(x.gcc)))?.state === 'diff').length} shown from Students
+              </button>
+            </div>
+          )}
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
 
