@@ -5,8 +5,6 @@ import { db, send, only, body, EXAM_FIELDS, BUCKET, parseDataUrl, insertTolerant
 import { registrationWindow, validateRegistration, candidatePayload, feeFor, MAX_PHOTO_KB, MAX_SIGN_KB } from '../../src/lib/entranceReg.js'
 import { applicationNo, nextApplicationSeq, nextRoll } from '../../src/lib/entranceNumbers.js'
 
-export const config = { api: { bodyParser: { sizeLimit: '2mb' } } }
-
 const rand = () => Math.random().toString(36).slice(2, 8)
 
 async function putImage(path, img) {
