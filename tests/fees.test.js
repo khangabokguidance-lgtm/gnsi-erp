@@ -258,3 +258,28 @@ test('income vs collection: explains each kind of gap by receipt', () => {
   const explained = r.totals.missing + r.totals.deleted + r.totals.pending + r.totals.moved + r.noReceipt.total - r.totals.mismatch - r.totals.orphan
   assert.equal(explained, r.gap)
 })
+
+import { matchAdmissionsStudents } from '../src/lib/admStudentMatch.js'
+test('admissions vs students: one-sided records, duplicates and field differences', () => {
+  const r = matchAdmissionsStudents({
+    admissions: [
+      { gcc_no: '101', applicant_name: 'Asha Devi', status: 'Enrolled', phone: '98620-12345', course: 'NVS', batch: 'A', dob: '2014-03-02' },
+      { gcc_no: '102', applicant_name: 'Ravi', status: 'Enrolled' },                       // no student
+      { gcc_no: '103', applicant_name: 'Meena', status: 'Applied' },                        // student exists, not Enrolled
+      { gcc_no: '104', applicant_name: 'Dup', status: 'Enrolled' }, { gcc_no: '104', applicant_name: 'Dup', status: 'Enrolled' },
+    ],
+    students: [
+      { gcc_no: 101, name: 'asha  devi', status: 'Active', phone: '9862012345', course: 'NVS', batch: 'B', dob: '2014-03-02T00:00:00' },
+      { gcc_no: 103, name: 'Meena', status: 'Active' },
+      { gcc_no: 104, name: 'Dup', status: 'Dropout' },
+      { gcc_no: 105, name: 'Direct add', status: 'Active' },                               // no admission
+      { gcc_no: 106, name: 'Gone', status: 'Active', deleted_at: '2026-01-01' },           // ignored
+    ],
+  })
+  assert.deepEqual(r.enrolledNoStudent.map(x => x.gcc), ['102'])
+  assert.deepEqual(r.studentNoAdmission.map(x => x.gcc), ['105'])
+  assert.deepEqual(r.studentButNotEnrolled.map(x => x.gcc), ['103'])
+  assert.deepEqual(r.duplicates.map(x => x.gcc), ['104'])
+  assert.deepEqual(r.statusDiff.map(x => x.gcc), ['104'])
+  assert.deepEqual(r.fieldDiffs.map(x => `${x.gcc}:${x.field}`), ['101:Batch'])   // name/phone/dob formatting differences are not mismatches
+})

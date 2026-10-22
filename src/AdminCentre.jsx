@@ -6,6 +6,7 @@ import { isAdminRole } from './roles'
 import { courseOf, batchOf, canonicalBatch } from './courseMap'
 import { getSessionYear, sourceRef } from './feeEngine'
 import { computeDuesSnapshot, fetchAll } from './duesSnapshot'
+import AdmissionsStudentsMatch from './AdmissionsStudentsMatch'
 import { crossModuleChecks } from './lib/crossChecks'
 
 const INK = '#0b1730', NAVY = '#132a4f', GOLD_LT = '#e2c57e', SUB = '#6a7592', BG = '#eef0f6'
@@ -270,11 +271,12 @@ export default function AdminCentre({ data, briefing, currentUser, onNavigate, o
           <div style={{ fontSize: 12.5, color: SUB }}>{today} · Session {getSessionYear()} · Read-only · tap a tile to open that module's report</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {[['overview', 'Overview'], ['connections', 'Connections & checks'], ['reports', 'Report Centre']].map(([id, label]) => <button key={id} type="button" style={pill(view === id)} onClick={() => setView(id)}>{label}</button>)}
+          {[['overview', 'Overview'], ['connections', 'Connections & checks'], ['admstu', 'Admissions ↔ Students'], ['reports', 'Report Centre']].map(([id, label]) => <button key={id} type="button" style={pill(view === id)} onClick={() => setView(id)}>{label}</button>)}
         </div>
       </div>
       {view === 'overview' && <Overview data={data} briefing={briefing} onOpenSection={onOpenSection} onNavigate={onNavigate} />}
       {view === 'connections' && <Connections onNavigate={onNavigate} />}
+      {view === 'admstu' && <AdmissionsStudentsMatch onNavigate={onNavigate} />}
       {view === 'reports' && <ReportCentre onNavigate={onNavigate} />}
     </div>
   )
