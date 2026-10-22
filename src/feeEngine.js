@@ -3,6 +3,7 @@
 //  SINGLE SOURCE OF TRUTH for all fee logic across GNSI Portal
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { countHouseOccupancy } from './lib/houseOccupancy'
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
 import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
 import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planPayments'
@@ -1660,8 +1661,8 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null, ses
     throw new Error(`getHouseOccupancy: no house named "${houseName}" found in houses table`)
   }
 
-  let studentsQuery = supabase.from(TABLES.students).select('house, session').not('house', 'is', null)
-  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session').not('house', 'is', null).in('status', ['Admitted', 'Enrolled'])
+  let studentsQuery = supabase.from(TABLES.students).select('gcc_no, house, session, status, deleted_at').not('house', 'is', null)
+  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session, status').not('house', 'is', null).eq('status', 'Admitted')
   if (sessionName) {
     studentsQuery = studentsQuery.eq('session', sessionName)
     admissionsQuery = admissionsQuery.eq('session', sessionName)
@@ -1673,24 +1674,8 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null, ses
   if (studentsErr) throw studentsErr
   if (admissionsErr) throw admissionsErr
 
-  const norm = h => (h || '').toString().trim().toLowerCase()
-
-  const result = targetHouses.map(h => {
-    const studentCount = students.filter(s => norm(s.house) === norm(h.name)).length
-    const admissionCount = admissions.filter(a =>
-      norm(a.house) === norm(h.name) &&
-      String(a.gcc_no) !== String(excludeGcc)
-    ).length
-    const occupied = studentCount + admissionCount
-    const capacity = h.capacity ?? 40
-    return {
-      name: h.name,
-      capacity,
-      occupied,
-      available: Math.max(0, capacity - occupied),
-      isFull: occupied >= capacity,
-    }
-  })
+  // Seats = current students + Admitted applicants not yet enrolled (see lib/houseOccupancy.js for why).
+  const result = countHouseOccupancy({ houses: targetHouses, students, admissions, excludeGcc })
 
   return houseName ? result[0] : result
 }

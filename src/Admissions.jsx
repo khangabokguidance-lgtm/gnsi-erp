@@ -23,7 +23,7 @@ import { compressImage, sizeNote } from './lib/imageCompress'
 import { admissionLinks, LINK_LABEL } from './lib/admStudentMatch'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
-import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
+import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity, getHouseOccupancy } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 import { staffDB } from './staffDB'
 import { PersonalAccountantButton } from './personalAccountant'
@@ -481,10 +481,6 @@ const HOSTEL_STYLES = {
 }
 const HOUSES_LIST        = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
-const HOUSE_CAPACITIES = {
-  'Kombirei':40,'Shiroi':40,'Loktak':40,'Singgarei':40,'Koubru':40,
-  'Kangla':40,'Sangai':40,'Takhelei':40,'Block-B':30,'Day Scholar':999,
-}
 // 🔗 WARDEN_CONTACTS hardcoded object removed — warden/housemaster info now
 // comes from the real `housemasters` table (the same one Hostel.jsx's
 // HousemasterTab manages) via the useActiveHousemasters() hook below.
@@ -1250,7 +1246,20 @@ function FunnelBar({ label, value, total, color }) {
   )
 }
 
+// Live seats per house — capacity from the real `houses` table (Hostel → Houses), seats = current students
+// + Admitted applicants not yet enrolled. Returns null while loading / if it could not be read.
+function useHouseFill() {
+  const [fill, setFill] = useState(null)
+  useEffect(() => {
+    let live = true
+    getHouseOccupancy().then(r => { if (live) setFill(r.filter(h => !DAY_SCHOLAR_HOUSES.includes(h.name))) }).catch(e => console.warn('House fill unavailable:', e?.message || e))
+    return () => { live = false }
+  }, [])
+  return fill
+}
+
 function AnalyticsDashboard({ apps, cols, darkMode }) {
+  const houseFillLive = useHouseFill()
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[700] : T.slate[200]
   const tx = darkMode ? T.slate[100] : T.slate[800]
@@ -1350,9 +1359,8 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
       </>)}
 
       {card('House Fill Rate', <>
-        {HOUSES_LIST.filter(h=>h!=='Day Scholar').map(h => {
-          const count = apps.filter(a=>a.house===h).length
-          const cap   = HOUSE_CAPACITIES[h] || 40
+        {!houseFillLive && <div style={{ fontSize:11, color:T.slate[400] }}>Loading live house capacity…</div>}
+        {(houseFillLive || []).map(({ name: h, occupied: count, capacity: cap }) => {
           const pct   = Math.round((count/cap)*100)
           return (
             <div key={h} style={{ marginBottom:6 }}>
@@ -3338,6 +3346,7 @@ function SortControl({ sortBy, sortDir, onChange }) {
 const localDay = d => d.toLocaleDateString('en-CA')
 
 function Dashboard({ apps, cols, darkMode }) {
+  const houseFillLive = useHouseFill()
   const [activeTab, setActiveTab] = useState('overview')
   const bg   = darkMode ? T.slate[800] : '#fff'
   const bd   = darkMode ? T.slate[700] : T.slate[200]
@@ -3362,11 +3371,7 @@ function Dashboard({ apps, cols, darkMode }) {
     apps.filter(a => a.created_at && localDay(new Date(a.created_at)) === localDay(d)).length
   )
 
-  const houseFill = HOUSES_LIST.filter(h => h !== 'Day Scholar').map(h => ({
-    name: h,
-    count: apps.filter(a => a.house === h).length,
-    cap: HOUSE_CAPACITIES[h] || 40,
-  }))
+  const houseFill = (houseFillLive || []).map(h => ({ name: h.name, count: h.occupied, cap: h.capacity }))
 
   const weekAheadDate = new Date(); weekAheadDate.setDate(weekAheadDate.getDate() + 7)
   const weekAhead = localDay(weekAheadDate)
@@ -3474,6 +3479,7 @@ function Dashboard({ apps, cols, darkMode }) {
           })}
         </div>
         <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 8 }}>House Fill Rate</div>
+        {!houseFillLive && <div style={{ fontSize: 11, color: T.slate[400] }}>Loading live house capacity…</div>}
         {houseFill.map(({ name, count, cap }) => {
           const pct = Math.round(count / cap * 100)
           const col = pct >= 90 ? T.rose[500] : pct >= 70 ? T.amber[500] : T.emerald[500]
