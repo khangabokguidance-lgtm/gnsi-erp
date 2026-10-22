@@ -32,6 +32,7 @@ import { printApplicationReceipt as printApplicationReceiptDoc } from './applica
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
+import StudentLocker from './StudentLocker'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
@@ -1271,11 +1272,12 @@ function Avatar({ name, size=36, photoUrl, altUrl }) {
 }
 
 // Jump from an application to the same person in every student-side module. Only shown once a student record exists.
-function StudentModuleLinks({ a, link, onNavigate }) {
+function StudentModuleLinks({ a, link, onNavigate, onOpenLocker }) {
   if (!onNavigate || !link || link.state === 'noStudent') return null
   const gcc = parseInt(a.gcc)
   const go = (fn, module) => () => { fn?.(); onNavigate(module) }
   const items = [
+    ...(onOpenLocker ? [['🔐 Document locker', onOpenLocker]] : []),
     ['🎓 Student profile', go(() => handoffToStudents({ gcc }), 'students')],
     ['📒 Fee ledger', () => { openStudentLedger(gcc) }],
     ['💳 Collect fee', go(() => handoffToFees({ gcc }), 'fees')],
@@ -1541,7 +1543,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onOpenLocker, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1581,7 +1583,7 @@ function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onClose, onAddNot
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
         </div>
       )}
-      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} />
+      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} onOpenLocker={onOpenLocker} />
       {link && link.state !== 'ok' && (
         <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
@@ -3211,7 +3213,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 }
 
 // ─── Application Card ──────────────────────────────────────────────────────────
-function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
+function AppCard({ a, link, onLocker, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission' && !col.reverted)
   const cs      = COURSE_STRUCTURE[a.course]
@@ -3264,6 +3266,7 @@ function AppCard({ a, link, cols, selected, onSelect, onEdit, onDelete, onAdmit,
           <div style={{ display:'flex', gap:'4px' }}>
             <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
             <button onClick={()=>onEdit(a)}   style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+            {onLocker && <button onClick={()=>onLocker(a)} title="Open this student's document locker" style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.teal, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🔐 Locker</button>}
           </div>
         </td>
       </tr>
@@ -4233,6 +4236,7 @@ export default function Admissions({ onNavigate } = {}) {
   const [filterLink,     setFilterLink]    = useState('All')
   const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [filterPhoto, setFilterPhoto] = useState('All')
+  const [lockerFor, setLockerFor] = useState(null)   // { student, app }
   const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
   const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
@@ -4840,6 +4844,13 @@ export default function Admissions({ onNavigate } = {}) {
     showToast(`Restored ${ok} photo${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
   }
 
+  // The locker belongs to the student record (documents are saved against students.id), so it opens once one exists.
+  const openLocker = app => {
+    const stu = stuRows.find(x => String(parseInt(x.gcc_no) || '') === String(parseInt(app.gcc) || '') && !x.deleted_at)
+    if (!stu) { showToast('The locker opens once the student record exists — enrol this application first.', T.amber[600]); return }
+    setLockerFor({ student: stu, app })
+  }
+
   const handleCSVImport = async rows => {
     setShowCSVImport(false)
     let ok=0, fail=0, skipped=0
@@ -5159,9 +5170,15 @@ export default function Admissions({ onNavigate } = {}) {
           <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} sessionOptions={sessionOptions} />
         )}
 
+        {lockerFor && (
+          <StudentLocker student={lockerFor.student} app={lockerFor.app} userName={getSessionInfo().userName}
+            canWrite={checkPermission(userRole, 'update')} canVerify={checkPermission(userRole, 'update')} canDelete={checkPermission(userRole, 'delete')}
+            onClose={() => setLockerFor(null)} onPrintApplication={a => printApplicationReceipt(a)} onOpenLedger={g => { setLockerFor(null); openStudentLedger(g) }} />
+        )}
+
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onOpenLocker={() => openLocker(detailApp)} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}
@@ -5335,7 +5352,7 @@ export default function Admissions({ onNavigate } = {}) {
                 </thead>
                 <tbody>
                   {filtered.map(a => (
-                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                       onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
@@ -5361,7 +5378,7 @@ export default function Admissions({ onNavigate } = {}) {
                   {a.status==='Waitlisted' && waitlistPositions[a.gcc] && (
                     <div style={{ fontSize:11, color:T.slate[500], fontWeight:700, marginBottom:2 }}>Waitlist #{waitlistPositions[a.gcc]}</div>
                   )}
-                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                     onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />

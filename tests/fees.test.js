@@ -339,3 +339,16 @@ test('session move: only current students not already in the target move', () =>
   assert.deepEqual(p.bySource, { '(none)': 1, '2025-26': 1 })
   assert.equal(p.alreadyThere, 1); assert.equal(p.notCurrent, 2)
 })
+
+import { buildLocker, lockerType } from '../src/lib/locker.js'
+test('locker: maps the Students module names, newest document is current, counts required ones', () => {
+  assert.equal(lockerType('Aadhaar'), 'Aadhaar Card'); assert.equal(lockerType('photo'), 'Passport Photo'); assert.equal(lockerType('Weird'), 'Other')
+  const l = buildLocker([
+    { id: 1, doc_type: 'Birth Certificate', created_at: '2026-01-01', status: 'Verified' },
+    { id: 2, doc_type: 'Birth Certificate', created_at: '2026-03-01' },
+    { id: 3, doc_type: 'Aadhaar', created_at: '2026-02-01' },
+    { id: 4, doc_type: 'Medical Certificate', created_at: '2026-02-02' },
+  ])
+  assert.equal(l.slots.find(s => s.type === 'Birth Certificate').current.id, 2)
+  assert.deepEqual(l.counts, { required: 5, haveRequired: 2, verifiedRequired: 0, total: 4 })   // newest birth cert is unverified
+})
