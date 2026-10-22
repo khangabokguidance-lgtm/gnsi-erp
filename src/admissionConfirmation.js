@@ -16,7 +16,7 @@ const UNDERTAKING = [
 ]
 
 // d: { app, student, fees: [{ description, amount_paid, receipt_no, pay_date, pay_mode, fee_type }], rates: { flatFee, courseFee }|null, photo }
-export function admissionConfirmationHtml({ app, student, fees = [], rates = null, photo = '' }) {
+export function admissionConfirmationHtml({ app, student, fees = [], rates = null, photo = '', parentPin = '' }) {
   const e = esc
   const inst = getInstitute()
   const gcc = String(app.gcc || student?.gcc_no || '')
@@ -46,6 +46,10 @@ export function admissionConfirmationHtml({ app, student, fees = [], rates = nul
       </div>
       <div style="background:#EEF8F1;border:1px solid #BFE3CC;border-radius:6px;padding:8px 12px;font-size:11.5px;color:#14532D;margin:4px 0 2px"><b>Admission confirmed.</b> ${e(app.name)} has been admitted to ${e(inst.name)} for the session ${e(session)}${admDate ? `, with effect from ${e(fmtDate(admDate))}` : ''}.</div>
 
+      ${parentPin ? `<div style="border:1.5px solid #0B1E3D;border-radius:6px;padding:8px 12px;margin:8px 0 0;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:11px">
+        <div><div class="l">Parent portal login</div><div style="margin-top:2px">Open <b>${e(inst.website || 'the Institute website')}</b> → Parents Portal and sign in with the GCC number and PIN.</div></div>
+        <div style="text-align:right"><div class="mono" style="font-size:12px;font-weight:700">GCC-${e(gcc)}</div><div class="mono" style="font-size:20px;font-weight:700;letter-spacing:.16em;color:#0B1E3D">${e(parentPin)}</div><div class="l">Keep this PIN private</div></div>
+      </div>` : ''}
       <div class="sect">Student particulars</div>
       ${infoGrid([
         [['Name of student', e(app.name), 2], ['Admission No.', e(app.admNo || '—')], ['Date of birth', e(dob)]],

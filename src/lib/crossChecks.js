@@ -68,7 +68,7 @@ export function crossModuleChecks({ students = [], admissions = [], feeStructure
     items: enrolled.filter(a => !hasAdmFee.has(gk(a.gcc_no))).map(a => ({ id: a.id ?? a.gcc_no, label: lbl(a) })) })
   const promised = a => Number(a.scholarship_pct) > 0 || Number(a.concession_amt) > 0 || !!a.sibling_gcc
   checks.push({ key: 'adm_concession_not_in_fees', from: 'Admissions', to: 'Fees', module: 'fees',
-    label: 'Scholarship / concession / sibling discount on the application, but none in Fees', fix: 'Fees → Concession Register: add the concession so dues and receipts apply it (the application only records it).',
+    label: 'Scholarship / concession / sibling discount on the application, but none in Fees', fix: 'Admissions → Applications: an admin presses "Apply to Fees" (or adds it in Fees → Concession Register) so dues and receipts apply it. Sibling discounts have no amount on the application, so add those by hand.',
     items: enrolled.filter(a => promised(a) && !concessionGccs.has(gk(a.gcc_no))).map(a => ({ id: a.id ?? a.gcc_no,
       label: `${lbl(a)} · ${[Number(a.scholarship_pct) > 0 && `scholarship ${a.scholarship_pct}%`, Number(a.concession_amt) > 0 && `concession ₹${a.concession_amt}`, a.sibling_gcc && `sibling GCC-${a.sibling_gcc}`].filter(Boolean).join(', ')}` })) })
   checks.push({ key: 'adm_plan_not_set', from: 'Admissions', to: 'Fees', module: 'fees',

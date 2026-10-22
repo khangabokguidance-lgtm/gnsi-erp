@@ -33,6 +33,7 @@ import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWind
 import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
 import { allocateStudent } from './hostelAllocation'
+import { concessionRowsFor, newConcessionRows } from './lib/admissionConcessions'
 import StudentLocker from './StudentLocker'
 import ExamRegistrationAdmin from './ExamRegistrationAdmin'
 import { printAdmissionConfirmation } from './admissionConfirmation'
@@ -4245,7 +4246,8 @@ export default function Admissions({ onNavigate } = {}) {
   const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [filterPhoto, setFilterPhoto] = useState('All')
   const [lockerFor, setLockerFor] = useState(null)   // { student, app }
-  const [justEnrolled, setJustEnrolled] = useState(null)   // application just enrolled → offer the admission form
+  const [justEnrolled, setJustEnrolled] = useState(null)   // application just enrolled → offer the admission form (+ the new parent PIN, shown once)
+  const [concRows, setConcRows] = useState([])               // active rows of the Fee Concession Register
   const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
   const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
@@ -4332,7 +4334,7 @@ export default function Admissions({ onNavigate } = {}) {
     const [admRows, colsRows, stuData] = await Promise.all([
       fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false }),
       fetchAllRows('adm_fee_collections', { orderCol: 'created_at', ascending: false }),
-      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at, photo_url, photo_path' }),
+      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at, photo_url, photo_path, admission_date' }),
     ])
     // The Students module keeps photos in private storage (photo_path) or as a link (photo_url); show whichever the
     // linked student has when the application has none. Viewing links are temporary and are never saved.
@@ -4352,6 +4354,10 @@ export default function Admissions({ onNavigate } = {}) {
         for (const [g, path] of part) if (byPath.get(path)) photoByGcc.set(g, byPath.get(path))
       } catch { /* photos are a nicety; the list still loads */ }
     }
+    try {
+      const { data: reg, error: regErr } = await supabase.from('fee_concession_register').select('gcc, kind, basis, value, status').eq('status', 'active').limit(5000)
+      setConcRows(regErr ? [] : (reg || []))
+    } catch { setConcRows([]) }   // register table not created yet → treated as empty
     setRawAdm(admRows)
     setApps(admRows.map(mapFromDB).map(a => ({ ...a, studentPhotoUrl: photoByGcc.get(String(parseInt(a.gcc) || '')) || '', studentPhotoSaved: permanent.has(String(parseInt(a.gcc) || '')) })))
     setStuRows(stuData)
@@ -4676,9 +4682,35 @@ export default function Admissions({ onNavigate } = {}) {
         try { await allocateStudent({ id: studentId, name: a.name, gcc_no: a.gcc, class_name: a.cls }, { hostelName: a.house, roomNumber: 'TBD', bedNumber: a.bedNumber || null }) }
         catch (e) { hostelNote = `Enrolled, but the hostel allocation could not be created (${e.message || 'unknown error'}) — allocate ${a.house} in the Hostel module.`; console.warn('Enroll: hostel allocation failed —', e?.message || e) }
       }
+      // Fees: scholarship % / concession ₹ promised on the application go into the Fee Concession Register, which is what
+      // dues and receipts read. The register is admin-only by design, so for anyone else this is left as a note.
+      const notes = []
+      const promisedRows = concessionRowsFor(a, { validFrom: (admFeeRow?.pay_date && String(admFeeRow.pay_date).slice(0, 10)) || new Date().toLocaleDateString('en-CA'), approvedBy: getSessionInfo().userName })
+      if (promisedRows.length) {
+        if (isAdminRole(userRole)) {
+          const fresh = newConcessionRows(promisedRows, concRows)
+          if (fresh.length) {
+            const { error: cErr } = await supabase.from('fee_concession_register').insert(fresh)
+            if (cErr) notes.push(`Concession could not be added to Fees (${cErr.message}) — add it in Fees → Concession Register.`)
+            else { notes.push(`Added to Fees → Concession Register: ${fresh.map(r => r.basis === 'percent' ? `${r.value}% scholarship` : `₹${r.value}/month`).join(' + ')} (course fee).`); setConcRows(prev => [...prev, ...fresh]) }
+          }
+        } else notes.push('A scholarship / concession is recorded on this application. An admin must apply it in Fees → Concession Register (or here, from the Applications tab).')
+      }
+      if (a.siblingGcc) notes.push(`Sibling at GNSI (GCC-${a.siblingGcc}): the sibling discount is not applied automatically — add it in Fees → Concession Register if one applies.`)
+      if (a.instalmentPlan && a.instalmentPlan !== 'monthly') notes.push(`Instalment plan "${a.instalmentPlan}" is recorded on the application only — create the schedule in Fees → Instalment Plans.`)
+      // Parent portal: issue the login PIN now (shown once, here and on the admission form).
+      let pin = ''
+      if (created && studentId) {
+        const a32 = new Uint32Array(1); crypto.getRandomValues(a32)
+        const candidate = String(a32[0] % 1000000).padStart(6, '0')
+        try {
+          const { error: pErr } = await supabase.rpc('set_parent_pin', { p_student_id: String(studentId), p_pin: candidate })
+          if (pErr) notes.push(`The parent portal PIN could not be issued (${pErr.message}) — issue it from the dashboard's PIN tool.`); else pin = candidate
+        } catch (e) { notes.push(`The parent portal PIN could not be issued (${e.message || 'error'}).`) }
+      }
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
       if (hostelNote) showToast(`⚠ ${hostelNote}`, T.amber[600])
-      setJustEnrolled({ ...a, status:'Enrolled' })
+      setJustEnrolled({ ...a, status:'Enrolled', pin, notes })
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
       sendStatusNotification({ ...a, status:'Enrolled' }, 'Enrolled')
@@ -4845,6 +4877,26 @@ export default function Admissions({ onNavigate } = {}) {
     showToast(`Updated ${ok} application${ok === 1 ? '' : 's'} from Students${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
   }
 
+  // Enrolled students whose application promised a scholarship / concession that the Fee Concession Register does not hold yet.
+  const pendingConcessions = () => {
+    if (!isAdminRole(userRole)) return []
+    return scopedApps.filter(x => x.status === 'Enrolled').flatMap(x => {
+      const stu = stuRows.find(s => String(parseInt(s.gcc_no) || '') === String(parseInt(x.gcc) || '') && !s.deleted_at)
+      return newConcessionRows(concessionRowsFor(x, { validFrom: stu?.admission_date, approvedBy: getSessionInfo().userName }), concRows)
+    })
+  }
+  const handleApplyConcessions = async () => {
+    const rows = pendingConcessions()
+    if (!rows.length) { showToast('Nothing to apply.', T.amber[600]); return }
+    const people = new Set(rows.map(r => r.gcc)).size
+    if (!confirm(`Add ${rows.length} concession${rows.length > 1 ? 's' : ''} for ${people} student${people > 1 ? 's' : ''} to Fees → Concession Register?\n\nEach starts on the student's admission date and applies to the course fee, so it also reduces dues already worked out. Revoke any of them in the register if it is wrong.`)) return
+    const { error } = await supabase.from('fee_concession_register').insert(rows)
+    if (error) { showToast('Could not add them: ' + error.message, T.rose[600]); return }
+    logAudit('APPLY_CONCESSIONS', null, { count: rows.length, gccs: [...new Set(rows.map(r => r.gcc))] }, userRole)
+    setConcRows(prev => [...prev, ...rows])
+    showToast(`Added ${rows.length} concession${rows.length > 1 ? 's' : ''} to the Fee Concession Register`, T.emerald[600])
+  }
+
   // The Students module can clear students.photo_url when it moves a photo to private storage, and (before this fix) that
   // blank was copied onto the application. Where the student still has a saved photo link, put it back on the application.
   const handleRestorePhotos = async () => {
@@ -4863,12 +4915,12 @@ export default function Admissions({ onNavigate } = {}) {
   }
 
   // The admission confirmation & registration form. Call from a click so the print window is allowed to open.
-  const printConfirmation = app => {
+  const printConfirmation = (app, { parentPin = '' } = {}) => {
     const gccN = String(parseInt(app.gcc) || '')
     const student = stuRows.find(x => String(parseInt(x.gcc_no) || '') === gccN && !x.deleted_at)
     const fees = cols.filter(c => String(parseInt(c.adm_app_id) || '') === gccN && !c.reverted)
     const rates = getFeeRates(app.session || getSessionYear(), app.course, app.cls, app.hostel_type, app.gcc).then(r => ({ flatFee: r.flatFee, courseFee: r.courseFee }))
-    printAdmissionConfirmation({ app, student, fees, photo: app.photoUrl || app.studentPhotoUrl || '' }, rates)
+    printAdmissionConfirmation({ app, student, fees, photo: app.photoUrl || app.studentPhotoUrl || '', parentPin }, rates)
   }
 
   // The locker belongs to the student record (documents are saved against students.id), so it opens once one exists.
@@ -5226,8 +5278,18 @@ export default function Admissions({ onNavigate } = {}) {
               <div style={{ width:56, height:56, borderRadius:'50%', background:'#E8F7EE', color:'#15803D', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, margin:'0 auto 12px' }}>✓</div>
               <div style={{ fontSize:19, fontWeight:700, color:'#0B1E3D' }}>Admission confirmed</div>
               <div style={{ fontSize:13, color:'#475569', margin:'6px 0 18px', lineHeight:1.5 }}><b>{justEnrolled.name}</b> (GCC-{justEnrolled.gcc}) is now a student. Print the admission confirmation & registration form for the family to sign and keep.</div>
+              {justEnrolled.pin && (
+                <div style={{ background:'#F3F6FA', border:'1px solid #CBD5E3', borderRadius:10, padding:'10px 14px', margin:'0 0 14px', textAlign:'left' }}>
+                  <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.1em', color:'#64748B' }}>PARENT PORTAL LOGIN</div>
+                  <div style={{ fontSize:13, color:'#0B1E3D', marginTop:2 }}>GCC-{justEnrolled.gcc} · PIN <b className="mono" style={{ fontSize:18, letterSpacing:'.14em' }}>{justEnrolled.pin}</b></div>
+                  <div style={{ fontSize:11, color:'#7B8AA0', marginTop:2 }}>Shown only now and on the printed form — it is stored hashed and cannot be looked up later.</div>
+                </div>)}
+              {justEnrolled.notes?.length > 0 && (
+                <ul style={{ textAlign:'left', fontSize:12, color:'#8A4B08', background:'#FFF8EC', border:'1px solid #F2D9A8', borderRadius:10, padding:'8px 12px 8px 28px', margin:'0 0 14px' }}>
+                  {justEnrolled.notes.map((n, i) => <li key={i} style={{ marginBottom:3 }}>{n}</li>)}
+                </ul>)}
               <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-                <button type="button" onClick={() => { printConfirmation(justEnrolled); setJustEnrolled(null) }} style={{ padding:'11px 22px', borderRadius:10, border:0, background:'#0B1E3D', color:'#fff', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>🖨 Print admission form</button>
+                <button type="button" onClick={() => { printConfirmation(justEnrolled, { parentPin: justEnrolled.pin }); setJustEnrolled(null) }} style={{ padding:'11px 22px', borderRadius:10, border:0, background:'#0B1E3D', color:'#fff', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>🖨 Print admission form</button>
                 <button type="button" onClick={() => setJustEnrolled(null)} style={{ padding:'11px 20px', borderRadius:10, border:'1px solid #CBD5E3', background:'#fff', color:'#475569', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>Later</button>
               </div>
               <div style={{ fontSize:11, color:'#7B8AA0', marginTop:12 }}>You can reprint it any time from the application's Detail panel.</div>
@@ -5275,6 +5337,17 @@ export default function Admissions({ onNavigate } = {}) {
               </button>
             </div>
           )}
+          {(() => {
+            const pc = pendingConcessions()
+            return pc.length > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+                <span>{new Set(pc.map(r => r.gcc)).size} enrolled student{new Set(pc.map(r => r.gcc)).size > 1 ? 's have' : ' has'} a scholarship / concession on the application that Fees does not apply yet.</span>
+                <button type="button" onClick={handleApplyConcessions}
+                  style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                  ⬆ Apply {pc.length} to Fees (admin)
+                </button>
+              </div>)
+          })()}
           {(() => {
             const missing = scopedApps.filter(x => !x.photoUrl && !x.studentPhotoUrl).length
             const restorable = scopedApps.filter(x => !x.photoUrl && x.studentPhotoUrl && x.studentPhotoSaved).length
