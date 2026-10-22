@@ -35,6 +35,7 @@ import { openStudentLedger } from './ledgerLink'
 import { allocateStudent } from './hostelAllocation'
 import { concessionRowsFor, newConcessionRows } from './lib/admissionConcessions'
 import StudentLocker from './StudentLocker'
+import AdmissionPortalAdmin from './AdmissionPortalAdmin'
 import ExamRegistrationAdmin from './ExamRegistrationAdmin'
 import { printAdmissionConfirmation } from './admissionConfirmation'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
@@ -5095,7 +5096,7 @@ export default function Admissions({ onNavigate } = {}) {
               <p style={{ fontSize:21, fontWeight:700, lineHeight:1.2, margin:'1px 0 1px', color: darkMode ? '#fff' : '#0B1E3D', fontFamily:"'Playfair Display',Georgia,serif" }}>GNSI Admissions</p>
               <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
                 {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
-                  : moduleView==='newApplication' ? 'New applicant admission form'
+                  : moduleView==='newApplication' ? 'Admission portal — online applications, counter form, public link'
                   : moduleView==='sessions' ? 'Admission sessions — create, activate, lock'
                   : 'Application management & enrollment'}
               </p>
@@ -5109,7 +5110,7 @@ export default function Admissions({ onNavigate } = {}) {
 .adm-nb.on{color:#fff;font-weight:800}
 .adm-nb.on .adm-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .adm-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
-              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['exam','Exam reg.','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+              {[['newApplication','Portal','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['exam','Exam reg.','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
                 <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'adm-nb'+(moduleView===key?' on':'')} onClick={()=>{setModuleView(key);window.scrollTo({top:0})}}>
                   <span className="adm-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
                 </button>
@@ -5118,7 +5119,7 @@ export default function Admissions({ onNavigate } = {}) {
             document.body
           ) : null}
           {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
-            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['exam','🎫 Exam Registration'],['sessions','📅 Sessions']].map(([key,label]) => (
+            {[['newApplication','🌐 Admission Portal'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['exam','🎫 Exam Registration'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
                   background: moduleView===key ? '#0B1E3D' : 'transparent',
@@ -5131,13 +5132,20 @@ export default function Admissions({ onNavigate } = {}) {
         </div>
 
         {moduleView === 'newApplication' ? (
-          <AdmForm
-            onSave={async (eid, data) => { const ok = await handleSave(eid, data); if (ok) setModuleView('applications') }}
-            onCancel={()=>setModuleView('applications')}
-            editing={null}
-            activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
-            housemastersByHouse={housemastersByHouse}
-            sessionOptions={sessionOptions}
+          <AdmissionPortalAdmin
+            canWrite={checkPermission(userRole, 'create')}
+            isAdmin={isAdminRole(userRole)}
+            onChanged={loadAll}
+            counterForm={
+              <AdmForm
+                onSave={async (eid, data) => { const ok = await handleSave(eid, data); if (ok) setModuleView('applications') }}
+                onCancel={()=>setModuleView('applications')}
+                editing={null}
+                activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
+                housemastersByHouse={housemastersByHouse}
+                sessionOptions={sessionOptions}
+              />
+            }
           />
         ) : moduleView === 'ledger' ? (
           <StudentLedgerView apps={apps} darkMode={darkMode} />
