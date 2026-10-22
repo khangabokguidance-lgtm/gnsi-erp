@@ -315,3 +315,13 @@ test('house occupancy: no double count of enrolled, inactive students take no se
   assert.equal(r[0].isFull, true); assert.equal(r[1].capacity, 40)
   assert.equal(countHouseOccupancy({ houses: [{ name: 'Loktak', capacity: 3 }], students: [], admissions: [{ gcc_no: 5, house: 'Loktak', status: 'Admitted' }], excludeGcc: '5' })[0].occupied, 0)
 })
+
+import { patchFromStudent } from '../src/lib/admStudentMatch.js'
+test('patch from student: copies filled student values, never blanks an application field', () => {
+  const l = admissionLinks({
+    admissions: [{ gcc_no: 1, applicant_name: 'A', status: 'Enrolled', course: 'NVS', batch: 'Old', house: 'Loktak', phone: '9862012345' }],
+    students: [{ gcc_no: 1, name: 'A', status: 'Active', course: 'Sainik', batch: 'New', house: '', phone: '9862012345' }],
+  })
+  assert.deepEqual(patchFromStudent(l.get('1').diffs), { course: 'Sainik', batch: 'New' })   // house blank on student → untouched
+  assert.equal(patchFromStudent([]), null)
+})

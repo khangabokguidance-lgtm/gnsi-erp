@@ -41,7 +41,7 @@ export function matchAdmissionsStudents({ admissions = [], students = [] }) {
     for (const [ac, sc, label, kind] of SYNC_FIELDS) {
       const av = norm(a[ac], kind), sv = norm(s[sc], kind)
       if (av === sv) continue
-      fieldDiffs.push({ ...who(g, a, s), field: label, adm: a[ac] ?? '', stu: s[sc] ?? '',
+      fieldDiffs.push({ ...who(g, a, s), field: label, admCol: ac, stuCol: sc, adm: a[ac] ?? '', stu: s[sc] ?? '',
         type: !av ? 'blank in Admissions' : !sv ? 'blank in Students' : 'different' })
     }
   }
@@ -75,4 +75,13 @@ export function admissionLinks({ admissions = [], students = [] }) {
   for (const x of r.duplicates) set(x.gcc, 'dup', { note: `${x.count} rows in ${x.where}` })
   for (const x of r.enrolledNoStudent) set(x.gcc, 'noStudent', { note: 'Marked Enrolled but there is no student with this GCC' })
   return links
+}
+
+// The Students record is the live one once someone is enrolled (Attendance, Hostel, Exams, … edit it directly).
+// Returns the admissions-column patch that brings an application back in line with its student, or null.
+// Fields the student has blank are left alone — a blank never overwrites a filled application field.
+export function patchFromStudent(diffs = []) {
+  const patch = {}
+  for (const d of diffs) if (d.admCol && String(d.stu ?? '').trim() !== '') patch[d.admCol] = d.stu
+  return Object.keys(patch).length ? patch : null
 }
