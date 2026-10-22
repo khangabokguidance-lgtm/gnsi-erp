@@ -1,7 +1,7 @@
 // GET /api/entrance/exam?id=<exam id>  → the public details of one exam (for the registration page)
 // GET /api/entrance/exam?open=1        → exams currently taking applications
 import { db, send, only, EXAM_FIELDS } from './_lib.js'
-import { registrationWindow } from '../../src/lib/entranceReg.js'
+import { registrationWindow } from './entranceReg.js'
 
 export default async function handler(req, res) {
   if (!only(req, res, 'GET')) return

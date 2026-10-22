@@ -7,7 +7,7 @@
 //
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
 import { createClient } from '@supabase/supabase-js'
-import { sameDob } from '../../src/lib/entranceReg.js'
+import { sameDob } from './entranceReg.js'
 
 export const BUCKET = 'gnsi'
 export const EXAM_FIELDS = 'id, exam_name, exam_type, exam_date, exam_time, reporting_time, duration_mins, venue, class_target, application_fee, app_open, app_close, status, instructions, course'
