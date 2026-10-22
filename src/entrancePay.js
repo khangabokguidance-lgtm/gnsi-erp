@@ -47,3 +47,26 @@ export async function payApplicationFee({ applicationNo, dob }) {
     rzp.open()
   })
 }
+
+// Admission-portal fee (the admission fee for an online application). Same flow, adm-* actions.
+export async function payPortalFee({ reference, dob }) {
+  if (!(await loadCheckout())) throw new Error('Could not load the payment window. Check your internet connection and try again.')
+  const order = await api('adm-order', { reference, dob })
+  return new Promise((resolve, reject) => {
+    const rzp = new window.Razorpay({
+      key: order.keyId, amount: order.amount, currency: order.currency, order_id: order.orderId,
+      name: 'GNSI Admission', description: order.description || `Admission fee · ${reference}`,
+      prefill: { name: order.name || '', contact: order.phone || '', email: order.email || '' },
+      theme: { color: '#17375E' },
+      modal: { ondismiss: () => resolve({ paid: false, cancelled: true }) },
+      handler: async resp => {
+        try {
+          const v = await api('adm-verify', { reference, dob, ...resp })
+          resolve({ paid: !!v.verified, paymentId: resp.razorpay_payment_id })
+        } catch (e) { reject(e) }
+      },
+    })
+    rzp.on?.('payment.failed', r => reject(new Error(r?.error?.description || 'The payment failed. You have not been charged — please try again.')))
+    rzp.open()
+  })
+}

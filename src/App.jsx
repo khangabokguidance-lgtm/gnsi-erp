@@ -46,6 +46,7 @@ import ConstructionMaintenance from './ConstructionMaintenance'
 import Store              from './Store'
 import StorePublic        from './StorePublic'
 import ExamRegistrationPublic from './ExamRegistrationPublic'
+import AdmissionPortalPublic from './AdmissionPortalPublic'
 import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
 import LandingPage        from './LandingPage'
@@ -679,7 +680,7 @@ export default function App() {
     // Presentation API for cast-receiver. Everything else still defaults
     // to 'dashboard' and is reached via in-app setActive(...) calls only.
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
-    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store', 'exam-registration', 'admit-card']
+    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store', 'exam-registration', 'admit-card', 'apply', 'apply-status']
     // 'store' is deliberately both the public storefront route (cold load,
     // no session) and the staff-side nav item id (POS module, logged in).
     // Only take the public branch on a genuine cold load with no session —
@@ -974,6 +975,7 @@ export default function App() {
   if (active === 'cast-receiver') return <CastReceiver />
   // Entrance-exam registration and admit card: public, no login (candidates and parents use these).
   if (active === 'exam-registration' || active === 'admit-card') return <ExamRegistrationPublic page={active} />
+  if (active === 'apply' || active === 'apply-status') return <AdmissionPortalPublic page={active} />
   // Public storefront — only reachable here when there's no session yet
   // (see the cold-load check above); once logged in, 'store' always means
   // the staff POS module below, never this page.

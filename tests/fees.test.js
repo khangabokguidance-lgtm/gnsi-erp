@@ -425,3 +425,59 @@ test('api/_entrance keeps byte-identical copies of the shared rule files in src/
     assert.equal(readFileSync(new URL(`../api/_entrance/${f}`, import.meta.url), 'utf8'), readFileSync(new URL(`../src/lib/${f}`, import.meta.url), 'utf8'), `${f} differs — copy src/lib/${f} to api/_entrance/${f}`)
   }
 })
+
+// ── Online admission portal ────────────────────────────────────────────────
+import * as portal from '../src/lib/portalApply.js'
+import { applicationRowFromPortal, feeFromPortal } from '../src/lib/portalToApplication.js'
+
+test('api/_admission keeps a byte-identical copy of portalApply.js', () => {
+  assert.equal(readFileSync(new URL('../api/_admission/portalApply.js', import.meta.url), 'utf8'), readFileSync(new URL('../src/lib/portalApply.js', import.meta.url), 'utf8'), 'copy src/lib/portalApply.js to api/_admission/portalApply.js')
+})
+
+const PORTAL_OPTS = [{ course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', admission_fee: 6000 }, { course: 'Navodaya', batch: 'Udaan', hostel_type: 'Day Scholar', admission_fee: 4000 }]
+const goodForm = { student_name: 'Rohan Singh', dob: '2014-05-01', gender: 'Boy', category: 'General', father_name: 'A Singh', mother_name: 'B Singh', phone: '98765 43210', address: 'Khangabok Bazar, Thoubal',
+  state: 'Manipur', district: 'Thoubal', pincode: '795138', prev_school: 'XYZ School', course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', declared: true }
+
+test('portal: a complete form passes; each missing piece is reported', () => {
+  assert.deepEqual(portal.validateApplication(goodForm, PORTAL_OPTS, { hasPhoto: true, today: '2026-10-22' }), {})
+  const e = portal.validateApplication({ ...goodForm, phone: '12345', pincode: '12', declared: false, student_name: '' }, PORTAL_OPTS, { hasPhoto: false, today: '2026-10-22' })
+  for (const k of ['phone', 'pincode', 'declared', 'student_name', 'photo']) assert.ok(e[k], k)
+})
+test('portal: a course / batch / hostel nobody priced is refused, and the fee comes from the matching option', () => {
+  assert.ok(portal.validateApplication({ ...goodForm, hostel_type: 'Day Boarder' }, PORTAL_OPTS, { hasPhoto: true, today: '2026-10-22' }).course)
+  assert.equal(portal.portalFee(PORTAL_OPTS, goodForm), 6000)
+  assert.equal(portal.portalFee(PORTAL_OPTS, { ...goodForm, hostel_type: 'Day Scholar' }), 4000)
+  assert.equal(portal.portalFee(PORTAL_OPTS, { ...goodForm, batch: 'Nope' }), 0)
+})
+test('portal: reference numbers run on and the form snapshot keeps only the last 4 Aadhaar digits', () => {
+  assert.equal(portal.referenceNo(2026, 7), 'AP26-0007')
+  assert.equal(portal.nextReferenceSeq([{ reference_no: 'AP26-0009' }, { reference_no: 'AP26-0012' }, { reference_no: 'AP25-0100' }], 2026), 13)
+  assert.equal(portal.nextReferenceSeq([], 2026), 1)
+  const snap = portal.formSnapshot({ ...goodForm, aadhaar: '1234 5678 9012' })
+  assert.equal(snap.aadhaar_last4, '9012'); assert.equal(snap.aadhaar, undefined); assert.equal(snap.phone, '9876543210')
+})
+test('portal: approval waits for the fee and for verified required documents; documents alone can be overridden', () => {
+  const app = { status: 'Submitted', fee_status: 'Unpaid', fee_amount: 6000 }
+  const docs = [{ doc_type: 'birth_proof', status: 'Verified' }, { doc_type: 'marksheet', status: 'Uploaded' }]
+  let s = portal.approvalState(app, docs)
+  assert.deepEqual(s.hard, ['Admission fee not paid']); assert.equal(s.docs.length, 1)
+  s = portal.approvalState({ ...app, fee_status: 'Paid' }, [...docs.slice(0, 1), { doc_type: 'marksheet', status: 'Verified' }])
+  assert.deepEqual(s, { hard: [], docs: [] })
+  assert.ok(portal.approvalState({ ...app, fee_status: 'Paid', status: 'Rejected' }, []).hard.length)
+  assert.equal(portal.approvalState({ ...app, fee_status: 'Waived' }, []).hard.length, 0)
+})
+test('portal: what the applicant sees follows payment, documents and the decision', () => {
+  const docsOk = [{ doc_type: 'birth_proof', status: 'Verified' }, { doc_type: 'marksheet', status: 'Uploaded' }]
+  assert.equal(portal.applicantStage({ status: 'Submitted', fee_status: 'Unpaid', fee_amount: 6000 }, docsOk).key, 'pay')
+  assert.equal(portal.applicantStage({ status: 'Submitted', fee_status: 'Paid', fee_amount: 6000 }, []).key, 'docs')
+  assert.equal(portal.applicantStage({ status: 'Under review', fee_status: 'Paid', fee_amount: 6000 }, docsOk).key, 'review')
+  assert.equal(portal.applicantStage({ status: 'Approved', promoted_gcc: 1234 }, []).key, 'approved')
+  assert.equal(portal.applicantStage({ status: 'Rejected', rejection_reason: 'Seats full' }, []).next, 'Seats full')
+})
+test('portal: an approved application becomes an Admitted admissions row; the online payment becomes the ledger fee', () => {
+  const p = { reference_no: 'AP26-0001', student_name: 'Rohan Singh', dob: '2014-05-01', phone: '9876543210', course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', session: '2026-2027', fee_amount: 6000, fee_status: 'Paid', fee_paid_on: '2026-10-20', payment_mode: 'Online', payment_id: 'pay_X1',
+    form: { gender: 'Girl', father_name: 'A', address: 'Road 1', district: 'Thoubal', state: 'Manipur', pincode: '795138', prev_school: 'XYZ' } }
+  const row = applicationRowFromPortal(p, { gcc: '2750' })
+  assert.equal(row.gcc_no, 2750); assert.equal(row.status, 'Admitted'); assert.equal(row.gender, 'Female'); assert.equal(row.batch, 'Udaan'); assert.match(row.remarks, /AP26-0001/); assert.equal(row.address, 'Road 1, Thoubal, Manipur, 795138')
+  assert.deepEqual(feeFromPortal(p), { amount: 6000, payDate: '2026-10-20', payMode: 'Online (Razorpay)', txnRef: 'pay_X1' })
+})

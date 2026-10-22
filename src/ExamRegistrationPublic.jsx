@@ -11,7 +11,7 @@ const NAVY = '#17375E', BLUE = '#1D4F91', ORANGE = '#E8731A', LINE = '#CBD5E3', 
 const fmt = d => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—')
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 
-function Shell({ title, children, wide }) {
+export function Shell({ title, children, wide, nav }) {
   const inst = getInstitute()
   return (
     <div style={{ minHeight: '100vh', background: '#EEF2F7', fontFamily: "'Noto Sans','Open Sans',Inter,system-ui,sans-serif", color: '#1B2A41' }}>
@@ -24,9 +24,9 @@ function Shell({ title, children, wide }) {
             <div style={{ fontSize: 12, opacity: .8 }}>{title}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, fontSize: 12.5 }}>
-            <a href="/exam-registration" style={{ color: '#fff', opacity: .9 }}>Apply online</a>
-            <span style={{ opacity: .4 }}>|</span>
-            <a href="/admit-card" style={{ color: '#fff', opacity: .9 }}>Admit card</a>
+            {(nav || [['/exam-registration', 'Apply online'], ['/admit-card', 'Admit card']]).map(([href, label], i) => (
+              <span key={href}>{i > 0 && <span style={{ opacity: .4, margin: '0 8px 0 0' }}>|</span>}<a href={href} style={{ color: '#fff', opacity: .9 }}>{label}</a></span>
+            ))}
           </div>
         </div>
       </div>
@@ -35,8 +35,8 @@ function Shell({ title, children, wide }) {
     </div>
   )
 }
-const Card = ({ children, style }) => <div style={{ background: '#fff', border: `1px solid ${LINE}`, borderTop: `4px solid ${NAVY}`, padding: 22, borderRadius: 4, ...style }}>{children}</div>
-const Btn = ({ children, onClick, disabled, kind = 'blue', style }) => (
+export const Card = ({ children, style }) => <div style={{ background: '#fff', border: `1px solid ${LINE}`, borderTop: `4px solid ${NAVY}`, padding: 22, borderRadius: 4, ...style }}>{children}</div>
+export const Btn = ({ children, onClick, disabled, kind = 'blue', style }) => (
   <button type="button" onClick={onClick} disabled={disabled} style={{ padding: '10px 22px', border: 0, borderRadius: 4, fontWeight: 800, fontFamily: 'inherit', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? .6 : 1, background: kind === 'orange' ? ORANGE : kind === 'ghost' ? '#fff' : BLUE, color: kind === 'ghost' ? SUB : '#fff', boxShadow: kind === 'ghost' ? `inset 0 0 0 1px ${LINE}` : 'none', ...style }}>{children}</button>
 )
 
