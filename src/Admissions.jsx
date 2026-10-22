@@ -462,7 +462,12 @@ const THEMES = {
                 '--p-accent':'#0E7C86', '--p-accent-dark':'#0A5F68', '--p-accent-soft':'#E6F4F5', '--p-navy':'#0B2545', '--p-total':'#0B2545' } },
   executive: { label:'Executive', vars:{ '--p-page':'#FAF7F2', '--p-card':'#FFFFFF', '--p-line':'#E8DFCC', '--p-soft':'#FBF8F1', '--p-ink':'#14213D', '--p-sub':'#5E6477', '--p-mute':'#9A9382',
                 '--p-accent':'#B8915A', '--p-accent-dark':'#8F6D38', '--p-accent-soft':'#F6EEDC', '--p-navy':'#0B1B3A', '--p-total':'#E2C57E' } },
+  // Government-portal look (in the spirit of national exam-agency sites): tricolour rule, deep-blue band, orange call-to-action,
+  // square-cornered bordered tables, an announcements strip.
+  portal:    { label:'Portal',    vars:{ '--p-page':'#F2F5F9', '--p-card':'#FFFFFF', '--p-line':'#CBD5E3', '--p-soft':'#F3F6FA', '--p-ink':'#1B2A41', '--p-sub':'#4A5B73', '--p-mute':'#7B8AA0',
+                '--p-accent':'#1D4F91', '--p-accent-dark':'#143A6B', '--p-accent-soft':'#E6EEF8', '--p-navy':'#17375E', '--p-total':'#17375E' } },
 }
+const THEME_ORDER = ['clinical', 'executive', 'portal']
 const PRO_CSS = `
 .pro-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:6px 2px 18px}
 .pro-eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${P.teal}}
@@ -538,6 +543,49 @@ const PRO_CSS = `
 .pro-theme.executive .pro-kpis{margin-bottom:14px}
 .pro-theme.executive .pro-table th{background:#14213D!important;color:#E2C57E!important}
 .pro-theme.executive .pro-panel,.pro-theme.executive .pro-card{box-shadow:0 10px 26px -20px rgba(20,33,61,.5)}
+.pro-notice{display:none}
+.pro-theme.portal{font-family:'Noto Sans','Open Sans',Inter,'Segoe UI',system-ui,sans-serif}
+.pro-theme.portal .pro-hero{display:block;background:#17375E;border-radius:6px;padding:0;margin-bottom:16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(23,55,94,.25)}
+.pro-theme.portal .pro-hero::before{content:'';display:block;height:6px;background:linear-gradient(90deg,#FF9933 0 33.3%,#FFFFFF 33.3% 66.6%,#138808 66.6% 100%)}
+.pro-theme.portal .pro-hero>*:not(.pro-notice):not(:first-child){margin-left:22px;margin-right:22px}
+.pro-theme.portal .pro-head{padding:18px 22px 14px}
+.pro-theme.portal .pro-eyebrow{color:#FFB366;letter-spacing:.18em}
+.pro-theme.portal .pro-title{font-family:inherit;color:#fff;font-size:26px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.pro-theme.portal .pro-sub,.pro-theme.portal .pro-hero kbd{color:rgba(255,255,255,.8)!important}
+.pro-theme.portal .pro-sub strong{color:#fff!important}
+.pro-theme.portal .pro-hero kbd{background:rgba(255,255,255,.1)!important;border-color:rgba(255,255,255,.25)!important;border-radius:3px!important}
+.pro-theme.portal .pro-hero .pro-head>div:first-child>div:last-child{color:rgba(255,255,255,.6)!important}
+.pro-theme.portal .pro-btn{border-radius:4px;background:#fff;border-color:#fff;color:#17375E}
+.pro-theme.portal .pro-btn:hover{background:#E6EEF8;border-color:#E6EEF8;box-shadow:none}
+.pro-theme.portal .pro-btn.on{background:#FFB366;border-color:#FFB366;color:#3A1D00}
+.pro-theme.portal .pro-btn.primary{background:#E8731A;border-color:#E8731A;color:#fff;box-shadow:none;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.pro-theme.portal .pro-btn.primary:hover{background:#C75F10;border-color:#C75F10}
+.pro-theme.portal .pro-seg{border-radius:4px;background:#fff;border-color:#fff}
+.pro-theme.portal .pro-seg button{border-radius:3px}
+.pro-theme.portal .pro-seg button.on{background:#E6EEF8;box-shadow:inset 0 0 0 1px #1D4F91}
+.pro-theme.portal .pro-session{border-radius:4px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.8)}
+.pro-theme.portal .pro-session strong{color:#9FE6B0!important}
+.pro-theme.portal .pro-session select{border-radius:4px;background:#fff;color:#17375E}
+.pro-theme.portal .pro-notice{display:flex;align-items:center;gap:12px;background:#FFF4E5;border-bottom:1px solid #FFD8A8;border-top:1px solid #FFD8A8;color:#7A3E00;font-size:12.5px;padding:9px 22px;margin:14px 0 0!important;overflow:hidden}
+.pro-theme.portal .pro-notice b{background:#E8731A;color:#fff;border-radius:3px;padding:2px 8px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;flex-shrink:0}
+.pro-theme.portal .pro-notice span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pro-theme.portal .pro-kpis{margin-bottom:14px}
+.pro-theme.portal div:has(>.pro-table){border-radius:4px!important}
+.pro-theme.portal .pro-kpi{background:#fff;border:1px solid #fff;border-top:4px solid var(--c);border-radius:4px;padding:12px 14px 10px}
+.pro-theme.portal .pro-kpi:hover{transform:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.pro-theme.portal .pro-kpi.on{box-shadow:0 0 0 3px #FFB366}
+.pro-theme.portal .pro-kpi .k-num{font-family:inherit;font-size:28px;font-weight:700;color:#17375E}
+.pro-theme.portal .pro-kpi .k-label{color:#4A5B73}
+.pro-theme.portal .pro-dist{height:6px;border-radius:0;gap:0;margin-bottom:0;background:rgba(255,255,255,.2)}
+.pro-theme.portal .pro-panel{border-radius:4px;border-top:3px solid #17375E}
+.pro-theme.portal .pro-chip{border-radius:4px;font-weight:600}
+.pro-theme.portal .pro-chip.on{background:#1D4F91;border-color:#1D4F91;color:#fff}
+.pro-theme.portal .pro-chip.on em{background:#fff;color:#1D4F91}
+.pro-theme.portal .pro-table th{background:#17375E!important;color:#fff!important;border:1px solid #2C4F80!important;border-radius:0}
+.pro-theme.portal .pro-table td{border:1px solid #DCE4EF}
+.pro-theme.portal .pro-table tbody tr:nth-child(even){background:#F6F9FC!important}
+.pro-theme.portal .pro-card{border-radius:4px;border-left:4px solid #17375E}
+.pro-theme.portal .pro-mini{border-radius:3px}
 .pro-field{font-size:10px;font-weight:700;color:${P.mute};text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
 @media (max-width:640px){.pro-title{font-size:26px}.pro-actions{width:100%}.pro-btn.primary{order:-1;width:100%;justify-content:center}.pro-btn{padding:8px 11px}}
 `
@@ -4165,7 +4213,7 @@ export default function Admissions({ onNavigate } = {}) {
   const [filterLink,     setFilterLink]    = useState('All')
   const [showMoreFilters, setShowMoreFilters] = useState(false)
   const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
-  const toggleProTheme = () => setProThemeState(t => { const n = t === 'clinical' ? 'executive' : 'clinical'; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
+  const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
   const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
   const [rawAdm, setRawAdm] = useState([])
   const [stuRows, setStuRows] = useState([])
@@ -4980,7 +5028,7 @@ export default function Admissions({ onNavigate } = {}) {
             {checkPermission(userRole,'create') && <button type="button" className="pro-btn" onClick={() => setShowCSVImport(true)}>📥 Import</button>}
             {checkPermission(userRole,'export') && <button type="button" className="pro-btn" onClick={() => secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}>📤 Export</button>}
             {checkPermission(userRole,'bulk') && <button type="button" className="pro-btn" onClick={handleAutoAssignHouse}>🏠 Auto-assign</button>}
-            <button type="button" className="pro-btn" title="Switch the screen design" onClick={toggleProTheme}>🎨 {THEMES[proTheme === 'clinical' ? 'executive' : 'clinical'].label}</button>
+            <button type="button" className="pro-btn" title="Switch the screen design" onClick={toggleProTheme}>🎨 {THEMES[THEME_ORDER[(THEME_ORDER.indexOf(proTheme) + 1) % THEME_ORDER.length]].label}</button>
             <button type="button" className="pro-btn" title="Toggle dark mode (D)" onClick={() => setDarkMode(v => !v)}>{darkMode ? '☀️' : '🌙'}</button>
             {checkPermission(userRole,'create') && <button type="button" className="pro-btn primary" onClick={() => { setEditing(null); setFormOpen(true) }}>＋ New application</button>}
           </div>
@@ -5025,6 +5073,16 @@ export default function Admissions({ onNavigate } = {}) {
         <div className="pro-dist" title="Share of applications by status">
           {ADM_STATUSES.map(st => <span key={st} style={{ flex:byStatus[st]||0, background:STAT_META[st]?.color || P.mute }} title={`${st}: ${byStatus[st]||0}`} />)}
         </div>
+        {proTheme === 'portal' && (() => {
+          const pending = (byStatus['Applied']||0) + (byStatus['Under Review']||0)
+          const overdue = scopedApps.filter(x => x.followupDate && x.followupDate < today).length
+          return (
+            <div className="pro-notice" role="status">
+              <b>Notice</b>
+              <span>{pending} application{pending === 1 ? '' : 's'} awaiting review · {overdue} follow-up{overdue === 1 ? '' : 's'} overdue · {linkCounts.issues} record{linkCounts.issues === 1 ? '' : 's'} need a check against Students · {byStatus['Admitted']||0} admitted, fee/enrolment pending</span>
+            </div>
+          )
+        })()}
 
 
         </div>
