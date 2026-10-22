@@ -8,6 +8,9 @@ const supabase = createClient(
 )
 
 export default async function handler(req, res) {
+  // GET /api/subscribe — the VAPID public key (was api/vapid-key.js; merged to
+  // stay within the Hobby plan's 12-function limit)
+  if (req.method === 'GET') return res.json({ publicKey: process.env.VAPID_PUBLIC_KEY })
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { subscription, staff_id, student_id, role } = req.body
