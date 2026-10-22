@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import StudentJump from './StudentJump'
+import SessionMovePanel from './SessionMovePanel'
 import { NAVY, cell, head, cardFlush as card, btn } from './feeTheme'
 
 // April-changeover PLANNER. Read-only: nothing here writes to the database.
@@ -107,8 +108,9 @@ export default function SessionRollover({ students = [], liveRows = [], isAdmin,
   return (
     <div>
       <div style={{ padding: '12px 16px', marginBottom: 14, background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 12, color: '#92400e', fontSize: 13, fontWeight: 700 }}>
-        ⚠ Planning tool only — this page does NOT change any student, fee or session data. Your choices below are not saved.
+        ⚠ The planner below is for planning only — it does not change any data, and its choices are not saved. The "Move students to a session" panel does change data, but only after you confirm.
       </div>
+      <SessionMovePanel />
 
       <div style={{ ...card, padding: '14px 16px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 220 }}>
