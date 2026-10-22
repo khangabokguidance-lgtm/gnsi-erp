@@ -4414,6 +4414,11 @@ export default function Admissions() {
         : '🚫 Fees already collected — revert them in Fees first, or set status to Rejected.', T.rose[600])
       return
     }
+    // A student record can exist for this GCC without the admission being Enrolled (direct add, or an
+    // enrolment that half-finished) — deleting the admission would orphan it.
+    const { data: stuRows, error: stuErr } = await supabase.from('students').select('id').eq('gcc_no', parseInt(a?.gcc ?? id)).limit(1)
+    if (stuErr) { showToast('Could not check for a student record: '+stuErr.message, T.rose[600]); return }
+    if (stuRows?.length) { showToast('🚫 A student record exists for this GCC — remove or fix it in Students first.', T.rose[600]); return }
     if (!confirm(`Delete admission for ${a?.name}?`)) return
     const snapshot = { ...a }
     setApps(prev => prev.filter(x => String(x.id)!==String(id)))
@@ -4506,6 +4511,9 @@ export default function Admissions() {
       showToast(`🚫 ${blocked.length} selected ${blocked.length > 1 ? 'are' : 'is'} enrolled or already paid fees (${blocked.slice(0, 3).map(b => b.name).join(', ')}${blocked.length > 3 ? '…' : ''}) — untick them first.`, T.rose[600])
       return
     }
+    const { data: stuRows, error: stuErr } = await supabase.from('students').select('gcc_no').in('gcc_no', [...selectedIds].map(Number))
+    if (stuErr) { showToast('Could not check for student records: '+stuErr.message, T.rose[600]); return }
+    if (stuRows?.length) { showToast(`🚫 ${stuRows.length} selected already ${stuRows.length > 1 ? 'have' : 'has'} a student record (GCC ${stuRows.slice(0, 3).map(r => r.gcc_no).join(', ')}${stuRows.length > 3 ? '…' : ''}) — untick them first.`, T.rose[600]); return }
     if (!confirm(`Delete ${selectedIds.size} selected applicants? You will have 5 seconds to undo.`)) return
     const ids = [...selectedIds]
     const snapshots = apps.filter(a => selectedIds.has(a.id))
@@ -4587,9 +4595,12 @@ export default function Admissions() {
     printBulkList(appsToPrint)
   }
 
+  // Header card + KPI strip count the session being viewed, so their numbers match the list under them
+  // (they used to count every session while the list was already filtered to one).
+  const scopedApps = filterSession === 'All' ? apps : apps.filter(a => a.session === filterSession)
   const byStatus = {}
   ADM_STATUSES.forEach(s => byStatus[s]=0)
-  apps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
+  scopedApps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
 
   // 🔗 Live revenue — sourced from fee_structures via getFeeRates, not the
   // hardcoded legacy getFlatFeeAmtSync fallback (same class of bug fixed
@@ -4602,7 +4613,7 @@ export default function Admissions() {
   // combination rather than once per student — getFeeRates already caches
   // internally, but batching the distinct combos here avoids firing 400
   // near-identical requests when the roster loads.
-  const enrolledApps = apps.filter(a => a.status === 'Enrolled')
+  const enrolledApps = scopedApps.filter(a => a.status === 'Enrolled')
   const [monthlyRevenue, setMonthlyRevenue] = useState(() =>
     enrolledApps.reduce((s, a) => s + getFlatFeeAmtSync(a.hostel_type, a.course), 0)
   )
@@ -4613,10 +4624,10 @@ export default function Admissions() {
       let total = 0
       for (const a of enrolledApps) {
         const sessionYear = a.session || getSessionYear()
-        const key = `${sessionYear}|${a.course}|${a.batch}|${a.hostel_type}`
+        const key = `${sessionYear}|${a.course}|${a.cls}|${a.hostel_type}|${a.gcc}`
         if (!rateCache.has(key)) {
           try {
-            const rates = await getFeeRates(sessionYear, a.course, a.batch, a.hostel_type, a.gcc_no || null)
+            const rates = await getFeeRates(sessionYear, a.course, a.cls, a.hostel_type, a.gcc || null)
             rateCache.set(key, rates.flatFee)
           } catch {
             rateCache.set(key, getFlatFeeAmtSync(a.hostel_type, a.course))
@@ -4628,7 +4639,7 @@ export default function Admissions() {
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apps])
+  }, [apps, filterSession])
 
   const bg   = darkMode ? T.slate[900] : T.slate[50]
   const card = darkMode ? T.slate[800] : '#fff'
@@ -4758,7 +4769,7 @@ export default function Admissions() {
             </div>
 
             <p style={{ fontSize:isMobile?24:32, fontWeight:600, margin:'8px 0 12px 0', fontFamily:"'Courier New',monospace", lineHeight:1.1 }}>
-              {apps.length}
+              {scopedApps.length}
             </p>
 
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:isMobile?10:16 }}>
@@ -4794,9 +4805,6 @@ export default function Admissions() {
               ))}
             </div>
             <div style={{ marginTop:6, display:'flex', gap:12, fontSize:11, color:T.slate[400], flexWrap:'wrap' }}>
-              <span>🏠 Boarder: <strong style={{ color:T.emerald[600] }}>₹5,500/mo</strong></span>
-              <span>🌅 Day Boarder: <strong style={{ color:T.amber[600] }}>₹4,000/mo</strong></span>
-              <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
               <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
             </div>
             {!isMobile && <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
@@ -4920,7 +4928,7 @@ export default function Admissions() {
         {/* KPI Strip */}
         <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)', gap:isMobile?10:12, marginBottom:18 }}>
   {[
-    { label:'Total', value:apps.length, color:N.text, accent:`linear-gradient(90deg,${N.gold},${N.goldDark})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
+    { label:'Total', value:scopedApps.length, color:N.text, accent:`linear-gradient(90deg,${N.gold},${N.goldDark})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
     { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
     { label:'Under Review', value:byStatus['Under Review']||0, color:N.amber,   accent:N.amber,   filter:'Under Review' },
     { label:'Admitted',     value:byStatus['Admitted']||0,     color:N.violet,  accent:N.violet,  filter:'Admitted' },
