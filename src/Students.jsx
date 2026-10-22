@@ -326,7 +326,11 @@ async function syncStudentToAdmission(gccNo, studentsDbRow) {
     if (!existing) return // no original application on file — nothing to sync to
     const admUpdate = {}
     for (const [stuCol, admCol] of STUDENT_ADM_SYNC_FIELDS) {
-      if (studentsDbRow[stuCol] !== undefined) admUpdate[admCol] = studentsDbRow[stuCol]
+      if (studentsDbRow[stuCol] === undefined) continue
+      // A photo moved to private storage clears students.photo_url (the photo lives in photo_path). Copying that
+      // blank into the application wiped its photo, so a photo is only ever copied when there is one.
+      if (stuCol === 'photo_url' && !studentsDbRow[stuCol]) continue
+      admUpdate[admCol] = studentsDbRow[stuCol]
     }
     if (Object.keys(admUpdate).length === 0) return
     const { error } = await supabase.from('admissions').update(admUpdate).eq('gcc_no', gccNo)

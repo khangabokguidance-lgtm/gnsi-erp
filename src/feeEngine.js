@@ -1740,6 +1740,7 @@ export const promoteToStudent = async (admission) => {
     father_name: admission.father || admission.father_name || null,
     mother_name: admission.mother || admission.mother_name || null,
     phone: admission.phone || null, address: admission.address || null,
+    photo_url: admission.photoUrl || admission.photo_url || null,
   }
   const { data, error } = await supabase.from(TABLES.students).insert(payload).select().single()
   if (error) throw error
