@@ -339,3 +339,82 @@ test('session move: only current students not already in the target move', () =>
   assert.deepEqual(p.bySource, { '(none)': 1, '2025-26': 1 })
   assert.equal(p.alreadyThere, 1); assert.equal(p.notCurrent, 2)
 })
+
+import { buildLocker, lockerType } from '../src/lib/locker.js'
+test('locker: maps the Students module names, newest document is current, counts required ones', () => {
+  assert.equal(lockerType('Aadhaar'), 'Aadhaar Card'); assert.equal(lockerType('photo'), 'Passport Photo'); assert.equal(lockerType('Weird'), 'Other')
+  const l = buildLocker([
+    { id: 1, doc_type: 'Birth Certificate', created_at: '2026-01-01', status: 'Verified' },
+    { id: 2, doc_type: 'Birth Certificate', created_at: '2026-03-01' },
+    { id: 3, doc_type: 'Aadhaar', created_at: '2026-02-01' },
+    { id: 4, doc_type: 'Medical Certificate', created_at: '2026-02-02' },
+  ])
+  assert.equal(l.slots.find(s => s.type === 'Birth Certificate').current.id, 2)
+  assert.deepEqual(l.counts, { required: 5, haveRequired: 2, verifiedRequired: 0, total: 4 })   // newest birth cert is unverified
+})
+
+import { registrationWindow, validateRegistration, candidatePayload, admitCardState, feeFor, sameDob } from '../src/lib/entranceReg.js'
+test('entrance registration: window, validation, payload, admit-card state', () => {
+  const exam = { status: 'Scheduled', app_open: '2026-11-01', app_close: '2026-12-15', application_fee: 500 }
+  assert.equal(registrationWindow(exam, '2026-10-30').open, false)
+  assert.equal(registrationWindow(exam, '2026-11-20').open, true)
+  assert.match(registrationWindow(exam, '2026-12-16').reason, /closed/)
+  assert.equal(registrationWindow({ ...exam, status: 'Cancelled' }, '2026-11-20').open, false)
+  assert.equal(feeFor(exam), 500); assert.equal(feeFor({}), 0)
+
+  const good = { student_name: 'Asha Devi', dob: '2014-05-10', gender: 'Girl', category: 'General', father_name: 'R Singh', mother_name: 'M Devi', phone: '98620 12345',
+    email: 'a@b.in', address: 'Khangabok Makhong', state: 'Manipur', district: 'Thoubal', pincode: '795146', class_studying: 'Class 5→6', school: 'Govt School', declared: true }
+  assert.deepEqual(validateRegistration(good, exam, { today: '2026-11-20', assets: { photo: true, signature: true } }), {})
+  const bad = validateRegistration({ ...good, phone: '12345', pincode: '12', dob: '2026-11-20', declared: false }, exam, { today: '2026-11-20' })
+  assert.deepEqual(Object.keys(bad).sort(), ['declared', 'dob', 'phone', 'photo', 'pincode', 'signature'])
+  const p = candidatePayload(good)
+  assert.equal(p.phone, '9862012345'); assert.equal(p.address, 'Khangabok Makhong, Thoubal, Manipur, 795146'); assert.equal(p.reg_details.nationality, 'Indian')
+
+  assert.equal(admitCardState({ fee_status: 'Unpaid' }, exam).state, 'pay')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Registered' }, exam).state, 'slip')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Hall Ticket Issued' }, exam).state, 'admit')
+  assert.equal(admitCardState({ fee_status: 'Unpaid', status: 'Registered' }, { application_fee: 0 }).state, 'slip')
+  assert.equal(sameDob('2014-05-10T00:00:00Z', '2014-05-10'), true); assert.equal(sameDob('', ''), false)
+})
+
+test('cross checks: promised concessions, instalment plans, admission fee, photos, entrance → application', () => {
+  const ids = { courseOf: () => 'Navodaya', batchOf: () => 'Umeed', canonicalBatch: b => b, sourceRef: { flatFee: () => 'x', courseFee: () => 'y', admission: g => `adm_${g}` } }
+  const checks = crossModuleChecks({
+    students: [{ gcc_no: 1, status: 'Active' }, { gcc_no: 2, status: 'Active', photo_path: 'p.jpg' }, { gcc_no: 3, status: 'Active' }],
+    admissions: [
+      { gcc_no: 1, status: 'Enrolled', applicant_name: 'A', scholarship_pct: 25 },
+      { gcc_no: 2, status: 'Enrolled', applicant_name: 'B', sibling_gcc: 9, instalment_plan: 'quarterly' },
+      { gcc_no: 3, status: 'Enrolled', applicant_name: 'C', photo_url: 'x', concession_amt: 500 },
+      { gcc_no: 4, status: 'Applied', applicant_name: 'D', dob: '2015-01-01' },
+    ],
+    admRows: [{ adm_app_id: 1, fee_type: 'admission', reverted: false }, { adm_app_id: 2, fee_type: 'admission', reverted: true }],
+    concessionGccs: new Set(['3']), planGccs: new Set(),
+    entranceAdmitted: [{ id: 'e1', student_name: 'D', dob: '2015-01-01' }, { id: 'e2', student_name: 'Z', dob: '2015-02-02', application_no: 'SA260009' }],
+    ...ids,
+  })
+  const by = k => checks.find(c => c.key === k).items.map(i => i.id)
+  assert.deepEqual(by('enrolled_no_admfee'), [2, 3])
+  assert.deepEqual(by('adm_concession_not_in_fees'), [1, 2])      // 3 has one in Fees
+  assert.deepEqual(by('adm_plan_not_set'), [2])
+  assert.deepEqual(by('enrolled_no_photo'), [1])                  // 2 has a student photo, 3 an application photo
+  assert.deepEqual(by('ent_no_application'), ['e2'])              // D already has an application
+})
+
+import { concessionRowsFor, newConcessionRows } from '../src/lib/admissionConcessions.js'
+import { applicationFromCandidate, candidateKey } from '../src/lib/candidateToApplication.js'
+test('admission concessions become register rows, skipping ones already there', () => {
+  const rows = concessionRowsFor({ gcc: '77', name: 'Asha', scholarshipPct: '25', concessionAmt: 500, siblingGcc: '9' }, { validFrom: '2026-04-02', approvedBy: 'Admin' })
+  assert.deepEqual(rows.map(r => [r.kind, r.basis, r.value, r.applies_to]), [['Scholarship-merit', 'percent', 25, 'course'], ['Other', 'fixed_per_month', 500, 'course']])
+  assert.equal(rows[0].gcc, '77'); assert.equal(rows[0].valid_from, '2026-04-02')
+  assert.deepEqual(concessionRowsFor({ gcc: '77', scholarshipPct: 150 }), [])           // >100% is not a valid percent
+  assert.equal(newConcessionRows(rows, [{ gcc: '77', kind: 'Scholarship-merit', basis: 'percent', value: 25, status: 'active' }]).length, 1)
+  assert.equal(newConcessionRows(rows, [{ gcc: '77', kind: 'Scholarship-merit', basis: 'percent', value: 25, status: 'revoked' }]).length, 2)
+})
+test('entrance candidate → admission application row', () => {
+  const row = applicationFromCandidate({ student_name: ' Asha Devi ', dob: '2015-03-01', gender: 'Girl', category: 'OBC', father_name: 'R', phone: '9862012345', school: 'GPS', application_no: 'SA270001', rank: 3, quota: 'OBC' },
+    { exam_name: 'Sainik 2027', course: 'sainik' }, { gcc: '1500', session: '2027-2028' })
+  assert.equal(row.gcc_no, 1500); assert.equal(row.applicant_name, 'Asha Devi'); assert.equal(row.gender, 'Female'); assert.equal(row.course, 'Sainik'); assert.equal(row.status, 'Admitted')
+  assert.match(row.remarks, /Sainik 2027.*SA270001.*rank 3.*OBC quota/)
+  assert.equal(applicationFromCandidate({ student_name: 'X' }, { course: 'rms' }, { gcc: 1 }).course, null)
+  assert.equal(candidateKey(' Asha Devi ', '2015-03-01T00:00:00Z'), candidateKey('asha devi', '2015-03-01'))
+})
