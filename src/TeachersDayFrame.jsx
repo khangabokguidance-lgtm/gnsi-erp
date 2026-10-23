@@ -584,7 +584,7 @@ function Frame({ s, cfg }) {
         <div className="tdf-inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE<small>— GNSI —</small></div>
         <div className="tdf-rule"><i /><b /><i /></div>
         <div className="tdf-happy">Happy</div>
-        <div className="tdf-td">TEACHERS&apos; DAY</div>
+        <div className="tdf-td">{cfg.occasion === 'birthday' ? 'BIRTHDAY' : 'TEACHERS\u2019 DAY'}</div>
         <div className="tdf-photo-wrap">
           {st.vec && <Halo w={pw} h={ph} />}{st.vec && <Scrolls h={ph} />}{st.vec && <Crest w={pw * 0.62} />}{st.laurel && <Laurel w={cfg.shape === 'passport' ? pw * 1.2 : pw} h={cfg.shape === 'passport' ? ph * 1.1 : ph} />}<div className="tdf-orn" /><div className="tdf-ring"><div className="tdf-ring2"><div className="tdf-photo">
             
@@ -600,12 +600,20 @@ function Frame({ s, cfg }) {
         {cfg.quote && <div className="tdf-quote">{cfg.quote}</div>}
         <div className="tdf-foot">
           <div className="tdf-dates">✦ {cfg.dates} ✦</div>
-          <div className="tdf-pres">WITH GRATITUDE, PRESENTED BY</div>
-          <div className="tdf-batch"><b>{cfg.batch}</b> Batch Students</div>
+          <div className="tdf-pres">{cfg.occasion === 'birthday' ? 'WITH LOVE & RESPECT, FROM' : 'WITH GRATITUDE, PRESENTED BY'}</div>
+          {cfg.occasion === 'birthday'
+            ? <div className="tdf-batch">Your <b>GNSI</b> Family</div>
+            : <div className="tdf-batch"><b>{cfg.batch}</b> Batch Students</div>}
         </div>
       </div>
     </div>
   )
+}
+
+// One-click "Happy Birthday" frame — default frame layout (Vector Masterpiece) with a loyalty tribute.
+const BIRTHDAY_PRESET = {
+  occasion: 'birthday', style: 'corelnavy', shape: 'passport', dates: '23rd OCTOBER 2026',
+  quote: '“Through every season, you have stood like a wall — steady, loyal and unshakable — guarding the dreams of GNSI. Thank you for your unwavering loyalty and for being our strength. Happy Birthday, Sir!”',
 }
 
 const inp = { padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box' }
@@ -695,6 +703,7 @@ export default function TeachersDayFrame() {
         <button onClick={() => setAll(true)}>Select all</button>
         <button onClick={() => setAll(false)}>Clear</button>
         <button onClick={addManual}>＋ Add staff manually</button>
+        <button onClick={() => { setCfg({ ...cfg, ...BIRTHDAY_PRESET }); setPicked(p => ({ ...p, ...Object.fromEntries(all.filter(s => /roshan/i.test(s.name)).map(s => [s.id, true])) })) }}>🎂 Birthday preset (Sir Roshan)</button>
         <button disabled={!selected.length} onClick={() => window.print()}
           style={{ background: '#b8892b', color: '#fff', border: 0, borderRadius: 6, padding: '6px 14px', fontWeight: 700 }}>
           🖨 Print {selected.length || ''} frame{selected.length === 1 ? '' : 's'} (A4)
