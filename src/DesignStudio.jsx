@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
+import BirthdayCard from './BirthdayCard'
 
 // Design Studio — a Canva/Photoshop-style workspace.
-//   left rail  : tools (Home, Banner Maker, Backdrop Maker, Invitation Maker, Invitation, Certificates, Teachers' Day)
+//   left rail  : tools (Home, Banner Maker, Backdrop Maker, Invitation Maker, Invitation, Certificates, Teachers' Day, Birthday)
 //   home       : start-a-design gallery (opens Banner Maker on the chosen template)
 //   focus mode : takes over the whole screen, like a real design app
 // The makers are self-contained editors served from /design-studio/*.html.
@@ -19,6 +20,7 @@ const TOOLS = [
   { id: 'invitation',  label: 'Invitation',  icon: '✉️', perm: 'invitation' },
   { id: 'certificate', label: 'Certificates', icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
+  { id: 'birthday',    label: 'Birthday',    icon: '🎂', perm: 'designstudio' },
 ]
 
 // self-contained editor page behind each iframe tool (used by "Open in new tab")
@@ -116,6 +118,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
     invitation:  <div style={light}><InvitationGenerator currentUser={currentUser} /></div>,
     certificate: <div style={light}><CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} /></div>,
     teachersday: <div style={light}><TeachersDayFrame /></div>,
+    birthday:    <div style={light}><BirthdayCard /></div>,
   }[cur.id]
 
   return (
