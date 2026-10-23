@@ -3,6 +3,7 @@
 //  SINGLE SOURCE OF TRUTH for all fee logic across GNSI Portal
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { validateFeeCollection, revertReasonError } from './lib/feeControls'
 import { countHouseOccupancy } from './lib/houseOccupancy'
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
 import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
@@ -127,6 +128,20 @@ export const fmtMonth = m => {
 export const today = () => new Date().toLocaleDateString('en-CA')
 
 export const gccStr = v => String(parseInt(v) || 0)
+
+// ── Accounting controls (migration 20261032) ────────────────────────────────
+// null = the migration has not been run yet: nothing below changes behaviour. Cached for a minute.
+let _feeControls = { at: 0, value: undefined }
+export const getFeeControls = async (force = false) => {
+  if (!force && _feeControls.value !== undefined && Date.now() - _feeControls.at < 60_000) return _feeControls.value
+  let value = null
+  try {
+    const { data, error } = await supabase.from('fee_controls').select('*').eq('id', 1).maybeSingle()
+    if (!error && data) value = data
+  } catch { /* table not there yet */ }
+  _feeControls = { at: Date.now(), value }
+  return value
+}
 
 export const rcptNo = (prefix = 'INV') => {
   const d = new Date()
@@ -711,6 +726,8 @@ export const revertFeeCollection = async ({
   revertedBy = 'Admin', staffId = null, reason = '',
 }) => {
   if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
+  const reasonProblem = revertReasonError(reason, await getFeeControls())
+  if (reasonProblem) throw new Error(reasonProblem)
 
   // ✦ staff_id + explicit timestamp on this action, same as collectFee.
   // revertedBy is a display name (kept for backward compatibility with the
@@ -834,6 +851,7 @@ export const requestFeeActionRequest = async ({
   if (!['revert', 'delete'].includes(actionType)) throw new Error('requestFeeActionRequest: actionType must be "revert" or "delete"')
   if (!table || !id) throw new Error('requestFeeActionRequest: table and id are required')
   if (!reason || !reason.trim()) throw new Error('requestFeeActionRequest: a reason is required')
+  if (actionType === 'revert') { const rp = revertReasonError(reason, await getFeeControls()); if (rp) throw new Error(rp) }   // fail here, not later at approval
 
   // Snapshot the row now, at request time — so the approving admin sees
   // exactly what they're being asked to revert/delete without needing to
@@ -1115,6 +1133,22 @@ export const collectFee = async ({
     if ((it.kind === 'flat' || it.kind === 'course') && (!MONTHS_LIST.includes(it.month) || !(Number(it.year) >= 2015 && Number(it.year) <= 2100))) {
       throw new Error(`${it.label || it.kind} fee has no valid month/year.`)
     }
+  }
+
+  // Accounting controls: payment reference for digital modes, and no collections on a closed day (non-admins).
+  // The database enforces the same (FEE-001 / FEE-002); this just gives the cashier a clear message first.
+  const feeControls = await getFeeControls()
+  if (feeControls) {
+    let closedStatus = null, isAdminUser = false
+    if (feeControls.lock_closed_days) {
+      try {
+        const { data: dc } = await supabase.from('fee_day_close').select('status').eq('close_date', payDate).maybeSingle()
+        closedStatus = dc?.status || null
+        if (closedStatus === 'closed') { const { data: a } = await supabase.rpc('qbank_is_admin'); isAdminUser = a === true }
+      } catch { /* day close not set up */ }
+    }
+    const problem = validateFeeCollection({ payMode, txnRef, closedStatus, isAdmin: isAdminUser, controls: feeControls, payDate })
+    if (problem) throw new Error(problem)
   }
 
   // ✦ staff_id + collected_at on every write: previously the only staff
@@ -1479,7 +1513,12 @@ export const collectFee = async ({
   if (crsfItems.length) sections.push(   { title: 'Course Fees',                 color: '#7c3aed', items: crsfItems, subtotal: crsfItems.reduce((s, i) => s + i.amount, 0) })
 
   const total = sections.reduce((s, sec) => s + sec.subtotal, 0)
-  return { sections, total, skipped }
+  // The database numbers every receipt (R/2026-27/000123); hand it back so it can be printed.
+  let receiptSerial = null
+  if (feeControls) {
+    try { const { data } = await supabase.from('fee_receipt_serials').select('serial').eq('receipt_no', receiptNo).maybeSingle(); receiptSerial = data?.serial || null } catch { /* not available */ }
+  }
+  return { sections, total, skipped, receiptSerial }
 }
 
 // deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.

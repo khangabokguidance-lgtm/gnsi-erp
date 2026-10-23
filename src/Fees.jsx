@@ -51,6 +51,7 @@ import FeeInstallments from './FeeInstallments'
 import FeeDayClose from './FeeDayClose'
 import FeeLateEntries from './FeeLateEntries'
 import FeeTabShell from './FeeTabShell'
+import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
@@ -3555,7 +3556,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // Cash/Bank dropdown selection for the Razorpay case.
   const finalizeCollection = async (items, { mode, ref } = {}) => {
     const receiptNo = rcptNo('FEE')
-    const { sections, total } = await collectFee({
+    const { sections, total, receiptSerial } = await collectFee({
       gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
       className: student.batch || '', course: student.course || '',
       hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
@@ -3567,7 +3568,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     // Student Fee Ledger. Falls back to the old receipt if anything fails.
     try {
       printFeeReceipt({
-        receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
+        receipt_no: receiptNo, receipt_serial: receiptSerial, pay_date: payDate, pay_mode: mode || payMode,
         txn_ref: ref ?? txnRef, collected_by: collectedBy,
         student_name: student.name, adm_no: admRec?.adm_no || '--',
         gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
@@ -3584,7 +3585,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       })
     }
 
-    showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
+    showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}${receiptSerial ? ' · ' + receiptSerial : ''}`, '#16a34a')
     setPayDate(today())   // next payment defaults to the real current date (page may be open past midnight)
     setLastPayment({ studentName: student.name, gcc, receiptNo, total, payDate, items })
     setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
@@ -5127,6 +5128,7 @@ export default function Fees() {
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
     ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'incomeVsCollection', label: 'Income vs Collection', short: 'Income Check', icon: 'rupeeSearch', group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
   ]
@@ -5798,6 +5800,7 @@ export default function Fees() {
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'incomeVsCollection' && isAdmin && <FeeIncomeCollection />}
+      {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (
