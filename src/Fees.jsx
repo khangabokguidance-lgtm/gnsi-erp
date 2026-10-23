@@ -1774,7 +1774,7 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
         expected: (monthly?.expected || 0) + (adm?.expected || 0),
         paid: (monthly?.paid || 0) + (adm?.paid || 0),
         due: (monthly?.due || 0) + (adm?.due || 0),
-        monthlyExpected: monthly?.expected || 0, monthlyPaid: monthly?.paid || 0,
+        monthlyExpected: monthly?.expected || 0, monthlyPaid: monthly?.paid || 0, monthlyDue: monthly?.due || 0,
         admExpected: adm?.expected || 0, admPaid: adm?.paid || 0, admDue: adm?.due || 0,
       })
     }
@@ -1784,6 +1784,13 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
     const collectedTotal = perStudent.reduce((s, x) => s + Math.min(x.monthlyPaid, x.monthlyExpected) + Math.min(x.admPaid, x.admExpected), 0)
     const defaulters = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
     const admExpectedTotal = perStudent.reduce((s, x) => s + x.admExpected, 0)
+    // The monthly fee and the admission fee are reported separately: each has its own expected / collected / due
+    // and its own list of students, so one can never hide inside the other.
+    const sumOf = (f) => perStudent.reduce((s, x) => s + f(x), 0)
+    const monthExpectedTotal = sumOf(x => x.monthlyExpected)
+    const monthCollectedTotal = sumOf(x => Math.min(x.monthlyPaid, x.monthlyExpected))
+    const monthDefaulters = perStudent.filter(x => x.monthlyDue > 0).map(x => ({ ...x, expected: x.monthlyExpected, paid: x.monthlyPaid, due: x.monthlyDue, admDue: 0 })).sort((a, b) => b.due - a.due)
+    const admDefaulters = perStudent.filter(x => x.admDue > 0).map(x => ({ ...x, expected: x.admExpected, paid: x.admPaid, due: x.admDue, admDue: 0 })).sort((a, b) => b.due - a.due)
     const monthHead = head || (/^(February|March)$/.test(m.fullMon) ? 'Flat Fee' : 'Course Fee')
     return {
       ...m, year: String(m.year), dayOfMonth: now.getDate(), loading: !duesLedgers,
@@ -1791,6 +1798,8 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       hasAdmission: admExpectedTotal > 0, feeLabel: monthHead + (admExpectedTotal > 0 ? ' + Admission' : ''),
       expectedTotal, collectedTotal, dueTotal: defaulters.reduce((s, x) => s + x.due, 0),
       admDueTotal: defaulters.reduce((s, x) => s + x.admDue, 0),
+      monthExpectedTotal, monthCollectedTotal, monthDueTotal: monthDefaulters.reduce((s, x) => s + x.due, 0), monthDefaulters,
+      admExpectedTotal, admCollectedTotal: sumOf(x => Math.min(x.admPaid, x.admExpected)), admDefaulters,
       defaulterCount: defaulters.length, defaulters,
     }
   }), [duesMonths, duesLedgers, now, duesPlans])
@@ -1808,7 +1817,12 @@ function duesSummaryRows(months) {
     'Expected (₹)': m.expectedTotal,
     'Collected (₹)': m.collectedTotal,
     'Outstanding (₹)': m.dueTotal,
-    'of which Admission Fee (₹)': m.admDueTotal,
+    'Monthly Fee Expected (₹)': m.monthExpectedTotal,
+    'Monthly Fee Collected (₹)': m.monthCollectedTotal,
+    'Monthly Fee Due (₹)': m.monthDueTotal,
+    'Admission Fee Expected (₹)': m.admExpectedTotal,
+    'Admission Fee Collected (₹)': m.admCollectedTotal,
+    'Admission Fee Due (₹)': m.admDueTotal,
     'Collected %': m.expectedTotal > 0 ? (m.dueTotal > 0 ? Math.min(99, Math.floor((m.collectedTotal / m.expectedTotal) * 100)) : 100) : 0,
   }))
 }
@@ -1826,7 +1840,8 @@ function duesDefaulterRows(months, keep = () => true) {
     'Expected (₹)': x.expected,
     'Paid (₹)': x.paid,
     'Due (₹)': x.due,
-    'of which Admission Fee (₹)': x.admDue,
+    'Monthly Fee Due (₹)': x.monthlyDue,
+    'Admission Fee Due (₹)': x.admDue,
     'Status': x.paid > 0 ? 'Partial payment' : 'No payment',
     'Instalment Plan': x.plan ? (x.plan.overdue ? `Overdue since ${x.plan.nextDue}` : `Next due ${x.plan.nextDue || '—'}`) : '',
   })))
@@ -2278,11 +2293,6 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                       {x.plan.overdue ? 'PLAN OVERDUE' : 'ON PLAN'}
                     </span>
                   )}
-                  {x.admDue > 0 && (
-                    <span title="Includes the admission fee, charged in the month of admission" style={{ fontSize: 8.5, fontWeight: 800, color: '#6d28d9', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4, border: '1px solid #ddd6fe', letterSpacing: '.03em' }}>
-                      + ADMISSION ₹{n(x.admDue)}
-                    </span>
-                  )}
                 </div>
                 <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 2 }}>
                   GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'}
@@ -2324,7 +2334,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
           const renderDefaulterList = (defaulters, md) => {
             if (defaulters.length === 0) {
-              return <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No dues for this month</div>
+              return <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No dues</div>
             }
             const partial = defaulters.filter(x => x.paid > 0)
             const noPayment = defaulters.filter(x => x.paid === 0)
@@ -2354,6 +2364,25 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     {noPayment.map(x => renderDefaulterRow(x, md))}
                   </div>
                 )}
+              </>
+            )
+          }
+
+          // Two clearly separate lists: the monthly (flat / course) fee, and the admission fee.
+          const renderSplitDues = md => {
+            const part = (title, colour, bg, total, list) => (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: bg, borderBottom: `1px solid ${colour}33` }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: colour }}>{title} · {list.length} student{list.length !== 1 ? 's' : ''}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: colour }}>₹{n(total)} due</span>
+                </div>
+                {renderDefaulterList(list, md)}
+              </div>
+            )
+            return (
+              <>
+                {part(`${md.headlineType} (monthly)`, '#a7771f', '#fffbeb', md.monthDueTotal, md.monthDefaulters)}
+                {md.admExpectedTotal > 0 && part('Admission Fee', '#6d28d9', '#f5f3ff', md.admDueTotal, md.admDefaulters)}
               </>
             )
           }
@@ -2407,6 +2436,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 2 }}>
                   {m.loading ? '…' : m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
                 </div>
+                {!m.loading && m.expectedTotal > 0 && (
+                  <div style={{ fontSize: 9.5, marginTop: 2, lineHeight: 1.45 }}>
+                    <div style={{ color: m.monthDueTotal > 0 ? '#dc2626' : '#059669' }}>Month ₹{n(m.monthDueTotal)}</div>
+                    {m.admExpectedTotal > 0 && <div style={{ color: m.admDueTotal > 0 ? '#6d28d9' : '#059669' }}>Admission ₹{n(m.admDueTotal)}</div>}
+                  </div>
+                )}
                 <div style={{ fontSize: 9.5, color: '#8a93a6', marginTop: 2 }}>
                   {m.loading ? 'working out dues…' : m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no fee due'}
                 </div>
@@ -2430,11 +2465,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     {md.fullMon} {md.year} — {md.defaulterCount} student{md.defaulterCount !== 1 ? 's' : ''} due
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: md.dueTotal > 0 ? '#dc2626' : '#059669' }}>
-                    ₹{n(md.dueTotal)} outstanding
+                    ₹{n(md.dueTotal)} outstanding · Month ₹{n(md.monthDueTotal)}{md.admExpectedTotal > 0 ? ` · Admission ₹${n(md.admDueTotal)}` : ''}
                   </div>
                 </div>
                 <div style={{ borderRadius: 8, border: '1px solid #f3f0e8', overflow: 'hidden' }}>
-                  {renderDefaulterList(md.defaulters, md)}
+                  {renderSplitDues(md)}
                 </div>
               </div>
             ))}
@@ -2446,11 +2481,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 {selectedDues.fullMon} {selectedDues.year} — {selectedDues.defaulterCount} student{selectedDues.defaulterCount !== 1 ? 's' : ''} due
               </div>
               <div style={{ fontSize: 12, fontWeight: 800, color: selectedDues.dueTotal > 0 ? '#dc2626' : '#059669' }}>
-                ₹{n(selectedDues.dueTotal)} outstanding
+                ₹{n(selectedDues.dueTotal)} outstanding · Month ₹{n(selectedDues.monthDueTotal)}{selectedDues.admExpectedTotal > 0 ? ` · Admission ₹${n(selectedDues.admDueTotal)}` : ''}
               </div>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #f3f0e8' }}>
-              {renderDefaulterList(selectedDues.defaulters, selectedDues)}
+              {renderSplitDues(selectedDues)}
             </div>
           </div>
         )}
