@@ -1,3 +1,4 @@
+import { authFetch } from './apiFetch'
 import { supabase } from './supabase'
 
 // ══════════════════════════════════════════════════════════════
@@ -14,7 +15,7 @@ import { supabase } from './supabase'
 export async function sendPushToStaffId(staffId, title, body, url = '/hostel') {
   if (!staffId) return
   try {
-    await fetch('/api/send-push', {
+    await authFetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, url, staffId }),
@@ -28,7 +29,7 @@ export async function sendPushToStaffId(staffId, title, body, url = '/hostel') {
 export async function sendPushToStudent(studentId, title, body, url = '/') {
   if (!studentId) return
   try {
-    await fetch('/api/send-push', {
+    await authFetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, url, studentId, tag: `rollcall-${studentId}` }),

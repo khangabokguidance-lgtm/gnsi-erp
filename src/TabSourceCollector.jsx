@@ -1,3 +1,4 @@
+import { authFetch } from './apiFetch'
 import { useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 
@@ -36,7 +37,7 @@ const S = {
 // ─── Gemini API calls ─────────────────────────────────────────────────────────
 
 async function callGemini(prompt) {
-  const res = await fetch('/api/gemini', {
+  const res = await authFetch('/api/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
@@ -47,7 +48,7 @@ async function callGemini(prompt) {
 }
 
 async function callGeminiJSON(prompt) {
-  const res = await fetch('/api/gemini', {
+  const res = await authFetch('/api/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, jsonMode: true }),

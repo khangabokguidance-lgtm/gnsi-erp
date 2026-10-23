@@ -15,6 +15,7 @@
 // Template body variables, in order: {{1}} student  {{2}} GCC  {{3}} months  {{4}} standard
 //   {{5}} offered  {{6}} short  {{7}} reason  {{8}} requested by
 import { createClient } from '@supabase/supabase-js'
+import { requireStaff, rateLimit } from './_guard/guard.js'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 
@@ -35,6 +36,10 @@ function build(kind, r) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
+
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: 'wa', max: 30, id: user.id })) return
   const { requestId, kind } = req.body || {}
   if (!requestId || !['pending', 'collected'].includes(kind)) return res.status(400).json({ error: 'requestId and kind (pending|collected) are required' })
 

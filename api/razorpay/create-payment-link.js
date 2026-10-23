@@ -12,6 +12,9 @@
 // Env vars required: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET (server-only)
 
 import Razorpay from 'razorpay'
+import { getUser, isStaff, rateLimit } from '../_guard/guard.js'
+
+const MAX_LINK_PAISE = 100_000 * 100 // ₹1,00,000 per link
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -24,14 +27,25 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // This endpoint is public on purpose (the public fee-lookup page lets a parent pay without logging
+  // in), so it is rate limited per caller and capped. Razorpay's own SMS to a phone number is only sent
+  // for signed-in staff, otherwise anyone could use it to text arbitrary numbers.
+  const user = await getUser(req)
+  const staff = user ? await isStaff(user) : false
+  if (!rateLimit(req, res, { key: 'rzp-link', max: staff ? 60 : 8, id: user?.id })) return
+
   try {
-    const { gcc, studentName, amount, kind, for_month, year, course, subtype, parentPhone } = req.body || {}
+    const { gcc, studentName, amount, kind, for_month, year, course, subtype } = req.body || {}
+    const parentPhone = staff ? req.body?.parentPhone : ''
 
     if (!gcc || !amount) {
       return res.status(400).json({ error: 'gcc and amount are required' })
     }
+    if (!/^[A-Za-z0-9\-_/ ]{1,30}$/.test(String(gcc))) {
+      return res.status(400).json({ error: 'Invalid gcc' })
+    }
     const amountPaise = Math.round(Number(amount) * 100)
-    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0 || amountPaise > MAX_LINK_PAISE) {
       return res.status(400).json({ error: 'Invalid amount' })
     }
 

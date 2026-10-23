@@ -2,6 +2,7 @@
 //  GNSI Portal — Attendance Module (Premium v4 · Redesigned)
 // ============================================================
 
+import { authFetch } from './apiFetch'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { StaffAvatar } from './staffPhotos'
@@ -498,7 +499,7 @@ function openWhatsApp(phone, message) {
 async function sendPushToStaffId(staffId, title, body, url = '/attendance') {
   if (!staffId) return
   try {
-    await fetch('/api/send-push', {
+    await authFetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, url, staffId }),

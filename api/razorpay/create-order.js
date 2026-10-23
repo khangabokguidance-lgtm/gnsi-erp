@@ -14,6 +14,9 @@
 // npm install razorpay  (in your API project)
 
 import Razorpay from 'razorpay'
+import { requireStaff, rateLimit } from '../_guard/guard.js'
+
+const MAX_ORDER_PAISE = 100_000 * 100 // ₹1,00,000 per order
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -26,6 +29,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Only the fee counter (signed-in staff) creates orders; the browser never gets to do it anonymously.
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: 'rzp-order', max: 30, id: user.id })) return
+
   try {
     const { gcc, studentId, studentName, amount, items } = req.body || {}
 
@@ -33,7 +41,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'gcc and studentId are required' })
     }
     const amountPaise = Math.round(Number(amount) * 100)
-    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0 || amountPaise > MAX_ORDER_PAISE) {
       return res.status(400).json({ error: 'Invalid amount' })
     }
 
