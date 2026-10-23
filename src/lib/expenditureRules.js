@@ -10,6 +10,9 @@ export const CONTROL_DEFAULTS = {
   block_digital_in_cash_acct: true,
   require_delete_reason: true,
   generic_description_check: true,
+  block_generic_category: true,   // no "Other" / "Paytm Payment" style heads on new entries
+  min_reason_length: 15,
+  min_reason_words: 3,
   enforce_in_database: true,
 }
 
@@ -31,11 +34,19 @@ export const isExpense = e => e?.type === 'Expense'
 
 const clean = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 
-// ── categories that say nothing about what the money was for ───────────────
-const GENERIC_CATS = new Set(['paytm payment', 'paytm', 'gpay', 'gpay business', 'google business', 'google pay', 'phonepe', 'upi', 'bank transfer', 'other', 'others', 'misc', 'miscellaneous', 'expense', 'expenses', 'payment'])
-const GENERIC_NOTES = new Set([...GENERIC_CATS, 'cash', 'cash payment', 'bank', 'paid', 'amount', 'money', 'transfer', 'online payment', 'gpay bussiness'])
-export const isGenericCategory = c => GENERIC_CATS.has(clean(c).replace(/^\d+/, '').trim())
-export const isGenericNote = n => { const c = clean(n); return !c || GENERIC_NOTES.has(c) }
+// ── text that says nothing about what the money was for ─────────────────────
+// A value is "generic" when EVERY word in it is a filler word — "Other", "Paytm Payment", "Gpay Business",
+// "Cash payment", "Misc expense" — so a real word anywhere ("Kitchen item", "Paytm to Ibosana for rice") makes it specific.
+// The same word list is used by the database (accounts_is_generic_text in migration 20261033).
+export const GENERIC_WORDS = new Set(['paytm', 'payment', 'payments', 'gpay', 'google', 'pay', 'phonepe', 'upi', 'cash', 'bank', 'transfer', 'online',
+  'business', 'other', 'others', 'misc', 'miscellaneous', 'expense', 'expenses', 'amount', 'money', 'paid', 'general', 'na', 'nil', 'none',
+  'unknown', 'test', 'item', 'items', 'various', 'sundry', 'sundries', 'stuff', 'things', 'thing', 'etc'])
+const words = s => clean(s).replace(/^\d+/, '').split(' ').filter(Boolean)
+export const isGenericText = s => { const w = words(s); return w.length === 0 || w.every(t => GENERIC_WORDS.has(t)) }
+export const isGenericCategory = isGenericText
+export const isGenericNote = isGenericText
+// names that are not a real payee
+export const isPlaceholderName = n => { const t = clean(n); return t.length < 3 || isGenericText(t) || /^(shop|local|vendor|payee|party|someone|staff|person|man|woman)$/.test(t) }
 
 // Spelling variants of the same head → one key, so "Kitchen gi" and "Kitchen item" are not two heads.
 const CAT_SYNONYMS = {
@@ -63,13 +74,94 @@ export function natureOf(e) {
 // null / blank / non-numeric → the receipt rule is switched off
 export const receiptLimit = c => { const v = c?.receipt_required_above; return v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v) }
 
+// ── real expense heads ──────────────────────────────────────────────────────
+// What the entry form offers. There is deliberately no "Other": every payment belongs to a head that says what the
+// money was for. Built-in heads keep their old names (budgets are keyed by them); users can still add a specific head
+// of their own, but not a generic one.
+export const EXPENSE_HEADS = {
+  'Food & Kitchen': ['Rice & Grains', 'Vegetables', 'Chicken', 'Fish & Egg', 'Bread & Breakfast', 'Grocery & Oil', 'Firewood & Fuel', 'Kitchen Items'],
+  'Salary': ['Teaching Staff', 'Non-Teaching Staff', 'Bonus/Incentive', 'Extra Class', 'Kitchen Staff'],
+  'Salary Advance': ['Teaching Staff', 'Non-Teaching Staff', 'Kitchen / Support Staff'],
+  'Electricity': ['Main Building', 'Hostel', 'Generator/Diesel', 'Electric Connection'],
+  'Water Supply': ['Tanker / Supply', 'Hand Pump', 'Pipeline'],
+  'Maintenance': ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 'Computer Repair', 'General Repair'],
+  'Construction': ['Cement & Material', 'Iron & Welding', 'Mason / Labour', 'Roofing / Tin', 'Furniture'],
+  'Stationery': ['Office Supplies', 'Printing', 'Books & Study Material'],
+  'Medical': ['Medicines / Pharmacy', 'Hospital / Doctor', 'First Aid'],
+  'Transport': ['Fuel', 'Vehicle Repair', 'Bus Hire', 'Driver Payment', 'Auto / Taxi'],
+  'Event': ['Decoration', 'Refreshment', 'Prizes & Certificates', 'Guest Honorarium', 'Banner & Printing'],
+  'Student Welfare': ['Haircut / Grooming', 'Uniform & Clothes', 'Sports'],
+  'Cleaning & Hygiene': ['Cleaning Material', 'Toilet / Sanitation', 'Waste Disposal'],
+  'Rent': ['Hostel Block', 'Building', 'Equipment'],
+  'Donation': ['Community', 'Sports', 'Religious'],
+  'Communication & Internet': ['Internet', 'Phone', 'Online Subscription', 'Advertising'],
+  'Professional Fees': ['Legal', 'Accounting', 'Consultant'],
+  'Taxes & Statutory': ['TDS', 'PF / ESI', 'GST', 'Licence & Fees'],
+  'Bank Charges': ['Bank / UPI Charges'],
+  'Owner Drawings': ['Owner withdrawal'],
+}
+export const EXPENSE_HEAD_NAMES = Object.keys(EXPENSE_HEADS)
+
+// Old free-text heads that mean one of the real ones (by categoryKey) — hidden from the entry list and used to
+// suggest the right head when cleaning up old entries.
+const HEAD_ALIASES = {
+  kitchen: 'Food & Kitchen', grocery: 'Food & Kitchen', rice: 'Food & Kitchen', 'saturday chicken': 'Food & Kitchen', 'saturday fish': 'Food & Kitchen',
+  bread: 'Food & Kitchen', firewood: 'Food & Kitchen', vegetables: 'Food & Kitchen', 'mahesh chicken': 'Food & Kitchen', breakfast: 'Food & Kitchen', refreshment: 'Event',
+  cleaning: 'Cleaning & Hygiene', 'water supply': 'Water Supply', haircut: 'Student Welfare', 'salary advance': 'Salary Advance', 'previous salary': 'Salary',
+  construction: 'Construction', hospital: 'Medical', 'medicine or pharmacy': 'Medical', medical: 'Medical', donation: 'Donation', electricity: 'Electricity',
+  maintenance: 'Maintenance', stationery: 'Stationery', transport: 'Transport', event: 'Event', salary: 'Salary', rent: 'Rent', labour: 'Construction',
+}
+export const suggestHead = category => { const k = categoryKey(category); return HEAD_ALIASES[k] || EXPENSE_HEAD_NAMES.find(h => categoryKey(h) === k) || null }
+
+// The category dropdown for a NEW entry: the real heads, then any specific head the institute added itself.
+// Generic heads ("Other", "Paytm Payment"…) and spelling variants of a real head are left out.
+export function entryCategoryChoices(used = [], custom = []) {
+  const seen = new Set(EXPENSE_HEAD_NAMES.map(categoryKey))
+  const extra = []
+  for (const c of [...custom, ...used]) {
+    const t = String(c || '').trim()
+    if (!t || isGenericText(t)) continue
+    const k = categoryKey(t)
+    if (seen.has(k) || HEAD_ALIASES[k]) continue
+    seen.add(k); extra.push(t)
+  }
+  return [...EXPENSE_HEAD_NAMES, ...extra.sort((a, b) => a.localeCompare(b))]
+}
+
+// ── a real reason ───────────────────────────────────────────────────────────
+const STOP = new Set(['from', 'for', 'the', 'to', 'of', 'and', 'at', 'in', 'on', 'by', 'a', 'an', 'with', 'was', 'is', 'paid', 'pay', 'payment'])
+const JUNK = new Set(['test', 'testing', 'abc', 'asdf', 'qwerty', 'xyz', 'xxx', 'na', 'nil', 'none', 'ok', 'okay', 'same', 'above', 'ditto'])
+
+/** Everything wrong with a reason / description, as a list of plain-English problems ([] = fine). */
+export function reasonProblems({ note, category, subCategory, vendorName, minLength, minWords } = {}) {
+  const n = String(note ?? '').trim()
+  const ml = Number(minLength) || CONTROL_DEFAULTS.min_reason_length, mw = Number(minWords) || CONTROL_DEFAULTS.min_reason_words
+  const out = []
+  const w = clean(n).split(' ').filter(t => /[a-z0-9]/.test(t))
+  if (n.length < ml) out.push(`at least ${ml} characters (now ${n.length})`)
+  if (w.length < mw) out.push(`at least ${mw} words (now ${w.length})`)
+  if (n && isGenericText(n)) out.push('more than a filler like “Paytm payment”, “Other” or “Cash”')
+  if (n && (/(.)\1{4,}/.test(n) || (w.length > 1 && new Set(w).size === 1) || w.every(t => JUNK.has(t)))) out.push('real words, not placeholder text')
+  // must add something beyond the head, the sub-head and the payee
+  const known = new Set([category, subCategory, vendorName].flatMap(x => clean(x).split(' ')).filter(Boolean))
+  const fresh = w.filter(t => !known.has(t) && !STOP.has(t) && !GENERIC_WORDS.has(t) && !/^\d+$/.test(t))
+  if (w.length >= mw && n.length >= ml && !isGenericText(n) && fresh.length < 1) out.push('something new — say what was bought or why, not just repeat the category and payee')
+  return out
+}
+
 // ── entry-time validation ───────────────────────────────────────────────────
-// row: the form row; ctx: { controls, hasReceipt, canStoreRef }
+// row: the form row; ctx: { controls, hasReceipt, canStoreRef, vendorName, original }
+//   original: the entry being edited — category / reason rules only apply to what the person is changing,
+//   so attaching a receipt to an old entry is never blocked by how it was first typed.
 export function validateExpenseRow(row, ctx = {}) {
   const c = { ...CONTROL_DEFAULTS, ...(ctx.controls || {}) }
   const errors = [], warnings = []
   const amount = Number(row?.amount) || 0
   const digital = isDigitalMode(row?.payment_mode)
+  const o = ctx.original || null
+  const catChanged = !o || String(o.category ?? '') !== String(row?.category ?? '')
+  const subChanged = !o || String(o.sub_category ?? '') !== String(row?.sub_category ?? '')
+  const noteChanged = !o || String(o.note ?? '') !== String(row?.note ?? '')
 
   if (digital && c.block_digital_in_cash_acct && (row?.account_type || 'Cash A/c') === 'Cash A/c')
     errors.push(`A ${row.payment_mode} payment cannot be booked to the Cash A/c — choose the bank / UPI account.`)
@@ -81,12 +173,16 @@ export function validateExpenseRow(row, ctx = {}) {
   if (lim != null && amount > lim && !ctx.hasReceipt)
     errors.push(`Attach the bill / receipt — expenses above ₹${lim.toLocaleString('en-IN')} need one.`)
 
-  if (c.generic_description_check) {
-    const generic = isGenericNote(row?.note) || clean(row?.note) === categoryKey(row?.category)
-    if (isGenericCategory(row?.category) && generic)
-      errors.push(`"${row.category}" does not say what the money was for — write what was bought or paid, and to whom.`)
-    else if (isGenericNote(row?.note))
-      errors.push('The description is too generic — say what the money was spent on.')
+  if (c.block_generic_category && catChanged && isGenericText(row?.category))
+    errors.push(`“${row?.category || 'Other'}” is not a real category — pick the head the money was spent on (food, salary, repair, construction, medical…).`)
+  if (c.block_generic_category && subChanged && row?.sub_category && isGenericText(row.sub_category))
+    errors.push(`“${row.sub_category}” is not a real sub-category — pick or add a specific one.`)
+  if (ctx.vendorName !== undefined && ctx.vendorName !== null && isPlaceholderName(ctx.vendorName))
+    errors.push(`“${ctx.vendorName}” is not a real payee — choose the person or shop that was actually paid.`)
+
+  if (c.generic_description_check && noteChanged) {
+    const p = reasonProblems({ note: row?.note, category: row?.category, subCategory: row?.sub_category, vendorName: ctx.vendorName, minLength: c.min_reason_length, minWords: c.min_reason_words })
+    if (p.length) errors.push(`Write a real reason — what was bought or paid for, and for whom. It needs ${p.join('; ')}.`)
   }
 
   if (amount >= 20000 && amount % 5000 === 0) warnings.push('Round amount — make sure it matches a bill, and attach the bill.')
@@ -113,6 +209,17 @@ export function runExceptionChecks(entries, opts = {}) {
     'Booked under a head such as “Paytm Payment” or “Other” with no payee or purpose — the money cannot be traced to a purchase.',
     'Add the payee, what was bought and the bill for each; use a real category.',
     manual.filter(e => isGenericCategory(e.category) && (isGenericNote(e.note) || clean(e.note) === categoryKey(e.category)))))
+
+  const e1 = new Set(out.filter(Boolean).flatMap(c => c.rows.map(r => r.id)))
+  out.push(mk('E16', 'Medium', 'Entries under “Other” or a bank-app name instead of a real head',
+    'The head says nothing about what the money was for, so it cannot be budgeted, analysed or checked.',
+    'Open Clean-up and move each entry to a real head (food, salary, repair, construction…).',
+    manual.filter(e => isGenericText(e.category) && !e1.has(e.id))))
+
+  out.push(mk('E17', 'Medium', 'Reasons that do not say what was bought or why',
+    'The description is too short, a single filler, or only repeats the head and payee.',
+    'Rewrite the reason in Clean-up: what was bought or paid for, and for whom.',
+    manual.filter(e => !isGenericText(e.category) && reasonProblems({ note: e.note, category: e.category, subCategory: e.sub_category, vendorName: opts.vendorNames?.get?.(String(e.vendor_id)) }).length > 0)))
 
   if (limit != null) out.push(mk('E2', 'High', `Expenses above ₹${limit.toLocaleString('en-IN')} without a receipt`,
     'No bill or receipt is attached, so the amount cannot be verified.',
