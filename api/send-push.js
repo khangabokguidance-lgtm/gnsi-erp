@@ -1,5 +1,6 @@
 import webpush from "web-push"
 import { createClient } from "@supabase/supabase-js"
+import { requireStaff, isAdmin, rateLimit } from "./_guard/guard.js"
 
 webpush.setVapidDetails(
   process.env.VAPID_SUBJECT || "mailto:admin@guidancekhangabok.in",
@@ -10,10 +11,21 @@ webpush.setVapidDetails(
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end()
 
+  // Only signed-in staff may send notifications; a broadcast to every device needs an admin.
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: "push", max: 60, id: user.id })) return
+
   const { title, body, icon = "/logo.png", url = "/", staffId = null, studentId = null, tag = null } = req.body || {}
 
   if (!title || !body) {
     return res.status(400).json({ error: "title and body are required" })
+  }
+  if (String(title).length > 120 || String(body).length > 500) {
+    return res.status(400).json({ error: "title or body too long" })
+  }
+  if (!staffId && !studentId && !(await isAdmin(user))) {
+    return res.status(403).json({ error: "Only an admin can notify every device." })
   }
 
   const supabase = createClient(

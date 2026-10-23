@@ -1,8 +1,16 @@
+import { requireStaff, rateLimit } from './_guard/guard.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { prompt, maxTokens, thinking } = req.body
+  // Paid API key: staff only, rate limited, bounded prompt size.
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: 'gemini', max: 30, id: user.id })) return
+
+  const { prompt, maxTokens, thinking } = req.body || {}
   if (!prompt) return res.status(400).json({ error: 'No prompt provided' })
+  if (String(prompt).length > 120000) return res.status(413).json({ error: 'Prompt too long' })
 
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' })

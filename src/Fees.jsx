@@ -1,3 +1,4 @@
+import { authFetch } from './apiFetch'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } from './systemSettings'
@@ -3691,7 +3692,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       // amount charged is whatever the backend computes from `items`, not
       // whatever the browser sends, so a tampered client request can't
       // under-charge or mismatch the ledger.
-      const orderRes = await fetch(RAZORPAY_CREATE_ORDER_URL, {
+      const orderRes = await authFetch(RAZORPAY_CREATE_ORDER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

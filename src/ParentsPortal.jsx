@@ -1,3 +1,4 @@
+import { authFetch } from './apiFetch'
 import { printFeeReceipt as printPremiumFeeReceipt, receiptDocument, openReceiptWindow } from './premiumReceipt';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { useState, useCallback, useEffect } from 'react';
@@ -1147,7 +1148,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       return;
     }
     try {
-      const res = await fetch('/api/razorpay/create-payment-link', {
+      const res = await authFetch('/api/razorpay/create-payment-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1203,7 +1204,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      const saved = await fetch('/api/subscribe', {
+      const saved = await authFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: sub.toJSON(), student_id: student?.id || null, role: 'parent' }),

@@ -2,6 +2,7 @@
 // recorded. The collector's full payment is stored as a request (fee_payment_requests,
 // migration 20261015_fee_payment_requests.sql); an admin approves/rejects it; only an
 // approved request can then be collected (recorded + receipt printed).
+import { authFetch } from './apiFetch'
 import { supabase } from './supabase'
 import { CONCESSION_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
 
@@ -33,7 +34,7 @@ export function lowFeeWaUrl(payload = {}, summary = {}, requestedBy = '') {
 // Never throws — callers fall back to the wa.me link when it isn't sent.
 export async function notifyAdminAuto(requestId, kind) {
   try {
-    const r = await fetch('/api/whatsapp-notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId, kind }) })
+    const r = await authFetch('/api/whatsapp-notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId, kind }) })
     const j = await r.json().catch(() => ({}))
     return { ok: !!j.ok, sent: !!j.sent || !!j.skipped, ...j }
   } catch (e) { return { ok: false, error: e.message } }

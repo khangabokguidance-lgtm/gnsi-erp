@@ -10,6 +10,7 @@
  *  4. All other column references verified correct against live schema
  */
 
+import { authFetch } from './apiFetch'
 import React, {
   useEffect, useState, useRef, useCallback, useMemo, Component,
 } from 'react'
@@ -1053,7 +1054,7 @@ function usePushSubscription(currentStaff, isAdmin) {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
       subscriptionRef.current = sub
-      await fetch('/api/subscribe', {
+      await authFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1070,7 +1071,7 @@ function usePushSubscription(currentStaff, isAdmin) {
   const unsubscribe = useCallback(async () => {
     if (!subscriptionRef.current) return
     try {
-      await fetch('/api/subscribe', {
+      await authFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: subscriptionRef.current.endpoint }),

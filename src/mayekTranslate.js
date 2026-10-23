@@ -20,6 +20,7 @@
 // Unlike meetei_mayek.js (a letter-for-letter BMEI04 <-> Unicode converter
 // that never guesses), steps 2–3 are machine translation: results can be
 // wrong and are shown for a human to check and edit before use.
+import { authFetch } from './apiFetch'
 import { supabase } from './supabase'
 import { bmeiToUnicode, bmeiSegments } from './mayekSegments'
 import { meeteiToRoman, fixApunOrder } from './meetei_mayek'
@@ -179,7 +180,7 @@ async function viaService(name, segments, from, to) {
   const online = name !== 'indictrans'
   if (online && Date.now() - (serviceDown.get(name) || 0) < RETRY_AFTER) return null
   const failed = () => { if (online) serviceDown.set(name, Date.now()); return null }
-  const res = await fetch(svc.url, {
+  const res = await authFetch(svc.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ segments, from, to }),
@@ -254,7 +255,7 @@ async function geminiSlot(fn) {
 async function callGemini(prompt) {
   for (let attempt = 0; ; attempt++) {
     const { res, data } = await geminiSlot(async () => {
-      const res = await fetch('/api/gemini', {
+      const res = await authFetch('/api/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, maxTokens: 8192, thinking: false }),

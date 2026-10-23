@@ -333,11 +333,6 @@ async function linkSupabaseAuth(username, password, isAdminShortcut = false) {
   }
 }
 
-async function sha256(text) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
-}
-
 const EyeOpen = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -429,19 +424,12 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
     else            localStorage.removeItem('gnsi_remembered_user')
 
     if (username.trim() === ADMIN_USER) {
-      // Password is checked ON THE SERVER (admin_login_check, bcrypt).
-      // Falls back to the old table read only until admin_bcrypt.sql is run.
-      let status = null
-      const { data: st, error: rpcErr } = await supabase.rpc('admin_login_check', { p_password: password })
-      if (!rpcErr) status = st
-      else {
-        const { data, error: dbErr } = await supabase
-          .from('admin_credentials').select('password_hash, is_changed').eq('id', 1).single()
-        if (dbErr || !data) {
-          showError('Admin credentials not found. Contact system administrator.')
-          setLoading(false); return
-        }
-        status = !data.is_changed ? 'default' : (password === data.password_hash ? 'ok' : 'bad')
+      // Password is checked ON THE SERVER (admin_login_check, bcrypt). There is no browser-side
+      // fallback: the browser never reads password hashes.
+      const { data: status, error: rpcErr } = await supabase.rpc('admin_login_check', { p_password: password })
+      if (rpcErr) {
+        showError('Login service is unavailable. Run admin_bcrypt.sql in Supabase or contact the system administrator.')
+        setLoading(false); return
       }
       // No password is built into the website any more. If the admin password
       // was never set, it must be set once in Supabase (admin_set_password.sql).
@@ -489,25 +477,16 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
       setLoading(false); return
     }
 
-    // Password is checked inside the database (staff_verify_login) so the
-    // browser never reads password hashes. Falls back to the old direct
-    // check only if the Phase 1 SQL hasn't been run yet.
-    let data = null, dbErr = null
+    // Password is checked inside the database (staff_verify_login) so the browser never reads
+    // password hashes. There is no browser-side fallback.
     const rpc = await supabase.rpc('staff_verify_login', { p_username: username.trim(), p_password: password.trim() })
-    if (!rpc.error) {
-      data = rpc.data || null
-    } else {
-      const hashedPassword = await sha256(password.trim())
-      ;({ data, error: dbErr } = await supabase
-        .from('portal_users')
-        .select('id, name, username, role, active, staff_profile_id')
-        .eq('username', username.trim().toLowerCase())
-        .eq('password_hash', hashedPassword)
-        .eq('active', true)
-        .single())
+    if (rpc.error) {
+      showError('Login service is unavailable. Please contact the system administrator.')
+      setLoading(false); return
     }
+    const data = rpc.data || null
 
-    if (dbErr || !data) {
+    if (!data) {
       failed()
       setLoading(false); return
     }
