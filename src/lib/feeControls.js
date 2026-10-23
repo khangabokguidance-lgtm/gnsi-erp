@@ -3,7 +3,7 @@
 // using the app (migration 20261032: FEE-001 closed day, FEE-002 payment reference, FEE-003 revert reason);
 // these give the answer *before* Save and power the exception report.
 //
-// Deliberately NOT repeated here (already in Fees → Anomaly Monitor / Audit Warnings / Late Entries /
+// Deliberately NOT repeated here (already in Fees → Anomaly Monitor / Data Health / Late Entries /
 // Income vs Collection): duplicate months, future dates, zero amounts, rate deviation, spikes, orphan GCC,
 // back-dated entries, fee↔accounts mismatch.
 

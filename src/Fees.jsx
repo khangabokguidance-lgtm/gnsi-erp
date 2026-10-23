@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } from './systemSettings'
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
-import { getActiveStudents, getAllStudents } from './studentQueries'
+import { getActiveStudents } from './studentQueries'
 import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 
@@ -56,7 +56,6 @@ import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
-import FeeIncomeCollection from './FeeIncomeCollection'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
@@ -735,150 +734,6 @@ function ActivityLogTab({ students, isAdmin }) {
   )
 }
 
-// ── Audit Warnings Tab (admin only) ───────────────────────────────────────────
-// Focused view of just the underpayment warnings (flat_fee_underpayment,
-// course_fee_underpayment) — separate from the general Activity Log, which
-// mixes every action type together. This exists specifically so an admin
-// reviewing "who collected less than the standard rate, and why" doesn't
-// have to filter the full activity feed down every time; it's the direct
-// admin-only surface for the warnings collectFee already writes to
-// audit_log at collection time (see feeEngine.js).
-function AuditWarningsTab({ isAdmin }) {
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [reasonFilter, setReasonFilter] = useState('ALL')
-  const [staffFilter, setStaffFilter] = useState('ALL')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    if (!isAdmin) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while the log loads
-    setLoading(true)
-    supabase.from('audit_log')
-      .select('*')
-      .in('action', ['flat_fee_underpayment', 'course_fee_underpayment'])
-      .order('created_at', { ascending: false })
-      .limit(1000)
-      .then(({ data, error }) => {
-        if (!error) setEntries(data || [])
-        setLoading(false)
-      })
-  }, [isAdmin])
-
-  if (!isAdmin) {
-    return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
-  }
-
-  const parsed = entries.map(e => {
-    let v = {}
-    try { v = e.old_values ? JSON.parse(e.old_values) : {} } catch { /* malformed JSON — show without details */ }
-    return { ...e, v }
-  })
-
-  const reasons = [...new Set(parsed.map(e => e.v.reason).filter(Boolean))].sort()
-  const staffNames = [...new Set(parsed.map(e => e.v.staff_id || e.changed_by).filter(Boolean))].sort()
-
-  const filtered = parsed.filter(e => {
-    if (reasonFilter !== 'ALL' && e.v.reason !== reasonFilter) return false
-    const staffId = e.v.staff_id || e.changed_by
-    if (staffFilter !== 'ALL' && staffId !== staffFilter) return false
-    const d = (e.created_at || '').slice(0, 10)
-    if (dateFrom && d < dateFrom) return false
-    if (dateTo && d > dateTo) return false
-    if (search) {
-      const q = search.toLowerCase()
-      const hay = `${e.v.gcc || ''} ${e.v.student_name || ''} ${e.v.receipt_no || ''} ${staffId || ''}`.toLowerCase()
-      if (!hay.includes(q)) return false
-    }
-    return true
-  })
-
-  const totalShortfall = filtered.reduce((s, e) => s + Number(e.v.shortfall || 0), 0)
-
-  return (
-    <div>
-      <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: '14px 18px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#991B1B' }}>⚠️ Underpayment Warnings</div>
-          <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>Every flat/course fee payment collected below the standard rate, with the reason on record</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#991B1B' }}>₹{Number(totalShortfall).toLocaleString('en-IN')}</div>
-          <div style={{ fontSize: 11, color: '#b91c1c' }}>total shortfall · {filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'flex-end' }}>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>Reason</label>
-          <select value={reasonFilter} onChange={e => setReasonFilter(e.target.value)} style={{ ...inp, width: 220 }}>
-            <option value="ALL">All reasons</option>
-            {reasons.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>Staff</label>
-          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={{ ...inp, width: 160 }}>
-            <option value="ALL">All staff</option>
-            {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>From</label>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inp, width: 150 }} />
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>To</label>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inp, width: 150 }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <label style={{ ...lbl, fontSize: 11 }}>Search</label>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Student, GCC, receipt no…" style={inp} />
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 48, color: '#5d6b82' }}>⏳ Loading…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 48, color: '#8a93a6' }}>No underpayment warnings for the current filters</div>
-      ) : (
-        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
-                {['Type', 'GCC', 'Student', 'Period', 'Standard', 'Collected', 'Shortfall', 'Reason', 'Staff', 'Time'].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(e => {
-                const v = e.v
-                const feeLabel = e.action === 'flat_fee_underpayment' ? 'Flat Fee' : 'Course Fee'
-                return (
-                  <tr key={e.id} style={{ borderBottom: '1px solid #f3f0e8' }}>
-                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
-                    <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{v.student_name || '—'}</td>
-                    <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.collected_amount || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 800, color: '#dc2626' }}>₹{Number(v.shortfall || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870', fontSize: 12, maxWidth: 220 }}>{v.reason || '—'}</td>
-                    <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 11 }}>{v.staff_id || e.changed_by || 'Unknown'}</td>
-                    <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ✦ Dual-control approval queue. Any admin can file a revert/delete request
 // (see fileFeeActionRequest above), but it only takes effect once a
@@ -4526,37 +4381,6 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 // ─── Root: Fees page ──────────────────────────────────────────────────────────
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// PAST STUDENTS — DUES  (FLOW FIX)
-// The main Fees views are active-only by design, so once a student was
-// marked Dropout / Inactive / Withdrawn / Passed Out, anything they still
-// owed vanished from every screen. This admin tab lists exactly those
-// students with an outstanding balance, using the same dues engine as the
-// active roster, capped at their Left Date so no dues keep piling up for
-// months after they left. Collect → opens the normal Fee Payment screen,
-// so the money still goes through collectFee() → Accounts like any other.
-// ════════════════════════════════════════════════════════════════════════════
-const MONTH_IDX = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 }
-function ymOf(item) {
-  const m = MONTH_IDX[String(item?.month || '').slice(0, 3).toLowerCase()]
-  const y = Number(item?.year)
-  return m && y ? y * 100 + m : null
-}
-function capDuesAtLeftDate(dues, leftDate) {
-  if (!dues) return null
-  const cap = /^\d{4}-\d{2}/.test(leftDate || '') ? Number(leftDate.slice(0, 4)) * 100 + Number(leftDate.slice(5, 7)) : null
-  const owed = items => (items || []).filter(i => !i.paid && (cap == null || (ymOf(i) ?? 0) <= cap))
-  const balanceOf = i => Number(i.due ?? i.expected) || 0   // part-paid months owe only the balance
-  const flatOwed = owed(dues.flatFee?.items)
-  const crsOwed  = owed(dues.courseFee?.items)
-  const sum = arr => arr.reduce((t, i) => t + balanceOf(i), 0)
-  // Without a left date we can't cap months, so fall back to the engine's own totals.
-  const flatDue = cap == null ? Number(dues.flatFee?.due || 0) : sum(flatOwed)
-  const crsDue  = cap == null ? Number(dues.courseFee?.due || 0) : sum(crsOwed)
-  const admDue  = Number(dues.admission?.due || 0)
-  const arrears = Number(dues.arrears) || 0   // earlier sessions (before the left date by definition)
-  return { admDue, flatDue, crsDue, arrears, totalDue: admDue + flatDue + crsDue + arrears, months: flatOwed.length + crsOwed.length, partial: !!dues.failedSources?.length }
-}
 
 // The three payment tables are already in memory, so the dues engine can be
 // handed each student's rows instead of re-reading them (see getStudentDues).
@@ -4582,98 +4406,6 @@ async function buildDuesPreload({ adm, flat, course }) {
   }
 }
 
-function PastStudentDuesTab({ isAdmin, onCollect, feeRows }) {
-  const n = v => Number(v || 0).toLocaleString('en-IN')
-  const [rows, setRows] = useState(null)
-  const [err, setErr] = useState('')
-  const [q, setQ] = useState('')
-  const [statusF, setStatusF] = useState('All')
-
-  const load = async () => {
-    setRows(null); setErr('')
-    try {
-      const all = await getAllStudents('*')
-      const past = (all || []).filter(s => s.status && s.status !== 'Active' && !s.deleted_at && gccStr(s.gcc_no))
-      if (!past.length) { setRows([]); return }
-      const preload = feeRows ? await buildDuesPreload(feeRows) : undefined
-      const results = await getDuesForStudents(past, getSessionYear(), { preload })
-      const list = results
-        .map(({ student, dues }) => ({ student, d: capDuesAtLeftDate(dues, student.left_date) }))
-        .filter(r => r.d && r.d.totalDue > 0)
-        .sort((a, b) => b.d.totalDue - a.d.totalDue)
-      setRows(list)
-    } catch (e) {
-      setErr(e?.message || String(e)); setRows([])
-    }
-  }
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- loads the past-student dues once when an admin opens the tab
-  useEffect(() => { if (isAdmin) load() }, [isAdmin])
-
-  if (!isAdmin) return <div style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
-
-  const statuses = ['All', ...Array.from(new Set((rows || []).map(r => r.student.status))).sort()]
-  const shown = (rows || []).filter(r => {
-    if (statusF !== 'All' && r.student.status !== statusF) return false
-    const t = q.trim().toLowerCase()
-    return !t || [r.student.name, r.student.gcc_no, r.student.batch, r.student.course].some(v => String(v || '').toLowerCase().includes(t))
-  })
-  const total = shown.reduce((t, r) => t + r.d.totalDue, 0)
-  const cell = { padding: '9px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-  const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
-
-  return (
-    <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #e8e3d8', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a6e' }}>🚪 Past students with dues</div>
-          <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 2 }}>Dropout · Inactive · Withdrawn · Passed Out — counted up to each student's Left Date</div>
-        </div>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" style={{ padding: '7px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 12.5, minWidth: 160 }} />
-        <select value={statusF} onChange={e => setStatusF(e.target.value)} style={{ padding: '7px 8px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 12.5 }}>
-          {statuses.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <button onClick={load} style={{ padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>↻ Refresh</button>
-        {rows && rows.length > 0 && <ExportBar rows={shown.map(r => ({ gcc_no: r.student.gcc_no, name: r.student.name, status: r.student.status, left_date: r.student.left_date || '', batch: r.student.batch || '', course: r.student.course || '', admission_due: r.d.admDue, flat_due: r.d.flatDue, course_due: r.d.crsDue, total_due: r.d.totalDue }))} filename="past_student_dues" />}
-      </div>
-      {rows === null ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#5d6b82', fontSize: 13 }}>Calculating dues for past students…</div>
-      ) : err ? (
-        <div style={{ padding: 24, color: '#b91c1c', fontSize: 13 }}>Could not load past-student dues: {err}</div>
-      ) : shown.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontSize: 13, fontWeight: 700 }}>✓ No past student owes anything.</div>
-      ) : (
-        <>
-          <div style={{ padding: '10px 16px', background: '#fef2f2', borderBottom: '1px solid #fecaca', fontSize: 13, fontWeight: 800, color: '#991b1b' }}>
-            {shown.length} student{shown.length > 1 ? 's' : ''} · ₹{Number(total).toLocaleString('en-IN')} outstanding
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['GCC', 'Name', 'Status', 'Left date', 'Admission', 'Flat fee', 'Course fee', 'Total due', ''].map(h => <th key={h} style={{ ...head, textAlign: ['Admission', 'Flat fee', 'Course fee', 'Total due'].includes(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-              <tbody>
-                {shown.map(({ student: s, d }) => (
-                  <tr key={s.id}>
-                    <td style={{ ...cell, fontWeight: 700 }}>{s.gcc_no}</td>
-                    <td style={cell}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
-                    <td style={cell}><span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#f3f0e8', color: '#4b5870' }}>{s.status}</span></td>
-                    <td style={{ ...cell, color: s.left_date ? '#14213d' : '#b45309' }}>{s.left_date || 'not set'}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.admDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.flatDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.crsDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontWeight: 900, color: '#dc2626' }}>₹{n(d.totalDue)}</td>
-                    <td style={cell}><button onClick={() => onCollect?.(s)} style={{ padding: '5px 12px', border: 'none', borderRadius: 7, background: '#16a34a', color: 'white', fontWeight: 800, fontSize: 11.5, cursor: 'pointer' }}>Collect</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '10px 16px', fontSize: 11, color: '#5d6b82', borderTop: '1px solid #f3f0e8' }}>
-            "not set" = no Left Date on the student record, so dues are counted up to today. Set it in Students → Edit to cap them.
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
 
 export default function Fees() {
   useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
@@ -4696,7 +4428,6 @@ export default function Fees() {
   // isAdminRole() helper every other module checks against.
   const localIsAdmin = isAdminRole(currentUser?.role)
   const isAdmin = useVerifiedAdmin(localIsAdmin)   // the database must agree the login really is an admin
-  const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
   const feesHandoff = useRef(takeFeesHandoff())   // e.g. Admissions → "Collect fee" for one student
   const [admissions,          setAdmissions]    = useState([])
@@ -4790,10 +4521,9 @@ export default function Fees() {
     // this trades away visibility into dues owed by students who already
     // left — if that's needed later, add a separate getAllStudents() pull
     // for a dedicated "past students" ledger view instead of reverting this.
-    let fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_
+    let students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_
     try {
-    ;[fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
-      fetchAllRows('fees', { orderCol: 'created_at', ascending: false }),
+    ;[students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
       getActiveStudents('*'),
       fetchAllRows('admissions'),
       fetchAllRows('adm_fee_collections', { filters: [['reverted', 'eq', false]] }),
@@ -4806,7 +4536,6 @@ export default function Fees() {
       alert('⚠️ Fee data could not be loaded completely, so totals are NOT shown.\n\n' + err.message + '\n\nCheck your connection and press refresh.')
       return
     }
-    setFees(fees_)
     setStudents(students_)
     setAdmissions(admissions_)
     setAdmFeeCols(admFeeCols_)
@@ -5067,20 +4796,7 @@ export default function Fees() {
 
   const liveTtl = liveRows.reduce((a, s) => a + s.grandTotal, 0)
   const liveP   = liveRows.filter(s => s.liveStatus === 'Pending').length
-  const liveP2  = liveRows.filter(s => s.liveStatus === 'Paid').length
-  // Genuinely underpaid relative to their hostel_type's expected flat fee —
-  // this is the count that was previously invisible entirely.
-  const liveUnderpaid = liveRows.filter(s => s.liveStatus === 'Underpaid').length
 
-
-  const handleSync = async s => {
-    const live = getLiveFees(s); if (!live.hasFees) return
-    const ex = fees.find(f => gccStr(f.gcc_no) === gccStr(s.gcc_no))
-    const p = { gcc_no: gccStr(s.gcc_no), name: s.name, class_name: s.class_name || s.batch || '', course: s.course || '', amount: live.grandTotal, paid: live.grandTotal, status: 'Paid' }
-    if (ex) await supabase.from('fees').update(p).eq('id', ex.id)
-    else    await supabase.from('fees').insert([p])
-    loadAll()
-  }
 
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
@@ -5102,7 +4818,6 @@ export default function Fees() {
     // Student Ledger and Verify Receipt. Everything else is admin-only.
     ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
     { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    ...(isAdmin ? [{ id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' }] : []),
     { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
     ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
     // ✦ Security fix: this tab exposes every student's full fee/payment
@@ -5112,10 +4827,8 @@ export default function Fees() {
     // same way anomaly/activity/warnings already are below.
     ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
     ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'warnings', label: 'Audit Warnings', short: 'Warnings', icon: 'warning', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
     ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
     ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
@@ -5127,7 +4840,6 @@ export default function Fees() {
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
     ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'incomeVsCollection', label: 'Income vs Collection', short: 'Income Check', icon: 'rupeeSearch', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
@@ -5139,14 +4851,12 @@ export default function Fees() {
   const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
-  // ── Advanced filter state (shared across live + admin tabs) ──────────────
+  // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
   const [afHostel,      setAfHostel]      = useState('All')
   const [afBatch,       setAfBatch]       = useState('All')
-  const [afStatus,      setAfStatus]      = useState('All')
   const [afDateFrom,    setAfDateFrom]    = useState('')
   const [afDateTo,      setAfDateTo]      = useState('')
-  const [afShowFilters, setAfShowFilters] = useState(false)
 
   const todayStr = new Date().toLocaleDateString('en-CA')
 
@@ -5156,18 +4866,17 @@ export default function Fees() {
     return ['All', ...Array.from(s).sort()]
   }, [students])
 
-  // Advanced filtered live rows (used in both live tab and admin tab)
+  // Advanced filtered live rows (Admin tab)
   const advFilteredLive = useMemo(() => {
     const q = search.toLowerCase()
     return liveRows.filter(s => {
       if (afCourse !== 'All' && courseOf(s) !== afCourse) return false
       if (afHostel !== 'All' && s.hostel_type !== afHostel) return false
       if (afBatch  !== 'All' && (s.class_name || s.batch || '') !== afBatch) return false
-      if (afStatus !== 'All' && s.liveStatus !== afStatus) return false
       if (![s.name, s.gcc_no, s.class_name, s.batch, s.course].some(v => (v||'').toString().toLowerCase().includes(q))) return false
       return true
     })
-  }, [liveRows, search, afCourse, afHostel, afBatch, afStatus])
+  }, [liveRows, search, afCourse, afHostel, afBatch])
 
   // Today's transactions for admin daily view
   const todayTransactions = useMemo(() => {
@@ -5300,11 +5009,6 @@ export default function Fees() {
             </nav>
           )
         })()}
-        {tab === 'live' && (
-          <ExportBar
-            rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name || s.batch || '', course: s.course || '', hostel_type: s.hostel_type || '', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
-            filename={`GNSI_Live_Fees_${todayStr}`} label="Live" />
-        )}
         {tab === 'admin' && (
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
@@ -5337,120 +5041,6 @@ export default function Fees() {
         />
       )}
 
-      {tab === 'live' && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
-            {[
-              // Clicking a card sets afStatus to the matching liveStatus value —
-              // the search/filter row and table right below already filter on
-              // afStatus, so this reuses that existing mechanism instead of
-              // building a separate drilldown view. "Total students" and
-              // "Total collected" have no single matching status, so they
-              // just reset the filter to show everyone.
-              { label: 'Total students',  value: students.length,  color: '#1e3a6e', bg: '#eef2f9', icon: '👨‍🎓', status: 'All' },
-              { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅', status: 'All' },
-              { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️', status: 'Pending' },
-              { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠', status: 'Underpaid' },
-              { label: 'Fully paid',      value: liveP2,           color: '#a7771f', bg: '#fbf3e0', icon: '🎉', status: 'Paid' },
-            ].map(c => (
-              <div key={c.label} className="fe-kpi fe-anim" role="button" tabIndex={0} onClick={() => setAfStatus(c.status)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAfStatus(c.status) } }}
-                style={{ borderColor: afStatus === c.status && c.status !== 'All' ? c.color : undefined, boxShadow: afStatus === c.status && c.status !== 'All' ? `0 0 0 3px ${c.color}22` : undefined }}>
-                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
-                <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
-                <p style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</p>
-                <h2 style={{ fontSize: 26, fontWeight: 600, color: c.color, margin: '6px 0 0', fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</h2>
-                <p style={{ fontSize: 10.5, color: '#98a2b3', margin: '6px 0 0' }}>Tap to filter below</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: afShowFilters ? 8 : 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 200 }} />
-            <select value={afStatus} onChange={e => setAfStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option>
-            </select>
-            <button onClick={() => setAfShowFilters(f => !f)}
-              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e8e3d8', background: afShowFilters ? '#1e3a6e' : 'white', color: afShowFilters ? 'white' : '#5d6b82', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-              ⚙ Filters {(afCourse!=='All'||afHostel!=='All'||afBatch!=='All') ? '●' : ''}
-            </button>
-          </div>
-          {afShowFilters && (
-            <div style={{ background: '#faf8f3', border: '1px solid #e8e3d8', borderRadius: 10, padding: '14px 16px', marginBottom: 16, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>COURSE</div>
-                <select value={afCourse} onChange={e => setAfCourse(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  <option value="All">All Courses</option>
-                  {['Sainik','Navodaya','Foundation','Combined Course'].map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>HOSTEL TYPE</div>
-                <select value={afHostel} onChange={e => setAfHostel(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  <option value="All">All Types</option>
-                  {['Boarder','Day Boarder','Day Scholar'].map(h => <option key={h}>{h}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>BATCH / CLASS</div>
-                <select value={afBatch} onChange={e => setAfBatch(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  {allBatches.map(b => <option key={b}>{b}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button onClick={() => { setAfCourse('All'); setAfHostel('All'); setAfBatch('All'); setAfStatus('All') }}
-                  style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-                  ✕ Clear filters
-                </button>
-              </div>
-            </div>
-          )}
-          {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#5d6b82' }}>⏳ Loading…</div> : (
-            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
-              <div style={{ padding: '10px 16px', background: '#faf8f3', borderBottom: '1px solid #e8e3d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#5d6b82', fontWeight: 600 }}>{advFilteredLive.length} students</span>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
-                <thead>
-                  <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
-                    {['#','GCC','Student','Class','Course','Hostel','Adm fee','Flat','Course','Total','Status','Sync'].map(h => (
-                      <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {advFilteredLive.map((s, i) => (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #f3f0e8' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#faf8f3'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                      <td style={{ padding: '10px 14px', color: '#8a93a6', fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
-                          {s.is_repeater && (
-                            <span style={{ fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 3, border: '1px solid #fcd34d', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>🔁 RPT</span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: '#5d6b82' }}>{s.class_name || s.batch || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#5d6b82' }}>{s.course || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}><HostelBadge type={s.hostel_type} /></td>
-                      <td style={{ padding: '10px 14px', color: '#1e3a6e', fontWeight: 600 }}>{s.admTotal  > 0 ? `₹${n(s.admTotal)}`  : '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#059669', fontWeight: 600 }}>{s.flatTotal > 0 ? `₹${n(s.flatTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#a7771f', fontWeight: 600 }}>{s.crsfTotal > 0 ? `₹${n(s.crsfTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 800, color: s.grandTotal > 0 ? '#16a34a' : '#8a93a6' }}>{s.grandTotal > 0 ? `₹${n(s.grandTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px' }}><span style={sStyle(s.liveStatus)}>{s.liveStatus}</span></td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {s.hasFees && <button onClick={() => handleSync(s)} style={{ background: '#eef2f9', color: '#1e3a6e', border: '1px solid #c9d5ea', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>⇄</button>}
-                      </td>
-                    </tr>
-                  ))}
-                  {advFilteredLive.length === 0 && <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>No students found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
 
       {tab === 'admin' && (
         <>
@@ -5775,12 +5365,6 @@ export default function Fees() {
       {tab === 'activity' && (
         <ActivityLogTab students={students} isAdmin={isAdmin} />
       )}
-      {tab === 'pastDues' && (
-        <PastStudentDuesTab isAdmin={isAdmin} feeRows={loading ? null : { adm: adm_fee_collections, flat: adm_flat_fees, course: adm_course_fees }} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />
-      )}
-      {tab === 'warnings' && (
-        <AuditWarningsTab isAdmin={isAdmin} />
-      )}
       {tab === 'lowFee' && (
         <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshLowFeePending(); loadAll() }} />
@@ -5799,7 +5383,6 @@ export default function Fees() {
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
-      {tab === 'incomeVsCollection' && isAdmin && <FeeIncomeCollection />}
       {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
@@ -5814,7 +5397,7 @@ export default function Fees() {
       {/* Phone: payments-app style bottom navigation (the four main sections + the full grid) */}
       {isMobile && (() => {
         const main = isAdmin
-          ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+          ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger']]
           : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
         const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
         const inMain = main.some(m => m[0] === tab)
