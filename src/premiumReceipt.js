@@ -247,7 +247,7 @@ function feeReceiptSheet(d, hist) {
   return receiptSheet(receiptHeader('FEE RECEIPT', 'ORIGINAL · PAID') + `
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
-        <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div></div>
+        <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div>${d.receipt_serial ? `<div class="mono" style="font-size:11px;font-weight:700;color:#8a6d2b;margin-top:2px">Serial ${escH(d.receipt_serial)}</div>` : ''}</div>
         <div style="text-align:center;display:flex;align-items:center;gap:10px">${receiptQrSVG(`${typeof location !== 'undefined' ? location.origin : ''}/?verifyReceipt=${encodeURIComponent(rno)}&gcc=${encodeURIComponent(d.gcc_no || '')}&amt=${net}`)}<div>${barcodeSVG(rno)}<div class="mono" style="font-size:8.5px;color:#64748B;margin-top:1px;letter-spacing:.2em">${escH(rno)}</div></div></div>
         <div style="text-align:right"><div class="l">Receipt Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${escH(fmtDate(d.pay_date))}</div></div>
       </div>

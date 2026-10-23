@@ -776,18 +776,16 @@ Collect fees, print receipts, see who owes what, and control corrections and con
 |---|---|
 | Dashboard | Money summary, dues by month, session progress, and lists of students who need attention. Every section has an Export button. |
 | Fee Payment | Collect a fee and print the receipt. |
-| Live Summary | Live list of every student with paid, due and status. |
 | Student Ledger | One student's full fee history (opens the ledger). |
 | Admin View | Admin list of all payments and transactions with filters. |
 | Reports | Reports & Export Centre: download fee reports, including Dues Reports (admin). |
-| Past Dues | Students who left but still owe money (admin). |
 | Activity Log | Who changed what in the fees, with before/after (admin). |
 | Anomalies | Unusual payments flagged for review (admin). |
-| Warnings | Audit warnings such as payments below the standard rate (admin). |
 | Approvals | Revert / delete requests that a DIFFERENT admin must approve (admin). |
 | Low Fees | Payments below the standard fee that need a decision: approve the concession or refuse it (admin). |
 | Hostel Issues | Students whose hostel type does not match their hostel bed, which changes the fee (admin). |
 | Digest | 7- or 30-day summary of corrections, reverts and concessions with red flags (admin). |
+| Fee Controls | Accounting checks (payments without a reference, reversals without a reason, entries after Day Close, self-approved refunds), the numbered receipt series, and the rules behind them (admin). |
 | Data Health | Students with missing or wrong data (GCC, course, hostel type, phone, photo) (admin). |
 | Reminders | Send WhatsApp dues reminders, keep a log and record promise-to-pay dates (admin). |
 | Instalments | Agree an instalment plan for a student who cannot pay in one go (admin). |
@@ -917,7 +915,6 @@ The money book of the institute. Staff enter expenditure here, and everyone can 
 | Transactions | The main list of all entries. Search, filter and open any entry to see details, edit or delete. |
 | Daily Book | Entries grouped day by day, with cash and bank totals. You can export CSV or print. |
 | Expenditure | Daily Expenditure: only expense entries, grouped by entry date. |
-| Expenditure Day Book | A printable day book of expenses for a date range. Filter by head, mode or search. |
 | Income & Expenditure | Cash-book style register: Day-wise, Daily summary, and Income & Expenditure a/c views. Print it. |
 | Reconciliation | Admin only. Tick entries that match the bank statement, and close or reopen a month. |
 | Balance Sheet | Admin only. Trial balance made from the journal entries. |
@@ -925,9 +922,8 @@ The money book of the institute. Staff enter expenditure here, and everyone can 
 | Income Analysis | All income categories with this month's collection target. |
 | Forecast | Admin only. Cash flow and where this month is heading. |
 | Staff Spend | Admin only. How much each staff member is entering, and spend alerts. |
-| Savings Tracker | Admin only. Daily and weekly income vs expense and savings rate. |
 | Budgets | Monthly spending limit for each expense category, compared with actual spending. |
-| Approvals | Admin only. Expenditure approval queue and the approval threshold amount. |
+| Accounting Controls | Exception report (undescribed payments, missing receipts, digital payments booked as cash), Revenue / Capital split, vendor bills and the rules behind the entry form. |
 | For Admin | Admin only. One daily digest of everything that needs the Admin's attention. |
 | Audit Monitor | Admin only. Course-wise fee collection and unusual-entry checks. |
 | Activity Log | Admin only. A timeline of every add, edit and delete by every user. |
@@ -987,9 +983,9 @@ The money book of the institute. Staff enter expenditure here, and everyone can 
 
 #### 8.6 Print a day book or register
 
-1. Open "Expenditure Day Book" or "Income & Expenditure".
+1. Open "Income & Expenditure" here, or "Expenditure Day Book" in Student Fee Ledger.
 2. Choose the date range at the top.
-3. In Expenditure Day Book, filter by Head or Mode if needed.
+3. In the Expenditure Day Book, filter by Head or Mode if needed.
 4. Press "🖨️ Print day book" or "🖨️ Print register".
 
 #### 8.7 Make a monthly report
