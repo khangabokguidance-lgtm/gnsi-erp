@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
+import { writtenOffFor } from './lib/refundLedger'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
 import { loadStanding } from './feeStanding'
 import { instNameHTML, instAddressHTML } from './systemSettings'
@@ -75,7 +76,8 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
     const byMonth = await sessionRates(s, session, history.get(g), rateOf)
     const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    const reg = buildRegister(s, entries, session, byMonth, new Date(), standingAll.conc.get(g) || [])
+    const reg = buildRegister(s, entries, session, byMonth, new Date(), standingAll.conc.get(g) || [],
+      writtenOffFor(g, standingAll.refunds.get(g) || [], session, sessionOfDate))
     const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor)
     // balance = this session's dues + earlier sessions' dues brought forward
     out.push({ student: s, entries, rates, reg, arrears, arrearsBySession: bySession, balance: reg.totalDue + arrears })

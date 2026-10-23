@@ -7,6 +7,7 @@ import { NavIcon } from './navIcons'
 import { getActiveStudents } from './studentQueries'
 import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
+import { monthlyOwed, writeOffShares } from './lib/monthwiseDues'
 
 // Course to show for a student: the resolved course (a blank course on a
 // Udaan / Pragati batch counts as Foundation), else what is saved.
@@ -1743,10 +1744,11 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
     const admByGcc = new Map()
     for (const items of Object.values(duesLedgers || {})) for (const { student, reg } of items) {
       const g = gccStr(student.gcc_no)
-      if (reg.admission && reg.admission.expected > 0 && !admByGcc.has(g)) admByGcc.set(g, { student, adm: reg.admission, start: reg.start })
+      if (reg.admission && reg.admission.expected > 0 && !admByGcc.has(g)) admByGcc.set(g, { student, adm: reg.admission, start: reg.start, reg })
     }
     const rangeStart = new Date(duesMonths[0].year, 0, 1)
     const perStudent = []
+    const writeOffs = new Map()
     let head = null
     for (const { student, reg } of duesLedgers?.[m.session] || []) {
       // Monthly part: the flat / course fee for this month.
@@ -1754,18 +1756,17 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       // Expected is net of any approved concession / standing scholarship
       // (r.waived), so expected = collected + due holds for every month. A part
       // advance whose month has now started still owes its shortfall.
-      const monthly = r && r.status !== 'before' && r.status !== 'upcoming' && r.expected > 0
-        ? {
-            expected: Math.max(0, r.expected - (r.waived || 0)), paid: r.paidAmt,
-            due: r.status === 'due' ? r.due : (sh => (sh >= 0.5 ? sh : 0))(r.expected - r.paidAmt - (r.waived || 0)),
-          }
-        : null
+      const base = monthlyOwed(r)
+      // Dues written off in Refunds & Transfers lower what is owed, oldest month first.
+      const wo = writeOffs.get(student.gcc_no) || writeOffs.set(student.gcc_no, writeOffShares(reg, reg.writtenOff)).get(student.gcc_no)
+      const cut = base ? (wo.byMonth.get(`${r.month}|${r.year}`) || 0) : 0
+      const monthly = base ? { expected: base.expected - cut, paid: base.paid, due: base.due - cut } : null
       if (monthly) head = head || r.head
       // Admission part: charged in the month the student was admitted (the same
       // date the student's own ledger charges it on), whether unpaid or part-paid.
       const a = admByGcc.get(gccStr(student.gcc_no))
       const adm = a && admissionFallsIn(a, m, rangeStart)
-        ? { expected: a.adm.expected, paid: a.adm.paidAmt, due: a.adm.due }
+        ? (cut => ({ expected: a.adm.expected - cut, paid: a.adm.paidAmt, due: a.adm.due - cut }))(a.reg ? writeOffShares(a.reg, a.reg.writtenOff).adm : 0)
         : null
       if (!monthly && !adm) continue
       perStudent.push({
@@ -1808,7 +1809,7 @@ function duesSummaryRows(months) {
     'Collected (₹)': m.collectedTotal,
     'Outstanding (₹)': m.dueTotal,
     'of which Admission Fee (₹)': m.admDueTotal,
-    'Collected %': m.expectedTotal > 0 ? Math.min(100, Math.round((m.collectedTotal / m.expectedTotal) * 100)) : 0,
+    'Collected %': m.expectedTotal > 0 ? (m.dueTotal > 0 ? Math.min(99, Math.floor((m.collectedTotal / m.expectedTotal) * 100)) : 100) : 0,
   }))
 }
 // … and one row per student who still owes for a month (biggest due first).
@@ -2378,7 +2379,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
-            const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
+            const pctRaw   = m.expectedTotal > 0 ? (m.dueTotal > 0 ? Math.min(99, Math.floor((m.collectedTotal / m.expectedTotal) * 100)) : 100) : null
             // Clamp for display: collected can legitimately exceed the
             // "expected" estimate (advances, or a rate mismatch for a
             // student who changed course/hostel mid-year) — showing 101%+
