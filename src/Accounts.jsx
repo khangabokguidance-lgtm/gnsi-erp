@@ -18,6 +18,8 @@ import { printAccountVoucher } from './premiumReceipt'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import FeeIncomeCollection from './FeeIncomeCollection'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
+import ExpenditureControls from './ExpenditureControls'
+import { CONTROL_DEFAULTS, isDigitalMode, validateExpenseRow, natureOf, NATURES } from './lib/expenditureRules'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
 import jsPDF from 'jspdf'
@@ -99,6 +101,8 @@ const emptyRow = {
   is_recurring : false,
   receipt_url  : '',
   status       : 'Confirmed',
+  txn_ref      : '',   // accounting controls: UTR / transaction id for digital payments
+  expense_nature: '',  // accounting controls: Revenue | Capital | Drawings | Advance ('' = automatic)
 }
 
 const DEFAULT_BUDGETS = {
@@ -413,6 +417,11 @@ function Accounts({role,userId}){
 
   // receipt
   const [receiptFile,      setReceiptFile]      = useState(null)
+
+  // ── Accounting controls (migration 20261031). controlsReady=false means the migration has not
+  // been run yet: the screen keeps working exactly as before and simply skips the new columns.
+  const [controls,      setControls]      = useState(CONTROL_DEFAULTS)
+  const [controlsReady, setControlsReady] = useState(false)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [viewReceipt,      setViewReceipt]      = useState(null)
   const [receiptMemoEntry, setReceiptMemoEntry]  = useState(null)
@@ -833,10 +842,17 @@ function Accounts({role,userId}){
     else console.warn('Opening balances not loaded (has the accounts v3 migration been run?):',error.message)
   },[isAdmin])
 
+  const fetchControls = useCallback(async()=>{
+    const {data,error}=await supabase.from('accounting_controls').select('*').eq('id',1).maybeSingle()
+    if(!error&&data){setControls({...CONTROL_DEFAULTS,...data});setControlsReady(true)}
+    else{setControlsReady(false)}   // table missing → feature off, nothing else changes
+  },[])
+
   useEffect(()=>{
+    fetchControls()
     fetchEntries();fetchBudgets();fetchStaff();fetchVendors();fetchApprovalSettings();fetchPendingApprovals();fetchPayers();fetchRecurringTemplates();fetchMonthLocks()
     if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags();fetchExpAuditLog();fetchOpeningBalances()}
-  },[fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchPayers,fetchRecurringTemplates,fetchMonthLocks,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,fetchOpeningBalances,isAdmin])
+  },[fetchControls,fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchPayers,fetchRecurringTemplates,fetchMonthLocks,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,fetchOpeningBalances,isAdmin])
 
   useEffect(()=>{
     fetchIncTargets(today.slice(0,7))
@@ -966,6 +982,7 @@ function Accounts({role,userId}){
       voucher_head:item.voucher_head||'',
       note:item.note||'',is_recurring:!!item.is_recurring,
       receipt_url:item.receipt_url||'',status:item.status||'Confirmed',
+      txn_ref:item.txn_ref||'',expense_nature:item.expense_nature||'',
     }])
     setReceiptFile(null);setShowForm(true);setActiveTab('transactions')
     window.scrollTo({top:0,behavior:'smooth'})
@@ -983,6 +1000,7 @@ function Accounts({role,userId}){
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
       note:item.note||'',is_recurring:false,receipt_url:'',status:'Confirmed',
+      txn_ref:'',expense_nature:item.expense_nature||'',
     }])
     setReceiptFile(null);setShowForm(true);setActiveTab('transactions')
     window.scrollTo({top:0,behavior:'smooth'})
@@ -1046,6 +1064,11 @@ function Accounts({role,userId}){
         alert(`${label}Description is too short — say what the money was spent on (at least 8 characters).`)
         return
       }
+      // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
+      // no generic descriptions. The database enforces the first three for manual entries too.
+      const chk=validateExpenseRow(r,{controls,canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url)})
+      if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
+      if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
       const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
       if(bigAmt&&!window.confirm(`${label}₹${Number(r.amount).toLocaleString('en-IN')} is a large expense.\n\nVoucher Head: ${vh}\nCategory: ${r.category}\nNote: ${r.note.trim()}\n\nConfirm these details are correct?`))return
     }
@@ -1082,6 +1105,7 @@ function Accounts({role,userId}){
         note:r.note,is_recurring:r.is_recurring,status:r.status,
         recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
         receipt_url:receiptUrl,edited_by:enteredByName,edited_at:new Date().toISOString(),
+        ...(controlsReady&&r.type==='Expense'?{txn_ref:(r.txn_ref||'').trim()||null,expense_nature:r.expense_nature||null}:{}),
       }
       const{error}=await supabase.from('accounts').update(payload).eq('id',editEntry.id)
       if(error){
@@ -1147,6 +1171,7 @@ function Accounts({role,userId}){
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:needsApproval?'Pending':r.status,added_by:enteredByName,
         recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
+        ...(controlsReady&&r.type==='Expense'?{txn_ref:(r.txn_ref||'').trim()||null,expense_nature:r.expense_nature||null}:{}),
       }))
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
       if(error){
@@ -1203,8 +1228,14 @@ function Accounts({role,userId}){
     const original=entries.find(e=>e.id===id)
     if(isLinkedEntry(original)){alert(linkedEntryMsg(original));return}
     if(!window.confirm('Delete this transaction?'))return
+    // Accounting controls: a deletion is a void, and a void needs a written reason (ACC-003).
+    let reason=''
+    if(controlsReady&&controls.require_delete_reason){
+      reason=(window.prompt('Reason for deleting this entry (required):','')||'').trim()
+      if(reason.length<4){alert('A reason of at least 4 characters is required to delete an entry.');return}
+    }
     const ok=await mutateAccountsTable(
-      ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id),
+      ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString(),...(controlsReady&&reason?{delete_reason:reason}:{})}).eq('id',id),
       {errorContext:'Delete'}
     )
     if(!ok)return
@@ -1252,6 +1283,11 @@ function Accounts({role,userId}){
       return
     }
     if(!window.confirm(`Delete ${selected.size} selected transaction(s)?`))return
+    let bulkReason=''
+    if(controlsReady&&controls.require_delete_reason){
+      bulkReason=(window.prompt(`Reason for deleting these ${selected.size} entries (required):`,'')||'').trim()
+      if(bulkReason.length<4){alert('A reason of at least 4 characters is required to delete entries.');return}
+    }
     // PHASE 6 FIX: previously no error check per-row — one failed row in the
     // loop would silently continue to the next, and the audit log could end
     // up recording a 'bulk_delete' for a row that was never actually updated
@@ -1260,7 +1296,7 @@ function Accounts({role,userId}){
     const failedIds=[]
     for(const id of[...selected]){
       const original=entries.find(e=>e.id===id)
-      const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
+      const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString(),...(controlsReady&&bulkReason?{delete_reason:bulkReason}:{})}).eq('id',id)
       if(error){
         console.error(`Bulk delete failed for id ${id}:`,error)
         failedIds.push(id)
@@ -3394,6 +3430,19 @@ function Accounts({role,userId}){
                     {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
                   </select>
                 </div>
+                {row.type==='Expense'&&controlsReady&&isDigitalMode(row.payment_mode)&&(
+                  <div><label style={lStyle}>Payment Reference <span style={{fontWeight:400,color:'#8a93a6'}}>(UTR / txn id)</span> <span style={{color:'#dc2626'}}>*</span></label>
+                    <input type="text" placeholder="e.g. 412345678901" value={row.txn_ref||''} onChange={e=>updateRow(i,'txn_ref',e.target.value)} style={iStyle}/>
+                  </div>
+                )}
+                {row.type==='Expense'&&controlsReady&&(
+                  <div><label style={lStyle}>Nature <span style={{fontWeight:400,color:'#8a93a6'}}>(accounting)</span></label>
+                    <select value={row.expense_nature||''} onChange={e=>updateRow(i,'expense_nature',e.target.value)} style={iStyle}>
+                      <option value="">Automatic ({natureOf({category:row.category,note:row.note})})</option>
+                      {NATURES.map(n=><option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#8a93a6'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
@@ -3417,7 +3466,7 @@ function Accounts({role,userId}){
             </div>
           ))}
           <div style={{marginTop:16}}>
-            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>({controls.receipt_required_above!=null&&controls.receipt_required_above!==''&&rows.some(r=>r.type==='Expense'&&Number(r.amount)>Number(controls.receipt_required_above))?`required — expenses above ₹${Number(controls.receipt_required_above).toLocaleString('en-IN')}`:'optional'})</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={async e=>{const f=e.target.files[0]||null;setReceiptFile(f?(await compressImage(f,{maxDim:1800,quality:0.9,targetKB:300})).file:null)}} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
@@ -3454,6 +3503,8 @@ function Accounts({role,userId}){
         {id:'budgets',label:'Budgets',group:'budgets'},
         // Approval queue: admin-only to act on, so only admins see it.
         ...(isAdmin?[{id:'approvals',label:'Approvals',group:'budgets',badge:pendingApprovals.length}]:[]),
+        // Accounting controls: exception report, capital/revenue view, staff advances, vendor bills, rules.
+        ...(canWrite?[{id:'controls',label:'Accounting Controls',group:'audit'}]:[]),
         ...(isAdmin?[{id:'fraud',label:'For Admin',group:'audit',badge:digestItems.length}]:[]),
         // Course-wise fee collection + anomaly detection across the whole ledger.
         ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'audit'}]:[]),
@@ -5038,6 +5089,8 @@ body:has(.ac-bottom){padding-bottom:76px}
 
     {/* ══ TAB: EXPENDITURE APPROVALS (admin only) ══
         Pending queue + "approval list for the day" (everything decided today). ══ */}
+    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} staffList={staffList} controls={controls} controlsReady={controlsReady} reloadControls={fetchControls} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
+
     {activeTab==='approvals'&&isAdmin&&(
       <div>
         <div style={{backgroundColor:'#92400e',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
