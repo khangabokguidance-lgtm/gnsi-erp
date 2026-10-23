@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import {
   CONTROL_DEFAULTS, NATURES, NATURE_HELP, natureOf, isExpense, isLive, isManual,
   runExceptionChecks, vendorLedger, accountingView, advanceNameFromNote, nameMatch, reconcileAdvances,
+  EXPENSE_HEADS, entryCategoryChoices, suggestHead, reasonProblems, isGenericText,
 } from './lib/expenditureRules'
 
 // Accounts → Audit → Accounting Controls
@@ -10,6 +11,7 @@ import {
 //   Accounting view – Revenue / Capital / Drawings / Advance split, and classify entries
 //   Staff advances – checks the cash ledger against the existing Salary → Advances register
 //   Vendor bills   – supplier / contractor bills, linked payments, balance owed
+//   Clean-up       – move old “Other” / vague entries to a real head with a real reason
 //   Rules          – the switches behind the entry form and the database checks
 // Screens that need migration 20261031_expenditure_accounting_controls.sql say so instead of failing.
 
@@ -76,9 +78,9 @@ function EntryTable({ rows, limit = 50 }) {
 }
 
 // ── Health check ────────────────────────────────────────────────────────────
-function Health({ entries, controls, controlsReady, advanceIds }) {
+function Health({ entries, controls, controlsReady, advanceIds, vendorNames }) {
   const [open, setOpen] = useState(null)
-  const checks = useMemo(() => runExceptionChecks(entries, { limit: controls.receipt_required_above ?? null, advanceRegisterIds: advanceIds, hasVoucherNo: controlsReady }), [entries, controls, advanceIds, controlsReady])
+  const checks = useMemo(() => runExceptionChecks(entries, { limit: controls.receipt_required_above ?? null, advanceRegisterIds: advanceIds, hasVoucherNo: controlsReady, vendorNames }), [entries, controls, advanceIds, controlsReady, vendorNames])
   const live = useMemo(() => entries.filter(e => isExpense(e) && isLive(e)), [entries])
   // aggregate findings (batch dates, spelling, concentration) describe the whole ledger, so they are not counted as flagged entries
   const flagged = useMemo(() => new Set(checks.filter(c => !c.aggregate).flatMap(c => c.rows.map(r => r.id))), [checks])
@@ -324,13 +326,89 @@ function Toggle({ d, setD, disabled, k, label, help }) {
   return <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><input type="checkbox" disabled={disabled} checked={!!d[k]} onChange={e => setD({ ...d, [k]: e.target.checked })} style={{ marginTop: 3 }} /><span><b>{label}</b><div style={{ fontSize: 12, color: MUT }}>{help}</div></span></label>
 }
 
+// ── Clean-up ────────────────────────────────────────────────────────────────
+// Old entries typed before the real-head rule: a filler head ("Other", "Paytm Payment") or a reason that says nothing.
+// Each row gets a real head (suggested where the old head is recognisable), an optional sub-head and a real reason.
+function CleanUp({ entries, vendors, canWrite, who, reload, isLocked, onAudit }) {
+  const [filter, setFilter] = useState('all'), [q, setQ] = useState('')
+  const [ed, setEd] = useState({}), [busy, setBusy] = useState(null), [done, setDone] = useState(0)
+  const vname = useMemo(() => new Map((vendors || []).map(v => [String(v.id), v.name])), [vendors])
+  const live = useMemo(() => entries.filter(e => isExpense(e) && isLive(e) && isManual(e)), [entries])
+  const used = useMemo(() => live.map(e => e.category).filter(Boolean), [live])
+  const heads = useMemo(() => entryCategoryChoices(used, []), [used])
+  const probsOf = (e, cat, sub, note) => reasonProblems({ note, category: cat, subCategory: sub, vendorName: vname.get(String(e.vendor_id)) })
+  const todo = useMemo(() => live.filter(e => {
+    const generic = isGenericText(e.category), weak = probsOf(e, e.category, e.sub_category, e.note).length > 0
+    return filter === 'head' ? generic : filter === 'reason' ? weak && !generic : (generic || weak)
+  }).filter(e => !q.trim() || `${e.category} ${e.note} ${e.voucher_head}`.toLowerCase().includes(q.trim().toLowerCase()))
+    .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date))), [live, filter, q, vname]) // eslint-disable-line react-hooks/exhaustive-deps
+  const get = e => ed[e.id] || { cat: isGenericText(e.category) ? (suggestHead(e.category) || '') : e.category, sub: e.sub_category || '', note: e.note || '' }
+  const set = (e, k, v) => setEd(p => ({ ...p, [e.id]: { ...get(e), [k]: v } }))
+  const save = async e => {
+    const v = get(e)
+    if (!v.cat || isGenericText(v.cat)) { alert('Choose a real category for this entry.'); return }
+    const probs = probsOf(e, v.cat, v.sub, v.note)
+    if (probs.length) { alert(`The reason needs ${probs.join('; ')}.`); return }
+    if (isLocked?.(e)) { alert(`${String(e.entry_date).slice(0, 7)} is closed for this account. Reopen the month first.`); return }
+    if (v.cat === e.category && (v.sub || '') === (e.sub_category || '') && v.note === (e.note || '')) { alert('Nothing was changed.'); return }
+    const payload = { category: v.cat, sub_category: v.sub || null, note: v.note.trim(), edited_by: who, edited_at: new Date().toISOString() }
+    setBusy(e.id)
+    const { error } = await supabase.from('accounts').update(payload).eq('id', e.id)
+    setBusy(null)
+    if (error) { alert('Could not save: ' + error.message); return }
+    try { await onAudit?.(e, payload) } catch { /* audit log is best-effort here */ }
+    setDone(n => n + 1); setEd(p => { const n = { ...p }; delete n[e.id]; return n }); reload()
+  }
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ ...card, fontSize: 13, color: MUT }}>
+        Old entries under <b>“Other”</b> or a payment-app name, or with a reason that does not say what was bought, can be fixed here. Pick the real head, check the reason,
+        and save — each fix is recorded in the audit log. {done > 0 && <b style={{ color: '#067647' }}>{done} fixed this session.</b>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {[['all', 'All needing fix'], ['head', 'Generic head'], ['reason', 'Weak reason only']].map(([k, l]) => <button key={k} onClick={() => setFilter(k)} style={{ ...btn(filter === k ? NAVY : '#eef2f9', filter === k ? '#fff' : NAVY), padding: '6px 12px' }}>{l}</button>)}
+        <input style={{ ...inp, maxWidth: 260 }} placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} />
+        <span style={{ fontSize: 12, color: MUT }}>{todo.length} entr{todo.length === 1 ? 'y' : 'ies'}</span>
+      </div>
+      {!todo.length && <div style={{ ...card, color: '#067647', fontWeight: 700 }}>✅ Nothing to clean up.</div>}
+      {todo.slice(0, 100).map(e => {
+        const v = get(e), probs = probsOf(e, v.cat, v.sub, v.note), subs = EXPENSE_HEADS[v.cat] || []
+        return (
+          <div key={e.id} style={card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13 }}>
+              <span><b>{String(e.entry_date).slice(0, 10)}</b> · {fmt(e.amount)} · {e.voucher_head || '—'}{vname.get(String(e.vendor_id)) ? ` · paid to ${vname.get(String(e.vendor_id))}` : ''}</span>
+              <span style={{ color: MUT }}>was: <b>{e.category}</b>{e.sub_category ? ` / ${e.sub_category}` : ''} — “{e.note}”</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 8, marginTop: 8 }}>
+              <label style={{ fontSize: 12, color: MUT }}>Real category
+                <select style={inp} value={v.cat} onChange={ev => { set(e, 'cat', ev.target.value) }} disabled={!canWrite}>
+                  <option value="">Choose…</option>{heads.map(h => <option key={h}>{h}</option>)}</select></label>
+              <label style={{ fontSize: 12, color: MUT }}>Sub-category
+                <select style={inp} value={v.sub} onChange={ev => set(e, 'sub', ev.target.value)} disabled={!canWrite || !v.cat}>
+                  <option value="">{subs.length ? 'Choose…' : '—'}</option>{subs.map(x => <option key={x}>{x}</option>)}{v.sub && !subs.includes(v.sub) && <option>{v.sub}</option>}</select></label>
+              <label style={{ fontSize: 12, color: MUT, gridColumn: 'span 2' }}>Real reason — what was bought / paid for, and for whom
+                <input style={inp} value={v.note} onChange={ev => set(e, 'note', ev.target.value)} disabled={!canWrite} /></label>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              {canWrite && <button style={btn()} disabled={busy === e.id} onClick={() => save(e)}>Save fix</button>}
+              <span style={{ fontSize: 12, color: probs.length || !v.cat ? '#b54708' : '#067647' }}>{!v.cat ? 'Choose a category.' : probs.length ? `Reason needs: ${probs.join('; ')}.` : '✓ Ready to save'}</span>
+            </div>
+          </div>)
+      })}
+      {todo.length > 100 && <div style={{ fontSize: 12, color: MUT }}>Showing the latest 100 of {todo.length}. Fix some and the next ones appear.</div>}
+    </div>
+  )
+}
+
 // ── Rules ───────────────────────────────────────────────────────────────────
-function Rules({ controls, controlsReady, isAdmin, who, onSaved }) {
+function Rules({ controls, controlsCols, controlsReady, isAdmin, who, onSaved }) {
   const [d, setD] = useState(controls), [busy, setBusy] = useState(false)
   if (!controlsReady) return <NeedsMigration />
+  const hasReal = (controlsCols || []).includes('block_generic_category')   // migration 20261033 run?
   const save = async () => {
     setBusy(true)
-    const { error } = await supabase.from('accounting_controls').update({ ...d, receipt_required_above: d.receipt_required_above === '' || d.receipt_required_above == null ? null : Number(d.receipt_required_above), updated_by: who, updated_at: new Date().toISOString() }).eq('id', 1)
+    const cols = controlsCols?.length ? controlsCols : Object.keys(d)
+    const { error } = await supabase.from('accounting_controls').update({ ...Object.fromEntries(Object.entries(d).filter(([k]) => cols.includes(k))), receipt_required_above: d.receipt_required_above === '' || d.receipt_required_above == null ? null : Number(d.receipt_required_above), ...(cols.includes('min_reason_length') ? { min_reason_length: Math.max(5, Number(d.min_reason_length) || 15), min_reason_words: Math.max(1, Number(d.min_reason_words) || 3) } : {}), updated_by: who, updated_at: new Date().toISOString() }).eq('id', 1)
     setBusy(false); if (error) alert('Could not save: ' + error.message); else onSaved()
   }
   return (
@@ -340,7 +418,14 @@ function Rules({ controls, controlsReady, isAdmin, who, onSaved }) {
       <Toggle d={d} setD={setD} disabled={!isAdmin} k="require_txn_ref_for_digital" label="Digital payments need a payment reference" help="UPI / bank / card entries must carry a UTR or transaction id (ACC-002)." />
       <Toggle d={d} setD={setD} disabled={!isAdmin} k="block_digital_in_cash_acct" label="Digital payments cannot go in the Cash A/c" help="Keeps the cash balance real (ACC-001)." />
       <Toggle d={d} setD={setD} disabled={!isAdmin} k="require_delete_reason" label="Deleting an entry needs a reason" help="Every void is explained in the record (ACC-003)." />
-      <Toggle d={d} setD={setD} disabled={!isAdmin} k="generic_description_check" label="Refuse generic descriptions" help="Blocks entries such as “Paytm Payment” with no payee or purpose, on the entry form." />
+      {hasReal ? <>
+        <Toggle d={d} setD={setD} disabled={!isAdmin} k="block_generic_category" label="No “Other” — a real category is required (ACC-004)" help="Refuses a new expense under “Other”, “Misc”, “Paytm Payment”, “Gpay Business” and similar. Pick the head the money was spent on." />
+        <Toggle d={d} setD={setD} disabled={!isAdmin} k="generic_description_check" label="A real reason is required (ACC-005)" help="The reason must say what was bought or paid for: not a filler, not just the category, long enough." />
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <label><b>Minimum characters</b><input type="number" min="5" max="100" style={{ ...inp, width: 100, display: 'block', marginTop: 4 }} disabled={!isAdmin} value={d.min_reason_length ?? 15} onChange={e => setD({ ...d, min_reason_length: e.target.value })} /></label>
+          <label><b>Minimum words</b><input type="number" min="1" max="20" style={{ ...inp, width: 100, display: 'block', marginTop: 4 }} disabled={!isAdmin} value={d.min_reason_words ?? 3} onChange={e => setD({ ...d, min_reason_words: e.target.value })} /></label>
+        </div></>
+      : <div style={{ ...card, borderColor: '#f2c97d', background: '#fffaf0', fontSize: 13 }}>The “no Other / real reason” rules are active on the entry form. To enforce them in the database too and change the limits here, run <code>supabase/migrations/20261033_expenditure_genuine_entry_rules.sql</code>.</div>}
       <Toggle d={d} setD={setD} disabled={!isAdmin} k="enforce_in_database" label="Enforce ACC-001 / 002 / 003 in the database" help="Master switch. When on, the rules also apply to anything that bypasses this screen. Fees, store and Razorpay postings are never affected." />
       {isAdmin ? <div><button style={btn()} disabled={busy} onClick={save}>Save rules</button></div> : <div style={{ fontSize: 12, color: MUT }}>Only an admin can change these rules.</div>}
     </div>
@@ -348,14 +433,15 @@ function Rules({ controls, controlsReady, isAdmin, who, onSaved }) {
 }
 
 // ── Container ───────────────────────────────────────────────────────────────
-export default function ExpenditureControls({ entries, vendors, controls, controlsReady, reloadControls, reload, isAdmin, canWrite, who }) {
+export default function ExpenditureControls({ entries, vendors, controls, controlsCols, controlsReady, reloadControls, reload, isAdmin, canWrite, who, isLocked, onAudit }) {
   const [sub, setSub] = useState('health')
   const [period, setPeriod] = useState('90'), [from, setFrom] = useState(''), [to, setTo] = useState('')
   const [advanceIds, setAdvanceIds] = useState(new Set())
   const [lo, hi] = periodRange(period, from, to)
   const inRange = useMemo(() => (entries || []).filter(e => { const d = String(e.entry_date).slice(0, 10); return d >= lo && d <= hi }), [entries, lo, hi])
   const ctl = { ...CONTROL_DEFAULTS, ...(controls || {}) }
-  const TABS = [['health', '🩺 Health check'], ['view', '📊 Accounting view'], ['advances', '👤 Staff advances'], ['bills', '🧾 Vendor bills'], ['rules', '⚙️ Rules']]
+  const vendorNames = useMemo(() => new Map((vendors || []).map(v => [String(v.id), v.name])), [vendors])
+  const TABS = [['health', '🩺 Health check'], ['view', '📊 Accounting view'], ['advances', '👤 Staff advances'], ['bills', '🧾 Vendor bills'], ['cleanup', '🧹 Clean-up'], ['rules', '⚙️ Rules']]
   return (
     <div style={{ padding: '4px 0 24px' }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -369,11 +455,12 @@ export default function ExpenditureControls({ entries, vendors, controls, contro
           {period === 'custom' && <><input type="date" style={{ ...inp, width: 'auto' }} value={from} onChange={e => setFrom(e.target.value)} /><span>to</span><input type="date" style={{ ...inp, width: 'auto' }} value={to} onChange={e => setTo(e.target.value)} /></>}
           <span style={{ fontSize: 12, color: MUT }}>Only confirmed, not-deleted expense entries are checked.</span>
         </div>)}
-      {sub === 'health' && <Health entries={inRange} controls={ctl} controlsReady={controlsReady} advanceIds={advanceIds} />}
+      {sub === 'health' && <Health entries={inRange} controls={ctl} controlsReady={controlsReady} advanceIds={advanceIds} vendorNames={vendorNames} />}
       {sub === 'view' && <View entries={inRange} controlsReady={controlsReady} canWrite={canWrite} reload={reload} />}
       {sub === 'advances' && <Advances entries={entries || []} canWrite={canWrite} onLoaded={setAdvanceIds} />}
       {sub === 'bills' && <Bills entries={entries || []} vendors={vendors} controlsReady={controlsReady} canWrite={canWrite} who={who} reload={reload} />}
-      {sub === 'rules' && <Rules key={JSON.stringify(ctl)} controls={ctl} controlsReady={controlsReady} isAdmin={isAdmin} who={who} onSaved={reloadControls} />}
+      {sub === 'cleanup' && <CleanUp entries={entries || []} vendors={vendors} canWrite={canWrite} who={who} reload={reload} isLocked={isLocked} onAudit={onAudit} />}
+      {sub === 'rules' && <Rules key={JSON.stringify(ctl)} controls={ctl} controlsCols={controlsCols} controlsReady={controlsReady} isAdmin={isAdmin} who={who} onSaved={reloadControls} />}
     </div>
   )
 }

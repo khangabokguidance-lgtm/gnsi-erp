@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   validateExpenseRow, runExceptionChecks, natureOf, isDigitalMode, isGenericCategory,
   categoryKey, vendorLedger, accountingView, advanceNameFromNote, CONTROL_DEFAULTS, nameMatch, reconcileAdvances,
+  isGenericText, isPlaceholderName, reasonProblems, entryCategoryChoices, suggestHead, EXPENSE_HEAD_NAMES,
 } from '../src/lib/expenditureRules.js'
 
 const E = (o) => ({ type: 'Expense', status: 'Confirmed', is_soft_deleted: false, payment_mode: 'Cash', account_type: 'Cash A/c', ...o })
@@ -42,7 +43,7 @@ test('entry rule: receipt required above the limit, not at or below it', () => {
 
 test('entry rule: "Paytm Payment" with no description is refused; a described one is fine', () => {
   const bad = validateExpenseRow({ amount: 277500, payment_mode: 'UPI', account_type: '2026-27 A/c', txn_ref: 'UTR123456', category: 'Paytm Payment', note: 'Paytm Payment' }, { hasReceipt: true })
-  assert.match(bad.errors.join(), /does not say what/)
+  assert.match(bad.errors.join(), /not a real category/); assert.match(bad.errors.join(), /real reason/)
   const ok = validateExpenseRow({ amount: 6000, payment_mode: 'UPI', account_type: '2026-27 A/c', txn_ref: 'UTR123456', category: 'Rice', note: 'Rice 7 bags from Ibosana, bill 214' }, { hasReceipt: true })
   assert.equal(ok.errors.length, 0)
 })
@@ -181,4 +182,87 @@ test('advance matching: titles are ignored and one register row is never used tw
   const l = [E({ id: 1, entry_date: '2026-10-12', note: 'Sir Sunder Salary Advance', amount: 1500 }), E({ id: 2, entry_date: '2026-10-13', note: 'Sunder advance', amount: 1500 })]
   const r = reconcileAdvances(l, [{ id: 9, name: 'Sunder K', amount: 1500, issued_month: '2026-10' }])
   assert.equal(r.matched.size, 1); assert.equal(r.missing.length, 1)
+})
+
+// ── genuine data: real heads, real reasons ─────────────────────────────────
+test('generic text = every word is a filler; one real word makes it specific', () => {
+  for (const g of ['Other', 'other', '21Other', 'Paytm Payment', 'Gpay Business', 'Google Business', 'Cash payment', 'Misc expense', 'NA', '', '  ']) assert.equal(isGenericText(g), true, JSON.stringify(g))
+  for (const s of ['Kitchen item', 'Paytm to Ibosana for rice', 'Saturday Chicken', 'Hair Cutting', 'Rice']) assert.equal(isGenericText(s), false, s)
+})
+
+test('placeholder payees are refused, real names pass', () => {
+  for (const n of ['', 'NA', 'Other', 'cash', 'Shop', 'vendor', 'ab']) assert.equal(isPlaceholderName(n), true, JSON.stringify(n))
+  for (const n of ['Ta Kumar Grocery', 'Sagar Iron Works', 'Ibosana']) assert.equal(isPlaceholderName(n), false, n)
+})
+
+test('reason must be long enough, several words, specific, and add something new', () => {
+  assert.ok(reasonProblems({ note: 'Paytm Payment', category: 'Paytm Payment' }).length >= 2)
+  assert.ok(reasonProblems({ note: 'Machoubi', category: 'Other' }).length >= 2)
+  assert.ok(reasonProblems({ note: 'aaaaaa aaaaaa aaaaaa', category: 'Rice' }).some(p => /placeholder/.test(p)))
+  assert.ok(reasonProblems({ note: 'test test test test', category: 'Rice' }).length >= 1)
+  assert.ok(reasonProblems({ note: 'Rice from Ibosana', category: 'Rice', vendorName: 'Ibosana' }).some(p => /something new/.test(p)))
+  assert.deepEqual(reasonProblems({ note: 'Rice 7 bags (50 kg) for hostel kitchen, bill 214', category: 'Food & Kitchen', subCategory: 'Rice & Grains', vendorName: 'Ibosana' }), [])
+  assert.deepEqual(reasonProblems({ note: 'Sir Manglemba salary advance for medical need', category: 'Salary Advance' }), [])
+})
+
+test('new entry: "Other" is refused even with a good description; a real head passes', () => {
+  const base = { amount: 900, payment_mode: 'Cash', account_type: 'Cash A/c', sub_category: 'Plumbing', note: 'Plumber for hostel tap repair, 2 hours work' }
+  assert.match(validateExpenseRow({ ...base, category: 'Other' }, { hasReceipt: true, vendorName: 'Ranjit Plumber' }).errors.join(), /not a real category/)
+  assert.match(validateExpenseRow({ ...base, category: 'Paytm Payment' }, { hasReceipt: true, vendorName: 'Ranjit Plumber' }).errors.join(), /not a real category/)
+  assert.equal(validateExpenseRow({ ...base, category: 'Maintenance' }, { hasReceipt: true, vendorName: 'Ranjit Plumber' }).errors.length, 0)
+})
+
+test('new entry: vague reason and placeholder payee are refused', () => {
+  const base = { amount: 900, payment_mode: 'Cash', account_type: 'Cash A/c', category: 'Maintenance', sub_category: 'Plumbing' }
+  assert.match(validateExpenseRow({ ...base, note: 'Paytm Payment' }, { hasReceipt: true, vendorName: 'Ranjit' }).errors.join(), /real reason/)
+  assert.match(validateExpenseRow({ ...base, note: 'repair' }, { hasReceipt: true, vendorName: 'Ranjit' }).errors.join(), /real reason/)
+  assert.match(validateExpenseRow({ ...base, note: 'Plumber for hostel tap repair, 2 hours' }, { hasReceipt: true, vendorName: 'NA' }).errors.join(), /not a real payee/)
+  assert.match(validateExpenseRow({ ...base, note: 'Plumber for hostel tap repair, 2 hours', sub_category: 'Other' }, { hasReceipt: true, vendorName: 'Ranjit' }).errors.join(), /sub-category/)
+})
+
+test('editing an old entry only enforces what the person changes', () => {
+  const old = { category: 'Other', sub_category: 'Misc', note: 'Machoubi' }
+  const row = { ...old, amount: 500, payment_mode: 'Cash', account_type: 'Cash A/c' }
+  // attaching a receipt / changing the date leaves category and reason alone: not blocked
+  assert.equal(validateExpenseRow(row, { hasReceipt: true, original: old, vendorName: 'Machoubi' }).errors.length, 0)
+  // but changing the reason to another weak one, or the category to another generic, is
+  assert.match(validateExpenseRow({ ...row, note: 'Machoubi lougi' }, { hasReceipt: true, original: old, vendorName: 'Machoubi' }).errors.join(), /real reason/)
+  assert.match(validateExpenseRow({ ...row, category: 'Others' }, { hasReceipt: true, original: old, vendorName: 'Machoubi' }).errors.join(), /not a real category/)
+})
+
+test('controls can switch the new rules off', () => {
+  const row = { amount: 500, payment_mode: 'Cash', account_type: 'Cash A/c', category: 'Other', sub_category: 'Plumbing', note: 'Paytm Payment' }
+  const r = validateExpenseRow(row, { hasReceipt: true, vendorName: 'Ranjit', controls: { block_generic_category: false, generic_description_check: false } })
+  assert.equal(r.errors.length, 0)
+})
+
+test('category choices: real heads first, no "Other" or bank-app names, no spelling variants', () => {
+  const used = ['Other', 'Paytm Payment', 'Gpay Business', '21Other', 'Kitchen gi', 'Saturday Chicken', 'Salary', 'Ranbir Shop Items', 'Ranbir Shop Items']
+  const c = entryCategoryChoices(used, ['Sports Kit', 'Misc'])
+  assert.deepEqual(c.slice(0, EXPENSE_HEAD_NAMES.length), EXPENSE_HEAD_NAMES)
+  assert.deepEqual(c.slice(EXPENSE_HEAD_NAMES.length), ['Ranbir Shop Items', 'Sports Kit'])
+  assert.equal(c.includes('Other'), false); assert.equal(c.includes('Paytm Payment'), false); assert.equal(c.includes('Kitchen gi'), false)
+  assert.equal(c.includes('Salary Advance'), true)
+})
+
+test('old heads are mapped to a real head when cleaning up', () => {
+  assert.equal(suggestHead('Saturday Chicken'), 'Food & Kitchen')
+  assert.equal(suggestHead('Kitchen gi'), 'Food & Kitchen')
+  assert.equal(suggestHead('salary Advance'), 'Salary Advance')
+  assert.equal(suggestHead('Hospital'), 'Medical')
+  assert.equal(suggestHead('Paytm Payment'), null)
+})
+
+test('exception report: legacy generic heads and weak reasons are listed for clean-up', () => {
+  const E2 = o => ({ type: 'Expense', status: 'Confirmed', is_soft_deleted: false, payment_mode: 'Cash', account_type: 'Cash A/c', voucher_head: 'A', receipt_url: 'x', entry_date: '2026-10-01', amount: 500, ...o })
+  const rows = [
+    E2({ id: 1, category: 'Other', note: 'Sir Heman marup ki wedding gift cash' }),     // generic head, decent note -> E16
+    E2({ id: 2, category: 'Paytm Payment', note: 'Paytm Payment' }),                     // E1 (not repeated in E16)
+    E2({ id: 3, category: 'Kitchen item', note: 'Machoubi' }),                           // weak reason -> E17
+    E2({ id: 4, category: 'Maintenance', note: 'Plumber visit for hostel tap repair' }), // fine
+  ]
+  const by = Object.fromEntries(runExceptionChecks(rows).map(c => [c.code, c]))
+  assert.deepEqual(by.E1.rows.map(r => r.id), [2])
+  assert.deepEqual(by.E16.rows.map(r => r.id), [1])
+  assert.deepEqual(by.E17.rows.map(r => r.id), [3])
 })

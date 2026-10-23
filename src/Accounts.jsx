@@ -17,7 +17,7 @@ import { printAccountVoucher } from './premiumReceipt'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import ExpenditureControls from './ExpenditureControls'
-import { CONTROL_DEFAULTS, isDigitalMode, validateExpenseRow, natureOf, NATURES } from './lib/expenditureRules'
+import { CONTROL_DEFAULTS, EXPENSE_HEADS, isDigitalMode, validateExpenseRow, natureOf, NATURES, entryCategoryChoices, reasonProblems, isGenericText, isPlaceholderName, suggestHead, categoryKey } from './lib/expenditureRules'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
 import jsPDF from 'jspdf'
@@ -43,14 +43,7 @@ const RECEIPT_BUCKET     = 'account-receipts'
 // convenience list for the dropdown — a sub-category is free text under the
 // hood (same "type your own" pattern as the existing custom-category
 // feature), so this never blocks an entry, it just seeds sensible options.
-const EXPENSE_SUBCATEGORIES = {
-  Maintenance : ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 'General Repair'],
-  Transport   : ['Fuel', 'Vehicle Repair', 'Bus Hire', 'Driver Payment'],
-  Electricity : ['Main Building', 'Hostel', 'Generator/Diesel'],
-  Stationery  : ['Office Supplies', 'Printing', 'Books & Study Material'],
-  Event       : ['Decoration', 'Refreshment', 'Prizes & Certificates', 'Guest Honorarium'],
-  Salary      : ['Teaching Staff', 'Non-Teaching Staff', 'Bonus/Incentive'],
-}
+const EXPENSE_SUBCATEGORIES = EXPENSE_HEADS   // real heads and their sub-heads (lib/expenditureRules.js) — a superset of the old built-in lists
 
 // ── Expenditure v2: approval workflow defaults ──────────────────────────
 // Mirrors expenditure_approval_settings in the DB migration — used as a
@@ -420,6 +413,7 @@ function Accounts({role,userId}){
   // been run yet: the screen keeps working exactly as before and simply skips the new columns.
   const [controls,      setControls]      = useState(CONTROL_DEFAULTS)
   const [controlsReady, setControlsReady] = useState(false)
+  const [controlsCols,  setControlsCols]  = useState([])   // columns the accounting_controls row actually has (later migrations add more)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [viewReceipt,      setViewReceipt]      = useState(null)
   const [receiptMemoEntry, setReceiptMemoEntry]  = useState(null)
@@ -453,6 +447,10 @@ function Accounts({role,userId}){
     const deduped = [...new Set(merged)].sort((a,b)=>a.localeCompare(b))
     return [...deduped,'Other']
   },[customExpCats,entries])
+
+  // The category list on the entry form: real heads only. "Other" / "Paytm Payment" style heads and spelling
+  // variants of a real head are left out (they stay visible in the filters so old entries can still be found).
+  const entryCategoryOptions = useMemo(()=>entryCategoryChoices(entries.filter(e=>e.type==='Expense'&&e.category).map(e=>e.category),customExpCats),[entries,customExpCats])
 
   // ── All-expense category summary (built straight off actual entries) ────
   // Every distinct expense category ever used, with total spent, entry
@@ -823,7 +821,7 @@ function Accounts({role,userId}){
 
   const fetchControls = useCallback(async()=>{
     const {data,error}=await supabase.from('accounting_controls').select('*').eq('id',1).maybeSingle()
-    if(!error&&data){setControls({...CONTROL_DEFAULTS,...data});setControlsReady(true)}
+    if(!error&&data){setControls({...CONTROL_DEFAULTS,...data});setControlsCols(Object.keys(data));setControlsReady(true)}
     else{setControlsReady(false)}   // table missing → feature off, nothing else changes
   },[])
 
@@ -1041,7 +1039,8 @@ function Accounts({role,userId}){
       }
       // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
       // no generic descriptions. The database enforces the first three for manual entries too.
-      const chk=validateExpenseRow(r,{controls,canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url)})
+      const vendorName=vendors.find(v=>String(v.id)===String(r.vendor_id))?.name||''
+      const chk=validateExpenseRow(r,{controls,canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
       if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
       if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
       const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
@@ -1337,9 +1336,12 @@ function Accounts({role,userId}){
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
 
   const addCustomExpenseCategory=(i)=>{
-    const name=window.prompt('New expense category name:')?.trim()
+    const name=window.prompt('New expense category — name what the money is spent on (e.g. "Hostel Furniture"). "Other", "Misc" or a payment app name is not accepted:')?.trim()
     if(!name)return
-    const existing=expenseCategoryOptions.find(c=>c.toLowerCase()===name.toLowerCase())
+    if(name.length<3||isGenericText(name)){alert(`"${name}" does not say what the money is spent on. Choose one of the listed categories, or give a specific name.`);return}
+    const asHead=suggestHead(name)
+    if(asHead&&categoryKey(asHead)!==categoryKey(name)&&window.confirm(`"${name}" is covered by the existing category "${asHead}". Use "${asHead}"?`)){updateRow(i,'category',asHead);return}
+    const existing=entryCategoryOptions.find(c=>categoryKey(c)===categoryKey(name))
     if(existing){updateRow(i,'category',existing);return}
     const next=[...customExpCats,name]
     setCustomExpCats(next)
@@ -1366,8 +1368,9 @@ function Accounts({role,userId}){
   },[customSubCats])
 
   const addCustomSubCategory=(i,category)=>{
-    const name=window.prompt(`New sub-category under "${category}":`)?.trim()
+    const name=window.prompt(`New sub-category under "${category}" (be specific — "Other" or "Misc" is not accepted):`)?.trim()
     if(!name)return
+    if(name.length<3||isGenericText(name)){alert(`"${name}" is not specific enough. Name what it is, e.g. "Hand pump parts".`);return}
     const existing=subCategoryOptionsFor(category).find(c=>c.toLowerCase()===name.toLowerCase())
     if(existing){updateRow(i,'sub_category',existing);return}
     const next={...customSubCats,[category]:[...(customSubCats[category]||[]),name]}
@@ -1378,8 +1381,9 @@ function Accounts({role,userId}){
 
   // ── Expenditure v2: vendor/payee ──────────────────────────────────────────
   const addNewVendor=async(i)=>{
-    const name=window.prompt('New vendor/payee name:')?.trim()
+    const name=window.prompt('Name of the person or shop that was paid (a real name — not "Cash", "Shop" or "Other"):')?.trim()
     if(!name)return
+    if(isPlaceholderName(name)){alert(`"${name}" is not a real payee. Enter the actual person or shop name.`);return}
     const existing=vendors.find(v=>v.name?.toLowerCase()===name.toLowerCase())
     if(existing){updateRow(i,'vendor_id',existing.id);return}
     const{data,error}=await supabase.from('vendors').insert({name,created_by:currentStaff?.name||role}).select()
@@ -3267,8 +3271,9 @@ function Accounts({role,userId}){
                     updateRow(i,'category',e.target.value)
                   }} required style={iStyle}>
                     <option value="">Select</option>
-                    {(row.type==='Income'?INCOME_CATEGORIES:expenseCategoryOptions).map(c=><option key={c}>{c}</option>)}
-                    {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
+                    {row.type==='Expense'&&row.category&&!entryCategoryOptions.includes(row.category)&&<option value={row.category}>{row.category}{isGenericText(row.category)?' (old — choose a real category)':''}</option>}
+                    {(row.type==='Income'?INCOME_CATEGORIES:entryCategoryOptions).map(c=><option key={c}>{c}</option>)}
+                    {row.type==='Expense'&&<option value="__add_new__">+ Add a specific category…</option>}
                   </select>
                 </div>
                 {row.type==='Expense'&&(
@@ -3351,7 +3356,17 @@ function Accounts({role,userId}){
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note <span style={{color:'#dc2626'}}>*</span></label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
+                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>{row.type==='Expense'?'Reason — what was bought / paid for, and for whom':'Description / Note'} <span style={{color:'#dc2626'}}>*</span></label>
+                  <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/>
+                  {row.type==='Expense'&&(()=>{
+                    const vn=vendors.find(v=>String(v.id)===String(row.vendor_id))?.name||''
+                    const probs=reasonProblems({note:row.note,category:row.category,subCategory:row.sub_category,vendorName:vn,minLength:controls.min_reason_length,minWords:controls.min_reason_words})
+                    if(!row.note)return <div style={{fontSize:11,color:'#8a93a6',marginTop:4}}>Say what was actually bought or paid for — not just the category or "Paytm payment".</div>
+                    return probs.length
+                      ?<div style={{fontSize:11,color:'#b45309',marginTop:4}}>Needs: {probs.join('; ')}.</div>
+                      :<div style={{fontSize:11,color:'#16a34a',marginTop:4}}>✓ Clear reason</div>
+                  })()}
+                </div>
               </div>
             </div>
           ))}
@@ -4875,7 +4890,7 @@ body:has(.ac-bottom){padding-bottom:76px}
       </div>
     )}
 
-    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} controls={controls} controlsReady={controlsReady} reloadControls={fetchControls} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
+    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} controls={controls} controlsCols={controlsCols} controlsReady={controlsReady} reloadControls={fetchControls} isLocked={e=>isMonthLocked(acctOf(e),e.entry_date)} onAudit={(e,payload)=>writeAuditLog({action:'update',role:currentStaff?.name||role,targetId:e.id,oldValues:e,newValues:payload})} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
 
 
     {/* ══ TAB: PER-STAFF EXPENDITURE DASHBOARD (admin only) ══ */}

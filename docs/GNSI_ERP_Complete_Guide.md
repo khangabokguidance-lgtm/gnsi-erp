@@ -923,7 +923,7 @@ The money book of the institute. Staff enter expenditure here, and everyone can 
 | Forecast | Admin only. Cash flow and where this month is heading. |
 | Staff Spend | Admin only. How much each staff member is entering, and spend alerts. |
 | Budgets | Monthly spending limit for each expense category, compared with actual spending. |
-| Accounting Controls | Exception report (undescribed payments, missing receipts, digital payments booked as cash), Revenue / Capital split, vendor bills and the rules behind the entry form. |
+| Accounting Controls | Exception report (undescribed payments, missing receipts, digital payments booked as cash), Revenue / Capital split, vendor bills, a Clean-up screen to move old "Other" entries to a real head and reason, and the rules behind the entry form. |
 | For Admin | Admin only. One daily digest of everything that needs the Admin's attention. |
 | Audit Monitor | Admin only. Course-wise fee collection and unusual-entry checks. |
 | Activity Log | Admin only. A timeline of every add, edit and delete by every user. |
@@ -935,14 +935,14 @@ The money book of the institute. Staff enter expenditure here, and everyone can 
 
 1. Open Accounts and press the gold "＋ Add Expenditure" button at the top.
 2. Choose the Date. It cannot be in the future.
-3. Choose the Category. Choose a Sub-category if you want (optional).
-4. Choose the Vendor / Payee if you want (optional). You can add a new one from the list.
+3. Choose the Category: the real head the money was spent on (Food & Kitchen, Salary, Maintenance, Construction, Medical…). There is no "Other" — pick the closest real head or add a specific one.
+4. Choose the Sub-category and the Vendor / Payee (the person or shop actually paid). Both are required.
 5. Type the Amount.
-6. Choose the Payment Mode: Cash, Bank, UPI or Card.
+6. Choose the Payment Mode: Cash, Bank, UPI or Card. For UPI / Bank / Card also enter the payment reference (UTR / transaction no.) and use the bank / UPI account, not the Cash A/c.
 7. Choose the Account Type: Cash A/c, 2026-27 A/c or 2025-26 A/c.
 8. Choose the Voucher Head. This is the staff member who takes the money.
-9. Set the Status (Confirmed or Pending) and type a Description / Note. The note is required.
-10. Optional: attach the bill under "Receipt / Attachment" (image or PDF).
+9. Type the Reason: what was bought or paid for, and for whom, e.g. "7 bags rice (50 kg) for hostel kitchen, bill no. 214". "Paytm payment", "Other" or just the category is not accepted; a line under the box tells you what is still missing.
+10. Attach the bill under "Receipt / Attachment" (image or PDF). It is required above the amount set in Accounting Controls → Rules.
 11. Press "✅ Save".
 
 > 💡 Need many entries? Press "+ Add Row" to enter several rows and save them together.
