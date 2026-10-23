@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   validateExpenseRow, runExceptionChecks, natureOf, isDigitalMode, isGenericCategory,
-  categoryKey, vendorLedger, accountingView, advanceNameFromNote, CONTROL_DEFAULTS,
+  categoryKey, vendorLedger, accountingView, advanceNameFromNote, CONTROL_DEFAULTS, nameMatch, reconcileAdvances,
 } from '../src/lib/expenditureRules.js'
 
 const E = (o) => ({ type: 'Expense', status: 'Confirmed', is_soft_deleted: false, payment_mode: 'Cash', account_type: 'Cash A/c', ...o })
@@ -156,4 +156,29 @@ test('advance name is pulled out of the note', () => {
 test('defaults are what the migration ships with', () => {
   assert.equal(CONTROL_DEFAULTS.receipt_required_above, 10000)
   assert.equal(CONTROL_DEFAULTS.enforce_in_database, true)
+})
+
+test('advance matching: same person, amount and month match; others are reported missing', () => {
+  const ledger = [
+    E({ id: 1, entry_date: '2026-10-05', category: 'Salary', note: 'Sir Manglemba Salary Advance', amount: 500 }),
+    E({ id: 2, entry_date: '2026-10-08', category: 'salary Advance', note: 'Johnson Salary Advance', amount: 5000 }),
+    E({ id: 3, entry_date: '2026-10-14', category: 'Salary', note: 'Sir Manglemba Salary Advance', amount: 3000 }),
+    E({ id: 4, entry_date: '2026-10-08', category: 'Salary', note: 'Sir Manglemba Salary Advance', amount: 500 }),
+  ]
+  const register = [
+    { id: 10, name: 'Ningthoujam Manglemba Singh', amount: 500, issued_month: '2026-10' },
+    { id: 11, name: 'Ningthoujam Johnson Singh', amount: 4000, issued_month: '2026-10' },   // wrong amount
+  ]
+  const r = reconcileAdvances(ledger, register)
+  assert.deepEqual([...r.matched], ['1'])                                   // only row 10 exists once
+  assert.deepEqual(r.missing.map(e => e.id).sort(), [2, 3, 4])             // 4 is the second ₹500: the register has one
+})
+
+test('advance matching: titles are ignored and one register row is never used twice', () => {
+  assert.equal(nameMatch('Sir Sunder', 'Khundrakpam Sunder'), true)
+  assert.equal(nameMatch('Sir Sunder', 'Khundrakpam Johny'), false)
+  assert.equal(nameMatch('Sir', 'Sir Arun'), false)                          // a bare title says nothing
+  const l = [E({ id: 1, entry_date: '2026-10-12', note: 'Sir Sunder Salary Advance', amount: 1500 }), E({ id: 2, entry_date: '2026-10-13', note: 'Sunder advance', amount: 1500 })]
+  const r = reconcileAdvances(l, [{ id: 9, name: 'Sunder K', amount: 1500, issued_month: '2026-10' }])
+  assert.equal(r.matched.size, 1); assert.equal(r.missing.length, 1)
 })

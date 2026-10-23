@@ -212,6 +212,26 @@ export function advanceNameFromNote(note) {
   return String(note || '').replace(/salary\s*advance|advance|\(.*?\)|\bfor\b.*$/gi, '').replace(/\s+/g, ' ').trim()
 }
 
+// ── advances: match ledger advance payments to the Salary → Advances register ──
+const TITLES = new Set(['sir', 'madam', 'miss', 'mr', 'mrs', 'ms', 'dr', 'bro', 'ka', 'che', 'endomcha', 'eteima', 'extra'])
+const nameTokens = n => String(n || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(t => t.length >= 3 && !TITLES.has(t))
+export const nameMatch = (a, b) => { const A = nameTokens(a), B = nameTokens(b); return A.some(x => B.some(y => x === y || x.startsWith(y) || y.startsWith(x))) }
+
+/**
+ * ledger: expense entries with natureOf === 'Advance'; register: [{id, name, amount, issued_month}]
+ * An advance is matched when amount, month and person agree; each register row is used once.
+ * → { matched: Set<string ledger id>, missing: entries with no register row }
+ */
+export function reconcileAdvances(ledger, register) {
+  const used = new Set(), matched = new Set(), missing = []
+  ;(ledger || []).forEach(e => {
+    const month = String(e.entry_date).slice(0, 7), who = advanceNameFromNote(e.note)
+    const hit = (register || []).find(r => !used.has(r.id) && Number(r.amount) === Number(e.amount) && String(r.issued_month).slice(0, 7) === month && nameMatch(who, r.name))
+    if (hit) { used.add(hit.id); matched.add(String(e.id)) } else missing.push(e)
+  })
+  return { matched, missing }
+}
+
 // vendor id → { billed, paid, unbilledPaid, outstanding }
 export function vendorLedger(bills, expenses) {
   const out = new Map()

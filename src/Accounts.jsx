@@ -5089,7 +5089,7 @@ body:has(.ac-bottom){padding-bottom:76px}
 
     {/* ══ TAB: EXPENDITURE APPROVALS (admin only) ══
         Pending queue + "approval list for the day" (everything decided today). ══ */}
-    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} staffList={staffList} controls={controls} controlsReady={controlsReady} reloadControls={fetchControls} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
+    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} controls={controls} controlsReady={controlsReady} reloadControls={fetchControls} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
 
     {activeTab==='approvals'&&isAdmin&&(
       <div>

@@ -9,9 +9,9 @@
 --        ACC-001  UPI / Bank / Card / Paytm payments may not sit in the "Cash A/c"
 --        ACC-002  digital payments must carry a payment reference
 --        ACC-003  deleting (voiding) an entry needs a written reason
---   4. Staff advance register + recoveries
---   5. Vendor bills (payables) so each supplier / contractor has a balance
---   6. accounting_controls — one row of switches the admin can change
+--   4. Vendor bills (payables) so each supplier / contractor has a balance
+--      (staff advances are NOT touched: the existing Salary → Advances table is used as is)
+--   5. accounting_controls — one row of switches the admin can change
 --
 -- Automatic postings (fees, store, Razorpay: rows that carry source_type /
 -- source_ref) are never touched by rules 3.
@@ -66,13 +66,13 @@ create policy accounting_controls_write on public.accounting_controls for update
   using (public.qbank_is_admin()) with check (public.qbank_is_admin());
 
 -- ── 3. voucher numbering ────────────────────────────────────────────────────
-create table if not exists public.voucher_counters (
+create table if not exists public.accounts_voucher_counters (
   fy      text    not null,
   kind    text    not null,
   last_no integer not null default 0,
   primary key (fy, kind)
 );
-alter table public.voucher_counters enable row level security;  -- no policies: only the trigger (definer) touches it
+alter table public.accounts_voucher_counters enable row level security;  -- no policies: only the trigger (definer) touches it
 
 -- Indian financial year label for a date: 2026-04-01 .. 2027-03-31 → '2026-27'
 create or replace function public.accounts_fy(d date)
@@ -93,8 +93,8 @@ declare v_fy text := public.accounts_fy(coalesce(p_date, current_date));
         v_kind text := case when p_type = 'Income' then 'RV' else 'PV' end;
         v_n integer;
 begin
-  insert into public.voucher_counters (fy, kind, last_no) values (v_fy, v_kind, 1)
-  on conflict (fy, kind) do update set last_no = public.voucher_counters.last_no + 1
+  insert into public.accounts_voucher_counters (fy, kind, last_no) values (v_fy, v_kind, 1)
+  on conflict (fy, kind) do update set last_no = public.accounts_voucher_counters.last_no + 1
   returning last_no into v_n;
   return v_kind || '/' || v_fy || '/' || lpad(v_n::text, 4, '0');
 end $$;
@@ -180,41 +180,25 @@ end $$;
 revoke all on function public.backfill_voucher_numbers() from public;
 grant execute on function public.backfill_voucher_numbers() to authenticated;
 
--- ── 5. staff advance register ───────────────────────────────────────────────
-create table if not exists public.staff_advances (
-  id          bigserial primary key,
-  staff_name  text    not null,
-  advance_date date   not null default current_date,
-  amount      numeric not null check (amount > 0),
-  purpose     text,
-  account_id  text,                         -- id of the expense entry that paid it out (optional; text so any id type works)
-  status      text    not null default 'Open' check (status in ('Open', 'Settled', 'Written off')),
-  created_by  text,
-  created_at  timestamptz not null default now()
-);
-create table if not exists public.staff_advance_recoveries (
-  id           bigserial primary key,
-  advance_id   bigint  not null references public.staff_advances(id) on delete cascade,
-  recovery_date date   not null default current_date,
-  amount       numeric not null check (amount > 0),
-  method       text    not null default 'Salary deduction',   -- Salary deduction | Cash returned | Adjusted
-  note         text,
-  created_by   text,
-  created_at   timestamptz not null default now()
-);
-create index if not exists staff_advances_name_idx on public.staff_advances (lower(staff_name));
-create index if not exists staff_advance_recoveries_adv_idx on public.staff_advance_recoveries (advance_id);
-
-create or replace view public.staff_advance_balances with (security_invoker = true) as
-select a.id, a.staff_name, a.advance_date, a.amount, a.purpose, a.status, a.account_id,
-       coalesce(sum(r.amount), 0)              as recovered,
-       a.amount - coalesce(sum(r.amount), 0)   as balance
-from public.staff_advances a
-left join public.staff_advance_recoveries r on r.advance_id = a.id
-group by a.id;
+-- ── 5. staff advances ───────────────────────────────────────────────────────
+-- The ERP already has public.staff_advances (Salary → Advances: staff_id, amount, repaid_amount,
+-- status, EMI deductions in payroll). This migration deliberately does NOT create or alter it; the
+-- Accounting Controls screen reconciles the cash ledger against that table.
+-- Tidy-up: an earlier draft of this file could leave an unused, empty helper table behind.
+do $$
+begin
+  if to_regclass('public.staff_advance_recoveries') is not null then
+    if not exists (select 1 from public.staff_advance_recoveries) then
+      drop table public.staff_advance_recoveries;
+    else
+      raise notice 'public.staff_advance_recoveries has rows - left in place.';
+    end if;
+  end if;
+end $$;
+drop view if exists public.staff_advance_balances;
 
 -- ── 6. vendor bills (payables) ──────────────────────────────────────────────
-create table if not exists public.vendor_bills (
+create table if not exists public.accounts_vendor_bills (
   id          bigserial primary key,
   vendor_id   bigint  not null,
   bill_no     text,
@@ -228,12 +212,12 @@ create table if not exists public.vendor_bills (
   created_by  text,
   created_at  timestamptz not null default now()
 );
-create index if not exists vendor_bills_vendor_idx on public.vendor_bills (vendor_id);
+create index if not exists accounts_vendor_bills_vendor_idx on public.accounts_vendor_bills (vendor_id);
 
 -- bill balance = bill amount − confirmed, not-deleted expense payments linked to it
-create or replace view public.vendor_bill_balances with (security_invoker = true) as
+create or replace view public.accounts_vendor_bill_balances with (security_invoker = true) as
 select b.*, coalesce(p.paid, 0) as paid, b.amount - coalesce(p.paid, 0) as balance
-from public.vendor_bills b
+from public.accounts_vendor_bills b
 left join (
   select bill_id, sum(amount) as paid from public.accounts
   where bill_id is not null and coalesce(is_soft_deleted, false) = false
@@ -245,7 +229,7 @@ left join (
 do $$
 declare t text;
 begin
-  foreach t in array array['staff_advances', 'staff_advance_recoveries', 'vendor_bills'] loop
+  foreach t in array array['accounts_vendor_bills'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_read', t);
     execute format('drop policy if exists %I on public.%I', t || '_insert', t);

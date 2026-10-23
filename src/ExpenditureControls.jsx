@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import {
   CONTROL_DEFAULTS, NATURES, NATURE_HELP, natureOf, isExpense, isLive, isManual,
-  runExceptionChecks, vendorLedger, accountingView, advanceNameFromNote,
+  runExceptionChecks, vendorLedger, accountingView, advanceNameFromNote, nameMatch, reconcileAdvances,
 } from './lib/expenditureRules'
 
 // Accounts → Audit → Accounting Controls
 //   Health check   – exception report over the expense ledger (works without any database change)
 //   Accounting view – Revenue / Capital / Drawings / Advance split, and classify entries
-//   Staff advances – register + recoveries, import from the ledger
+//   Staff advances – checks the cash ledger against the existing Salary → Advances register
 //   Vendor bills   – supplier / contractor bills, linked payments, balance owed
 //   Rules          – the switches behind the entry form and the database checks
 // Screens that need migration 20261031_expenditure_accounting_controls.sql say so instead of failing.
@@ -168,94 +168,80 @@ function View({ entries, controlsReady, canWrite, reload }) {
 }
 
 // ── Staff advances ──────────────────────────────────────────────────────────
-function Advances({ entries, staffList, controlsReady, canWrite, isAdmin, who, onLoaded }) {
-  const [rows, setRows] = useState([]), [err, setErr] = useState(''), [busy, setBusy] = useState(false)
-  const [form, setForm] = useState({ staff_name: '', advance_date: today(), amount: '', purpose: '' })
-  const [rec, setRec] = useState({}), [picked, setPicked] = useState({}), [names, setNames] = useState({})
-  const [tick, setTick] = useState(0)
+// The register itself is Salary → Advances (public.staff_advances: payroll deducts it in instalments).
+// This screen does not duplicate it: it shows the register and checks the CASH LEDGER against it, so an
+// advance paid out of the till that was never put into Salary (and so will never be recovered) is caught.
+function Advances({ entries, canWrite, onLoaded }) {
+  const [reg, setReg] = useState([]), [staff, setStaff] = useState([]), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [tick, setTick] = useState(0)
+  const [pick, setPick] = useState({}), [months, setMonths] = useState({}), [done, setDone] = useState({})
   const load = () => setTick(t => t + 1)
   useEffect(() => {
-    if (!controlsReady) return
     let dead = false
     ;(async () => {
-      const { data, error } = await supabase.from('staff_advance_balances').select('*').order('advance_date', { ascending: false })
+      const [a, s] = await Promise.all([
+        supabase.from('staff_advances').select('*').order('created_at', { ascending: false }),
+        supabase.from('staff_profiles').select('id,name').order('name'),
+      ])
       if (dead) return
-      if (error) { setErr(error.message); return }
-      setErr(''); setRows(data || [])
-      onLoaded?.(new Set((data || []).map(r => r.account_id).filter(Boolean).map(String)))
+      if (a.error) { setErr(`Could not read Salary advances: ${a.error.message}`); return }
+      setErr(''); setReg(a.data || []); setStaff(s.data || [])
     })()
     return () => { dead = true }
-  }, [controlsReady, onLoaded, tick])
-  const linked = useMemo(() => new Set(rows.map(r => r.account_id).filter(Boolean).map(String)), [rows])
+  }, [tick])
+  const nameOf = useMemo(() => new Map(staff.map(x => [String(x.id), x.name])), [staff])
+  const rows = useMemo(() => reg.map(r => ({ ...r, name: nameOf.get(String(r.staff_id)) || `Staff #${r.staff_id}`, balance: Number(r.amount) - Number(r.repaid_amount || 0) })), [reg, nameOf])
   const candidates = useMemo(() => entries.filter(e => isExpense(e) && isLive(e) && natureOf(e) === 'Advance').sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date))), [entries])
-  const todo = candidates.filter(e => !linked.has(String(e.id)))
-  const byStaff = useMemo(() => { const m = {}; rows.forEach(r => { (m[r.staff_name] ||= []).push(r) }); return Object.entries(m).map(([n, a]) => [n, a, a.reduce((s, x) => s + Number(x.balance), 0)]).sort((a, b) => b[2] - a[2]) }, [rows])
-  const totalOpen = byStaff.reduce((s, x) => s + x[2], 0)
-  if (!controlsReady) return <NeedsMigration />
-  const add = async ev => {
-    ev.preventDefault(); if (!form.staff_name.trim() || !(Number(form.amount) > 0)) { alert('Enter the staff name and an amount.'); return }
-    setBusy(true); const { error } = await supabase.from('staff_advances').insert({ ...form, staff_name: form.staff_name.trim(), amount: Number(form.amount), created_by: who }); setBusy(false)
-    if (error) alert('Could not save: ' + error.message); else { setForm({ staff_name: '', advance_date: today(), amount: '', purpose: '' }); load() }
-  }
-  const recover = async (a, method) => {
-    const amt = Number(rec[a.id]); if (!(amt > 0) || amt > Number(a.balance)) { alert(`Enter an amount up to ${fmt(a.balance)}.`); return }
+  const { matched, missing } = useMemo(() => reconcileAdvances(candidates, rows), [candidates, rows])
+  const key = [...matched].sort().join(',')
+  useEffect(() => { onLoaded?.(matched) }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const byStaff = useMemo(() => { const m = {}; rows.forEach(r => { (m[r.name] ||= []).push(r) }); return Object.entries(m).map(([n, a]) => [n, a, a.reduce((t, x) => t + (x.status === 'Fully Repaid' ? 0 : x.balance), 0)]).sort((a, b) => b[2] - a[2]) }, [rows])
+  const open = byStaff.reduce((t, x) => t + x[2], 0)
+  const suggest = e => staff.find(x => nameMatch(advanceNameFromNote(e.note), x.name))?.id ?? ''
+  const record = async e => {
+    const staff_id = pick[e.id] ?? suggest(e)
+    if (!staff_id) { alert('Choose which staff member this advance was given to.'); return }
+    const amount = Number(e.amount), recovered = Math.min(Number(done[e.id]) || 0, amount)
+    if (!window.confirm(`Record ${fmt(amount)} for ${nameOf.get(String(staff_id))} in Salary → Advances?\n\nPayroll will deduct the remaining ${fmt(amount - recovered)} from future salary${recovered ? '' : ' (nothing marked as already recovered)'}.`)) return
     setBusy(true)
-    const { error } = await supabase.from('staff_advance_recoveries').insert({ advance_id: a.id, amount: amt, method, created_by: who })
-    if (!error && amt === Number(a.balance)) await supabase.from('staff_advances').update({ status: 'Settled' }).eq('id', a.id)
-    setBusy(false); if (error) alert('Could not save: ' + error.message); else { setRec(r => ({ ...r, [a.id]: '' })); load() }
-  }
-  const doImport = async () => {
-    const sel = todo.filter(e => picked[e.id]); if (!sel.length) return
-    setBusy(true)
-    const { error } = await supabase.from('staff_advances').insert(sel.map(e => ({ staff_name: (names[e.id] ?? advanceNameFromNote(e.note)) || 'Unknown', advance_date: String(e.entry_date).slice(0, 10), amount: Number(e.amount), purpose: e.note, account_id: String(e.id), created_by: who })))
-    setBusy(false); if (error) alert('Could not import: ' + error.message); else { setPicked({}); load() }
+    const { error } = await supabase.from('staff_advances').insert([{ staff_id: Number(staff_id), amount, reason: e.note || null, issued_month: String(e.entry_date).slice(0, 7), repay_months: Number(months[e.id]) || 1, repaid_amount: recovered, status: recovered >= amount ? 'Fully Repaid' : 'Active' }])
+    setBusy(false)
+    if (error) alert('Could not record it: ' + error.message); else load()
   }
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {err && <div style={{ ...card, color: '#b42318' }}>{err}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10 }}>
-        <div style={card}><div style={{ fontSize: 12, color: MUT }}>Advances still to recover</div><b style={{ fontSize: 22, color: totalOpen ? '#b54708' : '#067647' }}>{fmt(totalOpen)}</b></div>
-        <div style={card}><div style={{ fontSize: 12, color: MUT }}>Staff with a balance</div><b style={{ fontSize: 22 }}>{byStaff.filter(x => x[2] > 0).length}</b></div>
-        <div style={card}><div style={{ fontSize: 12, color: MUT }}>Ledger advances not in register</div><b style={{ fontSize: 22, color: todo.length ? '#b42318' : '#067647' }}>{todo.length}</b></div>
+      <div style={{ ...card, fontSize: 13, color: MUT }}>
+        The advance register lives in <b>Salary → Advances</b> and payroll recovers it in instalments. This screen checks that every advance paid out in the
+        cash ledger is also in that register — otherwise nobody recovers it.
       </div>
-      {canWrite && todo.length > 0 && (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
+        <div style={card}><div style={{ fontSize: 12, color: MUT }}>Still to recover (register)</div><b style={{ fontSize: 22, color: open ? '#b54708' : '#067647' }}>{fmt(open)}</b></div>
+        <div style={card}><div style={{ fontSize: 12, color: MUT }}>Ledger advances matched</div><b style={{ fontSize: 22, color: '#067647' }}>{matched.size}</b></div>
+        <div style={card}><div style={{ fontSize: 12, color: MUT }}>In ledger, missing from register</div><b style={{ fontSize: 22, color: missing.length ? '#b42318' : '#067647' }}>{missing.length}</b><div style={{ fontSize: 12, color: MUT }}>{fmt(missing.reduce((t, e) => t + Number(e.amount), 0))}</div></div>
+      </div>
+      {missing.length > 0 && (
         <div style={card}>
-          <b>Import advances already in the ledger</b>
-          <div style={{ fontSize: 12, color: MUT, margin: '4px 0 8px' }}>These entries look like salary advances. Check the staff name, tick and import.</div>
-          <div style={{ overflowX: 'auto', maxHeight: 300, overflowY: 'auto' }}><table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead><tr><th style={th} /><th style={th}>Date</th><th style={th}>Description</th><th style={th}>Staff name</th><th style={{ ...th, textAlign: 'right' }}>Amount</th></tr></thead>
-            <tbody>{todo.map(e => <tr key={e.id}><td style={td}><input type="checkbox" checked={!!picked[e.id]} onChange={() => setPicked(p => ({ ...p, [e.id]: !p[e.id] }))} /></td>
-              <td style={td}>{String(e.entry_date).slice(0, 10)}</td><td style={td}>{e.note}</td>
-              <td style={td}><input style={{ ...inp, padding: '4px 6px' }} value={names[e.id] ?? advanceNameFromNote(e.note)} onChange={ev => setNames(n => ({ ...n, [e.id]: ev.target.value }))} /></td>
-              <td style={{ ...td, textAlign: 'right' }}>{fmt(e.amount)}</td></tr>)}</tbody></table></div>
-          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-            <button style={btn('#eef2f9', NAVY)} onClick={() => setPicked(Object.fromEntries(todo.map(e => [e.id, true])))}>Tick all</button>
-            <button style={btn()} disabled={busy} onClick={doImport}>Import ticked ({todo.filter(e => picked[e.id]).length})</button>
-          </div>
+          <b>Advances paid in the ledger but not in Salary → Advances</b>
+          <div style={{ fontSize: 12, color: MUT, margin: '4px 0 8px' }}>Pick the staff member and record each one. If part was already recovered, enter that amount so payroll does not deduct it twice.</div>
+          <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}><table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr><th style={th}>Date</th><th style={th}>Description</th><th style={{ ...th, textAlign: 'right' }}>Amount</th><th style={th}>Staff</th><th style={th}>Already recovered ₹</th><th style={th}>Months</th><th style={th} /></tr></thead>
+            <tbody>{missing.map(e => (
+              <tr key={e.id}><td style={td}>{String(e.entry_date).slice(0, 10)}</td><td style={td}>{e.note}</td><td style={{ ...td, textAlign: 'right' }}>{fmt(e.amount)}</td>
+                <td style={td}><select style={{ ...inp, padding: '4px 6px', minWidth: 150 }} value={pick[e.id] ?? suggest(e)} onChange={ev => setPick(p => ({ ...p, [e.id]: ev.target.value }))} disabled={!canWrite}><option value="">Choose…</option>{staff.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></td>
+                <td style={td}><input type="number" min="0" max={e.amount} style={{ ...inp, width: 90, padding: '4px 6px' }} value={done[e.id] ?? ''} onChange={ev => setDone(d => ({ ...d, [e.id]: ev.target.value }))} disabled={!canWrite} /></td>
+                <td style={td}><input type="number" min="1" max="12" style={{ ...inp, width: 60, padding: '4px 6px' }} value={months[e.id] ?? 1} onChange={ev => setMonths(m => ({ ...m, [e.id]: ev.target.value }))} disabled={!canWrite} /></td>
+                <td style={td}>{canWrite && <button style={{ ...btn(), padding: '4px 10px' }} disabled={busy} onClick={() => record(e)}>Record</button>}</td></tr>))}
+            </tbody></table></div>
         </div>)}
-      {canWrite && (
-        <form onSubmit={add} style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, alignItems: 'end' }}>
-          <label>Staff<input list="adv-staff" style={inp} value={form.staff_name} onChange={e => setForm({ ...form, staff_name: e.target.value })} /><datalist id="adv-staff">{(staffList || []).map(s => <option key={s.id ?? s.name} value={s.name} />)}</datalist></label>
-          <label>Date<input type="date" style={inp} value={form.advance_date} max={today()} onChange={e => setForm({ ...form, advance_date: e.target.value })} /></label>
-          <label>Amount<input type="number" min="1" style={inp} value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
-          <label>Purpose<input style={inp} value={form.purpose} onChange={e => setForm({ ...form, purpose: e.target.value })} /></label>
-          <button style={btn('#16a34a')} disabled={busy}>＋ Record advance</button>
-        </form>)}
       {byStaff.map(([name, adv, bal]) => (
         <div key={name} style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}><b>{name}</b><b style={{ color: bal ? '#b54708' : '#067647' }}>Balance {fmt(bal)}</b></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}><b>{name}</b><b style={{ color: bal ? '#b54708' : '#067647' }}>To recover {fmt(bal)}</b></div>
           <div style={{ overflowX: 'auto' }}><table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 6 }}>
-            <thead><tr><th style={th}>Date</th><th style={th}>Purpose</th><th style={{ ...th, textAlign: 'right' }}>Advance</th><th style={{ ...th, textAlign: 'right' }}>Recovered</th><th style={{ ...th, textAlign: 'right' }}>Balance</th><th style={th}>Recover</th></tr></thead>
-            <tbody>{adv.map(a => <tr key={a.id}><td style={td}>{String(a.advance_date).slice(0, 10)}</td><td style={td}>{a.purpose}</td>
-              <td style={{ ...td, textAlign: 'right' }}>{fmt(a.amount)}</td><td style={{ ...td, textAlign: 'right' }}>{fmt(a.recovered)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{fmt(a.balance)}</td>
-              <td style={td}>{canWrite && Number(a.balance) > 0 && <span style={{ display: 'inline-flex', gap: 4 }}>
-                <input type="number" min="1" placeholder="₹" style={{ ...inp, width: 80, padding: '4px 6px' }} value={rec[a.id] || ''} onChange={e => setRec(r => ({ ...r, [a.id]: e.target.value }))} />
-                <button style={{ ...btn(), padding: '4px 8px' }} disabled={busy} onClick={() => recover(a, 'Salary deduction')} title="Deducted from salary">Salary</button>
-                <button style={{ ...btn('#8a6118'), padding: '4px 8px' }} disabled={busy} onClick={() => recover(a, 'Cash returned')} title="Returned in cash">Cash</button></span>}
-                {Number(a.balance) <= 0 && <span style={{ color: '#067647' }}>Settled</span>}</td></tr>)}</tbody></table></div>
+            <thead><tr><th style={th}>Month</th><th style={th}>Reason</th><th style={{ ...th, textAlign: 'right' }}>Advance</th><th style={{ ...th, textAlign: 'right' }}>Recovered</th><th style={{ ...th, textAlign: 'right' }}>Balance</th><th style={th}>Status</th></tr></thead>
+            <tbody>{adv.map(a => <tr key={a.id}><td style={td}>{String(a.issued_month).slice(0, 7)}</td><td style={td}>{a.reason}</td>
+              <td style={{ ...td, textAlign: 'right' }}>{fmt(a.amount)}</td><td style={{ ...td, textAlign: 'right' }}>{fmt(a.repaid_amount)}</td><td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{fmt(a.balance)}</td><td style={td}>{a.status}</td></tr>)}</tbody></table></div>
         </div>))}
-      {!byStaff.length && <div style={{ ...card, color: MUT }}>No advances recorded yet.</div>}
-      {!isAdmin && <div style={{ fontSize: 12, color: MUT }}>Only an admin can delete register entries.</div>}
+      {!byStaff.length && !err && <div style={{ ...card, color: MUT }}>No advances in Salary → Advances yet.</div>}
     </div>
   )
 }
@@ -272,7 +258,7 @@ function Bills({ entries, vendors, controlsReady, canWrite, who, reload }) {
     if (!controlsReady) return
     let dead = false
     ;(async () => {
-      const { data, error } = await supabase.from('vendor_bill_balances').select('*').order('bill_date', { ascending: false })
+      const { data, error } = await supabase.from('accounts_vendor_bill_balances').select('*').order('bill_date', { ascending: false })
       if (dead) return
       if (error) setErr(error.message); else { setErr(''); setBills(data || []) }
     })()
@@ -283,7 +269,7 @@ function Bills({ entries, vendors, controlsReady, canWrite, who, reload }) {
   if (!controlsReady) return <NeedsMigration />
   const add = async ev => {
     ev.preventDefault(); if (!f.vendor_id || !(Number(f.amount) > 0)) { alert('Choose the vendor and enter the bill amount.'); return }
-    setBusy(true); const { error } = await supabase.from('vendor_bills').insert({ ...f, vendor_id: Number(f.vendor_id), amount: Number(f.amount), due_date: f.due_date || null, created_by: who }); setBusy(false)
+    setBusy(true); const { error } = await supabase.from('accounts_vendor_bills').insert({ ...f, vendor_id: Number(f.vendor_id), amount: Number(f.amount), due_date: f.due_date || null, created_by: who }); setBusy(false)
     if (error) alert('Could not save: ' + error.message); else { setF({ ...f, bill_no: '', amount: '', description: '' }); load() }
   }
   const attach = async (b) => {
@@ -291,7 +277,7 @@ function Bills({ entries, vendors, controlsReady, canWrite, who, reload }) {
     setBusy(true); const { error } = await supabase.from('accounts').update({ bill_id: b.id }).eq('id', id); setBusy(false)
     if (error) alert('Could not link: ' + error.message); else { setLink(l => ({ ...l, [b.id]: '' })); load(); reload() }
   }
-  const cancel = async b => { if (!window.confirm('Cancel this bill?')) return; const { error } = await supabase.from('vendor_bills').update({ status: 'Cancelled' }).eq('id', b.id); if (error) alert(error.message); else load() }
+  const cancel = async b => { if (!window.confirm('Cancel this bill?')) return; const { error } = await supabase.from('accounts_vendor_bills').update({ status: 'Cancelled' }).eq('id', b.id); if (error) alert(error.message); else load() }
   const rows = [...ledger.entries()].map(([id, v]) => ({ id, name: vname.get(id) || `Vendor ${id}`, ...v })).filter(v => v.bills || v.paid).sort((a, b) => b.outstanding - a.outstanding || b.paid - a.paid)
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -362,7 +348,7 @@ function Rules({ controls, controlsReady, isAdmin, who, onSaved }) {
 }
 
 // ── Container ───────────────────────────────────────────────────────────────
-export default function ExpenditureControls({ entries, vendors, staffList, controls, controlsReady, reloadControls, reload, isAdmin, canWrite, who }) {
+export default function ExpenditureControls({ entries, vendors, controls, controlsReady, reloadControls, reload, isAdmin, canWrite, who }) {
   const [sub, setSub] = useState('health')
   const [period, setPeriod] = useState('90'), [from, setFrom] = useState(''), [to, setTo] = useState('')
   const [advanceIds, setAdvanceIds] = useState(new Set())
@@ -385,7 +371,7 @@ export default function ExpenditureControls({ entries, vendors, staffList, contr
         </div>)}
       {sub === 'health' && <Health entries={inRange} controls={ctl} controlsReady={controlsReady} advanceIds={advanceIds} />}
       {sub === 'view' && <View entries={inRange} controlsReady={controlsReady} canWrite={canWrite} reload={reload} />}
-      {sub === 'advances' && <Advances entries={entries || []} staffList={staffList} controlsReady={controlsReady} canWrite={canWrite} isAdmin={isAdmin} who={who} onLoaded={setAdvanceIds} />}
+      {sub === 'advances' && <Advances entries={entries || []} canWrite={canWrite} onLoaded={setAdvanceIds} />}
       {sub === 'bills' && <Bills entries={entries || []} vendors={vendors} controlsReady={controlsReady} canWrite={canWrite} who={who} reload={reload} />}
       {sub === 'rules' && <Rules key={JSON.stringify(ctl)} controls={ctl} controlsReady={controlsReady} isAdmin={isAdmin} who={who} onSaved={reloadControls} />}
     </div>
