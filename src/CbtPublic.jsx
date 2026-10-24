@@ -146,10 +146,12 @@ export default function CbtPublic() {
             <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
             <label><span className="lbl">GCC no. *</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="your GCC number" value={form.gcc} onChange={type('gcc')} /></label>
             {stu && !stu.none && <label><span className="lbl">Full name</span><input className="in" readOnly value={stu.name} style={{ fontWeight: 700, background: '#f1faf3' }} /></label>}
+            {stu && !stu.none && <label><span className="lbl">Class / batch</span><input className="in" readOnly value={stu.className || '—'} style={{ background: '#f1faf3' }} /></label>}
+            {stu && !stu.none && <label><span className="lbl">Father's name</span><input className="in" readOnly value={stu.fatherName || '—'} style={{ background: '#f1faf3' }} /></label>}
             {stu && !stu.none && stu.hasPhone && <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>}
           </div>
           {stu?.none && <p role="alert" style={{ margin: '8px 0', color: '#b42318', fontWeight: 700 }}>No student with this GCC no. was found. Check the number, or ask the office.</p>}
-          {stu && !stu.none && <p style={{ margin: '8px 0', color: '#1a7f37', fontWeight: 700 }}>✓ Found: {stu.name}{stu.className ? ` · ${stu.className}` : ''}</p>}
+          {stu && !stu.none && <p style={{ margin: '8px 0', color: '#1a7f37', fontWeight: 700 }}>✓ Found in the institute records. Is this you? If not, check the GCC no.</p>}
           {stu && !stu.none && stu.hasPhone && <p className="muted" style={{ margin: '4px 0 8px' }}>Type the parent / guardian number given at admission — it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</p>}
           {stu && !stu.none && !stu.hasPhone && <p className="muted" style={{ margin: '4px 0 8px' }}>No parent number is on file for you, so none is needed now. Ask the office to add it.</p>}
           <ul className="muted" style={{ margin: '12px 0', paddingLeft: 18 }}>

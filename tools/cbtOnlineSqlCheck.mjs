@@ -7,7 +7,7 @@ try { ({ PGlite } = await import('@electric-sql/pglite')) } catch { console.erro
 import fs from 'node:fs'
 const db = new PGlite()
 await db.exec(`create role anon; create role authenticated; create function public.qbank_is_staff() returns boolean language sql as $$ select true $$;`)
-await db.exec(`create table public.students (id serial primary key, name text, gcc_no text, status text, batch text, parent_phone text, father_phone text, mother_phone text);
+await db.exec(`create table public.students (id serial primary key, name text, gcc_no text, status text, batch text, parent_phone text, father_phone text, mother_phone text, father_name text);
   insert into public.students (name, gcc_no, status, batch, father_phone) values ('Asha Devi','0042','Active','VI A','9876543210'),('Ashok Singh','43','Active','VI B',null),('Old Ashir','44','Left','VI A','9000000000')`)
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))   // twice: safe to re-run
@@ -136,6 +136,8 @@ console.log('after 31 minutes the submit goes through: marks', okSub.score?.mark
 // ── GCC identity (20261039) ──
 await db.exec(fs.readFileSync('supabase/migrations/20261039_cbt_gcc_identity.sql', 'utf8'))
 await db.exec(fs.readFileSync('supabase/migrations/20261039_cbt_gcc_identity.sql', 'utf8'))
+await db.exec(fs.readFileSync('supabase/migrations/20261040_cbt_lookup_father.sql', 'utf8'))
+await db.exec(`update public.students set father_name = 'L. Tomba Singh' where gcc_no = '0042'`)
 console.log('gcc-identity migration ran twice OK')
 await db.query(`delete from cbt_hits`)
 await db.exec(`insert into public.students (name, gcc_no, status, batch, mother_phone) values ('Bina Laishram','50','Active','VI A','91234-56789')`)
@@ -143,6 +145,7 @@ await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions
 await db.query(`insert into cbt_keys values ('t7', '{"1":"A"}')`)
 console.log('lookup wrong code ->', JSON.stringify(await one(`select cbt_lookup('t7','nope','42')`)))
 console.log('lookup GCC 42 ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','42')`)))
+console.log('lookup returns the father name ->', (await one(`select cbt_lookup('t7','abc','42')`))[0].fatherName)
 console.log('lookup by name no longer works ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','Asha')`)))
 console.log('lookup GCC 44 (left the institute) ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','44')`)))
 console.log('lookup with a wrong number -> verified', (await one(`select cbt_lookup('t7','abc','42','9000000000')`))[0].verified, '| right number -> verified', (await one(`select cbt_lookup('t7','abc','0042','+91 98765-43210')`))[0].verified)
