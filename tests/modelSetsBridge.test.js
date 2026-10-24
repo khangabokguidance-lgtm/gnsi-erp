@@ -108,3 +108,12 @@ test('Import paper reads pages through the portal only for staff who may change 
   await assert.rejects(closed.visionJSON('read', []), { code: 'not_granted' })
   assert.equal(createModelSetsBridge({ client: fakeClient() }).visionJSON, undefined)
 })
+
+test('Translate to Meetei Mayek goes through the portal translator only for staff who may change sets', async () => {
+  const translate = async (texts) => texts.map((t) => `ꯃ ${t}`)
+  const open = createModelSetsBridge({ client: fakeClient(), canWrite: () => true, translate })
+  assert.deepEqual(await open.translateMM(['Section 1']), ['ꯃ Section 1'])
+  const closed = createModelSetsBridge({ client: fakeClient(), canWrite: () => false, translate })
+  await assert.rejects(closed.translateMM(['x']), { code: 'not_granted' })
+  assert.equal(createModelSetsBridge({ client: fakeClient() }).translateMM, undefined)
+})

@@ -13,6 +13,8 @@
 // portal lends it jsPDF, docx and html2canvas so it works offline too.
 // Import paper (PDF or photos → questions) reads each page with Gemini
 // through api/gemini-vision.js.
+// Translate to Meetei Mayek uses mayekTranslate.js (school dictionary first,
+// then Bhashini / Google / Gemini); the page draws the Mayek text in BMEI04.
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { authFetch } from './apiFetch'
@@ -34,6 +36,21 @@ const vision = async (prompt, images) => {
     throw { code, message: body.error || `HTTP ${res.status}` }
   }
   return body.text
+}
+// texts[] (no newlines) → the same number of Manipuri lines, in chunks so each
+// request stays small; a line the engines could not translate comes back as it was
+const TRANSLATE_CHUNK = 60
+const translateMM = async (texts, onProgress) => {
+  const { translate } = await import('./mayekTranslate')
+  const out = []
+  for (let i = 0; i < texts.length; i += TRANSLATE_CHUNK) {
+    const chunk = texts.slice(i, i + TRANSLATE_CHUNK).map((t) => String(t).replace(/\s*\n\s*/g, ' ').trim())
+    const r = await translate(chunk.join('\n'), 'en', 'mni-Mtei', null, { eachLine: true })
+    const lines = String(r.text || '').split('\n')
+    chunk.forEach((t, k) => out.push(lines.length === chunk.length && lines[k]?.trim() ? lines[k].trim() : t))
+    onProgress?.(Math.min(texts.length, i + TRANSLATE_CHUNK), texts.length)
+  }
+  return out
 }
 const saveFile = (filename, blob) => {
   const url = URL.createObjectURL(blob)
@@ -59,6 +76,7 @@ export default function ModelSets({ currentUser, perms }) {
       exportLibs,
       saveFile,
       vision,
+      translate: translateMM,
     })
     window.__gnsiModelSets = bridge
     return () => { if (window.__gnsiModelSets === bridge) delete window.__gnsiModelSets }

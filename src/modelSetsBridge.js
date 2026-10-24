@@ -14,6 +14,8 @@
 //                   so Download PDF / Word works without the CDN
 //   visionJSON(prompt, images) → the text Gemini returns for page images
 //                   (api/gemini-vision.js), used by "Import paper"
+//   translateMM(texts, onProgress) → the same texts in Manipuri (Unicode Meetei
+//                   Mayek), from mayekTranslate.js; the page draws them in BMEI04
 // Anything else resolves null, so the page hides that feature.
 // No import of ./supabase here: the client is passed in, which keeps this
 // testable under `node --test` (tests/modelSetsBridge.test.js).
@@ -39,7 +41,7 @@ export function toBridgeError(error) {
   return { code: 'unavailable', message: msg }
 }
 
-export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff', exportLibs = null, saveFile = null, vision = null }) {
+export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff', exportLibs = null, saveFile = null, vision = null, translate = null }) {
   const listeners = new Set()
   let channel = null
 
@@ -139,6 +141,10 @@ export function createModelSetsBridge({ client, canWrite = () => false, actor = 
     visionJSON: vision ? (prompt, images) => {
       if (!canWrite()) return Promise.reject({ code: 'not_granted', message: 'Your login is not allowed to change model sets.' })
       return vision(prompt, images)
+    } : undefined,
+    translateMM: translate ? (texts, onProgress) => {
+      if (!canWrite()) return Promise.reject({ code: 'not_granted', message: 'Your login is not allowed to change model sets.' })
+      return translate(texts, onProgress)
     } : undefined,
     use: async (name) => (name === 'assets' ? (canWrite() ? assets : null) : caps[name] || null),
   }
