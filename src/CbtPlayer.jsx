@@ -23,6 +23,8 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   const [fs, setFs] = useState(15)
   const [agree, setAgree] = useState(false)
   const [toast, setToast] = useState('')
+  const [drawer, setDrawer] = useState(false)      // phone: the question palette as a bottom sheet
+  const [passOpen, setPassOpen] = useState(true)   // phone: the reading passage can be folded away
   const submitted = useRef(false)
   const lastSwitch = useRef(0)
   const aRef = useRef(a)
@@ -78,7 +80,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   const q = a ? qs.find(x => x.no === a.current) : null
   const sec = q ? test.sections[q.sectionIndex] : null
   const lang = a?.lang || 'en'
-  const open = no => setA(x => go(x, no))
+  const open = no => { setA(x => go(x, no)); setDrawer(false) }
   const next = () => setA(x => go(x, neighbour(test, x.current, 1)))
   const prev = () => setA(x => go(x, neighbour(test, x.current, -1)))
   const choose = key => setA(x => select(go(x, x.current), x.current, key))
@@ -108,7 +110,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   // ── instructions ──
   if (stage === 'instructions' || stage === 'declaration') {
     return shell(<>
-      <div className="cbt-top"><div className="title">{test.name}</div><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div>
+      <div className="cbt-top"><div className="title">{test.name}</div><div className="cbt-tools"><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div></div>
       <div className="cbt-center"><div className="panel">
         {stage === 'instructions' ? <>
           <h3 style={{ textAlign: 'center' }}>Instructions</h3>
@@ -117,8 +119,8 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Sections</p>
-          <table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+          <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
+          <div className="cbt-row">
             <button className="cbt-b" onClick={onClose}>Cancel</button>
             <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => setStage('declaration')}>Next ›</button>
           </div>
@@ -128,7 +130,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
             <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 5, width: 18, height: 18 }} />
             <span>I have read and understood the instructions. I will not use any unfair means, and I understand that leaving this screen during the test is recorded.</span>
           </label>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
+          <div className="cbt-row">
             <button className="cbt-b" onClick={() => setStage('instructions')}>‹ Previous</button>
             <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree} onClick={begin}>I am ready to begin</button>
           </div>
@@ -146,22 +148,24 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   const all = counts(a, qs)
 
   const summaryTable = (
-    <table>
+    <div className="tbl"><table>
       <thead><tr><th>Section</th><th>Questions</th><th>Answered</th><th>Not Answered</th><th>Marked for Review</th><th>Answered &amp; Marked</th><th>Not Visited</th></tr></thead>
       <tbody>{test.sections.map(s => { const c = secCounts(s); return <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length}</td><td>{c.answered}</td><td>{c.notAnswered}</td><td>{c.marked}</td><td>{c.answeredMarked}</td><td>{c.notVisited}</td></tr> })}</tbody>
-    </table>
+    </table></div>
   )
 
   return shell(<>
     {toast && <div className="cbt-toast" role="alert">{toast}</div>}
     <div className="cbt-top">
       <div className="title">{test.name}</div>
-      <div className="cand"><span className="avatar">{(a.candidate.name || '?')[0].toUpperCase()}</span><span>{a.candidate.name}{a.candidate.roll ? <><br /><small>Roll: {a.candidate.roll}</small></> : null}</span></div>
-      <button className="sm" onClick={() => setFs(f => Math.max(12, f - 1))} aria-label="Smaller text">A−</button>
-      <button className="sm" onClick={() => setFs(f => Math.min(24, f + 1))} aria-label="Larger text">A+</button>
-      {mm && <select value={lang} onChange={e => setA(x => ({ ...x, lang: e.target.value }))} aria-label="Language"><option value="en">English</option><option value="mm">ꯃꯤꯇꯩꯂꯣꯟ (Meitei Mayek)</option></select>}
-      <button className="sm" onClick={() => setModal('instructions')}>Instructions</button>
       <span className={`cbt-timer${low ? ' low' : ''}`} aria-label="Time left">⏱ {clock(left)}</span>
+      <div className="cbt-tools">
+        <div className="cand"><span className="avatar">{(a.candidate.name || '?')[0].toUpperCase()}</span><span>{a.candidate.name}{a.candidate.roll ? <><br /><small>Roll: {a.candidate.roll}</small></> : null}</span></div>
+        {mm && <select value={lang} onChange={e => setA(x => ({ ...x, lang: e.target.value }))} aria-label="Language"><option value="en">English</option><option value="mm">ꯃꯤꯇꯩꯂꯣꯟ (Meitei Mayek)</option></select>}
+        <button className="sm" onClick={() => setFs(f => Math.max(12, f - 1))} aria-label="Smaller text">A−</button>
+        <button className="sm" onClick={() => setFs(f => Math.min(24, f + 1))} aria-label="Larger text">A+</button>
+        <button className="sm" onClick={() => setModal('instructions')} aria-label="Instructions"><span className="not-sm">Instructions</span><span className="only-sm">ⓘ Info</span></button>
+      </div>
     </div>
     <div className="cbt-secbar" role="tablist" aria-label="Sections">
       {test.sections.map((s, i) => {
@@ -172,13 +176,17 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
     <div className="cbt-body">
       <div className="cbt-main">
         <div className="cbt-qhead">
-          <span>Question No. {q.no}</span>
+          <span className="cbt-qno">Question No. <i>{q.no}</i><small>of {qs.length}</small></span>
           <span className="cbt-marks">Marks: <span className="p">+{marksOf.correct}</span> · <span className="n">{marksOf.wrong ? `−${marksOf.wrong}` : '0'}</span></span>
+          <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ Palette · {all.answered + all.answeredMarked}/{qs.length}</button>
         </div>
         <div className="cbt-qarea">
-          {q.passage && <div className="cbt-pass"><h5>PASSAGE</h5><div className={lang === 'mm' && q.passageMm ? 'mm' : ''}>{pick(q.passage, q.passageMm, lang)}</div></div>}
+          {q.passage && <div className={`cbt-pass${passOpen ? ' open' : ''}`}>
+            <button className="cbt-passbar" onClick={() => setPassOpen(o => !o)} aria-expanded={passOpen}><span>📖 PASSAGE</span><span>{passOpen ? 'Hide ▴' : 'Read ▾'}</span></button>
+            <h5>PASSAGE</h5><div className={lang === 'mm' && q.passageMm ? 'mm' : ''}>{pick(q.passage, q.passageMm, lang)}</div>
+          </div>}
           <div className="cbt-q">
-            {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-qtext${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`} style={{ fontWeight: 400, background: '#f7f9fd', border: '1px solid #e1e6f0', padding: '8px 12px', borderRadius: 4 }}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
+            {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
             {q.image && <img className="cbt-fig" src={q.image} alt={`Question ${q.no} figure`} draggable={false} />}
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
@@ -191,14 +199,16 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
           </div>
         </div>
         <div className="cbt-act">
-          <button className="cbt-b mark" onClick={markNext}>Mark for Review &amp; Next</button>
-          <button className="cbt-b" onClick={clearIt}>Clear Response</button>
+          <button className="cbt-b mark b-mark" onClick={markNext}>Mark for Review &amp; Next</button>
+          <button className="cbt-b b-clear" onClick={clearIt}>Clear Response</button>
           <span className="sp" />
-          <button className="cbt-b" onClick={prev} disabled={q.no === qs[0].no}>‹ Previous</button>
-          <button className="cbt-b save" onClick={saveNext}>Save &amp; Next</button>
+          <button className="cbt-b b-prev" onClick={prev} disabled={q.no === qs[0].no}>‹ Previous</button>
+          <button className="cbt-b save b-save" onClick={saveNext}>Save &amp; Next</button>
         </div>
       </div>
-      <aside className="cbt-side" aria-label="Question palette">
+      {drawer && <div className="cbt-backdrop open" onClick={() => setDrawer(false)} />}
+      <aside className={`cbt-side${drawer ? ' open' : ''}`} aria-label="Question palette">
+        <div className="cbt-sheet-h"><span>Question palette</span><button onClick={() => setDrawer(false)} aria-label="Close palette">✕</button></div>
         <div className="cbt-legend">
           {LEGEND.map(s => <div key={s}><Swatch s={s} n={all[s]} />{STATUS_LABEL[s]}</div>)}
         </div>
@@ -218,7 +228,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
       <p className="muted" style={{ textAlign: 'center' }}>Time left: <b>{clock(left)}</b></p>
       {summaryTable}
       <p style={{ fontSize: 13, marginTop: 12 }}>Answered and marked questions are counted for marking. Questions not answered carry no marks.</p>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
+      <div className="cbt-row">
         <button className="cbt-b" onClick={() => setModal(null)}>Go back to the exam</button>
         <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => setModal('confirm')}>Submit Test</button>
       </div>
@@ -226,7 +236,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
     {modal === 'confirm' && <div className="cbt-modal"><div className="box" style={{ maxWidth: 460 }}>
       <h3>Submit the test?</h3>
       <p style={{ fontSize: 14, lineHeight: 1.6 }}>You have answered <b>{all.answered + all.answeredMarked}</b> of <b>{qs.length}</b> questions. Once you submit you cannot go back or change any answer.</p>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}>
+      <div className="cbt-row">
         <button className="cbt-b" onClick={() => setModal('summary')}>No</button>
         <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => finish(false)}>Yes, submit</button>
       </div>
@@ -247,11 +257,11 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
     const given = attempt.answers[q.no]
     return filter === 'all' || (filter === 'wrong' && given && q.answer && given !== q.answer) || (filter === 'skipped' && !given) || (filter === 'correct' && given && given === q.answer)
   })
-  const stat = (l, v, c) => <div style={{ background: '#fff', border: '1px solid #e1e6f0', borderRadius: 8, padding: '10px 14px', minWidth: 120 }}><div className="muted">{l}</div><div style={{ fontSize: 22, fontWeight: 800, color: c || '#1b2a4a' }}>{v}</div></div>
+  const stat = (l, v, c) => <div className="cbt-stat"><div className="muted">{l}</div><b style={{ color: c || '#14264a' }}>{v}</b></div>
   return (
     <div className="cbt cbt-exam" style={{ overflow: 'auto' }}>
       <style>{CBT_CSS}</style>
-      <div className="cbt-top"><div className="title">{test.name} — {admin ? 'Result' : 'Test submitted'}</div><button className="sm" onClick={onClose}>{closeLabel}</button></div>
+      <div className="cbt-top"><div className="title">{test.name} — {admin ? 'Result' : 'Test submitted'}</div><div className="cbt-tools"><button className="sm" onClick={onClose}>{closeLabel}</button></div></div>
       <div className="cbt-center" style={{ maxWidth: 940, userSelect: 'text' }}>
         <div className="panel">
           <h3>{attempt.candidate.name}{attempt.candidate.roll ? ` · ${attempt.candidate.roll}` : ''}</h3>
@@ -260,13 +270,13 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
             <p style={{ fontSize: 15, lineHeight: 1.6 }}>Your answers have been recorded. The result will be declared by the institute.</p>
           ) : <>
             {!ks.complete && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>⚠️ The answer key is {ks.set ? `set for ${ks.set} of ${ks.total} questions` : 'not set yet'}, so this score is {ks.set ? 'partial' : 'not available'}. Add the key under CBT Exam → Edit, then open the result again.</p>}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '12px 0' }}>
+            <div className="cbt-stats">
               {stat('Score', ks.set ? `${g.marks} / ${g.max}` : '—', '#146c3a')}
               {stat('Correct', g.correct, '#146c3a')}{stat('Wrong', g.wrong, '#b42318')}{stat('Not answered', g.skipped)}
               {stat('Accuracy', ks.set ? `${g.accuracy}%` : '—')}
             </div>
-            <table><thead><tr><th>Section</th><th className="num">Questions</th><th className="num">Attempted</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Marks</th></tr></thead>
-              <tbody>{g.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td className="num">{s.total}</td><td className="num">{s.attempted}</td><td className="num">{s.correct}</td><td className="num">{s.wrong}</td><td className="num"><b>{s.marks}</b> / {s.max}</td></tr>)}</tbody></table>
+            <div className="tbl"><table><thead><tr><th>Section</th><th className="num">Qs</th><th className="num">Tried</th><th className="num">Right</th><th className="num">Wrong</th><th className="num">Marks</th></tr></thead>
+              <tbody>{g.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td className="num">{s.total}</td><td className="num">{s.attempted}</td><td className="num">{s.correct}</td><td className="num">{s.wrong}</td><td className="num"><b>{s.marks}</b> / {s.max}</td></tr>)}</tbody></table></div>
             {(admin || test.showAnswers !== false) && <>
               <div style={{ display: 'flex', gap: 8, margin: '18px 0 10px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, flex: 1 }}>Answer review</h3>
@@ -276,7 +286,7 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
               {rows.map(q => {
                 const given = attempt.answers[q.no], ok = given && given === q.answer
                 return (
-                  <div key={q.no} className="card" style={{ borderLeft: `4px solid ${!given ? '#94a3b8' : !q.answer ? '#d9b566' : ok ? '#3a9d3a' : '#d9532c'}` }}>
+                  <div key={q.no} className="cbt-review" style={{ borderLeftColor: !given ? '#94a3b8' : !q.answer ? '#d9b566' : ok ? '#3a9d3a' : '#d9532c' }}>
                     <b>Q{q.no}.</b> <span className={`tag`} style={{ background: !given ? '#f1f5f9' : ok ? '#e7f6ec' : '#fde8e6', color: !given ? '#475569' : ok ? '#146c3a' : '#b42318' }}>{!given ? 'Not answered' : !q.answer ? 'No key' : ok ? 'Correct' : 'Wrong'}</span>
                     {q.passage && <div className="muted" style={{ margin: '6px 0' }}>Passage: {pick(q.passage, q.passageMm, lang).slice(0, 160)}…</div>}
                     {q.image && <img className="cbt-fig" style={{ maxHeight: 220, margin: '8px 0' }} src={q.image} alt={`Question ${q.no}`} />}

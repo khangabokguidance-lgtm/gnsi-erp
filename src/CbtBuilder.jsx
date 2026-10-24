@@ -74,23 +74,23 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   return (
     <div>
       <div className="card">
-        <h3>{editing ? 'Edit test' : 'New test from Word papers'}</h3>
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))' }}>
+        <h3><span className="step">1</span>{editing ? 'Edit test' : 'New test from Word papers'}</h3>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
           <label><span className="lbl">Test name</span><input className="in" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. 6th Pre Mock Test — Navodaya" /></label>
           <label><span className="lbl">Duration (minutes)</span><input className="in" type="number" min="1" value={durationMin} onChange={e => setDurationMin(e.target.value)} /></label>
           <label><span className="lbl">Marks for a correct answer</span><input className="in" type="number" step="0.05" min="0" value={correct} onChange={e => setCorrect(e.target.value)} /></label>
           <label><span className="lbl">Marks cut for a wrong answer</span><input className="in" type="number" step="0.05" min="0" value={wrong} onChange={e => setWrong(e.target.value)} /></label>
         </div>
         <p className="muted" style={{ margin: '8px 0 0' }}>Navodaya (JNVST) has no negative marking, so the default is 0. For an SSC-style test use 0.25 or 0.5.</p>
-        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
+        <div style={{ display: 'flex', gap: '8px 18px', flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
           <label><input type="checkbox" checked={showResult} onChange={e => setShowResult(e.target.checked)} /> Show the score to the candidate after submitting</label>
           <label><input type="checkbox" checked={showAnswers} onChange={e => setShowAnswers(e.target.checked)} /> Show the correct answers in the review</label>
         </div>
       </div>
 
       <div className="card">
-        <h3>{editing ? 'Replace the question papers (optional)' : 'Question papers'}</h3>
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))' }}>
+        <h3><span className="step">2</span>{editing ? 'Replace the question papers (optional)' : 'Question papers'}</h3>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,260px),1fr))' }}>
           <label><span className="lbl">English paper (.docx)</span><input className="in" type="file" accept=".docx" ref={en} /></label>
           <label><span className="lbl">Meitei Mayek paper (.docx, optional)</span><input className="in" type="file" accept=".docx" ref={mm} /></label>
         </div>
@@ -101,12 +101,12 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
 
       {sections.length > 0 && (
         <div className="card">
-          <h3>What was found</h3>
+          <h3><span className="step">3</span>What was found</h3>
           <p className="muted">{qs.length} questions in {sections.length} section{sections.length === 1 ? '' : 's'} · {qs.filter(q => q.figure).length} figure questions · {qs.filter(q => q.passage).length} passage-based · Meitei Mayek {mmFound ? `found for ${qs.filter(q => q.textMm || q.figure).length} questions` : 'not added'}</p>
           {warnings.length > 0 && <div style={{ background: '#fff4dc', border: '1px solid #f3d38a', borderRadius: 8, padding: '8px 12px', margin: '8px 0', fontSize: 12.5 }}><b>Check these:</b><ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{warnings.slice(0, 15).map(w => <li key={w}>{w}</li>)}{warnings.length > 15 && <li>…and {warnings.length - 15} more</li>}</ul></div>}
-          <table><thead><tr><th>Section</th><th>Questions</th><th>Directions</th></tr></thead>
-            <tbody>{sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title || '(no title)'}{s.titleMm ? <div className="muted" style={{ fontFamily: "'Noto Sans Meetei Mayek',sans-serif" }}>{s.titleMm}</div> : null}</td><td>Q{s.questions[0].no}–{s.questions.at(-1).no} ({s.questions.length})</td><td className="muted">{s.directions ? `${s.directions.slice(0, 90)}…` : '—'}</td></tr>)}</tbody></table>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th><th>Directions</th></tr></thead>
+            <tbody>{sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title || '(no title)'}{s.titleMm ? <div className="muted" style={{ fontFamily: "'Noto Sans Meetei Mayek',sans-serif" }}>{s.titleMm}</div> : null}</td><td>Q{s.questions[0].no}–{s.questions.at(-1).no} ({s.questions.length})</td><td className="muted">{s.directions ? `${s.directions.slice(0, 90)}…` : '—'}</td></tr>)}</tbody></table></div>
+          <div className="cbt-thumbs" style={{ marginTop: 10 }}>
             {qs.filter(q => q.image).slice(0, 8).map(q => <img key={q.no} src={q.image} alt={`Q${q.no}`} title={`Q${q.no}`} style={{ height: 54, border: '1px solid #e1e6f0', borderRadius: 4 }} />)}
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
 
       {sections.length > 0 && (
         <div className="card">
-          <h3>Answer key <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.set} of {ks.total} set</span></h3>
+          <h3><span className="step">4</span>Answer key <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.set} of {ks.total} set</span></h3>
           <p className="muted">The papers do not carry the answers. Paste the key, or click the answers below. Without a key the test still runs, but scores cannot be worked out.</p>
           <textarea className="in" rows={3} value={keyText} onChange={e => setKeyText(e.target.value)} placeholder={'1-A, 2-C, 3-B …   or the letters in order:   ACBDDA…'} />
           <div style={{ display: 'flex', gap: 8, margin: '8px 0', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -125,11 +125,11 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
           {sections.map(s => (
             <div key={s.id} style={{ marginTop: 10 }}>
               <b style={{ fontSize: 12.5 }}>{s.label ? `${s.label} — ` : ''}{s.title}</b>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 6, marginTop: 6 }}>
+              <div className="cbt-keygrid">
                 {s.questions.map(q => (
-                  <div key={q.no} style={{ display: 'flex', alignItems: 'center', gap: 4, border: '1px solid #e1e6f0', borderRadius: 6, padding: '3px 6px', background: q.answer ? '#f3faf4' : '#fff' }}>
-                    <span style={{ width: 28, fontWeight: 800, fontSize: 12 }}>{q.no}</span>
-                    {['A', 'B', 'C', 'D'].map(k => <button key={k} onClick={() => setAnswer(q.no, k)} aria-label={`Question ${q.no} answer ${k}`} aria-pressed={q.answer === k} style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #c5cde0', background: q.answer === k ? '#1e3a6e' : '#fff', color: q.answer === k ? '#fff' : '#334155', fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>{k}</button>)}
+                  <div key={q.no} className={`cbt-keyrow${q.answer ? ' set' : ''}`}>
+                    <b>{q.no}</b>
+                    {['A', 'B', 'C', 'D'].map(k => <button key={k} onClick={() => setAnswer(q.no, k)} aria-label={`Question ${q.no} answer ${k}`} aria-pressed={q.answer === k}>{k}</button>)}
                   </div>
                 ))}
               </div>
@@ -139,11 +139,11 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
       )}
 
       <div className="card">
-        <h3>Instructions shown to the candidate</h3>
+        <h3><span className="step">5</span>Instructions shown to the candidate</h3>
         <textarea className="in" rows={9} value={instructions} onChange={e => setInstructions(e.target.value)} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="cbt-savebar">
         <button className="btn gold" onClick={save} disabled={!!busy}>💾 {editing ? 'Save changes' : 'Save test'}</button>
         <button className="btn" onClick={onCancel}>Cancel</button>
       </div>

@@ -74,28 +74,30 @@ export default function Cbt({ perms }) {
   const rows = test ? resultRows(test, attempts) : []
 
   return (
-    <div className="cbt" style={{ padding: '18px 20px 40px' }}>
+    <div className="cbt cbt-page">
       <style>{CBT_CSS}</style>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.16em', color: '#9a7b2f' }}>GNSI · EXAMS</div>
-          <h2 style={{ margin: '2px 0', fontFamily: "'Fraunces',Georgia,serif", color: '#0f1f3d' }}>💻 CBT Exam</h2>
-          <div className="muted">Computer based tests in the SSC / TCS style — palette, review marking, timer, English and Meitei Mayek.</div>
-        </div>
-        <div role="tablist" style={{ display: 'flex', gap: 6, background: '#fff', border: '1px solid #e6dcc3', borderRadius: 999, padding: 5 }}>
-          {[['tests', '📝 Tests'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} className={`btn${tab === id ? ' navy' : ''}`} style={{ borderRadius: 999 }} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+      <div className="cbt-hero">
+        <div className="row">
+          <div>
+            <div className="eyebrow">GNSI · EXAMS</div>
+            <h2>💻 CBT Exam</h2>
+            <p>Computer based tests in the SSC / TCS style: colour-coded palette, review marking, countdown timer, English and Meitei Mayek. Works on desktop, tablet and phone.</p>
+          </div>
+          <div className="cbt-tabs" role="tablist">
+            {[['tests', '📝 Tests'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+          </div>
         </div>
       </div>
       {msg && <div role="status" style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{msg}</div>}
 
       {tab === 'tests' && !builder && <>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div className="cbt-actions" style={{ marginBottom: 14 }}>
           {canEdit && <button className="btn gold" onClick={() => setBuilder('new')}>➕ New test from Word papers</button>}
           {canEdit && <label className="btn" style={{ display: 'inline-block' }}>⬆️ Import test file<input type="file" accept=".json,application/json" onChange={importTest} style={{ display: 'none' }} /></label>}
         </div>
         {tests === null && <div className="card muted">Loading…</div>}
         {tests?.length === 0 && <div className="card"><h3>No tests yet</h3><p className="muted">Press “New test from Word papers”, choose the English paper (and the Meitei Mayek paper if you have one), add the answer key and save. Then start it for a candidate.</p></div>}
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))' }}>
+        <div className="grid cbt-tests">
           {tests?.map(t => {
             const ks = keyStatus(t), n = flatQuestions(t).length
             return (
@@ -106,7 +108,7 @@ export default function Cbt({ perms }) {
                   <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.complete ? 'Answer key complete' : `Key ${ks.set}/${ks.total}`}</span>
                   {flatQuestions(t).some(q => q.textMm) && <span className="tag" style={{ background: '#eef2f9', color: '#1e3a6e' }}>English + Meitei Mayek</span>}
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div className="cbt-actions">
                   <button className="btn gold" onClick={() => openStart(t)}>▶ Start exam</button>
                   {canEdit && <button className="btn" onClick={() => setBuilder(t)}>✏️ Edit / key</button>}
                   <button className="btn" onClick={() => { setResTest(t.id); setTab('results') }}>📊 Results</button>
@@ -134,7 +136,7 @@ export default function Cbt({ perms }) {
               <b>{rows.length} attempt{rows.length === 1 ? '' : 's'} · {rows.filter(r => r.submitted).length} submitted</b>
               <button className="btn gold" disabled={!rows.length} onClick={() => download(`${fileSafe(test.name)}-results.csv`, new Blob([resultsCSV(test, attempts)], { type: 'text/csv;charset=utf-8' }))}>📊 Export CSV</button>
             </div>
-            <table>
+            <div className="tbl"><table>
               <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th /></tr></thead>
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={11} className="muted">No attempts yet.</td></tr>}
@@ -151,7 +153,7 @@ export default function Cbt({ perms }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </>}
@@ -167,7 +169,7 @@ export default function Cbt({ perms }) {
             <label><span className="lbl">Candidate name *</span><input className="in" autoFocus value={cand.name} onChange={e => setCand(c => ({ ...c, name: e.target.value }))} /></label>
             <label style={{ display: 'block', marginTop: 8 }}><span className="lbl">Roll / registration no.</span><input className="in" value={cand.roll} onChange={e => setCand(c => ({ ...c, roll: e.target.value }))} /></label>
             <p className="muted">The test opens full screen. Give the computer to the candidate before you press Start.</p>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><button className="btn" onClick={() => setStart(null)}>Cancel</button><button className="btn gold" onClick={launch}>Start ›</button></div>
+            <div className="cbt-row"><button className="btn" onClick={() => setStart(null)}>Cancel</button><button className="btn gold" onClick={launch}>Start ›</button></div>
           </div>
         </div>
       )}
