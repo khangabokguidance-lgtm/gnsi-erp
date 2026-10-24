@@ -31,7 +31,7 @@ function splitOptions(line) {
 
 // lines: [{ text, raw, images }] (or plain strings). mm: parsing the Meitei Mayek paper (its section words are BMEI04).
 // A picture belongs to the question it follows (its own paragraph, or the Q line itself).
-export function parseLines(lines, { mm = false } = {}) {
+export function parseLines(lines, { mm = false, loose = false } = {}) {
   const sections = []
   const warnings = []
   let orphans = 0
@@ -52,13 +52,20 @@ export function parseLines(lines, { mm = false } = {}) {
     titleNext = false
     if (mm ? MM_DIRECTIONS.test(raw) : DIRECTIONS.test(text)) { need().directions = text.replace(mm ? /^\S+\s*\S*\s*:\s*/ : /^Directions?\s*:\s*/i, '').trim() || text; q = null; return }
     const ql = text.match(QLABEL)
-    if (ql && (ql[1] || (ql[2] && Number(ql[2]) === lastNo + 1 && lastNo > 0))) {
+    // A number without "Q" starts a question only when it follows the last one AND the last question is finished
+    // (its four options are in, or a blank line / passage came between) — so "2." inside a question's numbered
+    // statements is not mistaken for question 2. `loose` (used when no "Q12." labels exist at all) also takes "1.".
+    const finished = !q || q.options.length >= 4 || q.done
+    if (ql && (ql[1] || (ql[2] && Number(ql[2]) === lastNo + 1 && finished && (lastNo > 0 || loose)))) {
       const no = Number(ql[2])
       q = { no, text: ql[3].trim(), options: [], passage, done: false, figures: [] }
       need().questions.push(q); lastNo = no
       return
     }
-    if (OPTION.test(text) && q) {
+    // "A." / "B." style options are accepted in order (A first, then B …) so a sentence starting "A. " is not one
+    const dotted = q && text.match(/^([A-D])\.\s+\S/) && text[0] === OPTION_KEYS[q.options.length]
+    if ((OPTION.test(text) || dotted) && q) {
+      if (dotted && !OPTION.test(text)) text = `(${text[0]}) ${text.slice(2).trim()}`
       for (const o of splitOptions(text)) {
         if (q.options.some(x => x.key === o.key)) warnings.push(`Q${q.no}: option (${o.key}) appears twice`)
         q.options.push(o)
@@ -84,8 +91,10 @@ export function parseLines(lines, { mm = false } = {}) {
 
 // English paper (+ optional Meitei Mayek paper) → test sections.
 export function buildTest(enLines, mmLines = null) {
-  const en = parseLines(enLines)
-  const mm = mmLines ? parseLines(mmLines, { mm: true }) : null
+  // A paper numbered "1." "2." with no "Q" is read in loose mode when no "Q12." labels are found at all.
+  const parse = (lines, o = {}) => { const r = parseLines(lines, o); return r.sections.some(x => x.questions.length) ? r : parseLines(lines, { ...o, loose: true }) }
+  const en = parse(enLines)
+  const mm = mmLines ? parse(mmLines, { mm: true }) : null
   const warnings = [...en.warnings]
   const mmByNo = new Map()
   if (mm) {

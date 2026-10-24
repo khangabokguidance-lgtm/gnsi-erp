@@ -40,6 +40,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     const f = en.current?.files?.[0], g = mm.current?.files?.[0]
     if (!f) { setError('Choose the English question paper (.docx) first.'); return }
     for (const x of [f, g].filter(Boolean)) if (!/\.docx$/i.test(x.name)) { setError(`"${x.name}" is not a .docx file. Open it in Word and use Save As → .docx.`); return }
+    if (sections.length && !window.confirm('Reading the papers again replaces the questions below, including any fixes you made here. Answers already keyed are kept by question number. Continue?')) return
     setBusy('Reading the papers…')
     try {
       const [enL, mmL, imgs] = await Promise.all([paragraphsFromDocx(await f.arrayBuffer()), g ? paragraphsFromDocx(await g.arrayBuffer()) : null, imagesFromDocx(await f.arrayBuffer())])

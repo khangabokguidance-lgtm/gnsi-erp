@@ -1,7 +1,14 @@
+import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
+
+// The Meetei Mayek font travels with the app (22 KB), so an exam computer with no internet — a lab PC —
+// still shows the Meitei Mayek letters. unicode-range keeps Latin text on the normal font.
+const MAYEK_FACE = `@font-face{font-family:'GNSI Mayek';src:url(data:font/ttf;base64,${NotoSansMeeteiMayek}) format('truetype');unicode-range:U+AAE0-AAFF,U+ABC0-ABFF;font-display:swap}`
+const MAYEK_STACK = "'GNSI Mayek','Noto Sans Meetei Mayek','Meetei Mayek',sans-serif"
+
 // Styles for the CBT Exam: the admin screens (tests, builder, results) and the candidate's exam screen.
 // Desktop: two panes (question | palette). Phone (≤ 860px): one pane, the palette becomes a bottom sheet,
 // the action buttons sit in a bar at the bottom, tables scroll sideways.
-export const CBT_CSS = `
+export const CBT_CSS = `${MAYEK_FACE}
 .cbt{--navy:#14264a;--navy2:#0b1e3d;--gold:#c9a24b;--gold2:#e2c57e;--ink:#1f2a44;--line:#dde3ef;--soft:#f5f7fc;--ok:#2e8b3d;--bad:#d9532c;--vio:#6a3fa0;
   font-family:'Plus Jakarta Sans','Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;color:var(--ink);-webkit-text-size-adjust:100%}
 .cbt *{box-sizing:border-box}
@@ -60,11 +67,11 @@ export const CBT_CSS = `
 .cbt-figbox{border:1px dashed #b6c4e2;border-radius:10px;padding:10px;margin:8px 0;background:#fff}
 .cbt-figbox img{max-width:100%;max-height:220px;display:block;margin:0 auto 6px;border:1px solid var(--line);border-radius:6px}
 .cbt-twin{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.cbt-twin .mm,.cbt .in.mm{font-family:'Noto Sans Meetei Mayek','Meetei Mayek',sans-serif}
+.cbt-twin .mm,.cbt .in.mm{font-family:${MAYEK_STACK}}
 
 /* ── exam screen ── */
 .cbt-exam{position:fixed;inset:0;z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
-.cbt-exam .mm{font-family:'Noto Sans Meetei Mayek','Meetei Mayek',sans-serif;line-height:1.75}
+.cbt-exam .mm{font-family:${MAYEK_STACK};line-height:1.75}
 .cbt-top{display:flex;align-items:center;gap:12px;padding:10px 18px;color:#fff;flex-wrap:wrap;
   background:linear-gradient(90deg,#0b1e3d,#14264a 55%,#1b3566);border-bottom:3px solid var(--gold)}
 .cbt-top .title{font-weight:800;font-size:15px;flex:1 1 240px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
@@ -101,6 +108,7 @@ export const CBT_CSS = `
 .cbt-opt:hover{background:#f5f8ff;border-color:#b6c4e2}
 .cbt-opt.on{border-color:var(--navy);background:#e9effb;box-shadow:0 0 0 1px var(--navy) inset}
 .cbt-opt input{position:absolute;opacity:0;pointer-events:none}
+.cbt-opt:focus-within{outline:3px solid #f2b705;outline-offset:1px}
 .cbt-opt b{flex:none;width:28px;height:28px;border-radius:50%;border:1.5px solid #9aa8c6;color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:13px;background:#fff}
 .cbt-opt.on b{background:var(--navy);color:#fff;border-color:var(--navy)}
 .cbt-opt span{padding-top:3px;line-height:1.55}

@@ -27,12 +27,16 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   const [drawer, setDrawer] = useState(false)      // phone: the question palette as a bottom sheet
   const [passOpen, setPassOpen] = useState(true)   // phone: the reading passage can be folded away
   const submitted = useRef(false)
+  const started = useRef(false)
   const lastSwitch = useRef(0)
+  const fullscreenWas = useRef(false)
   const aRef = useRef(a)
   useEffect(() => { aRef.current = a }, [a])
 
   const flash = t => { setToast(t); setTimeout(() => setToast(''), 3500) }
   const begin = () => {
+    if (started.current) return   // a double click must not start two attempts
+    started.current = true
     const att = newAttempt(test, candidate)
     att.lang = 'en'
     const first = go(att, att.current)
@@ -59,7 +63,8 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   // autosave (so a refresh or a power cut loses nothing)
   useEffect(() => {
     if (stage !== 'exam' || !a || a.state !== 'inprogress') return
-    const t = setTimeout(() => cbtStore.saveAttempt(a), 500)
+    // never overwrite the submitted copy with a late autosave
+    const t = setTimeout(() => { if (!submitted.current) cbtStore.saveAttempt(a) }, 500)
     return () => clearTimeout(t)
   }, [a, stage])
 
@@ -67,15 +72,17 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   useEffect(() => {
     if (stage !== 'exam') return
     const away = () => {
-      if (Date.now() - lastSwitch.current < 1500) return
+      if (submitted.current || Date.now() - lastSwitch.current < 1500) return
       lastSwitch.current = Date.now()
       setA(x => (x ? { ...x, switches: (x.switches || 0) + 1 } : x))
       flash('You left the exam screen. This has been recorded.')
     }
     const vis = () => { if (document.hidden) away() }
     const stop = e => { e.preventDefault(); e.returnValue = '' }
-    document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop)
-    return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop) }
+    // pressing Esc to leave full screen is recorded too
+    const fsx = () => { if (!document.fullscreenElement && !submitted.current && fullscreenWas.current) away(); fullscreenWas.current = !!document.fullscreenElement }
+    document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop); document.addEventListener('fullscreenchange', fsx)
+    return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop); document.removeEventListener('fullscreenchange', fsx) }
   }, [stage])
 
   const q = a ? qs.find(x => x.no === a.current) : null
@@ -115,7 +122,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
       <div className="cbt-center"><div className="panel">
         {stage === 'instructions' ? <>
           <h3 style={{ textAlign: 'center' }}>Instructions</h3>
-          <p style={{ textAlign: 'center', margin: '0 0 12px' }}><b>Duration: {test.durationMin} minutes</b> · Maximum marks: {grade(test, {}).max || '—'} · {flatQuestions(test).length} questions</p>
+          <p style={{ textAlign: 'center', margin: '0 0 12px' }}><b>Duration: {test.durationMin} minutes</b> · Maximum marks: {Math.round(flatQuestions(test).length * test.marking.correct * 100) / 100} · {flatQuestions(test).length} questions</p>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
