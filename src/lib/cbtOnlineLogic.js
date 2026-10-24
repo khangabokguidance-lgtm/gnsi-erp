@@ -7,6 +7,7 @@ export const SETUP_MSG = 'Online exams need a one-time database update (supabase
 export function friendly(err) {
   const m = String(err?.message || err || '')
   if (err?.code === 'PGRST202' || err?.code === '42P01' || /could not find the function|does not exist|schema cache/i.test(m)) return SETUP_MSG
+  if (err?.code === 'PGRST203' || /best candidate function|is not unique/i.test(m)) return 'The exam database update is incomplete (two versions of an exam function). The administrator must run the latest CBT migrations in Supabase — 20261039_cbt_gcc_identity.sql, then 20261040.'
   const hit = m.match(/EXAM-[A-Z0-9-]+:\s*(.*)$/)
   if (hit) return hit[1]
   if (/failed to fetch|network|load failed/i.test(m)) return 'No internet connection.'

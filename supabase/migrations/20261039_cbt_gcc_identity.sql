@@ -7,6 +7,8 @@
 --     every 10 minutes). A student with no number on file can still start; the attempt is marked "not verified".
 --   • The finder no longer searches by name — a GCC no. is matched exactly — so the student list cannot be browsed.
 --   • The old cbt_start / cbt_lookup (free-typed name) are removed so they cannot be used to get round this.
+--   • Re-runnable, and it also repairs a database where only 20261040 was run (two cbt_lookup versions → "could not
+--     choose the best candidate function"): the old 3-argument cbt_lookup is dropped here.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 alter table public.cbt_attempts add column if not exists phone_verified boolean not null default false;
@@ -55,6 +57,7 @@ begin
   return jsonb_build_array(jsonb_build_object('name', st.name, 'gcc', st.gcc_no::text,
     'className', coalesce(nullif(to_jsonb(st) ->> 'batch', ''), to_jsonb(st) ->> 'class_name', ''),
     'phoneHint', case when cardinality(phones) > 0 then '••••••' || right(phones[1], 4) else '' end,
+    'fatherName', coalesce(nullif(btrim(to_jsonb(st) ->> 'father_name'), ''), ''),
     'hasPhone', cardinality(phones) > 0,
     'verified', case when p_parent is null then null else ok end));
 end $$;
