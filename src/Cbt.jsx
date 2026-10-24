@@ -8,6 +8,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { flatQuestions, keyStatus, resultRows, resultsCSV } from './lib/cbtEngine'
 import { listOnline, onlineAttempts, fetchOnlineTest, deleteOnlineAttempt, statusOf } from './cbtRemote'
 import { PublishModal, OnlineTab } from './CbtOnline'
+import { CbtCertificateTool } from './CbtCertificate'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -156,6 +157,7 @@ export default function Cbt({ perms, currentUser }) {
               {online?.filter(o => !tests?.some(t => t.id === o.id)).map(o => <option key={o.id} value={o.id}>{o.name} (online only)</option>)}
             </select></label>
         </div>
+        {test && <CbtCertificateTool key={test.id} test={test} rows={rows} flash={flash} />}
         {test && (
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: 12, gap: 8, flexWrap: 'wrap' }}>

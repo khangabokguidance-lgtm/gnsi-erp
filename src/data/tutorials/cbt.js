@@ -54,6 +54,7 @@ export default {
       title: 'See results',
       body: [
         'Open CBT Exam → Results and choose the test.',
+        'For a premium certificate: in "🎓 Premium certificate" type the student\'s GCC no. (the Test ID is shown beside it). The student\'s full record — father, mother, parent contact, class — is read from the ERP and printed with the marks, rank and section scores. "Certificates for all" prints every submitted attempt that can be matched to a student.',
         'The table lists each attempt with rank, marks, correct, wrong and how many times the candidate left the exam screen.',
         'Press View to see the score card, section-wise marks and every question with the candidate\'s answer and the correct one. Press "Export CSV" for a spreadsheet.',
       ],
