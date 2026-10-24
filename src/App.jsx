@@ -39,6 +39,7 @@ import Courses            from './Courses'
 import Teaching           from './Teaching'
 import Attendance         from './Attendance'
 import Exams              from './Exams'
+import Cbt                from './Cbt'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
@@ -118,6 +119,7 @@ const ALL_GROUPS = [
     items: [
       { id: 'attendance',    label: 'Attendance',      icon: '📅' },
       { id: 'exams',         label: 'Exams',           icon: '📝' },
+      { id: 'cbt',           label: 'CBT Exam',        icon: '💻' },
       { id: 'timetable',     label: 'Timetable',       icon: '🕐' },
       { id: 'teaching',      label: 'Teaching',        icon: '📚' },
       { id: 'courses',       label: 'Courses',         icon: '🎓' },
@@ -1043,6 +1045,7 @@ export default function App() {
     // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
     exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
+    cbt:               <Cbt               currentUser={currentUser} perms={perms('cbt')}               />,
     timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,

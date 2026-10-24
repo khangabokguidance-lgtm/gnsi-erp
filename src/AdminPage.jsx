@@ -28,6 +28,7 @@ const ALL_MODULES = [
   { key: 'attendance',       label: 'Attendance',         icon: '📅'  },
   { key: 'faceattendance',   label: 'Face Attendance',    icon: '🧑‍💼' },
   { key: 'exams',            label: 'Exams',              icon: '📝'  },
+  { key: 'cbt',              label: 'CBT Exam',           icon: '💻'  },
   { key: 'timetable',        label: 'Timetable',          icon: '🕐'  },
   { key: 'teaching',         label: 'Teaching',           icon: '📚'  },
   { key: 'teachingaids',     label: 'Teaching Aids',      icon: '🔒'  },
