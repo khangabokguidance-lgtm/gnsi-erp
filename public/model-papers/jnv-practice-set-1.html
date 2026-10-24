@@ -616,6 +616,10 @@ const PAPER = [
 ];
 
 
+/* ---------- runtime: the claude.ai viewer, or the GNSI portal's bridge when shown inside the ERP ---------- */
+const CL = window.claude || (() => { try { return window.parent !== window && window.parent.__gnsiModelSets ? window.parent.__gnsiModelSets : null; } catch (e) { return null; } })();
+if (CL && CL.theme) document.documentElement.setAttribute('data-theme', CL.theme);
+
 /* ---------- built-in Set 1 in the shared set format ---------- */
 const BANK = {};
 const BUILTIN = {
@@ -648,7 +652,8 @@ const toText = h => {
   return d.textContent.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 };
 const imgSrc = r => /^[0-9a-f]{32}$/.test(r || '') ? '/_blob/' + r
-  : /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(r || '') ? r : '';
+  : /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(r || '') ? r
+  : /^https:\/\/[^\s"'<>]+$/.test(r || '') ? r : '';
 const newId = () => 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const clone = o => JSON.parse(JSON.stringify(o));
 const dur = m => { m = +m || 120; return m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minutes`; };
@@ -757,10 +762,10 @@ function paperHTML(set, preview) {
 }
 
 /* ---------- storage: shared db when available, this browser otherwise ---------- */
-const S = { mode: 'local', sets: [], ready: !window.claude, canWrite: true, db: null, assets: null, sample: null, err: '' };
+const S = { mode: 'local', sets: [], ready: !CL, canWrite: true, db: null, assets: null, sample: null, err: '' };
 const LKEY = 'jnv-sets-v1';
 const localLoad = () => { try { const v = JSON.parse(localStorage.getItem(LKEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
-if (!window.claude) S.sets = localLoad();
+if (!CL) S.sets = localLoad();
 const localSave = () => { try { localStorage.setItem(LKEY, JSON.stringify(S.sets)); return true; } catch (e) { return false; } };
 const getSet = id => id === 'set1' ? BUILTIN : S.sets.find(s => s.id === id);
 const nextNo = () => Math.max(1, ...S.sets.map(s => +s.setNo || 0)) + 1;
@@ -777,7 +782,7 @@ async function deleteSet(id) {
   S.sets = S.sets.filter(s => s.id !== id); localSave(); onSetsChanged();
 }
 async function initCaps() {
-  const cl = window.claude;
+  const cl = CL;
   if (!cl || typeof cl.use !== 'function') { S.sets = localLoad(); S.ready = true; return onSetsChanged(); }
   const [db, user, assets, sample] = await Promise.all(['db', 'user', 'assets', 'sample'].map(n => cl.use(n).catch(() => null)));
   S.assets = assets; S.sample = sample;
@@ -815,7 +820,7 @@ const waitView = (msg) => {
 /* ---------- library ---------- */
 function showLibrary() {
   cur = { view: 'library' };
-  const where = S.mode === 'shared' ? 'Shared with everyone who opens this page' : 'Saved in this browser';
+  const where = S.mode === 'shared' ? (CL && CL.storeLabel) || 'Shared with everyone who opens this page' : 'Saved in this browser';
   bar.innerHTML = brand('JNV', 'Model Sets', 'Practice papers · Set maker') +
     `<div class="bar-stats"><span class="chipnote">${where}</span>${S.canWrite ? '<button class="btn primary" data-act="new" type="button">New model set</button>' : ''}</div>`;
   const mine = S.sets.slice().sort((a, b) => (+a.setNo || 0) - (+b.setNo || 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -835,7 +840,7 @@ function showLibrary() {
     : !mine.length ? `<article class="card empty"><h2>No model sets yet</h2><p class="subnote">Start a blank set with the three JNV sections, or use Set 1 as a template and change its questions.</p>${S.canWrite ? '<div class="acts"><button class="btn primary" data-act="new" type="button">New model set</button></div>' : ''}</article>` : '';
   view.innerHTML = `<div class="wrap"><div class="lib">
     <header class="lib-head"><div><div class="eyebrow">Jawahar Navodaya Vidyalaya · Class VI</div><h1>Model sets</h1>
-      <p>Take a practice paper with its OMR sheet and timer, or make your own set: write questions, reuse figure questions from Set 1, add scanned figures, or let Claude draft questions for a section.</p></div></header>
+      <p>Take a practice paper with its OMR sheet and timer, or make your own set: write questions, reuse figure questions from Set 1, add scanned figures${S.sample ? ', or let Claude draft questions for a section' : ''}.</p></div></header>
     ${S.err ? `<p class="subnote" style="color:var(--bad)">Saved sets could not be loaded right now. Reload the page to try again.</p>` : ''}
     ${!S.canWrite ? '<p class="subnote">Only editors of this page can make or change sets. You can take any set below.</p>' : ''}
     <div class="cards">${card(BUILTIN)}${mine.map(card).join('')}${empty}</div></div></div>`;
@@ -1029,7 +1034,8 @@ async function doSave() {
   try { await saveSet(set); if (cur.draft === set && !cur.dirty) setStatus('All changes saved'); }
   catch (e) {
     cur.dirty = true;
-    const msg = e && e.code === 'invalid_argument' ? 'Not saved: this set is too large. Use smaller images.'
+    const msg = e && e.code === 'not_granted' ? 'Not saved: your login is not allowed to change sets.'
+      : e && e.code === 'invalid_argument' ? 'Not saved: this set is too large. Use smaller images.'
       : e && e.code === 'quota_exceeded' ? 'Not saved: storage is full.'
       : 'Not saved. Check your connection; changes are kept on this page.';
     setStatus(msg, true);
