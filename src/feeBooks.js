@@ -6,6 +6,7 @@ import { gccStr } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries } from './feeLedgerModel'
 import { instNameHTML } from './systemSettings'
 import { netRows } from './lib/monthwiseDues'
+import { SOURCE_LABEL, waiverTags } from './lib/waiverDetect'
 
 export const HEAD = { admission: 'Admission', item: 'Kit / Items', advance: 'Advance', course: 'Course Fee', flat: 'Flat Fee' }
 export const localISO = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
@@ -107,6 +108,22 @@ export function printMonthDue(list, session, label, scope) {
   <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div></div>`, false)
 }
 
+const waiverNote = d => [
+  ...waiverTags(d).map(t => SOURCE_LABEL[t]),
+  ...d.unrecorded.map(u => `Unrecorded? pays ₹${fmt(u.paid)} of ₹${fmt(u.fee)} (${u.months.join(', ')}), ₹${fmt(u.shortBy)} short`),
+].join('; ')
+
+// Students with a fee waiver / concession, split by fee type (see lib/waiverDetect.js).
+export function printWaivers(list, session, scope) {
+  const total = list.reduce((s, d) => s + d.waived, 0)
+  const body = list.map((d, i) => `<tr><td>${i + 1}</td><td>${escH(d.student.name)}</td><td>${escH(d.student.gcc_no)}</td><td>${escH([d.student.course, d.student.batch].filter(Boolean).join(' · '))}</td><td>${escH(d.student.hostel_type || '')}</td>
+    <td class="num">${d.byType.course ? fmt(d.byType.course) : '—'}</td><td class="num">${d.byType.flat ? fmt(d.byType.flat) : '—'}</td><td class="num">${d.sources.writtenOff ? fmt(d.sources.writtenOff) : '—'}</td><td class="num P">${fmt(d.waived)}</td><td>${escH(waiverNote(d))}</td></tr>`).join('')
+  openDoc(`Waivers and Concessions ${shortSession(session)}`, `<div class="inst">${instNameHTML()} · Fee Waivers &amp; Concessions</div><h1>Fee Waivers &amp; Concessions — Session ${escH(shortSession(session))}${scope ? ' · ' + escH(scope) : ''}</h1>
+  <table><thead><tr><th>#</th><th>Student</th><th>GCC</th><th>Course · Batch</th><th>Hostel</th><th class="num">Course fee ₹</th><th class="num">Flat fee ₹</th><th class="num">Written off ₹</th><th class="num">Total ₹</th><th>Source</th></tr></thead><tbody>${body || '<tr><td colspan="10">No waivers or concessions found.</td></tr>'}</tbody>
+  <tfoot><tr><td colspan="8">Total — ${list.length} student${list.length === 1 ? '' : 's'}</td><td class="num">${fmt(total)}</td><td></td></tr></tfoot></table>
+  <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div><div>Principal</div></div>`)
+}
+
 export function printMonthlyLedger(items, session, scope) {
   const totals = monthTotals(items)
   const head = totals.map(t => `<th class="num">${t.month.slice(0, 3)} ${String(t.year).slice(2)}</th>`).join('')
@@ -156,6 +173,16 @@ export const exportMonthDueExcel = (list, session, label) => saveWorkbook(wb => 
   ws.addRow(['', '', '', '', '', '', '', '', 'Total', list.reduce((s, { r }) => s + r.due, 0)]).font = { bold: true }
   ;[5, 8, 24, 16, 14, 10, 10, 10, 10, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w }); ws.getColumn(10).numFmt = '#,##0'
 }, `Month-Dues-${label.replace(/\s+/g, '-')}.xlsx`)
+
+export const exportWaiversExcel = (list, session) => saveWorkbook(wb => {
+  const ws = wb.addWorksheet('Waivers')
+  ws.addRow([`Fee Waivers & Concessions — Session ${shortSession(session)}`]).font = { bold: true, size: 13 }; ws.addRow([])
+  styleHeader(ws.addRow(['GCC', 'Student', 'Course', 'Batch', 'Hostel', 'Course fee waived', 'Flat fee waived', 'Approved', 'Standing', 'Custom / lower fee', 'Written off', 'Total waived', 'Repeater', 'Pending approval', 'Unrecorded pattern']))
+  list.forEach(d => ws.addRow([Number(d.student.gcc_no) || d.student.gcc_no, d.student.name, d.student.course || '', d.student.batch || '', d.student.hostel_type || '', d.byType.course, d.byType.flat, d.sources.approved, d.sources.standing, d.sources.custom, d.sources.writtenOff, d.waived, d.repeater ? 'Yes' : '', d.sources.pending || '',
+    d.unrecorded.map(u => `₹${u.paid} of ₹${u.fee} in ${u.months.join(', ')} (₹${u.shortBy} short)`).join('; ')]))
+  ws.addRow(['', 'Total', '', '', '', ...[5, 6, 7, 8, 9, 10, 11].map(i => list.reduce((s, d) => s + [d.byType.course, d.byType.flat, d.sources.approved, d.sources.standing, d.sources.custom, d.sources.writtenOff, d.waived][i - 5], 0))]).font = { bold: true }
+  ws.getColumn(2).width = 24; ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 3 }]
+}, `Fee-Waivers-${shortSession(session)}.xlsx`)
 
 export const exportMonthlyExcel = (items, session) => saveWorkbook(wb => {
   const ws = wb.addWorksheet('Monthly ledger')
