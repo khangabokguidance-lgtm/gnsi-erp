@@ -24,8 +24,8 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-hero{position:relative;overflow:hidden;color:#fff;border-radius:18px;padding:20px 22px;margin-bottom:16px;
   background:radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 48%,#0B1E3D 90%);box-shadow:0 22px 44px -26px rgba(11,30,61,.6),inset 0 0 0 1px rgba(226,197,126,.22)}
 .cbt-hero .eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--gold2)}
-.cbt-hero h2{margin:4px 0 4px;font-family:'Fraunces',Georgia,serif;font-size:26px;line-height:1.15}
-.cbt-hero p{margin:0;opacity:.8;font-size:13px;max-width:640px;line-height:1.5}
+.cbt-hero h2{color:#fff;margin:4px 0 4px;font-family:'Fraunces',Georgia,serif;font-size:26px;line-height:1.15}
+.cbt-hero p{color:#fff;margin:0;opacity:.8;font-size:13px;max-width:640px;line-height:1.5}
 .cbt-hero .row{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .cbt-tabs{display:flex;gap:4px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px}
 .cbt-tabs button{border:none;background:transparent;color:#fff;font-weight:800;font-size:12.5px;padding:8px 16px;border-radius:999px;cursor:pointer}
