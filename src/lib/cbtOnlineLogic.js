@@ -1,12 +1,16 @@
 // cbtOnlineLogic.js — the pure parts of the online CBT exam (no database): error wording, links, splitting the
 // answer key off a paper, turning server rows into exam-screen attempts, the candidate's result view, status text.
 
-export const SETUP_MSG = 'Online exams need a one-time database update (supabase/migrations/20261034_cbt_online_exam.sql). Ask the administrator to run it in Supabase → SQL editor.'
+export const SETUP_MSG = 'Online exams need a one-time database update: the administrator pastes the whole file supabase/cbt_online_setup.sql into Supabase → SQL editor and presses Run (safe to run again).'
 
 // "EXAM-CODE: The access code is not correct." → the sentence; a missing function → the setup message.
 export function friendly(err) {
   const m = String(err?.message || err || '')
-  if (err?.code === 'PGRST202' || err?.code === '42P01' || /could not find the function|does not exist|schema cache/i.test(m)) return SETUP_MSG
+  if (err?.code === 'PGRST202' || err?.code === '42P01' || /could not find the function|does not exist|schema cache/i.test(m)) {
+    // say WHAT is missing, so the administrator can tell an empty database from a half-finished update
+    const what = /(function|relation|column|table)\s+"?([\w.]+(?:\([^)]*\))?)"?/i.exec(m)
+    return what ? `${SETUP_MSG} (Missing: ${what[1].toLowerCase()} ${what[2]})` : SETUP_MSG
+  }
   if (err?.code === 'PGRST203' || /best candidate function|is not unique/i.test(m)) return 'The exam database update is incomplete (two versions of an exam function). The administrator must run the latest CBT migrations in Supabase — 20261039_cbt_gcc_identity.sql, then 20261040.'
   const hit = m.match(/EXAM-[A-Z0-9-]+:\s*(.*)$/)
   if (hit) return hit[1]

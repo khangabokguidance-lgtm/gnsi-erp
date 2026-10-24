@@ -11,7 +11,10 @@ test('links and error messages', () => {
   assert.equal(examLink('t1', 'https://x.in'), 'https://x.in/exam?t=t1')
   assert.equal(friendly(new Error('EXAM-CODE: The access code is not correct.')), 'The access code is not correct.')
   assert.equal(friendly({ code: 'PGRST202', message: 'x' }), SETUP_MSG)
-  assert.equal(friendly(new Error('Could not find the function public.cbt_start')), SETUP_MSG)
+  const detail = friendly(new Error('Could not find the function public.cbt_start(p_test) in the schema cache'))
+  assert.ok(detail.startsWith(SETUP_MSG) && /Missing: function public\.cbt_start/.test(detail), detail)
+  assert.match(friendly(new Error('function public.cbt_throttled(unknown, integer) does not exist')), /Missing: function public\.cbt_throttled/)
+  assert.match(SETUP_MSG, /cbt_online_setup\.sql/)
   assert.equal(friendly(new Error('Failed to fetch')), 'No internet connection.')
 })
 
