@@ -15,6 +15,9 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const editing = !!initial
   const [name, setName] = useState(initial?.name || '')
   const [durationMin, setDurationMin] = useState(initial?.durationMin ?? 120)
+  const [camera, setCamera] = useState(initial?.marking?.proctor?.camera || 'off')
+  const [shield, setShield] = useState(!!initial?.marking?.proctor?.shield)
+  const [maxStrikes, setMaxStrikes] = useState(initial?.marking?.proctor?.maxStrikes ?? 5)
   const [correct, setCorrect] = useState(initial?.marking?.correct ?? 1.25)
   const [wrong, setWrong] = useState(initial?.marking?.wrong ?? 0)
   const [instructions, setInstructions] = useState(initial?.instructions ?? DEFAULT_INSTRUCTIONS)
@@ -96,7 +99,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
-      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0 },
+      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
       instructions, showResult, showAnswers, sections, createdAt: initial?.createdAt || Date.now(), updatedAt: Date.now(),
     })
     setBusy('')
@@ -117,6 +120,18 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
         <div style={{ display: 'flex', gap: '8px 18px', flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
           <label><input type="checkbox" checked={showResult} onChange={e => setShowResult(e.target.checked)} /> Show the score to the candidate after submitting</label>
           <label><input type="checkbox" checked={showAnswers} onChange={e => setShowAnswers(e.target.checked)} /> Show the correct answers in the review</label>
+        </div>
+        <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 10, marginTop: 12 }}>
+          <b style={{ fontSize: 13 }}>🛡 Exam security</b>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))', marginTop: 6 }}>
+            <label><span className="lbl">Camera face check</span>
+              <select className="in" value={camera} onChange={e => setCamera(e.target.value)}>
+                <option value="off">Off</option><option value="warn">Warn and record</option><option value="strict">Strict — hide the paper, submit after too many warnings</option>
+              </select></label>
+            {camera === 'strict' && <label><span className="lbl">Warnings before auto-submit</span><input className="in" type="number" min="1" max="20" value={maxStrikes} onChange={e => setMaxStrikes(e.target.value)} /></label>}
+          </div>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={shield} onChange={e => setShield(e.target.checked)} /> Screen shield — block copy, print and developer tools; hide the paper when a screenshot key is pressed or the window is left</label>
+          <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>The camera finds faces in the candidate's own browser — video is never recorded or uploaded; only the warning counts are saved. A browser cannot truly block a screenshot or a phone photo, so the shield hides and records attempts rather than guaranteeing prevention.</p>
         </div>
       </div>
 

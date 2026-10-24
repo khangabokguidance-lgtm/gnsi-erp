@@ -74,3 +74,14 @@ test('status text and the invitation message', () => {
   assert.match(msg, /Online exam: Mock\nLink: .*\/exam\?t=t1\nAccess code: 123456\nDuration: 120 minutes\nUse a steady/)
   assert.doesNotMatch(inviteText('Mock', { id: 't1', access_code: null }, 60), /Access code/)
 })
+
+test('the camera / shield log travels with the saved attempt and comes back on resume', () => {
+  const x = { none: 2, shot: 1, log: [{ t: 1, k: 'none' }] }
+  const packed = packMarks({ 1: true }, { 1: true }, x)
+  assert.deepEqual(packed.x, x)
+  assert.equal('x' in packMarks({}, {}), false, 'no log, nothing stored')
+  const row = { id: 'a', test_id: 't', candidate_name: 'N', roll: 'r', started_at: '2026-10-24T10:00:00Z', state: 'inprogress', answers: {}, marked: packed, current_no: 1, lang: 'en', switches: 0 }
+  assert.deepEqual(toAttempt(row).proctor, x)
+  const back = localAttempt({ id: 'a', startedAt: '2026-10-24T10:00:00Z', answers: {}, marked: packed, current: 1, lang: 'en', switches: 0 }, { id: 't', name: 'T', sections: [{ questions: [{ no: 1 }] }] }, { name: 'N', roll: 'r' })
+  assert.deepEqual(back.proctor, x)
+})

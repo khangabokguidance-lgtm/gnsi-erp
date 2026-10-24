@@ -53,6 +53,6 @@ export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const startExam = (id, code, name, roll, phone, gcc, parent) => rpc('cbt_start', { p_test: id, p_code: code || '', p_name: name, p_roll: roll, p_phone: phone || null, p_gcc: gcc || null, p_parent: parent || null })
 export const lookupStudent = (id, code, q) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: q })
 export const resumeExam = (attempt, token) => rpc('cbt_resume', { p_attempt: attempt, p_token: token })
-export const saveExam = (attempt, token, a) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0 })
-export const submitExam = (attempt, token, a) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited), p_switches: a.switches || 0 })
+export const saveExam = (attempt, token, a) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0 })
+export const submitExam = (attempt, token, a) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor), p_switches: a.switches || 0 })
 

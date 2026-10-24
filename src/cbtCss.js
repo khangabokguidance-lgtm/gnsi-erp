@@ -155,6 +155,14 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-center{max-width:780px;margin:0 auto;padding:22px 16px 30px;overflow:auto;flex:1;width:100%}
 .cbt-center .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 18px 40px -30px rgba(19,42,79,.5)}
 .cbt-center h3{font-size:20px}
+.cbt-cam{position:fixed;right:12px;bottom:68px;z-index:3150;width:132px;border-radius:12px;overflow:hidden;background:#0b1e3d;border:3px solid #2e8b3d;box-shadow:0 10px 26px rgba(0,0,0,.3)}
+.cbt-cam video{display:block;width:100%;height:99px;object-fit:cover;transform:scaleX(-1)}
+.cbt-cam span{display:block;font-size:10.5px;font-weight:700;color:#fff;background:#2e8b3d;padding:3px 6px;text-align:center}
+.cbt-cam:not(.s-ok){border-color:#d9532c}.cbt-cam:not(.s-ok) span{background:#d9532c}
+.cbt-cam.big{position:static;width:min(100%,340px);margin:10px auto;right:auto;bottom:auto}.cbt-cam.big video{height:255px}
+.cbt-cover{position:fixed;inset:0;z-index:4000;background:#0b1e3d;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:17px;line-height:1.6;cursor:pointer}
+.cbt-shield .cbt-main,.cbt-shield .cbt-center,.cbt-shield .cbt-side{-webkit-user-select:none;user-select:none}
+@media print{.cbt-exam,.cbt-cover{display:none!important}}
 .cbt-net{position:fixed;left:0;right:0;top:0;z-index:3250;background:#b45309;color:#fff;font-weight:700;font-size:13px;text-align:center;padding:8px 12px}
 .cbt-toast{position:fixed;left:50%;top:84px;transform:translateX(-50%);background:#b42318;color:#fff;padding:10px 18px;border-radius:10px;font-weight:700;z-index:3200;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.3);max-width:92vw;text-align:center}
 .cbt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
@@ -220,6 +228,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-stats{grid-template-columns:repeat(2,1fr)}
  .cbt-center th{white-space:normal;font-size:10px;padding:7px 5px;letter-spacing:.02em}.cbt-center td{padding:7px 5px;font-size:12px}
  .cbt-toast{top:96px}
+ .cbt-cam{bottom:132px;right:8px;width:88px}.cbt-cam video{height:66px}.cbt-cam span{font-size:9.5px;padding:2px 4px}.cbt-cam.big{width:min(100%,300px)}
 }
 @media(max-width:380px){.cbt-grid{grid-template-columns:repeat(5,1fr)}.cbt-top .title{font-size:12.5px}}
 `

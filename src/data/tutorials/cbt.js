@@ -51,6 +51,16 @@ export default {
       tip: 'If the page is refreshed or the computer restarts, press Start exam again and choose "Resume" under the candidate\'s name. The clock does not stop while they are away.',
     },
     {
+      title: 'Exam security — camera face check and screen shield',
+      body: [
+        'When you build or edit a test, open "🛡 Exam security". Camera face check: Off, "Warn and record", or "Strict" (the paper is hidden while the candidate is not visible, and the exam is submitted after the chosen number of warnings).',
+        'Tick "Screen shield" to block copy, print and developer tools, and to hide the paper when a screenshot key is pressed or the exam window is left.',
+        'The candidate allows the camera, and must be seen alone (a short check) before the exam starts. A small camera tile stays in the corner. Warnings: face not visible for 3 s, a second person next to them for 2 s, looking away for 5 s.',
+        'Results show the number of camera / shield flags for each candidate (hover for the details) and the CSV export lists them.',
+      ],
+      tip: 'The camera works in the candidate\'s own browser — video is never recorded or uploaded, only the warning counts are saved. A website cannot truly block an operating-system screenshot or a phone photo: the shield hides the paper and records the attempt. Use it with an invigilator for important exams. The camera needs https and the candidate\'s permission.',
+    },
+    {
       title: 'See results',
       body: [
         'Open CBT Exam → Results and choose the test.',

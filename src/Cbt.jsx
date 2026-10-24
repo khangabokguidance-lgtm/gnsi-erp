@@ -7,6 +7,7 @@ import CbtBuilder from './CbtBuilder'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { flatQuestions, keyStatus, resultRows, resultsCSV } from './lib/cbtEngine'
 import { listOnline, onlineAttempts, fetchOnlineTest, deleteOnlineAttempt, statusOf } from './cbtRemote'
+import { flagTotal, flagText } from './lib/cbtProctorLogic'
 import { PublishModal, OnlineTab } from './CbtOnline'
 import { CbtCertificateTool } from './CbtCertificate'
 
@@ -165,16 +166,16 @@ export default function Cbt({ perms, currentUser }) {
               <button className="btn gold" disabled={!rows.length} onClick={() => download(`${fileSafe(test.name)}-results.csv`, new Blob([resultsCSV(test, attempts)], { type: 'text/csv;charset=utf-8' }))}>📊 Export CSV</button>
             </div>
             <div className="tbl"><table>
-              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>GCC</th><th>Parent no.</th><th>Where</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th /></tr></thead>
+              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>GCC</th><th>Parent no.</th><th>Where</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th>Camera / shield</th><th /></tr></thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={14} className="muted">No attempts yet.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={15} className="muted">No attempts yet.</td></tr>}
                 {rows.map(({ attempt: a, g, submitted, took, rank }) => (
                   <tr key={a.id}>
                     <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b></td><td>{a.candidate.roll || '—'}</td><td>{a.gcc || '—'}{a.gcc && !a.erpMatch ? ' ⚠' : ''}</td><td>{a.parentPhone || a.phone || '—'}</td>
                     <td><span className="tag" style={{ background: a.source === 'online' ? '#eef2f9' : '#f1f5f9', color: a.source === 'online' ? '#1e3a6e' : '#64748b' }}>{a.source === 'online' ? '🌐 Online' : 'This computer'}</span></td>
                     <td><span className="tag" style={{ background: submitted ? '#e7f6ec' : '#fff4dc', color: submitted ? '#146c3a' : '#9a5b00' }}>{submitted ? 'Submitted' : 'In progress'}</span></td>
                     <td>{when(a.startedAt)}</td><td className="num">{took ?? '—'}</td>
-                    <td className="num"><b>{g.marks}</b> / {g.max}</td><td className="num">{g.correct}</td><td className="num">{g.wrong}</td><td className="num">{a.switches || 0}</td>
+                    <td className="num"><b>{g.marks}</b> / {g.max}</td><td className="num">{g.correct}</td><td className="num">{g.wrong}</td><td className="num">{a.switches || 0}</td><td title={flagText(a.proctor)} style={{ color: flagTotal(a.proctor) ? '#b42318' : undefined, fontWeight: flagTotal(a.proctor) ? 700 : 400 }}>{flagTotal(a.proctor) || '—'}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {submitted && <button className="btn" onClick={() => setDone({ test, attempt: a, admin: true })}>View</button>}{' '}
                       {canEdit && <button className="btn red" onClick={async () => { if (window.confirm(`Delete ${a.candidate.name}'s attempt?${a.source === 'online' ? ' The roll number can then start the online exam again.' : ''}`)) { try { if (a.source === 'online') await deleteOnlineAttempt(a.id); else await cbtStore.deleteAttempt(a.id) } catch (e) { flash(e.message); return } setDone(null); setResTest(''); setTimeout(() => setResTest(test.id), 0) } }}>🗑</button>}
