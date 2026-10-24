@@ -49,6 +49,18 @@ export const CBT_CSS = `
 .cbt-thumbs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 2px}
 .cbt-thumbs img{height:60px;flex:none;border:1px solid var(--line);border-radius:6px;background:#fff}
 .cbt-savebar{display:flex;gap:8px;flex-wrap:wrap}
+.cbt-flag{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-left-width:5px;border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff}
+.cbt-flag.warn{border-left-color:#e0a21b;background:#fffaf0}.cbt-flag.error{border-left-color:#d9342b;background:#fff5f4}
+.cbt-flag ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;line-height:1.5}
+.cbt-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px}
+.cbt-chip{height:36px;border-radius:9px;border:2px solid transparent;font-weight:800;font-size:12.5px;cursor:pointer;color:#fff}
+.cbt-chip.ok{background:var(--ok)}.cbt-chip.warn{background:#e0a21b}.cbt-chip.error{background:#d9342b}
+.cbt-chip.sel{outline:3px solid var(--navy);outline-offset:2px}
+.cbt-edit{margin-top:14px;border:1.5px solid var(--navy);border-radius:14px;padding:14px;background:#fbfcff}
+.cbt-figbox{border:1px dashed #b6c4e2;border-radius:10px;padding:10px;margin:8px 0;background:#fff}
+.cbt-figbox img{max-width:100%;max-height:220px;display:block;margin:0 auto 6px;border:1px solid var(--line);border-radius:6px}
+.cbt-twin{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cbt-twin .mm,.cbt .in.mm{font-family:'Noto Sans Meetei Mayek','Meetei Mayek',sans-serif}
 
 /* ── exam screen ── */
 .cbt-exam{position:fixed;inset:0;z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
@@ -145,6 +157,8 @@ export const CBT_CSS = `
  .cbt-tests{grid-template-columns:1fr}
  .cbt-actions .btn,.cbt-savebar .btn{flex:1 1 calc(50% - 8px)}
  .cbt-actions .btn.red{flex:0 0 auto;padding:10px 18px}
+ .cbt-twin{grid-template-columns:1fr}
+ .cbt-flag{flex-direction:column}.cbt-flag .btn{width:100%}
  .cbt-keygrid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .cbt-keyrow{gap:3px;padding:4px 5px;min-width:0}.cbt-keyrow b{width:22px;font-size:12px}.cbt-keyrow button{flex:1;min-width:0;width:auto;height:32px}
  .cbt-savebar{position:sticky;bottom:0;z-index:5;background:linear-gradient(180deg,rgba(238,241,247,0),#eef1f7 28%);padding:14px 0 calc(10px + env(safe-area-inset-bottom))}

@@ -10,6 +10,7 @@ import {
 
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
+const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
 const LEGEND = ['answered', 'notAnswered', 'notVisited', 'marked', 'answeredMarked']
 const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
 
@@ -187,7 +188,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
           </div>}
           <div className="cbt-q">
             {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
-            {q.image && <img className="cbt-fig" src={q.image} alt={`Question ${q.no} figure`} draggable={false} />}
+            {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${q.no} figure ${i + 1}`} draggable={false} />)}
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
               <label key={o.key} className={`cbt-opt${sel === o.key ? ' on' : ''}`}>
@@ -289,7 +290,7 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
                   <div key={q.no} className="cbt-review" style={{ borderLeftColor: !given ? '#94a3b8' : !q.answer ? '#d9b566' : ok ? '#3a9d3a' : '#d9532c' }}>
                     <b>Q{q.no}.</b> <span className={`tag`} style={{ background: !given ? '#f1f5f9' : ok ? '#e7f6ec' : '#fde8e6', color: !given ? '#475569' : ok ? '#146c3a' : '#b42318' }}>{!given ? 'Not answered' : !q.answer ? 'No key' : ok ? 'Correct' : 'Wrong'}</span>
                     {q.passage && <div className="muted" style={{ margin: '6px 0' }}>Passage: {pick(q.passage, q.passageMm, lang).slice(0, 160)}…</div>}
-                    {q.image && <img className="cbt-fig" style={{ maxHeight: 220, margin: '8px 0' }} src={q.image} alt={`Question ${q.no}`} />}
+                    {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" style={{ maxHeight: 220, margin: '8px 0' }} src={src} alt={`Question ${q.no} figure ${i + 1}`} />)}
                     {q.text && <div className={lang === 'mm' && q.textMm ? 'mm' : ''} style={{ whiteSpace: 'pre-wrap', margin: '6px 0', fontWeight: 600 }}>{pick(q.text, q.textMm, lang)}</div>}
                     <div style={{ display: 'grid', gap: 4 }}>
                       {q.options.map(o => <div key={o.key} className={lang === 'mm' && o.textMm ? 'mm' : ''} style={{ padding: '4px 8px', borderRadius: 4, background: o.key === q.answer ? '#e7f6ec' : o.key === given ? '#fde8e6' : 'transparent', fontWeight: o.key === q.answer || o.key === given ? 700 : 400 }}>{o.key}. {q.figure ? `Option ${o.key}` : pick(o.text, o.textMm, lang)}{o.key === q.answer ? '  ✓ correct' : ''}{o.key === given && o.key !== q.answer ? '  ✗ your answer' : ''}{o.key === given && o.key === q.answer ? '  (your answer)' : ''}</div>)}

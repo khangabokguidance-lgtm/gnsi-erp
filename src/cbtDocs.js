@@ -24,8 +24,33 @@ async function open(data) {
   return { zip, doc: new DOMParser().parseFromString(xml, 'application/xml') }
 }
 
+// Cheap fingerprint of a picture (so the same figure in two papers can be recognised).
+export const picHash = dataUrl => {
+  let h = 2166136261
+  for (let i = 0; i < dataUrl.length; i += 3) { h ^= dataUrl.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return `${dataUrl.length.toString(36)}-${(h >>> 0).toString(36)}`
+}
+
+// Every paragraph as { text, raw, images: [{ dataUrl, hash }] } — a picture belongs to the paragraph it sits in,
+// so a figure goes with the question above it, not with "the 5th picture".
 export async function paragraphsFromDocx(data, { convertBmei = true } = {}) {
-  const { doc } = await open(data)
+  const { zip, doc } = await open(data)
+  const rels = await zip.file('word/_rels/document.xml.rels')?.async('string')
+  const targets = new Map()
+  if (rels) for (const r of Array.from(new DOMParser().parseFromString(rels, 'application/xml').getElementsByTagName('Relationship'))) targets.set(r.getAttribute('Id'), r.getAttribute('Target'))
+  const cache = new Map()
+  const picture = async blip => {
+    const id = blip.getAttributeNS(R_NS, 'embed') || blip.getAttribute('r:embed')
+    let target = targets.get(id)
+    if (!target) return null
+    target = target.replace(/^\//, '')
+    const path = target.startsWith('word/') ? target : `word/${target}`
+    if (cache.has(path)) return cache.get(path)
+    const f = zip.file(path), mime = MIME[path.split('.').pop().toLowerCase()]
+    const pic = f && mime ? (d => ({ dataUrl: d, hash: picHash(d) }))(`data:${mime};base64,${await f.async('base64')}`) : null
+    cache.set(path, pic)
+    return pic
+  }
   const body = doc.getElementsByTagNameNS(W_NS, 'body')[0]
   if (!body) return []
   const out = []
@@ -58,11 +83,13 @@ export async function paragraphsFromDocx(data, { convertBmei = true } = {}) {
       }
     }
     walk(p)
+    const images = []
+    for (const blip of Array.from(p.getElementsByTagNameNS(A_NS, 'blip'))) { const pic = await picture(blip); if (pic) images.push(pic) }
     const raw = pieces.map(x => x.text).join('')
     const text = pieces.map(x => (x.bmei && convertBmei ? bmeiToUnicode(x.text) : x.text)).join('')
     // A row of dots typed as a blank (…………) comes out of BMEI04 as a row of Lum Iyek marks; show it as a blank line.
     const tidy = t => t.replace(/\s+/g, ' ').trim()
-    out.push({ text: tidy(text.replace(/\uABEC{3,}/g, '________')), raw: tidy(raw) })
+    out.push({ text: tidy(text.replace(/\uABEC{3,}/g, '________')), raw: tidy(raw), images })
   }
   return out
 }

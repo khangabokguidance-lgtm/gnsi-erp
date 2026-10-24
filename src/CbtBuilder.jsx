@@ -1,9 +1,10 @@
 // CbtBuilder.jsx — make (or edit) a CBT test: read the English and Meitei Mayek question papers (.docx),
 // check what was found, set the marking and the answer key, save.
 import { useMemo, useRef, useState } from 'react'
-import { paragraphsFromDocx, imagesFromDocx } from './cbtDocs'
+import { paragraphsFromDocx, imagesFromDocx, picHash } from './cbtDocs'
 import { buildTest, attachImages } from './lib/cbtPaper'
 import { DEFAULT_INSTRUCTIONS, parseKey, keyStatus } from './lib/cbtEngine'
+import { verifyTest } from './lib/cbtVerify'
 import { newTestId } from './cbtStore'
 
 const nice = name => String(name || '').replace(/\.docx$/i, '').replace(/^[0-9a-f]{6,}[-_]/i, '').replace(/[_-]+/g, ' ').trim()
@@ -24,10 +25,15 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const [error, setError] = useState('')
   const [keyText, setKeyText] = useState('')
   const [keyMsg, setKeyMsg] = useState([])
+  const [reviewNo, setReviewNo] = useState(null)
+  const [swapWith, setSwapWith] = useState('')
   const en = useRef(null), mm = useRef(null)
 
   const qs = useMemo(() => sections.flatMap(s => s.questions), [sections])
   const ks = keyStatus({ sections })
+  const report = useMemo(() => verifyTest(sections), [sections])
+  const flagged = report.items.filter(i => i.status !== 'ok' || i.reviewed)
+  const rq = reviewNo ? qs.find(x => x.no === reviewNo) : null
 
   const read = async () => {
     setError('')
@@ -51,6 +57,21 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   }
 
   const setAnswer = (no, key) => setSections(ss => ss.map(s => ({ ...s, questions: s.questions.map(q => (q.no === no ? { ...q, answer: q.answer === key ? null : key } : q)) })))
+  // Fix a question in place: text, options, passage, pictures.
+  const patchQ = (no, f) => setSections(ss => ss.map(s => ({ ...s, questions: s.questions.map(q => (q.no === no ? { ...q, ...(typeof f === 'function' ? f(q) : f), reviewed: false } : q)) })))
+  const patchOpt = (no, key, patch) => patchQ(no, q => ({ options: q.options.map(o => (o.key === key ? { ...o, ...patch } : o)) }))
+  const markReviewed = no => setSections(ss => ss.map(s => ({ ...s, questions: s.questions.map(q => (q.no === no ? { ...q, reviewed: true } : q)) })))
+  const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
+  const setPics = (no, pics) => patchQ(no, { images: pics, image: pics[0] || null, figHash: pics.map(picHash), figHashMm: pics.map(picHash) })   // a hand-set picture is the admin's decision
+  const readPic = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file) })
+  const replacePic = async (no, file) => { if (file && /^image\//.test(file.type)) setPics(no, [await readPic(file)]) }
+  const swapPics = (a, b) => {
+    const A = qs.find(x => x.no === a), B = qs.find(x => x.no === b)
+    if (!A || !B) return
+    const pa = picsOf(A), pb = picsOf(B)
+    setSections(ss => ss.map(sc => ({ ...sc, questions: sc.questions.map(q => (q.no === a ? { ...q, images: pb, image: pb[0] || null, figHash: pb.map(picHash), figHashMm: pb.map(picHash), reviewed: false } : q.no === b ? { ...q, images: pa, image: pa[0] || null, figHash: pa.map(picHash), figHashMm: pa.map(picHash), reviewed: false } : q)) })))
+    setSwapWith('')
+  }
   const applyKey = () => {
     const { key, errors } = parseKey(keyText, qs.map(q => q.no))
     setKeyMsg(errors)
@@ -62,6 +83,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (!name.trim()) { setError('Give the test a name.'); return }
     if (!sections.length) { setError('Read a question paper first.'); return }
     if (!(durationMin > 0)) { setError('Enter the duration in minutes.'); return }
+    if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
       ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0 },
@@ -114,7 +136,75 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
 
       {sections.length > 0 && (
         <div className="card">
-          <h3><span className="step">4</span>Answer key <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.set} of {ks.total} set</span></h3>
+          <h3><span className="step">4</span>Smart check</h3>
+          <p className="muted">Every question is checked on its own and against its other-language twin: the picture it carries, its options, and that numbers agree between English and Meitei Mayek (numbers do not change with language, so a different number means a shifted or mistyped question). Click a question to look at it side by side and fix it here.</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '10px 0' }}>
+            <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a' }}>✔ {report.counts.ok} verified</span>
+            <span className="tag" style={{ background: report.counts.warn ? '#fff4dc' : '#f1f5f9', color: report.counts.warn ? '#9a5b00' : '#64748b' }}>⚠ {report.counts.warn} to check</span>
+            <span className="tag" style={{ background: report.counts.error ? '#fde8e6' : '#f1f5f9', color: report.counts.error ? '#b42318' : '#64748b' }}>✖ {report.counts.error} errors</span>
+            {report.hasMm ? <span className="tag" style={{ background: '#eef2f9', color: '#1e3a6e' }}>English ⇄ Meitei Mayek compared</span> : <span className="tag" style={{ background: '#f1f5f9', color: '#64748b' }}>English only</span>}
+          </div>
+          {flagged.length === 0 && <p style={{ color: '#146c3a', fontWeight: 700, margin: '6px 0' }}>✓ Nothing to check — every question passed.</p>}
+          {flagged.map(i => (
+            <div key={i.no} className={`cbt-flag ${i.status}`}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b>Q{i.no}</b> <span className="tag" style={{ background: i.status === 'error' ? '#fde8e6' : i.reviewed ? '#e7f6ec' : '#fff4dc', color: i.status === 'error' ? '#b42318' : i.reviewed ? '#146c3a' : '#9a5b00' }}>{i.status === 'error' ? 'ERROR' : i.reviewed ? 'ACCEPTED' : 'CHECK'}</span>
+                <ul>{i.problems.map(p => <li key={p.msg}>{p.msg}</li>)}</ul>
+              </div>
+              <button className="btn" onClick={() => setReviewNo(reviewNo === i.no ? null : i.no)}>{reviewNo === i.no ? 'Close' : 'Review / fix'}</button>
+            </div>
+          ))}
+          <div className="muted" style={{ margin: '12px 0 6px' }}>All questions — click one to open it:</div>
+          <div className="cbt-chips">
+            {report.items.map(i => <button key={i.no} className={`cbt-chip ${i.status}${reviewNo === i.no ? ' sel' : ''}`} onClick={() => setReviewNo(reviewNo === i.no ? null : i.no)} aria-label={`Question ${i.no}, ${i.status === 'ok' ? 'verified' : i.status === 'warn' ? 'to check' : 'error'}`}>{i.no}</button>)}
+          </div>
+          {rq && (
+            <div className="cbt-edit">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0 }}>Question {rq.no}</h3>
+                <div className="cbt-actions">
+                  {report.byNo.get(rq.no).problems.length > 0 && <button className="btn" onClick={() => markReviewed(rq.no)}>✔ Looks fine</button>}
+                  <button className="btn" onClick={() => setReviewNo(null)}>Close</button>
+                </div>
+              </div>
+              {report.byNo.get(rq.no).problems.map(p => <div key={p.msg} style={{ color: p.level === 'error' ? '#b42318' : '#9a5b00', fontSize: 12.5, marginTop: 4 }}>{p.level === 'error' ? '✖' : '⚠'} {p.msg}</div>)}
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '10px 0', fontSize: 13 }}><input type="checkbox" checked={!!rq.figure} onChange={e => patchQ(rq.no, { figure: e.target.checked })} /> Figure question (the picture holds the problem and the options)</label>
+              {(rq.figure || picsOf(rq).length > 0) && (
+                <div className="cbt-figbox">
+                  {picsOf(rq).map((src, i) => <img key={i} src={src} alt={`Figure for question ${rq.no}`} />)}
+                  {picsOf(rq).length === 0 && <div className="muted">No picture on this question.</div>}
+                  <div className="cbt-actions" style={{ marginTop: 8 }}>
+                    <label className="btn" style={{ display: 'inline-block' }}>🖼 {picsOf(rq).length ? 'Replace' : 'Add'} picture<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { replacePic(rq.no, e.target.files?.[0]); e.target.value = '' }} /></label>
+                    {picsOf(rq).length > 0 && <button className="btn red" onClick={() => setPics(rq.no, [])}>Remove picture</button>}
+                    <select className="in" style={{ width: 'auto' }} value={swapWith} onChange={e => setSwapWith(e.target.value)} aria-label="Swap picture with question">
+                      <option value="">Swap picture with…</option>{qs.filter(x => x.no !== rq.no && (x.figure || picsOf(x).length)).map(x => <option key={x.no} value={x.no}>Question {x.no}</option>)}
+                    </select>
+                    {swapWith && <button className="btn navy" onClick={() => swapPics(rq.no, Number(swapWith))}>Swap</button>}
+                  </div>
+                </div>
+              )}
+              <div className="cbt-twin">
+                <div>
+                  <b className="lbl">English</b>
+                  <textarea className="in" rows={3} value={rq.text} onChange={e => patchQ(rq.no, { text: e.target.value })} placeholder={rq.figure ? '(no text — the picture is the question)' : 'Question text'} />
+                  {rq.options.map(o => !rq.figure && <input key={o.key} className="in" style={{ marginTop: 6 }} aria-label={`English option ${o.key}`} value={o.text} onChange={e => patchOpt(rq.no, o.key, { text: e.target.value })} placeholder={`(${o.key})`} />)}
+                  <textarea className="in" style={{ marginTop: 6 }} rows={2} value={rq.passage} onChange={e => patchQ(rq.no, { passage: e.target.value })} placeholder="Reading passage (if any)" />
+                </div>
+                <div className="mm">
+                  <b className="lbl" style={{ fontFamily: 'inherit' }}>Meitei Mayek</b>
+                  <textarea className="in mm" rows={3} value={rq.textMm} onChange={e => patchQ(rq.no, { textMm: e.target.value })} />
+                  {rq.options.map(o => !rq.figure && <input key={o.key} className="in mm" style={{ marginTop: 6 }} aria-label={`Meitei Mayek option ${o.key}`} value={o.textMm} onChange={e => patchOpt(rq.no, o.key, { textMm: e.target.value })} placeholder={`(${o.key})`} />)}
+                  <textarea className="in mm" style={{ marginTop: 6 }} rows={2} value={rq.passageMm} onChange={e => patchQ(rq.no, { passageMm: e.target.value })} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {sections.length > 0 && (
+        <div className="card">
+          <h3><span className="step">5</span>Answer key <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.set} of {ks.total} set</span></h3>
           <p className="muted">The papers do not carry the answers. Paste the key, or click the answers below. Without a key the test still runs, but scores cannot be worked out.</p>
           <textarea className="in" rows={3} value={keyText} onChange={e => setKeyText(e.target.value)} placeholder={'1-A, 2-C, 3-B …   or the letters in order:   ACBDDA…'} />
           <div style={{ display: 'flex', gap: 8, margin: '8px 0', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -139,7 +229,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
       )}
 
       <div className="card">
-        <h3><span className="step">5</span>Instructions shown to the candidate</h3>
+        <h3><span className="step">6</span>Instructions shown to the candidate</h3>
         <textarea className="in" rows={9} value={instructions} onChange={e => setInstructions(e.target.value)} />
       </div>
 
