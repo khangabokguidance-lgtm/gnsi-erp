@@ -41,6 +41,7 @@ export default function CbtPublic() {
   const [run, setRun] = useState(null)              // { test, remote, candidate, resume }
   const [view, setView] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [step, setStep] = useState('find')     // find (access code + GCC no.) | verify (contact number)
   const [stu, setStu] = useState(null)             // the ERP student found for the GCC no.: { name, className, phoneHint, hasPhone } | { none: true } | null
   const inst = getInstitute()
 
@@ -68,10 +69,15 @@ export default function CbtPublic() {
   }
   const total = info ? info.sections.reduce((s, x) => s + x.count, 0) : 0
 
-  const proceed = async () => {
+  const toVerify = () => {
     setErr('')
     if (!form.code.trim()) return setErr('Enter the access code you were given.')
     if (!stu || stu.none) return setErr('Enter your GCC no. — your name must appear below it.')
+    setStep('verify')
+  }
+
+  const proceed = async () => {
+    setErr('')
     const par = form.parent.replace(/\D/g, '')
     if (stu.hasPhone && par.length < 10) return setErr('Enter the 10-digit parent / guardian contact number.')
     setBusy(true)
@@ -141,27 +147,42 @@ export default function CbtPublic() {
       )}
       {info && open && !saved && (
         <div className="card">
-          <h3>Your details</h3>
-          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
-            <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
-            <label><span className="lbl">GCC no. *</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="your GCC number" value={form.gcc} onChange={type('gcc')} /></label>
-            {stu && !stu.none && <label><span className="lbl">Full name</span><input className="in" readOnly value={stu.name} style={{ fontWeight: 700, background: '#f1faf3' }} /></label>}
-            {stu && !stu.none && <label><span className="lbl">Class / batch</span><input className="in" readOnly value={stu.className || '—'} style={{ background: '#f1faf3' }} /></label>}
-            {stu && !stu.none && <label><span className="lbl">Father's name</span><input className="in" readOnly value={stu.fatherName || '—'} style={{ background: '#f1faf3' }} /></label>}
-            {stu && !stu.none && stu.hasPhone && <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>}
-          </div>
-          {stu?.none && <p role="alert" style={{ margin: '8px 0', color: '#b42318', fontWeight: 700 }}>No student with this GCC no. was found. Check the number, or ask the office.</p>}
-          {stu && !stu.none && <p style={{ margin: '8px 0', color: '#1a7f37', fontWeight: 700 }}>✓ Found in the institute records. Is this you? If not, check the GCC no.</p>}
-          {stu && !stu.none && stu.hasPhone && <p className="muted" style={{ margin: '4px 0 8px' }}>Type the parent / guardian number given at admission — it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</p>}
-          {stu && !stu.none && !stu.hasPhone && <p className="muted" style={{ margin: '4px 0 8px' }}>No parent number is on file for you, so none is needed now. Ask the office to add it.</p>}
-          <ul className="muted" style={{ margin: '12px 0', paddingLeft: 18 }}>
-            <li>Use a steady internet connection and keep this page open until you submit.</li>
-            <li>The clock starts when you press “I am ready to begin”, and runs even if you close the page.</li>
-            <li>You get one attempt. If the page closes, open this link again on the same device to continue.</li>
-            <li>Leaving the exam screen is recorded.</li>
-          </ul>
-          {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
-          <button className="btn gold" onClick={proceed} disabled={busy}>{busy ? 'Checking…' : 'Continue ›'}</button>
+          {step === 'find' ? <>
+            <h3 style={{ marginBottom: 2 }}>Your details</h3>
+            <p className="muted" style={{ margin: '0 0 10px' }}>Step 1 of 2 — find yourself</p>
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
+              <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
+              <label><span className="lbl">GCC no. *</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="your GCC number" value={form.gcc} onChange={type('gcc')} /></label>
+              {stu && !stu.none && <label><span className="lbl">Full name</span><input className="in" readOnly value={stu.name} style={{ fontWeight: 700, background: '#f1faf3' }} /></label>}
+              {stu && !stu.none && <label><span className="lbl">Class / batch</span><input className="in" readOnly value={stu.className || '—'} style={{ background: '#f1faf3' }} /></label>}
+              {stu && !stu.none && <label><span className="lbl">Father's name</span><input className="in" readOnly value={stu.fatherName || '—'} style={{ background: '#f1faf3' }} /></label>}
+            </div>
+            {stu?.none && <p role="alert" style={{ margin: '8px 0', color: '#b42318', fontWeight: 700 }}>No student with this GCC no. was found. Check the number, or ask the office.</p>}
+            {stu && !stu.none && <p style={{ margin: '8px 0', color: '#1a7f37', fontWeight: 700 }}>✓ Found in the institute records. Is this you? If not, check the GCC no.</p>}
+            <ul className="muted" style={{ margin: '12px 0', paddingLeft: 18 }}>
+              <li>Use a steady internet connection and keep this page open until you submit.</li>
+              <li>The clock starts when you press “I am ready to begin”, and runs even if you close the page.</li>
+              <li>You get one attempt. If the page closes, open this link again on the same device to continue.</li>
+              <li>Leaving the exam screen is recorded.</li>
+            </ul>
+            {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
+            <button className="btn gold" onClick={toVerify} disabled={!stu || !!stu.none}>Next: verify contact number ›</button>
+          </> : <>
+            <h3 style={{ marginBottom: 2 }}>Verify your contact number</h3>
+            <p className="muted" style={{ margin: '0 0 10px' }}>Step 2 of 2 — confirm it is really you</p>
+            <div style={{ border: '1px solid #cfe6d5', background: '#f1faf3', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+              <b>{stu.name}</b><br /><span className="muted">GCC {stu.gcc}{stu.className ? ` · ${stu.className}` : ''}{stu.fatherName ? ` · Father: ${stu.fatherName}` : ''}</span>
+            </div>
+            {stu.hasPhone ? <>
+              <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" autoFocus placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>
+              <p className="muted" style={{ margin: '6px 0 12px' }}>Type the parent / guardian number given at admission. Hint: it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</p>
+            </> : <p className="muted" style={{ margin: '4px 0 12px' }}>No parent number is on file for you, so it cannot be checked now. You can continue — please ask the office to add it.</p>}
+            {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn" onClick={() => { setErr(''); setStep('find') }} disabled={busy}>‹ Back</button>
+              <button className="btn gold" onClick={proceed} disabled={busy}>{busy ? 'Checking…' : stu.hasPhone ? 'Verify and continue ›' : 'Continue ›'}</button>
+            </div>
+          </>}
         </div>
       )}
     </div>
