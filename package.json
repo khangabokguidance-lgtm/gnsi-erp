@@ -14,7 +14,8 @@
     "electron": "electron .",
     "electron:build": "npm run build && electron-builder",
     "test": "node --test tests/*.test.js",
-    "check:fees": "node tools/feeConsistencyCheck.mjs"
+    "check:fees": "node tools/feeConsistencyCheck.mjs",
+    "check:cbt-sql": "node tools/cbtOnlineSqlCheck.mjs"
   },
   "build": {
     "appId": "in.guidancekhangabok.portal",

@@ -14,7 +14,12 @@ const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
 const LEGEND = ['answered', 'notAnswered', 'notVisited', 'marked', 'answeredMarked']
 const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
 
-export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }) {
+// remote (online exam): { offset, begin(), save(a), submit(a) } — see CbtPublic.jsx. The paper then arrives from the
+// server when the candidate starts, the clock follows the server, answers are saved to the server as they go, and
+// the server marks the attempt. Without it everything stays on this computer.
+export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit, onClose, remote = null }) {
+  const [liveTest, setLiveTest] = useState(null)
+  const test = liveTest || testProp
   const mm = useMemo(() => hasMm(test), [test])
   const qs = useMemo(() => flatQuestions(test), [test])
   const [stage, setStage] = useState(resume ? 'exam' : 'instructions')
@@ -26,13 +31,31 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
   const [toast, setToast] = useState('')
   const [drawer, setDrawer] = useState(false)      // phone: the question palette as a bottom sheet
   const [passOpen, setPassOpen] = useState(true)   // phone: the reading passage can be folded away
+  const [busy, setBusy] = useState('')              // online: 'Starting…' / 'Submitting…'
+  const [netErr, setNetErr] = useState('')          // online: a save that did not get through (retried)
+  const [submitErr, setSubmitErr] = useState('')
+  const [beginErr, setBeginErr] = useState('')
   const submitted = useRef(false)
+  const started = useRef(false)
   const lastSwitch = useRef(0)
+  const fullscreenWas = useRef(false)
   const aRef = useRef(a)
   useEffect(() => { aRef.current = a }, [a])
 
   const flash = t => { setToast(t); setTimeout(() => setToast(''), 3500) }
-  const begin = () => {
+  const begin = async () => {
+    if (started.current) return   // a double click must not start two attempts
+    started.current = true
+    if (remote) {
+      setBusy('Starting the exam…'); setBeginErr('')
+      try {
+        const r = await remote.begin()
+        setLiveTest(r.test); setA(r.attempt); setStage('exam')
+        try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
+      } catch (e) { started.current = false; setBeginErr(e.message) }
+      setBusy('')
+      return
+    }
     const att = newAttempt(test, candidate)
     att.lang = 'en'
     const first = go(att, att.current)
@@ -42,40 +65,77 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
 
   // clock
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  const left = a ? secondsLeft(a, test, now) : test.durationMin * 60
+  const left = a ? secondsLeft(a, test, now + (remote?.offset || 0)) : test.durationMin * 60
 
   const finish = useCallback(async (auto = false) => {
     const cur = aRef.current
     if (!cur || submitted.current) return
     submitted.current = true
+    if (remote) {
+      // The server marks it. If the connection is down the exam stays open and tries again — nothing is lost.
+      setBusy('Submitting your answers…'); setSubmitErr('')
+      try {
+        const res = await remote.submit({ ...cur })
+        try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
+        setBusy(''); onSubmit(res, test, cur)
+      } catch (e) { submitted.current = false; setBusy(''); setSubmitErr(e.message) }
+      return
+    }
     const done = { ...cur, state: 'submitted', submittedAt: Date.now(), autoSubmitted: auto }
     done.score = grade(test, done.answers)
     await cbtStore.saveAttempt(done)
     try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
     onSubmit(done)
-  }, [test, onSubmit])
+  }, [test, onSubmit, remote])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- submits when the clock reaches zero
   useEffect(() => { if (stage === 'exam' && a && left <= 0) finish(true) }, [stage, a, left, finish])
+  // a failed online submit is retried every few seconds
+  useEffect(() => {
+    if (!submitErr) return
+    const t = setTimeout(() => finish(left <= 0), 5000)
+    return () => clearTimeout(t)
+  }, [submitErr, left, finish])
 
   // autosave (so a refresh or a power cut loses nothing)
   useEffect(() => {
     if (stage !== 'exam' || !a || a.state !== 'inprogress') return
-    const t = setTimeout(() => cbtStore.saveAttempt(a), 500)
+    // never overwrite the submitted copy with a late autosave
+    const t = setTimeout(async () => {
+      if (submitted.current) return
+      if (!remote) { cbtStore.saveAttempt(a); return }
+      try {
+        const r = await remote.save(a)
+        setNetErr('')
+        if (r?.submitted) finish(true)          // the server's clock ran out first
+      } catch (e) { setNetErr(e.message) }
+    }, remote ? 1200 : 500)
     return () => clearTimeout(t)
-  }, [a, stage])
+  }, [a, stage, remote, finish])
+  // while an online save keeps failing, try again every few seconds (answers are also kept on this device)
+  useEffect(() => {
+    if (!remote || !netErr || stage !== 'exam') return
+    const t = setInterval(async () => {
+      if (submitted.current || !aRef.current) return
+      try { const r = await remote.save(aRef.current); setNetErr(''); if (r?.submitted) finish(true) } catch { /* still offline */ }
+    }, 6000)
+    return () => clearInterval(t)
+  }, [remote, netErr, stage, finish])
 
   // leaving the screen is recorded
   useEffect(() => {
     if (stage !== 'exam') return
     const away = () => {
-      if (Date.now() - lastSwitch.current < 1500) return
+      if (submitted.current || Date.now() - lastSwitch.current < 1500) return
       lastSwitch.current = Date.now()
       setA(x => (x ? { ...x, switches: (x.switches || 0) + 1 } : x))
       flash('You left the exam screen. This has been recorded.')
     }
     const vis = () => { if (document.hidden) away() }
     const stop = e => { e.preventDefault(); e.returnValue = '' }
-    document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop)
-    return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop) }
+    // pressing Esc to leave full screen is recorded too
+    const fsx = () => { if (!document.fullscreenElement && !submitted.current && fullscreenWas.current) away(); fullscreenWas.current = !!document.fullscreenElement }
+    document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop); document.addEventListener('fullscreenchange', fsx)
+    return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop); document.removeEventListener('fullscreenchange', fsx) }
   }, [stage])
 
   const q = a ? qs.find(x => x.no === a.current) : null
@@ -115,7 +175,7 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
       <div className="cbt-center"><div className="panel">
         {stage === 'instructions' ? <>
           <h3 style={{ textAlign: 'center' }}>Instructions</h3>
-          <p style={{ textAlign: 'center', margin: '0 0 12px' }}><b>Duration: {test.durationMin} minutes</b> · Maximum marks: {grade(test, {}).max || '—'} · {flatQuestions(test).length} questions</p>
+          <p style={{ textAlign: 'center', margin: '0 0 12px' }}><b>Duration: {test.durationMin} minutes</b> · Maximum marks: {Math.round(flatQuestions(test).length * test.marking.correct * 100) / 100} · {flatQuestions(test).length} questions</p>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
@@ -133,8 +193,9 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
           </label>
           <div className="cbt-row">
             <button className="cbt-b" onClick={() => setStage('instructions')}>‹ Previous</button>
-            <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree} onClick={begin}>I am ready to begin</button>
+            <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree || !!busy} onClick={begin}>{busy || 'I am ready to begin'}</button>
           </div>
+          {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
         </>}
       </div></div>
     </>)
@@ -157,6 +218,9 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
 
   return shell(<>
     {toast && <div className="cbt-toast" role="alert">{toast}</div>}
+    {remote && netErr && !submitErr && <div className="cbt-net" role="status">⚠ No connection — your answers are kept on this device and will be sent when it returns. Keep this page open.</div>}
+    {busy && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 360, textAlign: 'center' }}><h3>{busy}</h3><p className="muted">Please wait. Do not close this page.</p></div></div>}
+    {submitErr && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 420 }}><h3>Could not submit yet</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{submitErr}</p><p className="muted">Your answers are safe. Trying again automatically — keep this page open.</p><div className="cbt-row"><button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => finish(left <= 0)}>Try now</button></div></div></div>}
     <div className="cbt-top">
       <div className="title">{test.name}</div>
       <span className={`cbt-timer${low ? ' low' : ''}`} aria-label="Time left">⏱ {clock(left)}</span>
@@ -247,11 +311,14 @@ export default function CbtPlayer({ test, candidate, resume, onSubmit, onClose }
 
 // ── Score card + answer review ───────────────────────────────────────────────
 export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 'Close' }) {
-  const g = useMemo(() => grade(test, attempt.answers), [test, attempt])
+  const ks = keyStatus(test)
+  // With a key here the score is worked out fresh (so a key added later is used); otherwise the server's score is shown.
+  const g = useMemo(() => (ks.set === 0 && attempt.score ? attempt.score : grade(test, attempt.answers)), [test, attempt, ks.set])
+  const known = ks.set > 0 || !!attempt.score
+  const complete = ks.complete || (ks.set === 0 && !!attempt.score?.complete)
   const [filter, setFilter] = useState('all')
   const [lang, setLang] = useState('en')
   const qs = useMemo(() => flatQuestions(test), [test])
-  const ks = keyStatus(test)
   const visible = admin || test.showResult !== false
   const took = attempt.submittedAt ? Math.round((attempt.submittedAt - attempt.startedAt) / 60000) : null
   const rows = qs.filter(q => {
@@ -270,11 +337,11 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
           {!visible ? (
             <p style={{ fontSize: 15, lineHeight: 1.6 }}>Your answers have been recorded. The result will be declared by the institute.</p>
           ) : <>
-            {!ks.complete && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>⚠️ The answer key is {ks.set ? `set for ${ks.set} of ${ks.total} questions` : 'not set yet'}, so this score is {ks.set ? 'partial' : 'not available'}. Add the key under CBT Exam → Edit, then open the result again.</p>}
+            {!complete && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>⚠️ The answer key is {ks.set ? `set for ${ks.set} of ${ks.total} questions` : 'not set yet'}, so this score is {ks.set ? 'partial' : 'not available'}. Add the key under CBT Exam → Edit, then open the result again.</p>}
             <div className="cbt-stats">
-              {stat('Score', ks.set ? `${g.marks} / ${g.max}` : '—', '#146c3a')}
+              {stat('Score', known ? `${g.marks} / ${g.max}` : '—', '#146c3a')}
               {stat('Correct', g.correct, '#146c3a')}{stat('Wrong', g.wrong, '#b42318')}{stat('Not answered', g.skipped)}
-              {stat('Accuracy', ks.set ? `${g.accuracy}%` : '—')}
+              {stat('Accuracy', known ? `${g.accuracy}%` : '—')}
             </div>
             <div className="tbl"><table><thead><tr><th>Section</th><th className="num">Qs</th><th className="num">Tried</th><th className="num">Right</th><th className="num">Wrong</th><th className="num">Marks</th></tr></thead>
               <tbody>{g.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td className="num">{s.total}</td><td className="num">{s.attempted}</td><td className="num">{s.correct}</td><td className="num">{s.wrong}</td><td className="num"><b>{s.marks}</b> / {s.max}</td></tr>)}</tbody></table></div>

@@ -40,6 +40,7 @@ import Teaching           from './Teaching'
 import Attendance         from './Attendance'
 import Exams              from './Exams'
 import Cbt                from './Cbt'
+import CbtPublic          from './CbtPublic'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
@@ -682,7 +683,7 @@ export default function App() {
     // Presentation API for cast-receiver. Everything else still defaults
     // to 'dashboard' and is reached via in-app setActive(...) calls only.
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
-    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store', 'exam-registration', 'admit-card', 'apply', 'apply-status']
+    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store', 'exam-registration', 'admit-card', 'apply', 'apply-status', 'exam']
     // 'store' is deliberately both the public storefront route (cold load,
     // no session) and the staff-side nav item id (POS module, logged in).
     // Only take the public branch on a genuine cold load with no session —
@@ -978,6 +979,8 @@ export default function App() {
   // Entrance-exam registration and admit card: public, no login (candidates and parents use these).
   if (active === 'exam-registration' || active === 'admit-card') return <ExamRegistrationPublic page={active} />
   if (active === 'apply' || active === 'apply-status') return <AdmissionPortalPublic page={active} />
+  // Online CBT exam: candidates open the link from anywhere, no login (…/exam?t=<test id>).
+  if (active === 'exam') return <CbtPublic />
   // Public storefront — only reachable here when there's no session yet
   // (see the cold-load check above); once logged in, 'store' always means
   // the staff POS module below, never this page.

@@ -89,3 +89,24 @@ test('a page footer is never read as part of an option', () => {
   const { sections } = buildTest(['Q1. a question here', '(A) one', '(B) two', '(C) three', '(D) four', 'pesej-3', 'Page - 4', 'Q2. next', '(A) a', '(B) b', '(C) c', '(D) d'])
   assert.deepEqual(sections[0].questions[0].options.map(o => o.text), ['one', 'two', 'three', 'four'])
 })
+
+test('numbered statements inside a question are not mistaken for the next question', () => {
+  const { sections } = buildTest(['Q1. Read the statements:', '1. The sun is a star', '2. The moon is a planet', 'Which is true?', '(A) 1 only', '(B) 2 only', '(C) both', '(D) neither', '2. Next real question', '(A) a', '(B) b', '(C) c', '(D) d'])
+  const qs = sections[0].questions
+  assert.deepEqual(qs.map(x => x.no), [1, 2])
+  assert.match(qs[0].text, /1\. The sun is a star\n2\. The moon is a planet\nWhich is true\?/)
+  assert.equal(qs[1].text, 'Next real question')
+})
+
+test('a paper numbered 1. 2. 3. with no Q is read in loose mode', () => {
+  const { sections, warnings } = buildTest(['1. First?', '(A) a', '(B) b', '(C) c', '(D) d', '2. Second?', '(A) a', '(B) b', '(C) c', '(D) d'])
+  assert.deepEqual(sections[0].questions.map(x => x.no), [1, 2])
+  assert.deepEqual(warnings, [])
+})
+
+test('options written A. B. C. D. are accepted in order only', () => {
+  const { sections } = buildTest(['Q1. Pick', 'A. alpha', 'B. beta', 'C. gamma', 'D. delta', 'Q2. A. sentence here', '(A) a', '(B) b', '(C) c', '(D) d'])
+  assert.deepEqual(sections[0].questions[0].options.map(o => o.text), ['alpha', 'beta', 'gamma', 'delta'])
+  assert.equal(sections[0].questions[1].text, 'A. sentence here')
+  assert.equal(sections[0].questions[1].options.length, 4)
+})
