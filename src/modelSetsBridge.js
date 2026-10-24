@@ -10,7 +10,7 @@
 //   use('user')   → canEdit(): the portal's Model Sets permission
 //   use('assets') → upload(blob): pictures into the question-diagrams bucket
 //   use('downloads') → save({filename, data}): the PDF / Word file the page made
-//   exportLibs()  → { jsPDF, docx, html2canvas } from the portal's own bundle,
+//   exportLibs()  → { jsPDF, docx, html2canvasUrl } from the portal's own bundle,
 //                   so Download PDF / Word works without the CDN
 //   visionJSON(prompt, images) → the text Gemini returns for page images
 //                   (api/gemini.js with page images), used by "Import paper"

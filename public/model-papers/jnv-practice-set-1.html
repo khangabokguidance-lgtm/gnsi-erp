@@ -647,6 +647,12 @@ PAPER.forEach(sheet => {
 const $ = s => document.querySelector(s);
 const LET = ['A', 'B', 'C', 'D'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* text read from a scan often repeats what the paper itself prints: "(A) Bus" for option A, or the
+   "Question Figure / Answer Figures" captions as the question. Drop those when showing and importing. */
+const OPT_LABEL = /^\s*[([]?\s*([A-Da-d])\s*[)\].:]\s*/;
+const cleanOpt = (o, i) => { const t = String(o ?? ''), m = t.match(OPT_LABEL); return m && m[1].toUpperCase() === LET[i] ? t.slice(m[0].length) : t; };
+const CAPTION_LINE = /^\s*(question|answer)\s+figures?\s*:?\s*$/i;
+const cleanQ = q => String(q ?? '').split('\n').filter(l => !CAPTION_LINE.test(l)).join('\n').trim();
 const fmtU = s => esc(s).replace(/\[(\d+)\s*\/\s*(\d+)\]/g, (_, a, b) => f(a, b)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 const fmtDir = s => fmtU(s).replace(/^(Directions(?:\s*\([^)]*\))?\s*:)/i, '<b>$1</b>');
 const plain = h => String(h ?? '').replace(/<[^>]+>/g, '').trim();
@@ -713,15 +719,16 @@ function qHTML(q, n, trusted, preview) {
     const src = imgSrc(q.img);
     fig = `<div class="qfig" style="margin-top:6px">${src ? `<img class="qimg" src="${esc(src)}" alt="Question ${n} figure">` : '<div class="imgph">Figure not added</div>'}</div>`;
     if (q.optMode === 'img') {
-      return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${q.q ? tx(q.q) : '<b>Question Figure</b>'}</div></div>${fig}
+      const qt = trusted ? q.q : cleanQ(q.q);
+      return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${qt ? tx(qt) : '<b>Question Figure</b>'}</div></div>${fig}
         <div class="cap">${esc(q.afig || 'Answer Figures')}</div>
         <div class="opts figopts">${[0, 1, 2, 3].map(i => { const s = imgSrc((q.optImgs || [])[i]); return btn(`${s ? `<img src="${esc(s)}" alt="Option ${LET[i]}">` : '<span class="imgph" style="width:52px;height:52px">—</span>'}<span class="bub">${LET[i]}</span>`, i); }).join('')}</div></article>`;
     }
   }
-  const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+  const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
   const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
   const cols = max <= 11 ? 4 : max <= 30 ? 2 : 1;
-  return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${tx(q.q || '') || '<span style="color:var(--muted)">Question text</span>'}</div></div>${fig}
+  return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${tx(trusted ? q.q || '' : cleanQ(q.q)) || '<span style="color:var(--muted)">Question text</span>'}</div></div>${fig}
     <div class="opts${cols === 1 ? ' long' : ''}" style="--n:${cols}">${opts.map((o, i) => btn(`<span class="bub">${LET[i]}</span><span class="ot">${tx(o) || '—'}</span>`, i)).join('')}</div></article>`;
 }
 
@@ -1356,9 +1363,10 @@ const PRINT_CSS = `
 .pp .p-fig svg.fig.big{width:8.6em;height:8.6em}
 .pp .p-fig svg.fig.mq{width:6.6em;height:5.05em}
 .pp .p-fig img{max-width:100%;max-height:14em}
-.pp .p-fo{display:grid;grid-template-columns:repeat(4,4.4em);gap:.4em 1em}
-.pp .p-fi{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.85em}
-.pp .p-fi svg.fig,.pp .p-fi img{width:4.6em;height:4.6em;object-fit:contain}
+.pp .p-fo{display:grid;grid-template-columns:repeat(4,minmax(0,5.4em));gap:.4em .8em}
+.pp .p-fi{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.85em;min-width:0}
+.pp .p-fi svg.fig{width:4.6em;height:4.6em}
+.pp .p-fi img{width:100%;height:4.6em;object-fit:contain}
 .pp .p-opts{display:grid;gap:.1em 1em}
 .pp .p-o{min-width:0;overflow-wrap:break-word}
 .pp .p-o b{font-weight:600;margin-right:.25em}
@@ -1425,15 +1433,16 @@ function printQ(q, n, trusted) {
     const src = imgSrc(q.img);
     fig = src ? `<div class="p-fig p-in"><img src="${esc(src)}" crossorigin="anonymous" alt=""></div>` : '';
     if (q.optMode === 'img') {
-      return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt">${q.q ? tx(q.q) : '<b>Question Figure</b>'}</span></div>${fig}
+      const qt = trusted ? q.q : cleanQ(q.q);
+      return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt">${qt ? tx(qt) : '<b>Question Figure</b>'}</span></div>${fig}
         <div class="p-cap p-in">${esc(q.afig || 'Answer Figures')}</div>
         <div class="p-fo p-in">${[0, 1, 2, 3].map(i => { const s = imgSrc((q.optImgs || [])[i]); return `<div class="p-fi">${s ? `<img src="${esc(s)}" crossorigin="anonymous" alt="">` : '<span style="width:4.6em;height:4.6em;border:1px dashed #999"></span>'}<span>(${LET[i]})</span></div>`; }).join('')}</div></div>`;
     }
   }
-  const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+  const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
   const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
   const cols = max <= 7 ? 4 : max <= 22 ? 2 : 1;
-  return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(q.q || '')}</span></div>${fig}
+  return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(trusted ? q.q || '' : cleanQ(q.q))}</span></div>${fig}
     <div class="p-opts p-in" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${opts.map((o, i) => `<div class="p-o"><b>(${LET[i]})</b>${tx(o) || '—'}</div>`).join('')}</div></div>`;
 }
 
@@ -1472,11 +1481,13 @@ function paginate(units, s) {
       newPage();
     }
   };
-  units.forEach(u => {
+  units.forEach((u, ui) => {
     if (!u.full) { run.push(u); return; }
     flushRun();
     const kind = u.blocks[0].kind;
-    if (y > 0 && (y + u.h > BODY_H || (kind === 'band' && y + u.h + 150 * s > BODY_H))) newPage();
+    // keep a section band with the first block after it
+    const next = units[ui + 1], follow = kind === 'band' && next && !next.full ? next.h + GF : 0;
+    if (y > 0 && (y + u.h > BODY_H || (kind === 'band' && y + u.h + Math.max(follow, 150 * s) > BODY_H))) newPage();
     page().push({ type: 'full', u }); y += u.h + GF;
   });
   flushRun();
@@ -1568,11 +1579,28 @@ const loadScript = src => new Promise((res, rej) => {
   const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.append(s);
 });
 async function loadLibs(fmt) {
-  if (CL && typeof CL.exportLibs === 'function') return CL.exportLibs();
-  if (!window.html2canvas) await loadScript(LIB.html2canvas);
-  if (fmt === 'pdf' && !window.jspdf) await loadScript(LIB.jspdf);
-  if (fmt === 'docx' && !window.docx) await loadScript(LIB.docx);
-  return { html2canvas: window.html2canvas, jsPDF: window.jspdf && window.jspdf.jsPDF, docx: window.docx };
+  const lent = CL && typeof CL.exportLibs === 'function' ? await CL.exportLibs() : {};
+  // html2canvas must run in THIS frame: a copy from the portal window draws on that window's canvas,
+  // which cannot see this page's web fonts (Literata, BMEI04…) and falls back to system fonts.
+  if (!window.html2canvas) await loadScript(lent.html2canvasUrl || LIB.html2canvas);
+  if (fmt === 'pdf' && !lent.jsPDF && !window.jspdf) await loadScript(LIB.jspdf);
+  if (fmt === 'docx' && !lent.docx && !window.docx) await loadScript(LIB.docx);
+  return { html2canvas: window.html2canvas, jsPDF: lent.jsPDF || (window.jspdf && window.jspdf.jsPDF), docx: lent.docx || window.docx };
+}
+/* pictures from another site (the portal's storage) become data inside the page before drawing,
+   so a cached copy without CORS headers can never leave a blank where a figure should be */
+async function inlineImages(root) {
+  const imgs = [...root.querySelectorAll('img')].filter(i => /^https?:/.test(i.getAttribute('src') || '') && new URL(i.src, location.href).origin !== location.origin);
+  const cache = new Map();
+  await Promise.all(imgs.map(async img => {
+    const url = img.getAttribute('src');
+    try {
+      if (!cache.has(url)) cache.set(url, fetch(url, { mode: 'cors', cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); })));
+      img.removeAttribute('crossorigin');
+      img.src = await cache.get(url);
+      await img.decode().catch(() => {});
+    } catch (e) { /* leave it; html2canvas tries the URL itself */ }
+  }));
 }
 async function saveFile(filename, blob) {
   const dl = CL && typeof CL.use === 'function' ? await CL.use('downloads').catch(() => null) : null;
@@ -1709,8 +1737,9 @@ async function buildDocx(set, L, libs, msg) {
         const num = new d.TextRun({ text: `${n}.\t`, bold: true, font: HFONT, size: base });
         const head = { tabStops: [{ type: d.TabStopType.LEFT, position: IND }], indent: { left: IND, hanging: IND }, spacing: { before: 100, after: 40 }, keepNext: true };
         if (q.kind === 'fig' || (q.kind === 'img' && q.optMode === 'img')) {
-          const label = q.kind === 'fig' ? q.label : (q.q ? null : 'Question Figure');
-          C.push(P({ ...head, children: [num, ...(label ? tx(label, { bold: true, font: HFONT, size: base - 1 }) : runs(q.q, trusted))] }));
+          const qt = trusted ? q.q : cleanQ(q.q);
+          const label = q.kind === 'fig' ? q.label : (qt ? null : 'Question Figure');
+          C.push(P({ ...head, children: [num, ...(label ? tx(label, { bold: true, font: HFONT, size: base - 1 }) : runs(qt, trusted))] }));
           const qImgs = [];
           for (const f of node.querySelectorAll('.p-fig > svg, .p-fig > img')) {
             const r = f.getBoundingClientRect(), im = await imgOf(f, r.width, r.height);
@@ -1721,9 +1750,11 @@ async function buildDocx(set, L, libs, msg) {
           const cells = [...node.querySelectorAll('.p-fi')];
           const step = Math.round((COLW - IND) / 4), tabs = [0, 1, 2, 3].map(i => ({ type: d.TabStopType.CENTER, position: IND + Math.round(step * (i + 0.5)) }));
           const pics = [];
+          const maxW = (step / 15) * 0.8 / WORD_GROW;          // px that fit a quarter of the column, after the Word enlargement
           for (let i = 0; i < cells.length; i++) {
             const f = cells[i].querySelector('svg, img'), r = f ? f.getBoundingClientRect() : { width: 0, height: 0 };
-            const im = f ? await imgOf(f, r.width, r.height) : null;
+            const k = r.width > maxW ? maxW / r.width : 1;
+            const im = f ? await imgOf(f, r.width * k, r.height * k) : null;
             pics.push(new d.TextRun({ text: '\t' }), ...(im ? [im] : [new d.TextRun({ text: '—' })]));
           }
           C.push(P({ tabStops: tabs, keepNext: true, children: pics }));
@@ -1739,11 +1770,11 @@ async function buildDocx(set, L, libs, msg) {
             const tail = toText(String(q.q).split(/<\/table>/i)[1] || '');
             if (tail) C.push(P({ indent: { left: IND }, keepNext: true, children: runs(tail, false) }));
           } else {
-            C.push(P({ ...head, children: [num, ...runs(q.q || '', trusted)] }));
+            C.push(P({ ...head, children: [num, ...runs(trusted ? q.q || '' : cleanQ(q.q), trusted)] }));
           }
           const fi = node.querySelector('.p-fig > img');
           if (fi) { const r = fi.getBoundingClientRect(), im = await imgOf(fi, r.width, r.height); if (im) C.push(P({ indent: { left: IND }, keepNext: true, children: [im] })); }
-          const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+          const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
           const max = Math.max(...opts.map(o => (trusted ? toText(o) : String(o)).length));
           const per = max <= 7 ? 4 : max <= 22 ? 2 : 1;
           const w = Math.round((COLW - IND) / per);
@@ -1828,6 +1859,8 @@ async function runExport(fmt) {
     await new Promise(r => setTimeout(r, 30));
     L = layoutPaper(set, pages, withKey);
     if (document.fonts && document.fonts.ready) await document.fonts.ready;   // faces first used by the print layout
+    msg('Getting the figures ready…');
+    await inlineImages(L.root);
     const imgs = [...L.root.querySelectorAll('img')];
     await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
     const blob = fmt === 'pdf' ? await buildPdf(L, libs, msg) : await buildDocx(set, L, libs, msg);
@@ -1953,13 +1986,13 @@ function cleanItems(reply, cv, page) {
     if (r.type === 'heading') { const it = { t: 'head', sub: str(r.sub, 200), part: str(r.part, 80), dir: str(r.directions) }; if (it.sub || it.part || it.dir) out.push(it); return; }
     if (r.type === 'passage') { const it = { t: 'passage', title: str(r.title, 200), text: str(r.text, 12000) }; if (it.text) out.push(it); return; }
     if (r.type !== 'question') return;
-    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map(o => str(o, 600));
+    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o, i) => cleanOpt(str(o, 600), i));
     while (opts.length < 4) opts.push('');
     const ofs = Array.isArray(r.optionFigures) && r.optionFigures.length === 4 && r.optionFigures.every(okBox) ? r.optionFigures : null;
     const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
     out.push({
       t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
-      q: str(r.text), opts, a, gen: a != null,
+      q: cleanQ(str(r.text)), opts, a, gen: a != null,
       fig: okBox(r.figure) ? cropBox(cv, r.figure) : null,
       optFigs: ofs ? ofs.map(b => cropBox(cv, b)) : null,
     });

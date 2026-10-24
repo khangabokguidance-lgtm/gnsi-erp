@@ -10,7 +10,9 @@
 // perms — { read, add, edit, delete } for the 'modelsets' module; add or edit
 // shows the maker (New model set, Edit, Duplicate, Delete).
 // Download PDF / Word (8 A4 pages by default) is built inside the page; the
-// portal lends it jsPDF, docx and html2canvas so it works offline too.
+// portal lends it jsPDF and docx, and the URL of its own html2canvas file, so it
+// works offline too. html2canvas is loaded INTO the page's frame: run from this
+// window it draws on a canvas that cannot see the page's fonts (Literata, BMEI04).
 // Import paper (PDF or photos → questions) reads each page with Gemini
 // through api/gemini.js (page images are handled in api/_gemini/vision.js).
 // Translate to Meetei Mayek uses mayekTranslate.js (school dictionary first,
@@ -18,13 +20,14 @@
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { authFetch } from './apiFetch'
+import html2canvasUrl from 'html2canvas/dist/html2canvas.min.js?url'
 import { createModelSetsBridge } from './modelSetsBridge'
 
 const PAGE = `${import.meta.env.BASE_URL}model-papers/jnv-practice-set-1.html`
 
 const exportLibs = async () => {
-  const [{ jsPDF }, docx, { default: html2canvas }] = await Promise.all([import('jspdf'), import('docx'), import('html2canvas')])
-  return { jsPDF, docx, html2canvas }
+  const [{ jsPDF }, docx] = await Promise.all([import('jspdf'), import('docx')])
+  return { jsPDF, docx, html2canvasUrl: new URL(html2canvasUrl, window.location.href).href }
 }
 const vision = async (prompt, images) => {
   const res = await authFetch('/api/gemini', {
