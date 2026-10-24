@@ -7,7 +7,7 @@ try { ({ PGlite } = await import('@electric-sql/pglite')) } catch { console.erro
 import fs from 'node:fs'
 const db = new PGlite()
 await db.exec(`create role anon; create role authenticated; create function public.qbank_is_staff() returns boolean language sql as $$ select true $$;`)
-await db.exec(`create table public.students (id serial primary key, name text, gcc_no text, status text, batch text, parent_phone text, father_phone text);
+await db.exec(`create table public.students (id serial primary key, name text, gcc_no text, status text, batch text, parent_phone text, father_phone text, mother_phone text);
   insert into public.students (name, gcc_no, status, batch, father_phone) values ('Asha Devi','0042','Active','VI A','9876543210'),('Ashok Singh','43','Active','VI B',null),('Old Ashir','44','Left','VI A','9000000000')`)
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))   // twice: safe to re-run
@@ -132,4 +132,30 @@ console.log('second device submits too early (min 30) ->', await one(`select cbt
 await db.query(`update cbt_attempts set started_at = now() - interval '31 minutes' where id=$1`, [dv.attempt.id])
 const okSub = await one(`select cbt_submit($1,$2,'{"1":"A"}'::jsonb,null,0,$3)`, [dv.attempt.id, dv.token, rs2.session])
 console.log('after 31 minutes the submit goes through: marks', okSub.score?.marks, '| key hidden (show_answers off):', okSub.key === null)
+
+// ── GCC identity (20261039) ──
+await db.exec(fs.readFileSync('supabase/migrations/20261039_cbt_gcc_identity.sql', 'utf8'))
+await db.exec(fs.readFileSync('supabase/migrations/20261039_cbt_gcc_identity.sql', 'utf8'))
+console.log('gcc-identity migration ran twice OK')
+await db.query(`delete from cbt_hits`)
+await db.exec(`insert into public.students (name, gcc_no, status, batch, mother_phone) values ('Bina Laishram','50','Active','VI A','91234-56789')`)
+await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions,sections,status,access_code,grace_seconds) values ('t7','Identity',60,'{"correct":1,"wrong":0}','read',$1,'live','abc',0)`, [JSON.stringify(sections)])
+await db.query(`insert into cbt_keys values ('t7', '{"1":"A"}')`)
+console.log('lookup wrong code ->', JSON.stringify(await one(`select cbt_lookup('t7','nope','42')`)))
+console.log('lookup GCC 42 ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','42')`)))
+console.log('lookup by name no longer works ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','Asha')`)))
+console.log('lookup GCC 44 (left the institute) ->', JSON.stringify(await one(`select cbt_lookup('t7','abc','44')`)))
+console.log('lookup with a wrong number -> verified', (await one(`select cbt_lookup('t7','abc','42','9000000000')`))[0].verified, '| right number -> verified', (await one(`select cbt_lookup('t7','abc','0042','+91 98765-43210')`))[0].verified)
+console.log('lookup GCC 43 (no number on file) -> hasPhone', (await one(`select cbt_lookup('t7','abc','43')`))[0].hasPhone)
+console.log('old cbt_start with a typed name is gone ->', String(await one(`select cbt_start('t7','abc','Fake Name','F1','','42','9876543210')`)).slice(0, 60))
+console.log('start with a wrong number ->', JSON.stringify(await one(`select cbt_start('t7','abc','42','9111111111')`)))
+console.log('start with an unknown GCC ->', JSON.stringify(await one(`select cbt_start('t7','abc','999','9876543210')`)))
+const idn = await one(`select cbt_start('t7','abc','42','9876543210')`)
+console.log('start with the right number ->', JSON.stringify((await db.query(`select candidate_name, roll, gcc_no, parent_phone, erp_match, phone_verified from cbt_attempts where id=$1`, [idn.attempt.id])).rows[0]))
+const np = await one(`select cbt_start('t7','abc','43')`)
+console.log('student with no number on file starts, marked not verified ->', JSON.stringify((await db.query(`select candidate_name, phone_verified from cbt_attempts where id=$1`, [np.attempt.id])).rows[0]))
+console.log('same GCC again ->', await one(`select cbt_start('t7','abc','0042','9876543210')`))
+await db.query(`delete from cbt_hits`)
+for (let i = 0; i < 10; i++) await one(`select cbt_start('t7','abc','50','900000000${i}')`)
+console.log('after 10 wrong numbers for GCC 50 even the right one is locked ->', JSON.stringify(await one(`select cbt_start('t7','abc','50','9123456789')`)).slice(0, 90))
 await db.close()
