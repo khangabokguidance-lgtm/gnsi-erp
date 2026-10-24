@@ -89,6 +89,22 @@ export function monthTotals(items) {
   }))
 }
 
+// Students owing fee for one month (index into the April→March rows), biggest
+// due first. "due" = nothing paid yet; "short" = part-paid.
+export function monthDueList(items, i) {
+  return items.map(x => ({ x, r: x.reg.rows[i] })).filter(({ r }) => r.due > 0).sort((a, b) => b.r.due - a.r.due)
+}
+
+export function printMonthDue(list, session, label, scope) {
+  const total = list.reduce((s, { r }) => s + r.due, 0)
+  const body = list.map(({ x, r }, i) => `<tr><td>${i + 1}</td><td>${escH(x.student.name)}</td><td>${escH(x.student.gcc_no)}</td><td>${escH([x.student.course, x.student.batch].filter(Boolean).join(' · '))}</td>
+    <td>${escH(x.student.hostel_type || '')}</td><td class="num">${fmt(r.expected)}</td><td class="num P">${fmt(r.paidAmt)}</td><td class="${r.status === 'short' ? 'S' : 'D'}">${r.status === 'short' ? 'Short' : 'Unpaid'}</td><td class="num D">${fmt(r.due)}</td></tr>`).join('')
+  openDoc(`Monthly Due Ledger ${label}`, `<div class="inst">${instNameHTML()} · Monthly Due Ledger</div><h1>Dues for ${escH(label)} — Session ${escH(shortSession(session))}${scope ? ' · ' + escH(scope) : ''}</h1>
+  <table><thead><tr><th>#</th><th>Student</th><th>GCC</th><th>Course · Batch</th><th>Hostel</th><th class="num">Fee</th><th class="num">Paid</th><th>Status</th><th class="num">Due (₹)</th></tr></thead><tbody>${body || '<tr><td colspan="9">No dues for this month.</td></tr>'}</tbody>
+  <tfoot><tr><td colspan="8">Total — ${list.length} student${list.length === 1 ? '' : 's'}</td><td class="num">${fmt(total)}</td></tr></tfoot></table>
+  <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div></div>`, false)
+}
+
 export function printMonthlyLedger(items, session, scope) {
   const totals = monthTotals(items)
   const head = totals.map(t => `<th class="num">${t.month.slice(0, 3)} ${String(t.year).slice(2)}</th>`).join('')
@@ -129,6 +145,15 @@ export const exportDayBookExcel = (book, from, to) => saveWorkbook(wb => {
   block('By day', book.days.map(d => [d.date, d.total]))
   sm.getColumn(1).width = 24; sm.getColumn(2).width = 14; sm.getColumn(2).numFmt = '#,##0'
 }, `Day-Book-${from}${from === to ? '' : '_to_' + to}.xlsx`)
+
+export const exportMonthDueExcel = (list, session, label) => saveWorkbook(wb => {
+  const ws = wb.addWorksheet('Month dues')
+  ws.addRow([`Dues for ${label} — Session ${shortSession(session)}`]).font = { bold: true, size: 13 }; ws.addRow([])
+  styleHeader(ws.addRow(['#', 'GCC', 'Student', 'Course', 'Batch', 'Hostel', 'Fee', 'Paid', 'Status', 'Due']))
+  list.forEach(({ x, r }, i) => ws.addRow([i + 1, Number(x.student.gcc_no) || x.student.gcc_no, x.student.name, x.student.course || '', x.student.batch || '', x.student.hostel_type || '', r.expected, r.paidAmt, r.status === 'short' ? 'Short' : 'Unpaid', r.due]))
+  ws.addRow(['', '', '', '', '', '', '', '', 'Total', list.reduce((s, { r }) => s + r.due, 0)]).font = { bold: true }
+  ;[5, 8, 24, 16, 14, 10, 10, 10, 10, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w }); ws.getColumn(10).numFmt = '#,##0'
+}, `Month-Dues-${label.replace(/\s+/g, '-')}.xlsx`)
 
 export const exportMonthlyExcel = (items, session) => saveWorkbook(wb => {
   const ws = wb.addWorksheet('Monthly ledger')
