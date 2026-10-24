@@ -12,7 +12,7 @@
 // Download PDF / Word (8 A4 pages by default) is built inside the page; the
 // portal lends it jsPDF, docx and html2canvas so it works offline too.
 // Import paper (PDF or photos → questions) reads each page with Gemini
-// through api/gemini-vision.js.
+// through api/gemini.js (page images are handled in api/_gemini/vision.js).
 // Translate to Meetei Mayek uses mayekTranslate.js (school dictionary first,
 // then Bhashini / Google / Gemini); the page draws the Mayek text in BMEI04.
 import { useLayoutEffect, useRef } from 'react'
@@ -27,7 +27,7 @@ const exportLibs = async () => {
   return { jsPDF, docx, html2canvas }
 }
 const vision = async (prompt, images) => {
-  const res = await authFetch('/api/gemini-vision', {
+  const res = await authFetch('/api/gemini', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, images }),
   })
   const body = await res.json().catch(() => ({}))

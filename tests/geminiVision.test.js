@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkVisionBody } from '../api/gemini-vision.js'
+import { checkVisionBody } from '../api/_gemini/vision.js'
 
 const page = { mimeType: 'image/jpeg', data: 'QUJD' }
 

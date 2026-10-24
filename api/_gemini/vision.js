@@ -1,7 +1,9 @@
 // Gemini with page images: Learning Hub → Model Sets → "Import paper" sends each page of a
-// question paper (as a JPEG) here and gets back the questions it found as JSON. Same rules as
-// api/gemini.js: staff only, rate limited, bounded request size.
-import { requireStaff, rateLimit } from './_guard/guard.js'
+// question paper (as a JPEG) to /api/gemini with an `images` list and gets back the questions it
+// found as JSON. api/gemini.js checks the caller is staff, then hands such requests here.
+// This lives in a "_" folder so Vercel does not count it as another serverless function: the
+// Hobby plan allows 12 per deployment, and adding a separate endpoint made the build fail.
+import { rateLimit } from '../_guard/guard.js'
 
 const MODEL = 'gemini-2.5-flash'
 const MAX_IMAGES = 2
@@ -24,11 +26,8 @@ export function checkVisionBody(body) {
   return ''
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end()
-
-  const user = await requireStaff(req, res)
-  if (!user) return
+// Called by api/gemini.js after requireStaff, for a request body that carries `images`.
+export async function handleVision(req, res, user) {
   if (!rateLimit(req, res, { key: 'gemini-vision', max: 20, id: user.id })) return
 
   const bad = checkVisionBody(req.body)

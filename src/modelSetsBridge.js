@@ -13,7 +13,7 @@
 //   exportLibs()  → { jsPDF, docx, html2canvas } from the portal's own bundle,
 //                   so Download PDF / Word works without the CDN
 //   visionJSON(prompt, images) → the text Gemini returns for page images
-//                   (api/gemini-vision.js), used by "Import paper"
+//                   (api/gemini.js with page images), used by "Import paper"
 //   translateMM(texts, onProgress) → the same texts in Manipuri (Unicode Meetei
 //                   Mayek), from mayekTranslate.js; the page draws them in BMEI04
 // Anything else resolves null, so the page hides that feature.

@@ -20,7 +20,7 @@
     "api/window-notifier.js": {
       "maxDuration": 60
     },
-    "api/gemini-vision.js": {
+    "api/gemini.js": {
       "maxDuration": 60
     }
   },
