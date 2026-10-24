@@ -48,3 +48,12 @@ test('answering most questions within seconds with a high score is flagged', () 
   const { entries } = integrityReport(T, [fast])
   assert.ok(entries[0].reasons.some(r => /within 3 seconds/.test(r)))
 })
+
+test('an online candidate whose parent number could not be verified gets a small flag; verified ones do not', () => {
+  const a = row('a', 'A', ans(10, 0), { gcc: '42', erpMatch: true, phoneVerified: false })
+  const b = row('b', 'B', ans(10, 0), { gcc: '43', erpMatch: true, phoneVerified: true })
+  const c = row('c', 'C', ans(10, 0), { gcc: '44', erpMatch: true })   // attempts from before the check existed
+  const { entries } = integrityReport(T, [a, b, c])
+  assert.ok(entries[0].reasons.some(r => /could not be verified/.test(r)))
+  assert.equal(entries[1].reasons.length, 0); assert.equal(entries[2].reasons.length, 0)
+})

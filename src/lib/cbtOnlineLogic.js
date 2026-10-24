@@ -30,7 +30,7 @@ export function toAttempt(row, testName = '') {
   const packed = row.marked || {}
   const m = packed.m || (packed.v ? {} : packed)   // older rows stored the marked map directly
   return {
-    id: row.id, testId: row.test_id, testName, candidate: { name: row.candidate_name, roll: row.roll }, phone: row.phone || '', gcc: row.gcc_no || '', parentPhone: row.parent_phone || '', erpMatch: !!row.erp_match,
+    id: row.id, testId: row.test_id, testName, candidate: { name: row.candidate_name, roll: row.roll }, phone: row.phone || '', gcc: row.gcc_no || '', parentPhone: row.parent_phone || '', erpMatch: !!row.erp_match, phoneVerified: row.phone_verified,
     startedAt: Date.parse(row.started_at), submittedAt: row.submitted_at ? Date.parse(row.submitted_at) : null,
     state: row.state, answers: row.answers || {}, marked: m, visited: packed.v || {}, current: row.current_no, lang: row.lang || 'en',
     switches: row.switches || 0, proctor: packed.x || null, timing: packed.t || null, changes: packed.c || null, ip: row.ip_start || '', ipLast: row.ip_last || '', takeovers: row.takeovers || 0, autoSubmitted: !!row.auto_submitted, score: row.score || null, source: 'online',

@@ -50,6 +50,7 @@ export function integrityReport(test, rows) {
     if (a.ip && a.ipLast && a.ipLast !== a.ip && a.ip !== 'unknown' && a.ipLast !== 'unknown') add(1, 'network address changed during the exam')
     if (a.ip && a.ip !== 'unknown' && ipCount.get(a.ip) > 1) add(1, `same network as ${ipCount.get(a.ip) - 1} other candidate${ipCount.get(a.ip) === 2 ? '' : 's'}`)
     if (a.gcc && a.erpMatch === false) add(2, 'GCC no. does not match the name in the ERP')
+    if (a.gcc && a.phoneVerified === false) add(1, 'parent number could not be verified (none on file in the ERP)')
     if (row.submitted && dur && row.took != null && row.took <= dur * 0.25 && row.g.max && row.g.marks >= row.g.max * 0.6) add(2, `finished in ${row.took} min (a quarter of the time) with ${row.g.marks}/${row.g.max}`)
     if (row.submitted && a.timing) {
       const secs = Object.values(a.timing)

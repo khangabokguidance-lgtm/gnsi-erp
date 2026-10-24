@@ -52,8 +52,9 @@ export async function fetchOnlineTest(id) {
 const fail = raw => { const e = new Error(friendly(raw)); e.code = /EXAM-([A-Z0-9]+)/.exec(String(raw?.message || raw))?.[1] || ''; return e }   // e.code: 'SESSION', 'EARLY', …
 const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw fail(error); if (data && !Array.isArray(data) && typeof data.error === 'string') throw fail(data.error); return data }
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
-export const startExam = (id, code, name, roll, phone, gcc, parent) => rpc('cbt_start', { p_test: id, p_code: code || '', p_name: name, p_roll: roll, p_phone: phone || null, p_gcc: gcc || null, p_parent: parent || null })
-export const lookupStudent = (id, code, q) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: q })
+export const startExam = (id, code, gcc, parent, phone) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null })
+// A GCC no. is matched exactly (no name search). With `parent` it also checks that number against the ERP record: verified true / false / null (none on file).
+export const lookupStudent = (id, code, gcc, parent) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: gcc, ...(parent ? { p_parent: parent } : {}) })
 export const resumeExam = (attempt, token, session) => rpc('cbt_resume', { p_attempt: attempt, p_token: token, p_session: session || null })
 export const saveExam = (attempt, token, a, session) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0, p_session: session || null })
 export const submitExam = (attempt, token, a, session) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_switches: a.switches || 0, p_session: session || null })

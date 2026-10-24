@@ -19,6 +19,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
 
   const publish = async () => {
     setErr('')
+    if (code.trim().length < 4) { setErr('Set an access code of at least 4 characters — candidates need it to look themselves up by GCC no.'); return }
     if (opens && closes && new Date(closes) <= new Date(opens)) { setErr('The closing time must be after the opening time.'); return }
     setBusy(true)
     try {
@@ -38,13 +39,13 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
         <p className="muted">Candidates open a link on their own phone or computer, enter their details (or find themselves by name or GCC no. from the ERP student list), and take this test. The paper and the clock come from the server; the answer key never leaves it; the server marks the attempt.</p>
         {keyed < qs.length && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>⚠️ The answer key is {keyed ? `set for ${keyed} of ${qs.length} questions` : 'not set'}. Scores will be partial until you add it (Edit / key) and publish again.</p>}
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
-          <label><span className="lbl">Access code (leave empty for none)</span>
+          <label><span className="lbl">Access code (required)</span>
             <span style={{ display: 'flex', gap: 6 }}><input className="in" value={code} onChange={e => setCode(e.target.value)} /><button className="btn" onClick={() => setCode(newCode())} title="New code">🎲</button></span></label>
           <span />
           <label><span className="lbl">Opens (optional)</span><input className="in" type="datetime-local" value={opens} onChange={e => setOpens(e.target.value)} /></label>
           <label><span className="lbl">Closes (optional)</span><input className="in" type="datetime-local" value={closes} onChange={e => setCloses(e.target.value)} /></label>
         </div>
-        <p className="muted">A candidate who starts before the closing time keeps their full duration. Each roll number gets one attempt.</p>
+        <p className="muted">A candidate who starts before the closing time keeps their full duration. Each GCC no. gets one attempt. Candidates type only the access code and their GCC no.; the name comes from the ERP and they confirm a parent contact number that matches the record.</p>
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</p>}
         <div className="cbt-actions" style={{ marginTop: 8 }}>
           <button className="btn gold" disabled={busy} onClick={publish}>{busy ? 'Publishing…' : row || done ? '💾 Update and keep live' : '🌐 Publish online'}</button>
