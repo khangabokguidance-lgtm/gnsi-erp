@@ -1,8 +1,8 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
 // ONE module for everything academic-content: Study Materials, Teaching Aids,
-// Question Bank, Question Bank Viewer and Entrance Exam are tabs of this page
+// Question Bank, Question Bank Viewer, Entrance Exam and Model Sets are tabs of this page
 // (sidebar id 'learninghub'), laid out as a flow:
-//   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam)
+//   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam · Model Sets)
 // • it opens on an icon page of the sections (phones and computers); inside a
 //   section, "‹ All sections" (computers) or the back arrow (phones) returns there;
 // • a premium ribbon is the tab bar, with a live count on every tab (refreshes
@@ -25,6 +25,7 @@ const TeachingAids = lazy(() => import('./TeachingAids'));
 const QuestionBank = lazy(() => import('./QuestionBank'));
 const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
+const ModelSets = lazy(() => import('./ModelSets'));
 
 const MODULES = {
   studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
@@ -32,12 +33,13 @@ const MODULES = {
   questionbank:       { label: 'Question Bank',        short: 'Bank',       metric: 'questions', unit: 'questions' },
   questionbankviewer: { label: 'Question Bank Viewer', short: 'Viewer',     metric: 'questions', unit: 'questions' },
   entrance:           { label: 'Entrance Exam',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
+  modelsets:          { label: 'Model Sets',           short: 'Model Sets', metric: 'modelsets', unit: 'sets' },
 };
 
 const FLOW = [
   { stage: 'Learn', ids: ['studymaterial', 'teachingaids'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
-  { stage: 'Assess', ids: ['entrance'] },
+  { stage: 'Assess', ids: ['entrance', 'modelsets'] },
 ];
 
 // For each module: the other modules it connects to, and why.
@@ -57,6 +59,11 @@ const RELATED = {
     { to: 'questionbankviewer', title: 'Preview questions', hint: 'Browse the questions a paper can draw on' },
     { to: 'studymaterial', title: 'Prepare candidates', hint: 'Study materials for the entrance syllabus' },
   ],
+  modelsets: [
+    { to: 'entrance', title: 'Entrance exams', hint: 'Run the real entrance exam after practice papers' },
+    { to: 'questionbank', title: 'Question Bank', hint: 'More questions for the same topics' },
+    { to: 'studymaterial', title: 'Prepare candidates', hint: 'Study materials for the JNV syllabus' },
+  ],
   studymaterial: [
     { to: 'questionbank', title: 'Practice questions', hint: 'Question Bank questions for the same chapters' },
     { to: 'teachingaids', title: 'Teaching aids', hint: 'Books and aids to teach from' },
@@ -70,7 +77,7 @@ const RELATED = {
 };
 
 // ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', exams: 'entrance_exams' };
+const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', exams: 'entrance_exams', modelsets: 'model_sets' };
 let cache = { at: 0, data: {}, pending: null };
 async function countOf(table) {
   try {
@@ -387,6 +394,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
       case 'questionbank': return <QuestionBank {...common} perms={perms('questionbank')} />;
       case 'questionbankviewer': return <QuestionBankViewer {...common} />;
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
+      case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
       default: return null;
     }
   };

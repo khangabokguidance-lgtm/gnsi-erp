@@ -19,6 +19,9 @@
   "functions": {
     "api/window-notifier.js": {
       "maxDuration": 60
+    },
+    "api/gemini.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

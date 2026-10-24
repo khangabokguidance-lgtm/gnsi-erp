@@ -1,4 +1,5 @@
 import { requireStaff, rateLimit } from './_guard/guard.js'
+import { handleVision } from './_gemini/vision.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -6,6 +7,8 @@ export default async function handler(req, res) {
   // Paid API key: staff only, rate limited, bounded prompt size.
   const user = await requireStaff(req, res)
   if (!user) return
+  // Page images (Model Sets → Import paper) have their own checks and limits.
+  if (Array.isArray(req.body?.images)) return handleVision(req, res, user)
   if (!rateLimit(req, res, { key: 'gemini', max: 30, id: user.id })) return
 
   const { prompt, maxTokens, thinking } = req.body || {}
