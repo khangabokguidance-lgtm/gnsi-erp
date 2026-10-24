@@ -12,6 +12,7 @@ import FeeDayBook from './FeeDayBook'
 import FeeMonthlyLedger from './FeeMonthlyLedger'
 import FeeMonthCollection from './FeeMonthCollection'
 import FeeMonthDue from './FeeMonthDue'
+import { loadFeeTypeScan } from './hostelFeeCheck'
 import ExpenseDayBook from './ExpenseDayBook'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
@@ -389,6 +390,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const [admRows, setAdmRows] = useState([])
   const [flatRows, setFlatRows] = useState([])
   const [crsRows, setCrsRows] = useState([])
+  const [typeCheck, setTypeCheck] = useState(null)   // auto-detected fee type mismatch for the open student
 
   const [view, setView] = useState('register') // 'register' | 'types'
   const [printAll, setPrintAll] = useState(false)
@@ -424,6 +426,9 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
     setLoadError(failed ? `Could not load this ledger completely: ${failed.error.message}. Please retry.` : '')
     setAdmRows(failed ? [] : a.data || []); setFlatRows(failed ? [] : f.data || []); setCrsRows(failed ? [] : c.data || [])
     setLoading(false)
+    // Does what they paid agree with the hostel type on their record? (best effort — never blocks the ledger)
+    setTypeCheck(null)
+    if (!failed) loadFeeTypeScan({ students: [student], courseRows: c.data || [], flatRows: f.data || [] }).then(r => setTypeCheck(r.mismatches[0] || null)).catch(() => {})
   }
 
   // Open the student a ledger link asked for, once the student list has loaded.
@@ -498,6 +503,12 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
 
       {selected && !loading && !loadError && (
         <>
+          {typeCheck && (
+            <div role="alert" style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fff4dc', border: '1px solid #f3d38a', color: '#7a4a00', fontSize: 13, lineHeight: 1.5 }}>
+              <b>⚠️ Fee type check:</b> recorded as <b>{typeCheck.recorded}</b>, but the payments point to <b>{typeCheck.detected}</b> ({typeCheck.confidence} confidence). {typeCheck.evidence.join('; ')}.
+              {' '}A wrong type means a wrong fee. An admin can correct it in <b>Fees → Hostel Issues</b>.
+            </div>
+          )}
           {/* Student card */}
           <div className="gp-in" style={{ background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 85%)', borderRadius: 18, boxShadow: '0 18px 40px rgba(11,30,61,.22), inset 0 0 0 1px rgba(226,197,126,.22)', padding: mobile ? '16px' : '22px 26px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -13,6 +13,7 @@
 import { supabase } from './supabase'
 import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
 import { canonicalBatch, normalizeCourse, courseOf } from './courseMap'
+import { detectFeeTypes } from './lib/feeTypeDetect'
 
 export const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HOSTEL_MISMATCH_REASON = 'Hostel type mismatch'
@@ -151,6 +152,22 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     return types.length === 1 && x.own === 0 ? { student: x.student, recorded: x.student.hostel_type || 'Day Scholar', likely: types[0], count: x.other[types[0]], total: x.total } : null
   }).filter(Boolean).sort((a, b) => b.count - a.count)
   return { issues: issues.sort((a, b) => b.shortBy - a.shortBy), reviewed, suspects }
+}
+
+// Auto-detect each student's real hostel type from their payments and hostel bed
+// (see lib/feeTypeDetect.js). courseRows / flatRows: the payment rows to read.
+export async function loadFeeTypeScan({ students, courseRows, flatRows }) {
+  const ids = students.length === 1 && students[0].id != null ? [String(students[0].id)] : null
+  const [{ data: structures, error }, { data: ov }, beds] = await Promise.all([
+    supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
+    supabase.from('student_fee_overrides').select('gcc_no'),
+    loadActiveBeds(ids),
+  ])
+  if (error) throw new Error(error.message)
+  const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
+  const rateOf = ({ session, course, batch, type, field }) => rateFrom(structures || [], { session, course, batch, type, field })
+  // A single student's bed set only holds that student, so "no bed" cannot be told from "not loaded" — treat as unknown.
+  return detectFeeTypes({ students, courseRows, flatRows, rateOf, beds: ids ? (beds && beds.size ? beds : null) : beds, overrideGccs })
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {
