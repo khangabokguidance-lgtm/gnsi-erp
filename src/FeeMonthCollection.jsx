@@ -4,6 +4,7 @@
 // collection for the session so any month is one click away.
 import { useEffect, useMemo, useState } from 'react'
 import { getSessionYear } from './feeEngine'
+import { instituteNow } from './lib/feeMath'
 import { loadAllFeeRows } from './feeLedgerBulk'
 import { fmt, fmtDate, shortSession } from './feeLedgerModel'
 import { allEntries, dayBook, localISO, printDayBook, exportDayBookExcel, reprintBookReceipt } from './feeBooks'
@@ -35,7 +36,7 @@ export default function FeeMonthCollection({ students }) {
   const current = getSessionYear()
   const sessions = useMemo(() => { const y = Number(current.slice(0, 4)); return [0, 1, 2].map(k => `${y - k}-${y - k + 1}`) }, [current])
   const [session, setSession] = useState(current)
-  const [month, setMonth] = useState(() => { const m = new Date().getMonth(); return (m + 9) % 12 })
+  const [month, setMonth] = useState(() => { const m = instituteNow().getMonth(); return (m + 9) % 12 })
   const [rows, setRows] = useState(null)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)

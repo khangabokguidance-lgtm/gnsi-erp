@@ -4,6 +4,7 @@
 // current filters so the worst months stand out.
 import { useEffect, useMemo, useState } from 'react'
 import { getSessionYear } from './feeEngine'
+import { instituteNow } from './lib/feeMath'
 import { loadAllFeeRows, buildAllLedgers } from './feeLedgerBulk'
 import { fmt, shortSession } from './feeLedgerModel'
 import { monthTotals, monthDueList, printMonthDue, exportMonthDueExcel } from './feeBooks'
@@ -15,7 +16,7 @@ const crs = s => { const c = courseOf(s); return c === 'Unassigned' ? (s.course 
 const uniq = xs => [...new Set(xs.filter(Boolean))].sort()
 const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')
 // April is index 0; default to the current calendar month.
-const thisMonth = () => (new Date().getMonth() + 9) % 12
+const thisMonth = () => (instituteNow().getMonth() + 9) % 12
 
 export default function FeeMonthDue({ students }) {
   const current = getSessionYear()

@@ -140,7 +140,14 @@ export function buildStatement(student, entries, session, reg, { openingBalance 
   }
   for (const r of reg.rows) {
     if (r.status === 'before' || r.status === 'upcoming') continue
-    lines.push({ date: iso(new Date(r.year, monthIdx(r.month), 1)), kind: 'charge', particulars: `${r.head} — ${r.month} ${r.year}${r.status === 'advance' ? ' (advance)' : ''}`, debit: r.expected, credit: 0, month: r.month, year: r.year })
+    const date = iso(new Date(r.year, monthIdx(r.month), 1))
+    // A month paid ahead is charged only for what was paid (the rest is charged when the month starts), so a part-paid
+    // advance month does not leave a balance the register does not show.
+    const covered = r.paidAmt + (r.waived || 0)
+    const debit = r.status === 'advance' && covered + 0.5 < r.expected ? covered : r.expected
+    lines.push({ date, kind: 'charge', particulars: `${r.head} — ${r.month} ${r.year}${r.status === 'advance' ? ' (advance)' : ''}`, debit, credit: 0, month: r.month, year: r.year })
+    // A standing scholarship / concession (Fees → Register) settles part of the month, as it does in the register.
+    if (r.standingAmt > 0) lines.push({ date, kind: 'payment', particulars: `Standing concession — ${r.month} ${r.year}`, debit: 0, credit: r.standingAmt, month: r.month, year: r.year, note: 'Concession Register' })
   }
   for (const x of reg.other) lines.push({ date: iso(x.date), kind: 'charge', particulars: `${x.particulars} charged`, debit: x.amount, credit: 0 })
   const paidIn = entries.filter(x => x.session === session)

@@ -8,6 +8,7 @@ import { getActiveStudents } from './studentQueries'
 import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 import { monthlyOwed, writeOffShares } from './lib/monthwiseDues'
+import { instituteNow } from './lib/feeMath'
 
 // Course to show for a student: the resolved course (a blank course on a
 // Udaan / Pragati batch counts as Foundation), else what is saved.
@@ -1697,7 +1698,7 @@ function admissionFallsIn(a, m, rangeStart) {
   return w.year === Number(m.year) && w.month === new Date(`${m.fullMon} 1, 2000`).getMonth()
 }
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
-  const [now] = useState(() => new Date())
+  const [now] = useState(() => instituteNow())
   // Every month from January of the year the current session started, up to this
   // month. Jan–Mar belong to the previous April–March fee session in the ledger,
   // so each month carries its own session.
