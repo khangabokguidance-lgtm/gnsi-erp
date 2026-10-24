@@ -294,3 +294,33 @@ export async function downloadNoticeDocx(n) {
   const a = document.createElement('a'); a.href = url; a.download = `${(n.ref || n.heading || 'Notice').replace(/[^\w.-]+/g, '-')}.docx`; a.click()
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
+
+// ── Notice Board helpers ────────────────────────────────────────────────────
+// A Notice Board entry as a letterhead notice (print / Word from the board).
+export function noticeFromBoard(item) {
+  const d = item.publish_date ? new Date(`${item.publish_date}T00:00:00`) : new Date()
+  const paras = String(item.description || '').split(/\n\s*\n/).map(t => t.trim()).filter(Boolean)
+  return {
+    ...blankNotice(),
+    heading: 'NOTICE', subtitle: item.category && item.category !== 'General' ? String(item.category).toUpperCase() : '',
+    date: longDate(Number.isNaN(d.getTime()) ? new Date() : d),
+    to: item.audience === 'Class Specific' ? (item.class_target || 'All Concerned') : item.audience === 'All' ? 'All Concerned' : `All ${item.audience}`,
+    urgent: item.priority === 'Urgent', subject: item.title || '',
+    blocks: (paras.length ? paras : ['']).map(text => ({ id: bid(), type: 'para', text })),
+    copyTo: ['Notice Board.', 'Office copy.'],
+  }
+}
+
+const csvCell = v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
+export const noticesCSV = list => [
+  ['Title', 'Category', 'Audience', 'Class', 'Priority', 'Status', 'Publish date', 'Expiry date', 'Pinned', 'Public', 'Description'],
+  ...list.map(n => [n.title, n.category, n.audience, n.class_target, n.priority, n.status, n.publish_date, n.expiry_date, n.pinned ? 'Yes' : 'No', n.is_public ? 'Yes' : 'No', n.description]),
+].map(r => r.map(csvCell).join(',')).join('\r\n')
+
+// ISO date `days` after `from` (a date or today), for "extend expiry".
+export function addDays(iso, days) {
+  const [y, m, d] = String(iso || '').split('-').map(Number)
+  const base = y ? new Date(y, m - 1, d) : new Date()
+  base.setDate(base.getDate() + days)
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`
+}

@@ -47,3 +47,30 @@ test('no acknowledgement slip or urgent tag unless asked', () => {
   assert.equal(h.includes('ACKNOWLEDGEMENT'), false)
   assert.equal(h.includes('class="urg"'), false)
 })
+
+import { noticeFromBoard, noticesCSV, addDays } from '../src/noticeMaker.js'
+
+test('board notice becomes a letterhead notice', () => {
+  const n = noticeFromBoard({ title: 'Holiday on Monday', description: 'Para one.\n\nPara two.', audience: 'Parents', priority: 'Urgent', category: 'Holiday', publish_date: '2026-10-24' })
+  assert.equal(n.subject, 'Holiday on Monday')
+  assert.equal(n.to, 'All Parents')
+  assert.equal(n.urgent, true)
+  assert.equal(n.subtitle, 'HOLIDAY')
+  assert.equal(n.date, '24 October 2026')
+  assert.deepEqual(n.blocks.map(b => b.text), ['Para one.', 'Para two.'])
+  assert.equal(noticeFromBoard({ title: 'x', description: '', audience: 'Class Specific', class_target: 'Class 10 A' }).to, 'Class 10 A')
+})
+
+test('CSV export quotes commas, quotes and newlines', () => {
+  const csv = noticesCSV([{ title: 'A, "B"', description: 'line1\nline2', category: 'Fee', pinned: true }])
+  const lines = csv.split('\r\n')
+  assert.equal(lines[0].split(',')[0], 'Title')
+  assert.match(csv, /"A, ""B"""/)
+  assert.match(csv, /"line1\nline2"/)
+  assert.match(csv, /,Yes,No,/)
+})
+
+test('addDays rolls over months and years', () => {
+  assert.equal(addDays('2026-10-28', 7), '2026-11-04')
+  assert.equal(addDays('2026-12-30', 7), '2027-01-06')
+})

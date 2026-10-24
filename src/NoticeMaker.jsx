@@ -13,6 +13,8 @@ const gold = { ...btn, background: 'linear-gradient(180deg,#D9B566,#C9A24B)', co
 const card = { background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: 12 }
 const DRAFTS_KEY = 'gnsi:notice-maker-drafts'
 const SEQ_KEY = 'gnsi:notice-maker-seq'
+const CURRENT_KEY = 'gnsi:notice-maker-current'
+const TEMPLATES_KEY = 'gnsi:notice-maker-templates'
 
 const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } }
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
@@ -21,7 +23,9 @@ const Field = ({ label, children, style }) => <label style={{ display: 'block', 
 const move = (xs, i, d) => { const j = i + d; if (j < 0 || j >= xs.length) return xs; const c = [...xs]; [c[i], c[j]] = [c[j], c[i]]; return c }
 
 export default function NoticeMaker({ onPost, mobile }) {
-  const [n, setN] = useState(() => { setInstitute(getInstitute()); return PRESETS['Fee Collection Drive']() })
+  // Reopens exactly where the user left off; first-time users start from the fee notice.
+  const [n, setN] = useState(() => { setInstitute(getInstitute()); const saved = readJSON(CURRENT_KEY, null); return saved?.blocks ? saved : PRESETS['Fee Collection Drive']() })
+  const [templates, setTemplates] = useState(() => readJSON(TEMPLATES_KEY, []))
   const [drafts, setDrafts] = useState(() => readJSON(DRAFTS_KEY, []))
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -35,8 +39,39 @@ export default function NoticeMaker({ onPost, mobile }) {
 
   const html = useMemo(() => noticeHTML(n), [n])
   useEffect(() => { writeJSON(DRAFTS_KEY, drafts) }, [drafts])
+  useEffect(() => { writeJSON(TEMPLATES_KEY, templates) }, [templates])
+  useEffect(() => { const t = setTimeout(() => writeJSON(CURRENT_KEY, n), 600); return () => clearTimeout(t) }, [n])
 
-  const loadPreset = name => { if (!name) return; if (window.confirm(`Replace what you have written with “${name}”?`)) setN(name === 'Blank notice' ? blankNotice() : PRESETS[name]()) }
+  const loadPreset = name => {
+    if (!name) return
+    if (!window.confirm(`Replace what you have written with “${name}”?`)) return
+    const mine = templates.find(t => `mine:${t.id}` === name)
+    setN(mine ? { ...mine.doc, ref: '', blocks: mine.doc.blocks.map(b => ({ ...b, id: newBlock('para').id })) } : name === 'Blank notice' ? blankNotice() : PRESETS[name]())
+  }
+  const saveTemplate = () => {
+    const name = window.prompt('Name this template (it keeps the layout and wording; the reference number is cleared)', n.subject || n.heading)
+    if (!name) return
+    setTemplates(t => [{ id: Date.now(), name, doc: { ...n, ref: '' } }, ...t].slice(0, 30))
+    flash('Saved to “My templates” in Start from.')
+  }
+  const deleteTemplate = () => {
+    const name = window.prompt('Type the exact name of the template to delete')
+    if (name) setTemplates(t => t.filter(x => x.name !== name))
+  }
+  const exportFile = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ gnsiNotice: 1, doc: n }, null, 2)], { type: 'application/json' }))
+    const a = document.createElement('a'); a.href = url; a.download = `${(n.ref || n.subject || 'notice').replace(/[^\w.-]+/g, '-')}.notice.json`; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
+  const importFile = async e => {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    try {
+      const j = JSON.parse(await f.text())
+      if (!j.gnsiNotice || !Array.isArray(j.doc?.blocks)) throw new Error('not a notice file')
+      if (window.confirm('Open this file? Your current text will be replaced.')) setN({ ...blankNotice(), ...j.doc })
+    } catch { flash('That file is not a Notice Maker file.') }
+  }
   const numberIt = () => {
     const year = new Date().getFullYear()
     const seq = readJSON(SEQ_KEY, {})
@@ -138,11 +173,13 @@ export default function NoticeMaker({ onPost, mobile }) {
   const editor = (
     <div>
       <div style={card}>
+        <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Your work is saved automatically on this computer and reopens where you left off.</div>
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: 8 }}>
           <Field label="Start from">
             <select style={inp} value="" onChange={e => loadPreset(e.target.value)}>
               <option value="">— choose a ready-made notice —</option>
               {Object.keys(PRESETS).map(k => <option key={k}>{k}</option>)}<option>Blank notice</option>
+              {templates.length > 0 && <optgroup label="My templates">{templates.map(t => <option key={t.id} value={`mine:${t.id}`}>{t.name}</option>)}</optgroup>}
             </select>
           </Field>
           <Field label="Saved drafts">
@@ -151,6 +188,12 @@ export default function NoticeMaker({ onPost, mobile }) {
               {drafts.map(d => <option key={d.id} value={d.id}>{d.name} · {d.saved}</option>)}
             </select>
           </Field>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          <button style={btn} onClick={saveTemplate}>⭐ Save as my template</button>
+          {templates.length > 0 && <button style={{ ...btn, color: '#dc2626' }} onClick={deleteTemplate}>🗑 Delete a template</button>}
+          <button style={btn} onClick={exportFile}>⬇️ Export file</button>
+          <label style={{ ...btn, display: 'inline-block' }}>⬆️ Open file<input type="file" accept=".json,application/json" onChange={importFile} style={{ display: 'none' }} /></label>
         </div>
         {drafts.length > 0 && <button style={{ ...btn, marginTop: 8, color: '#dc2626' }} onClick={() => { const id = window.prompt('Type the exact name of the draft to delete'); if (id) setDrafts(d => d.filter(x => x.name !== id)) }}>🗑 Delete a draft</button>}
       </div>

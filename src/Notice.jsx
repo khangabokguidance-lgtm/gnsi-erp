@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { PremiumStyles, PremiumHero } from './premiumUI'
 import NoticeMaker from './NoticeMaker'
+import { noticeFromBoard, noticeText, printNotice, noticesCSV, addDays } from './noticeMaker'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -162,6 +163,8 @@ function Notice() {
   const [viewMode, setViewMode] = useState('cards')
   const [showFilters, setShowFilters] = useState(false)
   const [tab, setTab] = useState('board') // 'board' | 'maker'
+  const [sel, setSel] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const fetchNotices = useCallback(async () => {
     setLoading(true)
@@ -194,6 +197,33 @@ function Notice() {
     if (!error) fetchNotices()
     return error ? error.message : ''
   }
+
+  const toggleSel = id => setSel(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+
+  // Apply one change to every selected notice.
+  const bulk = async (label, patch, { confirm: ask } = {}) => {
+    const ids = [...sel]
+    if (!ids.length || (ask && !window.confirm(`${label} ${ids.length} notice${ids.length === 1 ? '' : 's'}?`))) return
+    setBulkBusy(true)
+    const { error } = patch === 'delete' ? await supabase.from('notices').delete().in('id', ids) : await supabase.from('notices').update(patch).in('id', ids)
+    setBulkBusy(false)
+    if (error) alert(error.message)
+    else { setSel(new Set()); fetchNotices() }
+  }
+  // Push each selected notice's expiry 7 days on (or 7 days from today if none/past).
+  const bulkExtend = async () => {
+    const picked = notices.filter(n => sel.has(n.id))
+    if (!picked.length) return
+    setBulkBusy(true)
+    const results = await Promise.all(picked.map(n => supabase.from('notices').update({ expiry_date: addDays(n.expiry_date && n.expiry_date >= TODAY ? n.expiry_date : TODAY, 7), status: n.status === 'Expired' ? 'Published' : n.status }).eq('id', n.id)))
+    setBulkBusy(false)
+    const bad = results.find(r => r.error)
+    if (bad) alert(bad.error.message)
+    else { setSel(new Set()); fetchNotices() }
+  }
+
+  const shareWhatsApp = item => window.open(`https://wa.me/?text=${encodeURIComponent(noticeText(noticeFromBoard(item)))}`, '_blank', 'noopener')
+  const isScheduled = item => item.status === 'Published' && item.publish_date && item.publish_date > TODAY
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this notice?')) return
@@ -246,6 +276,12 @@ function Notice() {
     })
     return list
   }, [notices, search, audienceFilter, statusFilter, categoryFilter, priorityFilter, publicFilter, sortBy])
+
+  const exportCSV = () => {
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + noticesCSV(filteredNotices)], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `notices-${TODAY}.csv`; a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
 
   const stats = useMemo(() => ({
     total: notices.length,
@@ -342,8 +378,23 @@ function Notice() {
             <select style={{ ...inp, fontSize: 12 }} value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="priority">By priority</option></select>
           </div>
         )}
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>{filteredNotices.length} of {notices.length} notices</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{filteredNotices.length} of {notices.length} notices</span>
+          <button onClick={() => setSel(sel.size === filteredNotices.length ? new Set() : new Set(filteredNotices.map(n => n.id)))} style={{ ...btnBase, background: '#f1f5f9', color: '#475569' }}>{sel.size && sel.size === filteredNotices.length ? '☐ Clear selection' : '☑ Select all shown'}</button>
+          <button onClick={exportCSV} disabled={!filteredNotices.length} style={{ ...btnBase, background: '#f1f5f9', color: '#475569' }}>📊 Export CSV</button>
+        </div>
       </div>
+
+      {sel.size > 0 && (
+        <div role="toolbar" aria-label="Bulk actions" style={{ position: 'sticky', top: 8, zIndex: 20, background: '#0B1E3D', color: '#fff', borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 6px 18px rgba(11,30,61,.35)' }}>
+          <b style={{ fontSize: 13, marginRight: 4 }}>{sel.size} selected</b>
+          {[['▶ Publish', () => bulk('Publish', { status: 'Published' })], ['⏸ Draft', () => bulk('Move to draft', { status: 'Draft' })], ['📌 Pin', () => bulk('Pin', { pinned: true })], ['Unpin', () => bulk('Unpin', { pinned: false })],
+            ['⏳ Extend expiry +7d', bulkExtend], ['🔒 Make internal', () => bulk('Remove from website', { is_public: false }, { confirm: true })], ['🗑 Delete', () => bulk('Delete', 'delete', { confirm: true })]].map(([l, fn]) => (
+            <button key={l} disabled={bulkBusy} onClick={fn} style={{ ...btnBase, background: l.includes('Delete') ? '#dc2626' : '#E2C57E', color: l.includes('Delete') ? '#fff' : '#0B1E3D' }}>{l}</button>
+          ))}
+          <button onClick={() => setSel(new Set())} style={{ ...btnBase, background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,.4)' }}>Clear</button>
+        </div>
+      )}
 
       {/* Card view */}
       {viewMode === 'cards' && (
@@ -362,7 +413,8 @@ function Notice() {
                   {item.pinned && <span style={{ fontSize: 14 }}>📌</span>}
                 </div>
 
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', paddingRight: 50 }}>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', paddingRight: 50, alignItems: 'center' }}>
+                  <input type="checkbox" checked={sel.has(item.id)} onChange={() => toggleSel(item.id)} aria-label={`Select ${item.title}`} />
                   <Badge value={item.priority} /><Badge value={item.status} /><Badge value={item.category} />
                 </div>
                 <h3 onClick={() => setPreviewNotice(item)} style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 6, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{item.title}</h3>
@@ -372,6 +424,7 @@ function Notice() {
                   <span>📅 {item.publish_date || '—'}</span>
                   {item.is_public && <span style={{ color: '#166534', fontWeight: 700 }}>🌐 On website</span>}
                   {warn && <span style={{ color: warn.color, fontWeight: 700 }}>{warn.label}</span>}
+                  {isScheduled(item) && <span style={{ color: '#7c3aed', fontWeight: 700 }}>⏳ Scheduled for {item.publish_date}</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 6, paddingTop: 10, borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
                   <button onClick={() => setPreviewNotice(item)} style={{ ...btnBase, background: '#eff6ff', color: '#2563eb', flex: 1 }}>👁 View</button>
@@ -379,6 +432,8 @@ function Notice() {
                   <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>
                   <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>
                   <button onClick={() => handleDuplicate(item)} style={{ ...btnBase, background: '#faf5ff', color: '#7c3aed' }}>⧉</button>
+                  <button onClick={() => printNotice(noticeFromBoard(item))} title="Print on letterhead" style={{ ...btnBase, background: '#f8fafc', color: '#334155' }}>🖨</button>
+                  <button onClick={() => shareWhatsApp(item)} title="Share on WhatsApp" style={{ ...btnBase, background: '#f0fdf4', color: '#166534' }}>📲</button>
                   <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>
                 </div>
               </div>
@@ -396,7 +451,7 @@ function Notice() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 780 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
-                    {['#','Title','Category','Audience','Priority','Status','Public','Actions'].map(h => (
+                    {['','#','Title','Category','Audience','Priority','Status','Public','Actions'].map(h => (
                       <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: '12px', color: '#475569', borderBottom: '2px solid #e5e7eb', fontWeight: '700', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -404,6 +459,7 @@ function Notice() {
                 <tbody>
                   {filteredNotices.map((item, idx) => (
                     <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb', background: item.pinned ? '#fffbeb' : 'transparent' }}>
+                      <td style={{ padding: '10px 12px' }}><input type="checkbox" checked={sel.has(item.id)} onChange={() => toggleSel(item.id)} aria-label={`Select ${item.title}`} /></td>
                       <td style={{ padding: '10px 12px' }}>{idx+1}</td>
                       <td style={{ padding: '10px 12px', maxWidth: 200 }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
@@ -430,12 +486,14 @@ function Notice() {
                           <button onClick={() => handleTogglePublic(item)} title={item.is_public ? 'Remove from website' : 'Show on website'} style={{ ...btnBase, background: item.is_public ? '#dcfce7' : '#f8fafc', color: item.is_public ? '#166534' : '#94a3b8' }}>🌐</button>
                           <button onClick={() => handleTogglePin(item)} style={{ ...btnBase, background: item.pinned ? '#fef3c7' : '#f8fafc', color: '#d97706' }}>📌</button>
                           <button onClick={() => handleToggleStatus(item)} style={{ ...btnBase, background: '#f8fafc', color: '#475569' }}>{item.status === 'Published' ? '⏸' : '▶'}</button>
+                          <button onClick={() => printNotice(noticeFromBoard(item))} title="Print on letterhead" style={{ ...btnBase, background: '#f8fafc', color: '#334155' }}>🖨</button>
+                          <button onClick={() => shareWhatsApp(item)} title="Share on WhatsApp" style={{ ...btnBase, background: '#f0fdf4', color: '#166534' }}>📲</button>
                           <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: '#fee2e2', color: '#dc2626' }}>🗑</button>
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {filteredNotices.length === 0 && <tr><td colSpan={8} style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No notices found</td></tr>}
+                  {filteredNotices.length === 0 && <tr><td colSpan={9} style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No notices found</td></tr>}
                 </tbody>
               </table>
             </div>

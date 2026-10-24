@@ -36,7 +36,35 @@ export default {
         'Press "💾 Save draft" to keep it on this computer and open it later from "Saved drafts".',
         'To put it on the Notice Board, choose Category, Audience, Status and an optional Expiry, then press "📌 Post to Notice Board". It is posted as internal, not public.',
       ],
-      tip: 'The letterhead (name, tagline, address, registration line, logo link) can be changed under "Letterhead" in the editor. Drafts are saved in this browser only.',
+      tip: 'The letterhead (name, tagline, address, registration line, logo link) can be changed under "Letterhead" in the editor. Drafts and templates are saved in this browser only.',
+    },
+    {
+      title: 'Keep and reuse notices in the Notice Maker',
+      body: [
+        'Your work is saved automatically and reopens where you left off.',
+        '"⭐ Save as my template" keeps the layout and wording (the reference number is cleared). It then appears under "My templates" in Start from.',
+        '"💾 Save draft" keeps a named copy to finish later.',
+        '"⬇️ Export file" downloads the notice as a file you can send to another computer; "⬆️ Open file" loads such a file.',
+      ],
+    },
+    {
+      title: 'Change many notices at once (bulk actions)',
+      body: [
+        'Tick the box on each notice (cards or table), or press "☑ Select all shown" to pick everything the filters show.',
+        'A dark bar appears with how many are selected. Press Publish, Draft, Pin, Unpin, "⏳ Extend expiry +7d", "🔒 Make internal" or "🗑 Delete".',
+        'Extend expiry adds 7 days to each notice\'s expiry (or 7 days from today if it has none or has passed) and brings an Expired notice back to Published.',
+        'Press Clear to deselect without changing anything.',
+      ],
+      tip: 'Delete and "Make internal" ask you to confirm first. Deleting cannot be undone.',
+    },
+    {
+      title: 'Print, share or export notices from the board',
+      body: [
+        'Press 🖨 on a notice to print it on the institute letterhead (or save it as PDF). The title becomes the subject and the description becomes numbered paragraphs.',
+        'Press 📲 to open WhatsApp with the notice text ready to send.',
+        'Press "📊 Export CSV" to download the notices the filters show, for a meeting or record.',
+        'A notice that is Published but has a future Publish Date shows "⏳ Scheduled for …" on its card.',
+      ],
     },
     {
       title: 'Show a notice on the public website',
