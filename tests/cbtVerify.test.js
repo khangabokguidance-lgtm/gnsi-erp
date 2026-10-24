@@ -68,7 +68,7 @@ test('pictures follow the question they sit under, not their order in the file',
     { text: 'Q3. Which is bigger?', images: [] }, { text: '(A) 1 (B) 2', images: [] }, { text: '(C) 3 (D) 4', images: [pic('three')] }, // a diagram after the options
     { text: 'Q4.', images: [] },                      // a figure question that lost its picture
   ]
-  const { sections, warnings } = buildTest(en)
+  const { sections } = buildTest(en)
   const byNo = n => sections.flatMap(s => s.questions).find(x => x.no === n)
   assert.deepEqual([1, 2, 3, 4].map(n => byNo(n).images.length), [1, 1, 1, 0])
   assert.equal(byNo(1).image, 'data:one'); assert.equal(byNo(2).image, 'data:two'); assert.equal(byNo(3).image, 'data:three')
