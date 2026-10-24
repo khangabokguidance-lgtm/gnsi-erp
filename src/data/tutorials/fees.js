@@ -40,6 +40,18 @@ export default {
       'If you collect LESS than the standard fee you must choose a reason (and write an explanation for "Other"). A non-admin\'s request waits for admin approval; the missing amount stays due until then.',
       'Press the collect button and print the receipt.',
     ], tip: 'Dates in the future, zero or negative amounts, and very large amounts are refused. Check for typing mistakes.' },
+    { title: 'Fee counter routine: collect dues step by step', body: [
+      'Start: open Student Fee Ledger → "⚠️ Month-wise Dues". Pick the session and click the month you are chasing. Press "🖨️ Print month" to get your call list.',
+      'Contact each parent or guardian on the list by phone or in person. In Fees → Reminders you can open a WhatsApp dues message for each student and note the date they promise to pay.',
+      'When the parent pays, open Fees → Fee Payment (or "＋ Collect Fee" at the top).',
+      'Search the student by GCC number, choose the fee (admission, flat fee, course fee month or items) and check the amount.',
+      'Set today\'s date and the payment mode (Cash, UPI, Card, Cheque, Bank). Enter the transaction reference for anything that is not cash.',
+      'Press the collect button and print the receipt. Give it to the parent.',
+      'If the parent can only pay part, collect what they pay with a reason, or set up a plan in Fees → Instalments. Do not leave the money uncollected.',
+      'Check that the student has moved off the Month-wise Dues list: refresh the tab. Short-paid students stay on it until the balance is paid.',
+      'End of day: open Fees → Day Close, count the cash, enter it and save the closing.',
+      'To report: open Student Fee Ledger → "🧾 Month-wise Collection", pick the month, press "🖨️ Print month", sign it and submit it at the Founder\'s Office.',
+    ], tip: 'Enter every receipt in the ERP on the day you collect it. The collection report is generated from these entries, so anything missing will not appear.' },
     { title: 'Find who owes money', body: [
       'Open Fees → Dashboard.',
       'Look at "Month-wise Dues": it runs from January up to this month. Tap a month to see the students who owe, with their amounts.',

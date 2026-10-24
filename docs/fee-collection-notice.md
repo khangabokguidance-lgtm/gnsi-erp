@@ -14,6 +14,17 @@ Outstanding student fees have reached a level the institute can no longer carry.
 3. Submit your **signed collection report** (students contacted, amount collected, amount still pending with reasons) at the **Founder's Office by 10 November 2026, 5:00 PM**.
 4. Every receipt must be entered in the ERP on the day of collection. Reports that do not match the ERP will not be accepted.
 
+**How to collect, step by step**
+
+Open the ERP → **Help Center** → **Fees** → "Fee counter routine: collect dues step by step". In short:
+
+1. Student Fee Ledger → **⚠️ Month-wise Dues**: pick the month and print your call list.
+2. Contact each parent. Fees → **Reminders** opens a WhatsApp dues message.
+3. Fees → **Fee Payment**: search the student by GCC no., choose the fee, check the amount, set date and mode, collect and print the receipt.
+4. Part payment: collect it with a reason, or agree a plan in Fees → **Instalments**.
+5. End of day: Fees → **Day Close**, count the cash and save the closing.
+6. Report: Student Fee Ledger → **🧾 Month-wise Collection**, pick the month, print, sign and submit at the Founder's Office.
+
 **Timeline**
 
 | Date | Action |
