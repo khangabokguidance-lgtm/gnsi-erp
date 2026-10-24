@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { PremiumStyles, PremiumHero } from './premiumUI'
+import NoticeMaker from './NoticeMaker'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -160,6 +161,7 @@ function Notice() {
   const [previewNotice, setPreviewNotice] = useState(null)
   const [viewMode, setViewMode] = useState('cards')
   const [showFilters, setShowFilters] = useState(false)
+  const [tab, setTab] = useState('board') // 'board' | 'maker'
 
   const fetchNotices = useCallback(async () => {
     setLoading(true)
@@ -184,6 +186,13 @@ function Notice() {
     if (error) alert('Error: ' + error.message)
     else { setShowForm(false); setEditNotice(null); fetchNotices() }
     setSaving(false)
+  }
+
+  // From the Notice Maker: returns an error message, or '' when posted.
+  const postFromMaker = async payload => {
+    const { error } = await supabase.from('notices').insert([payload])
+    if (!error) fetchNotices()
+    return error ? error.message : ''
   }
 
   const handleDelete = async (id) => {
@@ -277,6 +286,16 @@ function Notice() {
           { label: 'Public', value: stats.public, sub: 'On the website' },
         ]} />
 
+      <div role="tablist" aria-label="Notice views" style={{ display: 'flex', gap: 6, marginBottom: 14, padding: 5, background: '#fff', border: '1px solid #e6dcc3', borderRadius: 999, width: 'fit-content', maxWidth: '100%' }}>
+        {[['board', '📋 Notice Board'], ['maker', '✍️ Notice Maker']].map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+            style={{ padding: '8px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: 13, whiteSpace: 'nowrap',
+              background: tab === id ? 'linear-gradient(180deg,#1e3a6e,#0B1E3D)' : 'transparent', color: tab === id ? '#E2C57E' : '#5d6b82' }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'maker' && <NoticeMaker onPost={postFromMaker} mobile={mobile} />}
+      {tab === 'board' && <>
       {/* Public notices info banner */}
       {stats.public > 0 && (
         <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#166534', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -423,6 +442,8 @@ function Notice() {
           )}
         </div>
       )}
+
+      </>}
 
       {previewNotice && <PreviewModal notice={previewNotice} onClose={() => setPreviewNotice(null)} />}
     </div>
