@@ -8,7 +8,7 @@ export default {
     'Have the question paper as a Word file (.docx): English, and the Meitei Mayek version if you want both languages. Questions should start like "Q1." and have options (A) (B) (C) (D).',
     'Have the answer key ready. The papers do not carry it, so you type or paste it once.',
     'Use a computer with a modern browser. Tests built here are kept in that browser on that computer (use Export to move one). For candidates at home, publish the test online — see "Let candidates take the exam from anywhere".',
-    'Online exams need a one-time database update: the administrator runs supabase/migrations/20261034_cbt_online_exam.sql then 20261035_cbt_erp_lookup.sql (name / GCC detector), 20261036_cbt_lock_answers.sql and 20261037_cbt_hardening.sql (security limits) in Supabase → SQL editor.',
+    'Online exams need a one-time database update: the administrator runs supabase/migrations/20261034_cbt_online_exam.sql then 20261035_cbt_erp_lookup.sql (name / GCC detector), 20261036_cbt_lock_answers.sql and 20261037_cbt_hardening.sql (security limits) and 20261038_cbt_integrity.sql (one device at a time, earliest submit) in Supabase → SQL editor.',
   ],
   tabs: [
     { name: '📝 Tests', what: 'Your tests. Build a new one, start it for a candidate, edit the key, export or delete.' },
@@ -60,6 +60,16 @@ export default {
         'Results show the number of camera / shield flags for each candidate (hover for the details) and the CSV export lists them.',
       ],
       tip: 'The camera works in the candidate\'s own browser — video is never recorded or uploaded, only the warning counts are saved. A website cannot truly block an operating-system screenshot or a phone photo: the shield hides the paper and records the attempt. Use it with an invigilator for important exams. The camera needs https and the candidate\'s permission.',
+    },
+    {
+      title: 'Integrity report and one-device rule',
+      body: [
+        'Results → choose a test → "🕵 Integrity report" lists candidates to review and pairs of candidates with the same WRONG answers on many questions. Each row says why: leaving the screen, camera / shield flags, another device taking over, a changed or shared network, a GCC no. that does not match the name, finishing very fast with a high score, answering within seconds. The Risk column and the CSV carry the same result.',
+        'Treat these as leads, not proof: candidates on one school network share an address, and a good student can score well quickly. Look at the reasons before acting.',
+        'Online exams run on one device at a time. If the link is opened somewhere else the first screen stops with a message, and the takeover is counted in the report. Reloading the page on the same device is fine.',
+        'In "🛡 Exam security" set "Earliest submit (minutes)" so nobody can hand in a blank test in the first minutes. Time running out always submits.',
+      ],
+      tip: 'No online exam can be made 100% cheat-proof: the best protection is the combination — server clock and marking, key released only after the exam closes, one attempt per GCC no., one device at a time, camera and shield, and this report — plus an invigilator for important exams.',
     },
     {
       title: 'See results',

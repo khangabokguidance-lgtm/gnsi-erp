@@ -16,6 +16,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || '')
   const [durationMin, setDurationMin] = useState(initial?.durationMin ?? 120)
   const [lockAns, setLockAns] = useState(!!initial?.marking?.lock)
+  const [minMinutes, setMinMinutes] = useState(initial?.marking?.minMinutes ?? 0)
   const [camera, setCamera] = useState(initial?.marking?.proctor?.camera || 'off')
   const [shield, setShield] = useState(!!initial?.marking?.proctor?.shield)
   const [maxStrikes, setMaxStrikes] = useState(initial?.marking?.proctor?.maxStrikes ?? 5)
@@ -100,7 +101,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
-      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
+      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(Number(minMinutes) > 0 ? { minMinutes: Number(minMinutes) } : {}), ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
       instructions, showResult, showAnswers, sections, createdAt: initial?.createdAt || Date.now(), updatedAt: Date.now(),
     })
     setBusy('')
@@ -130,6 +131,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
               <select className="in" value={camera} onChange={e => setCamera(e.target.value)}>
                 <option value="off">Off</option><option value="warn">Warn and record</option><option value="strict">Strict — hide the paper, submit after too many warnings</option>
               </select></label>
+            <label><span className="lbl">Earliest submit (minutes, 0 = any time)</span><input className="in" type="number" min="0" step="1" value={minMinutes} onChange={e => setMinMinutes(e.target.value)} /></label>
             {camera === 'strict' && <label><span className="lbl">Warnings before auto-submit</span><input className="in" type="number" min="1" max="20" value={maxStrikes} onChange={e => setMaxStrikes(e.target.value)} /></label>}
           </div>
           <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={shield} onChange={e => setShield(e.target.checked)} /> Screen shield — block copy, print and developer tools; hide the paper when a screenshot key is pressed or the window is left</label>

@@ -49,11 +49,12 @@ export async function fetchOnlineTest(id) {
 
 // ── candidate ────────────────────────────────────────────────────────────────
 // Wrong code / too many tries come back as { error: 'EXAM-…: message' } (a raised error would undo the server's attempt count).
-const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw new Error(friendly(error)); if (data && !Array.isArray(data) && typeof data.error === 'string') throw new Error(friendly(data.error)); return data }
+const fail = raw => { const e = new Error(friendly(raw)); e.code = /EXAM-([A-Z0-9]+)/.exec(String(raw?.message || raw))?.[1] || ''; return e }   // e.code: 'SESSION', 'EARLY', …
+const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw fail(error); if (data && !Array.isArray(data) && typeof data.error === 'string') throw fail(data.error); return data }
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const startExam = (id, code, name, roll, phone, gcc, parent) => rpc('cbt_start', { p_test: id, p_code: code || '', p_name: name, p_roll: roll, p_phone: phone || null, p_gcc: gcc || null, p_parent: parent || null })
 export const lookupStudent = (id, code, q) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: q })
-export const resumeExam = (attempt, token) => rpc('cbt_resume', { p_attempt: attempt, p_token: token })
-export const saveExam = (attempt, token, a) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0 })
-export const submitExam = (attempt, token, a) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor), p_switches: a.switches || 0 })
+export const resumeExam = (attempt, token, session) => rpc('cbt_resume', { p_attempt: attempt, p_token: token, p_session: session || null })
+export const saveExam = (attempt, token, a, session) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0, p_session: session || null })
+export const submitExam = (attempt, token, a, session) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_switches: a.switches || 0, p_session: session || null })
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import { cbtStore } from './cbtStore'
 import {
-  STATUS_LABEL, answersLocked, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
+  STATUS_LABEL, answersLocked, settle, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
 } from './lib/cbtEngine'
 import { proctorOf, addEvent, faceStrikes, flagText, isShotKey, isBlockedKey, EVENT_LABEL } from './lib/cbtProctorLogic'
 import { useCbtProctor } from './useCbtProctor'
@@ -41,6 +41,8 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [netErr, setNetErr] = useState('')          // online: a save that did not get through (retried)
   const [submitErr, setSubmitErr] = useState('')
   const [beginErr, setBeginErr] = useState('')
+  const [kicked, setKicked] = useState('')            // online: the attempt was taken over by another device
+  const minMin = Number(test.marking?.minMinutes) || 0   // earliest submit (minutes after the start); 0 = none
   const submitted = useRef(false)
   const started = useRef(false)
   const lastSwitch = useRef(0)
@@ -63,7 +65,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       setBusy('Starting the exam…'); setBeginErr('')
       try {
         const r = await remote.begin()
-        setLiveTest(r.test); setA(r.attempt); setStage('exam')
+        setLiveTest(r.test); setA({ ...r.attempt, lastAt: Date.now() }); setStage('exam')
         try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
       } catch (e) { started.current = false; setBeginErr(e.message) }
       setBusy('')
@@ -81,8 +83,9 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const left = a ? secondsLeft(a, test, now + (remote?.offset || 0)) : test.durationMin * 60
 
   const finish = useCallback(async (auto = false) => {
-    const cur = aRef.current
+    const cur = aRef.current && settle(aRef.current)
     if (!cur || submitted.current) return
+    if (!auto && minMin > 0 && (Date.now() + (remote?.offset || 0) - cur.startedAt) < minMin * 60000) { flash(`You can submit only after ${minMin} minutes. Keep going until then.`); return }
     submitted.current = true
     if (remote) {
       // The server marks it. If the connection is down the exam stays open and tries again — nothing is lost.
@@ -91,7 +94,12 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         const res = await remote.submit({ ...cur })
         try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
         setBusy(''); onSubmit(res, test, cur)
-      } catch (e) { submitted.current = false; setBusy(''); setSubmitErr(e.message) }
+      } catch (e) {
+        submitted.current = false; setBusy('')
+        if (e.code === 'SESSION') setKicked(e.message)
+        else if (e.code === 'EARLY') flash(e.message)        // too early to submit: not retried
+        else setSubmitErr(e.message)
+      }
       return
     }
     const done = { ...cur, state: 'submitted', submittedAt: Date.now(), autoSubmitted: auto }
@@ -99,40 +107,40 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     await cbtStore.saveAttempt(done)
     try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
     onSubmit(done)
-  }, [test, onSubmit, remote])
+  }, [test, onSubmit, remote, minMin])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- submits when the clock reaches zero
   useEffect(() => { if (stage === 'exam' && a && left <= 0) finish(true) }, [stage, a, left, finish])
   // a failed online submit is retried every few seconds
   useEffect(() => {
-    if (!submitErr) return
+    if (!submitErr || kicked) return
     const t = setTimeout(() => finish(left <= 0), 5000)
     return () => clearTimeout(t)
-  }, [submitErr, left, finish])
+  }, [submitErr, left, finish, kicked])
 
   // autosave (so a refresh or a power cut loses nothing)
   useEffect(() => {
     if (stage !== 'exam' || !a || a.state !== 'inprogress') return
     // never overwrite the submitted copy with a late autosave
     const t = setTimeout(async () => {
-      if (submitted.current) return
+      if (submitted.current || kicked) return
       if (!remote) { cbtStore.saveAttempt(a); return }
       try {
         const r = await remote.save(a)
         setNetErr('')
         if (r?.submitted) finish(true)          // the server's clock ran out first
-      } catch (e) { setNetErr(e.message) }
+      } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else setNetErr(e.message) }
     }, remote ? 1200 : 500)
     return () => clearTimeout(t)
-  }, [a, stage, remote, finish])
+  }, [a, stage, remote, finish, kicked])
   // while an online save keeps failing, try again every few seconds (answers are also kept on this device)
   useEffect(() => {
     if (!remote || !netErr || stage !== 'exam') return
     const t = setInterval(async () => {
-      if (submitted.current || !aRef.current) return
-      try { const r = await remote.save(aRef.current); setNetErr(''); if (r?.submitted) finish(true) } catch { /* still offline */ }
+      if (submitted.current || !aRef.current || kicked) return
+      try { const r = await remote.save(aRef.current); setNetErr(''); if (r?.submitted) finish(true) } catch (e) { if (e.code === 'SESSION') setKicked(e.message) /* else still offline */ }
     }, 6000)
     return () => clearInterval(t)
-  }, [remote, netErr, stage, finish])
+  }, [remote, netErr, stage, finish, kicked])
 
   // leaving the screen is recorded
   useEffect(() => {
@@ -265,6 +273,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
+          {minMin > 0 && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#9a5b00' }}>⏳ You can submit the test only after {minMin} minutes.</p>}
           {lock && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#b42318' }}>🔒 Answers are final: once you choose an option for a question it is locked and cannot be changed or cleared. Think before you click.</p>}
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Sections</p>
           <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
@@ -306,6 +315,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   return shell(<>
     {toast && <div className="cbt-toast" role="alert">{toast}</div>}
     {remote && netErr && !submitErr && <div className="cbt-net" role="status">⚠ No connection — your answers are kept on this device and will be sent when it returns. Keep this page open.</div>}
+    {kicked && <div className="cbt-modal" style={{ zIndex: 3600 }}><div className="box" style={{ maxWidth: 420 }}><h3>This exam is open somewhere else</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{kicked}</p><p className="muted">If this was you, continue on the other screen. Your answers are safe on the server.</p></div></div>}
     {busy && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 360, textAlign: 'center' }}><h3>{busy}</h3><p className="muted">Please wait. Do not close this page.</p></div></div>}
     {submitErr && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 420 }}><h3>Could not submit yet</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{submitErr}</p><p className="muted">Your answers are safe. Trying again automatically — keep this page open.</p><div className="cbt-row"><button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => finish(left <= 0)}>Try now</button></div></div></div>}
     <div className="cbt-top">
