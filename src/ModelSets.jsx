@@ -9,11 +9,25 @@
 //
 // perms — { read, add, edit, delete } for the 'modelsets' module; add or edit
 // shows the maker (New model set, Edit, Duplicate, Delete).
+// Download PDF / Word (8 A4 pages by default) is built inside the page; the
+// portal lends it jsPDF, docx and html2canvas so it works offline too.
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { createModelSetsBridge } from './modelSetsBridge'
 
 const PAGE = `${import.meta.env.BASE_URL}model-papers/jnv-practice-set-1.html`
+
+const exportLibs = async () => {
+  const [{ jsPDF }, docx, { default: html2canvas }] = await Promise.all([import('jspdf'), import('docx'), import('html2canvas')])
+  return { jsPDF, docx, html2canvas }
+}
+const saveFile = (filename, blob) => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
 
 export default function ModelSets({ currentUser, perms }) {
   const canWrite = !!(perms?.add || perms?.edit)
@@ -28,6 +42,8 @@ export default function ModelSets({ currentUser, perms }) {
       client: supabase,
       canWrite: () => canWriteRef.current,
       actor: () => actorRef.current,
+      exportLibs,
+      saveFile,
     })
     window.__gnsiModelSets = bridge
     return () => { if (window.__gnsiModelSets === bridge) delete window.__gnsiModelSets }

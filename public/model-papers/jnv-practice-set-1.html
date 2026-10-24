@@ -831,6 +831,7 @@ function showLibrary() {
       <div class="meta"><span>${qn} question${qn === 1 ? '' : 's'}</span><span>${s.sections.length} section${s.sections.length === 1 ? '' : 's'}</span><span>${esc(dur(s.minutes))}</span>${upd ? `<span>Edited ${upd}</span>` : ''}</div>
       <div class="acts">
         <a class="btn primary" href="#take-${s.id}">Take test</a>
+        <button class="btn" type="button" data-act="export" data-id="${s.id}">Download</button>
         ${S.canWrite && !s.builtin ? `<a class="btn" href="#edit-${s.id}">Edit</a>` : ''}
         ${S.canWrite ? `<button class="btn" type="button" data-act="dup" data-id="${s.id}">${s.builtin ? 'Use as template' : 'Duplicate'}</button>` : ''}
         ${S.canWrite && !s.builtin ? `<button class="btn danger" type="button" data-act="del" data-id="${s.id}">Delete</button>` : ''}
@@ -864,6 +865,7 @@ function showTake(id) {
       <div class="stat">Answered <b id="cnt">0</b>/${P.total} <span class="meter"><i id="mtr"></i></span></div>
       <div class="stat">Time <b id="clock">${fmtT(left)}</b> <button class="btn" id="timerBtn" type="button" data-act="timer">Start</button></div>
       <button class="btn primary" type="button" data-act="check">Check answers</button>
+      <button class="btn" type="button" data-act="export" data-id="${id}">Download</button>
       <a class="btn" href="#library">All sets</a></div>`;
   const omr = P.SECS.map((s, i) => {
     let rows = '';
@@ -920,7 +922,7 @@ function showMaker(id) {
   cur = { view: 'maker', id, draft: clone(set), sec: 0, pane: 'edit', gen: false, dirty: false };
   bar.innerHTML = brand(esc(String(set.setNo ?? '')), 'Set maker', 'Editing a model set') +
     `<div class="bar-stats"><span class="savest" id="saveSt">All changes saved</span>
-      <a class="btn" href="#take-${id}">Take this set</a><a class="btn primary" href="#library">Done</a></div>`;
+      <button class="btn" type="button" data-act="export" data-id="${id}">Download</button><a class="btn" href="#take-${id}">Take this set</a><a class="btn primary" href="#library">Done</a></div>`;
   view.innerHTML = `<div class="wrap"><div class="mk">
     <div class="mk-tabs tabs" role="tablist"><button class="tab" role="tab" data-act="pane" data-p="edit" aria-selected="true">Edit</button><button class="tab" role="tab" data-act="pane" data-p="prev" aria-selected="false">Preview</button></div>
     <div class="mk-pane mk-edit" id="mkEdit"></div>
@@ -1107,6 +1109,534 @@ Reply with only JSON in this shape:
   }
 }
 
+/* ---------- export: PDF and Word, laid out on A4 to fill a chosen number of pages ---------- */
+const A4W = 794, A4H = 1123;                         // A4 at 96 px per inch
+const PM = { top: 34, side: 38, bottom: 30, head: 30, headGap: 12, foot: 26, gap: 26 };
+const FULL_W = A4W - 2 * PM.side;
+const COL_W = (FULL_W - PM.gap) / 2;
+const BODY_H = A4H - PM.top - PM.head - PM.headGap - PM.foot - PM.bottom;
+const LIB = {
+  html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  jspdf: 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',
+  docx: 'https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js',
+};
+const PRINT_CSS = `
+.pp{--ink:#111;--paper:#fff;--piece:#c9ddd8;--rule:#c4c4c4;--muted:#555;--tint:#eef3f1;--brand:#0e4f4b;--on-brand:#f3faf8;--gold:#c98a14;
+  position:absolute;left:-30000px;top:0;width:${A4W}px;background:#fff;color:#111;font-family:var(--f-body);line-height:1.38;font-size:calc(var(--s,1) * 12.5px)}
+.pp .p-pg{width:${A4W}px;height:${A4H}px;position:relative;background:#fff;padding:${PM.top}px ${PM.side}px 0;box-sizing:border-box;overflow:hidden}
+.pp .p-ph{height:${PM.head}px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:${PM.headGap}px;font:600 9.5px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:#444}
+.pp .p-ph b{background:#111;color:#fff;padding:3px 8px;letter-spacing:.04em}
+.pp .p-pf{position:absolute;left:${PM.side}px;right:${PM.side}px;bottom:${PM.bottom}px;height:${PM.foot - 8}px;display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #ccc;font:9.5px/1 var(--f-mono);color:#666}
+.pp .p-reg{position:relative;display:flex;gap:${PM.gap}px}
+.pp .p-reg::after{content:"";position:absolute;top:0;bottom:0;left:50%;border-left:1px solid var(--rule)}
+.pp .p-col{width:${COL_W}px;display:flex;flex-direction:column}
+.pp .p-u{display:flex;flex-direction:column;gap:.45em}
+.pp .p-meas{position:absolute;left:0;top:0;visibility:hidden}
+.pp .p-mc>.p-u,.pp .p-mf>.p-u{margin-bottom:0}
+.pp .p-mast{display:flex;gap:1.3em;align-items:center;padding-bottom:.9em;border-bottom:1px solid var(--rule)}
+.pp .p-mast svg.medal{width:7.4em;height:7.4em;flex:none}
+.pp .p-eb{font:600 .72em/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.pp .p-mast h1{font:800 2.5em/1 var(--f-display);letter-spacing:-.02em;margin:.2em 0 .15em}
+.pp .p-mast h1 span{color:var(--brand)}
+.pp .p-sub{font:500 1.1em/1.2 var(--f-display);color:#444}
+.pp .p-facts{display:flex;flex-wrap:wrap;gap:.4em;margin-top:.6em}
+.pp .p-facts span{font:.72em/1 var(--f-mono);padding:.35em .7em;border:1px solid var(--rule);border-radius:99px;color:#444}
+.pp .p-ins{margin:.6em 0 0;font-size:.86em;color:#333}
+.pp .p-tag{background:var(--brand);color:var(--on-brand);text-align:center;font:600 .82em/1 var(--f-mono);letter-spacing:.22em;text-transform:uppercase;padding:.45em}
+.pp .p-bt{text-align:center;font:800 1.25em/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.02em;margin:.4em 0}
+.pp .p-bd{border:1.5px solid #111;padding:.5em .8em;font-style:italic;font-size:.9em}
+.pp .p-bd b,.pp .p-dir b{font-style:normal;font-variant:small-caps;letter-spacing:.04em}
+.pp .p-sh{display:inline-block;align-self:flex-start;background:var(--tint);border-left:.3em solid var(--gold);padding:.3em .9em .3em .6em;font:700 .95em/1.2 var(--f-display)}
+.pp .p-part{display:flex;align-items:center;gap:.8em;font:600 .8em/1 var(--f-mono);letter-spacing:.2em;text-transform:uppercase}
+.pp .p-part::before,.pp .p-part::after{content:"";flex:1;border-top:1.5px dashed #777}
+.pp .p-dir{font-size:.9em;margin:0}
+.pp .p-pt{text-align:center;font:700 1.05em/1.2 var(--f-display)}
+.pp .p-para{margin:0;text-indent:1.4em;font-size:.97em}
+.pp .p-q{display:flex;flex-direction:column;gap:.3em}
+.pp .p-qh{display:grid;grid-template-columns:2em minmax(0,1fr);align-items:baseline}
+.pp .p-n{font:800 1em/1.2 var(--f-display)}
+.pp .p-cap{font:700 .88em/1.2 var(--f-display)}
+.pp .p-in{margin-left:2em}
+.pp .p-fig{display:flex;gap:.7em;flex-wrap:wrap;align-items:center}
+.pp .p-fig svg.fig{width:4.9em;height:4.9em}
+.pp .p-fig svg.fig.big{width:8.6em;height:8.6em}
+.pp .p-fig svg.fig.mq{width:6.6em;height:5.05em}
+.pp .p-fig img{max-width:100%;max-height:14em}
+.pp .p-fo{display:grid;grid-template-columns:repeat(4,4.4em);gap:.4em 1em}
+.pp .p-fi{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.85em}
+.pp .p-fi svg.fig,.pp .p-fi img{width:4.6em;height:4.6em;object-fit:contain}
+.pp .p-opts{display:grid;gap:.1em 1em}
+.pp .p-o{min-width:0;overflow-wrap:break-word}
+.pp .p-o b{font-weight:600;margin-right:.25em}
+.pp .p-key h2{font:800 1.6em/1.1 var(--f-display);margin:0 0 .3em}
+.pp .p-key h3{font:600 .8em/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:1.2em 0 .5em;padding-bottom:.3em;border-bottom:1px solid var(--rule)}
+.pp .p-kg{display:grid;grid-template-columns:repeat(10,1fr);gap:.35em}
+.pp .p-kg span{border:1px solid var(--rule);padding:.3em .2em;text-align:center;font:600 .9em/1 var(--f-mono)}
+.pp .p-kg span i{font-style:normal;color:var(--muted);font-weight:400;margin-right:.3em}
+.pp .picto{font-size:.9em}
+`;
+
+function exportUnits(set) {
+  const T = !!set.builtin, units = [], key = [];
+  let n = 0, bid = 0, pending = [];
+  const tx = (s, trusted) => trusted ? s : fmtU(s);
+  const blk = (kind, html, data) => ({ id: ++bid, kind, html: `<div class="p-b" data-b="${bid}">${html}</div>`, ...data });
+  const flush = () => { if (pending.length) { units.push({ full: false, blocks: pending }); pending = []; } };
+  const col = (b, glue) => { pending.push(b); if (!glue) flush(); };
+  const full = (b) => { flush(); units.push({ full: true, blocks: [b] }); };
+  const total = countQ(set), no = esc(String(set.setNo ?? 1));
+  const words = esc(set.title || 'Model Question Paper').split(' ');
+  const title = words.length > 1 ? `${words.slice(0, -1).join(' ')} <span>${words[words.length - 1]}</span>` : `<span>${words[0]}</span>`;
+  full(blk('mast', `<div class="p-mast">${medal(set.setNo)}<div><div class="p-eb">Model Question Paper · Practice Set ${no}</div><h1>${title}</h1><div class="p-sub">${esc(set.subtitle || '')}</div>
+    <div class="p-facts"><span><b>${total}</b> questions</span><span><b>${set.sections.length}</b> sections</span><span>${esc(dur(set.minutes))}</span><span>Medium: ${esc(set.medium || 'English')}</span></div></div></div>
+    <div class="p-ins"><div>•&nbsp; All questions are compulsory. Each question has only one correct answer.</div><div>•&nbsp; Darken one circle per question in the OMR Answer Sheet.</div></div>`, { set }));
+  set.sections.forEach((sec, si) => {
+    const from = n + 1;
+    if (sec.tag || sec.title || sec.dir) full(blk('band', `${sec.tag ? `<div class="p-tag">${tx(sec.tag, T)}</div>` : ''}${sec.title ? `<div class="p-bt">${tx(sec.title, T)}</div>` : ''}${sec.dir ? `<div class="p-bd">${T ? sec.dir : fmtDir(sec.dir)}</div>` : ''}`, { sec, T }));
+    (sec.items || []).forEach(it => {
+      if (it.t === 'head') {
+        if (it.sub) col(blk('sub', `<div class="p-sh">${esc((T ? toText(it.sub) : it.sub).toUpperCase())}</div>`, { text: it.sub, T }), true);
+        if (it.part) col(blk('part', `<div class="p-part">${tx(it.part, T)}</div>`, { text: it.part, T }), true);
+        if (it.dir) col(blk('dir', `<p class="p-dir">${T ? it.dir : fmtDir(it.dir)}</p>`, { text: it.dir, T }), true);
+        return;
+      }
+      if (it.t === 'passage') {
+        if (it.title) col(blk('ptitle', `<div class="p-pt">${tx(it.title, T)}</div>`, { text: it.title, T }), true);
+        String(it.text || '').split(/\n\s*\n/).filter(p => p.trim()).forEach(p => col(blk('para', `<p class="p-para">${T ? p : fmtU(p.trim())}</p>`, { text: p, T }), false));
+        return;
+      }
+      if (it.t !== 'q') return;
+      n++;
+      const lib = it.kind === 'lib', q = lib ? BANK[it.ref] : it, trusted = T || lib;
+      if (!q) return;
+      key.push({ n, a: q.a, si });
+      col(blk('q', printQ(q, n, trusted), { q, n, trusted }), false);
+    });
+    flush();
+    sec._range = [from, n];
+  });
+  flush();
+  return { units, key, total };
+}
+
+function printQ(q, n, trusted) {
+  const tx = s => trusted ? s : fmtU(s);
+  if (q.kind === 'fig') {
+    return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-cap">${q.label}</span></div>
+      <div class="p-fig p-in">${q.qf.join('')}</div><div class="p-cap p-in">${q.aLabel}</div>
+      <div class="p-fo p-in">${q.opts.map((o, i) => `<div class="p-fi">${o}<span>(${LET[i]})</span></div>`).join('')}</div></div>`;
+  }
+  let fig = '';
+  if (q.kind === 'img') {
+    const src = imgSrc(q.img);
+    fig = src ? `<div class="p-fig p-in"><img src="${esc(src)}" crossorigin="anonymous" alt=""></div>` : '';
+    if (q.optMode === 'img') {
+      return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt">${q.q ? tx(q.q) : '<b>Question Figure</b>'}</span></div>${fig}
+        <div class="p-cap p-in">Answer Figures</div>
+        <div class="p-fo p-in">${[0, 1, 2, 3].map(i => { const s = imgSrc((q.optImgs || [])[i]); return `<div class="p-fi">${s ? `<img src="${esc(s)}" crossorigin="anonymous" alt="">` : '<span style="width:4.6em;height:4.6em;border:1px dashed #999"></span>'}<span>(${LET[i]})</span></div>`; }).join('')}</div></div>`;
+    }
+  }
+  const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+  const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
+  const cols = max <= 7 ? 4 : max <= 22 ? 2 : 1;
+  return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(q.q || '')}</span></div>${fig}
+    <div class="p-opts p-in" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${opts.map((o, i) => `<div class="p-o"><b>(${LET[i]})</b>${tx(o) || '—'}</div>`).join('')}</div></div>`;
+}
+
+function paginate(units, s) {
+  const G = 9 * s, GF = 12 * s;
+  const pages = [[]];
+  let y = 0, run = [];
+  const page = () => pages[pages.length - 1];
+  const newPage = () => { pages.push([]); y = 0; };
+  const flushRun = () => {
+    while (run.length) {
+      const avail = BODY_H - y;
+      const pre = [0];
+      run.forEach((u, i) => pre.push(pre[i] + u.h + (i ? G : 0)));
+      const total = pre[run.length];
+      let best = -1, bestMax = Infinity;
+      for (let k = run.length; k >= 0; k--) {          // from the top, so ties keep more in the left column
+        const L = pre[k], R = k === run.length ? 0 : total - pre[k] - (k ? G : 0);
+        if (L <= avail && R <= avail && Math.max(L, R) < bestMax) { bestMax = Math.max(L, R); best = k; }
+      }
+      if (best >= 0) { page().push({ type: 'cols', left: run.slice(0, best), right: run.slice(best), h: bestMax }); y += bestMax + GF; run = []; break; }
+      const take = () => {
+        const out = []; let h = 0;
+        while (run.length) {
+          const nh = h + (out.length ? G : 0) + run[0].h;
+          if (nh > avail && (out.length || y > 0)) break;
+          out.push(run.shift()); h = nh;
+          if (h > avail) break;
+        }
+        return out;
+      };
+      const left = take();
+      if (!left.length) { newPage(); continue; }
+      const right = take();
+      page().push({ type: 'cols', left, right, h: avail });
+      newPage();
+    }
+  };
+  units.forEach(u => {
+    if (!u.full) { run.push(u); return; }
+    flushRun();
+    const kind = u.blocks[0].kind;
+    if (y > 0 && (y + u.h > BODY_H || (kind === 'band' && y + u.h + 150 * s > BODY_H))) newPage();
+    page().push({ type: 'full', u }); y += u.h + GF;
+  });
+  flushRun();
+  while (pages.length > 1 && !page().length) pages.pop();
+  return pages;
+}
+
+const unitHTML = u => `<div class="p-u">${u.blocks.map(b => b.html).join('')}</div>`;
+
+/* lays the set out in hidden A4 pages; returns the page elements and the scale that fits */
+function layoutPaper(set, maxPages, withKey) {
+  if (!document.getElementById('ppcss')) { const st = document.createElement('style'); st.id = 'ppcss'; st.textContent = PRINT_CSS; document.head.append(st); }
+  const root = document.createElement('div');
+  root.className = 'pp';
+  document.body.append(root);
+  const { units, key, total } = exportUnits(set);
+  root.innerHTML = `<div class="p-meas"><div class="p-mf" style="width:${FULL_W}px"></div><div class="p-mc" style="width:${COL_W}px"></div></div>`;
+  const mf = root.querySelector('.p-mf'), mc = root.querySelector('.p-mc');
+  units.forEach(u => { const t = document.createElement('div'); t.innerHTML = unitHTML(u); u.el = t.firstChild; (u.full ? mf : mc).append(u.el); });
+  const measure = s => { root.style.setProperty('--s', s); units.forEach(u => { u.h = u.el.getBoundingClientRect().height; }); };
+  const tryScale = s => { measure(s); return paginate(units, s); };
+  let lo = 0.62, hi = 1.45, best;
+  let p = tryScale(hi);
+  if (p.length <= maxPages) best = { s: hi, pages: p };
+  else {
+    p = tryScale(lo);
+    best = { s: lo, pages: p, over: p.length > maxPages };
+    if (!best.over) for (let i = 0; i < 9; i++) {
+      const mid = (lo + hi) / 2, pm = tryScale(mid);
+      if (pm.length <= maxPages) { lo = mid; best = { s: mid, pages: pm }; } else hi = mid;
+    }
+  }
+  measure(best.s);
+  best.pages = paginate(units, best.s);
+  const s = best.s, G = 9 * s, GF = 12 * s;
+  const no = esc(String(set.setNo ?? 1));
+  const head = `${esc(set.title || 'Model Paper')} · Practice Set – ${no}`;
+  const count = best.pages.length + (withKey ? 1 : 0);
+  const pageEl = (inner, i) => `<div class="p-pg"><div class="p-ph"><span>${head}</span><b>${no}-${i + 1}</b></div>${inner}
+    <div class="p-pf"><span>${esc(set.subtitle || '')}</span><span>Page ${i + 1} of ${count}</span></div></div>`;
+  let html = best.pages.map((regions, i) => pageEl(regions.map(r => r.type === 'full'
+    ? `<div style="margin-bottom:${GF}px">${unitHTML(r.u)}</div>`
+    : `<div class="p-reg" style="height:${r.h}px;margin-bottom:${GF}px"><div class="p-col" style="gap:${G}px">${r.left.map(unitHTML).join('')}</div><div class="p-col" style="gap:${G}px">${r.right.map(unitHTML).join('')}</div></div>`).join(''), i)).join('');
+  if (withKey) {
+    const bySec = set.sections.map((sec, si) => ({ name: sec.short || sec.title || sec.tag || `Section ${si + 1}`, rows: key.filter(k => k.si === si) })).filter(x => x.rows.length);
+    html += pageEl(`<div class="p-key"><h2>Answer key</h2><div class="p-sub">${esc(set.title || '')} · Practice Set ${no}</div>
+      ${bySec.map(g => `<h3>${esc(g.name)}</h3><div class="p-kg">${g.rows.map(k => `<span><i>${k.n}</i>${k.a != null ? LET[k.a] : '–'}</span>`).join('')}</div>`).join('')}</div>`, best.pages.length);
+  }
+  root.innerHTML = html;
+  root.style.setProperty('--s', s);
+  root.querySelectorAll('svg').forEach(inlineSvgStyles);
+  return { root, pageEls: [...root.querySelectorAll('.p-pg')], s, over: !!best.over, units, key, total, count, withKey };
+}
+
+/* copy computed SVG styles into attributes, so the figures render the same as images */
+const SVG_PROPS = ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight'];
+function inlineSvgStyles(svg) {
+  [svg, ...svg.querySelectorAll('*')].forEach(el => {
+    if (/^(defs|clipPath)$/i.test(el.tagName)) return;
+    const cs = getComputedStyle(el);
+    el.setAttribute('style', SVG_PROPS.map(p => `${p}:${cs.getPropertyValue(p)}`).join(';'));
+  });
+}
+async function svgToPng(svg, w, h) {
+  const c = svg.cloneNode(true);
+  c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  c.setAttribute('width', w); c.setAttribute('height', h);
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(c));
+  await img.decode();
+  return drawPng(img, w, h);
+}
+async function drawPng(img, w, h) {
+  const k = 3, cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k));
+  const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+  return pngBase64(cv);
+}
+/* base64 text, not a typed array: in the portal the Word library lives in the parent window,
+   and it does not recognise byte arrays made inside this frame */
+const pngBase64 = cv => cv.toDataURL('image/png').split(',')[1];
+async function elToPng(el, html2canvas) {
+  const cv = await html2canvas(el, { scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false });
+  return { data: pngBase64(cv), w: cv.width / 3, h: cv.height / 3 };
+}
+
+/* libraries: the portal hands over its own copies; elsewhere they load from the CDN */
+const loadScript = src => new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.append(s);
+});
+async function loadLibs(fmt) {
+  if (CL && typeof CL.exportLibs === 'function') return CL.exportLibs();
+  if (!window.html2canvas) await loadScript(LIB.html2canvas);
+  if (fmt === 'pdf' && !window.jspdf) await loadScript(LIB.jspdf);
+  if (fmt === 'docx' && !window.docx) await loadScript(LIB.docx);
+  return { html2canvas: window.html2canvas, jsPDF: window.jspdf && window.jspdf.jsPDF, docx: window.docx };
+}
+async function saveFile(filename, blob) {
+  const dl = CL && typeof CL.use === 'function' ? await CL.use('downloads').catch(() => null) : null;
+  if (dl) return dl.save({ filename, data: blob });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const fileBase = set => `${String(set.title || 'Model Set').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')}_Practice_Set_${String(set.setNo ?? 1).replace(/[^\w-]+/g, '')}`;
+
+async function buildPdf(L, libs, msg) {
+  const pdf = new libs.jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  for (let i = 0; i < L.pageEls.length; i++) {
+    msg(`Drawing page ${i + 1} of ${L.pageEls.length}…`);
+    const cv = await libs.html2canvas(L.pageEls[i], { scale: 2.2, backgroundColor: '#ffffff', useCORS: true, logging: false, width: A4W, height: A4H });
+    if (i) pdf.addPage('a4', 'portrait');
+    pdf.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+  }
+  return pdf.output('blob');
+}
+
+async function buildDocx(set, L, libs, msg) {
+  const d = libs.docx;
+  // Word sets text tighter than the browser and balances columns at section ends, so text and
+  // pictures get a little more room (WORD_GROW) to fill the same number of pages as the PDF.
+  const WORD_GROW = 1.17;
+  const s = L.s, base = Math.max(14, Math.round(12.5 * s * 0.75 * 2 * WORD_GROW));
+  const FONT = 'Cambria', HFONT = 'Arial';
+  const PAGE = { size: { width: 11906, height: 16838 }, margin: { top: 1020, bottom: 900, left: 567, right: 567, header: 420, footer: 380 } };
+  const TEXT_W = 11906 - 567 * 2, COLSP = 567, COLW = (TEXT_W - COLSP) / 2, IND = 400;
+  const px = v => Math.round(v * s);
+  const runs = (text, trusted, o = {}) => {
+    const src = trusted ? toText(text) : String(text ?? '');
+    const out = [];
+    src.split(/(\[\d+\s*\/\s*\d+\]|\*\*.+?\*\*|\n)/).forEach(part => {
+      if (!part) return;
+      const fr = part.match(/^\[(\d+)\s*\/\s*(\d+)\]$/);
+      if (fr) out.push(new d.TextRun({ text: fr[1], superScript: true, font: FONT, size: base, ...o }), new d.TextRun({ text: '⁄', font: FONT, size: base, ...o }), new d.TextRun({ text: fr[2], subScript: true, font: FONT, size: base, ...o }));
+      else if (part === '\n') out.push(new d.TextRun({ text: '', break: 1 }));
+      else if (/^\*\*.+\*\*$/.test(part)) out.push(new d.TextRun({ text: part.slice(2, -2), bold: true, font: FONT, size: base, ...o }));
+      else out.push(new d.TextRun({ text: part, font: FONT, size: base, ...o }));
+    });
+    return out;
+  };
+  const dirRuns = (text, trusted, o = {}) => {
+    const t = trusted ? toText(text) : String(text ?? '');
+    const m = t.match(/^(Directions(?:\s*\([^)]*\))?\s*:)([\s\S]*)$/i);
+    return m ? [new d.TextRun({ text: m[1] + ' ', bold: true, smallCaps: true, font: FONT, size: base - 2 }), ...runs(m[2].trim(), false, { size: base - 2, ...o })] : runs(t, false, { size: base - 2, ...o });
+  };
+  const img = (data, w, h) => new d.ImageRun({ type: 'png', data, transformation: { width: Math.round(w * WORD_GROW), height: Math.round(h * WORD_GROW) } });
+  const el = id => L.root.querySelector(`.p-b[data-b="${id}"]`);
+  const sections = [];
+  let curSec = null;
+  const open = (cols) => {
+    if (curSec && curSec.cols === cols) return;
+    curSec = { cols, children: [] };
+    sections.push(curSec);
+  };
+  const P = (o) => new d.Paragraph(o);
+  const imgOf = async (node, w, h) => {
+    if (!node) return null;
+    if (node.tagName.toLowerCase() === 'svg') return img(await svgToPng(node, w, h), w, h);
+    if (node.tagName.toLowerCase() === 'img') {
+      try { await node.decode(); const r = Math.min(w / node.naturalWidth, h / node.naturalHeight, 1) || 1; const W = node.naturalWidth * r, H = node.naturalHeight * r; return img(await drawPng(node, W, H), W, H); } catch (e) { return null; }
+    }
+    return null;
+  };
+  let done = 0;
+  for (const u of L.units) {
+    open(u.full ? 1 : 2);
+    for (const b of u.blocks) {
+      const C = curSec.children;
+      if (b.kind === 'mast') {
+        const medalImg = await imgOf(el(b.id).querySelector('svg.medal'), px(96), px(96));
+        const right = [
+          P({ children: [new d.TextRun({ text: `MODEL QUESTION PAPER · PRACTICE SET ${set.setNo ?? 1}`, font: HFONT, size: base - 4, bold: true, color: 'C98A14', characterSpacing: 30 })] }),
+          P({ spacing: { before: 60, after: 40 }, children: [new d.TextRun({ text: set.title || 'Model Question Paper', font: HFONT, size: Math.round(base * 2.3), bold: true, color: '0E4F4B' })] }),
+          P({ children: [new d.TextRun({ text: set.subtitle || '', font: HFONT, size: base + 2, color: '444444' })] }),
+          P({ spacing: { before: 80 }, children: [new d.TextRun({ text: `${L.total} questions  ·  ${set.sections.length} sections  ·  ${dur(set.minutes)}  ·  Medium: ${set.medium || 'English'}`, font: HFONT, size: base - 3, color: '555555' })] }),
+        ];
+        const none = { style: d.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+        const cellB = { top: none, bottom: none, left: none, right: none };
+        const borders = { ...cellB, insideHorizontal: none, insideVertical: none };
+        C.push(new d.Table({
+          width: { size: TEXT_W, type: d.WidthType.DXA }, columnWidths: [1900, TEXT_W - 1900], borders,
+          rows: [new d.TableRow({ children: [
+            new d.TableCell({ width: { size: 1900, type: d.WidthType.DXA }, borders: cellB, verticalAlign: d.VerticalAlign.CENTER, children: [P({ children: medalImg ? [medalImg] : [] })] }),
+            new d.TableCell({ width: { size: TEXT_W - 1900, type: d.WidthType.DXA }, borders: cellB, verticalAlign: d.VerticalAlign.CENTER, children: right }),
+          ] })],
+        }));
+        ['All questions are compulsory. Each question has only one correct answer.', 'Darken one circle per question in the OMR Answer Sheet.']
+          .forEach((t, i) => C.push(P({ spacing: { before: i ? 0 : 120 }, indent: { left: 360, hanging: 240 }, children: [new d.TextRun({ text: '•  ' + t, font: FONT, size: base - 2, color: '333333' })] })));
+        C.push(P({ spacing: { after: 160 }, border: { bottom: { style: d.BorderStyle.SINGLE, size: 6, color: 'C4C4C4', space: 6 } }, children: [] }));
+      } else if (b.kind === 'band') {
+        const { sec, T } = b;
+        if (sec.tag) C.push(P({ keepNext: true, alignment: d.AlignmentType.CENTER, shading: { type: d.ShadingType.CLEAR, fill: '0E4F4B', color: 'auto' }, spacing: { before: 120, after: 60 },
+          children: [new d.TextRun({ text: (T ? toText(sec.tag) : sec.tag).toUpperCase(), font: HFONT, bold: true, color: 'FFFFFF', size: base - 2, characterSpacing: 60 })] }));
+        if (sec.title) C.push(P({ keepNext: true, alignment: d.AlignmentType.CENTER, spacing: { after: 80 }, children: [new d.TextRun({ text: (T ? toText(sec.title) : sec.title).toUpperCase(), font: HFONT, bold: true, size: Math.round(base * 1.25) })] }));
+        if (sec.dir) {
+          const bd = { style: d.BorderStyle.SINGLE, size: 8, color: '111111', space: 4 };
+          C.push(P({ keepNext: true, border: { top: bd, bottom: bd, left: bd, right: bd }, spacing: { after: 160 }, children: dirRuns(sec.dir, T, { italics: true }) }));
+        }
+      } else if (b.kind === 'sub') {
+        C.push(P({ keepNext: true, spacing: { before: 80, after: 60 }, shading: { type: d.ShadingType.CLEAR, fill: 'EEF3F1', color: 'auto' }, border: { left: { style: d.BorderStyle.SINGLE, size: 24, color: 'C98A14', space: 4 } },
+          children: [new d.TextRun({ text: (b.T ? toText(b.text) : b.text).toUpperCase(), font: HFONT, bold: true, size: base })] }));
+      } else if (b.kind === 'part') {
+        C.push(P({ keepNext: true, alignment: d.AlignmentType.CENTER, spacing: { before: 80, after: 40 }, children: [new d.TextRun({ text: `—  ${(b.T ? toText(b.text) : b.text).toUpperCase()}  —`, font: HFONT, bold: true, size: base - 2, characterSpacing: 40 })] }));
+      } else if (b.kind === 'dir') {
+        C.push(P({ keepNext: true, spacing: { after: 80 }, alignment: d.AlignmentType.JUSTIFIED, children: dirRuns(b.text, b.T) }));
+      } else if (b.kind === 'ptitle') {
+        C.push(P({ keepNext: true, alignment: d.AlignmentType.CENTER, spacing: { before: 80, after: 60 }, children: [new d.TextRun({ text: b.T ? toText(b.text) : b.text, font: HFONT, bold: true, size: base + 2 })] }));
+      } else if (b.kind === 'para') {
+        C.push(P({ indent: { firstLine: 360 }, alignment: d.AlignmentType.JUSTIFIED, spacing: { after: 80 }, children: runs(b.text.trim(), b.T) }));
+      } else if (b.kind === 'q') {
+        const { q, n, trusted } = b, node = el(b.id);
+        const num = new d.TextRun({ text: `${n}.\t`, bold: true, font: HFONT, size: base });
+        const head = { tabStops: [{ type: d.TabStopType.LEFT, position: IND }], indent: { left: IND, hanging: IND }, spacing: { before: 100, after: 40 }, keepNext: true };
+        if (q.kind === 'fig' || (q.kind === 'img' && q.optMode === 'img')) {
+          const label = q.kind === 'fig' ? q.label : (q.q ? null : 'Question Figure');
+          C.push(P({ ...head, children: [num, ...(label ? [new d.TextRun({ text: label, bold: true, font: HFONT, size: base - 1 })] : runs(q.q, trusted))] }));
+          const qImgs = [];
+          for (const f of node.querySelectorAll('.p-fig > svg, .p-fig > img')) {
+            const r = f.getBoundingClientRect(), im = await imgOf(f, r.width, r.height);
+            if (im) qImgs.push(im, new d.TextRun({ text: '   ' }));
+          }
+          if (qImgs.length) C.push(P({ indent: { left: IND }, keepNext: true, spacing: { after: 40 }, children: qImgs }));
+          C.push(P({ indent: { left: IND }, keepNext: true, children: [new d.TextRun({ text: q.kind === 'fig' ? q.aLabel : 'Answer Figures', bold: true, font: HFONT, size: base - 1 })] }));
+          const cells = [...node.querySelectorAll('.p-fi')];
+          const step = Math.round((COLW - IND) / 4), tabs = [0, 1, 2, 3].map(i => ({ type: d.TabStopType.CENTER, position: IND + Math.round(step * (i + 0.5)) }));
+          const pics = [];
+          for (let i = 0; i < cells.length; i++) {
+            const f = cells[i].querySelector('svg, img'), r = f ? f.getBoundingClientRect() : { width: 0, height: 0 };
+            const im = f ? await imgOf(f, r.width, r.height) : null;
+            pics.push(new d.TextRun({ text: '\t' }), ...(im ? [im] : [new d.TextRun({ text: '—' })]));
+          }
+          C.push(P({ tabStops: tabs, keepNext: true, children: pics }));
+          C.push(P({ tabStops: tabs, spacing: { after: 60 }, children: LET.map(l => new d.TextRun({ text: `\t(${l})`, font: FONT, size: base - 2 })) }));
+        } else {
+          const qt = node.querySelector('.p-qt');
+          if (trusted && /<table/i.test(q.q || '') && qt) {
+            const lead = toText(String(q.q).split(/<table/i)[0]);
+            C.push(P({ ...head, children: [num, ...runs(lead, false)] }));
+            const tb = qt.querySelector('table');
+            const shot = await elToPng(tb, libs.html2canvas);
+            C.push(P({ indent: { left: IND }, keepNext: true, children: [img(shot.data, shot.w, shot.h)] }));
+            const tail = toText(String(q.q).split(/<\/table>/i)[1] || '');
+            if (tail) C.push(P({ indent: { left: IND }, keepNext: true, children: runs(tail, false) }));
+          } else {
+            C.push(P({ ...head, children: [num, ...runs(q.q || '', trusted)] }));
+          }
+          const fi = node.querySelector('.p-fig > img');
+          if (fi) { const r = fi.getBoundingClientRect(), im = await imgOf(fi, r.width, r.height); if (im) C.push(P({ indent: { left: IND }, keepNext: true, children: [im] })); }
+          const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+          const max = Math.max(...opts.map(o => (trusted ? toText(o) : String(o)).length));
+          const per = max <= 7 ? 4 : max <= 22 ? 2 : 1;
+          const w = Math.round((COLW - IND) / per);
+          for (let i = 0; i < 4; i += per) {
+            const ch = [];
+            for (let j = i; j < i + per; j++) ch.push(new d.TextRun({ text: `${j > i ? '\t' : ''}(${LET[j]}) `, font: FONT, size: base }), ...runs(opts[j] || '—', trusted));
+            C.push(P({ indent: { left: IND }, tabStops: [1, 2, 3].map(k => ({ type: d.TabStopType.LEFT, position: IND + w * k })), keepNext: i + per < 4, spacing: { after: i + per >= 4 ? 80 : 0 }, children: ch }));
+          }
+        }
+      }
+    }
+    done++;
+    if (done % 10 === 0) msg(`Writing Word document… ${Math.round(done / L.units.length * 100)}%`);
+  }
+  const keyRows = [];
+  const keySections = [];
+  if (L.withKey) {
+    for (let i = 0; i < L.key.length; i += 10) keyRows.push(L.key.slice(i, i + 10));
+    const cellW = Math.floor(TEXT_W / 10);
+    keySections.push({
+      properties: { type: d.SectionType.NEXT_PAGE, page: PAGE, column: { count: 1 } },
+      children: [
+        P({ children: [new d.TextRun({ text: 'Answer key', font: HFONT, bold: true, size: Math.round(base * 1.8) })] }),
+        P({ spacing: { after: 160 }, children: [new d.TextRun({ text: `${set.title || ''} · Practice Set ${set.setNo ?? 1}`, font: HFONT, size: base, color: '555555' })] }),
+        new d.Table({ width: { size: TEXT_W, type: d.WidthType.DXA }, columnWidths: Array(10).fill(cellW),
+          rows: keyRows.map(r => new d.TableRow({ children: Array.from({ length: 10 }, (_, i) => new d.TableCell({ width: { size: cellW, type: d.WidthType.DXA },
+            children: [P({ alignment: d.AlignmentType.CENTER, children: r[i] ? [new d.TextRun({ text: `${r[i].n}  `, font: HFONT, size: base - 2, color: '777777' }), new d.TextRun({ text: r[i].a != null ? LET[r[i].a] : '–', font: HFONT, bold: true, size: base })] : [] })] })) })) }),
+      ],
+    });
+  }
+  const no = String(set.setNo ?? 1);
+  const header = new d.Header({ children: [P({
+    tabStops: [{ type: d.TabStopType.RIGHT, position: TEXT_W }],
+    border: { bottom: { style: d.BorderStyle.SINGLE, size: 12, color: '111111', space: 4 } },
+    children: [new d.TextRun({ text: `${(set.title || 'Model Paper').toUpperCase()} · PRACTICE SET – ${no}`, font: HFONT, size: 15, color: '444444', characterSpacing: 20 }),
+      new d.TextRun({ children: ['\t', `${no}-`, d.PageNumber.CURRENT], font: HFONT, size: 15, bold: true })],
+  })] });
+  const footer = new d.Footer({ children: [P({ alignment: d.AlignmentType.RIGHT, children: [new d.TextRun({ children: ['Page ', d.PageNumber.CURRENT, ' of ', d.PageNumber.TOTAL_PAGES], font: HFONT, size: 15, color: '666666' })] })] });
+  const doc = new d.Document({
+    creator: 'GNSI Model Sets', title: `${set.title || 'Model Paper'} – Practice Set ${no}`,
+    styles: { default: { document: { run: { font: FONT, size: base } } } },
+    sections: [...sections.map((sec, i) => ({
+      properties: { ...(i ? { type: d.SectionType.CONTINUOUS } : {}), page: PAGE, column: sec.cols === 2 ? { count: 2, space: COLSP, separate: true } : { count: 1 } },
+      ...(i ? {} : { headers: { default: header }, footers: { default: footer } }),
+      children: sec.children.length ? sec.children : [P({ children: [] })],
+    })), ...keySections],
+  });
+  return d.Packer.toBlob(doc);
+}
+
+let exportBusy = false;
+const exportSet = id => (cur.view === 'maker' && cur.id === id ? cur.draft : getSet(id));
+function openExport(id) {
+  const set = exportSet(id); if (!set) return;
+  cur.exportId = id;
+  ov.innerHTML = `<div class="ov" data-act="ovclose"><div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="exT" style="width:min(500px,100%)">
+    <div class="ov-h"><h2 id="exT">Download Practice Set ${esc(String(set.setNo ?? 1))}</h2><button class="btn" type="button" data-act="ovclose">Close</button></div>
+    <div class="ov-b" style="display:grid;gap:14px;padding-top:14px">
+      <p class="subnote">The paper is laid out on A4 in two columns. Text and figures are sized so the whole paper fills the number of pages you choose.</p>
+      <div class="row"><label class="fld" for="exPages"><span>Pages</span><input class="in" id="exPages" type="number" min="2" max="24" value="8"></label><div></div></div>
+      <label class="toggle"><input type="checkbox" id="exKey">Add an answer key page at the end</label>
+      <p class="genmsg" id="exMsg" role="status"></p>
+    </div>
+    <div class="ov-f"><span class="subnote">${countQ(set)} questions</span><div class="addbar">
+      <button class="btn primary" type="button" data-act="expdf">Download PDF</button><button class="btn" type="button" data-act="exdocx">Download Word</button></div></div></div></div>`;
+  ov.querySelector('.ov-card').addEventListener('click', e => { if (!e.target.closest('[data-act]')) e.stopPropagation(); });
+}
+async function runExport(fmt) {
+  if (exportBusy) return;
+  const set = exportSet(cur.exportId); if (!set) return;
+  const msgEl = $('#exMsg'), btns = ov.querySelectorAll('[data-act="expdf"],[data-act="exdocx"]');
+  const msg = t => { if (msgEl && msgEl.isConnected) msgEl.textContent = t; };
+  const pages = Math.min(24, Math.max(2, Math.round(+$('#exPages').value || 8)));
+  const withKey = $('#exKey').checked;
+  exportBusy = true; btns.forEach(b => b.disabled = true);
+  let L = null;
+  try {
+    msg('Loading the PDF and Word tools…');
+    const libs = await loadLibs(fmt);
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    msg('Fitting the paper to the pages…');
+    await new Promise(r => setTimeout(r, 30));
+    L = layoutPaper(set, pages, withKey);
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;   // faces first used by the print layout
+    const imgs = [...L.root.querySelectorAll('img')];
+    await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
+    const blob = fmt === 'pdf' ? await buildPdf(L, libs, msg) : await buildDocx(set, L, libs, msg);
+    msg('Saving…');
+    await saveFile(`${fileBase(set)}.${fmt}`, blob);
+    msg(L.over
+      ? `Saved. This paper needs ${L.count} pages even at the smallest readable size.`
+      : `Saved: ${L.count} page${L.count === 1 ? '' : 's'} on A4${fmt === 'docx' ? '. Word may move a line or two between pages.' : '.'}`);
+  } catch (e) {
+    console.error('Model set export failed', e);
+    const code = e && e.code;
+    msg(code === 'declined' ? 'Download cancelled.'
+      : code === 'rate_limited' ? 'Another download is waiting for your answer. Try again in a moment.'
+      : /load/i.test(String(e && e.message)) ? 'Could not load the PDF and Word tools. Check the internet connection and try again.'
+      : 'Could not make the file. Try again, or choose more pages.');
+  } finally {
+    if (L) L.root.remove();
+    exportBusy = false; btns.forEach(b => { if (b.isConnected) b.disabled = false; });
+  }
+}
+
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const jump = e.target.closest('[data-jump]');
@@ -1146,6 +1676,10 @@ document.addEventListener('click', async e => {
     if (!a.classList.contains('armed')) { a.classList.add('armed'); a.textContent = 'Tap again to clear'; setTimeout(() => { if (a.isConnected) { a.classList.remove('armed'); a.textContent = 'Clear all'; } }, 2500); return; }
     cur.ans = {}; cur.checked = false; cur.save(); a.classList.remove('armed'); a.textContent = 'Clear all'; paint();
   }
+  else if (act === 'export') { openExport(a.dataset.id); return; }
+  else if (act === 'ovclose') { if (e.target === a || a.tagName === 'BUTTON') { if (!exportBusy) ov.innerHTML = ''; } return; }
+  else if (act === 'expdf') { runExport('pdf'); return; }
+  else if (act === 'exdocx') { runExport('docx'); return; }
   if (cur.view !== 'maker') return;
   const d = cur.draft, sec = d.sections[cur.sec];
   const card = a.closest('[data-i]'), ii = card ? +card.dataset.i : -1, items = sec ? sec.items : [];

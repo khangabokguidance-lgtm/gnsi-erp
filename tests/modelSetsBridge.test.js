@@ -68,6 +68,16 @@ test('without the Model Sets add/edit permission nothing is written and uploads 
   assert.equal(await bridge.use('assets'), null)
   assert.equal(await (await bridge.use('user')).canEdit(), false)
   assert.equal(await bridge.use('sample'), null)
+  assert.equal(await bridge.use('downloads'), null, 'no save function given, so the page falls back to its own link')
+})
+
+test('downloads hand the file to the portal, and the export libraries pass through', async () => {
+  const saved = []
+  const libs = async () => ({ jsPDF: 1, docx: 2, html2canvas: 3 })
+  const bridge = createModelSetsBridge({ client: fakeClient(), saveFile: async (name, blob) => saved.push([name, blob.size]), exportLibs: libs })
+  await (await bridge.use('downloads')).save({ filename: 'Set_2.pdf', data: new Uint8Array([1, 2, 3]) })
+  assert.deepEqual(saved, [['Set_2.pdf', 3]])
+  assert.deepEqual(await bridge.exportLibs(), { jsPDF: 1, docx: 2, html2canvas: 3 })
 })
 
 test('a refused database write surfaces as not_granted', async () => {

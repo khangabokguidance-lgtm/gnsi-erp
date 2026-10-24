@@ -9,6 +9,9 @@
 //                   backed by the model_sets table (one JSON document per set)
 //   use('user')   → canEdit(): the portal's Model Sets permission
 //   use('assets') → upload(blob): pictures into the question-diagrams bucket
+//   use('downloads') → save({filename, data}): the PDF / Word file the page made
+//   exportLibs()  → { jsPDF, docx, html2canvas } from the portal's own bundle,
+//                   so Download PDF / Word works without the CDN
 // Anything else resolves null, so the page hides that feature.
 // No import of ./supabase here: the client is passed in, which keeps this
 // testable under `node --test` (tests/modelSetsBridge.test.js).
@@ -34,7 +37,7 @@ export function toBridgeError(error) {
   return { code: 'unavailable', message: msg }
 }
 
-export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff' }) {
+export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff', exportLibs = null, saveFile = null }) {
   const listeners = new Set()
   let channel = null
 
@@ -119,9 +122,18 @@ export function createModelSetsBridge({ client, canWrite = () => false, actor = 
 
   const user = { canEdit: async () => !!canWrite(), isOwner: async () => false }
 
+  const downloads = saveFile ? {
+    async save({ filename, data }) {
+      const blob = data instanceof Blob ? data : new Blob([data])
+      await saveFile(String(filename), blob)
+    },
+  } : null
+
+  const caps = { db, user, downloads }
   return {
     storeLabel,
     theme: 'light',
-    use: async (name) => (name === 'db' ? db : name === 'user' ? user : name === 'assets' ? (canWrite() ? assets : null) : null),
+    exportLibs: exportLibs || undefined,
+    use: async (name) => (name === 'assets' ? (canWrite() ? assets : null) : caps[name] || null),
   }
 }
