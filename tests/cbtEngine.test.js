@@ -109,3 +109,13 @@ test('locked answers: the first option is final and cannot be changed or cleared
   assert.equal(select(a, 1, 'C').answers[1], 'C', 'without the lock it changes as before')
   assert.equal(clear(a, 1).answers[1], undefined)
 })
+
+test('CSV export: a candidate name that looks like a formula is neutralised', async () => {
+  const { resultsCSV } = await import('../src/lib/cbtEngine.js')
+  const t = { id: 't', name: 'T', marking: { correct: 1, wrong: 0 }, sections: [{ id: 's', label: 'A', title: 'A', questions: [{ no: 1, answer: 'A', options: [] }] }] }
+  const at = (name, roll) => ({ id: name, state: 'submitted', startedAt: 1, submittedAt: 61000, answers: { 1: 'A' }, switches: 0, candidate: { name, roll } })
+  const csv = resultsCSV(t, [at('=HYPERLINK("http://evil","x")', '+91'), at('Normal Name', '-5')])
+  assert.ok(csv.includes(`"'=HYPERLINK(""http://evil"",""x"")"`), csv)
+  assert.ok(csv.includes(",'+91,") && csv.includes(",'-5,"))
+  assert.ok(csv.includes('Normal Name'))
+})

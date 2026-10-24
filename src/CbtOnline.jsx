@@ -5,7 +5,7 @@ import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText,
 import { flatQuestions } from './lib/cbtEngine'
 
 const local = v => { if (!v) return ''; const d = new Date(v); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
-const newCode = () => String(Math.floor(100000 + Math.random() * 900000))
+const newCode = () => String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000))
 
 export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   const [code, setCode] = useState(row ? row.access_code || '' : newCode())

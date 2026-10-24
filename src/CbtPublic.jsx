@@ -15,18 +15,18 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } cat
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 
 // The adapter CbtPlayer talks to. `offset` = server time minus this device's time, so the countdown follows the server.
-function makeRemote({ testId, code, candidate, phone, gcc, parent, attemptId = null, token = null }) {
-  const r = { offset: 0, attemptId, token }
+function makeRemote({ testId, code, candidate, phone, gcc, parent, attemptId = null, token = null, session = null }) {
+  const r = { offset: 0, attemptId, token, session }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
-  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null })
+  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, changes: a.changes || null })
   r.begin = async () => {
     const res = await startExam(testId, code, candidate.name, candidate.roll, phone, gcc, parent)
-    r.attemptId = res.attempt.id; r.token = res.token; sync(res.attempt)
-    write(savedKey(testId), { attemptId: r.attemptId, token: r.token, name: candidate.name, roll: candidate.roll })
+    r.attemptId = res.attempt.id; r.token = res.token; r.session = res.session; sync(res.attempt)
+    write(savedKey(testId), { attemptId: r.attemptId, token: r.token, session: r.session, name: candidate.name, roll: candidate.roll })
     return { test: res.test, attempt: localAttempt(res.attempt, res.test, candidate) }
   }
-  r.save = async a => { backup(a); const res = await saveExam(r.attemptId, r.token, a); sync(res); return res }
-  r.submit = async a => { backup(a); const res = await submitExam(r.attemptId, r.token, a); sync(res.attempt); return res }
+  r.save = async a => { backup(a); const res = await saveExam(r.attemptId, r.token, a, r.session); sync(res); return res }
+  r.submit = async a => { backup(a); const res = await submitExam(r.attemptId, r.token, a, r.session); sync(res.attempt); return res }
   return r
 }
 
@@ -80,10 +80,11 @@ export default function CbtPublic() {
   const resume = async () => {
     setBusy(true); setErr('')
     try {
-      const res = await resumeExam(saved.attemptId, saved.token)
+      const res = await resumeExam(saved.attemptId, saved.token, saved.session)
       const candidate = { name: saved.name, roll: saved.roll }
       if (res.result) { setView(resultView(res.result, infoTest(info), candidate)); setPhase('result') } else {
-        const remote = makeRemote({ testId, candidate, attemptId: saved.attemptId, token: saved.token })
+        const remote = makeRemote({ testId, candidate, attemptId: saved.attemptId, token: saved.token, session: res.session })
+        write(savedKey(testId), { ...saved, session: res.session })
         remote.offset = Date.parse(res.attempt.serverNow) - Date.now()
         setRun({ test: res.test, candidate, remote, resume: localAttempt(res.attempt, res.test, candidate, read(backupKey(saved.attemptId))) })
         setPhase('exam')
