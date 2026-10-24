@@ -1,0 +1,737 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>JNV Practice Set 1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&display=swap">
+<style>
+/* Layout: printed exam sheets on a desk, two-column question flow, OMR sheet docked beside them */
+:root {
+  --desk: #dde5e2;
+  --paper: #fbfcfa;
+  --ink: #142120;
+  --muted: #5a6c68;
+  --rule: #cbd6d2;
+  --tint: #e9f0ee;
+  --brand: #0e4f4b;
+  --on-brand: #f3faf8;
+  --gold: #c98a14;
+  --piece: #b9d6d0;
+  --good: #23784a;
+  --bad: #b23c26;
+  --shadow: 0 1px 2px rgba(14, 40, 38, .08), 0 12px 32px -12px rgba(14, 40, 38, .22);
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Literata", Georgia, "Times New Roman", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #0b1110; --paper: #151f1e; --ink: #e2ebe8; --muted: #93a6a1; --rule: #2a3936;
+    --tint: #1d2b29; --brand: #5db5aa; --on-brand: #0b1110; --gold: #e6ac47; --piece: #2f5953;
+    --good: #6cc58f; --bad: #ec7f66; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 36px -14px rgba(0,0,0,.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --desk: #0b1110; --paper: #151f1e; --ink: #e2ebe8; --muted: #93a6a1; --rule: #2a3936;
+  --tint: #1d2b29; --brand: #5db5aa; --on-brand: #0b1110; --gold: #e6ac47; --piece: #2f5953;
+  --good: #6cc58f; --bad: #ec7f66; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 16px 36px -14px rgba(0,0,0,.7);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--desk);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* ---------- top bar ---------- */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--rule);
+}
+.bar-in {
+  max-width: 1280px; margin: 0 auto;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap;
+}
+.brandmark { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 700; letter-spacing: -.01em; }
+.brandmark .dot { width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; font-size: 14px; font-weight: 800; }
+.brandmark small { display: block; font-family: var(--f-mono); font-weight: 500; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.bar-stats { display: flex; align-items: center; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+.stat { font-family: var(--f-mono); font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.stat b { color: var(--ink); font-weight: 600; font-size: 14px; }
+.meter { width: 90px; height: 5px; border-radius: 3px; background: var(--tint); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .25s ease; }
+.btn {
+  border: 1px solid var(--rule); background: var(--paper); border-radius: 999px;
+  padding: 6px 14px; font-family: var(--f-mono); font-size: 12px; font-weight: 500; letter-spacing: .02em; cursor: pointer;
+}
+.btn:hover { border-color: var(--brand); }
+.btn.primary { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+.btn.primary:hover { filter: brightness(1.08); }
+
+/* ---------- page layout ---------- */
+.wrap {
+  max-width: 1280px; margin: 0 auto;
+  padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px;
+}
+@media (min-width: 1140px) { .wrap { grid-template-columns: minmax(0, 1fr) 280px; align-items: start; } }
+.sheets { display: grid; gap: 28px; min-width: 0; }
+
+.sheet {
+  position: relative; background: var(--paper); border-radius: 4px; box-shadow: var(--shadow);
+  padding: clamp(18px, 3.4vw, 44px) clamp(16px, 3.4vw, 44px) 28px clamp(16px, 4.4vw, 60px);
+  min-width: 0;
+}
+/* the perforated cut line printed on every sheet */
+.sheet::before {
+  content: ""; position: absolute; top: 18px; bottom: 18px; left: 20px;
+  border-left: 1.5px dashed var(--rule);
+}
+.sheet .scissor { position: absolute; left: 12px; width: 17px; height: 17px; color: var(--muted); background: var(--paper); }
+@media (max-width: 640px) { .sheet::before, .sheet .scissor { display: none; } }
+
+.runhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  padding-bottom: 10px; margin-bottom: 22px; border-bottom: 2px solid var(--ink);
+}
+.runhead .pg { background: var(--ink); color: var(--paper); padding: 2px 10px; border-radius: 2px; letter-spacing: .04em; font-weight: 600; }
+
+/* ---------- masthead ---------- */
+.mast { display: grid; gap: 22px; align-items: center; grid-template-columns: auto 1fr; padding-bottom: 26px; border-bottom: 1px solid var(--rule); margin-bottom: 26px; }
+.medal { width: 132px; height: 132px; }
+.medal .ring { fill: none; stroke: var(--gold); stroke-width: 2; }
+.medal .disc { fill: var(--brand); }
+.medal .num { fill: var(--on-brand); font-family: var(--f-display); font-weight: 800; font-size: 64px; }
+.medal .rib { fill: var(--gold); }
+.medal .ribtxt { fill: #1a1405; font-family: var(--f-mono); font-weight: 600; font-size: 9.5px; letter-spacing: .14em; }
+.mast .eyebrow { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+.mast h1 {
+  font-family: var(--f-display); font-weight: 800; font-size: clamp(28px, 4.6vw, 50px); line-height: 1; letter-spacing: -.025em;
+  margin: 8px 0 6px; text-wrap: balance;
+}
+.mast h1 span { color: var(--brand); }
+.mast .sub { font-family: var(--f-display); font-weight: 500; font-size: clamp(16px, 2vw, 20px); color: var(--muted); margin: 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.facts span { font-family: var(--f-mono); font-size: 11.5px; padding: 4px 10px; border: 1px solid var(--rule); border-radius: 999px; color: var(--muted); }
+.facts span b { color: var(--ink); font-weight: 600; }
+@media (max-width: 560px) { .mast { grid-template-columns: 1fr; } .medal { width: 104px; height: 104px; } }
+
+.instructions { font-size: 13.5px; color: var(--muted); display: grid; gap: 4px; margin: 0 0 8px; padding-left: 18px; }
+.instructions li::marker { color: var(--gold); }
+
+/* ---------- section bands, parts, directions ---------- */
+.band { margin: 8px 0 18px; }
+.band .tag {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--brand); color: var(--on-brand); font-family: var(--f-mono); font-weight: 600; font-size: 12px;
+  letter-spacing: .22em; text-transform: uppercase; padding: 5px 12px; border-radius: 2px;
+}
+.band h2 {
+  text-align: center; font-family: var(--f-display); font-weight: 800; font-size: clamp(17px, 2.3vw, 22px);
+  letter-spacing: .02em; text-transform: uppercase; margin: 10px 0 10px; text-wrap: balance;
+}
+.band .dir { border: 1.5px solid var(--ink); padding: 10px 14px; font-style: italic; }
+.dir { font-size: 13.5px; line-height: 1.55; margin: 0 0 14px; }
+.dir b, .dir strong { font-style: normal; font-variant: small-caps; letter-spacing: .04em; font-weight: 700; }
+
+.cols { column-gap: 44px; }
+@media (min-width: 780px) { .cols { columns: 2; column-rule: 1px solid var(--rule); } }
+
+.subhead {
+  break-inside: avoid; break-after: avoid;
+  display: inline-block; margin: 4px 0 14px; padding: 6px 16px 6px 12px;
+  font-family: var(--f-display); font-weight: 700; font-size: 15px; letter-spacing: .02em; text-transform: uppercase;
+  background: var(--tint); border-left: 4px solid var(--gold);
+}
+.part {
+  break-inside: avoid; break-after: avoid;
+  display: flex; align-items: center; gap: 12px; margin: 6px 0 10px;
+  font-family: var(--f-mono); font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase;
+}
+.part::before, .part::after { content: ""; flex: 1; height: 7px; background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 5px); opacity: .55; }
+.lead { break-inside: avoid; }
+
+/* ---------- questions ---------- */
+.q { break-inside: avoid; padding: 2px 0 16px; scroll-margin-top: 80px; }
+.qhead { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: baseline; }
+.qn { font-family: var(--f-display); font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.qtext { font-size: 15px; }
+.cap { font-family: var(--f-display); font-weight: 700; font-size: 13px; margin: 6px 0 6px 30px; }
+.qfig { margin-left: 30px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+svg.fig { display: block; stroke: var(--ink); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: hidden; }
+svg.fig .frame { stroke-width: 1.6; fill: var(--paper); }
+svg.fig .k { fill: var(--ink); }
+svg.fig .pc { fill: var(--piece); stroke-width: 1.8; }
+svg.fig .hh { stroke-width: 2.6; }
+svg.fig .thin { stroke-width: .9; }
+svg.fig text { fill: var(--ink); stroke: none; font-family: var(--f-body); }
+svg.fig .qm { font-size: 18px; font-weight: 600; }
+svg.fig .lbl { font-size: 7px; font-weight: 700; }
+.qfig svg.fig { width: 64px; height: 64px; }
+.qfig svg.fig.big { width: 118px; height: 118px; }
+.qfig svg.fig.mq { width: 88px; height: 67px; }
+
+.opts { margin-left: 30px; display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 2px 10px; margin-top: 4px; }
+@media (max-width: 420px) { .opts { --n: 2 !important; } .opts.long { --n: 1 !important; } }
+.opt {
+  display: flex; align-items: flex-start; gap: 8px; text-align: left; cursor: pointer;
+  background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; min-width: 0;
+  transition: background .15s, border-color .15s;
+}
+.opt:hover { background: var(--tint); }
+.bub {
+  flex: none; width: 21px; height: 21px; border-radius: 50%; border: 1.5px solid var(--muted);
+  display: grid; place-items: center; font-family: var(--f-mono); font-size: 10.5px; font-weight: 600; color: var(--muted);
+  margin-top: 1px; transition: background .15s, color .15s, border-color .15s;
+}
+.ot { min-width: 0; }
+.opt[aria-pressed="true"] { background: var(--tint); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.opt[aria-pressed="true"] .bub { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+
+.figopts { grid-template-columns: repeat(4, minmax(0, 64px)); gap: 6px 12px; }
+.figopts .opt { flex-direction: column; align-items: center; gap: 4px; padding: 4px; }
+.figopts svg.fig { width: 52px; height: 52px; }
+
+/* review state after checking */
+.checked .opt { cursor: default; }
+.checked .opt.is-right .bub { background: var(--good); border-color: var(--good); color: var(--paper); }
+.checked .opt.is-right { border-color: color-mix(in srgb, var(--good) 55%, transparent); }
+.checked .opt.is-wrong .bub { background: var(--bad); border-color: var(--bad); color: var(--paper); }
+.checked .opt.is-wrong .ot { text-decoration: line-through; text-decoration-color: var(--bad); }
+.checked .opt.is-wrong { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: transparent; }
+
+/* fractions, tables, passages */
+.frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; font-size: .82em; line-height: 1.05; margin: 0 1px; }
+.frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 2px; }
+.passage { break-inside: avoid; margin-bottom: 16px; }
+.passage h3 { font-family: var(--f-display); font-weight: 700; text-align: center; font-size: 16px; margin: 4px 0 8px; }
+.passage p { margin: 0 0 8px; text-indent: 1.5em; font-size: 14.5px; }
+.picto { width: 100%; border-collapse: collapse; margin: 8px 0 6px; font-size: 13.5px; }
+.picto th { text-align: left; font-family: var(--f-display); font-weight: 700; padding: 5px 8px; border: 1px solid var(--ink); width: 34%; }
+.picto td { padding: 5px 8px; border: 1px solid var(--ink); }
+.smile { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; margin-right: 3px; color: var(--gold); }
+.endmark { text-align: right; font-family: var(--f-mono); color: var(--muted); letter-spacing: .3em; margin-top: 4px; }
+
+/* ---------- OMR answer sheet ---------- */
+.omr {
+  background: var(--paper); border-radius: 4px; box-shadow: var(--shadow); padding: 18px 16px 20px;
+  position: relative; min-width: 0;
+}
+@media (min-width: 1140px) { .omr { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 74px); max-height: calc(100vh - 96px); overflow-y: auto; } }
+.omr h2 { font-family: var(--f-display); font-weight: 800; font-size: 18px; margin: 0; letter-spacing: -.01em; }
+.omr .hint { font-size: 12.5px; color: var(--muted); margin: 4px 0 14px; }
+.omr-sec { margin-top: 14px; }
+.omr-sec h3 {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-family: var(--f-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--rule);
+}
+.omr-sec h3 b { color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.omr-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; }
+@media (min-width: 640px) and (max-width: 1139px) { .omr-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.orow { display: flex; align-items: center; gap: 3px; }
+.orow a { width: 20px; font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); text-decoration: none; font-variant-numeric: tabular-nums; }
+.orow a:hover { color: var(--brand); }
+.ob {
+  width: 17px; height: 17px; border-radius: 50%; border: 1px solid var(--muted); background: none; padding: 0;
+  font-family: var(--f-mono); font-size: 8.5px; color: var(--muted); cursor: pointer; display: grid; place-items: center;
+}
+.ob.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.checked .ob.key { box-shadow: 0 0 0 2px var(--good); }
+.checked .ob.on.miss { background: var(--bad); border-color: var(--bad); }
+.checked .ob.on.key { background: var(--good); border-color: var(--good); }
+
+.score { display: none; margin-bottom: 4px; padding: 14px; border-radius: 4px; background: var(--tint); }
+.checked .score { display: block; }
+.score .big { font-family: var(--f-display); font-weight: 800; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.score .big small { font-size: 16px; color: var(--muted); font-weight: 600; }
+.score ul { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.score li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.score li b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.score li .meter { grid-column: 1 / -1; width: 100%; background: var(--paper); }
+.score li .meter i { background: var(--good); }
+.omr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brandmark"><span class="dot">1</span><div>JNV Practice Set 1<small>Selection Test · Class VI</small></div></div>
+    <div class="bar-stats">
+      <div class="stat">Answered <b id="cnt">0</b>/80 <span class="meter"><i id="mtr"></i></span></div>
+      <div class="stat">Time <b id="clock">2:00:00</b> <button class="btn" id="timerBtn" type="button">Start</button></div>
+      <button class="btn primary" id="checkTop" type="button">Check answers</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap" id="app">
+  <main class="sheets" id="sheets"></main>
+  <aside class="omr" id="omr" aria-label="OMR answer sheet">
+    <div class="score" id="score"></div>
+    <h2>OMR Answer Sheet</h2>
+    <p class="hint">Mark here or tap an option in the paper. Both stay in sync.</p>
+    <div id="omrBody"></div>
+    <div class="omr-actions">
+      <button class="btn primary" id="checkSide" type="button">Check answers</button>
+      <button class="btn" id="resetBtn" type="button">Clear all</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+/* ---------- SVG primitives ---------- */
+let uid = 0;
+const L = (a, b, c, d, k = '') => `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}"${k ? ` class="${k}"` : ''}/>`;
+const R = (x, y, w, h, k = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}"${k ? ` class="${k}"` : ''}/>`;
+const C = (x, y, r, k = '') => `<circle cx="${x}" cy="${y}" r="${r}"${k ? ` class="${k}"` : ''}/>`;
+const pts = p => p.map(q => q.map(n => +n.toFixed(2)).join(',')).join(' ');
+const P = (p, k = '') => `<polygon points="${pts(p)}"${k ? ` class="${k}"` : ''}/>`;
+const PL = p => `<polyline points="${pts(p)}"/>`;
+const ngon = (cx, cy, r, n, start = -90) => Array.from({ length: n }, (_, i) => {
+  const a = (start + i * 360 / n) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+});
+const QM = (x, y) => `<text x="${x}" y="${y}" class="qm" text-anchor="middle" dominant-baseline="central">?</text>`;
+const svg = (inner, w = 60, h = 60, k = '') => `<svg viewBox="0 0 ${w} ${h}" class="fig ${k}" aria-hidden="true">${inner}</svg>`;
+const frame = (w = 60, h = 60) => R(1, 1, w - 2, h - 2, 'frame');
+const box = inner => svg(frame() + inner);
+const grid = inner => svg(frame(100, 100) + inner + L(50, 1, 50, 99) + L(1, 50, 99, 50), 100, 100, 'big');
+const T = { m: 'translate(60 0) scale(-1 1)', v: 'translate(0 60) scale(1 -1)', r: 'rotate(180 30 30)', o: '' };
+const tf = (t, g) => `<g transform="${T[t]}">${g}</g>`;
+const mirrorQ = inner => {
+  let hatch = '';
+  for (let y = 10; y <= 56; y += 3.2) hatch += L(70, y, 74, y - 2.6, 'thin');
+  return svg(`<g transform="translate(0 3)">${frame()}${inner}</g>` + L(70, 8, 70, 58) + hatch +
+    `<text x="70" y="5.5" class="lbl" text-anchor="middle">X</text><text x="70" y="66" class="lbl" text-anchor="middle">Y</text>`, 84, 67, 'mq');
+};
+
+/* Part I */
+const p1 = (o, y, s) => [.25, .5, .75].map(f => L(o + s * f, y, o + s * f, y + s)).join('');
+const p2 = (o, y, s) => L(o + s * .3, y, o + s * .3, y + s) + L(o + s * .7, y, o + s * .7, y + s) + L(o + s * .3, y + s * .5, o + s * .7, y + s * .5);
+const xq = (o, y, s, pos) => {
+  const m = { t: [.5, .2], r: [.8, .5], b: [.5, .8], l: [.2, .5] }[pos];
+  return L(o, y, o + s, y + s) + L(o + s, y, o, y + s) + C(o + s * m[0], y + s * m[1], s * .075);
+};
+const dots = (o, y, s, list) => list.map(([c, r]) => C(o + s * (.22 + .28 * c), y + s * (.22 + .28 * r), s * .085, 'k')).join('');
+const dq = (o, y, s, t) => {
+  const d = { a: [0, [.3, .3]], b: [1, [.7, .3]], c: [1, [.3, .7]], d: [0, [.7, .7]], e: [0, [.7, .3]] }[t];
+  const diag = d[0] ? L(o + s, y, o, y + s) : L(o, y, o + s, y + s);
+  return diag + C(o + s * d[1][0], y + s * d[1][1], s * .17) + L(o + s * d[1][0] - s * .17, y + s * d[1][1], o + s * d[1][0] + s * .17, y + s * d[1][1]);
+};
+/* Part II */
+const q5g = R(20, 20, 20, 20) + L(40, 20, 50, 10) + C(50, 10, 2.4, 'k') + L(30, 40, 30, 49) + P([[26, 47], [34, 47], [30, 54]], 'k');
+const rot = a => `<g transform="rotate(${a} 30 30)">${q5g}</g>`;
+const shape = (t, cx, cy, s) => ({
+  sq: () => R(cx - s / 2, cy - s / 2, s, s),
+  ci: () => C(cx, cy, s / 2),
+  tri: () => P([[cx - s / 2, cy - s / 2], [cx - s / 2, cy + s / 2], [cx + s / 2, cy + s / 2]]),
+  pent: () => P(ngon(cx, cy, s / 2, 5)),
+})[t]();
+const nest = list => {
+  let cx = 30, cy = 30, s = 46, out = '';
+  list.forEach(t => {
+    out += shape(t, cx, cy, s);
+    if (t === 'tri') { const r = .2929 * s; cx = cx - s / 2 + r; cy = cy + s / 2 - r; s = 2 * r * .78; }
+    else s *= t === 'pent' ? .58 : .64;
+  });
+  return out;
+};
+const q7 = left => left + C(43, 30, 7.5, 'k');
+const corner = { tr: [51, 9], br: [51, 51], bl: [9, 51], tl: [9, 9] };
+const q8 = (g, c) => g + C(...corner[c], 2.6, 'k');
+/* Part III */
+const top = p => P([[8, 8], [52, 8], ...p.slice().reverse()], 'pc');
+const bot = p => P([...p, [52, 52], [8, 52]], 'pc');
+const circPiece = (p, side) => {
+  const poly = side === 'l' ? [[0, 0], ...p, [0, 60]] : [...p, [60, 60], [60, 0]];
+  const a = 'cc' + (++uid), b = 'cp' + uid;
+  return `<defs><clipPath id="${a}"><circle cx="30" cy="30" r="22"/></clipPath><clipPath id="${b}">${P(poly)}</clipPath></defs>` +
+    `<g clip-path="url(#${a})">${P(poly, 'pc')}</g><g clip-path="url(#${b})">${C(30, 30, 22)}</g>`;
+};
+/* Part IV */
+const hand = (deg, len, k = '') => { const a = deg * Math.PI / 180; return L(30, 30, +(30 + len * Math.sin(a)).toFixed(2), +(30 - len * Math.cos(a)).toFixed(2), k); };
+const clock = (h, m) => {
+  let t = C(30, 30, 21);
+  for (let i = 0; i < 12; i++) { const a = i * 30 * Math.PI / 180, r1 = i % 3 ? 18.5 : 16.5; t += L(+(30 + r1 * Math.sin(a)).toFixed(2), +(30 - r1 * Math.cos(a)).toFixed(2), +(30 + 20 * Math.sin(a)).toFixed(2), +(30 - 20 * Math.cos(a)).toFixed(2), 'thin'); }
+  return t + hand(h, 10.5, 'hh') + hand(m, 16) + C(30, 30, 1.6, 'k');
+};
+const g14 = P([[30, 5], [55, 30], [30, 55], [5, 30]]) + R(13, 26, 8, 8, 'k') +
+  R(26, 12, 8, 8) + L(28, 12, 28, 20, 'thin') + L(30, 12, 30, 20, 'thin') + L(32, 12, 32, 20, 'thin') +
+  C(41, 29, 3) + P([[27, 39], [35, 39], [27, 47]], 'k');
+const g15 = `<path d="M7,19 A10,9 0 0 1 27,19 Z" class="k"/>` + L(17, 19, 17, 27) + `<path d="M17,27 q0,3 -3,3"/>` +
+  C(39, 15, 4, 'k') + C(45, 13, 5, 'k') + C(50, 16, 3.5, 'k') + R(39, 14, 11, 5.5, 'k') +
+  L(38, 23, 36, 27) + L(43, 23, 41, 27) + L(48, 23, 46, 27) +
+  C(17, 44, 4.5, 'k') + [0, 45, 90, 135, 180, 225, 270, 315].map(d => { const a = d * Math.PI / 180; return L(+(17 + 7 * Math.cos(a)).toFixed(2), +(44 + 7 * Math.sin(a)).toFixed(2), +(17 + 10 * Math.cos(a)).toFixed(2), +(44 + 10 * Math.sin(a)).toFixed(2)); }).join('') +
+  L(39, 36, 39, 54) + P([[39, 36], [52, 40], [39, 44]], 'k');
+const g16 = `<path d="M30,12 A20,20 0 1 1 10,32 L30,32 Z"/>` +
+  L(38, 19, 38, 27) + L(34.5, 21, 41.5, 25) + L(34.5, 25, 41.5, 21) +
+  C(21, 41, 4) + L(18, 44, 24, 38) +
+  C(38, 41, 2.6, 'k') + [0, 60, 120, 180, 240, 300].map(d => { const a = d * Math.PI / 180; return L(+(38 + 4 * Math.cos(a)).toFixed(2), +(41 + 4 * Math.sin(a)).toFixed(2), +(38 + 6 * Math.cos(a)).toFixed(2), +(41 + 6 * Math.sin(a)).toFixed(2)); }).join('');
+
+/* ---------- helpers for text ---------- */
+const f = (a, b) => `<span class="frac"><span>${a}</span><span>${b}</span></span>`;
+const smile = '<svg class="smile" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.6" cy="6.4" r="1" fill="currentColor"/><circle cx="10.4" cy="6.4" r="1" fill="currentColor"/><path d="M4.8 9.6 Q8 12.6 11.2 9.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const smiles = n => smile.repeat(n);
+
+/* ---------- question bank (answer index: A=0 … D=3) ---------- */
+const fig = (n, qf, opts, a, label = 'Question Figure', aLabel = 'Answer Figures') => ({ n, kind: 'fig', qf, opts, a, label, aLabel });
+const tx = (n, q, opts, a) => ({ n, kind: 'text', q, opts, a });
+
+const v9 = [[8, 30], [18, 24], [24, 34], [32, 22], [40, 32], [52, 26]];
+const v10 = [[8, 26], [14, 14], [19, 26], [25, 12], [30, 26], [36, 15], [41, 27], [52, 22]];
+const v11 = [[30, 0], [27, 14], [35, 22], [24, 32], [33, 42], [30, 60]];
+const v12 = [[8, 32], [15, 32], [15, 20], [22, 20], [22, 34], [29, 34], [29, 22], [37, 22], [37, 30], [44, 30], [44, 24], [52, 24]];
+
+const PAPER = [
+  { sheet: 1, band: { tag: 'Section 1', title: 'Mental Ability Test (MAT) and Environmental Studies (EVS)',
+      dir: '<b>Directions:</b> This is a non-verbal test. Questions are based on figures and diagrams only. Questions are meant to assess General Mental Ability / Functioning of the candidates. The section is divided into five parts having 4 questions each from Mental Ability and remaining 20 questions are from Environmental Studies.' },
+    blocks: [
+      { sub: 'Mental Ability Test (MAT)', part: 'Part – I',
+        dir: '<b>Directions:</b> In Question Nos. <b>1</b> to <b>4</b>, there is a question figure, a part of which is missing. Observe the answer figures (A), (B), (C) and (D) and find out the answer figure which, without changing the direction, fits in the missing part of the question figure in order to complete the pattern in the question figure.',
+        qs: [
+          fig(1, [grid(p2(50, 0, 50) + p2(0, 50, 50) + p1(50, 50, 50) + QM(25, 25))],
+            [p1(0, 0, 60), L(30, 0, 30, 60) + L(30, 30, 60, 0), p2(0, 0, 60), L(20, 0, 20, 60) + L(40, 0, 40, 60) + L(20, 60, 40, 0)].map(box), 0),
+          fig(2, [grid(xq(0, 0, 50, 't') + xq(50, 0, 50, 'r') + xq(0, 50, 50, 'l') + QM(75, 75))],
+            [xq(0, 0, 60, 'b') + L(10, 0, 10, 60), xq(0, 0, 60, 'b'), xq(0, 0, 60, 'r'), xq(0, 0, 60, 't')].map(box), 1),
+          fig(3, [grid(dots(0, 0, 50, [[1, 0], [0, 2], [1, 2]]) + dots(50, 0, 50, [[1, 0], [2, 2], [1, 2]]) + dots(0, 50, 50, [[0, 0], [1, 0], [1, 2]]) + QM(75, 75))],
+            [[[0, 0], [1, 0], [1, 2]], [[2, 0], [0, 2], [2, 2]], [[2, 0], [1, 0], [1, 2]], [[0, 0], [0, 2], [2, 2]]].map(d => box(dots(0, 0, 60, d))), 2),
+          fig(4, [grid(dq(0, 0, 50, 'a') + dq(0, 50, 50, 'c') + dq(50, 50, 50, 'd') + QM(75, 25))],
+            ['e', 'b', 'c', 'a'].map(t => box(dq(0, 0, 60, t))), 1),
+        ] },
+      { part: 'Part – II',
+        dir: '<b>Directions:</b> In Question Nos. <b>5</b> to <b>8</b>, there are three question figures and the space for the fourth figure is left blank. The question figures are in a series. Find out one figure among the answer figures (A), (B), (C) and (D) which occupies the blank space for the fourth figure to complete the series.',
+        qs: [
+          fig(5, [box(rot(0)), box(rot(90)), box(rot(180)), box(QM(30, 30))],
+            [tf('m', rot(270)), rot(0), rot(270), rot(90)].map(box), 2, 'Question Figures'),
+          fig(6, [box(nest(['sq', 'ci', 'tri'])), box(nest(['tri', 'sq', 'ci'])), box(nest(['ci', 'tri', 'sq'])), box(QM(30, 30))],
+            [['ci', 'ci', 'pent'], ['sq', 'ci', 'ci'], ['sq', 'ci', 'tri'], ['ci', 'sq', 'ci']].map(l => box(nest(l))), 2, 'Question Figures'),
+          fig(7, [box(q7(P(ngon(19, 32, 10, 3), 'k'))), box(q7(P(ngon(19, 30, 9.5, 4, -45), 'k'))), box(q7(P(ngon(19, 31, 9.5, 5), 'k'))), box(QM(30, 30))],
+            [P([[14, 25], [24, 25], [27, 36], [11, 36]], 'k'), P(ngon(19, 30, 9, 4), 'k'), C(19, 30, 7.5, 'k'), P(ngon(19, 30, 9, 6, 0), 'k')].map(s => box(q7(s))), 3, 'Question Figures'),
+          fig(8, [box(q8(P(ngon(30, 30, 16, 6, 0)), 'tr')), box(q8(P(ngon(30, 31, 16, 5)), 'br')), box(q8(R(16, 22, 28, 16), 'bl')), box(QM(30, 30))],
+            [q8(C(30, 30, 15), 'tl'), q8(P(ngon(30, 33, 17, 3)), 'bl'), q8(P(ngon(30, 33, 17, 3)), 'tl'), q8(P(ngon(30, 33, 17, 3)), 'tr')].map(box), 2, 'Question Figures'),
+        ] },
+      { part: 'Part – III',
+        dir: '<b>Directions:</b> In Question Nos. <b>9</b> to <b>12</b>, one part of a geometrical figure (triangle, square, circle) is given as question figure and the other one is among the four answer figures (A), (B), (C) and (D). Find the figure that completes the geometrical figure.',
+        qs: [
+          fig(9, [box(bot(v9))],
+            [[[8, 30], [18, 36], [24, 26], [32, 38], [40, 28], [52, 26]], v9, [[8, 26], [20, 24], [28, 34], [36, 22], [44, 30], [52, 30]], [[8, 30], [16, 22], [26, 34], [34, 22], [42, 34], [52, 26]]].map(p => box(top(p))), 1),
+          fig(10, [box(bot(v10))],
+            [[[8, 26], [14, 16], [20, 26], [27, 16], [34, 27], [52, 22]], [[8, 24], [13, 30], [19, 16], [25, 30], [31, 16], [38, 30], [52, 24]], v10, [[8, 26], [14, 14], [19, 26], [25, 12], [30, 26], [52, 26]]].map(p => box(top(p))), 2),
+          fig(11, [box(circPiece(v11, 'l'))],
+            [v11, [[30, 0], [33, 14], [25, 22], [36, 32], [27, 42], [30, 60]], [[30, 0], [27, 14], [35, 24], [30, 40], [30, 60]], [[30, 0], [24, 16], [36, 26], [24, 38], [33, 48], [30, 60]]].map(p => box(circPiece(p, 'r'))), 0),
+          fig(12, [box(bot(v12))],
+            [[[8, 32], [15, 32], [15, 22], [22, 22], [22, 32], [29, 32], [29, 22], [37, 22], [37, 32], [52, 32]], [[8, 24], [18, 24], [18, 36], [42, 36], [42, 24], [52, 24]], [[8, 32], [15, 32], [15, 18], [22, 32], [29, 20], [37, 34], [44, 22], [52, 24]], v12].map(p => box(top(p))), 3),
+        ] },
+      { part: 'Part – IV',
+        dir: '<b>Directions:</b> In Question Nos. <b>13</b> to <b>16</b>, there is a question figure given and four answer figures marked (A), (B), (C) and (D) are given. Select the answer figure which is exactly the mirror image of the question figure when the mirror is held at XY.',
+        qs: [
+          fig(13, [mirrorQ(clock(125, 60))], [clock(125, 60), clock(235, 300), clock(300, 235), clock(305, 240)].map(box), 1),
+          fig(14, [mirrorQ(g14)], ['m', 'o', 'v', 'r'].map(t => box(tf(t, g14))), 0),
+          fig(15, [mirrorQ(g15)], ['v', 'r', 'o', 'm'].map(t => box(tf(t, g15))), 3),
+          fig(16, [mirrorQ(g16)], ['v', 'o', 'm', 'r'].map(t => box(tf(t, g16))), 2),
+        ] },
+      { part: 'Part – V',
+        dir: '<b>Directions:</b> In Question Nos. <b>17</b> to <b>20</b>, a question figure is given and four answer figures marked (A), (B), (C) and (D) are given. Select the answer figure in which the question figure is hidden / embedded.',
+        qs: [
+          fig(17, [box(PL([[10, 44], [22, 44], [22, 26], [40, 26], [40, 44], [50, 44]]))], [
+            P([[30, 4], [56, 30], [30, 56], [4, 30]]) + R(17, 17, 26, 26) + L(17, 17, 43, 43) + L(43, 17, 17, 43),
+            [6, 14, 22, 30, 38, 46, 54].map(v => L(v, 1, v, 59) + L(1, v, 59, v)).join('').replace(/<line x1="22" y1="1"[^>]*>/, '') + L(1, 1, 59, 59),
+            L(1, 44, 59, 44) + L(22, 1, 22, 59) + L(40, 1, 40, 59) + L(22, 26, 40, 26) + L(1, 1, 22, 26) + L(59, 1, 40, 26),
+            L(1, 1, 59, 59) + L(59, 1, 1, 59) + L(30, 1, 30, 59) + L(1, 30, 59, 30) + R(15, 15, 30, 30),
+          ].map(box), 2),
+          fig(18, [box(`<path d="M28,14 A16,16 0 0 1 28,46 A20,20 0 0 0 28,14 Z"/>`)], [
+            C(28, 30, 16) + C(16, 30, 20) + L(1, 30, 59, 30),
+            C(30, 30, 21) + C(30, 30, 13) + C(30, 30, 5),
+            `<path d="M8,14 L52,14 L44,50 L16,50 Z"/><path d="M14,14 Q30,52 46,14"/>` + L(30, 14, 30, 50),
+            `<path d="M6,36 A16,16 0 0 1 38,36 Z"/>` + C(46, 40, 8),
+          ].map(box), 0),
+          fig(19, [box(P([[18, 48], [40, 48], [40, 12], [30, 12]]))], [
+            L(1, 1, 59, 59) + L(1, 59, 59, 1) + L(1, 30, 59, 30) + L(1, 1, 59, 30),
+            L(1, 1, 30, 59) + L(59, 1, 30, 59) + L(1, 59, 59, 1) + L(15, 1, 59, 40),
+            L(1, 48, 59, 48) + L(1, 12, 59, 12) + L(40, 1, 40, 59) + L(33.67, 1, 14.33, 59) + L(1, 1, 59, 59),
+            L(1, 20, 59, 20) + L(1, 40, 59, 40) + L(1, 1, 59, 59) + L(30, 1, 30, 59) + L(1, 59, 59, 1),
+          ].map(box), 2),
+          fig(20, [box(R(8, 22, 14, 16) + L(22, 30, 38, 30) + P([[38, 30], [50, 23], [50, 37]]))], [
+            R(8, 22, 14, 16) + L(22, 30, 38, 30) + R(38, 23, 14, 14) + R(24, 4, 14, 10) + L(31, 14, 31, 30),
+            L(6, 10, 30, 10) + P([[30, 5], [30, 15], [40, 10]]) + L(20, 10, 20, 44) + P([[15, 44], [25, 44], [20, 53]]) + L(20, 30, 42, 30) + P([[42, 25], [42, 35], [52, 30]]),
+            R(8, 22, 14, 16) + L(22, 30, 38, 30) + P([[38, 23], [38, 37], [50, 30]]) + R(26, 4, 14, 10) + L(33, 14, 33, 30),
+            R(8, 22, 14, 16) + L(22, 30, 38, 30) + P([[38, 30], [50, 23], [50, 37]]) + R(26, 4, 14, 10) + L(33, 14, 33, 30) + R(36, 45, 16, 10) + L(30, 30, 30, 50) + L(30, 50, 36, 50),
+          ].map(box), 3),
+        ] },
+    ] },
+  { sheet: 2, blocks: [
+      { sub: 'Environmental Studies (EVS)',
+        dir: '<b>Directions:</b> For every question, four probable answers as (A), (B), (C) and (D) are given. Only one out of these is correct. Choose the correct answer and darken the circle in the OMR Answer Sheet against the number corresponding to the question.',
+        qs: [
+          tx(21, 'Which means of transport is mainly used for carrying people and goods over long distances on roads?', ['Bicycle', 'Bus', 'Car', 'Motorcycle'], 1),
+          tx(22, 'The place where a river begins is called its:', ['Delta', 'Tributary', 'Source', 'Mouth'], 2),
+          tx(23, 'Which pass is located between the Nilgiri Hills to the north and the Anaimalai Hills to the south?', ['Karakoram Pass', 'Aghil Pass', 'Rohtang Pass', 'Palghat Pass'], 3),
+          tx(24, 'Which of the following is a natural disaster caused by the sudden shaking of the Earth’s surface?', ['Flood', 'Earthquake', 'Cyclone', 'Landslide'], 1),
+          tx(25, 'World Water Day is celebrated on:', ['March 22', 'January 4', 'April 5', 'May 31'], 0),
+          tx(26, 'Which animal can smell food from several kilometres away?', ['Rabbit', 'Eagle', 'Tiger', 'Dog'], 3),
+          tx(27, 'National Education Day in India is observed every year to commemorate the birth anniversary of:', ['Dr. B.R. Ambedkar', 'Dr. Sarvepalli Radhakrishnan', 'Maulana Abul Kalam Azad', 'Dr. A.P.J. Abdul Kalam'], 2),
+          tx(28, 'Rabindranath Tagore received the Nobel Prize for which book?', ['Gora', 'Gitanjali', 'Gitimalya', 'Sonar Tari'], 1),
+          tx(29, 'What is the capital city of Assam?', ['Dispur', 'Itanagar', 'Shillong', 'Imphal'], 0),
+          tx(30, 'Cholera disease is caused by:', ['Virus', 'Protozoan', 'Bacteria', 'Fungi'], 2),
+          tx(31, 'The Bharat Ratna medal is designed in the shape of which leaf?', ['Banyan Leaf', 'Peepal Leaf', 'Lotus Leaf', 'Banana Leaf'], 1),
+          tx(32, 'Which one of the following is <em>not</em> a natural fibre?', ['Cotton', 'Flax', 'Nylon', 'Wool'], 2),
+          tx(33, 'Which of the following forests is known as the ‘Lungs of the Earth’?', ['Congo Rain Forest', 'Amazon Forest', 'Tropical Deciduous Forest', 'Temperate Evergreen Forest'], 1),
+          tx(34, 'Which crop is Darjeeling (West Bengal) famous for?', ['Bananas', 'Coffee', 'Tea leaves', 'Cardamom'], 2),
+          tx(35, 'Which one is <em>not</em> a farming activity?', ['Ploughing', 'Harvesting', 'Basket making', 'Weeding'], 2),
+        ] },
+      { dir: '<b>Directions (36–40):</b> Read the following passage carefully and answer the questions that follow.',
+        passage: { title: 'Amazing Journeys of Seeds', paras: [
+          'Plants cannot move from one place to another, but their seeds travel in many interesting ways. Some light seeds are carried by the wind because they have tiny wings or soft hairs. Other seeds have small hooks that stick to the fur of animals or to people’s clothes. Some fruits float on water and carry seeds to faraway places.',
+          'Birds and animals also spread seeds after eating fruits. Human beings help in seed dispersal by carrying useful plants from one place to another. Long ago, traders brought chillies from South America to India. Today, chillies are an important part of Indian food.',
+          'Seed dispersal helps plants grow in new places, reduces overcrowding, and allows new plants to receive enough sunlight, water, and nutrients.'] },
+        qs: [
+          tx(36, 'Which seeds are easily carried by the wind?', ['Heavy seeds', 'Light seeds', 'Wet seeds', 'Broken seeds'], 1),
+          tx(37, 'What helps some seeds stick to the fur of animals or to people’s clothes?', ['Wings', 'Roots', 'Hooks', 'Flowers'], 2),
+          tx(38, 'Chillies were brought to India from ______.', ['Europe', 'Africa', 'Australia', 'South America'], 3),
+          tx(39, 'Seed dispersal helps plants ______.', ['Stay in one place forever', 'Grow in new places', 'Stop growing', 'Become animals'], 1),
+          tx(40, 'The passage is mainly about ______.', ['Different ways seeds spread', 'Cooking food', 'Making clothes', 'Weather changes'], 0),
+        ] },
+    ] },
+  { sheet: 3, band: { tag: 'Section 2', title: 'Arithmetic Test',
+      dir: '<b>Directions:</b> For every question, four probable answers as (A), (B), (C) and (D) are given. Only one out of these is correct. Choose the correct answer and darken the circle in the OMR Answer Sheet against the number corresponding to the question.' },
+    blocks: [{ qs: [
+      tx(41, 'The product of two numbers is 9375. If one of the numbers is 15 times the other, then find the smaller number.', ['20', '25', '18', '22'], 1),
+      tx(42, 'The nearest ten to 4178 is:', ['4170', '4180', '4100', '4200'], 1),
+      tx(43, 'Simplify: 15 − {9 ÷ 3 × 4} ÷ 6 + 7', ['10', '15', '20', '25'], 2),
+      tx(44, `What should be added to ${f(3, 5)} to obtain 4?`, [f(17, 5), f(16, 5), f(18, 5), f(9, 5)], 0),
+      tx(45, 'The place value of 5 in 412536 is:', ['5', '50', '500', '5000'], 2),
+      tx(46, 'The smallest composite number is:', ['1', '2', '4', '3'], 2),
+      tx(47, 'The H.C.F. of 35, 70 and 90 is:', ['10', '20', '25', '5'], 3),
+      tx(48, 'Suresh bought 4 m 25 cm cloth for his shirt and 3 m 10 cm cloth for his trousers. Find the total length of the cloth bought by him.', ['7.25 m', '6.35 m', '8.15 m', '7.35 m'], 3),
+      tx(49, 'How many seconds are there in 5 hours and 30 minutes?', ['18000 seconds', '17800 seconds', '18800 seconds', '19800 seconds'], 3),
+      tx(50, 'Which of the following is an obtuse angle?', ['156°', '72°', '90°', '270°'], 0),
+      tx(51, 'The complementary angle of 49° is:', ['31°', '51°', '41°', '38°'], 2),
+      tx(52, 'The prime factorisation of 144 is:', ['2 × 2 × 2 × 3 × 3', '2 × 2 × 3 × 3 × 4', '2 × 2 × 2 × 3 × 3 × 3', '2 × 2 × 2 × 2 × 3 × 3'], 3),
+      tx(53, 'If the divisor is 52, dividend is 627 and remainder is 3, then find the quotient.', ['10', '15', '12', '20'], 2),
+      tx(54, '9.1 km = ?', ['91 m', '910 m', '9100 m', '91000 m'], 2),
+      tx(55, 'What is the sum of all factors of 20?', ['44', '35', '40', '42'], 3),
+      tx(56, `4 − [4${f(1, 2)} − {3${f(1, 2)} − (2${f(1, 2)} − 1${f(1, 2)})}] = ?`, [`2${f(1, 2)}`, '3', `2${f(1, 3)}`, '2'], 3),
+      tx(57, 'The length and breadth of a rectangular plot are 44 m and 28 m respectively. Find the cost of fencing the plot at the rate of ₹ 15 per metre.', ['₹ 1940', '₹ 2160', '₹ 2380', '₹ 2410'], 1),
+      tx(58, 'The area of a rectangle of length 162 m is equal to the area of a square of side 54 m. Find the width of the rectangle.', ['24 m', '36 m', '28 m', '18 m'], 3),
+      tx(59, 'Which of the following is a proper fraction?', [f(3, 2), f(5, 5), f(13, 1), f(4, 7)], 3),
+      tx(60, `The following pictograph represents the number of students liking various sports.
+        <table class="picto"><tbody>
+          <tr><th>Cricket</th><td>${smiles(7)}</td></tr>
+          <tr><th>Hockey</th><td>${smiles(4)}</td></tr>
+          <tr><th>Football</th><td>${smiles(5)}</td></tr>
+          <tr><th>Badminton</th><td>${smiles(8)}</td></tr>
+        </tbody></table>
+        <span style="font-size:13px">[Scale: ${smile} = 8 students]</span><br>How many students like Football?`, ['5', '15', '32', '40'], 3),
+    ] }] },
+  { sheet: 4, band: { tag: 'Section 3', title: 'Language Test',
+      dir: '<b>Directions:</b> There are four passages in this section. Each passage is followed by five questions. Read each passage carefully and answer the questions that follow. For each question, four probable answers as (A), (B), (C) and (D) are given. Only one out of these is correct.' },
+    blocks: [
+      { part: 'Passage – 1', passage: { paras: [
+          'At the edge of the village playground stands an old banyan tree. Its broad branches spread outward like open arms. Although no one now remembers who planted it, the villagers regard it as an important part of their shared life. Children sit beneath its shade after playing, and elders gather there in the evenings to discuss village matters.',
+          'During the summer season, travellers rest under the tree to escape the heat. Long aerial roots hang from its branches and gradually reach the ground, forming additional trunks. Over the years, the tree has expanded in width. It has silently witnessed festivals, meetings, and moments of happiness. For the villagers, it represents not merely a tree but their collective memory.'] },
+        qs: [
+          tx(61, 'The banyan tree stands at the edge of the village ______.', ['market', 'playground', 'temple', 'school'], 1),
+          tx(62, 'Why do travellers rest under the tree during summer?', ['To meet villagers', 'To water the roots', 'To sell goods', 'To escape the heat'], 3),
+          tx(63, 'The aerial roots gradually reach the ground and form additional ______.', ['leaves', 'fruits', 'trunks', 'flowers'], 2),
+          tx(64, 'Why do villagers consider the tree important?', ['It represents their collective memory.', 'It provides wood for construction.', 'It is the tallest tree in the village.', 'It grows very quickly each year.'], 0),
+          tx(65, 'The word “collective” most nearly means:', ['Personal', 'Shared', 'Secret', 'Temporary'], 1),
+        ] },
+      { part: 'Passage – 2', passage: { paras: [
+          'Ritu enjoyed observing small details that others often ignored, such as the shape of leaves and the patterns formed by raindrops on glass. When her school announced a science fair, she decided to construct a simple water filter using layers of sand, charcoal, and small stones.',
+          'On the day of the exhibition, her model was neither the largest nor the most decorative. However, when she poured muddy water into the filter and clear water emerged, many students gathered around her table. The judges listened attentively as she explained the process. Although she did not win the first prize, she felt satisfied because her model functioned successfully.'] },
+        qs: [
+          tx(66, 'Ritu decided to construct a simple water ______.', ['pump', 'tank', 'filter', 'pipe'], 2),
+          tx(67, 'Why did many students gather around her table?', ['Her model was brightly decorated.', 'The judges called them there.', 'She had already won a prize.', 'Clear water emerged from her model.'], 3),
+          tx(68, 'She used sand, charcoal, and small ______ to construct her model.', ['plants', 'papers', 'stones', 'wires'], 2),
+          tx(69, 'Why did Ritu feel satisfied at the end?', ['Her model functioned successfully.', 'Her classmates praised her loudly.', 'She received the first prize.', 'She completed her project quickly.'], 0),
+          tx(70, 'The word “attentively” most nearly means:', ['Carelessly', 'With focus', 'Angrily', 'Secretly'], 1),
+        ] },
+      { part: 'Passage – 3', passage: { paras: [
+          'Before the development of railway networks, traders travelled across deserts in organised caravans. Camels carried spices, cloth, and precious stones between distant towns. Such journeys required careful planning, patience, and discipline. Travellers moved mainly at dawn and dusk in order to avoid the extreme heat of midday.',
+          'Water supplies were carefully preserved, and directions were determined by observing the stars at night. A caravan functioned as a moving community in which each member depended upon the others for safety and survival. The desert, though silent in appearance, tested the courage and endurance of all who crossed it.'] },
+        qs: [
+          tx(71, 'Travellers moved mainly at dawn and ______.', ['midnight', 'evening', 'dusk', 'afternoon'], 2),
+          tx(72, 'Why was a caravan described as a “moving community”?', ['Its members depended on one another.', 'It entertained travellers during the journey.', 'It stayed permanently in villages.', 'It built settlements along the way.'], 0),
+          tx(73, 'The desert tested the courage and ______ of the travellers.', ['wealth', 'endurance', 'speed', 'popularity'], 1),
+          tx(74, 'Read statements I and II and choose the correct option:<br><span style="display:block;margin:4px 0 0 12px">I. Water supplies were carefully preserved during the journey.<br>II. Travellers moved at midday to enjoy the sunlight.</span>', ['Both I and II are true.', 'Both I and II are false.', 'I is false, but II is true.', 'I is true, but II is false.'], 3),
+          tx(75, 'Which of the following is <em>not</em> a synonym of “fearless”?', ['Brave', 'Courageous', 'Timid', 'Valiant'], 2),
+        ] },
+      { part: 'Passage – 4', passage: { paras: [
+          'Glaciers are vast masses of ice found in high mountain regions. They are formed when layers of snow accumulate and compress over many years. Although they appear motionless, glaciers move gradually and shape valleys and rocky surfaces over long periods of time.',
+          'Scientists have observed that many glaciers are shrinking due to rising global temperatures. When ice melts faster than it forms, rivers that depend on glacial water are affected. This imbalance influences agriculture, urban settlements, and drinking water supplies in distant regions. Therefore, changes in glaciers have significant consequences for human life.'] },
+        qs: [
+          tx(76, 'Why are glaciers important?', ['They increase rainfall.', 'They shape valleys and influence water supply.', 'They create mountains.', 'They prevent wind movement.'], 1),
+          tx(77, 'What is the primary cause of shrinking glaciers?', ['Rising global temperatures', 'Heavy snowfall', 'Strong desert winds', 'Frequent earthquakes'], 0),
+          tx(78, 'Layers of snow accumulate and ______ over many years.', ['melt', 'freeze', 'compress', 'disappear'], 2),
+          tx(79, 'The melting of glaciers affects:', ['only wildlife in mountains.', 'railway transportation.', 'rivers and water supply systems.', 'desert trade routes.'], 2),
+          tx(80, 'Which of the following words is an antonym of “motionless”?', ['Still', 'Silent', 'Frozen', 'Active'], 3),
+        ] },
+    ] },
+];
+
+const SECTIONS = [
+  { name: 'Mental Ability', from: 1, to: 20 },
+  { name: 'Environmental Studies', from: 21, to: 40 },
+  { name: 'Arithmetic', from: 41, to: 60 },
+  { name: 'Language', from: 61, to: 80 },
+];
+
+/* ---------- render ---------- */
+const KEY = {};
+const LET = ['A', 'B', 'C', 'D'];
+const plain = h => h.replace(/<[^>]+>/g, '').trim();
+const scissor = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>';
+
+const renderQ = q => {
+  KEY[q.n] = q.a;
+  const btn = (inner, i) => `<button type="button" class="opt" data-q="${q.n}" data-o="${i}" aria-pressed="false" aria-label="Question ${q.n}, option ${LET[i]}">${inner}</button>`;
+  if (q.kind === 'fig') {
+    return `<article class="q" id="q${q.n}">
+      <div class="qhead"><span class="qn">${q.n}.</span><div class="cap" style="margin:0">${q.label}</div></div>
+      <div class="qfig">${q.qf.join('')}</div>
+      <div class="cap">${q.aLabel}</div>
+      <div class="opts figopts">${q.opts.map((o, i) => btn(`${o}<span class="bub">${LET[i]}</span>`, i)).join('')}</div>
+    </article>`;
+  }
+  const max = Math.max(...q.opts.map(o => plain(o).length));
+  const n = max <= 11 ? 4 : max <= 30 ? 2 : 1;
+  return `<article class="q" id="q${q.n}">
+    <div class="qhead"><span class="qn">${q.n}.</span><div class="qtext">${q.q}</div></div>
+    <div class="opts${n === 1 ? ' long' : ''}" style="--n:${n}">${q.opts.map((o, i) => btn(`<span class="bub">${LET[i]}</span><span class="ot">${o}</span>`, i)).join('')}</div>
+  </article>`;
+};
+
+const mast = `<div class="mast">
+  <svg class="medal" viewBox="0 0 132 132" aria-hidden="true">
+    <circle class="ring" cx="66" cy="60" r="56"/><circle class="disc" cx="66" cy="60" r="49"/>
+    <text class="num" x="66" y="62" text-anchor="middle" dominant-baseline="central">1</text>
+    <path class="rib" d="M10 96 L122 96 L114 108 L122 120 L10 120 L18 108 Z"/>
+    <text class="ribtxt" x="66" y="109" text-anchor="middle" dominant-baseline="central">PRACTICE SET</text>
+  </svg>
+  <div>
+    <div class="eyebrow">Model Question Paper · Entrance Examination</div>
+    <h1>Jawahar Navodaya <span>Vidyalaya</span></h1>
+    <p class="sub">Selection Test for admission to Class VI</p>
+    <div class="facts"><span><b>80</b> questions</span><span><b>3</b> sections</span><span><b>2</b> hours</span><span>Medium: <b>English</b></span></div>
+  </div>
+</div>
+<ul class="instructions">
+  <li>All questions are compulsory. Each question has only one correct answer.</li>
+  <li>Darken one circle per question in the OMR Answer Sheet. Tap an option to mark it; tap again to clear.</li>
+  <li>Use <b>Check answers</b> when you finish to see your section-wise score.</li>
+</ul>`;
+
+const pageTags = ['1-1', '1-2', '1-3', '1-4'];
+document.getElementById('sheets').innerHTML = PAPER.map((s, si) => {
+  const head = `<div class="runhead"><span>Jawahar Navodaya Vidyalaya · Practice Set – 1</span><span class="pg">${pageTags[si]}</span></div>`;
+  const band = s.band ? `<section class="band"><div class="tag">${s.band.tag}</div><h2>${s.band.title}</h2><p class="dir">${s.band.dir}</p></section>` : '';
+  const body = s.blocks.map(b => {
+    const lead = (b.sub ? `<div class="subhead">${b.sub}</div>` : '') + (b.part ? `<div class="part">${b.part}</div>` : '');
+    const dir = b.dir ? `<p class="dir">${b.dir}</p>` : '';
+    const pas = b.passage ? `<div class="passage">${b.passage.title ? `<h3>${b.passage.title}</h3>` : ''}${b.passage.paras.map(p => `<p>${p}</p>`).join('')}</div>` : '';
+    return `<div class="lead">${lead}${dir}</div>${pas}${b.qs.map(renderQ).join('')}`;
+  }).join('');
+  const sc = [14, 38, 62, 86].map(t => `<span class="scissor" style="top:${t}%">${scissor}</span>`).join('');
+  return `<article class="sheet">${sc}${head}${si === 0 ? mast : ''}${band}<div class="cols">${body}</div>${si === PAPER.length - 1 ? '<div class="endmark">■ ■ ■</div>' : ''}</article>`;
+}).join('');
+
+document.getElementById('omrBody').innerHTML = SECTIONS.map((s, i) => {
+  let rows = '';
+  for (let n = s.from; n <= s.to; n++) rows += `<div class="orow"><a href="#q${n}">${n}</a>${LET.map((l, o) => `<button type="button" class="ob" data-q="${n}" data-o="${o}" aria-label="Question ${n} option ${l}">${l}</button>`).join('')}</div>`;
+  return `<div class="omr-sec"><h3>${s.name} <b id="sc${i}">0/20</b></h3><div class="omr-grid">${rows}</div></div>`;
+}).join('');
+
+/* ---------- state ---------- */
+const STORE = 'jnv-ps1-v1';
+let ans = {}, checked = false;
+try { const s = JSON.parse(localStorage.getItem(STORE) || '{}'); ans = s.ans || {}; checked = !!s.checked; } catch (e) {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ ans, checked })); } catch (e) {} };
+const app = document.getElementById('app');
+
+const paint = () => {
+  document.querySelectorAll('.opt').forEach(b => {
+    const q = +b.dataset.q, o = +b.dataset.o, sel = ans[q] === o;
+    b.setAttribute('aria-pressed', sel);
+    b.classList.toggle('is-right', checked && KEY[q] === o);
+    b.classList.toggle('is-wrong', checked && sel && KEY[q] !== o);
+  });
+  document.querySelectorAll('.ob').forEach(b => {
+    const q = +b.dataset.q, o = +b.dataset.o, sel = ans[q] === o;
+    b.classList.toggle('on', sel);
+    b.classList.toggle('key', KEY[q] === o);
+    b.classList.toggle('miss', sel && KEY[q] !== o);
+  });
+  const n = Object.keys(ans).length;
+  document.getElementById('cnt').textContent = n;
+  document.getElementById('mtr').style.width = (n / 80 * 100) + '%';
+  app.classList.toggle('checked', checked);
+  ['checkTop', 'checkSide'].forEach(id => document.getElementById(id).textContent = checked ? 'Keep practising' : 'Check answers');
+  let total = 0;
+  const rows = SECTIONS.map((s, i) => {
+    let ok = 0;
+    for (let q = s.from; q <= s.to; q++) if (ans[q] === KEY[q]) ok++;
+    total += ok;
+    document.getElementById('sc' + i).textContent = checked ? `${ok}/20` : `${Array.from({ length: 20 }, (_, k) => s.from + k).filter(q => q in ans).length}/20`;
+    return `<li>${s.name}<b>${ok} / 20</b><span class="meter"><i style="width:${ok * 5}%"></i></span></li>`;
+  });
+  document.getElementById('score').innerHTML = `<div class="big">${total}<small> / 80</small></div><ul>${rows.join('')}</ul>`;
+};
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('.opt, .ob');
+  if (!b || checked) return;
+  const q = +b.dataset.q, o = +b.dataset.o;
+  if (ans[q] === o) delete ans[q]; else ans[q] = o;
+  save(); paint();
+});
+const toggleCheck = () => {
+  checked = !checked; save(); paint();
+  if (checked) document.getElementById('omr').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+document.getElementById('checkTop').onclick = toggleCheck;
+document.getElementById('checkSide').onclick = toggleCheck;
+const resetBtn = document.getElementById('resetBtn');
+let armed = false;
+resetBtn.onclick = () => {
+  if (!armed) { armed = true; resetBtn.textContent = 'Tap again to clear'; setTimeout(() => { armed = false; resetBtn.textContent = 'Clear all'; }, 2500); return; }
+  armed = false; resetBtn.textContent = 'Clear all';
+  ans = {}; checked = false; save(); paint();
+};
+
+/* ---------- 2-hour timer ---------- */
+let left = 7200, tick = null;
+const clockEl = document.getElementById('clock'), tBtn = document.getElementById('timerBtn');
+const fmt = s => `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+tBtn.onclick = () => {
+  if (tick) { clearInterval(tick); tick = null; tBtn.textContent = 'Resume'; return; }
+  tBtn.textContent = 'Pause';
+  tick = setInterval(() => {
+    left = Math.max(0, left - 1); clockEl.textContent = fmt(left);
+    if (!left) { clearInterval(tick); tick = null; tBtn.textContent = 'Done'; tBtn.disabled = true; if (!checked) toggleCheck(); }
+  }, 1000);
+};
+
+paint();
+})();
+</script>
+</body></html>
