@@ -4,24 +4,46 @@
 //     labels in other fonts are kept as typed); raw is the text exactly as stored.
 //   imagesFromDocx: the pictures, in the order they appear on the page (figure questions).
 import JSZip from 'jszip'
-import { bmeiToUnicode } from './mayekSegments'
+import { bmeiToUnicode } from './mayekSegments.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' }
 
-const isBmei = el => {
-  const f = el.getElementsByTagNameNS(W_NS, 'rFonts')[0]
-  const name = f && (f.getAttributeNS(W_NS, 'ascii') || f.getAttribute('w:ascii') || f.getAttributeNS(W_NS, 'hAnsi') || f.getAttribute('w:hAnsi') || '')
-  return /bmei/i.test(name || '')
+// Which font a run is really in: its own rFonts, else its character style, else its paragraph style (and the styles
+// they are based on), else the document default. Word often stores the font only on the style, so a check of the
+// run alone misses text that is nevertheless typed in BMEI04.
+const fontOf = rf => rf && (rf.getAttributeNS(W_NS, 'ascii') || rf.getAttribute('w:ascii') || rf.getAttributeNS(W_NS, 'hAnsi') || rf.getAttribute('w:hAnsi') || rf.getAttributeNS(W_NS, 'cs') || rf.getAttribute('w:cs') || rf.getAttributeNS(W_NS, 'eastAsia') || rf.getAttribute('w:eastAsia') || '')
+const valOf = (el, tag) => { const c = el?.getElementsByTagNameNS(W_NS, tag)[0]; return c ? (c.getAttributeNS(W_NS, 'val') || c.getAttribute('w:val')) : null }
+function styleFonts(stylesDoc) {
+  const byId = new Map(); let dflt = ''
+  if (!stylesDoc) return { fontFor: () => '' }
+  const dd = stylesDoc.getElementsByTagNameNS(W_NS, 'docDefaults')[0]
+  dflt = fontOf(dd?.getElementsByTagNameNS(W_NS, 'rFonts')[0]) || ''
+  for (const st of Array.from(stylesDoc.getElementsByTagNameNS(W_NS, 'style'))) {
+    const id = st.getAttributeNS(W_NS, 'styleId') || st.getAttribute('w:styleId')
+    const rpr = Array.from(st.childNodes).find(n => n.localName === 'rPr')
+    byId.set(id, { font: fontOf(rpr?.getElementsByTagNameNS(W_NS, 'rFonts')[0]) || '', base: valOf(st, 'basedOn') })
+  }
+  const fromStyle = id => { for (let i = 0; id && i < 10; i++) { const st = byId.get(id); if (!st) break; if (st.font) return st.font; id = st.base } return '' }
+  return { fontFor: (rStyle, pStyle) => fromStyle(rStyle) || fromStyle(pStyle) || dflt }
 }
+const fontOfRun = (r, p, sf) => {
+  const own = fontOf(Array.from(r.childNodes).find(n => n.localName === 'rPr')?.getElementsByTagNameNS(W_NS, 'rFonts')[0])
+  if (own) return own
+  const rpr = Array.from(r.childNodes).find(n => n.localName === 'rPr')
+  const ppr = Array.from(p.childNodes).find(n => n.localName === 'pPr')
+  return sf.fontFor(valOf(rpr, 'rStyle'), valOf(ppr, 'pStyle'))
+}
+const isBmeiName = n => /bmei/i.test(n || '')
 
 async function open(data) {
   const zip = await JSZip.loadAsync(data)
   const xml = await zip.file('word/document.xml')?.async('string')
   if (!xml) throw new Error('This is not a Word document (.docx).')
-  return { zip, doc: new DOMParser().parseFromString(xml, 'application/xml') }
+  const stylesXml = await zip.file('word/styles.xml')?.async('string')
+  return { zip, doc: new DOMParser().parseFromString(xml, 'application/xml'), sf: styleFonts(stylesXml ? new DOMParser().parseFromString(stylesXml, 'application/xml') : null) }
 }
 
 // Cheap fingerprint of a picture (so the same figure in two papers can be recognised).
@@ -33,8 +55,8 @@ export const picHash = dataUrl => {
 
 // Every paragraph as { text, raw, images: [{ dataUrl, hash }] } — a picture belongs to the paragraph it sits in,
 // so a figure goes with the question above it, not with "the 5th picture".
-export async function paragraphsFromDocx(data, { convertBmei = true } = {}) {
-  const { zip, doc } = await open(data)
+export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei = false } = {}) {
+  const { zip, doc, sf } = await open(data)
   const rels = await zip.file('word/_rels/document.xml.rels')?.async('string')
   const targets = new Map()
   if (rels) for (const r of Array.from(new DOMParser().parseFromString(rels, 'application/xml').getElementsByTagName('Relationship'))) targets.set(r.getAttribute('Id'), r.getAttribute('Target'))
@@ -71,7 +93,7 @@ export async function paragraphsFromDocx(data, { convertBmei = true } = {}) {
         const n = c.localName
         if (n === 'pPr' || n === 'rPr' || n === 'txbxContent' || n === 'Fallback' || n === 'p') continue
         if (n === 'r') {
-          const bmei = isBmei(c)
+          const bmei = forceBmei || isBmeiName(fontOfRun(c, p, sf))
           let t = ''
           for (const k of Array.from(c.childNodes)) {
             if (k.nodeType !== 1) continue
@@ -92,6 +114,32 @@ export async function paragraphsFromDocx(data, { convertBmei = true } = {}) {
     out.push({ text: tidy(text.replace(/\uABEC{3,}/g, '________')), raw: tidy(raw), images })
   }
   return out
+}
+
+// What fonts the paper uses, so the builder can show that the Meitei Mayek text was recognised: runs per font,
+// how many are BMEI04, and paragraphs that look like BMEI04 keystrokes but are not in that font (pasted text,
+// a font lost on save) — those would otherwise stay as Latin gibberish.
+const LOOKS_BMEI = /[@#$%^&*[\]{}|\\`~<>=+]/g
+export async function fontReport(data) {
+  const { doc, sf } = await open(data)
+  const fonts = new Map(); let bmeiRuns = 0, bmeiChars = 0
+  const suspects = []
+  for (const p of Array.from(doc.getElementsByTagNameNS(W_NS, 'p'))) {
+    let tagged = 0, plain = ''
+    for (const r of Array.from(p.getElementsByTagNameNS(W_NS, 'r'))) {
+      const t = Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(x => x.textContent).join('')
+      if (!t.trim()) continue
+      const f = fontOfRun(r, p, sf) || '(default)'
+      fonts.set(f, (fonts.get(f) || 0) + 1)
+      if (isBmeiName(f)) { bmeiRuns++; bmeiChars += t.length; tagged += t.length } else plain += t
+    }
+    const w = plain.trim()
+    if (!tagged && w.length >= 12) {
+      const sym = (w.match(LOOKS_BMEI) || []).length, words = w.split(/\s+/).length
+      if (sym >= 3 && sym / words > 0.5) suspects.push(w.slice(0, 80))
+    }
+  }
+  return { fonts: Array.from(fonts, ([name, runs]) => ({ name, runs, bmei: isBmeiName(name) })).sort((a, b) => b.runs - a.runs), bmeiRuns, bmeiChars, suspects }
 }
 
 // Pictures in reading order: [{ name, mime, dataUrl }]

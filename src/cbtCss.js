@@ -1,14 +1,19 @@
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
+import { BMEI04_BASE64 } from './bmei04_font_base64'
 
 // The Meetei Mayek font travels with the app (22 KB), so an exam computer with no internet — a lab PC —
 // still shows the Meitei Mayek letters. unicode-range keeps Latin text on the normal font.
 const MAYEK_FACE = `@font-face{font-family:'GNSI Mayek';src:url(data:font/ttf;base64,${NotoSansMeeteiMayek}) format('truetype');unicode-range:U+AAE0-AAFF,U+ABC0-ABFF;font-display:swap}`
+// The old BMEI04 font too (22 KB): the builder's font check shows the paper's own keystrokes in it next to the
+// converted Unicode text, so the converter's reading can be compared by eye.
+const BMEI_FACE = `@font-face{font-family:'BMEI04';src:url(data:font/ttf;base64,${BMEI04_BASE64}) format('truetype');font-display:swap}`
 const MAYEK_STACK = "'GNSI Mayek','Noto Sans Meetei Mayek','Meetei Mayek',sans-serif"
 
 // Styles for the CBT Exam: the admin screens (tests, builder, results) and the candidate's exam screen.
 // Desktop: two panes (question | palette). Phone (≤ 860px): one pane, the palette becomes a bottom sheet,
 // the action buttons sit in a bar at the bottom, tables scroll sideways.
-export const CBT_CSS = `${MAYEK_FACE}
+export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
+.cbt-bmei{font-family:'BMEI04',sans-serif;font-size:1.15em}
 .cbt{--navy:#14264a;--navy2:#0b1e3d;--gold:#c9a24b;--gold2:#e2c57e;--ink:#1f2a44;--line:#dde3ef;--soft:#f5f7fc;--ok:#2e8b3d;--bad:#d9532c;--vio:#6a3fa0;
   font-family:'Plus Jakarta Sans','Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;color:var(--ink);-webkit-text-size-adjust:100%}
 .cbt *{box-sizing:border-box}

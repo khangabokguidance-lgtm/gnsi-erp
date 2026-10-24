@@ -8,7 +8,7 @@
 // BMEI04 font, or converting it letter by letter to Unicode, turned those
 // into Mayek letters. Every screen, the PDF, Word and PowerPoint use this
 // one rule so they agree.
-import { romanToMeetei } from './meetei_mayek'
+import { romanToMeetei } from './meetei_mayek.js'
 
 const EN_NUMBER_WORDS = new Set('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand lakh lakhs lac crore crores million millions billion billions and'.split(' '))
 const ROMAN = /^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/

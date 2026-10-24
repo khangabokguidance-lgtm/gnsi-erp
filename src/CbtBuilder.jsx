@@ -1,7 +1,8 @@
 // CbtBuilder.jsx — make (or edit) a CBT test: read the English and Meitei Mayek question papers (.docx),
 // check what was found, set the marking and the answer key, save.
 import { useMemo, useRef, useState } from 'react'
-import { paragraphsFromDocx, imagesFromDocx, picHash } from './cbtDocs'
+import { paragraphsFromDocx, imagesFromDocx, picHash, fontReport } from './cbtDocs'
+import { bmeiToUnicode } from './mayekSegments'
 import { buildTest, attachImages } from './lib/cbtPaper'
 import { DEFAULT_INSTRUCTIONS, parseKey, keyStatus } from './lib/cbtEngine'
 import { verifyTest } from './lib/cbtVerify'
@@ -21,6 +22,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const [showAnswers, setShowAnswers] = useState(initial?.showAnswers !== false)
   const [sections, setSections] = useState(() => (initial ? clone(initial.sections) : []))
   const [warnings, setWarnings] = useState([])
+  const [fonts, setFonts] = useState(null)   // font check of the Meitei Mayek paper: { rep, sample, forced }
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [keyText, setKeyText] = useState('')
@@ -43,7 +45,14 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (sections.length && !window.confirm('Reading the papers again replaces the questions below, including any fixes you made here. Answers already keyed are kept by question number. Continue?')) return
     setBusy('Reading the papers…')
     try {
-      const [enL, mmL, imgs] = await Promise.all([paragraphsFromDocx(await f.arrayBuffer()), g ? paragraphsFromDocx(await g.arrayBuffer()) : null, imagesFromDocx(await f.arrayBuffer())])
+      // Font check: is the Meitei Mayek paper really in BMEI04? If nothing is tagged but the text looks like BMEI04
+      // keystrokes (the font name was lost on save or the text was pasted), read the whole paper as BMEI04.
+      const gData = g ? await g.arrayBuffer() : null
+      const rep = gData ? await fontReport(gData) : null
+      const forced = !!rep && rep.bmeiRuns === 0 && rep.suspects.length > 0
+      const [enL, mmL, imgs] = await Promise.all([paragraphsFromDocx(await f.arrayBuffer()), gData ? paragraphsFromDocx(gData, { forceBmei: forced }) : null, imagesFromDocx(await f.arrayBuffer())])
+      const sampleRaw = rep && (forced ? rep.suspects[0] : (await paragraphsFromDocx(gData, { convertBmei: false })).map(x => x.raw).find(x => x.length > 12 && /[^ -~]|[@#$%^&*[\]{}|\\`~<>=+_]/.test(x)))
+      setFonts(rep ? { rep, forced, sample: sampleRaw ? { raw: sampleRaw.slice(0, 70), uni: bmeiToUnicode(sampleRaw.slice(0, 70)) } : null } : null)
       const t = buildTest(enL, mmL)
       if (!t.sections.length) throw new Error('No questions were found. Questions should start like "Q1." with options (A) (B) (C) (D).')
       const w = attachImages(t.sections, imgs)
@@ -126,6 +135,15 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
         <div className="card">
           <h3><span className="step">3</span>What was found</h3>
           <p className="muted">{qs.length} questions in {sections.length} section{sections.length === 1 ? '' : 's'} · {qs.filter(q => q.figure).length} figure questions · {qs.filter(q => q.passage).length} passage-based · Meitei Mayek {mmFound ? `found for ${qs.filter(q => q.textMm || q.figure).length} questions` : 'not added'}</p>
+          {fonts && (
+            <div style={{ background: fonts.rep.bmeiRuns || fonts.forced ? '#eef7f0' : '#fff4dc', border: '1px solid #cfe6d5', borderRadius: 8, padding: '8px 12px', margin: '8px 0', fontSize: 12.5 }}>
+              <b>Font check — Meitei Mayek paper:</b>{' '}
+              {fonts.rep.bmeiRuns ? `${fonts.rep.bmeiRuns} text runs in BMEI04 found and converted to Unicode Meetei Mayek.` : fonts.forced ? 'No text was tagged BMEI04, but it looks like BMEI04 keystrokes — the whole paper was read as BMEI04.' : 'No BMEI04 text found. If the paper is already in Unicode Meetei Mayek it is used as it is.'}
+              <div className="muted" style={{ marginTop: 2 }}>Fonts in the paper: {fonts.rep.fonts.slice(0, 6).map(x => `${x.name}${x.bmei ? ' ✓' : ''} (${x.runs})`).join(' · ') || '—'}</div>
+              {!fonts.forced && fonts.rep.bmeiRuns > 0 && fonts.rep.suspects.length > 0 && <div style={{ color: '#9a5b00', marginTop: 2 }}>{fonts.rep.suspects.length} paragraph(s) look like BMEI04 but are in another font and were not converted, e.g. “{fonts.rep.suspects[0]}”. Re-type or set them to BMEI04 in Word, then read the paper again.</div>}
+              {fonts.sample && <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4, alignItems: 'baseline' }}><span>Typed: <span className="cbt-bmei">{fonts.sample.raw}</span></span><span>Converted: <span style={{ fontFamily: "'GNSI Mayek','Noto Sans Meetei Mayek',sans-serif" }}>{fonts.sample.uni}</span></span></div>}
+            </div>
+          )}
           {warnings.length > 0 && <div style={{ background: '#fff4dc', border: '1px solid #f3d38a', borderRadius: 8, padding: '8px 12px', margin: '8px 0', fontSize: 12.5 }}><b>Check these:</b><ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{warnings.slice(0, 15).map(w => <li key={w}>{w}</li>)}{warnings.length > 15 && <li>…and {warnings.length - 15} more</li>}</ul></div>}
           <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th><th>Directions</th></tr></thead>
             <tbody>{sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title || '(no title)'}{s.titleMm ? <div className="muted" style={{ fontFamily: "'Noto Sans Meetei Mayek',sans-serif" }}>{s.titleMm}</div> : null}</td><td>Q{s.questions[0].no}–{s.questions.at(-1).no} ({s.questions.length})</td><td className="muted">{s.directions ? `${s.directions.slice(0, 90)}…` : '—'}</td></tr>)}</tbody></table></div>
