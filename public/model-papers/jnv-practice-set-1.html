@@ -647,6 +647,12 @@ PAPER.forEach(sheet => {
 const $ = s => document.querySelector(s);
 const LET = ['A', 'B', 'C', 'D'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* text read from a scan often repeats what the paper itself prints: "(A) Bus" for option A, or the
+   "Question Figure / Answer Figures" captions as the question. Drop those when showing and importing. */
+const OPT_LABEL = /^\s*[([]?\s*([A-Da-d])\s*[)\].:]\s*/;
+const cleanOpt = (o, i) => { const t = String(o ?? ''), m = t.match(OPT_LABEL); return m && m[1].toUpperCase() === LET[i] ? t.slice(m[0].length) : t; };
+const CAPTION_LINE = /^\s*(question|answer)\s+figures?\s*:?\s*$/i;
+const cleanQ = q => String(q ?? '').split('\n').filter(l => !CAPTION_LINE.test(l)).join('\n').trim();
 const fmtU = s => esc(s).replace(/\[(\d+)\s*\/\s*(\d+)\]/g, (_, a, b) => f(a, b)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
 const fmtDir = s => fmtU(s).replace(/^(Directions(?:\s*\([^)]*\))?\s*:)/i, '<b>$1</b>');
 const plain = h => String(h ?? '').replace(/<[^>]+>/g, '').trim();
@@ -713,15 +719,16 @@ function qHTML(q, n, trusted, preview) {
     const src = imgSrc(q.img);
     fig = `<div class="qfig" style="margin-top:6px">${src ? `<img class="qimg" src="${esc(src)}" alt="Question ${n} figure">` : '<div class="imgph">Figure not added</div>'}</div>`;
     if (q.optMode === 'img') {
-      return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${q.q ? tx(q.q) : '<b>Question Figure</b>'}</div></div>${fig}
+      const qt = trusted ? q.q : cleanQ(q.q);
+      return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${qt ? tx(qt) : '<b>Question Figure</b>'}</div></div>${fig}
         <div class="cap">${esc(q.afig || 'Answer Figures')}</div>
         <div class="opts figopts">${[0, 1, 2, 3].map(i => { const s = imgSrc((q.optImgs || [])[i]); return btn(`${s ? `<img src="${esc(s)}" alt="Option ${LET[i]}">` : '<span class="imgph" style="width:52px;height:52px">—</span>'}<span class="bub">${LET[i]}</span>`, i); }).join('')}</div></article>`;
     }
   }
-  const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+  const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
   const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
   const cols = max <= 11 ? 4 : max <= 30 ? 2 : 1;
-  return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${tx(q.q || '') || '<span style="color:var(--muted)">Question text</span>'}</div></div>${fig}
+  return `<article class="q" id="q${n}"><div class="qhead"><span class="qn">${n}.</span><div class="qtext">${tx(trusted ? q.q || '' : cleanQ(q.q)) || '<span style="color:var(--muted)">Question text</span>'}</div></div>${fig}
     <div class="opts${cols === 1 ? ' long' : ''}" style="--n:${cols}">${opts.map((o, i) => btn(`<span class="bub">${LET[i]}</span><span class="ot">${tx(o) || '—'}</span>`, i)).join('')}</div></article>`;
 }
 
@@ -839,7 +846,7 @@ function showLibrary() {
       <div class="acts">
         <a class="btn primary" href="#take-${s.id}">Take test</a>
         <button class="btn" type="button" data-act="export" data-id="${s.id}">Download</button>
-        ${S.canWrite && !s.mayek ? `<button class="btn" type="button" data-act="mm" data-id="${s.id}">Meetei Mayek</button>` : ''}
+        ${S.canWrite ? `<button class="btn" type="button" data-act="mm" data-id="${s.id}">${s.mayek ? 'Finish Mayek' : 'Meetei Mayek'}</button>` : ''}
         ${S.canWrite && !s.builtin ? `<a class="btn" href="#edit-${s.id}">Edit</a>` : ''}
         ${S.canWrite ? `<button class="btn" type="button" data-act="dup" data-id="${s.id}">${s.builtin ? 'Use as template' : 'Duplicate'}</button>` : ''}
         ${S.canWrite && !s.builtin ? `<button class="btn danger" type="button" data-act="del" data-id="${s.id}">Delete</button>` : ''}
@@ -1173,19 +1180,44 @@ Rules:
 Reply with only a JSON array of exactly ${list.length} strings.
 
 ${JSON.stringify(list)}`;
+const errText = e => String((e && (e.message || e.code)) || e || 'unknown error').slice(0, 200);
+const isRateLimit = e => (e && e.code === 'rate_limited') || /429|too many|rate/i.test(errText(e));
+const wait = (ms, signal) => new Promise(r => { const t = setTimeout(r, ms); if (signal) signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+// Translates in small batches, paced, each retried once. A batch that still fails keeps its
+// English text and the rest carry on, so one rate limit or dropped connection never throws
+// away the whole set. Returns { out, failed, reason }.
 async function translateList(kind, texts, onProgress, signal) {
-  if (kind === 'portal') return CL.translateMM(texts, onProgress);
-  const out = [], size = 30;
+  const size = kind === 'portal' ? 20 : 30;
+  const out = [];
+  let failed = 0, reason = '';
   for (let i = 0; i < texts.length; i += size) {
     if (signal && signal.aborted) throw { code: 'cancelled' };
     const chunk = texts.slice(i, i + size);
     let got = null;
-    try { got = await S.sample.json(MM_PROMPT(chunk), { signal, cache: false }); }
-    catch (e) { if (e && e.code !== 'invalid_json') throw e; }
-    chunk.forEach((t, k) => out.push(Array.isArray(got) && got.length === chunk.length && typeof got[k] === 'string' && got[k].trim() ? got[k].trim() : t));
+    for (let attempt = 0; attempt < 2 && !got; attempt++) {
+      try {
+        got = kind === 'portal' ? await CL.translateMM(chunk) : await S.sample.json(MM_PROMPT(chunk), { signal, cache: false });
+        if (!Array.isArray(got) || got.length !== chunk.length) { reason = 'the translator returned a different number of lines'; got = null; }
+      } catch (e) {
+        if (e && ['cancelled', 'not_granted', 'sampling_disabled'].includes(e.code)) throw e;
+        if (signal && signal.aborted) throw { code: 'cancelled' };
+        reason = errText(e);
+        if (attempt === 0) {
+          const ms = isRateLimit(e) ? 30000 : 4000;
+          onProgress(i, texts.length, `Waiting ${ms / 1000} s before trying again (${reason})…`);
+          await wait(ms, signal);
+        }
+      }
+    }
+    chunk.forEach((t, k) => {
+      const v = got && typeof got[k] === 'string' && got[k].trim() ? got[k].trim() : null;
+      if (!v) failed++;
+      out.push(v || t);
+    });
     onProgress(Math.min(texts.length, i + size), texts.length);
+    if (kind === 'portal' && i + size < texts.length) await wait(1500, signal);   // stays under the portal's per-minute AI limit
   }
-  return out;
+  return { out, failed, reason };
 }
 
 /* every translatable string in a set, as setters, so the result can be written back in place */
@@ -1194,7 +1226,8 @@ function translatableFields(set) {
   const add = (get, put) => { const v = get(); if (typeof v === 'string' && /[A-Za-z]{2}/.test(v) && !hasMayek(v)) f.push({ text: v, put }); };
   add(() => set.title, v => { set.title = v; });
   add(() => set.subtitle, v => { set.subtitle = v; });
-  set.labels = { qfig: 'Question Figure', qfigs: 'Question Figures', afig: 'Answer Figures', ins: MM_INSTRUCTIONS.slice() };
+  // English captions to start from; a Mayek set already has its own (and they are skipped below)
+  set.labels = set.labels || { qfig: 'Question Figure', qfigs: 'Question Figures', afig: 'Answer Figures', ins: MM_INSTRUCTIONS.slice() };
   add(() => set.labels.qfig, v => { set.labels.qfig = v; });
   add(() => set.labels.qfigs, v => { set.labels.qfigs = v; });
   add(() => set.labels.afig, v => { set.labels.afig = v; });
@@ -1208,7 +1241,7 @@ function translatableFields(set) {
         const paras = String(it.text || '').split(/\n\s*\n/);
         paras.forEach((p, i) => add(() => p.trim(), v => { paras[i] = v; it.text = paras.join('\n\n'); }));
       } else if (it.t === 'q' && it.kind !== 'lib') {
-        if (it.kind === 'img' && it.optMode === 'img') { it.afig = 'Answer Figures'; add(() => it.afig, v => { it.afig = v; }); }
+        if (it.kind === 'img' && it.optMode === 'img') { it.afig = it.afig || 'Answer Figures'; add(() => it.afig, v => { it.afig = v; }); }
         add(() => it.q, v => { it.q = v; });
         (it.opts || []).forEach((o, i) => add(() => o, v => { it.opts[i] = v; }));
       }
@@ -1227,7 +1260,7 @@ function openTranslate(id) {
     ov.innerHTML = `<div class="ov" data-act="ovclose"><div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="mmT" style="width:min(560px,100%)">
       <div class="ov-h"><h2 id="mmT">Translate to Meetei Mayek</h2><button class="btn" type="button" data-act="ovclose">Close</button></div>
       <div class="ov-b" style="display:grid;gap:14px;padding-top:14px">
-        <p class="subnote">Makes a new set from <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> with every question, answer choice, direction and passage in Manipuri. The paper, the PDF and the Word file draw the Mayek text in the <b class="bm" style="font-size:1.25em">bmei04</b> font (BMEI04). Figures, numbers and the answer key stay as they are.</p>
+        <p class="subnote">${set.mayek && !set.builtin ? `Translates the parts of <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> that are still in English, in this set.` : `Makes a new set from <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> with every question, answer choice, direction and passage in Manipuri.`} The paper, the PDF and the Word file draw the Mayek text in the <b class="bm" style="font-size:1.25em">bmei04</b> font (BMEI04). Figures, numbers and the answer key stay as they are.</p>
         <p class="subnote">${how ? `Translation uses ${how}. Machine translation can be wrong: read the new set through before students use it.` : 'Translation needs the portal or claude.ai. It is not available in this copy of the page.'}</p>
         <p class="genmsg" id="mmMsg" role="status"></p>
       </div>
@@ -1243,25 +1276,35 @@ async function runTranslate() {
   job.busy = true; job.ctl = new AbortController();
   $('#mmRun').disabled = true; $('#mmStop').hidden = false;
   try {
+    // A Mayek set is finished in place: only its parts still in English are translated.
+    const inPlace = !!src.mayek && !src.builtin;
     const set = editableCopy(src);
-    set.id = newId(); set.setNo = nextNo(); set.medium = 'Manipuri (Meetei Mayek)'; set.mayek = true;
+    if (inPlace) { set.id = src.id; set.setNo = src.setNo; }
+    else { set.id = newId(); set.setNo = nextNo(); }
+    set.medium = 'Manipuri (Meetei Mayek)'; set.mayek = true;
     const fields = translatableFields(set);
     const unique = [...new Set(fields.map(x => x.text))];
+    if (!unique.length) { msg('Everything in this set is already in Meetei Mayek.'); return; }
     msg(`Translating ${unique.length} pieces of text…`);
-    const done = await translateList(kind, unique, (n, total) => msg(`Translated ${n} of ${total}…`), job.ctl.signal);
+    const r = await translateList(kind, unique, (n, total, note) => msg(note || `Translated ${n} of ${total}…`), job.ctl.signal);
     if (mmJob !== job) return;
-    const map = new Map(unique.map((t, i) => [t, done[i]]));
+    if (r.failed === unique.length) throw { code: 'all_failed', message: r.reason };
+    const map = new Map(unique.map((t, i) => [t, r.out[i]]));
     fields.forEach(x => x.put(map.get(x.text) ?? x.text));
-    const left = fields.filter(x => !hasMayek(map.get(x.text))).length;
-    msg('Saving the new set…');
-    nextDraft = set;
-    try { await saveSet(set); } catch (e) { /* the maker shows the save state */ }
-    mmJob = null; ov.innerHTML = '';
-    go('edit-' + set.id);
-    if (left) setTimeout(() => setStatus(`${left} piece${left === 1 ? '' : 's'} of text came back without Mayek letters. Check them in the editor.`, true), 600);
+    const left = unique.filter(t => !hasMayek(map.get(t))).length;
+    msg('Saving…');
+    if (inPlace && cur.view === 'maker' && cur.id === set.id) {
+      cur.draft = set; mmJob = null; ov.innerHTML = ''; dirty(true);
+    } else {
+      nextDraft = set;
+      try { await saveSet(set); } catch (e) { /* the maker shows the save state */ }
+      mmJob = null; ov.innerHTML = '';
+      go('edit-' + set.id);
+    }
+    if (left) setTimeout(() => setStatus(`${left} piece${left === 1 ? '' : 's'} of text are still in English${r.reason ? ` (${r.reason})` : ''}. Press Meetei Mayek again to finish them.`, true), 600);
   } catch (e) {
-    msg({ cancelled: 'Stopped. Nothing was saved.', not_granted: 'Translation is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', rate_limited: 'Too many requests right now. Wait a minute and try again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code]
-      || 'Translation failed. Check the connection and try again.');
+    msg({ cancelled: 'Stopped. Nothing was saved.', not_granted: 'Translation is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code]
+      || `Translation failed: ${errText(e)}. Nothing was saved. Try again in a minute; if it keeps failing, show this message to whoever looks after the portal.`);
   } finally {
     if (mmJob === job) { job.busy = false; const r = $('#mmRun'), s2 = $('#mmStop'); if (r) r.disabled = false; if (s2) s2.hidden = true; }
   }
@@ -1320,9 +1363,10 @@ const PRINT_CSS = `
 .pp .p-fig svg.fig.big{width:8.6em;height:8.6em}
 .pp .p-fig svg.fig.mq{width:6.6em;height:5.05em}
 .pp .p-fig img{max-width:100%;max-height:14em}
-.pp .p-fo{display:grid;grid-template-columns:repeat(4,4.4em);gap:.4em 1em}
-.pp .p-fi{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.85em}
-.pp .p-fi svg.fig,.pp .p-fi img{width:4.6em;height:4.6em;object-fit:contain}
+.pp .p-fo{display:grid;grid-template-columns:repeat(4,minmax(0,5.4em));gap:.4em .8em}
+.pp .p-fi{display:flex;flex-direction:column;align-items:center;gap:.15em;font-size:.85em;min-width:0}
+.pp .p-fi svg.fig{width:4.6em;height:4.6em}
+.pp .p-fi img{width:100%;height:4.6em;object-fit:contain}
 .pp .p-opts{display:grid;gap:.1em 1em}
 .pp .p-o{min-width:0;overflow-wrap:break-word}
 .pp .p-o b{font-weight:600;margin-right:.25em}
@@ -1389,15 +1433,16 @@ function printQ(q, n, trusted) {
     const src = imgSrc(q.img);
     fig = src ? `<div class="p-fig p-in"><img src="${esc(src)}" crossorigin="anonymous" alt=""></div>` : '';
     if (q.optMode === 'img') {
-      return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt">${q.q ? tx(q.q) : '<b>Question Figure</b>'}</span></div>${fig}
+      const qt = trusted ? q.q : cleanQ(q.q);
+      return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt">${qt ? tx(qt) : '<b>Question Figure</b>'}</span></div>${fig}
         <div class="p-cap p-in">${esc(q.afig || 'Answer Figures')}</div>
         <div class="p-fo p-in">${[0, 1, 2, 3].map(i => { const s = imgSrc((q.optImgs || [])[i]); return `<div class="p-fi">${s ? `<img src="${esc(s)}" crossorigin="anonymous" alt="">` : '<span style="width:4.6em;height:4.6em;border:1px dashed #999"></span>'}<span>(${LET[i]})</span></div>`; }).join('')}</div></div>`;
     }
   }
-  const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+  const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
   const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
   const cols = max <= 7 ? 4 : max <= 22 ? 2 : 1;
-  return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(q.q || '')}</span></div>${fig}
+  return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(trusted ? q.q || '' : cleanQ(q.q))}</span></div>${fig}
     <div class="p-opts p-in" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${opts.map((o, i) => `<div class="p-o"><b>(${LET[i]})</b>${tx(o) || '—'}</div>`).join('')}</div></div>`;
 }
 
@@ -1436,11 +1481,13 @@ function paginate(units, s) {
       newPage();
     }
   };
-  units.forEach(u => {
+  units.forEach((u, ui) => {
     if (!u.full) { run.push(u); return; }
     flushRun();
     const kind = u.blocks[0].kind;
-    if (y > 0 && (y + u.h > BODY_H || (kind === 'band' && y + u.h + 150 * s > BODY_H))) newPage();
+    // keep a section band with the first block after it
+    const next = units[ui + 1], follow = kind === 'band' && next && !next.full ? next.h + GF : 0;
+    if (y > 0 && (y + u.h > BODY_H || (kind === 'band' && y + u.h + Math.max(follow, 150 * s) > BODY_H))) newPage();
     page().push({ type: 'full', u }); y += u.h + GF;
   });
   flushRun();
@@ -1532,11 +1579,28 @@ const loadScript = src => new Promise((res, rej) => {
   const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.append(s);
 });
 async function loadLibs(fmt) {
-  if (CL && typeof CL.exportLibs === 'function') return CL.exportLibs();
-  if (!window.html2canvas) await loadScript(LIB.html2canvas);
-  if (fmt === 'pdf' && !window.jspdf) await loadScript(LIB.jspdf);
-  if (fmt === 'docx' && !window.docx) await loadScript(LIB.docx);
-  return { html2canvas: window.html2canvas, jsPDF: window.jspdf && window.jspdf.jsPDF, docx: window.docx };
+  const lent = CL && typeof CL.exportLibs === 'function' ? await CL.exportLibs() : {};
+  // html2canvas must run in THIS frame: a copy from the portal window draws on that window's canvas,
+  // which cannot see this page's web fonts (Literata, BMEI04…) and falls back to system fonts.
+  if (!window.html2canvas) await loadScript(lent.html2canvasUrl || LIB.html2canvas);
+  if (fmt === 'pdf' && !lent.jsPDF && !window.jspdf) await loadScript(LIB.jspdf);
+  if (fmt === 'docx' && !lent.docx && !window.docx) await loadScript(LIB.docx);
+  return { html2canvas: window.html2canvas, jsPDF: lent.jsPDF || (window.jspdf && window.jspdf.jsPDF), docx: lent.docx || window.docx };
+}
+/* pictures from another site (the portal's storage) become data inside the page before drawing,
+   so a cached copy without CORS headers can never leave a blank where a figure should be */
+async function inlineImages(root) {
+  const imgs = [...root.querySelectorAll('img')].filter(i => /^https?:/.test(i.getAttribute('src') || '') && new URL(i.src, location.href).origin !== location.origin);
+  const cache = new Map();
+  await Promise.all(imgs.map(async img => {
+    const url = img.getAttribute('src');
+    try {
+      if (!cache.has(url)) cache.set(url, fetch(url, { mode: 'cors', cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); }).then(b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); })));
+      img.removeAttribute('crossorigin');
+      img.src = await cache.get(url);
+      await img.decode().catch(() => {});
+    } catch (e) { /* leave it; html2canvas tries the URL itself */ }
+  }));
 }
 async function saveFile(filename, blob) {
   const dl = CL && typeof CL.use === 'function' ? await CL.use('downloads').catch(() => null) : null;
@@ -1673,8 +1737,9 @@ async function buildDocx(set, L, libs, msg) {
         const num = new d.TextRun({ text: `${n}.\t`, bold: true, font: HFONT, size: base });
         const head = { tabStops: [{ type: d.TabStopType.LEFT, position: IND }], indent: { left: IND, hanging: IND }, spacing: { before: 100, after: 40 }, keepNext: true };
         if (q.kind === 'fig' || (q.kind === 'img' && q.optMode === 'img')) {
-          const label = q.kind === 'fig' ? q.label : (q.q ? null : 'Question Figure');
-          C.push(P({ ...head, children: [num, ...(label ? tx(label, { bold: true, font: HFONT, size: base - 1 }) : runs(q.q, trusted))] }));
+          const qt = trusted ? q.q : cleanQ(q.q);
+          const label = q.kind === 'fig' ? q.label : (qt ? null : 'Question Figure');
+          C.push(P({ ...head, children: [num, ...(label ? tx(label, { bold: true, font: HFONT, size: base - 1 }) : runs(qt, trusted))] }));
           const qImgs = [];
           for (const f of node.querySelectorAll('.p-fig > svg, .p-fig > img')) {
             const r = f.getBoundingClientRect(), im = await imgOf(f, r.width, r.height);
@@ -1685,9 +1750,11 @@ async function buildDocx(set, L, libs, msg) {
           const cells = [...node.querySelectorAll('.p-fi')];
           const step = Math.round((COLW - IND) / 4), tabs = [0, 1, 2, 3].map(i => ({ type: d.TabStopType.CENTER, position: IND + Math.round(step * (i + 0.5)) }));
           const pics = [];
+          const maxW = (step / 15) * 0.8 / WORD_GROW;          // px that fit a quarter of the column, after the Word enlargement
           for (let i = 0; i < cells.length; i++) {
             const f = cells[i].querySelector('svg, img'), r = f ? f.getBoundingClientRect() : { width: 0, height: 0 };
-            const im = f ? await imgOf(f, r.width, r.height) : null;
+            const k = r.width > maxW ? maxW / r.width : 1;
+            const im = f ? await imgOf(f, r.width * k, r.height * k) : null;
             pics.push(new d.TextRun({ text: '\t' }), ...(im ? [im] : [new d.TextRun({ text: '—' })]));
           }
           C.push(P({ tabStops: tabs, keepNext: true, children: pics }));
@@ -1703,11 +1770,11 @@ async function buildDocx(set, L, libs, msg) {
             const tail = toText(String(q.q).split(/<\/table>/i)[1] || '');
             if (tail) C.push(P({ indent: { left: IND }, keepNext: true, children: runs(tail, false) }));
           } else {
-            C.push(P({ ...head, children: [num, ...runs(q.q || '', trusted)] }));
+            C.push(P({ ...head, children: [num, ...runs(trusted ? q.q || '' : cleanQ(q.q), trusted)] }));
           }
           const fi = node.querySelector('.p-fig > img');
           if (fi) { const r = fi.getBoundingClientRect(), im = await imgOf(fi, r.width, r.height); if (im) C.push(P({ indent: { left: IND }, keepNext: true, children: [im] })); }
-          const opts = (q.opts || ['', '', '', '']).slice(0, 4);
+          const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
           const max = Math.max(...opts.map(o => (trusted ? toText(o) : String(o)).length));
           const per = max <= 7 ? 4 : max <= 22 ? 2 : 1;
           const w = Math.round((COLW - IND) / per);
@@ -1792,6 +1859,8 @@ async function runExport(fmt) {
     await new Promise(r => setTimeout(r, 30));
     L = layoutPaper(set, pages, withKey);
     if (document.fonts && document.fonts.ready) await document.fonts.ready;   // faces first used by the print layout
+    msg('Getting the figures ready…');
+    await inlineImages(L.root);
     const imgs = [...L.root.querySelectorAll('img')];
     await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
     const blob = fmt === 'pdf' ? await buildPdf(L, libs, msg) : await buildDocx(set, L, libs, msg);
@@ -1917,13 +1986,13 @@ function cleanItems(reply, cv, page) {
     if (r.type === 'heading') { const it = { t: 'head', sub: str(r.sub, 200), part: str(r.part, 80), dir: str(r.directions) }; if (it.sub || it.part || it.dir) out.push(it); return; }
     if (r.type === 'passage') { const it = { t: 'passage', title: str(r.title, 200), text: str(r.text, 12000) }; if (it.text) out.push(it); return; }
     if (r.type !== 'question') return;
-    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map(o => str(o, 600));
+    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o, i) => cleanOpt(str(o, 600), i));
     while (opts.length < 4) opts.push('');
     const ofs = Array.isArray(r.optionFigures) && r.optionFigures.length === 4 && r.optionFigures.every(okBox) ? r.optionFigures : null;
     const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
     out.push({
       t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
-      q: str(r.text), opts, a, gen: a != null,
+      q: cleanQ(str(r.text)), opts, a, gen: a != null,
       fig: okBox(r.figure) ? cropBox(cv, r.figure) : null,
       optFigs: ofs ? ofs.map(b => cropBox(cv, b)) : null,
     });
