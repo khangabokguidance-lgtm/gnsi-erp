@@ -1,5 +1,6 @@
 // cbtEngine.js — the rules of the CBT Exam: question status (as on the SSC / TCS exam screen), the palette
 // counts, the answer key, the clock and the scoring. Pure — no browser, no database.
+import { flagText } from './cbtProctorLogic.js'
 
 // Palette colours: Not Visited (grey), Not Answered (red), Answered (green), Marked for Review (purple),
 // Answered & Marked for Review (purple with a green tick).
@@ -32,8 +33,10 @@ export function statusOf(a, no) {
 const put = (obj, no, v) => { const o = { ...obj }; if (v === null || v === undefined || v === false) delete o[no]; else o[no] = v; return o }
 export const visit = (a, no) => (a.visited[no] ? a : { ...a, visited: put(a.visited, no, true) })
 export const go = (a, no) => ({ ...visit(a, no), current: no })
-export const select = (a, no, key) => ({ ...a, answers: put(a.answers, no, key) })
-export const clear = (a, no) => ({ ...a, answers: put(a.answers, no, null), marked: put(a.marked, no, null) })
+// A test can lock answers (test.marking.lock): the first option picked is final — it cannot be changed or cleared.
+export const answersLocked = test => !!test?.marking?.lock
+export const select = (a, no, key, locked = false) => (locked && a.answers[no] ? a : { ...a, answers: put(a.answers, no, key) })
+export const clear = (a, no, locked = false) => (locked && a.answers[no] ? a : { ...a, answers: put(a.answers, no, null), marked: put(a.marked, no, null) })
 export const mark = (a, no, on = true) => ({ ...a, marked: put(a.marked, no, on) })
 
 // Counts for a set of questions (one section, or all).
@@ -147,9 +150,9 @@ export function resultRows(test, attempts) {
 
 const csvCell = v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
 export function resultsCSV(test, attempts) {
-  const head = ['Rank', 'Name', 'Roll no.', 'GCC no.', 'Parent no.', 'Status', 'Started', 'Submitted', 'Minutes', 'Marks', 'Out of', 'Correct', 'Wrong', 'Not answered', 'Accuracy %', ...test.sections.map(s => `${s.label || s.title} marks`), 'Left screen']
+  const head = ['Rank', 'Name', 'Roll no.', 'GCC no.', 'Parent no.', 'Status', 'Started', 'Submitted', 'Minutes', 'Marks', 'Out of', 'Correct', 'Wrong', 'Not answered', 'Accuracy %', ...test.sections.map(s => `${s.label || s.title} marks`), 'Left screen', 'Camera / shield flags']
   const rows = resultRows(test, attempts).map(({ attempt: a, g, submitted, took, rank }) => [
     rank ?? '', a.candidate.name, a.candidate.roll, a.gcc || '', a.parentPhone || a.phone || '', submitted ? 'Submitted' : 'In progress', new Date(a.startedAt).toLocaleString('en-IN'), a.submittedAt ? new Date(a.submittedAt).toLocaleString('en-IN') : '',
-    took ?? '', g.marks, g.max, g.correct, g.wrong, g.skipped, g.accuracy, ...g.sections.map(s => s.marks), a.switches || 0])
+    took ?? '', g.marks, g.max, g.correct, g.wrong, g.skipped, g.accuracy, ...g.sections.map(s => s.marks), a.switches || 0, flagText(a.proctor)])
   return '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n')
 }

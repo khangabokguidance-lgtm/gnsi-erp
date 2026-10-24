@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import { cbtStore } from './cbtStore'
 import {
-  STATUS_LABEL, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
+  STATUS_LABEL, answersLocked, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
 } from './lib/cbtEngine'
+import { proctorOf, addEvent, faceStrikes, flagText, isShotKey, isBlockedKey, EVENT_LABEL } from './lib/cbtProctorLogic'
+import { useCbtProctor } from './useCbtProctor'
 
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
@@ -22,7 +24,11 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const test = liveTest || testProp
   const mm = useMemo(() => hasMm(test), [test])
   const qs = useMemo(() => flatQuestions(test), [test])
-  const [stage, setStage] = useState(resume ? 'exam' : 'instructions')
+  const cfg = proctorOf(test)
+  const lock = answersLocked(test)
+  const camOn = cfg.camera !== 'off'
+  // a candidate who reopens an exam in progress goes through the camera check again before the paper is shown
+  const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'instructions')
   const [a, setA] = useState(resume || null)
   const [now, setNow] = useState(() => Date.now())
   const [modal, setModal] = useState(null)       // 'summary' | 'confirm' | 'instructions'
@@ -43,6 +49,13 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   useEffect(() => { aRef.current = a }, [a])
 
   const flash = t => { setToast(t); setTimeout(() => setToast(''), 3500) }
+  const [cover, setCover] = useState('')           // shield: the exam is hidden (window left, screenshot key pressed)
+  const proctorEvent = useCallback(kind => {
+    setA(x => (x ? { ...x, proctor: addEvent(x.proctor, kind) } : x))
+    const msg = { none: 'Your face is not visible. Sit in front of the camera.', multi: 'More than one person is in front of the camera. Only the candidate may be there.', away: 'Look at the screen. Looking away is recorded.', nocam: 'The camera stopped. Turn it back on.' }[kind]
+    if (msg) { setToast(msg); setTimeout(() => setToast(''), 4500) }
+  }, [])
+  const cam = useCbtProctor({ enabled: camOn, running: stage === 'exam', onEvent: proctorEvent })
   const begin = async () => {
     if (started.current) return   // a double click must not start two attempts
     started.current = true
@@ -138,21 +151,65 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop); document.removeEventListener('fullscreenchange', fsx) }
   }, [stage])
 
+  // reopening an exam in progress: start the camera straight away
+  const startCam = cam.start, camPhase = cam.phase
+  useEffect(() => { if (stage === 'camera' && resume && camPhase === 'idle') startCam() }, [stage, resume, camPhase, startCam])
+
+  // strict camera check: too many warnings end the exam (what is answered so far is submitted)
+  const strikes = faceStrikes(a?.proctor)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- submits when the warnings run out
+    if (stage === 'exam' && cfg.camera === 'strict' && strikes >= cfg.maxStrikes) finish(true)
+  }, [stage, cfg.camera, cfg.maxStrikes, strikes, finish])
+
+  // shield: no copying, no printing, no developer tools; a screenshot shortcut or leaving the window hides the paper
+  useEffect(() => {
+    if (stage !== 'exam' || !cfg.shield) return
+    let last = 0, hideTimer = null
+    const log = kind => { if (Date.now() - last < 1000) return; last = Date.now(); setA(x => (x ? { ...x, proctor: addEvent(x.proctor, kind) } : x)) }
+    const hide = msg => { setCover(msg); clearTimeout(hideTimer); hideTimer = setTimeout(() => { if (document.hasFocus()) setCover('') }, 6000) }
+    const down = e => {
+      if (isShotKey(e)) {
+        log('shot'); hide('Screenshots are not allowed. This has been recorded.')
+        navigator.clipboard?.writeText('Screenshots are not allowed during the exam.')?.catch(() => {})
+      } else if (isBlockedKey(e)) { e.preventDefault(); log('blocked') }
+    }
+    const up = e => { if (e.key === 'PrintScreen') down(e) }   // Windows only reports this one on key-up
+    const stopIt = e => { e.preventDefault() }
+    const out = () => setCover('The exam is hidden while this window is not in front. Click here to return.')
+    const back = () => { if (document.hasFocus() && !document.hidden) setCover('') }
+    const print = () => log('blocked')
+    window.addEventListener('keydown', down, true); window.addEventListener('keyup', up, true)
+    for (const ev of ['copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart']) document.addEventListener(ev, stopIt)
+    window.addEventListener('blur', out); window.addEventListener('focus', back); document.addEventListener('visibilitychange', () => (document.hidden ? out() : back()))
+    window.addEventListener('beforeprint', print)
+    return () => {
+      clearTimeout(hideTimer)
+      window.removeEventListener('keydown', down, true); window.removeEventListener('keyup', up, true)
+      for (const ev of ['copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart']) document.removeEventListener(ev, stopIt)
+      window.removeEventListener('blur', out); window.removeEventListener('focus', back); window.removeEventListener('beforeprint', print)
+    }
+  }, [stage, cfg.shield])
+
   const q = a ? qs.find(x => x.no === a.current) : null
   const sec = q ? test.sections[q.sectionIndex] : null
   const lang = a?.lang || 'en'
   const open = no => { setA(x => go(x, no)); setDrawer(false) }
   const next = () => setA(x => go(x, neighbour(test, x.current, 1)))
   const prev = () => setA(x => go(x, neighbour(test, x.current, -1)))
-  const choose = key => setA(x => select(go(x, x.current), x.current, key))
+  const choose = key => {
+    if (lock && aRef.current?.answers[aRef.current.current]) { flash('Your answer for this question is locked. It cannot be changed.'); return }
+    setA(x => select(go(x, x.current), x.current, key, lock))
+  }
   const saveNext = () => { setA(x => go(mark(x, x.current, false), neighbour(test, x.current, 1))) }
   const markNext = () => { setA(x => go(mark(x, x.current, true), neighbour(test, x.current, 1))) }
-  const clearIt = () => setA(x => clear(x, x.current))
+  const clearIt = () => { if (lock && aRef.current?.answers[aRef.current.current]) { flash('A locked answer cannot be cleared.'); return } setA(x => clear(x, x.current, lock)) }
 
   useEffect(() => {
     if (stage !== 'exam' || modal) return
     const key = e => {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'radio') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return   // Ctrl+C must not pick option C
       const k = e.key.toLowerCase()
       if (/^[a-d1-4]$/.test(k)) choose('ABCD'['abcd'.includes(k) ? 'abcd'.indexOf(k) : Number(k) - 1])
       else if (e.key === 'ArrowRight') next()
@@ -163,10 +220,39 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   }) // re-bound each render so it always sees the current question
 
   const shell = body => (
-    <div className="cbt cbt-exam" onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
+    <div className={`cbt cbt-exam${cfg.shield ? ' cbt-shield' : ''}`} onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
       <style>{CBT_CSS}</style>{body}
+      {camOn && (stage === 'camera' || stage === 'exam') && (
+        <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
+          <video ref={cam.videoRef} muted playsInline autoPlay />
+          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', multi: '⚠ More than one person', away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
+        </div>
+      )}
+      {stage === 'exam' && camOn && cam.status !== 'ok' && cam.held >= 2000 && cam.phase === 'ready' && cfg.camera === 'strict' && <div className="cbt-cover" style={{ background: 'rgba(11,30,61,.94)' }}><div><b>{EVENT_LABEL[cam.status] || 'Camera check'}</b><br />Sit in front of the camera, alone, facing the screen. The exam continues when you are visible.</div></div>}
+      {cover && <div className="cbt-cover" onClick={() => document.hasFocus() && setCover('')}><div>🔒 {cover}</div></div>}
     </div>
   )
+
+  // ── camera check ──
+  if (stage === 'camera') {
+    const good = cam.phase === 'ready' && cam.okStreak >= 3
+    return shell(<>
+      <div className="cbt-top"><div className="title">{test.name}</div><div className="cbt-tools"><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div></div>
+      <div className="cbt-center"><div className="panel" style={{ textAlign: 'center' }}>
+        <h3>Camera check</h3>
+        <p style={{ fontSize: 14, lineHeight: 1.65, margin: '0 0 10px' }}>This exam uses your camera to make sure <b>only you</b> are in front of the screen. The video is <b>not recorded or sent anywhere</b> — the exam only counts the warnings (face not visible, another person, looking away).{cfg.camera === 'strict' ? ` After ${cfg.maxStrikes} warnings the exam is submitted automatically.` : ''}</p>
+        <p style={{ margin: '0 0 6px', fontWeight: 700, color: good ? '#146c3a' : '#9a5b00' }}>
+          {cam.phase === 'starting' ? 'Starting the camera…' : cam.phase === 'error' ? cam.error : good ? '✓ Your face is visible. You are ready.' : cam.status === 'multi' ? 'More than one person is visible. Only the candidate may sit here.' : cam.status === 'away' ? 'Look straight at the screen.' : 'Sit in front of the camera so your face is fully visible, in good light.'}
+        </p>
+        <div className="cbt-row">
+          {!resume && <button className="cbt-b" onClick={() => { cam.stop(); setStage('declaration') }}>‹ Previous</button>}
+          {cam.phase === 'error' && <button className="cbt-b" onClick={cam.start}>Try the camera again</button>}
+          <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: good ? 1 : .5 }} disabled={!good || !!busy} onClick={resume ? () => setStage('exam') : begin}>{busy || (resume ? 'Continue the exam' : 'I am ready to begin')}</button>
+        </div>
+        {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
+      </div></div>
+    </>)
+  }
 
   // ── instructions ──
   if (stage === 'instructions' || stage === 'declaration') {
@@ -179,6 +265,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
+          {lock && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#b42318' }}>🔒 Answers are final: once you choose an option for a question it is locked and cannot be changed or cleared. Think before you click.</p>}
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Sections</p>
           <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
           <div className="cbt-row">
@@ -189,11 +276,11 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           <h3 style={{ textAlign: 'center' }}>Declaration</h3>
           <label style={{ display: 'flex', gap: 10, fontSize: 14, lineHeight: 1.6, alignItems: 'flex-start' }}>
             <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 5, width: 18, height: 18 }} />
-            <span>I have read and understood the instructions. I will not use any unfair means, and I understand that leaving this screen during the test is recorded.</span>
+            <span>I have read and understood the instructions. I will not use any unfair means, and I understand that leaving this screen during the test is recorded.{camOn ? ' I agree to my camera being used during the test to check that only I am in front of the screen.' : ''}{cfg.shield ? ' I will not copy, print or take screenshots of the paper.' : ''}</span>
           </label>
           <div className="cbt-row">
             <button className="cbt-b" onClick={() => setStage('instructions')}>‹ Previous</button>
-            <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree || !!busy} onClick={begin}>{busy || 'I am ready to begin'}</button>
+            <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree || !!busy} onClick={camOn ? () => { setStage('camera'); cam.start() } : begin}>{busy || (camOn ? 'Next: camera check ›' : 'I am ready to begin')}</button>
           </div>
           {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
         </>}
@@ -256,16 +343,17 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
               <label key={o.key} className={`cbt-opt${sel === o.key ? ' on' : ''}`}>
-                <input type="radio" name={`q${q.no}`} checked={sel === o.key} onChange={() => choose(o.key)} />
+                <input type="radio" name={`q${q.no}`} checked={sel === o.key} disabled={lock && !!sel && sel !== o.key} onChange={() => choose(o.key)} />
                 <b>{o.key}.</b>
                 <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.key}` : pick(o.text, o.textMm, lang)}</span>
               </label>
             ))}
+            {lock && <p className="cbt-lockmsg">{sel ? '🔒 Answer locked — it cannot be changed.' : '🔒 Answers are final: the first option you choose is locked.'}</p>}
           </div>
         </div>
         <div className="cbt-act">
           <button className="cbt-b mark b-mark" onClick={markNext}>Mark for Review &amp; Next</button>
-          <button className="cbt-b b-clear" onClick={clearIt}>Clear Response</button>
+          <button className="cbt-b b-clear" onClick={clearIt} disabled={lock && !!sel}>Clear Response</button>
           <span className="sp" />
           <button className="cbt-b b-prev" onClick={prev} disabled={q.no === qs[0].no}>‹ Previous</button>
           <button className="cbt-b save b-save" onClick={saveNext}>Save &amp; Next</button>
@@ -333,7 +421,7 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
       <div className="cbt-center" style={{ maxWidth: 940, userSelect: 'text' }}>
         <div className="panel">
           <h3>{attempt.candidate.name}{attempt.candidate.roll ? ` · ${attempt.candidate.roll}` : ''}</h3>
-          <p className="muted">Started {new Date(attempt.startedAt).toLocaleString('en-IN')}{took !== null ? ` · took ${took} min` : ''}{attempt.autoSubmitted ? ' · submitted automatically when time ended' : ''}{attempt.switches ? ` · left the screen ${attempt.switches} time${attempt.switches === 1 ? '' : 's'}` : ''}</p>
+          <p className="muted">Started {new Date(attempt.startedAt).toLocaleString('en-IN')}{took !== null ? ` · took ${took} min` : ''}{attempt.autoSubmitted ? ' · submitted automatically when time ended' : ''}{attempt.switches ? ` · left the screen ${attempt.switches} time${attempt.switches === 1 ? '' : 's'}` : ''}{flagText(attempt.proctor) ? ` · camera / shield: ${flagText(attempt.proctor)}` : ''}</p>
           {!visible ? (
             <p style={{ fontSize: 15, lineHeight: 1.6 }}>Your answers have been recorded. The result will be declared by the institute.</p>
           ) : <>

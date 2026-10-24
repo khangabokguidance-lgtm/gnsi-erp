@@ -18,7 +18,7 @@ const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', mon
 function makeRemote({ testId, code, candidate, phone, gcc, parent, attemptId = null, token = null }) {
   const r = { offset: 0, attemptId, token }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
-  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches })
+  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null })
   r.begin = async () => {
     const res = await startExam(testId, code, candidate.name, candidate.roll, phone, gcc, parent)
     r.attemptId = res.attempt.id; r.token = res.token; sync(res.attempt)

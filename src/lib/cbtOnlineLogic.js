@@ -33,10 +33,11 @@ export function toAttempt(row, testName = '') {
     id: row.id, testId: row.test_id, testName, candidate: { name: row.candidate_name, roll: row.roll }, phone: row.phone || '', gcc: row.gcc_no || '', parentPhone: row.parent_phone || '', erpMatch: !!row.erp_match,
     startedAt: Date.parse(row.started_at), submittedAt: row.submitted_at ? Date.parse(row.submitted_at) : null,
     state: row.state, answers: row.answers || {}, marked: m, visited: packed.v || {}, current: row.current_no, lang: row.lang || 'en',
-    switches: row.switches || 0, autoSubmitted: !!row.auto_submitted, score: row.score || null, source: 'online',
+    switches: row.switches || 0, proctor: packed.x || null, autoSubmitted: !!row.auto_submitted, score: row.score || null, source: 'online',
   }
 }
-export const packMarks = (marked, visited) => ({ m: marked || {}, v: visited || {} })
+// x = the camera / shield log (counts per kind) — kept inside the marked jsonb, so no database change is needed.
+export const packMarks = (marked, visited, proctor) => ({ m: marked || {}, v: visited || {}, ...(proctor ? { x: proctor } : {}) })
 
 // ── the candidate's page ─────────────────────────────────────────────────────
 // The landing page shows the exam's shape before any question is released: a test-like object with only the
@@ -59,7 +60,7 @@ export function localAttempt(att, test, candidate, backup = null) {
   for (const n of Object.keys(marked)) visited[n] = true
   return {
     id: att.id, testId: test.id, testName: test.name, candidate, startedAt: Date.parse(att.startedAt), submittedAt: null, state: 'inprogress',
-    answers, marked, visited, current, lang: (use ? use.lang : att.lang) || 'en', switches: Math.max(att.switches || 0, use?.switches || 0),
+    answers, marked, visited, current, lang: (use ? use.lang : att.lang) || 'en', switches: Math.max(att.switches || 0, use?.switches || 0), proctor: (use && use.proctor) || packed.x || null,
   }
 }
 
