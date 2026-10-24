@@ -15,6 +15,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const editing = !!initial
   const [name, setName] = useState(initial?.name || '')
   const [durationMin, setDurationMin] = useState(initial?.durationMin ?? 120)
+  const [lockAns, setLockAns] = useState(!!initial?.marking?.lock)
   const [camera, setCamera] = useState(initial?.marking?.proctor?.camera || 'off')
   const [shield, setShield] = useState(!!initial?.marking?.proctor?.shield)
   const [maxStrikes, setMaxStrikes] = useState(initial?.marking?.proctor?.maxStrikes ?? 5)
@@ -99,7 +100,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
-      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
+      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
       instructions, showResult, showAnswers, sections, createdAt: initial?.createdAt || Date.now(), updatedAt: Date.now(),
     })
     setBusy('')
@@ -120,6 +121,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
         <div style={{ display: 'flex', gap: '8px 18px', flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
           <label><input type="checkbox" checked={showResult} onChange={e => setShowResult(e.target.checked)} /> Show the score to the candidate after submitting</label>
           <label><input type="checkbox" checked={showAnswers} onChange={e => setShowAnswers(e.target.checked)} /> Show the correct answers in the review</label>
+          <label><input type="checkbox" checked={lockAns} onChange={e => setLockAns(e.target.checked)} /> 🔒 Lock answers — the first option chosen is final (cannot be changed or cleared)</label>
         </div>
         <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 10, marginTop: 12 }}>
           <b style={{ fontSize: 13 }}>🛡 Exam security</b>

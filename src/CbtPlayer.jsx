@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import { cbtStore } from './cbtStore'
 import {
-  STATUS_LABEL, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
+  STATUS_LABEL, answersLocked, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
 } from './lib/cbtEngine'
 import { proctorOf, addEvent, faceStrikes, flagText, isShotKey, isBlockedKey, EVENT_LABEL } from './lib/cbtProctorLogic'
 import { useCbtProctor } from './useCbtProctor'
@@ -25,6 +25,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const mm = useMemo(() => hasMm(test), [test])
   const qs = useMemo(() => flatQuestions(test), [test])
   const cfg = proctorOf(test)
+  const lock = answersLocked(test)
   const camOn = cfg.camera !== 'off'
   // a candidate who reopens an exam in progress goes through the camera check again before the paper is shown
   const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'instructions')
@@ -196,10 +197,13 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const open = no => { setA(x => go(x, no)); setDrawer(false) }
   const next = () => setA(x => go(x, neighbour(test, x.current, 1)))
   const prev = () => setA(x => go(x, neighbour(test, x.current, -1)))
-  const choose = key => setA(x => select(go(x, x.current), x.current, key))
+  const choose = key => {
+    if (lock && aRef.current?.answers[aRef.current.current]) { flash('Your answer for this question is locked. It cannot be changed.'); return }
+    setA(x => select(go(x, x.current), x.current, key, lock))
+  }
   const saveNext = () => { setA(x => go(mark(x, x.current, false), neighbour(test, x.current, 1))) }
   const markNext = () => { setA(x => go(mark(x, x.current, true), neighbour(test, x.current, 1))) }
-  const clearIt = () => setA(x => clear(x, x.current))
+  const clearIt = () => { if (lock && aRef.current?.answers[aRef.current.current]) { flash('A locked answer cannot be cleared.'); return } setA(x => clear(x, x.current, lock)) }
 
   useEffect(() => {
     if (stage !== 'exam' || modal) return
@@ -261,6 +265,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
           <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
+          {lock && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#b42318' }}>🔒 Answers are final: once you choose an option for a question it is locked and cannot be changed or cleared. Think before you click.</p>}
           <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Sections</p>
           <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
           <div className="cbt-row">
@@ -338,16 +343,17 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
               <label key={o.key} className={`cbt-opt${sel === o.key ? ' on' : ''}`}>
-                <input type="radio" name={`q${q.no}`} checked={sel === o.key} onChange={() => choose(o.key)} />
+                <input type="radio" name={`q${q.no}`} checked={sel === o.key} disabled={lock && !!sel && sel !== o.key} onChange={() => choose(o.key)} />
                 <b>{o.key}.</b>
                 <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.key}` : pick(o.text, o.textMm, lang)}</span>
               </label>
             ))}
+            {lock && <p className="cbt-lockmsg">{sel ? '🔒 Answer locked — it cannot be changed.' : '🔒 Answers are final: the first option you choose is locked.'}</p>}
           </div>
         </div>
         <div className="cbt-act">
           <button className="cbt-b mark b-mark" onClick={markNext}>Mark for Review &amp; Next</button>
-          <button className="cbt-b b-clear" onClick={clearIt}>Clear Response</button>
+          <button className="cbt-b b-clear" onClick={clearIt} disabled={lock && !!sel}>Clear Response</button>
           <span className="sp" />
           <button className="cbt-b b-prev" onClick={prev} disabled={q.no === qs[0].no}>‹ Previous</button>
           <button className="cbt-b save b-save" onClick={saveNext}>Save &amp; Next</button>

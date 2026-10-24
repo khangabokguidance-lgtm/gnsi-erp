@@ -95,3 +95,17 @@ test('results are ranked, ties share a rank, in-progress attempts are listed las
   assert.match(csv, /"Asha, K"/)
   assert.match(csv.split('\r\n')[0], /^\uFEFFRank,Name,Roll no\.,GCC no\.,Parent no\.,Status/)
 })
+
+test('locked answers: the first option is final and cannot be changed or cleared', async () => {
+  const { select, clear, answersLocked } = await import('../src/lib/cbtEngine.js')
+  assert.equal(answersLocked({ marking: { lock: true } }), true)
+  assert.equal(answersLocked({ marking: {} }), false)
+  let a = { answers: {}, marked: {} }
+  a = select(a, 1, 'B', true)
+  assert.equal(a.answers[1], 'B')
+  assert.equal(select(a, 1, 'C', true), a, 'changing a locked answer does nothing')
+  assert.equal(clear(a, 1, true), a, 'clearing a locked answer does nothing')
+  assert.equal(select(a, 2, 'D', true).answers[2], 'D', 'other questions are still open')
+  assert.equal(select(a, 1, 'C').answers[1], 'C', 'without the lock it changes as before')
+  assert.equal(clear(a, 1).answers[1], undefined)
+})

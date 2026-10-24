@@ -33,8 +33,10 @@ export function statusOf(a, no) {
 const put = (obj, no, v) => { const o = { ...obj }; if (v === null || v === undefined || v === false) delete o[no]; else o[no] = v; return o }
 export const visit = (a, no) => (a.visited[no] ? a : { ...a, visited: put(a.visited, no, true) })
 export const go = (a, no) => ({ ...visit(a, no), current: no })
-export const select = (a, no, key) => ({ ...a, answers: put(a.answers, no, key) })
-export const clear = (a, no) => ({ ...a, answers: put(a.answers, no, null), marked: put(a.marked, no, null) })
+// A test can lock answers (test.marking.lock): the first option picked is final — it cannot be changed or cleared.
+export const answersLocked = test => !!test?.marking?.lock
+export const select = (a, no, key, locked = false) => (locked && a.answers[no] ? a : { ...a, answers: put(a.answers, no, key) })
+export const clear = (a, no, locked = false) => (locked && a.answers[no] ? a : { ...a, answers: put(a.answers, no, null), marked: put(a.marked, no, null) })
 export const mark = (a, no, on = true) => ({ ...a, marked: put(a.marked, no, on) })
 
 // Counts for a set of questions (one section, or all).

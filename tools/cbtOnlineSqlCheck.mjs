@@ -13,6 +13,8 @@ await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql'
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))   // twice: safe to re-run
 await db.exec(fs.readFileSync('supabase/migrations/20261035_cbt_erp_lookup.sql', 'utf8'))
 await db.exec(fs.readFileSync('supabase/migrations/20261035_cbt_erp_lookup.sql', 'utf8'))
+await db.exec(fs.readFileSync('supabase/migrations/20261036_cbt_lock_answers.sql', 'utf8'))
+await db.exec(fs.readFileSync('supabase/migrations/20261036_cbt_lock_answers.sql', 'utf8'))
 console.log('migrations ran twice OK')
 const sections = [{ id: 's1', label: 'A', title: 'MA', questions: [{ no: 1 }, { no: 2 }, { no: 3 }] }, { id: 's2', label: 'B', title: 'AR', questions: [{ no: 4 }, { no: 5 }] }]
 await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions,sections,status,access_code,grace_seconds) values ('t1','Mock',60,'{"correct":1.25,"wrong":0.25}','read',$1,'live','abc',0)`, [JSON.stringify(sections)])
@@ -65,4 +67,16 @@ const erpA = await one(`select cbt_start('t3','abc','Asha Devi','42','','42','')
 console.log('start with GCC:', JSON.stringify((await db.query(`select gcc_no, parent_phone, erp_match from cbt_attempts where id=$1`, [erpA.attempt.id])).rows[0]))
 await one(`select cbt_start('t3','abc','Walk In','W1','','999','98 76-5')`)
 console.log('unknown GCC:', JSON.stringify((await db.query(`select gcc_no, parent_phone, erp_match from cbt_attempts where roll='W1'`)).rows[0]))
+
+// ── locked answers ──
+await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions,sections,status,grace_seconds) values ('t4','Locked',60,'{"correct":1,"wrong":0,"lock":true}','read',$1,'live',0)`, [JSON.stringify(sections)])
+await db.query(`insert into cbt_keys values ('t4', '{"1":"A","2":"B"}')`)
+const lk = await one(`select cbt_start('t4',null,'Lock Test','K1')`)
+await one(`select cbt_save($1,$2,'{"1":"A"}'::jsonb,null,1,'en',0)`, [lk.attempt.id, lk.token])
+await one(`select cbt_save($1,$2,'{"1":"C","2":"B"}'::jsonb,null,2,'en',0)`, [lk.attempt.id, lk.token])
+console.log('locked: save cannot change answer 1:', JSON.stringify((await db.query(`select answers from cbt_attempts where id=$1`, [lk.attempt.id])).rows[0].answers))
+await one(`select cbt_save($1,$2,'{"2":"B"}'::jsonb,null,2,'en',0)`, [lk.attempt.id, lk.token])
+console.log('locked: save cannot remove answer 1:', JSON.stringify((await db.query(`select answers from cbt_attempts where id=$1`, [lk.attempt.id])).rows[0].answers))
+const lkDone = await one(`select cbt_submit($1,$2,'{"1":"D","2":"B"}'::jsonb,null,0)`, [lk.attempt.id, lk.token])
+console.log('locked: submit keeps saved answer, marks', lkDone.score.marks, '(expect 2: 1=A kept, 2=B)')
 await db.close()

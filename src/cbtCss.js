@@ -155,6 +155,8 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-center{max-width:780px;margin:0 auto;padding:22px 16px 30px;overflow:auto;flex:1;width:100%}
 .cbt-center .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 18px 40px -30px rgba(19,42,79,.5)}
 .cbt-center h3{font-size:20px}
+.cbt-opt:has(input:disabled){opacity:.55;cursor:not-allowed}.cbt-lockmsg{margin:10px 0 0;font-size:12.5px;font-weight:700;color:#9a5b00}
+.cbt-b:disabled{opacity:.5;cursor:not-allowed}
 .cbt-cam{position:fixed;right:12px;bottom:68px;z-index:3150;width:132px;border-radius:12px;overflow:hidden;background:#0b1e3d;border:3px solid #2e8b3d;box-shadow:0 10px 26px rgba(0,0,0,.3)}
 .cbt-cam video{display:block;width:100%;height:99px;object-fit:cover;transform:scaleX(-1)}
 .cbt-cam span{display:block;font-size:10.5px;font-weight:700;color:#fff;background:#2e8b3d;padding:3px 6px;text-align:center}

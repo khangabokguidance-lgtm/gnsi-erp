@@ -54,6 +54,7 @@ export default {
       title: 'Exam security — camera face check and screen shield',
       body: [
         'When you build or edit a test, open "🛡 Exam security". Camera face check: Off, "Warn and record", or "Strict" (the paper is hidden while the candidate is not visible, and the exam is submitted after the chosen number of warnings).',
+        'Tick "🔒 Lock answers" (next to the show-score options) if answers must be final: the first option a candidate picks is locked and cannot be changed or cleared. For online exams the server enforces it too (run migration 20261036_cbt_lock_answers.sql).',
         'Tick "Screen shield" to block copy, print and developer tools, and to hide the paper when a screenshot key is pressed or the exam window is left.',
         'The candidate allows the camera, and must be seen alone (a short check) before the exam starts. A small camera tile stays in the corner. Warnings: face not visible for 3 s, a second person next to them for 2 s, looking away for 5 s.',
         'Results show the number of camera / shield flags for each candidate (hover for the details) and the CSV export lists them.',
