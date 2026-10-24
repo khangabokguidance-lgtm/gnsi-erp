@@ -7,7 +7,7 @@
 //   4. admin overrides and record corrections (audit trail)
 import { canonicalBatch, courseOf } from './courseMap'
 import { useEffect, useMemo, useState } from 'react'
-import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit, loadActiveBeds } from './hostelFeeCheck'
+import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit, loadActiveBeds, loadFeeTypeScan } from './hostelFeeCheck'
 import { loadConcessions, decideConcession, recordConcession, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { sessionOfDate } from './feeLedgerModel'
 import { LedgerLink } from './LedgerLinks'
@@ -50,6 +50,8 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
   const [beds, setBeds] = useState(null)        // Set of student ids with an active hostel bed
   const [bulk, setBulk] = useState(null)        // bulk-correction progress text
   const [busy, setBusy] = useState(null)
+  const [detect, setDetect] = useState(null)    // { mismatches, matched, noData } | { error }
+  const [conf, setConf] = useState('All')
   const [typeDraft, setTypeDraft] = useState({})
   const [status, setStatus] = useState('pending')
   const [nonce, setNonce] = useState(0)
@@ -61,6 +63,7 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
     const set = f => v => { if (live) f(v) }
     scanBedConflicts(students).then(set(setBed)).catch(e => set(setBed)({ rows: [], error: e.message }))
     loadConcessions().then(set(setConc))
+    loadFeeTypeScan({ students, courseRows: adm_course_fees, flatRows: adm_flat_fees }).then(set(setDetect)).catch(e => set(setDetect)({ mismatches: [], matched: 0, noData: 0, error: e.message }))
     loadWrongRateScan({ students, courseRows: adm_course_fees, flatRows: adm_flat_fees, session }).then(set(setWrong)).catch(e => set(setWrong)({ issues: [], reviewed: 0, error: e.message }))
     loadHostelAudit().then(set(setAudit))
     loadActiveBeds().then(set(setBeds))
@@ -102,6 +105,30 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
     setBusy(null); reload()
   }
 
+  const detected = (detect?.mismatches || []).filter(x => conf === 'All' || x.confidence === conf)
+  const applyDetected = async (x, quiet = false) => {
+    if (!quiet && !window.confirm(`Change ${x.student.name}'s hostel type from ${x.recorded} to ${x.detected}?\n\n${x.evidence.join('; ')}.\n\nThe corrected type applies to every month, so their dues are recalculated.`)) return false
+    await fixHostelType(x.student, x.detected, me, `Auto-detected from payments: ${x.evidence.join('; ')}`)
+    return true
+  }
+  const applyOne = async x => {
+    setBusy('dt' + x.student.gcc_no)
+    try { if (await applyDetected(x)) reload() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const applyHigh = async () => {
+    const list = (detect?.mismatches || []).filter(x => x.confidence === 'high')
+    if (!list.length) { alert('No high-confidence cases to apply.'); return }
+    if (!window.confirm(`Apply the detected hostel type to ${list.length} student(s) where the evidence is strong (4+ points, nothing for the recorded type)?\n\nEach correction applies to every month and is audited. Medium-confidence cases are not touched.`)) return
+    let done = 0, failed = 0
+    for (const x of list) {
+      setBulk(`Applying ${done + failed + 1} of ${list.length}…`)
+      try { await applyDetected(x, true); done++ } catch { failed++ }
+    }
+    setBulk(null)
+    alert(`${done} student(s) corrected${failed ? `, ${failed} failed — try those one by one` : ''}.`)
+    reload()
+  }
   const suspects = wrong?.suspects || []
   const hasBed = st => beds ? beds.has(String(st.id)) : false
   const correctOne = async (x, quiet = false) => {
@@ -130,7 +157,8 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
   }
 
   const kpis = [
-    ['Likely wrong type', wrong ? suspects.length : null, 'from payments', '#FDE68A'],
+    ['Auto-detected', detect ? (detect.mismatches || []).length : null, detect ? `${(detect.mismatches || []).filter(x => x.confidence === 'high').length} high confidence` : '', '#FDE68A'],
+    ['Likely wrong type', wrong ? suspects.length : null, 'this session', '#FDE68A'],
     ['Record ≠ hostel bed', bed?.rows?.length, 'students', '#FDBA74'],
     ['Awaiting approval', pending.length, inr(pending.reduce((s, c) => s + Number(c.shortfall || 0), 0)), '#FCD34D'],
     ['Paid at wrong rate', wrong?.issues?.length, inr((wrong?.issues || []).reduce((s, u) => s + u.shortBy, 0)) + ' short', '#FCA5A5'],
@@ -155,6 +183,30 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
       </div>
 
       {conc?.setupNeeded && <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412', fontSize: 13 }}>⚙️ {CONCESSIONS_SETUP_MSG}</div>}
+
+      <Section icon="🔎" label="Auto-detected fee type" title="Fee type detected from payments" count={detect?.mismatches?.length || 0}
+        sub="Reads each active student's recent payments (the type each was charged as, whether the amount equals one type's rate exactly) and their hostel bed, then flags students whose recorded type disagrees. Concessions, custom flat fees and part payments are ignored."
+        action={<span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <select style={inp} value={conf} onChange={e => setConf(e.target.value)} aria-label="Confidence filter"><option>All</option><option value="high">High confidence</option><option value="medium">Medium confidence</option></select>
+          <button style={btn('#1e3a6e')} disabled={!!bulk || !(detect?.mismatches || []).some(x => x.confidence === 'high')} onClick={applyHigh}>{bulk || 'Apply all high-confidence'}</button>
+        </span>}>
+        {!detect && <div style={{ color: '#64748b', padding: '8px 0' }}>Reading payments…</div>}
+        {detect?.error && <div style={{ color: '#b42318' }}>{detect.error}</div>}
+        {detect && !detect.error && detect.mismatches.length === 0 && <div style={{ color: '#146c3a', fontWeight: 700, padding: '8px 0' }}>✓ No mismatch found. {detect.matched} student{detect.matched === 1 ? '' : 's'} confirmed by their payments, {detect.noData} with no usable payment evidence yet.</div>}
+        {detected.map(x => (
+          <div key={x.student.gcc_no} style={row}>
+            <div style={{ flex: '2 1 280px' }}>
+              <b><LedgerLink gcc={x.student.gcc_no}>{x.student.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{x.student.gcc_no} · {courseOf(x.student) !== 'Unassigned' ? courseOf(x.student) : '—'}</span>
+              <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>{x.evidence.join(' · ')}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TypePill t={x.recorded} /><span aria-hidden>→</span><TypePill t={x.detected} />
+              <span style={{ fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: '2px 9px', color: x.confidence === 'high' ? '#146c3a' : '#9a5b00', background: x.confidence === 'high' ? '#e7f6ec' : '#fff4dc' }}>{x.confidence === 'high' ? 'HIGH' : 'MEDIUM'}</span>
+              <button disabled={busy === 'dt' + x.student.gcc_no || !!bulk} style={btn('#9a3412')} onClick={() => applyOne(x)}>Apply {x.detected}</button>
+            </div>
+          </div>
+        ))}
+      </Section>
 
       <Section icon="🛏️" label="Record vs hostel bed" title="Record doesn't match the hostel" count={bed?.rows?.length || 0}
         sub="Active students recorded as Day Scholar / Day Boarder who hold a hostel bed, or recorded as Boarder without one. Their fees are charged at the wrong rate until the record is corrected."

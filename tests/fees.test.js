@@ -481,3 +481,22 @@ test('portal: an approved application becomes an Admitted admissions row; the on
   assert.equal(row.gcc_no, 2750); assert.equal(row.status, 'Admitted'); assert.equal(row.gender, 'Female'); assert.equal(row.batch, 'Udaan'); assert.match(row.remarks, /AP26-0001/); assert.equal(row.address, 'Road 1, Thoubal, Manipur, 795138')
   assert.deepEqual(feeFromPortal(p), { amount: 6000, payDate: '2026-10-20', payMode: 'Online (Razorpay)', txnRef: 'pay_X1' })
 })
+
+import { netRows, monthlyOwed } from '../src/lib/monthwiseDues.js'
+
+test('netRows: write-offs come off oldest month first and concessions come off the fee', () => {
+  const row = (month, o) => ({ month, year: 2026, expected: 5500, waived: 0, paidAmt: 0, due: 5500, status: 'due', ...o })
+  const reg = { writtenOff: 7000, rows: [row('April'), row('May'), row('June', { waived: 2500, paidAmt: 3000, due: 0, status: 'paid' })] }
+  const n = netRows(reg)
+  assert.deepEqual(n.map(r => r.due), [0, 4000, 0])
+  assert.equal(n[2].expected, 3000)
+  // the sum of the net months equals the ledger's own balance (total due less write-offs)
+  assert.equal(n.reduce((s, r) => s + r.due, 0), 11000 - 7000)
+  // nothing written off → rows unchanged for dues
+  assert.deepEqual(netRows({ rows: [row('April')] }).map(r => r.due), [5500])
+})
+
+test('monthlyOwed matches the register for a part-paid started month', () => {
+  const r = { status: 'short', expected: 5500, paidAmt: 2000, waived: 0, due: 3500 }
+  assert.equal(monthlyOwed(r).due, r.due)
+})

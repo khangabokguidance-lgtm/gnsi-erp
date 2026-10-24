@@ -76,7 +76,7 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
     const byMonth = await sessionRates(s, session, history.get(g), rateOf)
     const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    const reg = buildRegister(s, entries, session, byMonth, new Date(), standingAll.conc.get(g) || [],
+    const reg = buildRegister(s, entries, session, byMonth, undefined, standingAll.conc.get(g) || [],
       writtenOffFor(g, standingAll.refunds.get(g) || [], session, sessionOfDate))
     const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor)
     // balance = this session's dues + earlier sessions' dues brought forward

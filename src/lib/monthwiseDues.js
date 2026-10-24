@@ -24,3 +24,13 @@ export function writeOffShares(reg, writtenOff) {
   const adm = Math.min(left, Math.max(0, reg?.admission?.due || 0))
   return { byMonth, adm: adm > 0 ? adm : 0 }
 }
+
+// A register's month rows as the Fee Dashboard counts them: expected is net of concessions, and dues written off
+// are taken off oldest month first. Lets the Month-wise Dues / Monthly Ledger books agree with the dashboard.
+export function netRows(reg) {
+  const cuts = writeOffShares(reg, reg?.writtenOff).byMonth
+  return (reg?.rows || []).map(r => {
+    const cut = cuts.get(`${r.month}|${r.year}`) || 0
+    return { ...r, expected: Math.max(0, r.expected - (r.waived || 0)), due: Math.max(0, r.due - cut) }
+  })
+}

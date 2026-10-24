@@ -18,7 +18,7 @@ export default {
     { name: 'Anomalies', what: 'Unusual payments flagged for review (admin).' },
     { name: 'Approvals', what: 'Revert / delete requests that a DIFFERENT admin must approve (admin).' },
     { name: 'Low Fees', what: 'Payments below the standard fee that need a decision: approve the concession or refuse it (admin).' },
-    { name: 'Hostel Issues', what: 'Students whose hostel type does not match their hostel bed, which changes the fee (admin).' },
+    { name: 'Hostel Issues', what: 'Students whose hostel type (Boarder / Day Boarder / Day Scholar) looks wrong: detected automatically from their payments and hostel bed, or not matching the hostel bed (admin).' },
     { name: 'Digest', what: '7- or 30-day summary of corrections, reverts and concessions with red flags (admin).' },
     { name: 'Fee Controls', what: 'Accounting checks (payments without a reference, reversals without a reason, entries after Day Close, self-approved refunds), the numbered receipt series, and the rules behind them (admin).' },
     { name: 'Data Health', what: 'Students with missing or wrong data (GCC, course, hostel type, phone, photo) (admin).' },
@@ -52,6 +52,13 @@ export default {
       'End of day: open Fees → Day Close, count the cash, enter it and save the closing.',
       'To report: open Student Fee Ledger → "🧾 Month-wise Collection", pick the month, press "🖨️ Print month", sign it and submit it at the Founder\'s Office.',
     ], tip: 'Enter every receipt in the ERP on the day you collect it. The collection report is generated from these entries, so anything missing will not appear.' },
+    { title: 'Check and correct a student\'s fee type (auto-detect)', body: [
+      'Open Fees → Hostel Issues (admin). The first card, "Fee type detected from payments", lists active students whose recorded type disagrees with what they actually paid.',
+      'For each student it shows the recorded type, the detected type, a HIGH or MEDIUM tag and the evidence, for example "3 of the last 3 payments charged as Boarder" or "holds an active hostel bed".',
+      'Check the student, then press "Apply <type>" to correct the record. The new type applies to every month and the change is saved in the audit log.',
+      'Press "Apply all high-confidence" to correct only the strong cases in one go. Medium cases are never applied automatically.',
+      'The same warning also appears at the top of a student\'s ledger (Student Fee Ledger) when their payments point to another type.',
+    ], tip: 'Concessions, part payments and custom flat fees are ignored. If a student really changed type mid-session, use the hostel type change on the student instead, so earlier months keep the old rate.' },
     { title: 'Find who owes money', body: [
       'Open Fees → Dashboard.',
       'Look at "Month-wise Dues": it runs from January up to this month. Tap a month to see the students who owe, with their amounts.',
