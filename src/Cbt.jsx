@@ -6,6 +6,8 @@ import { cbtStore, newTestId } from './cbtStore'
 import CbtBuilder from './CbtBuilder'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { flatQuestions, keyStatus, resultRows, resultsCSV } from './lib/cbtEngine'
+import { listOnline, onlineAttempts, fetchOnlineTest, deleteOnlineAttempt, statusOf } from './cbtRemote'
+import { PublishModal, OnlineTab } from './CbtOnline'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -15,7 +17,7 @@ const download = (name, blob) => {
 const fileSafe = s => String(s || 'test').replace(/[^\w.-]+/g, '-')
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 
-export default function Cbt({ perms }) {
+export default function Cbt({ perms, currentUser }) {
   const canEdit = perms ? !!(perms.add && perms.edit) : true
   const [tab, setTab] = useState('tests')
   const [tests, setTests] = useState(null)
@@ -28,16 +30,30 @@ export default function Cbt({ perms }) {
   const [resTest, setResTest] = useState('')
   const [attempts, setAttempts] = useState([])
   const [msg, setMsg] = useState('')
+  const [online, setOnline] = useState(null)       // published tests (server), or null while loading
+  const [onlineErr, setOnlineErr] = useState('')
+  const [pub, setPub] = useState(null)             // test being published
+  const [resFull, setResFull] = useState(null)     // the test (with key) the Results tab is showing
   const flash = t => { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   const load = useCallback(async () => setTests(await cbtStore.listTests()), [])
+  const loadOnline = useCallback(async () => {
+    try { setOnline(await listOnline()); setOnlineErr('') } catch (e) { setOnline([]); setOnlineErr(e.message) }
+  }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the saved tests from this browser once
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); loadOnline() }, [load, loadOnline])
   useEffect(() => {
     let live = true
-    if (tab === 'results' && resTest) cbtStore.listAttempts(resTest).then(a => { if (live) setAttempts(a) })
+    if (tab === 'results' && resTest) {
+      const row = online?.find(o => o.id === resTest)
+      Promise.all([
+        cbtStore.listAttempts(resTest).then(a => a.map(x => ({ ...x, source: 'local' }))),
+        row ? onlineAttempts(resTest, row.name).catch(() => []) : [],
+        cbtStore.getTest(resTest).then(t => t || (row ? fetchOnlineTest(resTest).catch(() => null) : null)),
+      ]).then(([l, o, t]) => { if (live) { setAttempts([...o, ...l]); setResFull(t) } })
+    }
     return () => { live = false }
-  }, [tab, resTest, done])
+  }, [tab, resTest, done, online])
 
   const openStart = async t => { setStart(t); setCand({ name: '', roll: '' }); setLive((await cbtStore.listAttempts(t.id)).filter(a => a.state === 'inprogress')) }
   const launch = () => {
@@ -70,7 +86,7 @@ export default function Cbt({ perms }) {
   }
   if (done) return <CbtResult test={done.test} attempt={done.attempt} admin={done.admin} closeLabel={done.admin ? 'Back' : 'Finish'} onClose={() => setDone(null)} />
 
-  const test = tests?.find(t => t.id === resTest)
+  const test = resFull && resFull.id === resTest ? resFull : tests?.find(t => t.id === resTest)
   const rows = test ? resultRows(test, attempts) : []
 
   return (
@@ -84,7 +100,7 @@ export default function Cbt({ perms }) {
             <p>Computer based tests in the SSC / TCS style: colour-coded palette, review marking, countdown timer, English and Meitei Mayek. Works on desktop, tablet and phone.</p>
           </div>
           <div className="cbt-tabs" role="tablist">
-            {[['tests', '📝 Tests'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
           </div>
         </div>
       </div>
@@ -107,11 +123,13 @@ export default function Cbt({ perms }) {
                 <div style={{ margin: '8px 0', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className="tag" style={{ background: ks.complete ? '#e7f6ec' : '#fff4dc', color: ks.complete ? '#146c3a' : '#9a5b00' }}>{ks.complete ? 'Answer key complete' : `Key ${ks.set}/${ks.total}`}</span>
                   {flatQuestions(t).some(q => q.textMm) && <span className="tag" style={{ background: '#eef2f9', color: '#1e3a6e' }}>English + Meitei Mayek</span>}
+                  {online?.find(o => o.id === t.id) && (() => { const st = statusOf(online.find(o => o.id === t.id)); return <span className="tag" style={{ background: st.tone[0], color: st.tone[1] }}>🌐 {st.label}</span> })()}
                 </div>
                 <div className="cbt-actions">
                   <button className="btn gold" onClick={() => openStart(t)}>▶ Start exam</button>
                   {canEdit && <button className="btn" onClick={() => setBuilder(t)}>✏️ Edit / key</button>}
                   <button className="btn" onClick={() => { setResTest(t.id); setTab('results') }}>📊 Results</button>
+                  {canEdit && <button className="btn navy" onClick={() => setPub(t)}>🌐 Online</button>}
                   <button className="btn" onClick={() => exportTest(t)}>📤 Export</button>
                   {canEdit && <button className="btn red" onClick={() => remove(t)}>🗑</button>}
                 </div>
@@ -123,11 +141,19 @@ export default function Cbt({ perms }) {
 
       {tab === 'tests' && builder && <CbtBuilder initial={builder === 'new' ? null : builder} onSave={saveTest} onCancel={() => setBuilder(null)} />}
 
+      {tab === 'online' && <OnlineTab rows={online} err={onlineErr} canEdit={canEdit} localIds={new Set((tests || []).map(t => t.id))} onReload={loadOnline} flash={flash}
+        onResults={id => { setResTest(id); setTab('results') }}
+        onDownload={async id => { const t = await fetchOnlineTest(id).catch(() => null); if (t) { await cbtStore.saveTest({ ...t, online: undefined }); await load(); flash('Copied to this computer.') } else flash('Could not download it.') }} />}
+
+      {pub && <PublishModal test={pub} row={online?.find(o => o.id === pub.id) || null} by={currentUser?.name || currentUser?.username || ''} onClose={() => setPub(null)} onChanged={loadOnline} flash={flash} />}
+
       {tab === 'results' && <>
         <div className="card">
           <label><span className="lbl">Test</span>
             <select className="in" style={{ maxWidth: 420 }} value={resTest} onChange={e => setResTest(e.target.value)}>
-              <option value="">— choose a test —</option>{tests?.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">— choose a test —</option>
+              {tests?.map(t => <option key={t.id} value={t.id}>{t.name}{online?.some(o => o.id === t.id) ? ' (online)' : ''}</option>)}
+              {online?.filter(o => !tests?.some(t => t.id === o.id)).map(o => <option key={o.id} value={o.id}>{o.name} (online only)</option>)}
             </select></label>
         </div>
         {test && (
@@ -137,18 +163,19 @@ export default function Cbt({ perms }) {
               <button className="btn gold" disabled={!rows.length} onClick={() => download(`${fileSafe(test.name)}-results.csv`, new Blob([resultsCSV(test, attempts)], { type: 'text/csv;charset=utf-8' }))}>📊 Export CSV</button>
             </div>
             <div className="tbl"><table>
-              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th /></tr></thead>
+              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>Where</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th /></tr></thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={11} className="muted">No attempts yet.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={12} className="muted">No attempts yet.</td></tr>}
                 {rows.map(({ attempt: a, g, submitted, took, rank }) => (
                   <tr key={a.id}>
                     <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b></td><td>{a.candidate.roll || '—'}</td>
+                    <td><span className="tag" style={{ background: a.source === 'online' ? '#eef2f9' : '#f1f5f9', color: a.source === 'online' ? '#1e3a6e' : '#64748b' }}>{a.source === 'online' ? '🌐 Online' : 'This computer'}</span></td>
                     <td><span className="tag" style={{ background: submitted ? '#e7f6ec' : '#fff4dc', color: submitted ? '#146c3a' : '#9a5b00' }}>{submitted ? 'Submitted' : 'In progress'}</span></td>
                     <td>{when(a.startedAt)}</td><td className="num">{took ?? '—'}</td>
                     <td className="num"><b>{g.marks}</b> / {g.max}</td><td className="num">{g.correct}</td><td className="num">{g.wrong}</td><td className="num">{a.switches || 0}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {submitted && <button className="btn" onClick={() => setDone({ test, attempt: a, admin: true })}>View</button>}{' '}
-                      {canEdit && <button className="btn red" onClick={async () => { if (window.confirm(`Delete ${a.candidate.name}'s attempt?`)) { await cbtStore.deleteAttempt(a.id); setAttempts(await cbtStore.listAttempts(test.id)) } }}>🗑</button>}
+                      {canEdit && <button className="btn red" onClick={async () => { if (window.confirm(`Delete ${a.candidate.name}'s attempt?${a.source === 'online' ? ' The roll number can then start the online exam again.' : ''}`)) { try { if (a.source === 'online') await deleteOnlineAttempt(a.id); else await cbtStore.deleteAttempt(a.id) } catch (e) { flash(e.message); return } setDone(null); setResTest(''); setTimeout(() => setResTest(test.id), 0) } }}>🗑</button>}
                     </td>
                   </tr>
                 ))}

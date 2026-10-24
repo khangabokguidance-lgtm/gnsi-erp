@@ -7,7 +7,8 @@ export default {
   before: [
     'Have the question paper as a Word file (.docx): English, and the Meitei Mayek version if you want both languages. Questions should start like "Q1." and have options (A) (B) (C) (D).',
     'Have the answer key ready. The papers do not carry it, so you type or paste it once.',
-    'Use a computer with a modern browser. Tests and results are kept in that browser on that computer; use Export to move a test to another computer.',
+    'Use a computer with a modern browser. Tests built here are kept in that browser on that computer (use Export to move one). For candidates at home, publish the test online — see "Let candidates take the exam from anywhere".',
+    'Online exams need a one-time database update: the administrator runs supabase/migrations/20261034_cbt_online_exam.sql in Supabase → SQL editor.',
   ],
   tabs: [
     { name: '📝 Tests', what: 'Your tests. Build a new one, start it for a candidate, edit the key, export or delete.' },
@@ -58,6 +59,18 @@ export default {
       ],
     },
     {
+      title: 'Let candidates take the exam from anywhere (online exam)',
+      body: [
+        'On the test card press "🌐 Online". Set an access code (a 6-digit code is made for you, or clear it for none) and, if you want, when the exam opens and closes. Press "Publish online".',
+        'Copy the invitation (or press WhatsApp) and send the link and code to the candidates. The link looks like your-site/exam?t=… and works on any phone or computer; no login is needed.',
+        'A candidate enters their name and roll number (and the code), reads the instructions and begins. The clock is the server\'s and keeps running if they close the page. Answers are saved to the server as they go. If the page closes or the internet drops, opening the same link on the same device continues the exam.',
+        'The server marks the attempt when it is submitted, or when the time ends. Each roll number gets one attempt; to let someone start again, delete their attempt under Results.',
+        'Open the "🌐 Online" tab to see all online exams: copy the invitation, see how many attempts are submitted, Close or Reopen an exam, or remove it. A candidate who started before the closing time keeps their full time.',
+        'Results for an online exam appear in the Results tab (marked 🌐 Online), from any office computer, even one that did not build the test. Use "⬇ To this computer" to copy an online test to the computer you are on.',
+      ],
+      tip: 'The answer key stays on the server and is never sent to candidates. "Show the score" and "Show the correct answers" (in the test settings) decide what a candidate sees after submitting.',
+    },
+    {
       title: 'Move a test to another computer',
       body: [
         'On the test card press "📤 Export". A file ending in .cbt.json is downloaded (figure pictures included).',
@@ -77,7 +90,9 @@ export default {
     'Clearing browser data between the exam and the export → the results are lost; export the CSV first.',
   ],
   faq: [
-    { q: 'Where are the tests and results stored?', a: 'In the browser on the computer used (IndexedDB). They are not on the server, so other computers do not see them until you Export and Import.' },
+    { q: 'Where are the tests and results stored?', a: 'A test built here is kept in this browser (IndexedDB) and its in-office results stay on that computer. A test published online, and every online attempt, is on the server and shows on any office computer.' },
+    { q: 'A candidate says the link says the exam is not valid.', a: 'The test must be published (Online button) and not removed. A closed or not-yet-open exam says so on the page.' },
+    { q: 'A candidate cannot start: the roll number is already used.', a: 'One attempt per roll number. If it is the same person, they should open the link on the device they started on. To allow a fresh start, delete their attempt under Results.' },
     { q: 'Can candidates see the correct answers?', a: 'Only if "Show the correct answers in the review" is ticked when you make the test. Staff always see them under Results → View.' },
     { q: 'Why is a figure question showing only the picture?', a: 'The options are drawn inside the picture, so the screen shows the picture with radio buttons A to D.' },
   ],

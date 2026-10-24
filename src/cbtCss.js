@@ -150,6 +150,7 @@ export const CBT_CSS = `${MAYEK_FACE}
 .cbt-center{max-width:780px;margin:0 auto;padding:22px 16px 30px;overflow:auto;flex:1;width:100%}
 .cbt-center .panel{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 18px 40px -30px rgba(19,42,79,.5)}
 .cbt-center h3{font-size:20px}
+.cbt-net{position:fixed;left:0;right:0;top:0;z-index:3250;background:#b45309;color:#fff;font-weight:700;font-size:13px;text-align:center;padding:8px 12px}
 .cbt-toast{position:fixed;left:50%;top:84px;transform:translateX(-50%);background:#b42318;color:#fff;padding:10px 18px;border-radius:10px;font-weight:700;z-index:3200;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.3);max-width:92vw;text-align:center}
 .cbt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
 .cbt-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
