@@ -1,5 +1,14 @@
 -- Online exam: the GCC lookup also returns the father's name, so the landing page can show it (read-only) next to the
--- name and class as another check that the candidate found themselves. Run after 20261039_cbt_gcc_identity.sql.
+-- name and class as another check that the candidate found themselves. Run AFTER 20261039_cbt_gcc_identity.sql
+-- (which now includes this already — 20261040 is only kept so databases that ran the earlier 20261039 can catch up).
+
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_name = 'cbt_attempts' and column_name = 'phone_verified') then
+    raise exception 'Run 20261039_cbt_gcc_identity.sql first, then this one.';
+  end if;
+end $$;
+
+drop function if exists public.cbt_lookup(text, text, text);   -- the old overload makes calls ambiguous
 
 create or replace function public.cbt_lookup(p_test text, p_code text, p_q text, p_parent text default null)
 returns jsonb

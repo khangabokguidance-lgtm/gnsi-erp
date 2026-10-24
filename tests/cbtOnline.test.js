@@ -96,3 +96,9 @@ test('a result whose answers are held back until the exam closes shows no review
   assert.equal(open.test.showAnswers, true)
   assert.equal(open.test.sections[0].questions[0].answer, 'A')
 })
+
+test('two versions of an exam function in the database gives a clear setup message', () => {
+  const msg = friendly({ code: 'PGRST203', message: 'Could not choose the best candidate function between: public.cbt_lookup(...)' })
+  assert.match(msg, /20261039/)
+  assert.match(friendly(new Error('Could not choose the best candidate function between: x')), /migrations/)
+})
