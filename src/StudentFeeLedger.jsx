@@ -10,6 +10,7 @@ import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
 import FeeDayBook from './FeeDayBook'
 import FeeMonthlyLedger from './FeeMonthlyLedger'
+import FeeMonthCollection from './FeeMonthCollection'
 import ExpenseDayBook from './ExpenseDayBook'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
@@ -392,7 +393,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const [printAll, setPrintAll] = useState(false)
   const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
   const [notFound, setNotFound] = useState('')
-  const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly'
+  const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly' | 'monthwise'
 
   useEffect(() => {
     // Every student, paged past the 1000-row cap so none are missing from search.
@@ -454,7 +455,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
         ]} />
 
       <div role="tablist" aria-label="Fee ledger books" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 16, background: '#fff', borderRadius: 999, border: '1px solid #e6dcc3', boxShadow: '0 8px 24px -18px rgba(11,30,61,.4)', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }}>
-        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'],
+        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'], ['monthwise', '🧾 Month-wise Collection'],
           // Expenditure lives in Accounts — only shown to users who can open Accounts.
           ...(canSeeAccounts ? [['expense', '💸 Expenditure Day Book'], ['register', '⚖️ Income & Expenditure']] : [])].map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
@@ -468,6 +469,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
       {certOpen && selected && <CertificateDialog student={selected} onClose={() => setCertOpen(false)} />}
       {tab === 'daybook' && <FeeDayBook students={students} />}
       {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
+      {tab === 'monthwise' && <FeeMonthCollection students={students} />}
       {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
       {tab === 'register' && canSeeAccounts && <IncomeExpenditureRegister />}
 
