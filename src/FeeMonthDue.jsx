@@ -105,7 +105,7 @@ export default function FeeMonthDue({ students }) {
                 <thead><tr><th>Month</th><th className="num">Students owing</th><th className="num">Outstanding ₹</th></tr></thead>
                 <tbody>
                   {totals.map((t, i) => {
-                    const n = items.filter(x => x.reg.rows[i].due > 0).length
+                    const n = t.dueCount
                     return (
                       <tr key={t.month} onClick={() => setMonth(i)} style={{ cursor: 'pointer', background: i === month ? '#f3f6fd' : undefined, fontWeight: i === month ? 800 : 400 }}>
                         <td>{t.month} {t.year}</td><td className="num">{n || '—'}</td><td className="num" style={{ color: t.outstanding ? '#b42318' : undefined }}>{t.outstanding ? fmt(t.outstanding) : '—'}</td>

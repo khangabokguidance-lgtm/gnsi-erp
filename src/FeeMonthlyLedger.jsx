@@ -11,6 +11,7 @@ import { monthTotals, printMonthlyLedger, exportMonthlyExcel } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
 import { LedgerLink } from './LedgerLinks'
 import { canonicalBatch, courseOf } from './courseMap'
+import { netRows } from './lib/monthwiseDues'
 
 // Course for the filters: the resolved course, or the saved one if unknown.
 const crs = s => { const c = courseOf(s); return c === 'Unassigned' ? (s.course || '') : c }
@@ -20,6 +21,8 @@ const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')
 const CELL_TITLE = { paid: 'Paid', advance: 'Paid in advance', short: 'Short-paid', due: 'Due', upcoming: 'Upcoming', before: 'Before admission' }
 
 function Cell({ r }) {
+  // A due month whose amount was written off (Refunds & Transfers) is settled.
+  if ((r.status === 'due' || r.status === 'short') && r.due <= 0) return <span className="fbk-cell paid" title={`${r.month} ${r.year} · dues written off`}>✓ w/o</span>
   const txt = r.status === 'due' ? fmt(r.due) : ['paid', 'advance', 'short'].includes(r.status) ? fmt(r.paidAmt) : r.status === 'upcoming' ? '·' : '—'
   const tip = `${r.month} ${r.year} · ${CELL_TITLE[r.status]}${r.expected ? ` · fee ₹${fmt(r.expected)}` : ''}${r.shortBy ? ` · short by ₹${fmt(r.shortBy)}` : ''}${r.paid.length ? ` · ${r.paid.map(p => p.receipt).filter(Boolean).join(', ')}` : ''}`
   return <span className={`fbk-cell ${r.status}`} title={tip}>{r.status === 'due' ? '⚠ ' : r.status === 'advance' ? '↑ ' : ''}{txt}</span>
@@ -135,7 +138,7 @@ export default function FeeMonthlyLedger({ students }) {
                     <tr key={s.gcc_no}>
                       <td className="stk"><LedgerLink gcc={s.gcc_no} style={{ fontWeight: 700 }}>{s.name}</LedgerLink><div className="muted" style={{ fontSize: 11 }}>GCC-{s.gcc_no}{s.batch ? ` · ${s.batch}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}</div></td>
                       <td>{reg.admission ? <span className={`fbk-cell ${reg.admission.due ? 'due' : 'paid'}`} title={`Admission fee ₹${fmt(reg.admission.expected)}`}>{reg.admission.due ? `⚠ ${fmt(reg.admission.due)}` : fmt(reg.admission.paidAmt)}</span> : <span className="fbk-cell before">—</span>}</td>
-                      {reg.rows.map(r => <td key={r.month}><Cell r={r} /></td>)}
+                      {netRows(reg).map(r => <td key={r.month}><Cell r={r} /></td>)}
                       <td className="num" style={{ color: '#146c3a', fontWeight: 700 }}>{fmt(reg.totalPaid)}</td>
                       <td className="num" style={{ color: reg.totalDue + (arrears || 0) ? '#b42318' : '#146c3a', fontWeight: 800 }}>
                         {fmt(reg.totalDue + (arrears || 0))}

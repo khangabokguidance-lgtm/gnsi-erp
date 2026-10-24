@@ -5,6 +5,7 @@
 import { gccStr } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries } from './feeLedgerModel'
 import { instNameHTML } from './systemSettings'
+import { netRows } from './lib/monthwiseDues'
 
 export const HEAD = { admission: 'Admission', item: 'Kit / Items', advance: 'Advance', course: 'Course Fee', flat: 'Flat Fee' }
 export const localISO = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
@@ -80,19 +81,20 @@ export const cellText = r => r.status === 'paid' || r.status === 'advance' || r.
 
 export function monthTotals(items) {
   const months = items[0]?.reg.rows.map(r => ({ month: r.month, year: r.year })) || []
+  const net = items.map(x => netRows(x.reg))   // outstanding is net of write-offs, as on the Fee Dashboard
   return months.map((m, i) => ({
     ...m,
     collected: items.reduce((s, x) => s + x.reg.rows[i].paidAmt, 0),
-    outstanding: items.reduce((s, x) => s + x.reg.rows[i].due, 0),
+    outstanding: net.reduce((s, rows) => s + rows[i].due, 0),
     paidCount: items.filter(x => ['paid', 'advance', 'short'].includes(x.reg.rows[i].status)).length,
-    dueCount: items.filter(x => x.reg.rows[i].status === 'due').length,
+    dueCount: net.filter(rows => rows[i].due > 0).length,
   }))
 }
 
 // Students owing fee for one month (index into the April→March rows), biggest
 // due first. "due" = nothing paid yet; "short" = part-paid.
 export function monthDueList(items, i) {
-  return items.map(x => ({ x, r: x.reg.rows[i] })).filter(({ r }) => r.due > 0).sort((a, b) => b.r.due - a.r.due)
+  return items.map(x => ({ x, r: netRows(x.reg)[i] })).filter(({ r }) => r.due > 0).sort((a, b) => b.r.due - a.r.due)
 }
 
 export function printMonthDue(list, session, label, scope) {
