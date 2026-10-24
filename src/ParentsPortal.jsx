@@ -1,4 +1,5 @@
 import { authFetch } from './apiFetch'
+import { pickNextDue } from './lib/portalPay'
 import { printFeeReceipt as printPremiumFeeReceipt, receiptDocument, openReceiptWindow } from './premiumReceipt';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { useState, useCallback, useEffect } from 'react';
@@ -1092,11 +1093,20 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // fee_type) that the flattened `type`/`mode`/`amount` shape below
       // doesn't carry, and re-deriving them from the normalized string
       // (e.g. parsing "Flat Fee — June 2026" back apart) would be fragile.
-      const [{ data: admRows }, { data: flatRows }, { data: courseRows }] = await Promise.all([
+      let [{ data: admRows }, { data: flatRows }, { data: courseRows }] = await Promise.all([
         supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false),
         supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false),
         supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false),
       ]);
+
+      // A parent is not staff, so the private fee tables can answer with 0 rows (not an error). If the dues
+      // show money paid but nothing came back, read this student's rows through the secure function.
+      if (dues.totalPaid > 0 && !(admRows || []).length && !(flatRows || []).length && !(courseRows || []).length) {
+        try {
+          const { data: pub, error: pubErr } = await supabase.rpc('public_fee_rows', { p_gcc: gcc });
+          if (!pubErr && pub) { admRows = pub.adm || []; flatRows = pub.flat || []; courseRows = pub.course || []; }
+        } catch (_) { /* function not installed — history stays empty */ }
+      }
 
       const history = [
         ...(admRows || []).map(r => ({ date: r.pay_date, type: r.description || 'Admission/Item Fee', mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no, feeType: 'adm', raw: r })),
@@ -1118,23 +1128,6 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // so this can't just send the total: it has to target one concrete due.
   // Priority: admission fee (one-time, usually the first thing owed) →
   // earliest unpaid flat-fee month → earliest unpaid course-fee month.
-  const pickNextDue = (dues) => {
-    if (dues.admission && !dues.admission.paid && dues.admission.due > 0) {
-      return { kind: 'admission', amount: dues.admission.due };
-    }
-    const unpaidFlat = (dues.flatFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
-    if (unpaidFlat.length) {
-      const i = unpaidFlat[0];
-      return { kind: 'flat', amount: i.expected, for_month: i.month, year: i.year };
-    }
-    const unpaidCourse = (dues.courseFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
-    if (unpaidCourse.length) {
-      const i = unpaidCourse[0];
-      return { kind: 'course', amount: i.expected, for_month: i.month, year: i.year };
-    }
-    return null;
-  };
-
   const handlePayNow = async () => {
     if (!student || fees.status !== 'ready') return;
     // System Settings → Integrations → Razorpay switched off.

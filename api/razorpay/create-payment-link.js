@@ -64,6 +64,7 @@ export default async function handler(req, res) {
       // the `items` kind shape used in Fees.jsx.
       notes: {
         gcc: String(gcc),
+        studentName: String(studentName || '').slice(0, 80),
         kind: kind || 'course',
         for_month: for_month || '',
         year: year ? String(year) : '',
