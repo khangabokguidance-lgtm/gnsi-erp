@@ -8,7 +8,7 @@ export default {
     'Have the question paper as a Word file (.docx): English, and the Meitei Mayek version if you want both languages. Questions should start like "Q1." and have options (A) (B) (C) (D).',
     'Have the answer key ready. The papers do not carry it, so you type or paste it once.',
     'Use a computer with a modern browser. Tests built here are kept in that browser on that computer (use Export to move one). For candidates at home, publish the test online — see "Let candidates take the exam from anywhere".',
-    'Online exams need a one-time database update: the administrator runs supabase/migrations/20261034_cbt_online_exam.sql then 20261035_cbt_erp_lookup.sql (name / GCC detector), 20261036_cbt_lock_answers.sql and 20261037_cbt_hardening.sql (security limits) and 20261038_cbt_integrity.sql (one device at a time, earliest submit) 20261039_cbt_gcc_identity.sql (GCC no. + parent number identity) and 20261040_cbt_lookup_father.sql in Supabase → SQL editor.',
+    'Online exams need a one-time database update: the administrator opens supabase/cbt_online_setup.sql, copies the WHOLE file into Supabase → SQL editor and presses Run. It sets up everything (all the CBT migrations together), works on an empty database or on top of an earlier partial update, and is safe to run again after an update. If a page shows "Missing: …", this file fixes it.',
   ],
   tabs: [
     { name: '📝 Tests', what: 'Your tests. Build a new one, start it for a candidate, edit the key, export or delete.' },
