@@ -93,5 +93,5 @@ test('results are ranked, ties share a rank, in-progress attempts are listed las
   assert.deepEqual(rows.map(r => [r.attempt.id, r.rank]), [['Top', 1], ['Tie', 1], ['Low', 3], ['Live', null]])
   const csv = resultsCSV(T, [at('Asha, K', { 1: 'A' })])
   assert.match(csv, /"Asha, K"/)
-  assert.match(csv.split('\r\n')[0], /^﻿Rank,Name,Roll no\.,Status/)
+  assert.match(csv.split('\r\n')[0], /^\uFEFFRank,Name,Roll no\.,Status/)
 })
