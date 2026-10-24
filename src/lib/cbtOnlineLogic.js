@@ -70,7 +70,7 @@ export function resultView(res, test, candidate, finalAttempt = null) {
   const paper = res.test || test
   const att = res.attempt || {}
   return {
-    test: { ...paper, showResult: res.showResult !== false, showAnswers: res.showAnswers !== false, sections: joinKey(paper.sections || [], res.key || {}) },
+    test: { ...paper, showResult: res.showResult !== false, showAnswers: res.showAnswers !== false && !res.answersLater, answersLater: !!res.answersLater, sections: joinKey(paper.sections || [], res.key || {}) },
     attempt: {
       candidate, state: 'submitted', startedAt: Date.parse(att.startedAt || finalAttempt?.startedAt) || Date.now(), submittedAt: Date.parse(att.submittedAt) || Date.now(),
       answers: res.answers || finalAttempt?.answers || {}, switches: att.switches ?? finalAttempt?.switches ?? 0, autoSubmitted: !!att.autoSubmitted, score: res.score || null,

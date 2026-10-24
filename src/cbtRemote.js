@@ -48,7 +48,8 @@ export async function fetchOnlineTest(id) {
 }
 
 // ── candidate ────────────────────────────────────────────────────────────────
-const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw new Error(friendly(error)); return data }
+// Wrong code / too many tries come back as { error: 'EXAM-…: message' } (a raised error would undo the server's attempt count).
+const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw new Error(friendly(error)); if (data && !Array.isArray(data) && typeof data.error === 'string') throw new Error(friendly(data.error)); return data }
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const startExam = (id, code, name, roll, phone, gcc, parent) => rpc('cbt_start', { p_test: id, p_code: code || '', p_name: name, p_roll: roll, p_phone: phone || null, p_gcc: gcc || null, p_parent: parent || null })
 export const lookupStudent = (id, code, q) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: q })

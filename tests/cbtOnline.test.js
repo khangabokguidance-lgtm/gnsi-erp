@@ -85,3 +85,14 @@ test('the camera / shield log travels with the saved attempt and comes back on r
   const back = localAttempt({ id: 'a', startedAt: '2026-10-24T10:00:00Z', answers: {}, marked: packed, current: 1, lang: 'en', switches: 0 }, { id: 't', name: 'T', sections: [{ questions: [{ no: 1 }] }] }, { name: 'N', roll: 'r' })
   assert.deepEqual(back.proctor, x)
 })
+
+test('a result whose answers are held back until the exam closes shows no review and says so', () => {
+  const paper = { id: 't', name: 'T', sections: [{ id: 's', questions: [{ no: 1 }] }] }
+  const later = resultView({ showResult: true, showAnswers: true, answersLater: true, score: { marks: 1 }, answers: { 1: 'A' }, key: null, test: null, attempt: { startedAt: '2026-10-24T10:00:00Z', submittedAt: '2026-10-24T10:30:00Z' } }, paper, { name: 'N', roll: 'r' })
+  assert.equal(later.test.answersLater, true)
+  assert.equal(later.test.showAnswers, false)
+  assert.ok(!later.test.sections[0].questions[0].answer, 'no key put back')
+  const open = resultView({ showResult: true, showAnswers: true, answersLater: false, score: { marks: 1 }, answers: { 1: 'A' }, key: { 1: 'A' }, test: paper, attempt: {} }, paper, { name: 'N', roll: 'r' })
+  assert.equal(open.test.showAnswers, true)
+  assert.equal(open.test.sections[0].questions[0].answer, 'A')
+})

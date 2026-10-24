@@ -425,6 +425,7 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
           {!visible ? (
             <p style={{ fontSize: 15, lineHeight: 1.6 }}>Your answers have been recorded. The result will be declared by the institute.</p>
           ) : <>
+            {!admin && test.answersLater && <p style={{ background: '#eef2f9', border: '1px solid #c9d6ec', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>🔒 The correct answers and the question review will be shown after the exam closes. Open this link again later to see them.</p>}
             {!complete && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>⚠️ The answer key is {ks.set ? `set for ${ks.set} of ${ks.total} questions` : 'not set yet'}, so this score is {ks.set ? 'partial' : 'not available'}. Add the key under CBT Exam → Edit, then open the result again.</p>}
             <div className="cbt-stats">
               {stat('Score', known ? `${g.marks} / ${g.max}` : '—', '#146c3a')}

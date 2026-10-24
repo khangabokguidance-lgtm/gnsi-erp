@@ -148,7 +148,8 @@ export function resultRows(test, attempts) {
   return rows
 }
 
-const csvCell = v => { const t = String(v ?? ''); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
+// A name typed into the public exam form must not turn into a spreadsheet formula (=, +, -, @ at the start).
+const csvCell = v => { let t = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = `'${t}`; return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
 export function resultsCSV(test, attempts) {
   const head = ['Rank', 'Name', 'Roll no.', 'GCC no.', 'Parent no.', 'Status', 'Started', 'Submitted', 'Minutes', 'Marks', 'Out of', 'Correct', 'Wrong', 'Not answered', 'Accuracy %', ...test.sections.map(s => `${s.label || s.title} marks`), 'Left screen', 'Camera / shield flags']
   const rows = resultRows(test, attempts).map(({ attempt: a, g, submitted, took, rank }) => [
