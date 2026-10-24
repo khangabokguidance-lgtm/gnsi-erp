@@ -7,9 +7,13 @@ try { ({ PGlite } = await import('@electric-sql/pglite')) } catch { console.erro
 import fs from 'node:fs'
 const db = new PGlite()
 await db.exec(`create role anon; create role authenticated; create function public.qbank_is_staff() returns boolean language sql as $$ select true $$;`)
+await db.exec(`create table public.students (id serial primary key, name text, gcc_no text, status text, batch text, parent_phone text, father_phone text);
+  insert into public.students (name, gcc_no, status, batch, father_phone) values ('Asha Devi','0042','Active','VI A','9876543210'),('Ashok Singh','43','Active','VI B',null),('Old Ashir','44','Left','VI A','9000000000')`)
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))
 await db.exec(fs.readFileSync('supabase/migrations/20261034_cbt_online_exam.sql', 'utf8'))   // twice: safe to re-run
-console.log('migration ran twice OK')
+await db.exec(fs.readFileSync('supabase/migrations/20261035_cbt_erp_lookup.sql', 'utf8'))
+await db.exec(fs.readFileSync('supabase/migrations/20261035_cbt_erp_lookup.sql', 'utf8'))
+console.log('migrations ran twice OK')
 const sections = [{ id: 's1', label: 'A', title: 'MA', questions: [{ no: 1 }, { no: 2 }, { no: 3 }] }, { id: 's2', label: 'B', title: 'AR', questions: [{ no: 4 }, { no: 5 }] }]
 await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions,sections,status,access_code,grace_seconds) values ('t1','Mock',60,'{"correct":1.25,"wrong":0.25}','read',$1,'live','abc',0)`, [JSON.stringify(sections)])
 await db.query(`insert into cbt_keys values ('t1', '{"1":"A","2":"B","3":"C","4":"D"}')`)
@@ -50,4 +54,15 @@ await db.query(`update cbt_tests set status='closed' where id='t2'`); console.lo
 await db.query(`update cbt_tests set status='live', opens_at=now()+interval '1 day' where id='t2'`); console.log('not open ->', await one(`select cbt_start('t2',null,'Newbie','N1')`))
 await db.query(`update cbt_tests set status='draft' where id='t2'`); console.log('draft ->', await one(`select cbt_exam_info('t2')`))
 console.log('no code needed test info needsCode:', (await one(`select cbt_exam_info('t1')`)).needsCode)
+
+// ── ERP lookup ──
+await db.query(`insert into cbt_tests (id,name,duration_min,marking,instructions,sections,status,access_code,grace_seconds) values ('t3','Mock3',60,'{"correct":1,"wrong":0}','read',$1,'live','abc',0)`, [JSON.stringify(sections)])
+console.log('lookup wrong code ->', await one(`select cbt_lookup('t3','nope','ash')`))
+console.log('lookup short ->', JSON.stringify(await one(`select cbt_lookup('t3','abc','as')`)))
+console.log('lookup name ->', JSON.stringify(await one(`select cbt_lookup('t3','abc','ash')`)))
+console.log('lookup gcc (leading zeros) ->', JSON.stringify(await one(`select cbt_lookup('t3','abc','42')`)))
+const erpA = await one(`select cbt_start('t3','abc','Asha Devi','42','','42','')`)
+console.log('start with GCC:', JSON.stringify((await db.query(`select gcc_no, parent_phone, erp_match from cbt_attempts where id=$1`, [erpA.attempt.id])).rows[0]))
+await one(`select cbt_start('t3','abc','Walk In','W1','','999','98 76-5')`)
+console.log('unknown GCC:', JSON.stringify((await db.query(`select gcc_no, parent_phone, erp_match from cbt_attempts where roll='W1'`)).rows[0]))
 await db.close()

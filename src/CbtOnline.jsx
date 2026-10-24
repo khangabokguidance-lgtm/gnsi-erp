@@ -35,7 +35,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
     <div className="cbt-modal" style={{ zIndex: 50 }} onClick={onClose}>
       <div className="box" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
         <h3>🌐 Online exam — {test.name}</h3>
-        <p className="muted">Candidates open a link on their own phone or computer, enter their name and roll number, and take this test. The paper and the clock come from the server; the answer key never leaves it; the server marks the attempt.</p>
+        <p className="muted">Candidates open a link on their own phone or computer, enter their details (or find themselves by name or GCC no. from the ERP student list), and take this test. The paper and the clock come from the server; the answer key never leaves it; the server marks the attempt.</p>
         {keyed < qs.length && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>⚠️ The answer key is {keyed ? `set for ${keyed} of ${qs.length} questions` : 'not set'}. Scores will be partial until you add it (Edit / key) and publish again.</p>}
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
           <label><span className="lbl">Access code (leave empty for none)</span>

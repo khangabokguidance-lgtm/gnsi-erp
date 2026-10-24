@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { examInfo, startExam, resumeExam, saveExam, submitExam, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { examInfo, startExam, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
@@ -15,12 +15,12 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } cat
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 
 // The adapter CbtPlayer talks to. `offset` = server time minus this device's time, so the countdown follows the server.
-function makeRemote({ testId, code, candidate, phone, attemptId = null, token = null }) {
+function makeRemote({ testId, code, candidate, phone, gcc, parent, attemptId = null, token = null }) {
   const r = { offset: 0, attemptId, token }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
   const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches })
   r.begin = async () => {
-    const res = await startExam(testId, code, candidate.name, candidate.roll, phone)
+    const res = await startExam(testId, code, candidate.name, candidate.roll, phone, gcc, parent)
     r.attemptId = res.attempt.id; r.token = res.token; sync(res.attempt)
     write(savedKey(testId), { attemptId: r.attemptId, token: r.token, name: candidate.name, roll: candidate.roll })
     return { test: res.test, attempt: localAttempt(res.attempt, res.test, candidate) }
@@ -35,12 +35,14 @@ export default function CbtPublic() {
   const testId = params.get('t') || ''
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
-  const [form, setForm] = useState({ name: '', roll: '', phone: '', code: params.get('c') || '' })
+  const [form, setForm] = useState({ name: '', roll: '', phone: '', gcc: '', parent: '', code: params.get('c') || '' })
   const [saved] = useState(() => read(savedKey(testId)))
   const [phase, setPhase] = useState('landing')     // landing | gate | exam | result | done
   const [run, setRun] = useState(null)              // { test, remote, candidate, resume }
   const [view, setView] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [found, setFound] = useState(null)         // ERP matches for what was typed: null = not searched, [] = none
+  const [picked, setPicked] = useState(false)       // the details came from an ERP record
   const inst = getInstitute()
 
   useEffect(() => {
@@ -50,16 +52,28 @@ export default function CbtPublic() {
     return () => { live = false }
   }, [testId])
 
+  // Name / GCC detector: once the access code is typed, a name (3+ letters) or GCC number finds the student in the ERP.
+  const detect = async q => {
+    if (!info?.needsCode || !form.code.trim() || !q.trim() || (/\D/.test(q.trim()) && q.trim().length < 3)) { setFound(null); return }
+    try { setFound(await lookupStudent(testId, form.code, q)) } catch (e) { setFound(null); setErr(friendly(e)) }
+  }
+  const pick = s => {
+    setForm(f => ({ ...f, name: s.name, gcc: s.gcc, roll: f.roll.trim() ? f.roll : s.gcc }))
+    setPicked(true); setFound(null); setErr('')
+  }
+  const type = k => e => { const v = e.target.value; setForm(f => ({ ...f, [k]: v })); setPicked(false); if (k === 'name' || k === 'gcc') detect(v) }
+
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
   const total = info ? info.sections.reduce((s, x) => s + x.count, 0) : 0
 
   const proceed = () => {
     setErr('')
     if (form.name.trim().length < 2) return setErr('Enter your full name.')
+    if (form.parent.trim() && form.parent.replace(/\D/g, '').length < 10) return setErr('Enter a 10-digit parent contact number.')
     if (!form.roll.trim()) return setErr('Enter your roll or registration number.')
     if (info.needsCode && !form.code.trim()) return setErr('Enter the access code you were given.')
     const candidate = { name: form.name.trim(), roll: form.roll.trim() }
-    setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, phone: form.phone }), resume: null })
+    setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, phone: form.phone, gcc: form.gcc, parent: form.parent }), resume: null })
     setPhase('gate')
   }
 
@@ -118,11 +132,20 @@ export default function CbtPublic() {
         <div className="card">
           <h3>Your details</h3>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
-            <label><span className="lbl">Full name *</span><input className="in" autoComplete="name" value={form.name} onChange={set('name')} /></label>
+            {info.needsCode && <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={set('code')} /></label>}
+            <label><span className="lbl">GCC no.</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="type to find yourself" value={form.gcc} onChange={type('gcc')} /></label>
+            <label><span className="lbl">Full name *</span><input className="in" autoComplete="name" placeholder={info.needsCode ? 'type 3+ letters to find yourself' : ''} value={form.name} onChange={type('name')} /></label>
+            <label><span className="lbl">Parent contact no.</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.parent} onChange={set('parent')} /></label>
             <label><span className="lbl">Roll / registration no. *</span><input className="in" value={form.roll} onChange={set('roll')} /></label>
             <label><span className="lbl">Phone (optional)</span><input className="in" inputMode="tel" autoComplete="tel" value={form.phone} onChange={set('phone')} /></label>
-            {info.needsCode && <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={set('code')} /></label>}
           </div>
+          {found && (found.length ? (
+            <div className="card" style={{ margin: '10px 0', padding: 10 }}>
+              <div className="muted" style={{ marginBottom: 6 }}>Is this you? Tap your name.</div>
+              {found.map(s => <button key={s.gcc} type="button" className="btn navy" style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: 6 }} onClick={() => pick(s)}>{s.name} · GCC {s.gcc}{s.className ? ` · ${s.className}` : ''}{s.phoneHint ? ` · parent ${s.phoneHint}` : ''}</button>)}
+            </div>
+          ) : <p className="muted" style={{ margin: '8px 0' }}>No student found in the institute records — you can still type your details.</p>)}
+          {picked && <p style={{ margin: '8px 0', color: '#1a7f37', fontWeight: 700 }}>✓ Found in the institute records. Leave the parent number blank to use the one on file.</p>}
           <ul className="muted" style={{ margin: '12px 0', paddingLeft: 18 }}>
             <li>Use a steady internet connection and keep this page open until you submit.</li>
             <li>The clock starts when you press “I am ready to begin”, and runs even if you close the page.</li>
