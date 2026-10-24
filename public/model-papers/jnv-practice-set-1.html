@@ -839,7 +839,7 @@ function showLibrary() {
       <div class="acts">
         <a class="btn primary" href="#take-${s.id}">Take test</a>
         <button class="btn" type="button" data-act="export" data-id="${s.id}">Download</button>
-        ${S.canWrite && !s.mayek ? `<button class="btn" type="button" data-act="mm" data-id="${s.id}">Meetei Mayek</button>` : ''}
+        ${S.canWrite ? `<button class="btn" type="button" data-act="mm" data-id="${s.id}">${s.mayek ? 'Finish Mayek' : 'Meetei Mayek'}</button>` : ''}
         ${S.canWrite && !s.builtin ? `<a class="btn" href="#edit-${s.id}">Edit</a>` : ''}
         ${S.canWrite ? `<button class="btn" type="button" data-act="dup" data-id="${s.id}">${s.builtin ? 'Use as template' : 'Duplicate'}</button>` : ''}
         ${S.canWrite && !s.builtin ? `<button class="btn danger" type="button" data-act="del" data-id="${s.id}">Delete</button>` : ''}
@@ -1173,19 +1173,44 @@ Rules:
 Reply with only a JSON array of exactly ${list.length} strings.
 
 ${JSON.stringify(list)}`;
+const errText = e => String((e && (e.message || e.code)) || e || 'unknown error').slice(0, 200);
+const isRateLimit = e => (e && e.code === 'rate_limited') || /429|too many|rate/i.test(errText(e));
+const wait = (ms, signal) => new Promise(r => { const t = setTimeout(r, ms); if (signal) signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+// Translates in small batches, paced, each retried once. A batch that still fails keeps its
+// English text and the rest carry on, so one rate limit or dropped connection never throws
+// away the whole set. Returns { out, failed, reason }.
 async function translateList(kind, texts, onProgress, signal) {
-  if (kind === 'portal') return CL.translateMM(texts, onProgress);
-  const out = [], size = 30;
+  const size = kind === 'portal' ? 20 : 30;
+  const out = [];
+  let failed = 0, reason = '';
   for (let i = 0; i < texts.length; i += size) {
     if (signal && signal.aborted) throw { code: 'cancelled' };
     const chunk = texts.slice(i, i + size);
     let got = null;
-    try { got = await S.sample.json(MM_PROMPT(chunk), { signal, cache: false }); }
-    catch (e) { if (e && e.code !== 'invalid_json') throw e; }
-    chunk.forEach((t, k) => out.push(Array.isArray(got) && got.length === chunk.length && typeof got[k] === 'string' && got[k].trim() ? got[k].trim() : t));
+    for (let attempt = 0; attempt < 2 && !got; attempt++) {
+      try {
+        got = kind === 'portal' ? await CL.translateMM(chunk) : await S.sample.json(MM_PROMPT(chunk), { signal, cache: false });
+        if (!Array.isArray(got) || got.length !== chunk.length) { reason = 'the translator returned a different number of lines'; got = null; }
+      } catch (e) {
+        if (e && ['cancelled', 'not_granted', 'sampling_disabled'].includes(e.code)) throw e;
+        if (signal && signal.aborted) throw { code: 'cancelled' };
+        reason = errText(e);
+        if (attempt === 0) {
+          const ms = isRateLimit(e) ? 30000 : 4000;
+          onProgress(i, texts.length, `Waiting ${ms / 1000} s before trying again (${reason})…`);
+          await wait(ms, signal);
+        }
+      }
+    }
+    chunk.forEach((t, k) => {
+      const v = got && typeof got[k] === 'string' && got[k].trim() ? got[k].trim() : null;
+      if (!v) failed++;
+      out.push(v || t);
+    });
     onProgress(Math.min(texts.length, i + size), texts.length);
+    if (kind === 'portal' && i + size < texts.length) await wait(1500, signal);   // stays under the portal's per-minute AI limit
   }
-  return out;
+  return { out, failed, reason };
 }
 
 /* every translatable string in a set, as setters, so the result can be written back in place */
@@ -1194,7 +1219,8 @@ function translatableFields(set) {
   const add = (get, put) => { const v = get(); if (typeof v === 'string' && /[A-Za-z]{2}/.test(v) && !hasMayek(v)) f.push({ text: v, put }); };
   add(() => set.title, v => { set.title = v; });
   add(() => set.subtitle, v => { set.subtitle = v; });
-  set.labels = { qfig: 'Question Figure', qfigs: 'Question Figures', afig: 'Answer Figures', ins: MM_INSTRUCTIONS.slice() };
+  // English captions to start from; a Mayek set already has its own (and they are skipped below)
+  set.labels = set.labels || { qfig: 'Question Figure', qfigs: 'Question Figures', afig: 'Answer Figures', ins: MM_INSTRUCTIONS.slice() };
   add(() => set.labels.qfig, v => { set.labels.qfig = v; });
   add(() => set.labels.qfigs, v => { set.labels.qfigs = v; });
   add(() => set.labels.afig, v => { set.labels.afig = v; });
@@ -1208,7 +1234,7 @@ function translatableFields(set) {
         const paras = String(it.text || '').split(/\n\s*\n/);
         paras.forEach((p, i) => add(() => p.trim(), v => { paras[i] = v; it.text = paras.join('\n\n'); }));
       } else if (it.t === 'q' && it.kind !== 'lib') {
-        if (it.kind === 'img' && it.optMode === 'img') { it.afig = 'Answer Figures'; add(() => it.afig, v => { it.afig = v; }); }
+        if (it.kind === 'img' && it.optMode === 'img') { it.afig = it.afig || 'Answer Figures'; add(() => it.afig, v => { it.afig = v; }); }
         add(() => it.q, v => { it.q = v; });
         (it.opts || []).forEach((o, i) => add(() => o, v => { it.opts[i] = v; }));
       }
@@ -1227,7 +1253,7 @@ function openTranslate(id) {
     ov.innerHTML = `<div class="ov" data-act="ovclose"><div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="mmT" style="width:min(560px,100%)">
       <div class="ov-h"><h2 id="mmT">Translate to Meetei Mayek</h2><button class="btn" type="button" data-act="ovclose">Close</button></div>
       <div class="ov-b" style="display:grid;gap:14px;padding-top:14px">
-        <p class="subnote">Makes a new set from <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> with every question, answer choice, direction and passage in Manipuri. The paper, the PDF and the Word file draw the Mayek text in the <b class="bm" style="font-size:1.25em">bmei04</b> font (BMEI04). Figures, numbers and the answer key stay as they are.</p>
+        <p class="subnote">${set.mayek && !set.builtin ? `Translates the parts of <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> that are still in English, in this set.` : `Makes a new set from <b>Practice Set ${esc(String(set.setNo ?? ''))}</b> with every question, answer choice, direction and passage in Manipuri.`} The paper, the PDF and the Word file draw the Mayek text in the <b class="bm" style="font-size:1.25em">bmei04</b> font (BMEI04). Figures, numbers and the answer key stay as they are.</p>
         <p class="subnote">${how ? `Translation uses ${how}. Machine translation can be wrong: read the new set through before students use it.` : 'Translation needs the portal or claude.ai. It is not available in this copy of the page.'}</p>
         <p class="genmsg" id="mmMsg" role="status"></p>
       </div>
@@ -1243,25 +1269,35 @@ async function runTranslate() {
   job.busy = true; job.ctl = new AbortController();
   $('#mmRun').disabled = true; $('#mmStop').hidden = false;
   try {
+    // A Mayek set is finished in place: only its parts still in English are translated.
+    const inPlace = !!src.mayek && !src.builtin;
     const set = editableCopy(src);
-    set.id = newId(); set.setNo = nextNo(); set.medium = 'Manipuri (Meetei Mayek)'; set.mayek = true;
+    if (inPlace) { set.id = src.id; set.setNo = src.setNo; }
+    else { set.id = newId(); set.setNo = nextNo(); }
+    set.medium = 'Manipuri (Meetei Mayek)'; set.mayek = true;
     const fields = translatableFields(set);
     const unique = [...new Set(fields.map(x => x.text))];
+    if (!unique.length) { msg('Everything in this set is already in Meetei Mayek.'); return; }
     msg(`Translating ${unique.length} pieces of text…`);
-    const done = await translateList(kind, unique, (n, total) => msg(`Translated ${n} of ${total}…`), job.ctl.signal);
+    const r = await translateList(kind, unique, (n, total, note) => msg(note || `Translated ${n} of ${total}…`), job.ctl.signal);
     if (mmJob !== job) return;
-    const map = new Map(unique.map((t, i) => [t, done[i]]));
+    if (r.failed === unique.length) throw { code: 'all_failed', message: r.reason };
+    const map = new Map(unique.map((t, i) => [t, r.out[i]]));
     fields.forEach(x => x.put(map.get(x.text) ?? x.text));
-    const left = fields.filter(x => !hasMayek(map.get(x.text))).length;
-    msg('Saving the new set…');
-    nextDraft = set;
-    try { await saveSet(set); } catch (e) { /* the maker shows the save state */ }
-    mmJob = null; ov.innerHTML = '';
-    go('edit-' + set.id);
-    if (left) setTimeout(() => setStatus(`${left} piece${left === 1 ? '' : 's'} of text came back without Mayek letters. Check them in the editor.`, true), 600);
+    const left = unique.filter(t => !hasMayek(map.get(t))).length;
+    msg('Saving…');
+    if (inPlace && cur.view === 'maker' && cur.id === set.id) {
+      cur.draft = set; mmJob = null; ov.innerHTML = ''; dirty(true);
+    } else {
+      nextDraft = set;
+      try { await saveSet(set); } catch (e) { /* the maker shows the save state */ }
+      mmJob = null; ov.innerHTML = '';
+      go('edit-' + set.id);
+    }
+    if (left) setTimeout(() => setStatus(`${left} piece${left === 1 ? '' : 's'} of text are still in English${r.reason ? ` (${r.reason})` : ''}. Press Meetei Mayek again to finish them.`, true), 600);
   } catch (e) {
-    msg({ cancelled: 'Stopped. Nothing was saved.', not_granted: 'Translation is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', rate_limited: 'Too many requests right now. Wait a minute and try again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code]
-      || 'Translation failed. Check the connection and try again.');
+    msg({ cancelled: 'Stopped. Nothing was saved.', not_granted: 'Translation is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code]
+      || `Translation failed: ${errText(e)}. Nothing was saved. Try again in a minute; if it keeps failing, show this message to whoever looks after the portal.`);
   } finally {
     if (mmJob === job) { job.busy = false; const r = $('#mmRun'), s2 = $('#mmStop'); if (r) r.disabled = false; if (s2) s2.hidden = true; }
   }
