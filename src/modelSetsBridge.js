@@ -12,6 +12,8 @@
 //   use('downloads') → save({filename, data}): the PDF / Word file the page made
 //   exportLibs()  → { jsPDF, docx, html2canvas } from the portal's own bundle,
 //                   so Download PDF / Word works without the CDN
+//   visionJSON(prompt, images) → the text Gemini returns for page images
+//                   (api/gemini-vision.js), used by "Import paper"
 // Anything else resolves null, so the page hides that feature.
 // No import of ./supabase here: the client is passed in, which keeps this
 // testable under `node --test` (tests/modelSetsBridge.test.js).
@@ -37,7 +39,7 @@ export function toBridgeError(error) {
   return { code: 'unavailable', message: msg }
 }
 
-export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff', exportLibs = null, saveFile = null }) {
+export function createModelSetsBridge({ client, canWrite = () => false, actor = () => null, storeLabel = 'Shared with GNSI staff', exportLibs = null, saveFile = null, vision = null }) {
   const listeners = new Set()
   let channel = null
 
@@ -134,6 +136,10 @@ export function createModelSetsBridge({ client, canWrite = () => false, actor = 
     storeLabel,
     theme: 'light',
     exportLibs: exportLibs || undefined,
+    visionJSON: vision ? (prompt, images) => {
+      if (!canWrite()) return Promise.reject({ code: 'not_granted', message: 'Your login is not allowed to change model sets.' })
+      return vision(prompt, images)
+    } : undefined,
     use: async (name) => (name === 'assets' ? (canWrite() ? assets : null) : caps[name] || null),
   }
 }

@@ -11,8 +11,11 @@
 // shows the maker (New model set, Edit, Duplicate, Delete).
 // Download PDF / Word (8 A4 pages by default) is built inside the page; the
 // portal lends it jsPDF, docx and html2canvas so it works offline too.
+// Import paper (PDF or photos → questions) reads each page with Gemini
+// through api/gemini-vision.js.
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
+import { authFetch } from './apiFetch'
 import { createModelSetsBridge } from './modelSetsBridge'
 
 const PAGE = `${import.meta.env.BASE_URL}model-papers/jnv-practice-set-1.html`
@@ -20,6 +23,17 @@ const PAGE = `${import.meta.env.BASE_URL}model-papers/jnv-practice-set-1.html`
 const exportLibs = async () => {
   const [{ jsPDF }, docx, { default: html2canvas }] = await Promise.all([import('jspdf'), import('docx'), import('html2canvas')])
   return { jsPDF, docx, html2canvas }
+}
+const vision = async (prompt, images) => {
+  const res = await authFetch('/api/gemini-vision', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, images }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const code = res.status === 429 ? 'rate_limited' : res.status === 401 || res.status === 403 ? 'not_granted' : 'upstream_error'
+    throw { code, message: body.error || `HTTP ${res.status}` }
+  }
+  return body.text
 }
 const saveFile = (filename, blob) => {
   const url = URL.createObjectURL(blob)
@@ -44,6 +58,7 @@ export default function ModelSets({ currentUser, perms }) {
       actor: () => actorRef.current,
       exportLibs,
       saveFile,
+      vision,
     })
     window.__gnsiModelSets = bridge
     return () => { if (window.__gnsiModelSets === bridge) delete window.__gnsiModelSets }

@@ -97,3 +97,14 @@ test('pictures go to question-diagrams/model-sets and come back as a public link
   await assert.rejects(assets.upload({ size: 1000, type: 'image/svg+xml' }), { code: 'unsupported_type' })
   await assert.rejects(assets.upload({ size: 6 * 1024 * 1024, type: 'image/png' }), { code: 'too_large' })
 })
+
+test('Import paper reads pages through the portal only for staff who may change sets', async () => {
+  const calls = []
+  const vision = async (prompt, images) => { calls.push(images.length); return '{"items":[]}' }
+  const open = createModelSetsBridge({ client: fakeClient(), canWrite: () => true, vision })
+  assert.equal(await open.visionJSON('read', [{ mimeType: 'image/jpeg', data: 'AAAA' }]), '{"items":[]}')
+  assert.deepEqual(calls, [1])
+  const closed = createModelSetsBridge({ client: fakeClient(), canWrite: () => false, vision })
+  await assert.rejects(closed.visionJSON('read', []), { code: 'not_granted' })
+  assert.equal(createModelSetsBridge({ client: fakeClient() }).visionJSON, undefined)
+})

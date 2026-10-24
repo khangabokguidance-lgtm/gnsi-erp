@@ -316,6 +316,7 @@ textarea.in { resize: vertical; min-height: 62px; }
 .bank-row .n { font-family: var(--f-display); font-weight: 800; }
 .bank-row svg.fig { width: 40px; height: 40px; }
 .bank-row .tx { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bank-row.imp-row { grid-template-columns: auto 30px auto minmax(0, 1fr); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 </style>
@@ -806,6 +807,8 @@ let cur = { view: null };
 const brand = (dot, name, sub) => `<a class="brandmark" href="#library"><span class="dot">${dot}</span><div>${name}<small>${sub}</small></div></a>`;
 function route() {
   flushSave(); stopTimer(); ov.innerHTML = '';
+  if (imp && imp.ctl) imp.ctl.abort();
+  imp = null;
   const h = location.hash.slice(1);
   if (h.startsWith('take-')) showTake(h.slice(5));
   else if (h.startsWith('edit-')) showMaker(h.slice(5));
@@ -822,7 +825,7 @@ function showLibrary() {
   cur = { view: 'library' };
   const where = S.mode === 'shared' ? (CL && CL.storeLabel) || 'Shared with everyone who opens this page' : 'Saved in this browser';
   bar.innerHTML = brand('JNV', 'Model Sets', 'Practice papers · Set maker') +
-    `<div class="bar-stats"><span class="chipnote">${where}</span>${S.canWrite ? '<button class="btn primary" data-act="new" type="button">New model set</button>' : ''}</div>`;
+    `<div class="bar-stats"><span class="chipnote">${where}</span>${S.canWrite ? '<button class="btn" data-act="import" data-mode="new" type="button">Import paper</button><button class="btn primary" data-act="new" type="button">New model set</button>' : ''}</div>`;
   const mine = S.sets.slice().sort((a, b) => (+a.setNo || 0) - (+b.setNo || 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
   const card = s => {
     const qn = countQ(s), upd = s.updatedAt ? new Date(s.updatedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -838,10 +841,10 @@ function showLibrary() {
       </div></article>`;
   };
   const empty = !S.ready ? `<article class="card empty"><h2>Loading saved sets…</h2></article>`
-    : !mine.length ? `<article class="card empty"><h2>No model sets yet</h2><p class="subnote">Start a blank set with the three JNV sections, or use Set 1 as a template and change its questions.</p>${S.canWrite ? '<div class="acts"><button class="btn primary" data-act="new" type="button">New model set</button></div>' : ''}</article>` : '';
+    : !mine.length ? `<article class="card empty"><h2>No model sets yet</h2><p class="subnote">Start a blank set with the three JNV sections, or use Set 1 as a template and change its questions.</p>${S.canWrite ? '<div class="acts"><button class="btn primary" data-act="new" type="button">New model set</button><button class="btn" data-act="import" data-mode="new" type="button">Import a PDF paper</button></div>' : ''}</article>` : '';
   view.innerHTML = `<div class="wrap"><div class="lib">
     <header class="lib-head"><div><div class="eyebrow">Jawahar Navodaya Vidyalaya · Class VI</div><h1>Model sets</h1>
-      <p>Take a practice paper with its OMR sheet and timer, or make your own set: write questions, reuse figure questions from Set 1, add scanned figures${S.sample ? ', or let Claude draft questions for a section' : ''}.</p></div></header>
+      <p>Take a practice paper with its OMR sheet and timer, or make your own set: write questions, reuse figure questions from Set 1, import a PDF of any paper and have it set again in this design${S.sample ? ', or let Claude draft questions for a section' : ''}.</p></div></header>
     ${S.err ? `<p class="subnote" style="color:var(--bad)">Saved sets could not be loaded right now. Reload the page to try again.</p>` : ''}
     ${!S.canWrite ? '<p class="subnote">Only editors of this page can make or change sets. You can take any set below.</p>' : ''}
     <div class="cards">${card(BUILTIN)}${mine.map(card).join('')}${empty}</div></div></div>`;
@@ -1007,6 +1010,7 @@ function renderEditor() {
         <button class="btn" type="button" data-act="add" data-k="passage">+ Passage</button>
         <button class="btn" type="button" data-act="add" data-k="head">+ Part heading</button>
         <button class="btn" type="button" data-act="bank">From Set 1 bank</button>
+        <button class="btn" type="button" data-act="import" data-mode="add">Import from PDF</button>
         ${S.sample ? '<button class="btn gold" type="button" data-act="gen">✦ Draft with Claude</button>' : ''}
       </div>
       ${S.sample ? `<div class="gen" id="gen"${cur.gen ? '' : ' hidden'}><h3>Draft questions with Claude</h3>
@@ -1637,6 +1641,263 @@ async function runExport(fmt) {
   }
 }
 
+/* ---------- import: read a PDF (or photos) of a paper, detect the questions, rebuild them in this design ---------- */
+const PDFJS = {
+  lib: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+  worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+};
+const IMPORT_MAX_PAGES = 12;
+const PAGE_PX = 1600;                                   // width each page is read at
+const READ_PROMPT = (p, total) => `This image is page ${p} of ${total} of a printed exam paper (an Indian school entrance test such as the JNV Selection Test). Read it and list everything a student needs, in reading order: in a two-column page, the whole left column first, then the right column.
+
+Reply with only JSON in this shape:
+{"items": [
+  {"type": "section", "tag": "Section 2", "title": "Arithmetic Test", "directions": "..."},
+  {"type": "heading", "sub": "Mental Ability Test (MAT)", "part": "Part – I", "directions": "..."},
+  {"type": "passage", "title": "...", "text": "paragraph one\\n\\nparagraph two"},
+  {"type": "question", "number": 21, "text": "...", "options": ["...", "...", "...", "..."], "answer": null,
+   "figure": [ymin, xmin, ymax, xmax], "optionFigures": [[...], [...], [...], [...]], "continued": false}
+]}
+
+Rules:
+- Copy wording exactly. Write fractions as [a/b] (mixed numbers like 4[1/2]); keep ₹, °, × and ÷.
+- "section" is a full-width band such as "SECTION–1 … DIRECTIONS …". "heading" is a part heading or a directions paragraph for a group of questions. Use "" for any field that is not printed.
+- Leave out running headers, page numbers, page footers, logos and scissor/cut marks.
+- Boxes are [ymin, xmin, ymax, xmax] on this page image, each from 0 to 1000. Draw them tightly around the drawing only, without the question number or the (A) (B) (C) (D) labels.
+- "figure": one box around the question's figure, diagram, picture or table (all of a question's figures in one box), or null when there is none.
+- "optionFigures": four boxes when the answer choices are pictures, else null. Then "options" is ["", "", "", ""].
+- "answer": the index 0–3 of the correct option only when the page prints an answer key or the answer is certain from a simple fact or calculation; otherwise null.
+- A question whose start is on the previous page: give only the part on this page, with "continued": true.
+- If the page has no questions, reply {"items": []}.`;
+
+const loadPdfJs = async () => {
+  if (!window.pdfjsLib) await loadScript(PDFJS.lib);
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS.worker;
+  return window.pdfjsLib;
+};
+async function fileToPages(files, onMsg) {
+  const pages = [];
+  let total = 0;
+  for (const file of files) {
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      onMsg('Opening the PDF…');
+      const lib = await loadPdfJs();
+      const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      total += doc.numPages;
+      for (let i = 1; i <= doc.numPages && pages.length < IMPORT_MAX_PAGES; i++) {
+        onMsg(`Preparing page ${pages.length + 1}…`);
+        const page = await doc.getPage(i);
+        const vp1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: PAGE_PX / vp1.width });
+        const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+        await page.render({ canvasContext: g, viewport: vp }).promise;
+        pages.push(cv);
+      }
+    } else if (/^image\//.test(file.type)) {
+      total++;
+      if (pages.length >= IMPORT_MAX_PAGES) continue;
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, PAGE_PX / bmp.width), cv = document.createElement('canvas');
+      cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+      const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
+      pages.push(cv);
+    }
+  }
+  return { pages, total };
+}
+const canvasBlob = (cv, type = 'image/jpeg', q = 0.86) => new Promise(r => cv.toBlob(r, type, q));
+const blobB64 = blob => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
+const parseLooseJSON = t => {
+  if (t && typeof t === 'object') return t;
+  const s = String(t || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+  try { return JSON.parse(s); } catch (e) { const a = s.indexOf('{'), b = s.lastIndexOf('}'); return a >= 0 && b > a ? JSON.parse(s.slice(a, b + 1)) : null; }
+};
+/* who reads the page: the portal's Gemini service, or Claude in the claude.ai viewer */
+async function readerKind() {
+  if (CL && typeof CL.visionJSON === 'function') return 'portal';
+  if (S.sample) { const lim = await S.sample.limits().catch(() => null); if (lim && lim.images) return 'claude'; }
+  return null;
+}
+async function readPage(kind, cv, p, total, signal) {
+  const blob = await canvasBlob(cv);
+  const prompt = READ_PROMPT(p, total);
+  if (kind === 'portal') return parseLooseJSON(await CL.visionJSON(prompt, [{ mimeType: 'image/jpeg', data: await blobB64(blob) }]));
+  return S.sample.json(prompt, { images: [blob], signal, cache: false });
+}
+
+/* model reply → clean items; boxes become cropped canvases */
+const str = (v, n = 4000) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').trim().slice(0, n);
+const okBox = b => Array.isArray(b) && b.length === 4 && b.every(v => typeof v === 'number' && isFinite(v)) && b[2] > b[0] + 5 && b[3] > b[1] + 5;
+function cropBox(cv, b) {
+  const pad = 12;
+  const y0 = Math.max(0, b[0] - pad), x0 = Math.max(0, b[1] - pad), y1 = Math.min(1000, b[2] + pad), x1 = Math.min(1000, b[3] + pad);
+  const sx = Math.round(x0 / 1000 * cv.width), sy = Math.round(y0 / 1000 * cv.height);
+  const sw = Math.max(1, Math.round((x1 - x0) / 1000 * cv.width)), sh = Math.max(1, Math.round((y1 - y0) / 1000 * cv.height));
+  const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  c.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
+  return c;
+}
+function cleanItems(reply, cv, page) {
+  const out = [];
+  (Array.isArray(reply && reply.items) ? reply.items : []).forEach(r => {
+    if (!r || typeof r !== 'object') return;
+    if (r.type === 'section') { const it = { t: 'section', tag: str(r.tag, 80), title: str(r.title, 300), dir: str(r.directions) }; if (it.tag || it.title) out.push(it); return; }
+    if (r.type === 'heading') { const it = { t: 'head', sub: str(r.sub, 200), part: str(r.part, 80), dir: str(r.directions) }; if (it.sub || it.part || it.dir) out.push(it); return; }
+    if (r.type === 'passage') { const it = { t: 'passage', title: str(r.title, 200), text: str(r.text, 12000) }; if (it.text) out.push(it); return; }
+    if (r.type !== 'question') return;
+    const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map(o => str(o, 600));
+    while (opts.length < 4) opts.push('');
+    const ofs = Array.isArray(r.optionFigures) && r.optionFigures.length === 4 && r.optionFigures.every(okBox) ? r.optionFigures : null;
+    const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
+    out.push({
+      t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
+      q: str(r.text), opts, a, gen: a != null,
+      fig: okBox(r.figure) ? cropBox(cv, r.figure) : null,
+      optFigs: ofs ? ofs.map(b => cropBox(cv, b)) : null,
+    });
+  });
+  return out;
+}
+/* a question split across two pages becomes one */
+function mergeContinued(items) {
+  const out = [];
+  items.forEach(it => {
+    const prev = [...out].reverse().find(x => x.t === 'q');
+    if (it.t === 'q' && it.continued && prev && out[out.length - 1] === prev) {
+      if (it.q && !prev.opts.some(Boolean)) prev.q = [prev.q, it.q].filter(Boolean).join(' ');
+      prev.opts = prev.opts.map((o, i) => o || it.opts[i]);
+      prev.fig = prev.fig || it.fig; prev.optFigs = prev.optFigs || it.optFigs;
+      if (prev.a == null && it.a != null) { prev.a = it.a; prev.gen = true; }
+      return;
+    }
+    out.push(it);
+  });
+  return out;
+}
+
+let imp = null;                                          // the open import: { mode, files, items, ctl, busy }
+function openImport(mode) {
+  imp = { mode, items: null, busy: false };
+  const where = mode === 'new' ? 'a new model set' : `${esc(cur.draft.sections[cur.sec]?.tag || 'this section')} (sections found in the paper are added after it)`;
+  ov.innerHTML = `<div class="ov" data-act="ovclose"><div class="ov-card" role="dialog" aria-modal="true" aria-labelledby="impT" style="width:min(820px,100%)">
+    <div class="ov-h"><h2 id="impT">Import a paper</h2><button class="btn" type="button" data-act="ovclose">Close</button></div>
+    <div class="ov-b" id="impBody" style="display:grid;gap:14px;padding-top:14px">
+      <p class="subnote">Choose a PDF or photos of a question paper. Each page is read, the questions, options, passages and sections are found, figures are cut out, and everything is set again in this paper's design. Up to ${IMPORT_MAX_PAGES} pages at a time.</p>
+      <label class="fld" for="impFile"><span>PDF or page photos</span><input class="in" id="impFile" type="file" accept="application/pdf,image/*" multiple></label>
+      <p class="subnote">Goes into: <b>${where}</b>.</p>
+      <p class="genmsg" id="impMsg" role="status"></p>
+    </div>
+    <div class="ov-f" id="impFoot"><span class="subnote">Check every question afterwards, especially the answers.</span>
+      <div class="addbar"><button class="btn" type="button" data-act="impstop" id="impStop" hidden>Stop</button><button class="btn primary" type="button" data-act="impread" id="impRead">Read paper</button></div></div></div></div>`;
+  ov.querySelector('.ov-card').addEventListener('click', e => { if (!e.target.closest('[data-act]')) e.stopPropagation(); });
+}
+async function runImport() {
+  if (!imp || imp.busy) return;
+  const msg = t => { const m = $('#impMsg'); if (m) m.textContent = t; };
+  const files = [...($('#impFile').files || [])];
+  if (!files.length) return msg('Choose a PDF or at least one photo first.');
+  const kind = await readerKind();
+  if (!kind) return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
+  const job = imp;
+  imp.busy = true; imp.ctl = new AbortController();
+  $('#impRead').disabled = true; $('#impStop').hidden = false;
+  try {
+    const { pages, total } = await fileToPages(files, msg);
+    if (!pages.length) throw { code: 'empty' };
+    let items = [];
+    for (let i = 0; i < pages.length; i++) {
+      if (imp.ctl.signal.aborted) throw { code: 'cancelled' };
+      msg(`Reading page ${i + 1} of ${pages.length}… ${kind === 'claude' ? '(Claude)' : '(Gemini)'}`);
+      let reply = null;
+      try { reply = await readPage(kind, pages[i], i + 1, pages.length, imp.ctl.signal); }
+      catch (e) { if (e && (e.code === 'cancelled' || e.code === 'not_granted' || e.code === 'rate_limited' || e.code === 'sampling_disabled')) throw e; reply = null; }
+      if (!reply) { items.push({ t: 'note', text: `Page ${i + 1} could not be read.` }); continue; }
+      items = items.concat(cleanItems(reply, pages[i], i + 1));
+    }
+    if (imp !== job) return;                             // closed while reading
+    imp.items = mergeContinued(items);
+    imp.skipped = total - pages.length;
+    renderReview();
+  } catch (e) {
+    const t = { cancelled: 'Stopped.', empty: 'No pages found in that file. Use a PDF, JPEG or PNG.', not_granted: 'The AI service is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', rate_limited: 'Too many pages read in the last minute. Wait a minute and try again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code];
+    msg(t || 'Could not read that file. Try a clearer scan or fewer pages.');
+  } finally {
+    if (imp === job) { imp.busy = false; const r = $('#impRead'), s2 = $('#impStop'); if (r) r.disabled = false; if (s2) s2.hidden = true; }
+  }
+}
+const thumb = c => c ? `<img src="${c.toDataURL('image/jpeg', .8)}" alt="" style="max-height:56px;max-width:120px;border:1px solid var(--rule);background:#fff;border-radius:3px">` : '';
+function renderReview() {
+  const items = imp.items, qs = items.filter(i => i.t === 'q');
+  const secs = items.filter(i => i.t === 'section').length, pas = items.filter(i => i.t === 'passage').length;
+  const noKey = qs.filter(q => q.a == null).length, figs = qs.filter(q => q.fig || q.optFigs).length;
+  const rows = items.map((it, i) => {
+    const box = `<input type="checkbox" data-imp="${i}" checked aria-label="Include">`;
+    if (it.t === 'note') return `<div class="bank-row" style="cursor:default"><span></span><span></span><span></span><span class="tx" style="color:var(--bad)">${esc(it.text)}</span></div>`;
+    if (it.t === 'section') return `<label class="bank-row imp-row" style="background:var(--tint)">${box}<span class="n">§</span><span class="chip">Section</span><span class="tx"><b>${esc(it.tag)}</b> ${esc(it.title)}</span></label>`;
+    if (it.t === 'head') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Heading</span><span class="tx">${esc([it.sub, it.part].filter(Boolean).join(' · ') || plain(it.dir).slice(0, 90))}</span></label>`;
+    if (it.t === 'passage') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Passage</span><span class="tx">${esc(it.title || it.text.slice(0, 90))}</span></label>`;
+    const pics = it.optFigs ? it.optFigs.map(thumb).join(' ') : '';
+    const chips = [it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
+    return `<label class="bank-row" style="grid-template-columns:auto 30px minmax(0,1fr);align-items:start">${box}<span class="n">${it.number ?? '–'}</span>
+      <span style="display:grid;gap:4px;min-width:0"><span>${fmtU(it.q || (it.fig || it.optFigs ? 'Question figure' : ''))}</span>
+      <span class="subnote" style="overflow-wrap:anywhere">${it.optFigs ? '' : it.opts.map((o, k) => `(${LET[k]}) ${esc(o) || '—'}`).join('&nbsp;&nbsp; ')}</span>
+      <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${thumb(it.fig)} ${pics} ${chips}</span></span></label>`;
+  }).join('');
+  $('#impBody').innerHTML = `<p class="subnote">Found <b>${qs.length}</b> question${qs.length === 1 ? '' : 's'}${pas ? `, ${pas} passage${pas === 1 ? '' : 's'}` : ''}${secs ? ` and ${secs} section${secs === 1 ? '' : 's'}` : ''}. ${figs} with figures, ${noKey} without an answer.${imp.skipped > 0 ? ` ${imp.skipped} more page${imp.skipped === 1 ? ' was' : 's were'} left out (${IMPORT_MAX_PAGES} at a time).` : ''} Untick anything you do not want.</p>
+    <div style="max-height:52vh;overflow-y:auto;border-top:1px solid var(--rule)">${rows || '<p class="subnote">Nothing was found on these pages.</p>'}</div>
+    <p class="genmsg" id="impMsg" role="status"></p>`;
+  $('#impFoot').innerHTML = `<span class="subnote">Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
+}
+async function finishImport() {
+  if (!imp || imp.busy || !imp.items) return;
+  const msg = t => { const m = $('#impMsg'); if (m) m.textContent = t; };
+  const keep = new Set([...ov.querySelectorAll('[data-imp]')].filter(c => c.checked).map(c => +c.dataset.imp));
+  const chosen = imp.items.filter((it, i) => keep.has(i) && it.t !== 'note');
+  imp.busy = true; $('#impAdd').disabled = true;
+  try {
+    const crops = chosen.filter(q => q.t === 'q').reduce((n, q) => n + (q.fig ? 1 : 0) + (q.optFigs ? 4 : 0), 0);
+    let done = 0;
+    const save = async c => { msg(`Saving figures ${++done} of ${crops}…`); return storeImage(await canvasBlob(c, 'image/png')); };
+    const built = [];
+    for (const it of chosen) {
+      if (it.t !== 'q') { built.push(it); continue; }
+      const q = { t: 'q', kind: it.fig || it.optFigs ? 'img' : 'text', q: it.q, opts: it.opts, a: it.a };
+      if (it.gen) q.gen = true;
+      if (q.kind === 'img') {
+        q.img = it.fig ? await save(it.fig) : '';
+        q.optMode = it.optFigs ? 'img' : 'text';
+        q.optImgs = it.optFigs ? [] : ['', '', '', ''];
+        if (it.optFigs) for (const c of it.optFigs) q.optImgs.push(await save(c));
+      }
+      built.push(q);
+    }
+    let set, si;
+    if (imp.mode === 'new') { set = blankSet(nextNo()); set.sections = []; si = -1; }
+    else { set = cur.draft; si = cur.sec; }
+    const target = () => {
+      if (si < 0 || !set.sections[si]) { set.sections.push({ tag: `Section ${set.sections.length + 1}`, title: '', short: '', dir: DIR_MCQ, items: [] }); si = set.sections.length - 1; }
+      return set.sections[si];
+    };
+    built.forEach(it => {
+      if (it.t === 'section') { set.sections.push({ tag: it.tag || `Section ${set.sections.length + 1}`, title: it.title, short: '', dir: it.dir, items: [] }); si = set.sections.length - 1; return; }
+      target().items.push(it);
+    });
+    if (imp.mode === 'new') {
+      if (!set.sections.length) target();
+      nextDraft = set;
+      try { await saveSet(set); } catch (e) { /* the maker shows the save state */ }
+      imp = null; ov.innerHTML = '';
+      go('edit-' + set.id);
+    } else {
+      imp = null; ov.innerHTML = '';
+      dirty(true);
+    }
+  } catch (e) {
+    msg(e && e.code === 'too_large' ? 'A figure was too large to save.' : 'Could not save the figures. Check the connection and try again.');
+    if (imp) { imp.busy = false; const b = $('#impAdd'); if (b) b.disabled = false; }
+  }
+}
+
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
   const jump = e.target.closest('[data-jump]');
@@ -1677,7 +1938,18 @@ document.addEventListener('click', async e => {
     cur.ans = {}; cur.checked = false; cur.save(); a.classList.remove('armed'); a.textContent = 'Clear all'; paint();
   }
   else if (act === 'export') { openExport(a.dataset.id); return; }
-  else if (act === 'ovclose') { if (e.target === a || a.tagName === 'BUTTON') { if (!exportBusy) ov.innerHTML = ''; } return; }
+  else if (act === 'ovclose') {
+    if (e.target === a || a.tagName === 'BUTTON') {
+      if (exportBusy || (imp && imp.busy && imp.items)) return;     // a file is being written or figures saved
+      if (imp && imp.ctl) imp.ctl.abort();
+      imp = null; ov.innerHTML = '';
+    }
+    return;
+  }
+  else if (act === 'import') { if (a.dataset.mode === 'add' && cur.view !== 'maker') return; openImport(a.dataset.mode === 'add' ? 'add' : 'new'); return; }
+  else if (act === 'impread') { runImport(); return; }
+  else if (act === 'impstop') { if (imp && imp.ctl) imp.ctl.abort(); return; }
+  else if (act === 'impadd') { finishImport(); return; }
   else if (act === 'expdf') { runExport('pdf'); return; }
   else if (act === 'exdocx') { runExport('docx'); return; }
   if (cur.view !== 'maker') return;
@@ -1762,7 +2034,11 @@ document.addEventListener('change', async e => {
     if (msg) msg.textContent = err && err.code === 'too_large' ? 'That image is too large.' : 'Could not add that image. Try a PNG or JPEG.';
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.innerHTML) ov.innerHTML = ''; });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !ov.innerHTML || exportBusy || (imp && imp.busy && imp.items)) return;
+  if (imp && imp.ctl) imp.ctl.abort();
+  imp = null; ov.innerHTML = '';
+});
 window.addEventListener('hashchange', route);
 window.addEventListener('pagehide', flushSave);
 
