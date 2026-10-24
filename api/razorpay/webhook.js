@@ -24,6 +24,7 @@
 
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
+import { buildOnlineRecords } from '../_razorpay/record.js'
 
 export const config = { api: { bodyParser: false } }
 
@@ -91,76 +92,30 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true, skipped: 'no gcc in notes' })
       }
 
-      // Idempotency guard — Razorpay can retry webhook delivery; a unique
-      // constraint on txn_ref (payment id) in your fee tables is the
-      // strongest guard, but this check avoids an obviously-duplicate insert
-      // even without one.
+      // Idempotency guard — Razorpay can retry webhook delivery. The payment id is written to txn_ref on
+      // whichever fee table the payment lands in, so all three are checked (checking only
+      // adm_fee_collections let a retried course/flat payment be recorded twice).
       const paymentId = paymentEntity?.id || entity?.id
-      const { data: existing } = await supabase
-        .from('adm_fee_collections')
-        .select('id')
-        .eq('txn_ref', paymentId)
-        .maybeSingle()
-      if (existing) {
+      const seen = await Promise.all(['adm_fee_collections', 'adm_course_fees', 'adm_flat_fees'].map(t =>
+        supabase.from(t).select('id').eq('txn_ref', paymentId).limit(1)))
+      const lookupErr = seen.find(r => r.error)
+      if (lookupErr) throw new Error(`could not check for an earlier record of ${paymentId}: ${lookupErr.error.message}`)
+      if (seen.some(r => (r.data || []).length)) {
         return res.status(200).json({ received: true, skipped: 'already recorded' })
       }
 
       const amount = (entity?.amount_paid ?? paymentEntity?.amount ?? 0) / 100
-      const payDate = new Date().toLocaleDateString('en-CA')
+      if (!(amount > 0)) throw new Error(`payment ${paymentId} has no amount to record`)
+      const payDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 
-      // Route by fee kind — mirrors the `items` kinds used in Fees.jsx
-      // (admission / flat / course / advance). Adjust table/columns to match
-      // your actual schema if it differs from what collectFee() writes.
-      if (notes.kind === 'course') {
-        await supabase.from('adm_course_fees').insert([{
-          adm_app_id: notes.gcc,
-          course: notes.course || null,
-          for_month: notes.for_month || null,
-          year: notes.year || null,
-          amount_paid: amount,
-          pay_date: payDate,
-          pay_mode: 'Razorpay',
-          txn_ref: paymentId,
-          collected_by: 'Online (Razorpay)',
-          reverted: false,
-        }])
-      } else if (notes.kind === 'flat') {
-        await supabase.from('adm_flat_fees').insert([{
-          adm_app_id: notes.gcc,
-          month: notes.for_month || null,
-          year: notes.year || null,
-          amount,
-          paid: true,
-          pay_date: payDate,
-          pay_mode: 'Razorpay',
-          txn_ref: paymentId,
-          collected_by: 'Online (Razorpay)',
-          reverted: false,
-        }])
-      } else {
-        await supabase.from('adm_fee_collections').insert([{
-          adm_app_id: notes.gcc,
-          fee_type: notes.kind || 'other',
-          amount_paid: amount,
-          pay_date: payDate,
-          pay_mode: 'Razorpay',
-          txn_ref: paymentId,
-          collected_by: 'Online (Razorpay)',
-          reverted: false,
-        }])
-      }
-
-      // Same ledger write collectFee() does for in-app collections, so
-      // Accounts.jsx totals stay consistent regardless of collection path.
-      await supabase.from('accounts').insert([{
-        type: 'Income',
-        amount,
-        entry_date: payDate,
-        description: `Fee payment (Razorpay) — GCC-${notes.gcc}`,
-        source_ref: paymentId,
-        source_type: notes.kind || 'fee',
-        is_soft_deleted: false,
-      }])
+      // Fee row + Accounts row, shaped the way the fee screens and the Income vs Collection check expect
+      // (see _razorpay/record.js). A failed insert is thrown, so it lands in webhook_failures below
+      // instead of being lost while Razorpay is told "received".
+      const { table, row, account } = buildOnlineRecords({ notes, paymentId, amount, payDate })
+      const fee = await supabase.from(table).insert([row])
+      if (fee.error) throw new Error(`could not save the ${table} row for ${paymentId}: ${fee.error.message}`)
+      const acc = await supabase.from('accounts').upsert([account], { onConflict: 'source_ref,source_type', ignoreDuplicates: false })
+      if (acc.error) throw new Error(`fee row saved but the Accounts entry for ${paymentId} failed: ${acc.error.message}`)
 
       console.log(`razorpay webhook: recorded ₹${amount} for GCC-${notes.gcc}`)
     }

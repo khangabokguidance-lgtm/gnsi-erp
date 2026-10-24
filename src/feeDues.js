@@ -144,13 +144,26 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     courseQ = rows.then(d => ({ data: d.course || [] }))
   }
 
-  const [ratesResult, flatFeeMonthsResult, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
+  let [ratesResult, flatFeeMonthsResult, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
     wrapRates(getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, gcc), 'fee_rates'),
     wrapRates(getFlatFees(student.hostel_type, student.course, student.batch, sessionYear, gcc, student.admission_date), 'flat_fee_months'),
     wrap(admQ, 'adm_fee_collections'),
     wrap(flatQ, 'adm_flat_fees'),
     wrap(courseQ, 'adm_course_fees'),
   ])
+
+  // Any signed-in session (a parent in the Parents Portal included) takes the direct-read path above, but a
+  // parent is not staff: the private fee tables answer with 0 rows, not an error, which would show every month
+  // unpaid. When all three reads came back empty, ask the secure per-student function instead; a student who
+  // really has no payments simply gets empty rows again.
+  if (staff && !preloaded && [admFeeRows, flatFeeRows, courseFeeRows].every(r => r && !r._failed && !(r.data || []).length)) {
+    try {
+      const { data, error } = await supabase.rpc('public_fee_rows', { p_gcc: gcc })
+      if (!error && data && (data.adm?.length || data.flat?.length || data.course?.length)) {
+        admFeeRows = { data: data.adm || [] }; flatFeeRows = { data: data.flat || [] }; courseFeeRows = { data: data.course || [] }
+      }
+    } catch { /* function not installed — keep the empty reads */ }
+  }
 
   const rates = ratesResult._failed ? { flatFee: 0, courseFee: 0, admissionFee: 0 } : ratesResult
   const flatFeeMonths = flatFeeMonthsResult._failed ? [] : flatFeeMonthsResult
