@@ -280,7 +280,7 @@ const TAB_IDS = new Set([
   'faculty', 'facilities', 'videos', 'notices', 'blog', 'gallery', 'events',
   'scholarship', 'mock-tests', 'question-papers', 'syllabus', 'exam-calendar',
   'important-dates', 'faq', 'enquiry', 'fee-payment', 'app-download', 'helpdesk',
-  'admit-card',
+  'admit-card', 'online-exam',
 ]);
 function hashToTab(hash) {
   const id = decodeURIComponent((hash || '').replace(/^#/, '')).trim();
@@ -832,6 +832,8 @@ export default function LandingPage({ onLogin }) {
     return hashToTab(window.location.hash).tab;
   });
   const tabContentRef = useRef(null);
+  const [examRef, setExamRef] = useState('');   // Online Exam tab: the exam link or Test ID a student pastes
+  const [examMsg, setExamMsg] = useState('');
 
   // ═══ ADMIT CARD / RESULT PORTAL (public, fee-gated, real data) ═══
   // examTypes: live list pulled from the real `exam_types` table so the
@@ -1334,7 +1336,7 @@ export default function LandingPage({ onLogin }) {
     notices: '📢', blog: '📰', gallery: '🖼️', events: '📅', scholarship: '🎓',
     'mock-tests': '📝', 'question-papers': '📄', syllabus: '📘',
     'exam-calendar': '🗓️', 'important-dates': '⏰', faq: '❓', enquiry: '✉️',
-    'fee-payment': '💳', 'admit-card': '🪪', 'app-download': '📱', helpdesk: '🛟',
+    'fee-payment': '💳', 'admit-card': '🪪', 'online-exam': '💻', 'app-download': '📱', helpdesk: '🛟',
   };
   const tabList = [
     { id: 'home', label: 'Home', cat: 'gold' },
@@ -1361,6 +1363,7 @@ export default function LandingPage({ onLogin }) {
     { id: 'enquiry', label: 'Enquire', cat: 'gold' },
     { id: 'fee-payment', label: 'Fee Payment', cat: 'gold' },
     { id: 'admit-card', label: 'Admit Card & Result', cat: 'gold' },
+    { id: 'online-exam', label: 'Online Exam', cat: 'red' },
     { id: 'app-download', label: 'App Download', cat: 'purple' },
     { id: 'helpdesk', label: 'Helpdesk', cat: 'purple' },
   ];
@@ -6002,6 +6005,69 @@ window.submitGrievance = async () => {
   </section>
   )}
   {/* ⑦ GRIEVANCE / HELPDESK */}
+  {activeTab === 'online-exam' && (
+  <section className="helpdesk-section" id="online-exam">
+    <div className="container">
+      <div className="eyebrow reveal">
+        <span data-en="">Online Exam</span>
+        <span data-hi="">ऑनलाइन परीक्षा</span>
+      </div>
+      <h2 className="st reveal">
+        <span data-en="">Take your exam online</span>
+        <span data-hi="">अपनी परीक्षा ऑनलाइन दें</span>
+      </h2>
+      <div className="rule reveal">
+        <div className="rule-line" />
+        <div className="rule-d" />
+        <div className="rule-line" />
+      </div>
+      <div className="reveal" style={{ maxWidth: 640, margin: '0 auto', background: '#fff', border: '1px solid rgba(15,31,61,.12)', borderRadius: 16, padding: '1.4rem', boxShadow: '0 10px 30px rgba(15,31,61,.08)' }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const raw = examRef.trim();
+            if (!raw) { setExamMsg('Paste the exam link or type the Test ID you were given.'); return; }
+            let id = raw, extra = '';
+            try {
+              if (/^https?:\/\//i.test(raw)) {
+                const u = new URL(raw);
+                id = u.searchParams.get('t') || '';
+                const c = u.searchParams.get('c');
+                if (c) extra = '&c=' + encodeURIComponent(c);
+              }
+            } catch { id = ''; }
+            if (!id) { setExamMsg('That link does not look like an exam link. Ask your teacher for it again.'); return; }
+            window.location.href = '/exam?t=' + encodeURIComponent(id) + extra;
+          }}
+        >
+          <label htmlFor="examRefInput" style={{ display: 'block', fontWeight: 700, fontSize: '.85rem', marginBottom: 6 }}>
+            <span data-en="">Exam link or Test ID</span>
+            <span data-hi="">परीक्षा लिंक या टेस्ट आईडी</span>
+          </label>
+          <input
+            id="examRefInput"
+            value={examRef}
+            onChange={(e) => { setExamRef(e.target.value); setExamMsg(''); }}
+            placeholder="https://…/exam?t=…  or  Test ID"
+            autoComplete="off"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '.8rem 1rem', borderRadius: 10, border: '1.5px solid rgba(15,31,61,.2)', fontSize: '1rem', fontFamily: 'inherit' }}
+          />
+          {examMsg && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0', fontSize: '.88rem' }}>{examMsg}</p>}
+          <button type="submit" style={{ marginTop: 12, width: '100%', padding: '.85rem 1rem', border: 'none', borderRadius: 10, background: 'var(--navy,#0f1f3d)', color: '#fff', fontWeight: 800, fontSize: '1rem', cursor: 'pointer' }}>
+            <span data-en="">Open exam ›</span>
+            <span data-hi="">परीक्षा खोलें ›</span>
+          </button>
+        </form>
+        <ul style={{ margin: '1rem 0 0', paddingLeft: '1.2rem', listStyle: 'disc', fontSize: '.9rem', lineHeight: 1.7, color: '#334155' }}>
+          <li><span data-en="">Your teacher gives you the exam link (or Test ID) and an access code.</span><span data-hi="">आपके शिक्षक आपको परीक्षा लिंक (या टेस्ट आईडी) और एक्सेस कोड देंगे।</span></li>
+          <li><span data-en="">You will need your GCC no. and your parent / guardian contact number from admission.</span><span data-hi="">आपको अपना GCC नंबर और प्रवेश के समय दिया गया अभिभावक का मोबाइल नंबर चाहिए।</span></li>
+          <li><span data-en="">Use a phone or computer with a steady internet connection and a working camera if the exam asks for one.</span><span data-hi="">स्थिर इंटरनेट वाला फ़ोन या कंप्यूटर इस्तेमाल करें; परीक्षा में माँगा जाए तो कैमरा चालू रखें।</span></li>
+          <li><span data-en="">One attempt only. If the page closes, open the same link on the same device to continue.</span><span data-hi="">केवल एक प्रयास। पेज बंद हो जाए तो उसी डिवाइस पर वही लिंक खोलकर जारी रखें।</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  )}
   {activeTab === 'helpdesk' && (
   <section className="helpdesk-section" id="helpdesk">
     <div className="container">
