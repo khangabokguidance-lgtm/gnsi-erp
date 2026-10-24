@@ -270,7 +270,8 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
         ? { adm: admFeeRows.data || [], flat: flatFeeRows.data || [], course: courseFeeRows.data || [], history: historyLoaded }
         : null
       const d = await getStudentDues(student, s, { withArrears: false, preloaded: reuse })
-      const due = (d?.flatFee.due || 0) + (d?.courseFee.due || 0)
+      // Dues written off in that session were settled then, so they are not carried forward.
+      const due = Math.max(0, (d?.flatFee.due || 0) + (d?.courseFee.due || 0) - (d?.writtenOff || 0))
       if (due > 0) arrearsBySession.push({ session: s, due, months: [...d.courseFee.items, ...d.flatFee.items].filter(i => i.due > 0).map(i => `${i.month.slice(0, 3)} ${i.year}`) })
     }
   }
