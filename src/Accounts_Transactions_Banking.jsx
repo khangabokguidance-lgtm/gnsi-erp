@@ -108,6 +108,7 @@ export const TransactionsViewBanking = ({
   // Premium palette (matches the Accounts screen: navy / gold / ivory)
   const P = { navy: '#132a4f', navy2: '#1e3a6e', gold: '#b8923a', goldSoft: '#f6efdc', line: '#e8e3d8', ink: '#0f1b2e', muted: '#5d6b82', faint: '#8a93a6', ivory: '#faf8f3' }
   const SERIF = "'Fraunces',Georgia,serif"
+  const SANS = "'Plus Jakarta Sans',system-ui,sans-serif"
 
   // Transaction card component
   const TransactionCard = ({ item, balance, isFlagged }) => {
@@ -157,33 +158,36 @@ export const TransactionsViewBanking = ({
     ].map(([t, rows]) => [t, rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')]).filter(([, rows]) => rows.length)
 
     const chip = (bg, color, text, key) => (
-      <span key={key} style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', backgroundColor: bg, color, borderRadius: 999, fontWeight: 600, fontSize: 11 }}>{text}</span>
+      <span key={key} style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 11px', backgroundColor: bg, color, border: `1px solid ${color}22`, borderRadius: 999, fontWeight: 700, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{text}</span>
     )
-    const iconBtn = { width: 36, height: 36, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15, background: '#fff', border: `1px solid ${P.line}` }
+    const iconBtn = { width: 40, height: 40, borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15, background: '#fff', border: `1px solid ${P.line}` }
 
     return (
       <div
         style={{
           position: 'relative',
-          backgroundColor: isFlagged ? '#fffbf0' : '#ffffff',
+          background: isFlagged ? '#fffbf0' : 'linear-gradient(180deg,#ffffff 0%,#fdfbf6 100%)',
           border: `1px solid ${isFlagged ? '#fed7aa' : P.line}`,
-          borderRadius: 16,
+          fontFamily: SANS,
+          WebkitFontSmoothing: 'antialiased',
+          borderRadius: 20,
           padding: isMobile ? '16px 16px 14px 20px' : '20px 24px 18px 28px',
           marginBottom: 14,
           overflow: 'hidden',
-          boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 10px 28px -16px rgba(19,42,79,.22)',
+          boxShadow: '0 1px 1px rgba(19,42,79,.04), 0 2px 4px rgba(19,42,79,.04), 0 18px 40px -20px rgba(19,42,79,.28)',
         }}
       >
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${P.gold}88, transparent)` }} />
         {/* type accent */}
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(180deg, ${accent}, ${accent}99)` }} />
 
         {/* header: icon, title + chips, amount */}
         <div style={{ display: 'flex', gap: isMobile ? 12 : 16, alignItems: 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-          <div style={{ width: 46, height: 46, borderRadius: 14, background: P.goldSoft, border: `1px solid #e9d9b0`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, background: 'linear-gradient(145deg,#fbf6e8,#f1e4bf)', border: `1px solid #e3cf98`, boxShadow: 'inset 0 1px 0 #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
             {modeIcon}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: isMobile ? 15 : 16.5, fontWeight: 600, color: P.ink, wordBreak: 'break-word', lineHeight: 1.4, fontFamily: SERIF }}>
+            <p style={{ margin: 0, fontSize: isMobile ? 16.5 : 18.5, fontWeight: 600, color: P.navy, wordBreak: 'break-word', lineHeight: 1.35, fontFamily: SERIF, letterSpacing: '-0.015em' }}>
               {item.note || item.category || '—'}
             </p>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
@@ -195,11 +199,11 @@ export const TransactionsViewBanking = ({
             </div>
           </div>
           <div style={{ textAlign: 'right', marginLeft: 'auto', flexShrink: 0 }}>
-            <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, fontFamily: SERIF, fontVariantNumeric: 'tabular-nums', color: dailyAmtColor || accent, lineHeight: 1.15 }}>
-              {isInc ? '+' : '−'}{fmt(item.amount || 0)}
+            <div style={{ fontSize: isMobile ? 23 : 29, fontWeight: 600, fontFamily: SERIF, fontVariantNumeric: 'lining-nums tabular-nums', color: dailyAmtColor || accent, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+              <span style={{ fontSize: '0.55em', fontWeight: 600, opacity: 0.7, marginRight: 3, verticalAlign: '0.35em' }}>{isInc ? '+' : '−'}</span>{fmt(item.amount || 0)}
             </div>
             {balance !== undefined && (
-              <div style={{ fontSize: 11, color: P.faint, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>Balance {fmt(balance)}</div>
+              <div style={{ fontSize: 10.5, color: P.faint, marginTop: 6, fontVariantNumeric: 'tabular-nums', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>Balance {fmt(balance)}</div>
             )}
           </div>
         </div>
@@ -220,12 +224,12 @@ export const TransactionsViewBanking = ({
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px dashed ${P.line}`, display: 'grid', gap: 14 }}>
           {sections.map(([title, rows]) => (
             <div key={title}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: P.gold, marginBottom: 8 }}>{title}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.2em', textTransform: 'uppercase', color: P.gold, whiteSpace: 'nowrap' }}>{title}</span><span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${P.line}, transparent)` }} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px 18px' }}>
                 {rows.map(([k, v]) => (
                   <div key={k} style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 10.5, color: P.faint, fontWeight: 600, marginBottom: 2 }}>{k}</div>
-                    <div style={{ fontSize: 13, color: P.ink, fontWeight: 600, wordBreak: 'break-word' }}>{String(v)}</div>
+                    <div style={{ fontSize: 10, color: P.faint, fontWeight: 600, marginBottom: 3, letterSpacing: '.1em', textTransform: 'uppercase' }}>{k}</div>
+                    <div style={{ fontSize: 14, color: P.ink, fontWeight: 600, wordBreak: 'break-word', letterSpacing: '-0.005em' }}>{String(v)}</div>
                   </div>
                 ))}
               </div>
@@ -353,11 +357,11 @@ export const TransactionsViewBanking = ({
               <h3
                 style={{
                   margin: 0,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#374151',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
+                  fontSize: isMobile ? 17 : 20,
+                  fontWeight: 600,
+                  color: '#132a4f',
+                  fontFamily: "'Fraunces',Georgia,serif",
+                  letterSpacing: '-0.01em',
                 }}
               >
                 {formatDate(dateKey)}
