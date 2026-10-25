@@ -337,6 +337,8 @@ textarea.in { resize: vertical; min-height: 62px; }
 .croprect .h.nw, .croprect .h.se { cursor: nwse-resize; }
 .croprect .h.ne, .croprect .h.sw { cursor: nesw-resize; }
 .cropbtn2 { font-size: 11px; padding: 3px 8px; }
+.crop-stage.picking { cursor: cell; }
+[data-c="pick"][aria-pressed="true"] { outline: 2px solid var(--brand); outline-offset: 1px; }
 .cropbtn { position: relative; }
 .cropbtn.done img { outline: 2px solid var(--ok, #2e7d4f); outline-offset: 1px; }
 .cropbtn.done::after { content: "✓"; position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--ok, #2e7d4f); color: #fff; font: 700 10px/16px var(--f-mono); text-align: center; }
@@ -1977,6 +1979,14 @@ async function fileToPages(files, onMsg) {
         const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
         const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
         await page.render({ canvasContext: g, viewport: vp }).promise;
+        // where the PDF prints text (captions, numbers, (A) labels), so the figure detector can tell it from drawings
+        try {
+          const tc = await page.getTextContent();
+          cv.textBoxes = tc.items.filter(t => t.str && t.str.trim()).map(t => {
+            const m = lib.Util.transform(vp.transform, t.transform), fh = Math.hypot(m[2], m[3]);
+            return { str: t.str.trim(), x0: m[4], y0: m[5] - fh, x1: m[4] + t.width * vp.scale, y1: m[5] + fh * .25 };
+          }).filter(t => t.x1 > t.x0 && t.y1 > t.y0);
+        } catch (e) { cv.textBoxes = null; }
         pages.push(cv);
       }
     } else if (/^image\//.test(file.type)) {
@@ -2022,65 +2032,149 @@ function cropBox(cv, b, pad = 12) {
   c.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
   return c;
 }
-/* the model's boxes are often off: they clip part of a figure, or take in the printed "Question
-   Figure" caption, the question number or a neighbour's "(A)" label. Snap a box to the ink on the
-   page: the drawings (marks taller than a line of text) that sit mostly in the box are kept whole,
-   even where they run past it, then only the small marks inside those drawings ("?", dots, letters
-   in a figure). Captions and labels next to a drawing are left out. */
-function refineBox(cv, b) {
-  const M = 80, CELL = 3, R = 2;                         // look this far past the box (of 1000); cell px; gap that joins marks
-  const ry0 = Math.max(0, b[0] - M), rx0 = Math.max(0, b[1] - M), ry1 = Math.min(1000, b[2] + M), rx1 = Math.min(1000, b[3] + M);
-  const X0 = Math.round(rx0 / 1000 * cv.width), Y0 = Math.round(ry0 / 1000 * cv.height);
-  const W = Math.round(rx1 / 1000 * cv.width) - X0, H = Math.round(ry1 / 1000 * cv.height) - Y0;
-  if (W < CELL * 3 || H < CELL * 3) return b;
-  let px;
-  try { px = cv.getContext('2d').getImageData(X0, Y0, W, H).data; } catch (e) { return b; }
+/* ---------- figure detector ----------
+   The model's boxes are often off: they clip part of a figure, or take in the printed "Question
+   Figure" caption, the question number or a neighbour's "(A)" label. Each page is read once into
+   separate marks of ink. A mark is printed text when the PDF's text layer has a word there (or, for
+   scans and photos, when it is no taller than a line of text); everything else is drawing.
+   A box is then fitted to the drawings it mostly covers, kept whole even where they run past it,
+   plus the small marks inside them ("?", dots, letters in a figure). */
+const INK = new WeakMap();
+function pageInk(cv) {
+  if (INK.has(cv)) return INK.get(cv);
+  const CELL = 3, R = 2, W = cv.width, H = cv.height;
+  let px = null;
+  try { px = cv.getContext('2d').getImageData(0, 0, W, H).data; } catch (e) { /* tainted */ }
+  if (!px) { INK.set(cv, null); return null; }
   const gw = Math.ceil(W / CELL), gh = Math.ceil(H / CELL), ink = new Uint8Array(gw * gh);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const k = (y * W + x) * 4;
-    if (px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 150) ink[((y / CELL) | 0) * gw + ((x / CELL) | 0)] = 1;
+  for (let y = 0; y < H; y++) {
+    const row = ((y / CELL) | 0) * gw;
+    for (let x = 0; x < W; x++) { const k = (y * W + x) * 4; if (px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 150) ink[row + ((x / CELL) | 0)] = 1; }
   }
-  // the model's box in grid cells
-  const bx0 = (b[1] / 1000 * cv.width - X0) / CELL, by0 = (b[0] / 1000 * cv.height - Y0) / CELL;
-  const bx1 = (b[3] / 1000 * cv.width - X0) / CELL, by1 = (b[2] / 1000 * cv.height - Y0) / CELL;
-  const tall = Math.max(4, cv.width * .04 / CELL);       // a drawing is taller than this; a line of text is not
   const seen = new Uint8Array(gw * gh), stack = [], marks = [];
   for (let i = 0; i < ink.length; i++) {
     if (!ink[i] || seen[i]) continue;
-    let x0 = gw, y0 = gh, x1 = -1, y1 = -1, n = 0, inside = 0;
+    let x0 = gw, y0 = gh, x1 = -1, y1 = -1, n = 0;
     seen[i] = 1; stack.push(i);
     while (stack.length) {
       const j = stack.pop(), x = j % gw, y = (j / gw) | 0;
-      n++; if (x >= bx0 && x < bx1 && y >= by0 && y < by1) inside++;
-      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {   // marks a few px apart (letters of a word) are one
         const nx = x + dx, ny = y + dy, nj = ny * gw + nx;
         if (nx >= 0 && ny >= 0 && nx < gw && ny < gh && ink[nj] && !seen[nj]) { seen[nj] = 1; stack.push(nj); }
       }
     }
     if (n < 2) continue;
-    const w = x1 - x0 + 1, h = y1 - y0 + 1;
-    // a rule across the whole search area (column divider, page line) is not part of a figure
-    if ((Math.min(w, h) <= R + 2) && (h >= gh * .9 || w >= gw * .9)) continue;
-    const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2;
-    marks.push({ x0, y0, x1: x1 + 1, y1: y1 + 1, big: h >= tall, mid: cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1, part: inside / n, cx, cy });
+    const m = { x0: x0 * CELL, y0: y0 * CELL, x1: Math.min(W, (x1 + 1) * CELL), y1: Math.min(H, (y1 + 1) * CELL), n };
+    const w = m.x1 - m.x0, h = m.y1 - m.y0;
+    // page borders, column rules and full-width lines are not figures
+    if ((Math.min(w, h) <= CELL * (R + 2) && (h > H * .25 || w > W * .45)) || w * h > W * H * .5) continue;
+    m.cx = (m.x0 + m.x1) / 2; m.cy = (m.y0 + m.y1) / 2;
+    marks.push(m);
   }
-  const pick = ms => ms.reduce((u, m) => [Math.min(u[0], m.y0), Math.min(u[1], m.x0), Math.max(u[2], m.y1), Math.max(u[3], m.x1)], [Infinity, Infinity, -1, -1]);
-  const big = marks.filter(m => m.big && (m.mid || m.part >= .4));
-  let u;
-  if (big.length) {
-    u = pick(big);
-    const inU = marks.filter(m => !m.big && m.cy >= u[0] - R && m.cy <= u[2] + R && m.cx >= u[1] - R && m.cx <= u[3] + R);
-    if (inU.length) u = pick(big.concat(inU));
-  } else {
-    const kept = marks.filter(m => m.mid || m.part > .6);
-    if (!kept.length) return b;
-    u = pick(kept);
-  }
-  const r = [(Y0 + u[0] * CELL) / cv.height * 1000, (X0 + u[1] * CELL) / cv.width * 1000, (Y0 + Math.min(H, u[2] * CELL)) / cv.height * 1000, (X0 + Math.min(W, u[3] * CELL)) / cv.width * 1000];
-  return okBox(r) ? r.map(v => Math.round(v * 10) / 10) : b;
+  const tb = cv.textBoxes, tall = W * .04;
+  marks.forEach(m => {
+    const h = m.y1 - m.y0;
+    m.text = tb && tb.length
+      ? tb.some(t => m.cx >= t.x0 - 3 && m.cx <= t.x1 + 3 && m.cy >= t.y0 - 3 && m.cy <= t.y1 + 3 && h <= (t.y1 - t.y0) * 1.8)
+      : h < tall;
+    m.draw = !m.text && (tb && tb.length ? m.n >= 6 : true);
+  });
+  const P = { W, H, marks };
+  INK.set(cv, P);
+  return P;
 }
-const figOf = (cv, page, b) => { const box = refineBox(cv, b); return { cv: cropBox(cv, box, 6), page, box }; };
+const toPx = (cv, b) => [b[0] / 1000 * cv.height, b[1] / 1000 * cv.width, b[2] / 1000 * cv.height, b[3] / 1000 * cv.width];
+const to1000 = (cv, u) => [u[0] / cv.height * 1000, u[1] / cv.width * 1000, u[2] / cv.height * 1000, u[3] / cv.width * 1000].map(v => Math.round(v * 10) / 10);
+const unionOf = ms => ms.reduce((u, m) => [Math.min(u[0], m.y0), Math.min(u[1], m.x0), Math.max(u[2], m.y1), Math.max(u[3], m.x1)], [Infinity, Infinity, -1, -1]);
+const midIn = (m, b) => m.cx >= b[1] && m.cx <= b[3] && m.cy >= b[0] && m.cy <= b[2];
+const share = (m, b) => Math.max(0, Math.min(m.x1, b[3]) - Math.max(m.x0, b[1])) * Math.max(0, Math.min(m.y1, b[2]) - Math.max(m.y0, b[0])) / Math.max(1, (m.x1 - m.x0) * (m.y1 - m.y0));
+// the drawings chosen, plus every small mark that sits inside them
+function fitMarks(P, chosen, taken) {
+  let u = unionOf(chosen);
+  // a frame drawn around what was chosen belongs to the figure too (unless it is far bigger: a box round a whole question)
+  for (let grew = true; grew;) {
+    grew = false;
+    const ua = (u[2] - u[0]) * (u[3] - u[1]);
+    const frame = P.marks.filter(m => m.draw && !chosen.includes(m) && !(taken && taken.has(m)) && m.x0 <= u[1] + 2 && m.x1 >= u[3] - 2 && m.y0 <= u[0] + 2 && m.y1 >= u[2] - 2 && (m.x1 - m.x0) * (m.y1 - m.y0) <= ua * 8);
+    if (frame.length) { chosen = chosen.concat(frame); u = unionOf(chosen); grew = true; }
+  }
+  const inner = P.marks.filter(m => !chosen.includes(m) && !(taken && taken.has(m)) && m.x0 >= u[1] - 6 && m.x1 <= u[3] + 6 && m.y0 >= u[0] - 6 && m.y1 <= u[2] + 6);
+  if (inner.length) u = unionOf(chosen.concat(inner));
+  return { u, used: chosen.concat(inner) };
+}
+/* box (of 1000) → { box, used } fitted to the drawing; taken: marks already given to another figure */
+function detectFig(cv, b, taken) {
+  const P = pageInk(cv);
+  if (!P) return { box: b, used: [] };
+  const bp = toPx(cv, b), free = m => !(taken && taken.has(m));
+  let chosen = P.marks.filter(m => m.draw && free(m) && (midIn(m, bp) || share(m, bp) >= .4));
+  if (!chosen.length) {
+    // the box missed the drawing: take the nearest drawing of about the right size
+    const bw = bp[3] - bp[1], bh = bp[2] - bp[0], bx = (bp[1] + bp[3]) / 2, by = (bp[0] + bp[2]) / 2, area = bw * bh;
+    const near = P.marks.filter(m => m.draw && free(m)).map(m => ({ m, d: Math.hypot(m.cx - bx, m.cy - by), a: (m.x1 - m.x0) * (m.y1 - m.y0) }))
+      .filter(c => c.d <= Math.hypot(bw, bh) && c.a >= area * .15 && c.a <= area * 6).sort((p, q) => p.d - q.d)[0];
+    if (near) chosen = [near.m];
+  }
+  if (!chosen.length) {
+    // no drawing at all (a figure made only of letters): keep the marks whose middle is in the box
+    const kept = P.marks.filter(m => free(m) && midIn(m, bp));
+    if (!kept.length) return { box: b, used: [] };
+    const r = to1000(cv, unionOf(kept));
+    return { box: okBox(r) ? r : b, used: kept };
+  }
+  const f = fitMarks(P, chosen, taken), r = to1000(cv, f.u);
+  return okBox(r) ? { box: r, used: f.used } : { box: b, used: [] };
+}
+/* four answer figures. When the PDF prints (A) (B) (C) (D), every drawing near them goes to its
+   own label (the drawings sit the same way from their labels as the model's boxes do), which
+   cuts each answer figure exactly; otherwise each box is fitted in turn, never sharing a drawing. */
+function detectOptions(cv, boxes) {
+  const P = pageInk(cv), taken = new Set();
+  if (!P) return boxes.map(b => ({ box: b, used: [] }));
+  const bps = boxes.map(b => toPx(cv, b)), tb = cv.textBoxes || [];
+  const labels = LET.map((L, i) => {
+    const re = new RegExp(`^[([]\\s*${L}\\s*[)\\]]$`), bp = bps[i], bx = (bp[1] + bp[3]) / 2, by = (bp[0] + bp[2]) / 2, reach = Math.hypot(bp[3] - bp[1], bp[2] - bp[0]) * 2.5;
+    return tb.filter(t => re.test(t.str)).map(t => ({ t, x: (t.x0 + t.x1) / 2, y: (t.y0 + t.y1) / 2 })).map(l => ({ ...l, d: Math.hypot(l.x - bx, l.y - by) }))
+      .filter(l => l.d <= reach).sort((p, q) => p.d - q.d)[0] || null;
+  });
+  if (labels.every(Boolean)) {
+    const off = bps.map((bp, i) => [labels[i].x - (bp[1] + bp[3]) / 2, labels[i].y - (bp[0] + bp[2]) / 2]);
+    const med = k => { const v = off.map(o => o[k]).sort((p, q) => p - q); return (v[1] + v[2]) / 2; };
+    const vx = med(0), vy = med(1);
+    let gap = Infinity;
+    labels.forEach((l, i) => labels.forEach((m, j) => { if (i < j) gap = Math.min(gap, Math.hypot(l.x - m.x, l.y - m.y)); }));
+    const groups = [[], [], [], []];
+    P.marks.filter(m => m.draw).forEach(m => {
+      const ds = labels.map(l => Math.hypot(m.cx + vx - l.x, m.cy + vy - l.y)), k = ds.indexOf(Math.min(...ds));
+      if (ds[k] < gap * .6) groups[k].push(m);
+    });
+    if (groups.every(g => g.length)) {
+      return groups.map(g => {
+        g.forEach(m => taken.add(m));
+        const f = fitMarks(P, g, null), r = to1000(cv, f.u);
+        f.used.forEach(m => taken.add(m));
+        return { box: r, used: f.used };
+      });
+    }
+  }
+  return boxes.map(b => { const d = detectFig(cv, b, taken); d.used.forEach(m => taken.add(m)); return d; });
+}
+/* the crop editor's click: the drawing under (or nearest to) a point of the page */
+function pickAt(cv, y, x) {
+  const P = pageInk(cv); if (!P) return null;
+  const py = y / 1000 * cv.height, px = x / 1000 * cv.width;
+  const hit = P.marks.filter(m => px >= m.x0 - 4 && px <= m.x1 + 4 && py >= m.y0 - 4 && py <= m.y1 + 4);
+  let m = hit.filter(h => h.draw).sort((p, q) => (p.x1 - p.x0) * (p.y1 - p.y0) - (q.x1 - q.x0) * (q.y1 - q.y0))[0];
+  if (!m) {
+    const near = P.marks.filter(k => k.draw).map(k => ({ k, d: Math.hypot(Math.max(k.x0 - px, 0, px - k.x1), Math.max(k.y0 - py, 0, py - k.y1)) })).sort((p, q) => p.d - q.d)[0];
+    m = near && near.d < cv.width * .03 ? near.k : hit[0];
+  }
+  if (!m) return null;
+  const r = to1000(cv, fitMarks(P, [m], null).u);
+  return okBox(r) ? r : null;
+}
+const figOf = (cv, page, d) => ({ cv: cropBox(cv, d.box, 6), page, box: d.box });
 function cleanItems(reply, cv, page) {
   const out = [];
   (Array.isArray(reply && reply.items) ? reply.items : []).forEach(r => {
@@ -2093,11 +2187,14 @@ function cleanItems(reply, cv, page) {
     while (opts.length < 4) opts.push('');
     const ofs = Array.isArray(r.optionFigures) && r.optionFigures.length === 4 && r.optionFigures.every(okBox) ? r.optionFigures : null;
     const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
+    // answer figures first, so the question figure cannot take in their drawings
+    const od = ofs ? detectOptions(cv, ofs) : null;
+    const qd = okBox(r.figure) ? detectFig(cv, r.figure, od ? new Set(od.flatMap(d => d.used)) : null) : null;
     out.push({
       t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
       q: cleanQ(str(r.text)), opts, a, gen: a != null,
-      fig: okBox(r.figure) ? figOf(cv, page, r.figure) : null,
-      optFigs: ofs ? ofs.map(b => figOf(cv, page, b)) : null,
+      fig: qd ? figOf(cv, page, qd) : null,
+      optFigs: od ? od.map(d => figOf(cv, page, d)) : null,
     });
   });
   return out;
@@ -2206,10 +2303,10 @@ function openCropper(o) {
   el.innerHTML = `<div class="crop-card" role="dialog" aria-modal="true" aria-labelledby="cropT" tabindex="-1">
     <div class="ov-h"><h2 id="cropT">${esc(o.title)}</h2><div class="addbar"><button class="btn" type="button" data-c="cancel">Cancel</button><button class="btn primary" type="button" data-c="use">Save crop</button></div></div>
     <div class="crop-tools"><button class="btn" type="button" data-c="out" aria-label="Zoom out" title="Zoom out (−)">−</button><span class="crop-z" id="cropZ" aria-live="polite"></span><button class="btn" type="button" data-c="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
-      <button class="btn" type="button" data-c="box">Zoom to box</button><button class="btn" type="button" data-c="fit">Whole page</button><button class="btn" type="button" data-c="snap" title="Fit the box to the drawing under it">Snap to drawing</button>
+      <button class="btn" type="button" data-c="box">Zoom to box</button><button class="btn" type="button" data-c="fit">Whole page</button><button class="btn gold" type="button" data-c="pick" aria-pressed="false" title="Tap a figure and the box fits it exactly (double-click works too)">✦ Detect</button><button class="btn" type="button" data-c="snap" title="Fit the box to the drawing under it">Snap to drawing</button>
       ${o.note ? `<span class="subnote">${esc(o.note)}</span>` : ''}</div>
     <div class="crop-view" id="cropView"><div class="crop-stage" id="cropStage"><img src="${o.url}" alt="" draggable="false"><div class="croprect" id="cropRect">${['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(h => `<span class="h ${h}" data-h="${h}"></span>`).join('')}</div></div></div>
-    <div class="ov-f"><span class="subnote" id="cropMsg">Drag to draw a new box; drag inside it to move it, or its handles to resize. Zoom with + / −, Ctrl + scroll or two fingers. Arrow keys nudge it (Shift + arrows resize).</span>
+    <div class="ov-f"><span class="subnote" id="cropMsg">Tap ✦ Detect, then tap the figure (or double-click it) to fit the box exactly. Or drag to draw a new box; drag inside it to move it, or its handles to resize. Zoom with + / −, Ctrl + scroll or two fingers. Arrow keys nudge it (Shift + arrows resize).</span>
       <div class="addbar"><button class="btn" type="button" data-c="cancel">Cancel</button><button class="btn primary" type="button" data-c="use">Save crop</button></div></div></div>`;
   document.body.append(el);
   const view = el.querySelector('#cropView'), stage = el.querySelector('#cropStage'), rect = el.querySelector('#cropRect'), img = stage.querySelector('img');
@@ -2243,6 +2340,7 @@ function openCropper(o) {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 2) { const [p, q] = [...pts.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: C.z }; drag = null; return; }
     const p = at(e), h = e.target.dataset && e.target.dataset.h;
+    if (C.pick && !h) { detectAt(p, e.shiftKey); drag = null; return; }
     drag = h ? { mode: 'size', h } : e.target === rect ? { mode: 'move', p, b: C.box.slice() } : { mode: 'draw', p };
   });
   stage.addEventListener('pointermove', e => {
@@ -2268,6 +2366,14 @@ function openCropper(o) {
   });
   const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null; };
   stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+  // detect: the drawing under the point becomes the box (Shift adds it to the box)
+  const detectAt = (p, add) => {
+    const r = pickAt(o.canvas, p[0], p[1]);
+    if (!r) return msg('No figure found there. Tap on a line of the drawing, or drag a box by hand.');
+    C.box = add ? [Math.min(C.box[0], r[0]), Math.min(C.box[1], r[1]), Math.max(C.box[2], r[2]), Math.max(C.box[3], r[3])] : r;
+    show(); msg(add ? 'Added. Tap more parts with Shift, or press Save crop.' : 'Figure detected. Shift + tap adds another part; press Save crop when it is right.');
+  };
+  stage.addEventListener('dblclick', e => { if (!C.pick) { e.preventDefault(); detectAt(at(e), e.shiftKey); } });
   view.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const r = view.getBoundingClientRect(); zoom(C.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   const use = async () => {
     const b = C.box.map(v => Math.round(v * 10) / 10);
@@ -2288,7 +2394,8 @@ function openCropper(o) {
     if (k === 'cancel') closeCropper();
     else if (k === 'in') zoom(C.z * 1.4); else if (k === 'out') zoom(C.z / 1.4);
     else if (k === 'fit') zoom(zMin()); else if (k === 'box') toBox();
-    else if (k === 'snap') { C.box = refineBox(o.canvas, C.box); show(); msg('Fitted to the drawing. Check it, then press Save crop.'); }
+    else if (k === 'snap') { C.box = detectFig(o.canvas, C.box).box; show(); msg('Fitted to the drawing. Check it, then press Save crop.'); }
+    else if (k === 'pick') { C.pick = !C.pick; c.setAttribute('aria-pressed', C.pick); stage.classList.toggle('picking', C.pick); msg(C.pick ? 'Tap the figure on the page. Hold Shift (or tap again with Add on) to add another part.' : 'Drag to draw a box, or turn on Detect and tap the figure.'); }
     else if (k === 'use') use();
   });
   el.addEventListener('keydown', e => {
