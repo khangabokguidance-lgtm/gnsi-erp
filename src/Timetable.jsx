@@ -4,6 +4,7 @@ import { sysOr, sysValue } from './systemSettings'
 import { staffDB } from './staffDB'
 import { isAdminRole } from './roles'
 import { PremiumStyles, PremiumHero } from './premiumUI'
+import { BATCHES, TIMETABLE_ROWS, periodName, isWholeInstituteEntry } from './timetableData'
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM — "Ledger & Crest"
@@ -61,7 +62,6 @@ const getBatchStyle = n => {
   if (!n) return { bg: C.navy50, border: C.line, text: C.inkSoft, dot: C.inkFaint }
   return BATCH_PALETTE[n.split(' ')[0]] || { bg: C.navy50, border: C.line, text: C.inkSoft, dot: C.inkFaint }
 }
-const isBreak = subj => /TEA BREAK|LUNCH|DINNER|BREAK/i.test(subj || '')
 const isDoubt = subj => /DOUBT SESSION/i.test(subj || '')
 
 function todayISO() { return new Date().toISOString().split('T')[0] }
@@ -84,79 +84,20 @@ function periodStartMinutes(periodName) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SEED DATA — 2026 Academic Time Table (Mon–Sat, repeats weekly)
-// Source: GNSI_Time_Table_2026.docx
+// SEED DATA — October 2026 Time Table (Mon–Sat, repeats weekly)
+// Built from the shared schedule in timetableData.js so the grid, reports and
+// any other reader stay in step. Whole-institute rows (assembly, meals, breaks,
+// Refresh Hour, Lights Off) are stored once per day with class_name 'ALL'.
 // ══════════════════════════════════════════════════════════════════════════════
-const SEED_PERIODS = [
-  { period_name: '10:25 AM–11:20 AM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Mathematics II', teacher_name: 'Sir Sumanta' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'GK', teacher_name: 'Sir Deepak' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Mathematics I', teacher_name: 'Sir Sunder' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics I', teacher_name: 'Sir Himan' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Chetan' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Arjun' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Grammar', teacher_name: 'Sir Manglemba' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Mathematics II', teacher_name: 'Sir Kabiraj' },
-  ]},
-  { period_name: '11:20 AM–12:10 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Reasoning', teacher_name: 'Sir Johny' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Science', teacher_name: 'Sir Arunkumar' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Grammar', teacher_name: 'Sir Manglemba' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics', teacher_name: 'Sir Himan' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Sunder' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Mathematics I', teacher_name: 'Sir Kabiraj' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'English Grammar', teacher_name: 'Sir Adison' },
-  ]},
-  { period_name: '12:10 PM–1:00 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Science', teacher_name: 'Sir Arunkumar' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Reasoning', teacher_name: 'Sir Johny' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'GK', teacher_name: 'Sir Deepak' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Environmental Studies II', teacher_name: 'Sir Chetan' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Lenin' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Shrinivash' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Meitei Mayek', teacher_name: 'Madam Sandhya' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
-  ]},
-  { period_name: '1:00 PM–1:15 PM', rows: [
-    { class_name: 'ALL', section: null, subject_name: 'BREAK', teacher_name: null },
-  ]},
-  { period_name: '1:20 PM–2:10 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Mathematics I', teacher_name: 'Sir Sunder' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Mathematics II', teacher_name: 'Sir Himan' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Mathematics II', teacher_name: 'Sir Sumanta' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Deepak' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mental Ability', teacher_name: 'Sir Roshan' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Mathematics', teacher_name: 'Sir Lenin' },
-  ]},
-  { period_name: '2:10 PM–3:00 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Vocabulary', teacher_name: 'Sir Lenin' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Grammar', teacher_name: 'Sir Manglemba' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Vocabulary', teacher_name: 'Sir Chetan' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Kabiraj' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Environmental Studies I', teacher_name: 'Sir Arunkumar' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Mathematics', teacher_name: 'Sir Himan' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Mathematics', teacher_name: 'Sir Sumanta' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Environmental Studies', teacher_name: 'Sir Arjun' },
-  ]},
-  { period_name: '3:00 PM–3:50 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'Grammar', teacher_name: 'Sir Bidyachandra' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Vocabulary', teacher_name: 'Sir Pawan' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Reasoning', teacher_name: 'Sir Johny' },
-    { class_name: 'Lakshya A', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Sunder' },
-    { class_name: 'Lakshya B', section: 'Navodaya', subject_name: 'Mathematics Revision', teacher_name: 'Sir Kabiraj' },
-    { class_name: 'Umeed', section: 'Navodaya', subject_name: 'Passage & Grammar', teacher_name: 'Sir Pawan' },
-    { class_name: 'Udaan', section: 'Navodaya Course', subject_name: 'Reasoning', teacher_name: 'Sir Roshan' },
-    { class_name: 'Pragati', section: 'Foundation', subject_name: 'Passage', teacher_name: 'Madam Sandhya' },
-  ]},
-  { period_name: '6:00 PM–7:00 PM', rows: [
-    { class_name: 'Champion', section: 'Sainik', subject_name: 'GK', teacher_name: 'Sir Deepak' },
-    { class_name: 'Achiever', section: 'Sainik', subject_name: 'Mathematics I', teacher_name: 'Sir Bronson' },
-    { class_name: 'Leader', section: 'Sainik', subject_name: 'Science', teacher_name: 'Sir Arunkumar' },
-  ]},
-]
+const SEED_PERIODS = TIMETABLE_ROWS.map(row => ({
+  period_name: periodName(row),
+  rows: row.wholeInstitute
+    ? [{ class_name: 'ALL', section: null, subject_name: row.label, teacher_name: null }]
+    : row.cells.flatMap((cell, i) => cell ? [{
+        class_name: BATCHES[i].name, section: BATCHES[i].sub,
+        subject_name: cell[0], teacher_name: cell[1] || null,
+      }] : []),
+}))
 
 function buildSeedRows() {
   const rows = []
@@ -322,11 +263,11 @@ function PinModal({ onSuccess, onClose }) {
 function Cell({ entry, subMap, isAdmin, onEdit }) {
   if (!entry) return <td style={{ padding: 8, background: C.navy50 }} />
   const style = getBatchStyle(entry.class_name)
-  const break_ = isBreak(entry.subject_name)
   const doubt = isDoubt(entry.subject_name)
   const sub = subMap.get(`${entry.day_name}|${entry.class_name}|${entry.period_name}`)
 
-  if (break_) {
+  // Breaks, assembly, meals, Refresh Hour, Lights Off — one dark band across the row.
+  if (isWholeInstituteEntry(entry)) {
     return (
       <td style={{ padding: '10px 12px', background: C.navy900, color: C.gold, textAlign: 'center', fontWeight: 700, fontSize: 12, letterSpacing: '.04em' }}>
         {entry.subject_name}
@@ -779,14 +720,17 @@ function ReportGenerator({ entries, subs, batches }) {
                       <td style={{ padding: '7px 10px', fontWeight: 700, border: `1px solid ${C.line}`, whiteSpace: 'nowrap' }}>{p}</td>
                       {DAYS.map(d => {
                         const e = entries.find(en => en.period_name === p && en.day_name === d && (en.class_name === batch || en.class_name === 'ALL'))
+                        if (isWholeInstituteEntry(e)) return (
+                          <td key={d} style={{ padding: '7px 10px', border: `1px solid ${C.navy900}`, background: C.navy900, color: C.gold, textAlign: 'center', fontWeight: 700 }}>{e.subject_name}</td>
+                        )
                         return (
                           <td key={d} style={{ padding: '7px 10px', border: `1px solid ${C.line}` }}>
-                            {e ? (isBreak(e.subject_name) ? <strong>{e.subject_name}</strong> : (
+                            {e ? (
                               <>
                                 <div style={{ fontWeight: 700 }}>{e.subject_name}</div>
                                 {e.teacher_name && <div style={{ fontSize: 10, color: C.inkSoft }}>{e.teacher_name}</div>}
                               </>
-                            )) : '—'}
+                            ) : '—'}
                           </td>
                         )
                       })}
@@ -817,9 +761,12 @@ function ReportGenerator({ entries, subs, batches }) {
                           <td style={{ padding: '5px 9px', fontWeight: 700, border: `1px solid ${C.line}`, whiteSpace: 'nowrap', fontSize: 10 }}>{p}</td>
                           {DAYS.map(d => {
                             const e = entries.find(en => en.period_name === p && en.day_name === d && (en.class_name === b || en.class_name === 'ALL'))
+                            if (isWholeInstituteEntry(e)) return (
+                              <td key={d} style={{ padding: '5px 9px', border: `1px solid ${C.navy900}`, background: C.navy900, color: C.gold, textAlign: 'center', fontWeight: 700, fontSize: 10 }}>{e.subject_name}</td>
+                            )
                             return (
                               <td key={d} style={{ padding: '5px 9px', border: `1px solid ${C.line}`, fontSize: 10 }}>
-                                {e ? (isBreak(e.subject_name) ? e.subject_name : `${e.subject_name}${e.teacher_name ? ' — ' + e.teacher_name : ''}`) : '—'}
+                                {e ? `${e.subject_name}${e.teacher_name ? ' — ' + e.teacher_name : ''}` : '—'}
                               </td>
                             )
                           })}
