@@ -3749,31 +3749,70 @@ body:has(.ac-bottom){padding-bottom:76px}
         })()}
 
         {/* ── Expenditure v2: vendor spend summary + drilldown ── */}
-        {vendorSpendSummary.length>0&&(
-          <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
-            <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🏷️ Vendor / Payee Spend</h3>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {vendorSpendSummary.map(v=>{
+        {vendorSpendSummary.length>0&&(()=>{
+          const vTotal=vendorSpendSummary.reduce((s,v)=>s+v.total,0)
+          const vTop=vendorSpendSummary[0]
+          return(
+          <div style={{...chartCard,marginBottom:22,padding: isMobile ? 16 : 26}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:12,marginBottom:20}}>
+              <div>
+                <p style={{fontSize:10,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:AC.gold,margin:'0 0 6px'}}>Payees</p>
+                <h3 style={{...chartTitle,fontSize: isMobile?20:24,marginBottom:3}}>Vendor / Payee Spend</h3>
+                <p style={{fontSize:12.5,color:'#8a93a6',margin:0}}>Who was paid, how much and when — ranked by total spend</p>
+              </div>
+              <div style={{display:'flex',gap: isMobile?14:26,flexWrap:'wrap'}}>
+                {[['Vendors',vendorSpendSummary.length,AC.navy2],['Total paid',fmt(vTotal),'#7f1d1d'],['Top payee',vTop.vendorName,AC.navy2]].map(([l,val,c])=>(
+                  <div key={l} style={{textAlign: isMobile?'left':'right',minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'.14em'}}>{l}</div>
+                    <div style={{fontSize: l==='Top payee'?15:22,fontWeight:600,color:c,fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
+              {vendorSpendSummary.map((v,idx)=>{
                 const expanded=vendorDrilldown===v.vendor_id
+                const pct=vTotal>0?(v.total/vTotal)*100:0
+                const color=CHART_COLORS[idx%CHART_COLORS.length]
+                const initial=(v.vendorName||'?').trim().charAt(0).toUpperCase()
                 return (
-                  <div key={v.vendor_id} style={{border:'1px solid #f3f0e8',borderRadius:8}}>
-                    <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
-                      <div>
-                        <strong style={{color:'#14213d'}}>{expanded?'▾':'▸'} {v.vendorName}</strong>
-                        <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</span>
+                  <div key={v.vendor_id} style={{border:`1px solid ${AC.line}`,borderTop:`3px solid ${color}`,borderRadius:16,overflow:'hidden',backgroundColor:expanded?'#fdfbf6':'white',boxShadow:'0 1px 2px rgba(19,42,79,.04), 0 12px 28px -18px rgba(19,42,79,.25)',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                    <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{padding:'16px 18px',cursor:'pointer'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:12}}>
+                        <div style={{display:'flex',alignItems:'center',gap:12,minWidth:0}}>
+                          <span style={{width:42,height:42,borderRadius:13,background:`${color}1f`,color,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:AC.serif,fontSize:19,fontWeight:600,flexShrink:0}}>{initial}</span>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontWeight:700,color:AC.navy,fontSize:15,wordBreak:'break-word'}}>{v.vendorName}</div>
+                            <div style={{fontSize:11.5,color:'#8a93a6',marginTop:2}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</div>
+                          </div>
+                        </div>
+                        <span style={{fontSize:10,fontWeight:800,color:AC.gold,letterSpacing:'.1em',flexShrink:0}}>#{idx+1} {expanded?'▾':'▸'}</span>
                       </div>
-                      <strong style={{color:'#7f1d1d'}}>{fmt(v.total)}</strong>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
+                        <strong style={{fontSize:24,fontWeight:600,color:'#7f1d1d',fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(v.total)}</strong>
+                        <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
+                      </div>
+                      <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,background:`linear-gradient(90deg,${color},${color}99)`,transition:'width .3s ease'}}/>
+                      </div>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #faf8f3'}}>
+                      <div style={{padding:'0 18px 14px',borderTop:`1px dashed ${AC.line}`}}>
                         {(showAllDrilldown.has(`vendor:${v.vendor_id}`)?v.entries:v.entries.slice(0,10)).map(e=>(
-                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
-                            <span style={{color:'#5d6b82'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
-                            <strong style={{color:'#dc2626'}}>{fmt(e.amount)}</strong>
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,padding:'11px 0',borderBottom:'1px solid #f1ede2'}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{color:AC.ink,fontWeight:600,fontSize:13,wordBreak:'break-word'}}>{e.note||e.category}</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:'4px 6px',marginTop:6}}>
+                                {[['Date',e.entry_date],['Category',[e.category,e.sub_category].filter(Boolean).join(' › ')],['Voucher head',e.voucher_head],['Mode',e.payment_mode],['Account',e.account_type||'Cash A/c'],['Ref',e.txn_ref],['By',e.added_by],['Receipt',e.receipt_url?'Attached':'']].filter(([,x])=>x).map(([k,x])=>(
+                                  <span key={k} style={{fontSize:11,padding:'2px 9px',borderRadius:999,backgroundColor:'#f5f3ec',border:'1px solid #ece7d8',color:'#4b4f58'}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'#9c9ea6',marginRight:5}}>{k}</span>{x}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <strong style={{color:'#b91c1c',flexShrink:0,fontFamily:AC.serif,fontSize:15,fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
                         {v.entries.length>10&&(
-                          <button onClick={()=>toggleShowAllDrilldown(`vendor:${v.vendor_id}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'6px 0 0',textAlign:'left'}}>
+                          <button onClick={()=>toggleShowAllDrilldown(`vendor:${v.vendor_id}`)} style={{background:'none',border:'none',color:AC.navy2,fontSize:12,fontWeight:700,cursor:'pointer',padding:'10px 0 0',textAlign:'left'}}>
                             {showAllDrilldown.has(`vendor:${v.vendor_id}`)?'Show less':`+${v.entries.length-10} more payment(s) — Show all`}
                           </button>
                         )}
@@ -3784,7 +3823,8 @@ body:has(.ac-bottom){padding-bottom:76px}
               })}
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* ── separate daily expenditure table ── */}
         {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
