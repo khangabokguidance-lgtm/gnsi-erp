@@ -1934,7 +1934,7 @@ const PDFJS = {
   lib: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
 };
-const IMPORT_MAX_PAGES = 12;
+const IMPORT_MAX_PAGES = 30;
 const PAGE_PX = 1600;                                   // width each page is read at
 const READ_PROMPT = (p, total) => `This image is page ${p} of ${total} of a printed exam paper (an Indian school entrance test such as the JNV Selection Test). Read it and list everything a student needs, in reading order: in a two-column page, the whole left column first, then the right column.
 
@@ -1988,7 +1988,7 @@ async function fileToPages(files, onMsg) {
             return { str: t.str.trim(), x0: m[4], y0: m[5] - fh, x1: m[4] + t.width * vp.scale, y1: m[5] + fh * .25 };
           }).filter(t => t.x1 > t.x0 && t.y1 > t.y0);
         } catch (e) { cv.textBoxes = null; }
-        pages.push(cv);
+        pages.push(await keepPage(cv));
       }
     } else if (/^image\//.test(file.type)) {
       total++;
@@ -1997,12 +1997,31 @@ async function fileToPages(files, onMsg) {
       const k = Math.min(1, PAGE_PX / bmp.width), cv = document.createElement('canvas');
       cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
       const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
-      pages.push(cv);
+      bmp.close && bmp.close();
+      pages.push(await keepPage(cv));
     }
   }
   return { pages, total };
 }
 const canvasBlob = (cv, type = 'image/jpeg', q = 0.86) => new Promise(r => cv.toBlob(r, type, q));
+/* A drawn page takes about 14 MB while open, too much to keep 30 of them (phones run out of memory).
+   Each page is kept as a JPEG and opened again when it is needed, two at a time. */
+async function keepPage(cv) {
+  const pg = { blob: await canvasBlob(cv, 'image/jpeg', .92), w: cv.width, h: cv.height, textBoxes: cv.textBoxes || null };
+  cv.width = cv.height = 0;                              // let the browser free the pixels now
+  return pg;
+}
+const openPages = new Map();
+async function pageCanvas(pg) {
+  if (openPages.has(pg)) { const c = openPages.get(pg); openPages.delete(pg); openPages.set(pg, c); return c; }
+  const bmp = await createImageBitmap(pg.blob);
+  const cv = document.createElement('canvas'); cv.width = pg.w; cv.height = pg.h;
+  cv.getContext('2d').drawImage(bmp, 0, 0, pg.w, pg.h); bmp.close && bmp.close();
+  cv.textBoxes = pg.textBoxes;
+  openPages.set(pg, cv);
+  while (openPages.size > 2) { const [old, c] = openPages.entries().next().value; openPages.delete(old); c.width = c.height = 0; }
+  return cv;
+}
 const blobB64 = blob => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
 const parseLooseJSON = t => {
   if (t && typeof t === 'object') return t;
@@ -2353,7 +2372,7 @@ async function runImport() {
         if (gap > 0) await wait(gap, i, false);
         msg(`Reading page ${i + 1} of ${pages.length}… ${kind === 'claude' ? '(Claude)' : '(free AI models)'}`);
         last = Date.now();
-        try { reply = await readPage(kind, pages[i], i + 1, pages.length, signal); break; }
+        try { reply = await readPage(kind, await pageCanvas(pages[i]), i + 1, pages.length, signal); break; }
         catch (e) {
           if (e && e.code === 'rate_limited') {
             pace = 7;                                     // about 8 pages a minute from now on
@@ -2370,7 +2389,7 @@ async function runImport() {
         break;
       }
       if (!reply) { items.push({ t: 'note', text: `Page ${i + 1} could not be read.` }); continue; }
-      items = items.concat(cleanItems(reply, pages[i], i + 1));
+      items = items.concat(cleanItems(reply, await pageCanvas(pages[i]), i + 1));
     }
     if (imp !== job) return;                             // closed while reading
     imp.items = mergeContinued(items);
@@ -2547,12 +2566,12 @@ async function loadCanvas(ref) {
 }
 
 /* import review: a figure's crop, drawn again on its page */
-function openCrop(i, k) {
+async function openCrop(i, k) {
   const it = imp && imp.items && imp.items[i], f = it && (k === 'fig' ? it.fig : (it.optFigs || [])[+k]);
   if (!f || imp.busy || !imp.pages || !imp.pages[f.page - 1]) return;
-  const cv = imp.pages[f.page - 1];
+  const pg = imp.pages[f.page - 1], cv = await pageCanvas(pg);
   imp.pageUrls = imp.pageUrls || {};
-  const url = imp.pageUrls[f.page] || (imp.pageUrls[f.page] = cv.toDataURL('image/jpeg', .9));
+  const url = imp.pageUrls[f.page] || (imp.pageUrls[f.page] = URL.createObjectURL(pg.blob));
   const what = k === 'fig' ? 'question figure' : `answer figure ${LET[+k]}`;
   openCropper({ canvas: cv, url, box: f.box, title: `Question ${it.number ?? ''} · ${what} (page ${f.page})`, note: 'Leave out the question number and the (A) (B) (C) (D) labels.',
     onUse: async box => {
@@ -2610,7 +2629,7 @@ async function finishImport() {
     const pageRefs = {};
     const from = async f => {
       if (!S.assets || !imp.pages[f.page - 1]) return null;
-      if (!(f.page in pageRefs)) pageRefs[f.page] = canvasBlob(imp.pages[f.page - 1], 'image/jpeg', .9).then(b => storeImage(b, 2400)).catch(() => '');
+      if (!(f.page in pageRefs)) pageRefs[f.page] = storeImage(imp.pages[f.page - 1].blob, 2400).catch(() => '');
       const p = await pageRefs[f.page];
       return p ? { p, b: f.box } : null;
     };
