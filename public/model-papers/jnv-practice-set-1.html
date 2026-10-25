@@ -2052,26 +2052,50 @@ const TESS = {
   lib: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
   worker: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
   core: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
-  lang: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
+  // each language's model comes from its own @tesseract.js-data/<lang> package on jsDelivr
 };
-let ocrWorker = null, ocrProgress = null;
-async function ocrWords(cv) {
+/* the paper's language, for the built-in reader. Meetei Mayek has no OCR model anywhere, so on
+   scanned Mayek pages each question and option is kept as a picture of the original print (a PDF
+   with Unicode Mayek text is read as text). */
+const PAPER_LANGS = {
+  en: { ocr: 'eng', name: 'English' },
+  hi: { ocr: 'eng+hin', name: 'Hindi', script: /[\u0900-\u097F]/ },
+  bn: { ocr: 'eng+ben', name: 'Manipuri or Bengali (Bengali script)', script: /[\u0980-\u09FF]/ },
+  mm: { ocr: 'eng', name: 'Meetei Mayek (kept as pictures)', script: /[\uABC0-\uABFF]/, pictures: true },
+};
+// Devanagari, Bengali and Meetei Mayek digits read as 0-9
+const normDigits = t => String(t).replace(/[\u0966-\u096F\u09E6-\u09EF\uABF0-\uABF9]/g, c => {
+  const k = c.charCodeAt(0); return String(k - (k >= 0xABF0 ? 0xABF0 : k >= 0x09E6 ? 0x09E6 : 0x0966));
+});
+let ocrWorker = null, ocrLangs = '', ocrProgress = null;
+async function ocrWords(cv, langs = 'eng', minConf = 45) {
   if (!window.Tesseract) await loadScript(TESS.lib);
-  if (!ocrWorker) ocrWorker = window.Tesseract.createWorker('eng', 1, {
-    workerPath: TESS.worker, corePath: TESS.core, langPath: TESS.lang,
-    logger: m => { if (ocrProgress && m && m.status === 'recognizing text') ocrProgress(m.progress); },
-  }).catch(e => { ocrWorker = null; throw e; });
+  if (ocrWorker && ocrLangs !== langs) endOcr();
+  if (!ocrWorker) {
+    ocrLangs = langs;
+    ocrWorker = window.Tesseract.createWorker(langs, 1, {
+      workerPath: TESS.worker, corePath: TESS.core,
+      logger: m => { if (ocrProgress && m && m.status === 'recognizing text') ocrProgress(m.progress); },
+    }).catch(e => { ocrWorker = null; throw e; });
+  }
   const w = await ocrWorker;
   // Tesseract's own layout step can skip whole lines of a two-column page, so each column is read on
   // its own, as one column of text; the gap between the columns is found from the ink on the page
   const P = pageInk(cv), g = P ? findGutter(P.marks, cv.width) : null;
-  const parts = g == null ? [[0, cv.width]] : [[0, Math.round(g)], [Math.round(g), cv.width]];
+  // whatever runs across the gap (a section band) is read as one strip of the whole width, and
+  // blanked out of the two columns, so a word on the gap is not cut in half
+  const strips = [];
+  if (g != null) P.marks.filter(m => m.x0 < g - 4 && m.x1 > g + 4).map(m => [m.y0 - 4, m.y1 + 4]).sort((a, b) => a[0] - b[0])
+    .forEach(r => { const l = strips[strips.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else strips.push(r); });
+  const parts = g == null ? [[0, cv.width, 0, cv.height]] : [[0, Math.round(g), 0, cv.height], [Math.round(g), cv.width, 0, cv.height], ...strips.map(([a, b]) => [0, cv.width, Math.max(0, a), Math.min(cv.height, b)])];
   const words = [];
   for (let k = 0; k < parts.length; k++) {
-    const [x0, x1] = parts[k], c = document.createElement('canvas');
-    c.width = x1 - x0; c.height = cv.height;
-    c.getContext('2d').drawImage(cv, x0, 0, c.width, c.height, 0, 0, c.width, c.height);
-    await w.setParameters({ tessedit_pageseg_mode: parts.length > 1 ? '4' : '3' });
+    const [x0, x1, y0, y1] = parts[k], c = document.createElement('canvas');
+    c.width = x1 - x0; c.height = y1 - y0;
+    const cg = c.getContext('2d');
+    cg.drawImage(cv, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+    if (g != null && k < 2) { cg.fillStyle = '#fff'; strips.forEach(([a, b]) => cg.fillRect(0, a, c.width, b - a)); }
+    await w.setParameters({ tessedit_pageseg_mode: g == null ? '3' : k < 2 ? '4' : '6' });
     const prog = ocrProgress;
     ocrProgress = prog ? v => prog((k + v) / parts.length) : null;
     const { data } = await w.recognize(c, {}, { blocks: true, text: false });
@@ -2079,7 +2103,9 @@ async function ocrWords(cv) {
     c.width = c.height = 0;
     (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => (l.words || []).forEach(x => {
       const t = String(x.text || '').trim();
-      if (t && x.confidence >= 45 && /[\w₹%°?]/.test(t)) words.push({ str: t, x0: x.bbox.x0 + x0, y0: x.bbox.y0, x1: x.bbox.x1 + x0, y1: x.bbox.y1 });
+      // a question number or option label read with low confidence is still worth keeping
+      const mark = /^[(\[]?[\d\u0966-\u096F\u09E6-\u09EF]{1,3}[.)\]]$|^[(\[][A-Da-d][)\]]$/u.test(t);
+      if (t && (x.confidence >= minConf || mark && x.confidence >= 15) && /[\p{L}\p{N}₹%°?]/u.test(t)) words.push({ str: t, x0: x.bbox.x0 + x0, y0: x.bbox.y0 + y0, x1: x.bbox.x1 + x0, y1: x.bbox.y1 + y0 });
     }))));
   }
   // a "word" much taller than the text around it is a misread drawing, not text
@@ -2113,7 +2139,7 @@ function readingLines(pieces, W) {
   // a section band ("SECTION – 2  ARITHMETIC TEST") runs across both columns: every piece level with
   // the word SECTION belongs to that one line
   const bandPs = new Set();
-  pieces.filter(p => /^SECTION\b/i.test(p.str)).forEach(a => {
+  pieces.filter(p => /^(?:SECTION\b|खण्ड|खंड|বিভাগ|খণ্ড)/iu.test(p.str)).forEach(a => {
     const cy = (a.y0 + a.y1) / 2, h = a.y1 - a.y0;
     pieces.forEach(p => { if (Math.abs((p.y0 + p.y1) / 2 - cy) < h * .6) bandPs.add(p); });
   });
@@ -2150,23 +2176,35 @@ function readingLines(pieces, W) {
   return out;
 }
 
+// English, Hindi and Bengali-script words for the parts of a paper (digits are already 0-9)
 const RX = {
-  section: /^SECTION\s*[-–—:]?\s*([IVX\d]+)\b\s*[-–—:]?\s*(.*)$/i,
-  part: /^PART\s*[-–—:]?\s*([IVXl|]+|\d+)\b\s*[-–—:]?\s*(.*)$/i,
-  dir: /^Directions?\s*(\([^)]*\))?\s*[:.\-–—]/i,
+  section: /^(?:SECTION|खण्ड|खंड|বিভাগ|খণ্ড)\s*[-–—:]?\s*([IVX\d]+|[A-D])(?=$|\s|[-–—:])\s*[-–—:]?\s*(.*)$/iu,
+  part: /^(?:PART|भाग|অংশ)\s*[-–—:]?\s*([IVXl|]+|\d+)(?=$|\s|[-–—:])\s*[-–—:]?\s*(.*)$/iu,
+  dir: /^(?:Directions?\s*(\([^)]*\))?\s*[:.\-–—]|निर्देश\S*|নির্দেশ\S*)/iu,
   q: /^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*[.)]\s*(.*)$/i,
-  cap: /^(question|answer)\s+figures?\s*:?\s*$/i,
-  opt: /(?:^|\s)\(\s*([A-Da-d])\s*\)|(?:^|\s)([A-D])[.)](?=\s)/g,
+  cap: /^(?:(?:question|answer)\s+figures?|(?:प्रश्न|उत्तर)\s*आकृतियाँ?|(?:প্রশ্ন|উত্তর)\s*(?:চিত্র|আকৃতি)\S*)\s*:?\s*$/iu,
+  // "(B)" is often read as "(8)" and "(C)"/"(D)" as "(0" or "(O)" by OCR: those count as the next label
+  opt: /(?:^|\s)\(\s*([A-Da-dकखगघকখগঘ1-480OQ©])\s*(?:\)|(?=\s))|(?:^|\s)([A-D])[.)](?=\s)/gu,
 };
+// (A) (क) (ক) (1) → 0; one family per paper, so "(1)" in a sentence after "(A)" does not count
+const LABEL_SETS = ['ABCD', 'abcd', 'कखगघ', 'কখগঘ', '1234'];
+const labelIndex = c => { for (const set of LABEL_SETS) { const i = set.indexOf(c); if (i >= 0) return i; } return -1; };
 const isCaps = t => t.length >= 6 && t.length <= 70 && /[A-Z]{3}/.test(t) && t === t.toUpperCase() && !/^\(?[A-D]\)/.test(t);
 // split a line at its option labels: { before, opts: [[index, text], ...] }
-function splitOpts(text) {
+function splitOpts(text, prevI = -1, prevFam = 0) {
   const marks = [];
-  text.replace(RX.opt, (m, a, b, at) => { marks.push({ i: 'ABCD'.indexOf((a || b).toUpperCase()), at, end: at + m.length }); return m; });
-  // labels must come in order (A before B …), or "(a)" in a sentence would split it
-  const ok = marks.filter((m, k) => k === 0 ? true : m.i > marks[k - 1].i);
-  if (!ok.length) return { before: text, opts: [] };
-  return { before: text.slice(0, ok[0].at).trim(), opts: ok.map((m, k) => [m.i, text.slice(m.end, k + 1 < ok.length ? ok[k + 1].at : text.length).trim()]) };
+  text.replace(RX.opt, (m, a, b, at) => { const c = a || b; marks.push({ c, i: labelIndex(c), fam: LABEL_SETS.findIndex(set => set.includes(c)), at, end: at + m.length }); return m; });
+  // labels must come in order (A before B …) and from one family, or "(a)" in a sentence would split it;
+  // a misread label ("(8)" for B) takes the place of the next one
+  const ok = [];
+  marks.forEach(m => {
+    const prev = ok[ok.length - 1] || (prevI >= 0 ? { i: prevI, fam: prevFam } : null);
+    if (/[80OQ©]/.test(m.c)) { if (prev && prev.i < 3 && !(prev.fam === 4 && m.c === '0')) ok.push({ ...m, i: prev.i + 1, fam: prev.fam }); return; }
+    if (m.i < 0) return;
+    if (!prev || (m.i > prev.i && m.fam === prev.fam) || (!ok.length && m.i === 0)) ok.push(m);
+  });
+  if (!ok.length) return { before: text, opts: [], fam: prevFam };
+  return { fam: ok[0].fam, before: text.slice(0, ok[0].at).trim(), opts: ok.map((m, k) => [m.i, text.slice(m.end, k + 1 < ok.length ? ok[k + 1].at : text.length).replace(/^\s*\)\s*/, '').trim()]) };
 }
 
 // the drawings in one question's area: four alike in a row are the answer figures, the rest the question figure
@@ -2182,12 +2220,141 @@ function figuresIn(cv, P, reg) {
   return { figure: figure && okBox(figure) ? figure : null, optionFigures };
 }
 
+/* a scanned Meetei Mayek page: no OCR can read the script, but question numbers ("12.") and
+   option labels ("(A)") are usually printed in Latin characters. Those mark out each question's
+   text and its four options, which are kept as pictures of the print. Pictures are cut along the
+   lines of print (rows of ink), so letters that touch the line below are not cut through; an option
+   whose text runs on to the next line is joined from its pieces. */
+const darkAt = (d, w, x, y) => { const k = (y * w + x) * 4; return d[k] * .299 + d[k + 1] * .587 + d[k + 2] * .114 < 150; };
+// the lines of print between y0 and y1 in a column: [{ y0, y1 }]
+function rowBands(cv, x0, x1, y0, y1) {
+  x0 = Math.max(0, Math.round(x0)); x1 = Math.min(cv.width, Math.round(x1)); y0 = Math.max(0, Math.round(y0)); y1 = Math.min(cv.height, Math.round(y1));
+  if (x1 - x0 < 2 || y1 - y0 < 2) return [];
+  const d = cv.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0).data, w = x1 - x0, bands = [];
+  let st = -1, gap = 0;
+  for (let y = 0; y <= y1 - y0; y++) {
+    let n = 0;
+    if (y < y1 - y0) for (let x = 0; x < w; x++) if (darkAt(d, w, x, y)) { n++; if (n > 2) break; }
+    if (n > 2) { if (st < 0) st = y; gap = 0; }
+    else if (st >= 0 && ++gap > 2) { if (y - gap - st > 3) bands.push({ y0: y0 + st, y1: y0 + y - gap + 1 }); st = -1; gap = 0; }
+  }
+  if (st >= 0) bands.push({ y0: y0 + st, y1: y1 });
+  // two lines whose letters touch make one band twice as tall: cut it at its thinnest row
+  const hs = bands.map(b => b.y1 - b.y0).sort((a, b) => a - b), mh = hs[hs.length >> 1] || 0;
+  const rowInk = y => { let n = 0; for (let x = 0; x < w; x++) if (darkAt(d, w, x, y - y0)) n++; return n; };
+  for (let i = 0; mh && i < bands.length; i++) {
+    const b = bands[i];
+    if (b.y1 - b.y0 < mh * 1.6) continue;
+    let best = -1, low = Infinity;
+    for (let y = b.y0 + Math.round(mh * .6); y < b.y1 - Math.round(mh * .6); y++) { const n = rowInk(y); if (n < low) { low = n; best = y; } }
+    if (best > 0) { bands.splice(i, 1, { y0: b.y0, y1: best }, { y0: best + 1, y1: b.y1 }); i--; }
+  }
+  // a sliver (the tops of brackets, a dot over a letter) belongs to the nearer line
+  for (let i = 0; mh && i < bands.length; i++) {
+    const b = bands[i];
+    if (b.y1 - b.y0 >= mh * .35 || bands.length < 2) continue;
+    const up = i > 0 ? b.y0 - bands[i - 1].y1 : Infinity, dn = i + 1 < bands.length ? bands[i + 1].y0 - b.y1 : Infinity;
+    if (dn <= up) bands[i + 1].y0 = b.y0; else bands[i - 1].y1 = b.y1;
+    bands.splice(i, 1); i--;
+  }
+  return bands;
+}
+// a box trimmed to the ink inside it, or null when it is empty
+function trimInk(cv, y0, x0, y1, x1) {
+  x0 = Math.max(0, Math.round(x0)); x1 = Math.min(cv.width, Math.round(x1)); y0 = Math.max(0, Math.round(y0)); y1 = Math.min(cv.height, Math.round(y1));
+  if (x1 - x0 < 2 || y1 - y0 < 2) return null;
+  const d = cv.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0).data, w = x1 - x0;
+  let a = Infinity, b = Infinity, c = -1, e = -1;
+  for (let y = 0; y < y1 - y0; y++) for (let x = 0; x < w; x++) if (darkAt(d, w, x, y)) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > e) e = y; }
+  return c < 0 ? null : [y0 + b, x0 + a, y0 + e + 1, x0 + c + 1];
+}
+async function localReadPictures(cv, onProgress) {
+  ocrProgress = onProgress || null;
+  let words;
+  try { words = await ocrWords(cv, 'eng', 30); } finally { ocrProgress = null; }
+  const isNum = w => /^\d{1,3}[.)]$/.test(normDigits(w.str));
+  const isLab = w => /^[([]\s*[A-Da-d1-4]\s*[)\]]$/.test(normDigits(w.str));
+  words = words.filter(w => isNum(w) || isLab(w));
+  cv.textBoxes = words; INK.delete(cv);
+  const P = pageInk(cv);
+  if (!P) return { items: [] };
+  const W = cv.width, H = cv.height, g = findGutter(P.marks, W);
+  const cols = g == null ? [[0, W]] : [[0, g], [g, W]];
+  const px = b => to1000(cv, b), items = [];
+  cols.forEach(([c0, c1]) => {
+    const pad = (c1 - c0) * .03, l0 = c0 + pad, l1 = c1 - pad;   // stay clear of a column rule
+    const inCol = w => (w.x0 + w.x1) / 2 >= c0 && (w.x0 + w.x1) / 2 < c1;
+    const colInk = P.marks.filter(m => m.cx >= c0 && m.cx < c1 && m.y1 < H * .96);
+    const bottom = colInk.length ? Math.max(...colInk.map(m => m.y1)) : H;
+    // question numbers sit at the left of the column and go up one by one down it
+    let last = null;
+    const qs = words.filter(w => inCol(w) && isNum(w) && w.x0 - c0 < (c1 - c0) * .15).sort((a, b) => a.y0 - b.y0)
+      .map(w => ({ w, n: parseInt(normDigits(w.str), 10) }))
+      .filter(q => { if (last == null || (q.n > last && q.n <= last + 6)) { last = q.n; return true; } return false; });
+    // lines of print for the whole column, so a question ends where the next one's line begins
+    const all = qs.length ? rowBands(cv, l0, l1, qs[0].w.y0 - (qs[0].w.y1 - qs[0].w.y0), bottom + 2) : [];
+    const bandAt = w => all.findIndex(b => (w.y0 + w.y1) / 2 >= b.y0 - 2 && (w.y0 + w.y1) / 2 <= b.y1 + 2);
+    qs.forEach((q, k) => {
+      const from = Math.max(0, bandAt(q.w)), to = k + 1 < qs.length && bandAt(qs[k + 1].w) > from ? bandAt(qs[k + 1].w) : all.length;
+      const bands = all.slice(from, to), yEnd = bands.length ? bands[bands.length - 1].y1 + 2 : bottom + 2;
+      const bandOf = w => bands.findIndex(b => (w.y0 + w.y1) / 2 >= b.y0 - 2 && (w.y0 + w.y1) / 2 <= b.y1 + 2);
+      const labs = words.filter(w => inCol(w) && isLab(w) && w.y0 >= q.w.y0 - 3 && w.y1 <= yEnd + 3).sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+      const pick = [];
+      for (const w of labs) if (labelIndex(normDigits(w.str).replace(/[^A-Da-d1-4]/g, '')) === pick.length) { pick.push(w); if (pick.length === 4) break; }
+      const four = pick.length === 4 && pick.every(w => bandOf(w) >= 0);
+      const firstOpt = four ? bandOf(pick[0]) : bands.length;
+      const nb = Math.max(0, bandOf(q.w));
+      // the question: the rest of the number's line, then whole lines down to the first option
+      const stem = [trimInk(cv, bands[nb] ? bands[nb].y0 : q.w.y0, q.w.x1 + 2, bands[nb] ? bands[nb].y1 : q.w.y1, l1)]
+        .concat(bands.slice(nb + 1, firstOpt).map(b => trimInk(cv, b.y0, l0, b.y1, l1))).filter(Boolean);
+      // each option: the rest of its label's line up to the next label, then any whole lines below
+      // until the line that holds the next label
+      const opts = four ? pick.map((w, i) => {
+        const bi = bandOf(w), nx = pick[i + 1], nbi = nx ? bandOf(nx) : bands.length;
+        const right = nx && nbi === bi ? nx.x0 - 3 : l1;
+        return [trimInk(cv, bands[bi].y0, w.x1 + 2, bands[bi].y1, right)]
+          .concat(bands.slice(bi + 1, nbi).map(b => trimInk(cv, b.y0, l0, b.y1, l1))).filter(Boolean);
+      }) : null;
+      if (!stem.length) return;
+      items.push({ type: 'question', number: q.n, text: '', answer: null, picture: true,
+        options: four ? ['', '', '', ''] : ['A', 'B', 'C', 'D'],      // labels not found: the options are in the question's picture
+        figure: px(unionOf(stem.map(b => ({ y0: b[0], x0: b[1], y1: b[2], x1: b[3] })))), figureParts: stem.map(px),
+        optionFigures: opts && opts.map(ps => px(unionOf(ps.map(b => ({ y0: b[0], x0: b[1], y1: b[2], x1: b[3] }))))), optionParts: opts && opts.map(ps => ps.map(px)) });
+    });
+  });
+  return { items };
+}
+// pieces of the page joined into one picture: lines of a question one under another, the parts
+// of an option side by side
+function joinParts(cv, parts, across) {
+  const cs = parts.map(b => cropBox(cv, b, 4)), gap = 10;
+  const c = document.createElement('canvas');
+  c.width = across ? cs.reduce((t, x) => t + x.width, 0) + gap * (cs.length - 1) : Math.max(...cs.map(x => x.width));
+  c.height = across ? Math.max(...cs.map(x => x.height)) : cs.reduce((t, x) => t + x.height, 0) + gap * (cs.length - 1);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  let at = 0;
+  cs.forEach(x => { if (across) { g.drawImage(x, at, (c.height - x.height) / 2); at += x.width + gap; } else { g.drawImage(x, 0, at); at += x.height + gap; } });
+  return c;
+}
+// a picture of everything printed in a box (text and drawings alike), trimmed to the ink
+function inkFit(cv, b) {
+  const P = pageInk(cv), bp = toPx(cv, b);
+  const ms = P ? P.marks.filter(m => midIn(m, bp)) : [];
+  const r = ms.length ? to1000(cv, unionOf(ms)) : b;
+  return { box: okBox(r) ? r : b, used: ms };
+}
+
 /* one page → { items } like the AI's reply */
-async function localRead(cv, onProgress) {
+async function localRead(cv, onProgress, lang = 'en') {
+  const L = PAPER_LANGS[lang] || PAPER_LANGS.en;
   let pieces = cv.textBoxes && cv.textBoxes.length >= 8 ? cv.textBoxes : null;
+  // a Hindi, Bengali or Mayek PDF typed in an old non-Unicode font has a text layer of nonsense
+  // letters: use it only when it is in the paper's script
+  if (pieces && L.script && pieces.filter(p => L.script.test(p.str)).length < pieces.length * .2) pieces = null;
+  if (!pieces && L.pictures) return localReadPictures(cv, onProgress);
   if (!pieces) {
     ocrProgress = onProgress || null;
-    try { pieces = await ocrWords(cv); } finally { ocrProgress = null; }
+    try { pieces = await ocrWords(cv, L.ocr); } finally { ocrProgress = null; }
     cv.textBoxes = pieces;                               // the figure detector then knows exactly where the text is
     INK.delete(cv);
   }
@@ -2197,7 +2364,7 @@ async function localRead(cv, onProgress) {
   const endQ = (yEnd) => {
     if (!q) return;
     // leftover bits of the (A)-(D) labels printed under answer figures are not option text
-    q.out.options = q.out.options.map(o => /^[\s([]*[A-Da-d8]?[)\].]*$/.test(o) ? '' : o);
+    q.out.options = q.out.options.map(o => /^[\s([]*[A-Da-d8कखगघকখগঘ]?[)\].]*$/u.test(o) ? '' : o);
     if (P) {
       const reg = [q.y0 - 4, q.cx0, Math.min(H, yEnd), q.cx1];
       const f = figuresIn(cv, P, reg);
@@ -2210,7 +2377,7 @@ async function localRead(cv, onProgress) {
   };
   const endBlocks = () => { head = null; passage = null; };
   lines.forEach((l, k) => {
-    const t = l.text;
+    const t = normDigits(l.text);
     if (!t || /^\d{1,3}$/.test(t) && l.y0 > H * .9) return;   // page number
     const nextTop = () => { for (let j = k + 1; j < lines.length; j++) if (lines[j].col === l.col || lines[j].col === 0) return lines[j].y0; return H; };
     let m;
@@ -2225,18 +2392,35 @@ async function localRead(cv, onProgress) {
       if (head) head.inDir = false;
       if (passage) passage = null;
       lastN = n;
-      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1 };
+      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1, tail: [] };
       const so = splitOpts(m[2]);
       if (so.before && !RX.cap.test(so.before)) q.text.push(so.before.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
       so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
+      if (so.opts.length) q.fam = so.fam;
+      if (optAt === 3) q.dText = q.out.options[3];
       return;
     }
     if (q) {
-      const so = splitOpts(t);
+      const so = splitOpts(t, optAt, q.fam || 0);
+      if (so.opts.length && so.opts[0][0] === 0 && optAt === 3) {
+        // a new set of options after (D): a question whose number was not read. Its text is the lines
+        // that came after the last option's own line.
+        const prevQ = q, stem = prevQ.tail.splice(0);
+        prevQ.out.options[3] = prevQ.dText;
+        endQ(stem.length ? stem[0].y0 : l.y0);
+        lastN = (lastN || 0) + 1;
+        q = { out: { type: 'question', number: lastN, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: stem.map(x => x.t), y0: stem.length ? stem[0].y0 : l.y0, cx0: l.cx0, cx1: l.cx1, tail: [] };
+        if (so.before) q.text.push(so.before);
+        so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
+        q.fam = so.fam; q.dText = q.out.options[3];
+        return;
+      }
       if (so.opts.length) {
         if (so.before) { if (optAt >= 0) q.out.options[optAt] += ' ' + so.before; else q.text.push(so.before); }
         so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
-      } else if (optAt >= 0) q.out.options[optAt] += ' ' + t;
+        q.fam = so.fam;
+        if (optAt === 3) { q.dText = q.out.options[3]; q.tail = []; }
+      } else if (optAt >= 0) { q.out.options[optAt] += ' ' + t; if (optAt === 3) q.tail.push({ t, y0: l.y0 }); }
       else q.text.push(t.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
       return;
     }
@@ -2504,14 +2688,16 @@ function cleanItems(reply, cv, page) {
     const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
     // answer figures first, so the question figure cannot take in their drawings. When the model gave
     // a question figure but no answer pictures and no option text, look for them under the figure.
-    let od = ofs ? detectOptions(cv, ofs) : null;
+    let od = ofs ? (r.picture ? ofs.map(b => inkFit(cv, b)) : detectOptions(cv, ofs)) : null;
     if (!od && okBox(r.figure) && opts.every(o => /^[\s—–\-_.]*$/.test(o))) { od = findAnswerRow(cv, r.figure); if (od) opts.fill(''); }
-    const qd = okBox(r.figure) ? detectFig(cv, r.figure, od ? new Set(od.flatMap(d => d.used)) : null) : null;
+    const qd = okBox(r.figure) ? (r.picture ? inkFit(cv, r.figure) : detectFig(cv, r.figure, od ? new Set(od.flatMap(d => d.used)) : null)) : null;
+    const parts = (ps, across) => Array.isArray(ps) && ps.length && ps.every(okBox) ? { cv: ps.length > 1 ? joinParts(cv, ps, across) : cropBox(cv, ps[0], 4) } : null;
+    const pq = r.picture ? parts(r.figureParts, false) : null, po = r.picture && Array.isArray(r.optionParts) ? r.optionParts.map(ps => parts(ps, true)) : null;
     out.push({
-      t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
+      t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true, picture: r.picture === true,
       q: cleanQ(str(r.text)), opts, a, gen: a != null,
-      fig: qd ? figOf(cv, page, qd) : null,
-      optFigs: od ? od.map(d => figOf(cv, page, d)) : null,
+      fig: pq && qd ? { ...figOf(cv, page, qd), cv: pq.cv } : qd ? figOf(cv, page, qd) : null,
+      optFigs: od ? od.map((d, k) => (po && po[k] ? { ...figOf(cv, page, d), cv: po[k].cv } : figOf(cv, page, d))) : null,
     });
   });
   return out;
@@ -2535,6 +2721,7 @@ function mergeContinued(items) {
 
 let imp = null;                                          // the open import: { mode, files, items, ctl, busy }
 const readerPref = () => { try { return localStorage.getItem('jnv-reader') || 'auto'; } catch (e) { return 'auto'; } };
+const langPref = () => { try { const v = localStorage.getItem('jnv-paper-lang'); return PAPER_LANGS[v] ? v : 'en'; } catch (e) { return 'en'; } };
 function openImport(mode) {
   imp = { mode, items: null, busy: false };
   const where = mode === 'new' ? 'a new model set' : `${esc(cur.draft.sections[cur.sec]?.tag || 'this section')} (sections found in the paper are added after it)`;
@@ -2546,6 +2733,8 @@ function openImport(mode) {
       <label class="fld" for="impReader"><span>Read with</span><select class="in" id="impReader">
         ${[['auto', 'AI, and the built-in reader when the AI is busy (recommended)'], ['ai', 'AI only (Gemini and other free models)'], ['local', 'Built-in reader only: no AI, no limits (English; no answers)']]
           .map(([v, t]) => `<option value="${v}"${readerPref() === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="fld" for="impLang"><span>Paper language (for the built-in reader)</span><select class="in" id="impLang">
+        ${Object.entries(PAPER_LANGS).map(([v, l]) => `<option value="${v}"${langPref() === v ? ' selected' : ''}>${l.name}</option>`).join('')}</select></label>
       <p class="subnote">Goes into: <b>${where}</b>.</p>
       <p class="genmsg" id="impMsg" role="status"></p>
     </div>
@@ -2560,7 +2749,8 @@ async function runImport() {
   const files = [...($('#impFile').files || [])];
   if (!files.length) return msg('Choose a PDF or at least one photo first.');
   const reader = ($('#impReader') || {}).value || 'auto';
-  try { localStorage.setItem('jnv-reader', reader); } catch (e) { /* private window */ }
+  const lang = ($('#impLang') || {}).value || 'en';
+  try { localStorage.setItem('jnv-reader', reader); localStorage.setItem('jnv-paper-lang', lang); } catch (e) { /* private window */ }
   const kind = reader === 'local' ? null : await readerKind();
   if (!kind && reader === 'ai') return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini and other free AI models; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
   const job = imp;
@@ -2596,7 +2786,7 @@ async function runImport() {
     const readLocal = async (i, because) => {
       const cv = await pageCanvas(pages[i]), head = `Reading page ${i + 1} of ${pages.length} with the built-in reader${because ? ` (${because})` : ''}…`;
       msg(head);
-      try { const r = await localRead(cv, pr => msg(`${head} ${Math.round(pr * 100)}%`)); byLocal.push(i + 1); return r; }
+      try { const r = await localRead(cv, pr => msg(`${head} ${Math.round(pr * 100)}%`), lang); byLocal.push(i + 1); return r; }
       catch (e) { if (/load/i.test(String(e && e.message))) throw { code: 'ocr_failed' }; return null; }
     };
     for (let i = 0; i < pages.length; i++) {
@@ -2680,7 +2870,7 @@ function renderReview() {
       <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cropBtn(it.fig, i, 'fig', 'the question figure')} ${pics} ${chips}</span></span></label>`;
   }).join('');
   $('#impBody').innerHTML = `<p class="subnote">Found <b>${qs.length}</b> question${qs.length === 1 ? '' : 's'}${pas ? `, ${pas} passage${pas === 1 ? '' : 's'}` : ''}${secs ? ` and ${secs} section${secs === 1 ? '' : 's'}` : ''}. ${figs} with figures, ${noKey} without an answer.${imp.skipped > 0 ? ` ${imp.skipped} more page${imp.skipped === 1 ? ' was' : 's were'} left out (${IMPORT_MAX_PAGES} at a time).` : ''} Untick anything you do not want.</p>
-    ${imp.byLocal && imp.byLocal.length ? `<p class="subnote"><b>Read by the built-in reader:</b> page${imp.byLocal.length === 1 ? '' : 's'} ${imp.byLocal.join(', ')}. Check those questions closely; it does not set answers.</p>` : ''}
+    ${imp.byLocal && imp.byLocal.length ? `<p class="subnote"><b>Read by the built-in reader:</b> page${imp.byLocal.length === 1 ? '' : 's'} ${imp.byLocal.join(', ')}. Check those questions closely; it does not set answers.${items.some(it => it.picture) ? ' Meetei Mayek questions and options are kept as pictures of the print.' : ''}</p>` : ''}
     <div style="max-height:52vh;overflow-y:auto;border-top:1px solid var(--rule)">${rows || '<p class="subnote">Nothing was found on these pages.</p>'}</div>
     <p class="genmsg" id="impMsg" role="status"></p>`;
   $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
