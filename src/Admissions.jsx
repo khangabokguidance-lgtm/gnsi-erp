@@ -17,6 +17,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { NavIcon } from './navIcons'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import { compressImage, sizeNote } from './lib/imageCompress'
@@ -5078,30 +5079,22 @@ export default function Admissions({ onNavigate } = {}) {
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
-        {/* ── Identity header (matches Accounts module banking style) ── */}
-        <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-            <div style={{
-              width:44, height:44, borderRadius:'12px',
-              background:'linear-gradient(145deg, #1C3A6B 0%, #0B1E3D 100%)',
-              boxShadow:'inset 0 0 0 1px rgba(226,197,126,.45), 0 8px 18px -10px rgba(11,30,61,.8)',
-              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-            }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#E2C57E" strokeWidth="2" style={{ width:21, height:21 }}>
-                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <div>
-              <p style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.18em', textTransform:'uppercase', margin:0, color:'#A87A1F' }}>AISSEE · JNVST · Foundation</p>
-              <p style={{ fontSize:21, fontWeight:700, lineHeight:1.2, margin:'1px 0 1px', color: darkMode ? '#fff' : '#0B1E3D', fontFamily:"'Playfair Display',Georgia,serif" }}>GNSI Admissions</p>
-              <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
-                {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
-                  : moduleView==='newApplication' ? 'Admission portal — online applications, counter form, public link'
-                  : moduleView==='sessions' ? 'Admission sessions — create, activate, lock'
-                  : 'Application management & enrollment'}
-              </p>
-            </div>
-          </div>
+        {/* ── Header: the portal's premium hero, with the application pipeline at a glance ── */}
+        <div style={{ paddingTop: isMobile ? 12 : 16 }}>
+          <PremiumStyles />
+          <PremiumHero isMobile={isMobile} eyebrow="GNSI · Admissions · AISSEE · JNVST · Foundation" title="Admissions"
+            subtitle={moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
+              : moduleView==='newApplication' ? 'Admission portal — online applications, counter form, public link'
+              : moduleView==='exam' ? 'Entrance exam registration and admit cards'
+              : moduleView==='sessions' ? 'Admission sessions — create, activate, lock'
+              : 'Application management & enrollment'}
+            icon={<NavIcon id="admissions" size={24} />}
+            stats={[
+              { label: 'Applications', value: apps.length, sub: filterSession !== 'All' ? filterSession : 'All sessions', onClick: () => setModuleView('applications') },
+              { label: 'To review', value: apps.filter(a => a.status === 'Applied' || a.status === 'Under Review').length, sub: 'Applied · under review', onClick: () => setModuleView('applications') },
+              { label: 'Admitted', value: apps.filter(a => a.status === 'Admitted').length, sub: 'Awaiting enrolment', onClick: () => setModuleView('applications') },
+              { label: 'Enrolled', value: apps.filter(a => a.status === 'Enrolled').length, sub: 'Now students', tone: '#86efac', onClick: () => setModuleView('ledger') },
+            ]} />
           {isMobile ? createPortal(
             <nav className="adm-bottom" role="tablist" aria-label="Admissions sections">
               <style>{`.adm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
@@ -5118,17 +5111,15 @@ export default function Admissions({ onNavigate } = {}) {
             </nav>,
             document.body
           ) : null}
-          {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
-            {[['newApplication','🌐 Admission Portal'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['exam','🎫 Exam Registration'],['sessions','📅 Sessions']].map(([key,label]) => (
-              <button key={key} onClick={()=>setModuleView(key)}
-                style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
-                  background: moduleView===key ? '#0B1E3D' : 'transparent',
-                  color: moduleView===key ? '#fff' : N.muted,
-                  boxShadow: moduleView===key ? 'inset 0 -2px 0 #C9A24B, 0 6px 14px -8px rgba(11,30,61,.7)' : 'none' }}>
-                {label}
-              </button>
-            ))}
-          </div>}
+          {!isMobile && (
+            <nav className="px-tabs" role="tablist" aria-label="Admissions sections">
+              {[['newApplication','Admission Portal','admissions'],['applications','Applications','students'],['ledger','Student Ledger','studentfeeledger'],['exam','Exam Registration','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+                <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'px-tab' + (moduleView===key ? ' on' : '')} onClick={()=>setModuleView(key)}>
+                  <NavIcon id={icon} size={15} />{label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
 
         {moduleView === 'newApplication' ? (

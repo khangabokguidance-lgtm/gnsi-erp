@@ -28,6 +28,8 @@ import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
 import LearningHub from './LearningHub'
 import ModuleHub from './ModuleHub'
+import CommandPalette from './CommandPalette'
+import { openPalette } from './paletteEvents'
 import { MODULE_HUBS, HUB_BY_ID, HUB_OF, visibleHubTabs } from './moduleHubs'
 import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
 import { NavIcon, AppIcon } from './navIcons'
@@ -171,6 +173,8 @@ function addContainers(set) {
   MODULE_HUBS.forEach(h => { if (visibleHubTabs(h, k => set.has(k), false).length) set.add(h.id) })
   return set
 }
+const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets' }
+const readRecents = () => { try { return JSON.parse(localStorage.getItem('gnsi_nav_recents') || '[]') } catch { return [] } }
 const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
 const BADGES = {
@@ -284,8 +288,17 @@ const SIDEBAR_MINI = 62
 // drawer is open, so module modals/overlays behave exactly as before at
 // all other times (they still sit above the top bar / desktop sidebar).
 const DRAWER_OPEN_CLASS = 'gnsi-drawer-open'
+// One type system on every module screen: older modules name their own fonts inline
+// (Playfair, Source Serif, Iowan for titles; Inter, DM Sans, Outfit for text). Inside
+// the app's content area those map to the portal's Fraunces / Plus Jakarta Sans, so
+// every module reads the same on phone and desktop. Print windows are separate
+// documents and keep their own fonts.
+const SERIF_UI = "'Fraunces','Playfair Display',Georgia,serif"
+const SANS_UI = "'Plus Jakarta Sans','Inter',system-ui,sans-serif"
 const SHELL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');
+main.app-content [style*="Playfair Display"], main.app-content [style*="Source Serif"], main.app-content [style*="Iowan Old Style"] { font-family: ${SERIF_UI} !important; }
+main.app-content [style*="font-family: Inter"], main.app-content [style*="'Inter'"],
+main.app-content [style*="DM Sans"], main.app-content [style*="Outfit"] { font-family: ${SANS_UI} !important; }
 body.${DRAWER_OPEN_CLASS} main.app-content {
   position: relative;
   z-index: 0;
@@ -602,6 +615,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
         <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
           <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><NavIcon id={activePage} size={14} /></span>{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
+        <button type="button" onClick={openPalette} aria-label="Go to a module or action" title="Go to…" style={{ background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: D.accentLight, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NavIcon id="search" size={18} /></button>
         <button onClick={onLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
       {/* Phone menu — payments-app style home screen of module icons */}
@@ -1107,10 +1121,38 @@ export default function App() {
     )
   }
 
+  // Command palette (Ctrl+K): modules, sections inside hubs, and everyday actions this user may open
+  const openHrSection = sec => { setHrSection(sec); setActiveRaw('hr') }
+  const groupOf = id => ALL_GROUPS.find(g => g.items.some(i => i.id === id))?.group || ''
+  const paletteItems = currentUser ? [
+    ...[
+      ['a-fee', 'Collect a fee', 'fees', 'fees', 'Fees → collection desk', 'payment receipt'],
+      ['a-adm', 'New admission', 'admissions', 'admissions', 'Admissions → counter form', 'apply enrol'],
+      ['a-att', 'Mark student attendance', 'attendance', 'attendance', 'Attendance → roll call', 'roll call present absent'],
+      ['a-staff', 'Mark staff attendance', 'hr', 'hr', 'HR → Daily Attendance', 'staff present absent', () => openHrSection('daily')],
+      ['a-leave', 'Approve staff leave', 'hr', 'leave', 'HR → Leave Approvals', 'leave approve reject', () => openHrSection('leave')],
+      ['a-cover', 'Arrange a substitute', 'timetable', 'timetable', 'HR → Timetable → Today', 'cover substitute absent teacher'],
+      ['a-notice', 'Post a notice', 'notice', 'notice', 'HR → Notices', 'circular announcement'],
+      ['a-marks', 'Enter exam marks', 'exams', 'exams', 'Exams → mark entry', 'marks results'],
+      ['a-report', 'Make a report', 'reports', 'reports', 'Reports → generator', 'pdf excel export'],
+    ].filter(([, , perm]) => canAccess(perm)).map(([key, label, perm, icon, hint, keywords, run]) => ({ key, label, icon, hint, keywords, group: 'Actions', run: run || (() => setActive(perm)) })),
+    ...ALL_ITEMS.filter(i => canAccess(i.id)).map(i => ({ key: 'm-' + i.id, label: i.label, icon: i.id, hint: groupOf(i.id).charAt(0) + groupOf(i.id).slice(1).toLowerCase(), keywords: i.keywords, group: 'Modules', run: () => setActive(i.id) })),
+    ...MODULE_HUBS.flatMap(h => visibleHubTabs(h, canAccess, isAdmin).map(id => {
+      const t = h.groups.flatMap(g => g.tabs).find(x => x.id === id)
+      return { key: 's-' + id, label: t.label, icon: id, hint: `${h.label} · ${t.hint}`, group: 'Sections', run: () => setActive(id) }
+    })),
+    ...[['staff', 'Staff Directory'], ['timetable', 'Timetable'], ['leave', 'Leave Requests'], ['notice', 'Notices']]
+      .filter(([id]) => canAccess(id)).map(([id, label]) => ({ key: 's-' + id, label, icon: id, hint: 'HR', group: 'Sections', run: () => setActive(id) })),
+    ...(canAccess('hr') && perms('hr').read ? [['daily', 'Daily Staff Attendance'], ['absent', 'Absentees'], ['leave', 'Leave Approvals'], ['shift', 'Shifts'], ['risk', 'Absence Risk'], ['performance', 'Staff Performance'], ['compliance', 'Compliance'], ['geo', 'Geo Check-in'], ['bulk', 'Bulk Staff Marking']] : [])
+      .map(([sec, label]) => ({ key: 'hr-' + sec, label, icon: 'hr', hint: 'HR', group: 'Sections', run: () => openHrSection(sec) })),
+    ...HUB_TABS.filter(id => canAccess(id)).map(id => ({ key: 's-' + id, label: LEARNING_LABELS[id] || id, icon: id, hint: 'Learning Hub', group: 'Sections', run: () => setActive(id) })),
+  ] : []
+
   return (
     <div style={{ display: 'flex', fontFamily: UI_FONT, minHeight: '100vh', background: '#F4F1EA' }}>
       <style>{SHELL_CSS}</style>
       <TabIcons />
+      {currentUser && <CommandPalette items={paletteItems} recentIds={readRecents()} />}
       {currentUser && <MultiLoginWatch currentUser={currentUser} />}
       {isFs && (
         <button type="button" onClick={toggleFullscreen} title="Return to normal view (Esc / F11)"
@@ -1140,6 +1182,11 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" onClick={openPalette} title="Go to any module, section or action (Ctrl+K)"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F6F3EC', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 10px 7px 13px', cursor: 'pointer', color: '#5d6b82', fontSize: 12.5, fontWeight: 600, minWidth: 200 }}>
+              <span style={{ color: '#A87A1F', display: 'flex' }}><NavIcon id="search" size={15} /></span>Go to…
+              <kbd style={{ marginLeft: 'auto', font: '700 10.5px inherit', fontFamily: 'inherit', color: '#7A8398', border: '1px solid #E8E1D0', borderRadius: 6, padding: '2px 6px', background: '#fff' }}>Ctrl K</kbd>
+            </button>
             <button type="button" onClick={toggleFullscreen} title={isFs ? 'Exit full screen (F11 / Esc)' : 'Full screen (F11)'}
               style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>{isFs ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {active !== 'help' && (

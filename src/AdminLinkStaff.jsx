@@ -326,7 +326,7 @@ function StaffRow({ s, authUsers, saving, flash, roleColor, isLinked, linkedUser
   const rc = roleColor[s.role] || '#64748b'
   return (
     <div className={`staff-row${flash?' flash-row':''}`} style={{
-      display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
+      display:'flex', alignItems:'center', flexWrap:'wrap', gap:12, padding:'14px 16px',
       borderRadius:12, background: isLinked?'#f8fafc':'white',
       border: flash?'2px solid #22c55e':'1px solid #e2e8f0',
       boxShadow:'0 1px 4px rgba(0,0,0,.06)',
@@ -353,7 +353,7 @@ function StaffRow({ s, authUsers, saving, flash, roleColor, isLinked, linkedUser
       </div>
 
       {/* Info */}
-      <div style={{ flex:1, minWidth:0 }}>
+      <div style={{ flex:'1 1 200px', minWidth:0 }}>
         <div style={{ fontWeight:700, color:'#1e293b', fontSize:14 }}>{s.name}</div>
         <div style={{ fontSize:12, color:'#64748b', marginTop:1 }}>
           {s.designation} · {s.department}
@@ -393,7 +393,7 @@ function StaffRow({ s, authUsers, saving, flash, roleColor, isLinked, linkedUser
           disabled={saving===s.id || authUsers.length===0}
           style={{
             padding:'9px 12px', borderRadius:8, border:'1.5px solid #d1d5db',
-            fontSize:13, minWidth:220, background:'white', cursor:'pointer',
+            fontSize:13, flex:'1 1 220px', maxWidth:'100%', background:'white', cursor:'pointer',
             fontFamily:'inherit',
           }}
         >

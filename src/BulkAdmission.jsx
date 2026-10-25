@@ -28,6 +28,7 @@ import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
 import { excludeRepeaterFees } from './lib/feeMath'
 import { printFeeReceipts } from './premiumReceipt'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -315,26 +316,17 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f4f8', fontFamily: "system-ui,sans-serif", padding: '0 0 80px' }}>
-
-      {/* Header */}
-      <div style={{ background: C.navy, color: 'white', padding: '24px 32px', borderBottom: `3px solid ${C.gold}` }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: C.gold, marginBottom: 6 }}>
-            GNSI Portal · Accounts
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em', marginBottom: 4 }}>
-            Bulk Admission Fee Collection
-          </div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.55)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <span>📋 {students.length} students pending admission fee</span>
-            <span>·</span>
-            <span>✅ {savedCount} processed this session</span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 32px' }}>
+    <div className="px-root" style={{ minHeight: '100vh', background: 'transparent', padding: '0 0 80px' }}>
+      <PremiumStyles />
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 'clamp(12px, 2.5vw, 24px) clamp(12px, 2.5vw, 32px)' }}>
+        <PremiumHero eyebrow="GNSI · Accounts · Admissions" title="Bulk Admission Fee"
+          subtitle="Collect the admission fee for many students at once, then print every receipt"
+          icon={<span style={{ fontSize: 22 }}>📥</span>}
+          stats={[
+            { label: 'Pending', value: students.length, sub: 'Admission fee not paid' },
+            { label: 'Selected', value: Object.values(selected).filter(Boolean).length, sub: 'Ready to collect' },
+            { label: 'Processed', value: savedCount, sub: 'This session' },
+          ]} />
 
         {error && (
           <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>
