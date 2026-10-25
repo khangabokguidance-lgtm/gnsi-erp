@@ -54,6 +54,12 @@ export async function handleVision(req, res, user) {
     const data = await response.json()
     if (!response.ok) {
       console.error('Gemini vision error:', data)
+      // Gemini's per-minute limit says how long to wait (RetryInfo.retryDelay, e.g. "23s"); pass it on
+      if (response.status === 429) {
+        const info = (data?.error?.details || []).find((d) => /RetryInfo/.test(d?.['@type'] || ''))
+        const wait = Math.ceil(parseFloat(info?.retryDelay) || 0)
+        if (wait > 0) res.setHeader('Retry-After', String(Math.min(wait, 120)))
+      }
       return res.status(response.status).json({ error: data?.error?.message || 'Gemini API error' })
     }
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('')

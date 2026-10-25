@@ -36,7 +36,7 @@ const vision = async (prompt, images) => {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
     const code = res.status === 429 ? 'rate_limited' : res.status === 401 || res.status === 403 ? 'not_granted' : 'upstream_error'
-    throw { code, message: body.error || `HTTP ${res.status}` }
+    throw { code, message: body.error || `HTTP ${res.status}`, retryAfter: Number(res.headers.get('Retry-After')) || null }
   }
   return body.text
 }
