@@ -1534,6 +1534,7 @@ const PRINT_CSS = `
 .pp .p-key h3{font:600 .8em/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:1.2em 0 .5em;padding-bottom:.3em;border-bottom:1px solid var(--rule)}
 .pp .p-kg{display:grid;grid-template-columns:repeat(10,1fr);gap:.35em}
 .pp .p-kg span{border:1px solid var(--rule);padding:.3em .2em;text-align:center;font:600 .9em/1 var(--f-mono)}
+.pp .p-kn{margin:1.2em 0 0;font-size:.85em;color:var(--muted)}
 .pp .p-kg span i{font-style:normal;color:var(--muted);font-weight:400;margin-right:.3em}
 .pp .picto{font-size:.9em}
 `;
@@ -1658,12 +1659,29 @@ function paginate(units, s) {
 const unitHTML = u => u.html || `<div class="p-u">${u.blocks.map(b => b.html).join('')}</div>`;
 
 /* lays the set out in hidden A4 pages; returns the page elements and the scale that fits */
-async function layoutPaper(set, maxPages, withKey) {
+// keyMode: 'none' | 'end' (a key page after the paper) | 'only' (the key alone: the teacher's copy)
+async function layoutPaper(set, maxPages, keyMode = 'none') {
   if (!document.getElementById('ppcss')) { const st = document.createElement('style'); st.id = 'ppcss'; st.textContent = PRINT_CSS; document.head.append(st); }
   const root = document.createElement('div');
   root.className = 'pp';
   document.body.append(root);
+  const withKey = keyMode === 'end' || keyMode === 'only', keyOnly = keyMode === 'only';
   const { units, key, total } = exportUnits(set);
+  const no = esc(String(set.setNo ?? 1)), head = `${esc(set.title || 'Model Paper')} · Practice Set – ${no}`;
+  const keyPage = () => {
+    const bySec = set.sections.map((sec, si) => ({ name: sec.short || sec.title || sec.tag || `Section ${si + 1}`, rows: key.filter(k => k.si === si) })).filter(x => x.rows.length);
+    const missing = key.filter(k => k.a == null).length;
+    return `<div class="p-key"><h2>Answer key</h2><div class="p-sub">${esc(set.title || '')} · Practice Set ${no}</div>
+      ${bySec.map(g => `<h3>${esc(g.name)}</h3><div class="p-kg">${g.rows.map(k => `<span><i>${k.n}</i>${k.a != null ? LET[k.a] : '–'}</span>`).join('')}</div>`).join('')}
+      ${missing ? `<p class="p-kn">– : no answer set for ${missing} question${missing === 1 ? '' : 's'}.</p>` : ''}</div>`;
+  };
+  if (keyOnly) {
+    // only the key page: nothing to measure or fit
+    root.style.setProperty('--s', 1.35);                // a page of its own: larger, easy to read out
+    root.innerHTML = `<div class="p-pg"><div class="p-ph"><span>${head} · Answer key</span><b>${no}</b></div>${keyPage()}
+      <div class="p-pf"><span>${esc(set.subtitle || '')}</span><span>For teachers</span></div></div>`;
+    return { root, pageEls: [...root.querySelectorAll('.p-pg')], s: 1.35, over: false, units: [], key, total, count: 1, withKey: true, keyOnly: true };
+  }
   root.innerHTML = `<div class="p-meas"><div class="p-mf" style="width:${FULL_W}px"></div><div class="p-mc" style="width:${COL_W}px"></div></div>`;
   const mf = root.querySelector('.p-mf'), mc = root.querySelector('.p-mc');
   units.forEach(u => { const t = document.createElement('div'); t.innerHTML = unitHTML(u); u.el = t.firstChild; (u.full ? mf : mc).append(u.el); });
@@ -1688,19 +1706,13 @@ async function layoutPaper(set, maxPages, withKey) {
   measure(best.s);
   best.pages = paginate(units, best.s);
   const s = best.s, G = 9 * s, GF = 12 * s;
-  const no = esc(String(set.setNo ?? 1));
-  const head = `${esc(set.title || 'Model Paper')} · Practice Set – ${no}`;
   const count = best.pages.length + (withKey ? 1 : 0);
   const pageEl = (inner, i) => `<div class="p-pg"><div class="p-ph"><span>${head}</span><b>${no}-${i + 1}</b></div>${inner}
     <div class="p-pf"><span>${esc(set.subtitle || '')}</span><span>Page ${i + 1} of ${count}</span></div></div>`;
   let html = best.pages.map((regions, i) => pageEl(regions.map(r => r.type === 'full'
     ? `<div style="margin-bottom:${GF}px">${unitHTML(r.u)}</div>`
     : `<div class="p-reg" style="height:${r.h}px;margin-bottom:${GF}px"><div class="p-col" style="gap:${G}px">${r.left.map(unitHTML).join('')}</div><div class="p-col" style="gap:${G}px">${r.right.map(unitHTML).join('')}</div></div>`).join(''), i)).join('');
-  if (withKey) {
-    const bySec = set.sections.map((sec, si) => ({ name: sec.short || sec.title || sec.tag || `Section ${si + 1}`, rows: key.filter(k => k.si === si) })).filter(x => x.rows.length);
-    html += pageEl(`<div class="p-key"><h2>Answer key</h2><div class="p-sub">${esc(set.title || '')} · Practice Set ${no}</div>
-      ${bySec.map(g => `<h3>${esc(g.name)}</h3><div class="p-kg">${g.rows.map(k => `<span><i>${k.n}</i>${k.a != null ? LET[k.a] : '–'}</span>`).join('')}</div>`).join('')}</div>`, best.pages.length);
-  }
+  if (withKey) html += pageEl(keyPage(), best.pages.length);
   root.innerHTML = html;
   root.style.setProperty('--s', s);
   root.querySelectorAll('svg').forEach(inlineSvgStyles);
@@ -1966,6 +1978,7 @@ async function buildDocx(set, L, libs, msg) {
       children: [
         P({ children: [new d.TextRun({ text: 'Answer key', font: HFONT, bold: true, size: Math.round(base * 1.8) })] }),
         P({ spacing: { after: 160 }, children: tx(`${set.title || ''} · Practice Set ${set.setNo ?? 1}`, { font: HFONT, size: base, color: '555555' }) }),
+        ...(L.key.some(k => k.a == null) ? [P({ spacing: { after: 120 }, children: [new d.TextRun({ text: `– : no answer set for ${L.key.filter(k => k.a == null).length} question(s).`, font: HFONT, size: base - 4, color: '777777' })] })] : []),
         new d.Table({ width: { size: TEXT_W, type: d.WidthType.DXA }, columnWidths: Array(10).fill(cellW),
           rows: keyRows.map(r => new d.TableRow({ children: Array.from({ length: 10 }, (_, i) => new d.TableCell({ width: { size: cellW, type: d.WidthType.DXA },
             children: [P({ alignment: d.AlignmentType.CENTER, children: r[i] ? [new d.TextRun({ text: `${r[i].n}  `, font: HFONT, size: base - 2, color: '777777' }), new d.TextRun({ text: r[i].a != null ? LET[r[i].a] : '–', font: HFONT, bold: true, size: base })] : [] })] })) })) }),
@@ -1983,7 +1996,7 @@ async function buildDocx(set, L, libs, msg) {
   const doc = new d.Document({
     creator: 'GNSI Model Sets', title: `${set.title || 'Model Paper'} – Practice Set ${no}`,
     styles: { default: { document: { run: { font: FONT, size: base } } } },
-    sections: [...sections.map((sec, i) => ({
+    sections: L.keyOnly ? keySections.map(k => ({ ...k, properties: { page: PAGE, column: { count: 1 } }, headers: { default: header }, footers: { default: footer } })) : [...sections.map((sec, i) => ({
       properties: { ...(i ? { type: d.SectionType.CONTINUOUS } : {}), page: PAGE, column: sec.cols === 2 ? { count: 2, space: COLSP, separate: true } : { count: 1 } },
       ...(i ? {} : { headers: { default: header }, footers: { default: footer } }),
       children: sec.children.length ? sec.children : [P({ children: [] })],
@@ -1994,6 +2007,7 @@ async function buildDocx(set, L, libs, msg) {
 
 let exportBusy = false;
 const exportSet = id => (cur.view === 'maker' && cur.id === id ? cur.draft : getSet(id));
+const keyPref = () => { try { const v = localStorage.getItem('jnv-export-key'); return ['none', 'end', 'only'].includes(v) ? v : 'none'; } catch (e) { return 'none'; } };
 function openExport(id) {
   const set = exportSet(id); if (!set) return;
   cur.exportId = id;
@@ -2002,12 +2016,22 @@ function openExport(id) {
     <div class="ov-b" style="display:grid;gap:14px;padding-top:14px">
       <p class="subnote">The paper is laid out on A4 in two columns. Text and figures are sized so the whole paper fills the number of pages you choose.</p>
       <div class="row"><label class="fld" for="exPages"><span>Pages</span><input class="in" id="exPages" type="number" min="2" max="24" value="8"></label><div></div></div>
-      <label class="toggle"><input type="checkbox" id="exKey">Add an answer key page at the end</label>
+      <label class="fld" for="exKey"><span>Answer key</span><select class="in" id="exKey">
+        ${[['none', 'No answer key'], ['end', 'Answer key page at the end of the paper'], ['only', 'Answer key only (teacher\'s copy, separate file)']].map(([v, t]) => `<option value="${v}"${keyPref() === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+      ${(() => {
+        const qs = set.sections.flatMap(sec => (sec.items || []).filter(x => x.t === 'q'));
+        const missing = qs.filter(x => x.kind !== 'lib' && x.a == null).length, ai = qs.filter(x => x.a != null && x.gen).length;
+        return missing || ai ? `<p class="subnote" id="exKeyNote"${keyPref() === 'none' ? ' hidden' : ''}>${missing ? `<b>${missing}</b> question${missing === 1 ? ' has' : 's have'} no answer yet (shown as –). ` : ''}${ai ? `<b>${ai}</b> answer${ai === 1 ? ' was' : 's were'} worked out by AI and not checked. ` : ''}Use Edit → ✦ Auto answer key, or pick the answers, before printing the key.</p>` : '';
+      })()}
       <p class="genmsg" id="exMsg" role="status"></p>
     </div>
     <div class="ov-f"><span class="subnote">${countQ(set)} questions</span><div class="addbar">
       <button class="btn primary" type="button" data-act="expdf">Download PDF</button><button class="btn" type="button" data-act="exdocx">Download Word</button></div></div></div></div>`;
   ov.querySelector('.ov-card').addEventListener('click', e => { if (!e.target.closest('[data-act]')) e.stopPropagation(); });
+  const sel = $('#exKey'), note = $('#exKeyNote'), pagesFld = $('#exPages');
+  const sync = () => { if (note) note.hidden = sel.value === 'none'; if (pagesFld) pagesFld.disabled = sel.value === 'only'; };
+  sel.addEventListener('change', () => { try { localStorage.setItem('jnv-export-key', sel.value); } catch (e) { /* private window */ } sync(); });
+  sync();
 }
 async function runExport(fmt) {
   if (exportBusy) return;
@@ -2015,7 +2039,7 @@ async function runExport(fmt) {
   const msgEl = $('#exMsg'), btns = ov.querySelectorAll('[data-act="expdf"],[data-act="exdocx"]');
   const msg = t => { if (msgEl && msgEl.isConnected) msgEl.textContent = t; };
   const pages = Math.min(24, Math.max(2, Math.round(+$('#exPages').value || 8)));
-  const withKey = $('#exKey').checked;
+  const keyMode = ($('#exKey') || {}).value || 'none';
   exportBusy = true; btns.forEach(b => b.disabled = true);
   let L = null;
   try {
@@ -2024,7 +2048,7 @@ async function runExport(fmt) {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     msg('Fitting the paper to the pages…');
     await new Promise(r => setTimeout(r, 30));
-    L = await layoutPaper(set, pages, withKey);
+    L = await layoutPaper(set, pages, keyMode);
     if (document.fonts && document.fonts.ready) await document.fonts.ready;   // faces first used by the print layout
     msg('Getting the figures ready…');
     await inlineImages(L.root);
@@ -2032,8 +2056,8 @@ async function runExport(fmt) {
     await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
     const blob = fmt === 'pdf' ? await buildPdf(L, libs, msg) : await buildDocx(set, L, libs, msg);
     msg('Saving…');
-    await saveFile(`${fileBase(set)}.${fmt}`, blob);
-    msg(L.over
+    await saveFile(`${fileBase(set)}${L.keyOnly ? '_Answer_Key' : ''}.${fmt}`, blob);
+    msg(L.keyOnly ? `Saved: the answer key on one A4 page.` : L.over
       ? `Saved. This paper needs ${L.count} pages even at the smallest readable size.`
       : `Saved: ${L.count} page${L.count === 1 ? '' : 's'} on A4${fmt === 'docx' ? '. Word may move a line or two between pages.' : '.'}`);
   } catch (e) {
