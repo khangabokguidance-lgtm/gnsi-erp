@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavIcon } from './navIcons'
 
 const NAVY = '#0B1E3D', NAVY2 = '#1F4E8C', GOLD = '#C9A24B', INK = '#1c2433', SUB = '#5d6b82'
-const DEFAULT_QUICK = ['dashboard', 'students', 'fees', 'attendance', 'hostel', 'teaching', 'studentfeeledger', 'leave']
+const DEFAULT_QUICK = ['dashboard', 'students', 'fees', 'attendance', 'hostel', 'teaching', 'studentfeeledger', 'hr']
 const GROUP_TITLES = { CORE: 'Students & Admissions', FINANCE: 'Fees & Finance', ACADEMIC: 'Academics', PEOPLE: 'Staff & Hostel', OPERATIONS: 'Front Office', MANAGEMENT: 'Management' }
 const PREVIEW = 8 // two rows of four, then "View All"
 // Shorter names for the icon grid so every label fits in two lines.
@@ -103,7 +103,7 @@ export default function MobileNavHome({ open, onClose, groups, allowedModules, a
   }
 
   const q = query.trim().toLowerCase()
-  const hits = q ? allItems.filter(i => i.label.toLowerCase().includes(q)) : []
+  const hits = q ? allItems.filter(i => i.label.toLowerCase().includes(q) || !!i.keywords?.includes(q)) : []
   const hour = new Date().getHours()
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = (currentUser?.name || 'there').split(' ')[0]
