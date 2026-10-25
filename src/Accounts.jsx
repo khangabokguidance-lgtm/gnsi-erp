@@ -3135,7 +3135,9 @@ function Accounts({role,userId}){
   // ── responsive grid columns ────────────────────────────────────────────
   const statCardCols    = isMobile ? 'repeat(2,1fr)' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)'
   const todayCols       = isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)'
-  const formCols        = isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)'
+  const formCols        = isMobile ? '1fr' : isTablet ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,1fr)'
+  // roomier fields on phone/tablet: 16px text (stops iOS zoom-on-focus) and taller tap targets
+  const formInput       = (isMobile||isTablet) ? {...iStyle,fontSize:16,padding:'14px 16px',minHeight:52} : iStyle
   const filterCols      = isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : '2fr 1fr 1fr 1fr 1fr 1fr 1fr'
   const chartGridCols   = isMobile ? '1fr' : '1fr 1fr'
   const budgetGridCols  = isMobile ? '1fr' : 'repeat(2,1fr)'
@@ -3270,11 +3272,11 @@ function Accounts({role,userId}){
           {rows.map((row,i)=>(
             <div key={i} style={{border:rows.length>1?'1px solid #e8e3d8':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a6e'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
-              <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
-                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
-                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
+              <div style={{display:'grid',gridTemplateColumns:formCols,gap: isMobile ? 20 : isTablet ? 22 : 16}}>
+                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={formInput}/></div>
+                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={formInput}/></div>}
                 <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
+                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...formInput,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
                     {(canAddIncome||row.type==='Income')&&<option>Income</option>}<option>Expense</option>
                   </select>
                 </div>
@@ -3282,7 +3284,7 @@ function Accounts({role,userId}){
                   <select value={row.category} onChange={e=>{
                     if(e.target.value==='__add_new__'){addCustomExpenseCategory(i);return}
                     updateRow(i,'category',e.target.value)
-                  }} required style={iStyle}>
+                  }} required style={formInput}>
                     <option value="">Select</option>
                     {row.type==='Expense'&&row.category&&!entryCategoryOptions.includes(row.category)&&<option value={row.category}>{row.category}{isGenericText(row.category)?' (old — choose a real category)':''}</option>}
                     {(row.type==='Income'?INCOME_CATEGORIES:entryCategoryOptions).map(c=><option key={c}>{c}</option>)}
@@ -3294,7 +3296,7 @@ function Accounts({role,userId}){
                     <select value={row.sub_category||''} onChange={e=>{
                       if(e.target.value==='__add_new_sub__'){addCustomSubCategory(i,row.category);return}
                       updateRow(i,'sub_category',e.target.value)
-                    }} required disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#faf8f3':'white'}}>
+                    }} required disabled={!row.category} style={{...formInput,backgroundColor:!row.category?'#faf8f3':'white'}}>
                       <option value="">{row.category?'Select':'Select a category first'}</option>
                       {subCategoryOptionsFor(row.category).map(c=><option key={c}>{c}</option>)}
                       {row.category&&<option value="__add_new_sub__">+ Add New Sub-category…</option>}
@@ -3306,7 +3308,7 @@ function Accounts({role,userId}){
                     <select value={row.vendor_id||''} onChange={e=>{
                       if(e.target.value==='__add_vendor__'){addNewVendor(i);return}
                       updateRow(i,'vendor_id',e.target.value)
-                    }} required style={iStyle}>
+                    }} required style={formInput}>
                       <option value="">Select</option>
                       {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                       <option value="__add_vendor__">+ Add New Vendor…</option>
@@ -3318,49 +3320,49 @@ function Accounts({role,userId}){
                     <select value={row.payer_id||''} onChange={e=>{
                       if(e.target.value==='__add_payer__'){addNewPayer(i);return}
                       updateRow(i,'payer_id',e.target.value)
-                    }} style={iStyle}>
+                    }} style={formInput}>
                       <option value="">None</option>
                       {payers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                       <option value="__add_payer__">+ Add New Payer…</option>
                     </select>
                   </div>
                 )}
-                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
+                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={formInput}/>
                 </div>
                 <div><label style={lStyle}>Payment Mode <span style={{fontWeight:400,color:'#8a93a6'}}>(default Cash)</span> <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
+                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={formInput}>
                     <option value="">Select</option>
                     {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div><label style={lStyle}>Account Type <span style={{fontWeight:400,color:'#8a93a6'}}>(automatic)</span></label>
-                  <input type="text" value={row.account_type||'Cash A/c'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
+                  <input type="text" value={row.account_type||'Cash A/c'} readOnly disabled style={{...formInput,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
                 {row.type==='Expense'&&controlsReady&&isDigitalMode(row.payment_mode)&&(
                   <div><label style={lStyle}>Payment Reference <span style={{fontWeight:400,color:'#8a93a6'}}>(UTR / txn id)</span> <span style={{color:'#dc2626'}}>*</span></label>
-                    <input type="text" placeholder="e.g. 412345678901" value={row.txn_ref||''} onChange={e=>updateRow(i,'txn_ref',e.target.value)} style={iStyle}/>
+                    <input type="text" placeholder="e.g. 412345678901" value={row.txn_ref||''} onChange={e=>updateRow(i,'txn_ref',e.target.value)} style={formInput}/>
                   </div>
                 )}
                 <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#8a93a6'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
                     updateRow(i,'voucher_head',e.target.value)
-                  }} required style={iStyle}>
+                  }} required style={formInput}>
                     <option value="">Select from Staff…</option>
                     {selectableStaffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
                     <option value="__add_staff__">+ Add New Staff Member…</option>
                   </select>
                 </div>
                 <div><label style={lStyle}>Entered By</label>
-                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
+                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...formInput,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
                 <div><label style={lStyle}>Status <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
-                  <select value={row.status||'Confirmed'} onChange={e=>updateRow(i,'status',e.target.value)} style={iStyle}>
+                  <select value={row.status||'Confirmed'} onChange={e=>updateRow(i,'status',e.target.value)} style={formInput}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>{row.type==='Expense'?'Reason — what was bought / paid for, and for whom':'Description / Note'} <span style={{color:'#dc2626'}}>*</span></label>
-                  <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/>
+                <div style={{gridColumn: isMobile ? '1' : isTablet ? 'span 2' : 'span 4'}}><label style={lStyle}>{row.type==='Expense'?'Reason — what was bought / paid for, and for whom':'Description / Note'} <span style={{color:'#dc2626'}}>*</span></label>
+                  <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={formInput}/>
                   {row.type==='Expense'&&(()=>{
                     const vn=vendors.find(v=>String(v.id)===String(row.vendor_id))?.name||''
                     const probs=reasonProblems({note:row.note,category:row.category,subCategory:row.sub_category,vendorName:vn,minLength:5,minWords:1})
