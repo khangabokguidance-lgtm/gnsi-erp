@@ -16,10 +16,8 @@ import Accounts           from './Accounts'
 import Salary             from './Salary'
 import Staff              from './Staff'
 import HR                 from './DAILY_ATTENDANCE_TRACKER_COMPLETE'
-import Leave              from './Leave'
 import Hostel             from './Hostel'
 import Reception          from './Reception'
-import Notice             from './Notice'
 import Social             from './Social'
 import Connect            from './Connect'
 import Reports            from './Reports'
@@ -133,9 +131,9 @@ const ALL_GROUPS = [
     items: [
       { id: 'kitchen', label: 'Kitchen', icon: '🍽️' },
       { id: 'staff',   label: 'Staff',   icon: '👨‍🏫' },
-      // HR includes the Time Table (section 'timetable', its own permission key)
-      { id: 'hr',      label: 'HR & Timetable', icon: '🗂️' },
-      { id: 'leave',   label: 'Leave',   icon: '🏖️' },
+      // HR includes the Time Table, Leave and Notice as sections, each with its own permission key
+      // (HR_SECTIONS below); keywords let the menu search find them under HR.
+      { id: 'hr',      label: 'HR', icon: '🗂️', keywords: 'timetable time table leave notice circular' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
       { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
@@ -145,7 +143,6 @@ const ALL_GROUPS = [
     group: 'OPERATIONS',
     items: [
       { id: 'reception', label: 'Reception', icon: '🛎️' },
-      { id: 'notice',    label: 'Notice',    icon: '🔔' },
       { id: 'social',    label: 'Social',    icon: '📣' },
       { id: 'connect',   label: 'Connect',   icon: '🔗' },
       { id: 'website',   label: 'Website Manager', icon: '🌐' },
@@ -173,6 +170,9 @@ const ALL_GROUPS = [
 ]
 
 const ALL_ITEMS = ALL_GROUPS.flatMap(g => g.items)
+// Modules that now live inside HR: module id (and permission key) → HR section
+const HR_SECTIONS = { timetable: 'timetable', leave: 'leavedesk', notice: 'notice' }
+const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
 const BADGES = {
   fees:   { count: 3, color: '#fcd34d', bg: '#78350f' },
@@ -434,7 +434,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    if (set.has('timetable')) set.add('hr')
+    if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
     return set
   }, [permMap, isAdmin, currentUser])
 
@@ -463,7 +463,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const q = search.trim().toLowerCase()
     return ALL_GROUPS.map(g => ({
       ...g,
-      items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && (!q || i.label.toLowerCase().includes(q)))
+      items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && navMatches(i, q))
     })).filter(g => g.items.length > 0)
   }, [allowedModules, search, pins])
 
@@ -548,7 +548,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    if (set.has('timetable')) set.add('hr')
+    if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
     return set
   }, [permMap, isAdmin, currentUser])
 
@@ -709,11 +709,11 @@ export default function App() {
   const [hubTab, setHubTab] = useState(HUB_TABS[0])
   // hubHome: the hub opens on its home screen from the menu, but straight on a tab for deep links
   const [hubHome, setHubHome] = useState(true)
-  // HR: the Time Table is one of its sections; links to the old 'timetable' module open it there.
+  // HR: Time Table, Leave and Notice are its sections; links to those old modules open them there.
   const [hrSection, setHrSection] = useState(null)
   const setActive = useCallback(id => {
     if (isHubTab(id)) { setHubTab(id); setHubHome(false); setActiveRaw(HUB_ID) }
-    else if (id === 'timetable') { setHrSection('timetable'); setActiveRaw('hr') }
+    else if (HR_SECTIONS[id]) { setHrSection(HR_SECTIONS[id]); setActiveRaw('hr') }
     else { if (id === HUB_ID) setHubHome(true); if (id === 'hr') setHrSection(null); setActiveRaw(id) }
   }, [])
   // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
@@ -1020,7 +1020,7 @@ export default function App() {
     if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
     if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
-    if (key === 'hr') return permMap.hr?.read === true || permMap.timetable?.read === true
+    if (key === 'hr') return ['hr', ...Object.keys(HR_SECTIONS)].some(k => permMap[k]?.read === true)
     return permMap[key]?.read === true
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
@@ -1037,15 +1037,13 @@ export default function App() {
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
     salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} section={hrSection} onSection={setHrSection} />,
-    leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
+    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection} />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null}
                           onNavigate={setActive} onLogout={handleLogout} onStaffChange={fetchSharedStaff} />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
-    notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
     learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} home={hubHome} onHome={() => setHubHome(true)} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
