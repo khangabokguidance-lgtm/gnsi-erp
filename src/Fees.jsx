@@ -3539,6 +3539,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
         setAdvAmt(''); setAdvFor(''); setFlatChecked(flatFees.map(() => false)); setTxnRef('')
         setStep('select'); setStudent(null)
+      } else if (/row-level security|permission denied/i.test(err.message || '')) {
+        // the database did not recognise this login as staff (see the banner at the top)
+        showToast('Save failed: the database did not accept this login as staff, so nothing was saved. Use “Sign in again” (log out and log back in), then save again. (' + err.message + ')', '#dc2626')
       } else showToast('Save failed: ' + err.message, '#dc2626')
     }
     setSaving(false)

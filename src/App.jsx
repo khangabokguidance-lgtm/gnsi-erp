@@ -896,14 +896,22 @@ export default function App() {
   // return ZERO rows, so Fees shows ₹0 and 0 students, rosters look empty,
   // etc. That happens if linking failed at login or the session expired and
   // couldn't refresh. Show it plainly instead of silently empty data.
-  const [secureOff, setSecureOff] = useState(false)
+  // A session can also exist WITHOUT being linked to a staff account (the
+  // link step refused, or the browser holds another account's session, such
+  // as a parent's): then reading works but every save is refused with
+  // "row-level security". is_staff() is the check the fee tables' policies
+  // use, so the banner asks it too.
+  const [secureOff, setSecureOff] = useState(false)   // false | 'off' (no session) | 'unlinked'
   useEffect(() => {
     if (!currentUser) return
     let live = true
-    supabase.auth.getSession()
-      .then(({ data }) => { if (live) setSecureOff(!data?.session) })
-      .catch(() => {})
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { if (live) setSecureOff(!session) })
+    const check = async (session) => {
+      if (!session) { if (live) setSecureOff('off'); return }
+      const { data, error } = await supabase.rpc('is_staff')
+      if (live) setSecureOff(!error && data === false ? 'unlinked' : false)
+    }
+    supabase.auth.getSession().then(({ data }) => check(data?.session)).catch(() => {})
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { check(session).catch(() => {}) })
     return () => { live = false; sub?.subscription?.unsubscribe?.() }
   }, [currentUser])
 
@@ -1141,7 +1149,12 @@ export default function App() {
           <div role="alert" style={{ margin: isMobile ? '10px 12px 0' : '16px 28px 0', padding: '12px 16px', borderRadius: 14, background: '#fff4e5', border: '1px solid #f5c26b', color: '#7a4a00', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: UI_FONT }}>
             <span style={{ fontSize: 20 }}>⚠️</span>
             <div style={{ flex: '1 1 260px', minWidth: 0, fontSize: 13.5, lineHeight: 1.45 }}>
-              <b>Secure database connection is off</b> — records will show as empty or ₹0 until you sign in again. Your data is safe; it just can't be read from this session.
+              {secureOff === 'unlinked' ? <>
+                <b>Your login is not linked to your staff account in the database</b> — you can view records, but saving (fees, attendance, edits) will be refused with a “row-level security” error. Sign in again to link it.
+                {currentUser.username === import.meta.env.VITE_ADMIN_USERNAME && ' For the admin account the database links it only after the admin password has been changed from the default.'}
+              </> : <>
+                <b>Secure database connection is off</b> — records will show as empty or ₹0 until you sign in again. Your data is safe; it just can't be read from this session.
+              </>}
             </div>
             <button onClick={handleLogout} style={{ padding: '9px 16px', borderRadius: 999, border: 'none', background: 'linear-gradient(180deg,#132B52,#0B1E3D)', color: '#E2C57E', fontWeight: 800, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Sign in again
