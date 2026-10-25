@@ -2354,7 +2354,7 @@ async function runImport() {
     // pages out. Pages already read are always kept.
     const signal = imp.ctl.signal;
     // what each AI model answered, e.g. "gemini-2.5-flash: daily free limit used up · llama-4-scout: API key refused…"
-    const whyText = d => (d || []).map(x => `${String(x.model || '').split(':').pop().split('/').pop()}: ${x.why}`).join(' · ');
+    const whyText = d => (d || []).map(x => `${x.name || String(x.model || '').replace(/^\w+:/, '').split('/').pop()}: ${x.why}`).join(' · ');
     let why = '';
     const wait = (sec, i, again) => new Promise((res, rej) => {
       let left = Math.ceil(sec);
