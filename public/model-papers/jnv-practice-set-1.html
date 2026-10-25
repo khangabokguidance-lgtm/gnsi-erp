@@ -2041,6 +2041,219 @@ async function readPage(kind, cv, p, total, signal) {
   return S.sample.json(prompt, { images: [blob], signal, cache: false });
 }
 
+/* ---------- built-in reader: no AI, no limits ----------
+   Reads a page the way the AI does and answers in the same shape ({ items: [...] }), so the review,
+   figure cutting and saving work the same. The words come from the PDF's own text layer when it has
+   one (exact), otherwise from Tesseract OCR run in the browser. Then: columns and reading order,
+   lines, and the paper's structure (section bands, Part headings, Directions, numbered questions,
+   (A)-(D) options, passages); figures are found as drawings in each question's area. It does not
+   work out answers, and it reads English (Hindi or Mayek pages need the AI). */
+const TESS = {
+  lib: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+  worker: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+  core: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+  lang: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
+};
+let ocrWorker = null, ocrProgress = null;
+async function ocrWords(cv) {
+  if (!window.Tesseract) await loadScript(TESS.lib);
+  if (!ocrWorker) ocrWorker = window.Tesseract.createWorker('eng', 1, {
+    workerPath: TESS.worker, corePath: TESS.core, langPath: TESS.lang,
+    logger: m => { if (ocrProgress && m && m.status === 'recognizing text') ocrProgress(m.progress); },
+  }).catch(e => { ocrWorker = null; throw e; });
+  const w = await ocrWorker;
+  // Tesseract's own layout step can skip whole lines of a two-column page, so each column is read on
+  // its own, as one column of text; the gap between the columns is found from the ink on the page
+  const P = pageInk(cv), g = P ? findGutter(P.marks, cv.width) : null;
+  const parts = g == null ? [[0, cv.width]] : [[0, Math.round(g)], [Math.round(g), cv.width]];
+  const words = [];
+  for (let k = 0; k < parts.length; k++) {
+    const [x0, x1] = parts[k], c = document.createElement('canvas');
+    c.width = x1 - x0; c.height = cv.height;
+    c.getContext('2d').drawImage(cv, x0, 0, c.width, c.height, 0, 0, c.width, c.height);
+    await w.setParameters({ tessedit_pageseg_mode: parts.length > 1 ? '4' : '3' });
+    const prog = ocrProgress;
+    ocrProgress = prog ? v => prog((k + v) / parts.length) : null;
+    const { data } = await w.recognize(c, {}, { blocks: true, text: false });
+    ocrProgress = prog;
+    c.width = c.height = 0;
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => (l.words || []).forEach(x => {
+      const t = String(x.text || '').trim();
+      if (t && x.confidence >= 45 && /[\w₹%°?]/.test(t)) words.push({ str: t, x0: x.bbox.x0 + x0, y0: x.bbox.y0, x1: x.bbox.x1 + x0, y1: x.bbox.y1 });
+    }))));
+  }
+  // a "word" much taller than the text around it is a misread drawing, not text
+  const hs = words.map(x => x.y1 - x.y0).sort((a, b) => a - b), mh = hs[hs.length >> 1] || 20;
+  return words.filter(x => x.y1 - x.y0 <= mh * 2.6);
+}
+function endOcr() { if (ocrWorker) { const w = ocrWorker; ocrWorker = null; w.then(x => x.terminate()).catch(() => {}); } }
+
+// the gap between two columns: the widest strip near the middle that (almost) nothing crosses
+// (not a gap between two words); null for a one-column page
+function findGutter(pieces, W) {
+  const n = pieces.length;
+  if (n < 8) return null;
+  const cross = x => pieces.filter(p => p.x0 < x && p.x1 > x).length;
+  const xs = [];
+  for (let x = W * .35; x <= W * .65; x += W / 400) xs.push({ x, c: cross(x) });
+  const min = Math.min(...xs.map(v => v.c));
+  let best = null, run = null;
+  xs.forEach(v => {
+    if (v.c <= min) { run = run || { x0: v.x }; run.x1 = v.x; if (!best || run.x1 - run.x0 > best.x1 - best.x0) best = { ...run }; }
+    else run = null;
+  });
+  if (!best || min > n * .12) return null;
+  const x = (best.x0 + best.x1) / 2, l = pieces.filter(p => p.x1 <= x).length;
+  return l >= n * .2 && n - l - min >= n * .2 ? x : null;
+}
+// pieces of text → reading order: full-width lines (section bands) where they fall, and between
+// them the left column, then the right
+function readingLines(pieces, W) {
+  if (!pieces.length) return [];
+  // a section band ("SECTION – 2  ARITHMETIC TEST") runs across both columns: every piece level with
+  // the word SECTION belongs to that one line
+  const bandPs = new Set();
+  pieces.filter(p => /^SECTION\b/i.test(p.str)).forEach(a => {
+    const cy = (a.y0 + a.y1) / 2, h = a.y1 - a.y0;
+    pieces.forEach(p => { if (Math.abs((p.y0 + p.y1) / 2 - cy) < h * .6) bandPs.add(p); });
+  });
+  const bands = [...bandPs];
+  pieces = pieces.filter(p => !bandPs.has(p));
+  const n = pieces.length;
+  const gutter = findGutter(pieces, W);
+  const lineUp = ps => {
+    const sorted = ps.slice().sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1)), lines = [];
+    sorted.forEach(p => {
+      const h = p.y1 - p.y0, cy = (p.y0 + p.y1) / 2;
+      const ln = lines.find(l => Math.abs(l.cy - cy) < Math.min(h, l.h) * .55);
+      if (ln) { ln.ps.push(p); ln.y0 = Math.min(ln.y0, p.y0); ln.y1 = Math.max(ln.y1, p.y1); ln.x0 = Math.min(ln.x0, p.x0); ln.x1 = Math.max(ln.x1, p.x1); }
+      else lines.push({ ps: [p], cy, h, y0: p.y0, y1: p.y1, x0: p.x0, x1: p.x1 });
+    });
+    return lines.map(l => {
+      const ps = l.ps.sort((a, b) => a.x0 - b.x0);
+      let text = '';
+      ps.forEach((p, i) => { text += (i && p.x0 - ps[i - 1].x1 > l.h * .15 ? ' ' : (i ? '' : '')) + p.str; });
+      return { text: text.replace(/\s+/g, ' ').trim(), y0: l.y0, y1: l.y1, x0: l.x0, x1: l.x1, h: l.h };
+    }).sort((a, b) => a.y0 - b.y0);
+  };
+  if (gutter == null) return lineUp(pieces.concat(bands)).map(l => ({ ...l, col: 0, cx0: 0, cx1: W }));
+  const full = lineUp(pieces.filter(p => p.x0 < gutter - W * .01 && p.x1 > gutter + W * .01).concat(bands)).map(l => ({ ...l, col: 0, cx0: 0, cx1: W }));
+  const rest = pieces.filter(p => !(p.x0 < gutter - W * .01 && p.x1 > gutter + W * .01));
+  const out = [];
+  const cuts = [-Infinity, ...full.map(l => l.y0), Infinity];
+  for (let k = 0; k < cuts.length - 1; k++) {
+    if (k > 0) out.push(full[k - 1]);
+    const band = rest.filter(p => (p.y0 + p.y1) / 2 >= cuts[k] && (p.y0 + p.y1) / 2 < cuts[k + 1]);
+    out.push(...lineUp(band.filter(p => (p.x0 + p.x1) / 2 < gutter)).map(l => ({ ...l, col: 1, cx0: 0, cx1: gutter })));
+    out.push(...lineUp(band.filter(p => (p.x0 + p.x1) / 2 >= gutter)).map(l => ({ ...l, col: 2, cx0: gutter, cx1: W })));
+  }
+  return out;
+}
+
+const RX = {
+  section: /^SECTION\s*[-–—:]?\s*([IVX\d]+)\b\s*[-–—:]?\s*(.*)$/i,
+  part: /^PART\s*[-–—:]?\s*([IVXl|]+|\d+)\b\s*[-–—:]?\s*(.*)$/i,
+  dir: /^Directions?\s*(\([^)]*\))?\s*[:.\-–—]/i,
+  q: /^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*[.)]\s*(.*)$/i,
+  cap: /^(question|answer)\s+figures?\s*:?\s*$/i,
+  opt: /(?:^|\s)\(\s*([A-Da-d])\s*\)|(?:^|\s)([A-D])[.)](?=\s)/g,
+};
+const isCaps = t => t.length >= 6 && t.length <= 70 && /[A-Z]{3}/.test(t) && t === t.toUpperCase() && !/^\(?[A-D]\)/.test(t);
+// split a line at its option labels: { before, opts: [[index, text], ...] }
+function splitOpts(text) {
+  const marks = [];
+  text.replace(RX.opt, (m, a, b, at) => { marks.push({ i: 'ABCD'.indexOf((a || b).toUpperCase()), at, end: at + m.length }); return m; });
+  // labels must come in order (A before B …), or "(a)" in a sentence would split it
+  const ok = marks.filter((m, k) => k === 0 ? true : m.i > marks[k - 1].i);
+  if (!ok.length) return { before: text, opts: [] };
+  return { before: text.slice(0, ok[0].at).trim(), opts: ok.map((m, k) => [m.i, text.slice(m.end, k + 1 < ok.length ? ok[k + 1].at : text.length).trim()]) };
+}
+
+// the drawings in one question's area: four alike in a row are the answer figures, the rest the question figure
+function figuresIn(cv, P, reg) {
+  const gs = groupsIn(P, reg).filter(g => (g.h >= P.tall * .8 || g.w >= P.tall * 1.2 && g.h >= P.tall * .5)
+    && g.y0 >= reg[0] - P.tall * .5 && g.y1 <= reg[2] + P.tall * .5);          // inside this question's area
+  if (!gs.length) return { figure: null, optionFigures: null };
+  const rows = rowsOfFour(gs).map(w4 => ({ w4, cy: w4.reduce((t, c) => t + c.cy, 0) / 4 })).sort((a, b) => b.cy - a.cy);
+  const row = rows[0] ? rows[0].w4 : null;
+  const optionFigures = row ? fourOf(cv, P, row).map(d => d.box) : null;
+  const rest = gs.filter(g => !(row && row.includes(g)) && !(row && g.y0 > Math.min(...row.map(c => c.y0)) - 2));
+  const figure = rest.length ? to1000(cv, unionOf(rest.flatMap(g => g.marks))) : null;
+  return { figure: figure && okBox(figure) ? figure : null, optionFigures };
+}
+
+/* one page → { items } like the AI's reply */
+async function localRead(cv, onProgress) {
+  let pieces = cv.textBoxes && cv.textBoxes.length >= 8 ? cv.textBoxes : null;
+  if (!pieces) {
+    ocrProgress = onProgress || null;
+    try { pieces = await ocrWords(cv); } finally { ocrProgress = null; }
+    cv.textBoxes = pieces;                               // the figure detector then knows exactly where the text is
+    INK.delete(cv);
+  }
+  const W = cv.width, H = cv.height, lines = readingLines(pieces, W), P = pageInk(cv);
+  const items = [];
+  let q = null, head = null, passage = null, lastN = null, optAt = -1;
+  const endQ = (yEnd) => {
+    if (!q) return;
+    // leftover bits of the (A)-(D) labels printed under answer figures are not option text
+    q.out.options = q.out.options.map(o => /^[\s([]*[A-Da-d8]?[)\].]*$/.test(o) ? '' : o);
+    if (P) {
+      const reg = [q.y0 - 4, q.cx0, Math.min(H, yEnd), q.cx1];
+      const f = figuresIn(cv, P, reg);
+      q.out.figure = f.figure;
+      if (f.optionFigures && !q.out.options.some(o => o.trim())) { q.out.optionFigures = f.optionFigures; q.out.options = ['', '', '', '']; }
+    }
+    q.out.text = q.text.join(' ').replace(/\s+/g, ' ').trim();
+    q.out.options = q.out.options.map(o => o.replace(/\s+/g, ' ').trim());
+    items.push(q.out); q = null; optAt = -1;
+  };
+  const endBlocks = () => { head = null; passage = null; };
+  lines.forEach((l, k) => {
+    const t = l.text;
+    if (!t || /^\d{1,3}$/.test(t) && l.y0 > H * .9) return;   // page number
+    const nextTop = () => { for (let j = k + 1; j < lines.length; j++) if (lines[j].col === l.col || lines[j].col === 0) return lines[j].y0; return H; };
+    let m;
+    if ((m = t.match(RX.section))) { endQ(l.y0); endBlocks(); items.push({ type: 'section', tag: `Section ${m[1]}`, title: m[2] || '', directions: '' }); head = items[items.length - 1]; return; }
+    if ((m = t.match(RX.part)) && t.length < 40) { endQ(l.y0); endBlocks(); head = { type: 'heading', sub: '', part: `Part – ${/^[1lI|]+$/.test(m[1]) ? 'I'.repeat(m[1].length) : m[1].toUpperCase()}`, directions: '' }; items.push(head); return; }
+    if (RX.dir.test(t)) { endQ(l.y0); passage = null; if (!head || head.directions) { head = { type: 'heading', sub: '', part: '', directions: '' }; items.push(head); } head.directions = t; head.inDir = true; return; }
+    if (RX.cap.test(t)) { if (q) q.fig = true; return; }
+    m = t.match(RX.q);
+    const n = m ? +m[1] : null;
+    if (m && (lastN == null || (n > lastN && n <= lastN + 6)) && !(q && optAt < 0 && n <= 4 && /^\d\)/.test(t))) {
+      endQ(l.y0);
+      if (head) head.inDir = false;
+      if (passage) passage = null;
+      lastN = n;
+      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1 };
+      const so = splitOpts(m[2]);
+      if (so.before && !RX.cap.test(so.before)) q.text.push(so.before.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
+      so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
+      return;
+    }
+    if (q) {
+      const so = splitOpts(t);
+      if (so.opts.length) {
+        if (so.before) { if (optAt >= 0) q.out.options[optAt] += ' ' + so.before; else q.text.push(so.before); }
+        so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
+      } else if (optAt >= 0) q.out.options[optAt] += ' ' + t;
+      else q.text.push(t.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
+      return;
+    }
+    // outside a question: a heading in capitals, more directions, or a passage
+    if (isCaps(t) && !(head && head.inDir)) { endBlocks(); head = { type: 'heading', sub: t, part: '', directions: '' }; items.push(head); return; }
+    if (head && head.inDir && !(passage)) {
+      if (/passage/i.test(head.directions) && /[.!?]["”']?$/.test(head.directions)) { passage = { type: 'passage', title: '', text: t }; items.push(passage); return; }
+      head.directions += ' ' + t; return;
+    }
+    if (passage) { passage.text += (l.y0 - (passage.y1 || l.y0) > l.h * .9 ? '\n\n' : ' ') + t; passage.y1 = l.y1; return; }
+    if (head && head.type === 'section' && !head.title && isCaps(t)) { head.title = t; return; }
+  });
+  endQ(H);
+  items.forEach(it => { delete it.inDir; delete it.y1; });
+  return { items: items.filter(it => it.type !== 'heading' || it.sub || it.part || it.directions) };
+}
+
 /* model reply → clean items; boxes become cropped canvases */
 const str = (v, n = 4000) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').trim().slice(0, n);
 const okBox = b => Array.isArray(b) && b.length === 4 && b.every(v => typeof v === 'number' && isFinite(v)) && b[2] > b[0] + 5 && b[3] > b[1] + 5;
@@ -2088,7 +2301,8 @@ function pageInk(cv) {
     const m = { x0: x0 * CELL, y0: y0 * CELL, x1: Math.min(W, (x1 + 1) * CELL), y1: Math.min(H, (y1 + 1) * CELL), n };
     const w = m.x1 - m.x0, h = m.y1 - m.y0;
     // page borders, column rules and full-width lines are not figures
-    if ((Math.min(w, h) <= CELL * (R + 2) && (h > H * .25 || w > W * .45)) || w * h > W * H * .5) continue;
+    // (a slightly tilted scan makes a rule a few px wide over its length, so thin is judged against length)
+    if (((Math.min(w, h) <= CELL * (R + 2) || Math.min(w, h) < Math.max(w, h) * .03) && (h > H * .25 || w > W * .45)) || w * h > W * H * .5) continue;
     m.cx = (m.x0 + m.x1) / 2; m.cy = (m.y0 + m.y1) / 2;
     marks.push(m);
   }
@@ -2099,6 +2313,7 @@ function pageInk(cv) {
     // (a figure's outline is thin, so its ink is sparse)
     m.text = tb && tb.length
       ? tb.some(t => m.cx >= t.x0 - 3 && m.cx <= t.x1 + 3 && m.cy >= t.y0 - 3 && m.cy <= t.y1 + 3 && h <= (t.y1 - t.y0) * 1.8)
+        || (h < tall * .55 && w < tall * 2.2 && dens > .12)        // a label the text layer or OCR missed
       : h < tall || (h < tall * 2.2 && w > h * 2.2 && dens > .18);
     m.draw = !m.text && (tb && tb.length ? m.n >= 6 : true);
   });
@@ -2319,6 +2534,7 @@ function mergeContinued(items) {
 }
 
 let imp = null;                                          // the open import: { mode, files, items, ctl, busy }
+const readerPref = () => { try { return localStorage.getItem('jnv-reader') || 'auto'; } catch (e) { return 'auto'; } };
 function openImport(mode) {
   imp = { mode, items: null, busy: false };
   const where = mode === 'new' ? 'a new model set' : `${esc(cur.draft.sections[cur.sec]?.tag || 'this section')} (sections found in the paper are added after it)`;
@@ -2327,6 +2543,9 @@ function openImport(mode) {
     <div class="ov-b" id="impBody" style="display:grid;gap:14px;padding-top:14px">
       <p class="subnote">Choose a PDF or photos of a question paper. Each page is read, the questions, options, passages and sections are found, figures are cut out, and everything is set again in this paper's design. Up to ${IMPORT_MAX_PAGES} pages at a time.</p>
       <label class="fld" for="impFile"><span>PDF or page photos</span><input class="in" id="impFile" type="file" accept="application/pdf,image/*" multiple></label>
+      <label class="fld" for="impReader"><span>Read with</span><select class="in" id="impReader">
+        ${[['auto', 'AI, and the built-in reader when the AI is busy (recommended)'], ['ai', 'AI only (Gemini and other free models)'], ['local', 'Built-in reader only: no AI, no limits (English; no answers)']]
+          .map(([v, t]) => `<option value="${v}"${readerPref() === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
       <p class="subnote">Goes into: <b>${where}</b>.</p>
       <p class="genmsg" id="impMsg" role="status"></p>
     </div>
@@ -2340,8 +2559,10 @@ async function runImport() {
   const say = (t, w) => { const m = $('#impMsg'); if (m) m.innerHTML = esc(t) + (w ? `<br><span class="subnote">${esc(w)}</span>` : ''); };
   const files = [...($('#impFile').files || [])];
   if (!files.length) return msg('Choose a PDF or at least one photo first.');
-  const kind = await readerKind();
-  if (!kind) return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini and other free AI models; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
+  const reader = ($('#impReader') || {}).value || 'auto';
+  try { localStorage.setItem('jnv-reader', reader); } catch (e) { /* private window */ }
+  const kind = reader === 'local' ? null : await readerKind();
+  if (!kind && reader === 'ai') return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini and other free AI models; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
   const job = imp;
   imp.busy = true; imp.ctl = new AbortController();
   $('#impRead').disabled = true; $('#impStop').hidden = false;
@@ -2368,16 +2589,35 @@ async function runImport() {
       const t = setInterval(tick, 1000); tick();
     });
     let pace = 0, last = 0;
+    // reader: 'ai' waits for the AI; 'auto' reads a page with the built-in reader whenever the AI is
+    // busy or cannot be used; 'local' never asks the AI
+    let aiOff = !kind, aiRestUntil = 0;
+    const byLocal = [];
+    const readLocal = async (i, because) => {
+      const cv = await pageCanvas(pages[i]), head = `Reading page ${i + 1} of ${pages.length} with the built-in reader${because ? ` (${because})` : ''}…`;
+      msg(head);
+      try { const r = await localRead(cv, pr => msg(`${head} ${Math.round(pr * 100)}%`)); byLocal.push(i + 1); return r; }
+      catch (e) { if (/load/i.test(String(e && e.message))) throw { code: 'ocr_failed' }; return null; }
+    };
     for (let i = 0; i < pages.length; i++) {
       if (signal.aborted) throw { code: 'cancelled' };
       let reply = null, tries = 0, gaveUp = false, noModel = null;
-      for (;;) {
+      if (aiOff || Date.now() < aiRestUntil) reply = await readLocal(i, aiOff ? '' : 'the AI is busy');
+      else for (;;) {
         const gap = pace - (Date.now() - last) / 1000;
         if (gap > 0) await wait(gap, i, false);
         msg(`Reading page ${i + 1} of ${pages.length}… ${kind === 'claude' ? '(Claude)' : '(free AI models)'}`);
         last = Date.now();
         try { reply = await readPage(kind, await pageCanvas(pages[i]), i + 1, pages.length, signal); break; }
         catch (e) {
+          if (e && (e.code === 'cancelled' || e.code === 'not_granted' || e.code === 'sampling_disabled')) throw e;
+          if (reader === 'auto') {
+            // no waiting: this page goes to the built-in reader; the AI is tried again when it is free
+            if (e && e.code === 'no_models') aiOff = true;
+            else if (e && e.code === 'rate_limited') aiRestUntil = Date.now() + Math.max(20, e.retryAfter || 30) * 1000;
+            reply = await readLocal(i, e && e.code === 'no_models' ? 'no AI model can read pages now' : 'the AI is busy');
+            break;
+          }
           if (e && e.code === 'no_models') { noModel = whyText(e.details) || e.message || ''; break; }
           if (e && e.code === 'rate_limited') {
             why = whyText(e.details);
@@ -2386,14 +2626,13 @@ async function runImport() {
             await wait(Math.min(90, Math.max(e.retryAfter || 0, 20 * tries)), i, true);
             continue;
           }
-          if (e && (e.code === 'cancelled' || e.code === 'not_granted' || e.code === 'sampling_disabled')) throw e;
           reply = null; break;
         }
       }
       if (noModel != null) {
         // no model can read pages now (keys refused, daily limits used up): waiting will not help
         if (!items.some(x => x.t !== 'note')) throw { code: 'no_models', why: noModel };
-        items.push({ t: 'note', text: `Pages ${i + 1}–${pages.length} were not read: no AI model can read pages right now (${noModel}). Add what was found, then import those pages again later.` });
+        items.push({ t: 'note', text: `Pages ${i + 1}–${pages.length} were not read: no AI model can read pages right now (${noModel}). Add what was found, then import those pages again later, or choose the built-in reader.` });
         break;
       }
       if (gaveUp) {
@@ -2403,6 +2642,8 @@ async function runImport() {
       if (!reply) { items.push({ t: 'note', text: `Page ${i + 1} could not be read.` }); continue; }
       items = items.concat(cleanItems(reply, await pageCanvas(pages[i]), i + 1));
     }
+    endOcr();
+    imp.byLocal = byLocal;
     if (imp !== job) return;                             // closed while reading
     imp.items = mergeContinued(items);
     imp.pages = pages; imp.pageUrls = {};
@@ -2410,7 +2651,9 @@ async function runImport() {
     renderReview();
   } catch (e) {
     const t = { cancelled: 'Stopped.', empty: 'No pages found in that file. Use a PDF, JPEG or PNG.', not_granted: 'The AI service is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', rate_limited: 'Too many pages read in the last minute. Wait a minute and try again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code];
-    if (e && e.code === 'no_models') say('No AI model can read pages right now, so waiting will not help. What each one said:', e.why || 'no details');
+    endOcr();
+    if (e && e.code === 'no_models') say('No AI model can read pages right now, so waiting will not help. Choose "Built-in reader" above to read the paper without AI. What each AI model said:', e.why || 'no details');
+    else if (e && e.code === 'ocr_failed') msg('The built-in reader could not be loaded. Check the internet connection and try again.');
     else msg(t || 'Could not read that file. Try a clearer scan or fewer pages.');
   } finally {
     if (imp === job) { imp.busy = false; const r = $('#impRead'), s2 = $('#impStop'); if (r) r.disabled = false; if (s2) s2.hidden = true; }
@@ -2437,6 +2680,7 @@ function renderReview() {
       <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cropBtn(it.fig, i, 'fig', 'the question figure')} ${pics} ${chips}</span></span></label>`;
   }).join('');
   $('#impBody').innerHTML = `<p class="subnote">Found <b>${qs.length}</b> question${qs.length === 1 ? '' : 's'}${pas ? `, ${pas} passage${pas === 1 ? '' : 's'}` : ''}${secs ? ` and ${secs} section${secs === 1 ? '' : 's'}` : ''}. ${figs} with figures, ${noKey} without an answer.${imp.skipped > 0 ? ` ${imp.skipped} more page${imp.skipped === 1 ? ' was' : 's were'} left out (${IMPORT_MAX_PAGES} at a time).` : ''} Untick anything you do not want.</p>
+    ${imp.byLocal && imp.byLocal.length ? `<p class="subnote"><b>Read by the built-in reader:</b> page${imp.byLocal.length === 1 ? '' : 's'} ${imp.byLocal.join(', ')}. Check those questions closely; it does not set answers.</p>` : ''}
     <div style="max-height:52vh;overflow-y:auto;border-top:1px solid var(--rule)">${rows || '<p class="subnote">Nothing was found on these pages.</p>'}</div>
     <p class="genmsg" id="impMsg" role="status"></p>`;
   $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
@@ -2733,7 +2977,7 @@ document.addEventListener('click', async e => {
       if (exportBusy || (imp && imp.busy && imp.items)) return;     // a file is being written or figures saved
       if (imp && imp.ctl) imp.ctl.abort();
       if (mmJob && mmJob.ctl) mmJob.ctl.abort();
-      imp = null; mmJob = null; ov.innerHTML = '';
+      imp = null; mmJob = null; ov.innerHTML = ''; endOcr();
     }
     return;
   }
