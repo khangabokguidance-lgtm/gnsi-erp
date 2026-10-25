@@ -1953,7 +1953,8 @@ Rules:
 - Leave out running headers, page numbers, page footers, logos and scissor/cut marks.
 - Boxes are [ymin, xmin, ymax, xmax] on this page image, each from 0 to 1000. Draw them tightly around the drawing only, without the question number or the (A) (B) (C) (D) labels.
 - "figure": one box around the question's figure, diagram, picture or table (all of a question's figures in one box), or null when there is none.
-- "optionFigures": four boxes when the answer choices are pictures, else null. Then "options" is ["", "", "", ""].
+- "optionFigures": four boxes when the answer choices are pictures (the "Answer Figures" of a figure question), one box around each picture, else null. Then "options" is ["", "", "", ""]. Never leave them out for a figure question, even when the options look empty.
+- Printed captions such as "Question Figure", "Question Figures" and "Answer Figures" are not text of the question and not part of any box.
 - "answer": the index 0–3 of the correct option only when the page prints an answer key or the answer is certain from a simple fact or calculation; otherwise null.
 - A question whose start is on the previous page: give only the part on this page, with "continued": true.
 - If the page has no questions, reply {"items": []}.`;
@@ -2074,13 +2075,34 @@ function pageInk(cv) {
   }
   const tb = cv.textBoxes, tall = W * .04;
   marks.forEach(m => {
-    const h = m.y1 - m.y0;
+    const h = m.y1 - m.y0, w = m.x1 - m.x0, dens = m.n * CELL * CELL / Math.max(1, w * h);
+    // without a text layer: a line of text is short, and a big caption is a wide, dense word
+    // (a figure's outline is thin, so its ink is sparse)
     m.text = tb && tb.length
       ? tb.some(t => m.cx >= t.x0 - 3 && m.cx <= t.x1 + 3 && m.cy >= t.y0 - 3 && m.cy <= t.y1 + 3 && h <= (t.y1 - t.y0) * 1.8)
-      : h < tall;
+      : h < tall || (h < tall * 2.2 && w > h * 2.2 && dens > .18);
     m.draw = !m.text && (tb && tb.length ? m.n >= 6 : true);
   });
-  const P = { W, H, marks };
+  // a label or number printed a few px from a figure joins it above; cut it off again along a blank
+  // row or column (the figure is the tallest / widest run of ink, a short strip at its edge is text)
+  const dark = (x, y) => { const k = (y * W + x) * 4; return px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 150; };
+  const runs = (n, inkAt) => { const out = []; let st = -1; for (let i = 0; i <= n; i++) { const on = i < n && inkAt(i); if (on && st < 0) st = i; if (!on && st >= 0) { out.push([st, i]); st = -1; } } return out; };
+  const extra = [];
+  marks.filter(m => m.draw).forEach(m => {
+    for (const axis of ['y', 'x']) {
+      const a0 = axis === 'y' ? m.y0 : m.x0, a1 = axis === 'y' ? m.y1 : m.x1, b0 = axis === 'y' ? m.x0 : m.y0, b1 = axis === 'y' ? m.x1 : m.y1;
+      const rs = runs(a1 - a0, i => { for (let j = b0; j < b1; j++) if (axis === 'y' ? dark(j, a0 + i) : dark(a0 + i, j)) return true; return false; });
+      if (rs.length < 2) continue;
+      const body = rs.reduce((p, q) => (q[1] - q[0] > p[1] - p[0] ? q : p));
+      const cut = rs.filter(r => r !== body && r[1] - r[0] < tall * .6);
+      if (!cut.length || cut.length !== rs.length - 1) continue;
+      cut.forEach(r => extra.push(axis === 'y' ? { x0: m.x0, x1: m.x1, y0: a0 + r[0], y1: a0 + r[1] } : { y0: m.y0, y1: m.y1, x0: a0 + r[0], x1: a0 + r[1] }));
+      if (axis === 'y') { m.y0 = a0 + body[0]; m.y1 = a0 + body[1]; } else { m.x0 = a0 + body[0]; m.x1 = a0 + body[1]; }
+      m.cx = (m.x0 + m.x1) / 2; m.cy = (m.y0 + m.y1) / 2;
+    }
+  });
+  extra.forEach(e => marks.push({ ...e, n: 2, cx: (e.x0 + e.x1) / 2, cy: (e.y0 + e.y1) / 2, text: true, draw: false }));
+  const P = { W, H, marks, tall };
   INK.set(cv, P);
   return P;
 }
@@ -2126,6 +2148,56 @@ function detectFig(cv, b, taken) {
   const f = fitMarks(P, chosen, taken), r = to1000(cv, f.u);
   return okBox(r) ? { box: r, used: f.used } : { box: b, used: [] };
 }
+/* drawings in a region, joined where they touch or nest (a frame and what is drawn in it) */
+function groupsIn(P, reg, taken) {
+  const ms = P.marks.filter(m => m.draw && !(taken && taken.has(m)) && m.cx >= reg[1] && m.cx <= reg[3] && m.cy >= reg[0] && m.cy <= reg[2]);
+  const up = ms.map((_, i) => i), find = i => up[i] === i ? i : (up[i] = find(up[i])), g = P.W * .006;
+  for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
+    const a = ms[i], b = ms[j];
+    if (a.x0 <= b.x1 + g && b.x0 <= a.x1 + g && a.y0 <= b.y1 + g && b.y0 <= a.y1 + g) up[find(i)] = find(j);
+  }
+  const by = new Map();
+  ms.forEach((m, i) => { const r = find(i); if (!by.has(r)) by.set(r, []); by.get(r).push(m); });
+  return [...by.values()].map(marks => {
+    const u = unionOf(marks);
+    return { marks, y0: u[0], x0: u[1], y1: u[2], x1: u[3], w: u[3] - u[1], h: u[2] - u[0], cx: (u[1] + u[3]) / 2, cy: (u[0] + u[2]) / 2 };
+  }).filter(c => c.h >= P.tall * .6 || c.w >= P.tall * .6);
+}
+/* every set of four drawings of about the same size laid out as answer figures are: one row of
+   four evenly spaced, or two rows of two. In reading order (A B C D). */
+function rowsOfFour(gs) {
+  const same = (a, b) => b.h >= a.h * .6 && b.h <= a.h * 1.65 && b.w >= a.w * .5 && b.w <= a.w * 2;
+  const out = [], seen = new Set();
+  gs.forEach(a => {
+    const row = gs.filter(b => Math.abs(b.cy - a.cy) < Math.max(a.h, b.h) * .35 && same(a, b)).sort((p, q) => p.cx - q.cx);
+    for (let i = 0; i + 4 <= row.length; i++) {
+      const w4 = row.slice(i, i + 4), gaps = [1, 2, 3].map(k => w4[k].x0 - w4[k - 1].x1), sp = [1, 2, 3].map(k => w4[k].cx - w4[k - 1].cx);
+      const mean = (sp[0] + sp[1] + sp[2]) / 3;
+      if (gaps.some(x => x < -2) || sp.some(x => Math.abs(x - mean) > mean * .45)) continue;
+      const key = w4.map(c => gs.indexOf(c)).join();
+      if (!seen.has(key)) { seen.add(key); out.push(w4); }
+    }
+    // two rows of two: a and its right neighbour, and the pair just below them
+    const right = row.filter(b => b.cx > a.cx && b.x0 >= a.x1 - 2).sort((p, q) => p.cx - q.cx)[0];
+    if (right) {
+      const below = gs.filter(b => b.cy > a.cy + a.h * .6 && b.cy < a.cy + a.h * 2.6 && same(a, b));
+      const c = below.filter(b => Math.abs(b.cx - a.cx) < a.w * .35).sort((p, q) => p.cy - q.cy)[0];
+      const d = c && below.filter(b => Math.abs(b.cx - right.cx) < right.w * .35 && Math.abs(b.cy - c.cy) < c.h * .35)[0];
+      if (d) { const w4 = [a, right, c, d], key = w4.map(x => gs.indexOf(x)).join(); if (!seen.has(key)) { seen.add(key); out.push(w4); } }
+    }
+  });
+  return out;
+}
+const fourOf = (cv, P, w4) => w4.map(c => { const f = fitMarks(P, c.marks, null), r = to1000(cv, f.u); return { box: r, used: f.used }; });
+/* the answer figures under a question figure, when the model did not mark them */
+function findAnswerRow(cv, figBox) {
+  const P = pageInk(cv); if (!P) return null;
+  const fb = toPx(cv, figBox), fh = fb[2] - fb[0], fw = fb[3] - fb[1], mid = (fb[0] + fb[2]) / 2;
+  const reg = [fb[0], Math.max(0, fb[1] - fw), Math.min(P.H, fb[2] + fh * 2.2 + P.tall * 2), Math.min(P.W, fb[3] + fw * 2.5)];
+  const rows = rowsOfFour(groupsIn(P, reg)).map(w4 => ({ w4, cy: w4.reduce((t, c) => t + c.cy, 0) / 4, top: Math.min(...w4.map(c => c.y0)) }))
+    .filter(r => r.top > mid - fh * .05 || r.cy > mid + fh * .25).sort((p, q) => p.cy - q.cy);
+  return rows.length ? fourOf(cv, P, rows[0].w4) : null;
+}
 /* four answer figures. When the PDF prints (A) (B) (C) (D), every drawing near them goes to its
    own label (the drawings sit the same way from their labels as the model's boxes do), which
    cuts each answer figure exactly; otherwise each box is fitted in turn, never sharing a drawing. */
@@ -2158,6 +2230,15 @@ function detectOptions(cv, boxes) {
       });
     }
   }
+  // no labels to go by (a scan): the four drawings laid out like answer figures nearest the model's boxes
+  {
+    const u = [Math.min(...bps.map(b => b[0])), Math.min(...bps.map(b => b[1])), Math.max(...bps.map(b => b[2])), Math.max(...bps.map(b => b[3]))];
+    const ah = bps.reduce((t, b) => t + b[2] - b[0], 0) / 4, aw = bps.reduce((t, b) => t + b[3] - b[1], 0) / 4;
+    const reg = [Math.max(0, u[0] - ah * 1.2), Math.max(0, u[1] - aw * .8), Math.min(P.H, u[2] + ah * 1.2), Math.min(P.W, u[3] + aw * .8)];
+    const tx = (u[1] + u[3]) / 2, ty = (u[0] + u[2]) / 2;
+    const best = rowsOfFour(groupsIn(P, reg)).map(w4 => ({ w4, d: Math.hypot(w4.reduce((t, c) => t + c.cx, 0) / 4 - tx, w4.reduce((t, c) => t + c.cy, 0) / 4 - ty) })).sort((p, q) => p.d - q.d)[0];
+    if (best) return fourOf(cv, P, best.w4);
+  }
   return boxes.map(b => { const d = detectFig(cv, b, taken); d.used.forEach(m => taken.add(m)); return d; });
 }
 /* the crop editor's click: the drawing under (or nearest to) a point of the page */
@@ -2187,8 +2268,10 @@ function cleanItems(reply, cv, page) {
     while (opts.length < 4) opts.push('');
     const ofs = Array.isArray(r.optionFigures) && r.optionFigures.length === 4 && r.optionFigures.every(okBox) ? r.optionFigures : null;
     const a = Number.isInteger(r.answer) && r.answer >= 0 && r.answer < 4 ? r.answer : null;
-    // answer figures first, so the question figure cannot take in their drawings
-    const od = ofs ? detectOptions(cv, ofs) : null;
+    // answer figures first, so the question figure cannot take in their drawings. When the model gave
+    // a question figure but no answer pictures and no option text, look for them under the figure.
+    let od = ofs ? detectOptions(cv, ofs) : null;
+    if (!od && okBox(r.figure) && opts.every(o => /^[\s—–\-_.]*$/.test(o))) { od = findAnswerRow(cv, r.figure); if (od) opts.fill(''); }
     const qd = okBox(r.figure) ? detectFig(cv, r.figure, od ? new Set(od.flatMap(d => d.used)) : null) : null;
     out.push({
       t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
