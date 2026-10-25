@@ -3130,7 +3130,7 @@ function Accounts({role,userId}){
     backgroundColor:activeTab===t?'#1e3a6e':'#f3f0e8',
     color:activeTab===t?'white':'#5d6b82', transition:'all .15s',
   })
-  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f3f0e8',color:activeQuick===key?'white':'#5d6b82'})
+  const qBtn=(key)=>({padding: isMobile ? '7px 12px' : '7px 14px',borderRadius:999,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f3f0e8',color:activeQuick===key?'white':'#5d6b82'})
 
   // ── responsive grid columns ────────────────────────────────────────────
   const statCardCols    = isMobile ? 'repeat(2,1fr)' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)'
@@ -3506,8 +3506,9 @@ body:has(.ac-bottom){padding-bottom:76px}
         <div className="ac-hero" style={{borderRadius:18,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
-              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily {dailyLabelWord} Register</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>{dailyTypeFilter} entries grouped by {dailyIsIncome?(dailyDateMode==='payment'?'actual payment date':'entry date'):'entry date'}</p>
+              <p style={{fontSize:10.5,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:AC.gold,margin:'0 0 6px'}}>Daily Register</p>
+              <h2 style={{fontSize: isMobile ? 22 : 30,fontWeight:600,color:'white',margin:0,fontFamily:AC.serif,letterSpacing:'-0.02em'}}>Daily {dailyLabelWord} Register</h2>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.62)',margin:'6px 0 0'}}>{dailyTypeFilter} entries grouped by {dailyIsIncome?(dailyDateMode==='payment'?'actual payment date':'entry date'):'entry date'}</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportDailyCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -3516,25 +3517,25 @@ body:has(.ac-bottom){padding-bottom:76px}
           </div>
           <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
             {[{label:'Total Days',value:dailyGroups.length,isCurrency:false},{label:dailyIsIncome?'Payments Received':'Total Entries',value:dailyFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:dailyBankAmt,color:'#f87171'}].map(c=>(
-              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'12px 14px'}}>
-                <p style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.6px',margin:'0 0 6px'}}>{c.label}</p>
-                <p style={{fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize: isMobile ? 16 : 20,fontWeight:600,color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.16)',borderTop:`2px solid ${AC.gold}88`,borderRadius:14,padding:'14px 16px',backdropFilter:'blur(6px)'}}>
+                <p style={{fontSize:10,color:'rgba(255,255,255,0.6)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.16em',margin:'0 0 8px'}}>{c.label}</p>
+                <p style={{fontFamily:AC.serif,fontVariantNumeric:'lining-nums tabular-nums',fontSize: isMobile ? 20 : 27,fontWeight:600,letterSpacing:'-0.02em',color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* PAYMENT-DATE FILTER FIX: Income/Expense toggle + quick date range, so you can instantly see "how many paid on date X" */}
-        <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Showing:</span>
-          <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
-          <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
+        <div style={{display:'flex',gap: isMobile ? 6 : 8,alignItems:'center',flexWrap:'wrap',backgroundColor:'white',border:`1px solid ${AC.line}`,borderRadius:'16px 16px 0 0',padding: isMobile ? '14px 14px 6px' : '16px 20px 8px',borderBottom:'none',boxShadow:'0 1px 2px rgba(19,42,79,.04)'}}>
+          <span style={{fontSize:10,color:'#8a93a6',fontWeight:800,letterSpacing:'.14em',textTransform:'uppercase'}}>Showing</span>
+          <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
+          <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
           {dailyIsIncome&&(
             <>
               <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
               <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Filter by:</span>
-              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='payment'?'white':'#5d6b82'}}>💰 Payment Date</button>
-              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='entry'?'white':'#5d6b82'}}>🗓 Entry Date</button>
+              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='payment'?'white':'#5d6b82'}}>💰 Payment Date</button>
+              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='entry'?'white':'#5d6b82'}}>🗓 Entry Date</button>
             </>
           )}
           <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
@@ -3545,7 +3546,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           {activeQuick&&<button onClick={clearQuick} style={{padding:'5px 8px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,backgroundColor:'#fee2e2',color:'#dc2626',fontWeight:600}}>✖</button>}
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto auto auto auto auto auto',gap:8,marginBottom:16,alignItems:'center'}}>
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:22,alignItems:'center',backgroundColor:'white',border:`1px solid ${AC.line}`,borderTop:'none',borderRadius:'0 0 16px 16px',padding: isMobile ? '8px 14px 16px' : '8px 20px 18px',boxShadow:'0 10px 28px -18px rgba(19,42,79,.25)'}}>
           <input placeholder="🔍 Search…" value={dailySearch} onChange={e=>setDailySearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
           <select value={dailyAcctFilter} onChange={e=>setDailyAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
           <select value={dailyModeFilter} onChange={e=>setDailyModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
@@ -3556,7 +3557,7 @@ body:has(.ac-bottom){padding-bottom:76px}
             <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
         </div>
 
-        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
+        {dailyGroups.length===0?<div style={{textAlign:'center',padding:56,color:'#8a93a6',backgroundColor:'white',borderRadius:18,border:`1px dashed ${AC.line2}`,fontFamily:AC.serif,fontSize:17}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
           <TransactionsViewBanking
             dayRows={dailyFilteredEntries}
             dailyIsIncome={dailyIsIncome}
