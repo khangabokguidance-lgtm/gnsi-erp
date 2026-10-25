@@ -27,6 +27,8 @@ import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
 import LearningHub from './LearningHub'
+import ModuleHub from './ModuleHub'
+import { MODULE_HUBS, HUB_BY_ID, HUB_OF, visibleHubTabs } from './moduleHubs'
 import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
 import { NavIcon, AppIcon } from './navIcons'
 import TabIcons from './TabIcons'
@@ -52,7 +54,6 @@ import LandingPage        from './LandingPage'
 import WebsiteTab         from './WebsiteTab'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff     from './AdminLinkStaff'
-import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
 import TeachersDayFrame from './TeachersDayFrame'
@@ -93,22 +94,19 @@ const ALL_GROUPS = [
     group: 'CORE',
     items: [
       { id: 'dashboard',      label: 'Dashboard',      icon: '⊞' },
-      { id: 'students',       label: 'Students',       icon: '🎓' },
-      { id: 'admissions',     label: 'Admissions',     icon: '📋' },
-      { id: 'bulkadmission',  label: 'Bulk Admission', icon: '📥' },
+      // Hubs (moduleHubs.js): one entry for modules with overlapping features; each tab keeps its permission key
+      { id: 'studentshub',    label: 'Students & Admissions', icon: '🎓' },
     ],
   },
   {
     group: 'FINANCE',
     items: [
-      { id: 'fees',             label: 'Fees',               icon: '💰' },
+      { id: 'feeshub',          label: 'Fees',               icon: '💰' },
       { id: 'accounts',         label: 'Accounts',           icon: '🧾' },
       // Salary/Payroll moved into Face Attendance's own "Payroll" tab
       // (admins get the full register there now — Salary.jsx itself is
       // unchanged, just no longer mounted as a separate top-level page).
-      { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
-      // FIX: feesetup now visible in nav (was hidden but reachable)
-      { id: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
+      // Student Fee Ledger and Fee Setup are tabs of the Fees hub
       { id: 'construction',     label: 'Construction & Maintenance', icon: '🏗️' },
     ],
   },
@@ -116,25 +114,22 @@ const ALL_GROUPS = [
     group: 'ACADEMIC',
     items: [
       { id: 'attendance',    label: 'Attendance',      icon: '📅' },
-      { id: 'exams',         label: 'Exams',           icon: '📝' },
-      { id: 'cbt',           label: 'CBT Exam',        icon: '💻' },
+      { id: 'examshub',      label: 'Exams & CBT',     icon: '📝' },
       { id: 'teaching',      label: 'Teaching',        icon: '📚' },
       { id: 'courses',       label: 'Courses',         icon: '🎓' },
-      // Study Materials, Teaching Aids, Question Bank (+ Viewer) and Entrance Exam
-      // are tabs of this one module; each keeps its own permission key.
+      // Study Materials, Teaching Aids, Study Lockers, Question Bank (+ Viewer), Entrance Exam
+      // and Model Sets are tabs of this one module; each keeps its own permission key.
       { id: 'learninghub',   label: 'Learning Hub',    icon: '🎓' },
-      { id: 'studylockers',  label: 'Study Lockers',   icon: '🗃️' },
     ],
   },
   {
     group: 'PEOPLE',
     items: [
-      // HR is a core module (gold CORE tag, listed first on the staff home). It includes the Time Table,
-      // Leave and Notice as sections, each with its own permission key (HR_SECTIONS below);
-      // keywords let the menu search find them under HR.
-      { id: 'hr',      label: 'HR', icon: '🗂️', core: true, keywords: 'timetable time table leave notice circular attendance staff' },
+      // HR is a core module (gold CORE tag, listed first on the staff home). It includes the Staff
+      // directory, Time Table, Leave and Notice as sections, each with its own permission key
+      // (HR_SECTIONS below); keywords let the menu search find them under HR.
+      { id: 'hr',      label: 'HR', icon: '🗂️', core: true, keywords: 'staff directory timetable time table leave notice circular attendance' },
       { id: 'kitchen', label: 'Kitchen', icon: '🍽️' },
-      { id: 'staff',   label: 'Staff',   icon: '👨‍🏫' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
       { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
@@ -144,9 +139,7 @@ const ALL_GROUPS = [
     group: 'OPERATIONS',
     items: [
       { id: 'reception', label: 'Reception', icon: '🛎️' },
-      { id: 'social',    label: 'Social',    icon: '📣' },
-      { id: 'connect',   label: 'Connect',   icon: '🔗' },
-      { id: 'website',   label: 'Website Manager', icon: '🌐' },
+      { id: 'commshub',  label: 'Communication', icon: '📣' },
       { id: 'store',     label: 'Store',     icon: '🏬' },
     ],
   },
@@ -156,10 +149,7 @@ const ALL_GROUPS = [
       { id: 'reports',     label: 'Reports',      icon: '📊' },
       { id: 'checklist',   label: 'Checklist',    icon: '✅' },
       { id: 'designstudio', label: 'Design Studio', icon: '🎨' },
-      { id: 'admin',       label: 'Admin',        icon: '🔐' },
-      { id: 'student360',  label: 'Student 360°', icon: '🔍' },
-      { id: 'system',      label: 'System',       icon: '⚙️' },
-      { id: 'adminlink',   label: 'Link Staff',   icon: '🔗' },
+      { id: 'adminhub',    label: 'Admin & System', icon: '🔐' },
     ],
   },
   {
@@ -170,9 +160,17 @@ const ALL_GROUPS = [
   },
 ]
 
+// hub entries carry their tabs' names as search keywords
+MODULE_HUBS.forEach(h => { const it = ALL_GROUPS.flatMap(g => g.items).find(i => i.id === h.id); if (it) it.keywords = h.keywords })
 const ALL_ITEMS = ALL_GROUPS.flatMap(g => g.items)
 // Modules that now live inside HR: module id (and permission key) → HR section
-const HR_SECTIONS = { timetable: 'timetable', leave: 'leavedesk', notice: 'notice' }
+const HR_SECTIONS = { staff: 'staffdir', timetable: 'timetable', leave: 'leavedesk', notice: 'notice' }
+// HR and the hubs show in the menu when the user may open at least one of their sections
+function addContainers(set) {
+  if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
+  MODULE_HUBS.forEach(h => { if (visibleHubTabs(h, k => set.has(k), false).length) set.add(h.id) })
+  return set
+}
 const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
 const BADGES = {
@@ -436,8 +434,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
-    return set
+    return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
   useEffect(() => {
@@ -550,8 +547,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
-    return set
+    return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
@@ -711,12 +707,20 @@ export default function App() {
   const [hubTab, setHubTab] = useState(HUB_TABS[0])
   // hubHome: the hub opens on its home screen from the menu, but straight on a tab for deep links
   const [hubHome, setHubHome] = useState(true)
-  // HR: Time Table, Leave and Notice are its sections; links to those old modules open them there.
+  // HR: Staff, Time Table, Leave and Notice are its sections; links to those old modules open them there.
   const [hrSection, setHrSection] = useState(null)
+  // Module hubs (moduleHubs.js): the open tab of each; links to a tab's old module id open it there
+  const [hubSections, setHubSections] = useState({})
   const setActive = useCallback(id => {
     if (isHubTab(id)) { setHubTab(id); setHubHome(false); setActiveRaw(HUB_ID) }
     else if (HR_SECTIONS[id]) { setHrSection(HR_SECTIONS[id]); setActiveRaw('hr') }
-    else { if (id === HUB_ID) setHubHome(true); if (id === 'hr') setHrSection(null); setActiveRaw(id) }
+    else if (HUB_OF[id]) { setHubSections(s => ({ ...s, [HUB_OF[id]]: id })); setActiveRaw(HUB_OF[id]) }
+    else {
+      if (id === HUB_ID) setHubHome(true)
+      if (id === 'hr') setHrSection(null)
+      if (HUB_BY_ID[id]) setHubSections(s => ({ ...s, [id]: null }))
+      setActiveRaw(id)
+    }
   }, [])
   // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
   useEffect(() => {
@@ -1023,6 +1027,7 @@ export default function App() {
     if (isAdmin) return true
     if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
     if (key === 'hr') return ['hr', ...Object.keys(HR_SECTIONS)].some(k => permMap[k]?.read === true)
+    if (HUB_BY_ID[key]) return visibleHubTabs(HUB_BY_ID[key], k => permMap[k]?.read === true, false).length > 0
     return permMap[key]?.read === true
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
@@ -1039,7 +1044,8 @@ export default function App() {
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
     salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection} />,
+    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection}
+                          staffDirectory={<Staff currentUser={currentUser} perms={perms('staff')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />} />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
@@ -1048,7 +1054,6 @@ export default function App() {
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
     learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} home={hubHome} onHome={() => setHubHome(true)} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
-    studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
@@ -1076,6 +1081,11 @@ export default function App() {
     teachersday:       canAccess('teachersday') ? <TeachersDayFrame /> : <AccessDenied />,
     designstudio:      canAccess('designstudio') || canAccess('invitation') || canAccess('certificate') || canAccess('teachersday') ? <DesignStudio currentUser={currentUser} perms={perms} canAccess={canAccess} /> : <AccessDenied />,
     help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
+  }
+  for (const hub of MODULE_HUBS) {
+    const visible = visibleHubTabs(hub, canAccess, isAdmin)
+    moduleMap[hub.id] = <ModuleHub hub={hub} visible={visible} views={Object.fromEntries(visible.map(id => [id, moduleMap[id]]))}
+      section={hubSections[hub.id] || null} onSection={id => setHubSections(s => ({ ...s, [hub.id]: id }))} />
   }
 
   const renderContent = () => {

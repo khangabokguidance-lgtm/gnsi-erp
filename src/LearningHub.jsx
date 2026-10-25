@@ -1,8 +1,8 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
-// ONE module for everything academic-content: Study Materials, Teaching Aids,
+// ONE module for everything academic-content: Study Materials, Teaching Aids, Study Lockers,
 // Question Bank, Question Bank Viewer, Entrance Exam and Model Sets are tabs of this page
 // (sidebar id 'learninghub'), laid out as a flow:
-//   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam · Model Sets)
+//   Learn (Study Materials · Teaching Aids · Study Lockers) → Practice (Question Bank · Viewer) → Assess (Entrance Exam · Model Sets)
 // • it opens on an icon page of the sections (phones and computers); inside a
 //   section, "‹ All sections" (computers) or the back arrow (phones) returns there;
 // • a premium ribbon is the tab bar, with a live count on every tab (refreshes
@@ -22,6 +22,7 @@ import { HUB_TABS } from './learningHubTabs';
 
 const StudyMaterial = lazy(() => import('./StudyMaterial'));
 const TeachingAids = lazy(() => import('./TeachingAids'));
+const StudyLockers = lazy(() => import('./StudyLockers'));
 const QuestionBank = lazy(() => import('./QuestionBank'));
 const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
@@ -30,6 +31,7 @@ const ModelSets = lazy(() => import('./ModelSets'));
 const MODULES = {
   studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
   teachingaids:       { label: 'Teaching Aids',        short: 'Aids',       metric: 'aids',      unit: 'aids' },
+  studylockers:       { label: 'Study Lockers',        short: 'Lockers',    metric: 'lockers',   unit: 'lockers' },
   questionbank:       { label: 'Question Bank',        short: 'Bank',       metric: 'questions', unit: 'questions' },
   questionbankviewer: { label: 'Question Bank Viewer', short: 'Viewer',     metric: 'questions', unit: 'questions' },
   entrance:           { label: 'Entrance Exam',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
@@ -37,13 +39,18 @@ const MODULES = {
 };
 
 const FLOW = [
-  { stage: 'Learn', ids: ['studymaterial', 'teachingaids'] },
+  { stage: 'Learn', ids: ['studymaterial', 'teachingaids', 'studylockers'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
   { stage: 'Assess', ids: ['entrance', 'modelsets'] },
 ];
 
 // For each module: the other modules it connects to, and why.
 const RELATED = {
+  studylockers: [
+    { to: 'studymaterial', title: 'Study materials', hint: 'Shared chapter notes for every class' },
+    { to: 'questionbank', title: 'Question source', hint: 'Practice papers are drawn from the Question Bank' },
+    { to: 'modelsets', title: 'Model sets', hint: 'Full practice papers to take next' },
+  ],
   questionbank: [
     { to: 'questionbankviewer', title: 'Student view', hint: 'See the bank exactly as students see it' },
     { to: 'studymaterial', title: 'Chapter materials', hint: 'Notes and lessons behind these questions' },
@@ -77,7 +84,7 @@ const RELATED = {
 };
 
 // ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', exams: 'entrance_exams', modelsets: 'model_sets' };
+const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets' };
 let cache = { at: 0, data: {}, pending: null };
 async function countOf(table) {
   try {
@@ -391,6 +398,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
     switch (id) {
       case 'studymaterial': return <StudyMaterial {...common} perms={perms('studymaterial')} />;
       case 'teachingaids': return <TeachingAids {...common} perms={perms('teachingaids')} />;
+      case 'studylockers': return <StudyLockers {...common} perms={perms('studylockers')} />;
       case 'questionbank': return <QuestionBank {...common} perms={perms('questionbank')} />;
       case 'questionbankviewer': return <QuestionBankViewer {...common} />;
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
