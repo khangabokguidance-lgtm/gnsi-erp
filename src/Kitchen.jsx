@@ -7,6 +7,7 @@ import { supabase } from './supabase.js'
 import { compressImage } from './lib/imageCompress'
 import { isAdminRole } from './App'
 import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
+import { rebrandReport } from './reportKit'
 
 // ── Responsive hook (same pattern as Fees.jsx) ────────────────────────────────
 function useWindowWidth() {
@@ -1537,7 +1538,7 @@ function generatePrintReport(entries, budget, monthLabel) {
 </body></html>`
 
   const win = window.open('','_blank')
-  if (win) { win.document.write(html); win.document.close() }
+  if (win) { win.document.write(rebrandReport(html, { title: `Kitchen Expenditure — ${monthLabel}`, drop: ['.header', '.footer'] })); win.document.close() }
 }
 
 function exportToCSV(entries, month) {

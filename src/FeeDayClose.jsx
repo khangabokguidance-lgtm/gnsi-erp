@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
 import { cardFlush as card, input as inp, btn, btnPrimary, cell, head } from './feeTheme'
+import { rebrandReport } from './reportKit'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_day_close/.test(err.message || ''))
 const SETUP_MSG = 'Run supabase/migrations/20261009_fee_dayclose_refunds_register.sql in the Supabase SQL editor to switch on day closing.'
@@ -133,7 +134,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
     const c = existing && existing.status === 'closed' ? existing : null
     const cashC = c ? Number(c.counted?.Cash ?? 0) : hasCount ? Number(cashVal) : null
     const d = c ? Number(c.difference || 0) : hasCount ? diff : null
-    w.document.write(`<!doctype html><html><head><title>Day closing ${esc(date)}</title><style>
+    w.document.write(rebrandReport(`<!doctype html><html><head><title>Day closing ${esc(date)}</title><style>
       body{font-family:Arial,sans-serif;padding:24px;color:#14213d;font-size:13px}h1{font-size:18px;color:#1e3a6e;margin:0 0 4px}
       table{width:100%;border-collapse:collapse;margin:10px 0 18px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f3f0e8;font-size:11px;text-transform:uppercase}.r{text-align:right}
       .sig{display:flex;justify-content:space-between;margin-top:60px}.sig div{border-top:1px solid #333;padding-top:4px;width:40%;text-align:center;font-size:11px}</style></head><body>
@@ -144,7 +145,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
       <table><tr><th>Recorded cash</th><th>Counted cash</th><th>Difference</th></tr><tr><td>₹${n(recordedCash)}</td><td>${cashC === null ? '—' : '₹' + n(cashC)}</td><td>${d === null ? '—' : (d > 0 ? '+' : d < 0 ? '−' : '') + '₹' + n(Math.abs(d))}</td></tr></table>
       <div>Note: ${esc(c ? c.note : note) || '—'}</div>
       <div class="sig"><div>Cashier${c ? ' (' + esc(c.closed_by) + ')' : ''}</div><div>Verified by</div></div>
-      <script>window.onload=function(){window.print()}</script></body></html>`)
+      <script>window.onload=function(){window.print()}</script></body></html>`, { title: `Day closing ${date}`, drop: ["h1"] }))
     w.document.close()
   }
 

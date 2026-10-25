@@ -6,6 +6,7 @@ import { isAdminRole } from './roles'
 import { PremiumStyles, PremiumHero, PremiumTabs, PX } from './premiumUI'
 import { BATCHES, TIMETABLE_ROWS, periodName, isWholeInstituteEntry } from './timetableData'
 import { teacherLoad, findClashes, suggestSubstitutes, nowAndNext, sameTeacher, isBusy, periodSpan, dayOf } from './timetableTools'
+import { rebrandReport } from './reportKit'
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM — the portal's premium register (premiumUI.jsx): deep navy +
@@ -171,7 +172,7 @@ function docRef() {
 
 function Letterhead({ reportTitle, reportMeta }) {
   return (
-    <div style={{ borderBottom: `3px double ${C.navy900}`, paddingBottom: 12, marginBottom: 16 }}>
+    <div data-letterhead style={{ borderBottom: `3px double ${C.navy900}`, paddingBottom: 12, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <Crest size={52} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -192,10 +193,10 @@ function Letterhead({ reportTitle, reportMeta }) {
       </div>
       {reportTitle && (
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: C.navy900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+          <div data-report-title style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 700, color: C.navy900, textTransform: 'uppercase', letterSpacing: '.08em' }}>
             {reportTitle}
           </div>
-          {reportMeta && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.inkSoft, marginTop: 3 }}>{reportMeta}</div>}
+          {reportMeta && <div data-report-meta style={{ fontFamily: SANS, fontSize: 10.5, color: C.inkSoft, marginTop: 3 }}>{reportMeta}</div>}
         </div>
       )}
     </div>
@@ -1010,8 +1011,11 @@ function ReportGenerator({ entries, subs, batches, staffList = [] }) {
 
   const handlePrint = () => {
     const printContents = printRef.current.innerHTML
+    // the shared report letterhead replaces the on-screen one (reportKit.js)
+    const reportTitle = printRef.current.querySelector('[data-report-title]')?.textContent?.trim() || `${INSTITUTE.short} Report`
+    const reportMeta = printRef.current.querySelector('[data-report-meta]')?.textContent?.trim() || ''
     const win = window.open('', '_blank', 'width=1000,height=1300')
-    win.document.write(`
+    win.document.write(rebrandReport(`
       <html><head><title>${INSTITUTE.short} Report</title>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap">
       <style>
@@ -1027,7 +1031,7 @@ function ReportGenerator({ entries, subs, batches, staffList = [] }) {
         }
       </style>
       </head><body>${printContents}</body></html>
-    `)
+    `, { title: reportTitle, subtitle: reportMeta, drop: ["[data-letterhead]"], signatures: ["Prepared by", "Principal"] }))
     win.document.close()
     // wait for the fonts so the printout uses them, not a fallback
     const go = () => { win.focus(); win.print() }

@@ -60,6 +60,7 @@ import StudyLockers from './StudyLockers'
 import SyllabusManager from './SyllabusManager'
 import { useChapterFocus } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { rebrandReport } from './reportKit'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1203,7 +1204,7 @@ function TabReports({ logs, missed, courseData }) {
     const content = document.getElementById('print-report')?.innerHTML
     if (!content) { window.print(); return }
     const w = window.open('','_blank')
-    w.document.write(`<html><head><title>Teaching Report</title><style>body{font-family:sans-serif;font-size:12px;padding:20px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 8px}th{background:#132a4f;color:white}.badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}</style></head><body>${content}</body></html>`)
+    w.document.write(rebrandReport(`<html><head><title>Teaching Report</title><style>body{font-family:sans-serif;font-size:12px;padding:20px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 8px}th{background:#132a4f;color:white}.badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}</style></head><body>${content}</body></html>`, { title: 'Teaching Report' }))
     w.document.close(); w.print()
   }
 
@@ -1793,7 +1794,7 @@ function TabStudentPerformance({ courseData, currentUser }) {
   // ADV-12: PDF export (browser print-to-PDF) of the current filtered table
   const printFilteredTable = () => {
     const win = window.open('', '_blank')
-    win.document.write(`<html><head><title>Class Test Scores</title><style>
+    win.document.write(rebrandReport(`<html><head><title>Class Test Scores</title><style>
       body{font-family:Georgia,serif;padding:32px;color:#14213d} h1{font-size:20px;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;font-size:12px} th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #e8e3d8} th{background:#faf8f3}
       @media print{body{padding:12px}}
@@ -1802,7 +1803,7 @@ function TabStudentPerformance({ courseData, currentUser }) {
       <table><thead><tr><th>Date</th><th>Student</th><th>Batch</th><th>Subject</th><th>Topic</th><th>Score</th><th>%</th></tr></thead><tbody>
       ${sortedFiltered.map(s => `<tr><td>${fmtDate(s.test_date)}</td><td>${s.student_name||'-'}</td><td>${s.subtype||'-'}</td><td>${s.subject_name}</td><td>${s.topic}</td><td>${s.score}/${s.max_score}</td><td>${pct(s.score,s.max_score)}%</td></tr>`).join('')}
       </tbody></table>
-    </body></html>`)
+    </body></html>`, { title: 'Class Test Scores', drop: ["h1"] }))
     win.document.close()
     win.print()
   }
@@ -2675,7 +2676,7 @@ function TabHMDashboard({ currentUser }) {
               <td>${s.teaching_date || '—'}</td>
             </tr>
           `).join('')
-          w.document.write(`<html><head><title>Open Doubt Sessions</title>
+          w.document.write(rebrandReport(`<html><head><title>Open Doubt Sessions</title>
           <style>
             body{font-family:sans-serif;font-size:12px;padding:24px}
             h2{font-size:16px;margin-bottom:4px;color:#132a4f}
@@ -2692,7 +2693,7 @@ function TabHMDashboard({ currentUser }) {
             <tbody>${rows}</tbody>
           </table>
           <script>window.onload=()=>{window.print();window.close()}</script>
-          </body></html>`)
+          </body></html>`, { title: 'Open Doubt Sessions', drop: ["h2"] }))
           w.document.close()
         }} style={{ ...S.btnSm('#a7771f'), marginLeft:'auto' }}>🖨️ Print Summary</button>
       </div>

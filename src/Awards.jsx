@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 import { calcScores } from './Staff'
 import { generateAwardCertificate } from './AwardCertificate'
 import { PremiumStyles, PremiumHero, PremiumTabs, PX } from './premiumUI'
+import { pdfLetterhead, pdfFooters } from './reportKit'
 
 // ══════════════════════════════════════════════════════════════
 //  AWARDS MODULE — daily tick system (simple version)
@@ -1196,21 +1197,9 @@ function LeaderboardScreen() {
   const handleExportPDF = () => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const navy = [11, 30, 61]
-    const gold = [201, 162, 75]
 
-    doc.setFont('times', 'bold')
-    doc.setFontSize(16)
-    doc.setTextColor(...navy)
-    doc.text(category.label, 14, 18)
-    doc.setFont('times', 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(100, 100, 100)
-    doc.text(`${monthLabelOf(monthStr)} — generated ${new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' })}`, 14, 25)
-
-    doc.setDrawColor(...gold)
-    doc.line(14, 29, 196, 29)
-
-    let y = 38
+    // the shared report letterhead (reportKit.js)
+    let y = pdfLetterhead(doc, { title: `${category.label} — ${monthLabelOf(monthStr)}`, margin: 14 }) + 4
     doc.setFont('times', 'bold')
     doc.setFontSize(10)
     doc.setTextColor(...navy)
@@ -1239,6 +1228,7 @@ function LeaderboardScreen() {
       y += 6
     })
 
+    pdfFooters(doc, { margin: 14 })
     doc.save(`${category.label.replace(/\s+/g, '_')}_${monthStr}.pdf`)
   }
 

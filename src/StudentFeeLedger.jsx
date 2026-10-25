@@ -5,7 +5,6 @@ import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
 import { CertificateDialog } from './certificateKit'
-import { instNameHTML, instAddressHTML, getInstitute } from './systemSettings'
 import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
 import FeeDayBook from './FeeDayBook'
@@ -17,6 +16,7 @@ import { loadFeeTypeScan } from './hostelFeeCheck'
 import ExpenseDayBook from './ExpenseDayBook'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
+import { reportLetterhead, REPORT_CSS } from './reportKit'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -86,6 +86,7 @@ function amountInWords(num) {
 
 // Shared premium print styles (A4 / A5 friendly)
 const PRINT_BASE = `
+  ${REPORT_CSS}
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',Arial,sans-serif;background:#ECE7DB;color:#1B2437;display:flex;flex-direction:column;align-items:center;padding:28px 12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -117,16 +118,8 @@ const PRINT_BASE = `
   @page{size:A4;margin:10mm}
   @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;width:100%}.btns{display:none}}
 `
-const HEADER = (right) => `
-  <div class="hdr">
-    <div class="crest">GN</div>
-    <div style="flex:1;min-width:0">
-      <div class="tag">Est. 2016 · Residential Coaching</div>
-      <div class="inst">${instNameHTML()}</div>
-      <div class="sub">${instAddressHTML()} · guidancekhangabok.in${getInstitute().phone ? ` · ${escH(getInstitute().phone)}` : ''}</div>
-    </div>
-    ${right}
-  </div><div class="goldbar"></div>`
+// The shared report letterhead (reportKit.js); `title` goes in the navy band.
+const HEADER = (title) => reportLetterhead(title)
 
 function openPrint(html, title) {
   const pw = window.open('', '_blank', 'width=860,height=980,scrollbars=yes')
@@ -173,7 +166,7 @@ function printLedger(studentRaw, admRows, flatRows, crsRows, grandTotal) {
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fee Ledger — ${escH(st.name)}</title><style>${PRINT_BASE}</style></head><body>
   <div class="sheet"><div class="frame"></div>
-    ${HEADER(`<div style="text-align:right;flex-shrink:0"><div class="tag">Fee Statement</div><div class="serif" style="font-size:18px;font-weight:700;color:#E2C57E;margin-top:4px">Student Ledger</div><div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:3px">As on ${today}</div></div>`)}
+    ${HEADER('Student Ledger · Fee Statement')}
     <div class="body">
       <div style="display:flex;align-items:center;gap:16px;padding:16px 18px;border:1px solid #EFE6CF;border-radius:12px;background:linear-gradient(135deg,#FFFDF7,#FBF6E9)">
         ${photo}
