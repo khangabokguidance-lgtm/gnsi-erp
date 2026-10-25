@@ -108,6 +108,15 @@ const monthKey = (d) => d ? d.slice(0,7) : ''
 const getToday = () => new Date().toLocaleDateString('en-CA')
 // Fee/store postings carry no account_type — they are Cash A/c, as every
 // other view here already assumes. Use this wherever entries are matched by account.
+// Cash goes to the Cash A/c; bank / UPI / card go to the A/c of the financial year (April–March) the entry falls in.
+const autoAccountType = (mode, date) => {
+  if (!mode || String(mode).trim().toLowerCase() === 'cash') return 'Cash A/c'
+  const [y, m] = String(date || '').split('-').map(Number)
+  if (!y || !m) return 'Cash A/c'
+  const start = m >= 4 ? y : y - 1
+  const fy = `${start}-${String(start + 1).slice(2)} A/c`
+  return ACCOUNT_TYPES.includes(fy) ? fy : 'Cash A/c'
+}
 const acctOf = e => e?.account_type || 'Cash A/c'
 // Local-time Date for a 'YYYY-MM-DD' (new Date('YYYY-MM-DD') is UTC midnight,
 // which lands on the previous day in time zones behind UTC).
@@ -1033,14 +1042,14 @@ function Accounts({role,userId}){
       if(!r.vendor_id){alert(`${label}Choose the Vendor / Payee who was paid (use "+ Add New Vendor" if new).`);return}
       if(!r.payment_mode){alert(`${label}Choose a payment mode.`);return}
       if(!(Number(r.amount)>0)){alert(`${label}Enter an amount greater than zero.`);return}
-      if((r.note||'').trim().length<8){
-        alert(`${label}Description is too short — say what the money was spent on (at least 8 characters).`)
+      if((r.note||'').trim().length<5){
+        alert(`${label}Description is too short — say what the money was spent on (at least 5 characters).`)
         return
       }
       // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
       // no generic descriptions. The database enforces the first three for manual entries too.
       const vendorName=vendors.find(v=>String(v.id)===String(r.vendor_id))?.name||''
-      const chk=validateExpenseRow(r,{controls,canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
+      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
       if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
       if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
       const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
@@ -1329,8 +1338,12 @@ function Accounts({role,userId}){
     if(idx!==i)return r
     // ACTUAL PAYMENT DATE FIX: keep payment_date following entry_date until the user
     // explicitly diverges them (i.e. payment_date currently still mirrors entry_date)
-    if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))return{...r,entry_date:val,payment_date:val}
-    return{...r,[key]:val}
+    let next
+    if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))next={...r,entry_date:val,payment_date:val}
+    else next={...r,[key]:val}
+    // Account Type is detected automatically: Cash → Cash A/c, anything else → the financial-year A/c of the entry date.
+    if(key==='payment_mode'||key==='entry_date')next.account_type=autoAccountType(next.payment_mode,next.entry_date)
+    return next
   }))
   const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:''}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
@@ -3314,28 +3327,18 @@ function Accounts({role,userId}){
                 )}
                 <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
                 </div>
-                <div><label style={lStyle}>Payment Mode <span style={{color:'#dc2626'}}>*</span></label>
+                <div><label style={lStyle}>Payment Mode <span style={{fontWeight:400,color:'#8a93a6'}}>(default Cash)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
                     <option value="">Select</option>
                     {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Account Type <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.account_type||'Cash A/c'} onChange={e=>updateRow(i,'account_type',e.target.value)} required style={iStyle}>
-                    {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
-                  </select>
+                <div><label style={lStyle}>Account Type <span style={{fontWeight:400,color:'#8a93a6'}}>(automatic)</span></label>
+                  <input type="text" value={row.account_type||'Cash A/c'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
                 {row.type==='Expense'&&controlsReady&&isDigitalMode(row.payment_mode)&&(
                   <div><label style={lStyle}>Payment Reference <span style={{fontWeight:400,color:'#8a93a6'}}>(UTR / txn id)</span> <span style={{color:'#dc2626'}}>*</span></label>
                     <input type="text" placeholder="e.g. 412345678901" value={row.txn_ref||''} onChange={e=>updateRow(i,'txn_ref',e.target.value)} style={iStyle}/>
-                  </div>
-                )}
-                {row.type==='Expense'&&controlsReady&&(
-                  <div><label style={lStyle}>Nature <span style={{fontWeight:400,color:'#8a93a6'}}>(accounting)</span></label>
-                    <select value={row.expense_nature||''} onChange={e=>updateRow(i,'expense_nature',e.target.value)} style={iStyle}>
-                      <option value="">Automatic ({natureOf({category:row.category,note:row.note})})</option>
-                      {NATURES.map(n=><option key={n} value={n}>{n}</option>)}
-                    </select>
                   </div>
                 )}
                 <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#8a93a6'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
@@ -3351,8 +3354,8 @@ function Accounts({role,userId}){
                 <div><label style={lStyle}>Entered By</label>
                   <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
-                <div><label style={lStyle}>Status <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} required style={iStyle}>
+                <div><label style={lStyle}>Status <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <select value={row.status||'Confirmed'} onChange={e=>updateRow(i,'status',e.target.value)} style={iStyle}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
@@ -3360,7 +3363,7 @@ function Accounts({role,userId}){
                   <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/>
                   {row.type==='Expense'&&(()=>{
                     const vn=vendors.find(v=>String(v.id)===String(row.vendor_id))?.name||''
-                    const probs=reasonProblems({note:row.note,category:row.category,subCategory:row.sub_category,vendorName:vn,minLength:controls.min_reason_length,minWords:controls.min_reason_words})
+                    const probs=reasonProblems({note:row.note,category:row.category,subCategory:row.sub_category,vendorName:vn,minLength:5,minWords:1})
                     if(!row.note)return <div style={{fontSize:11,color:'#8a93a6',marginTop:4}}>Say what was actually bought or paid for — not just the category or "Paytm payment".</div>
                     return probs.length
                       ?<div style={{fontSize:11,color:'#b45309',marginTop:4}}>Needs: {probs.join('; ')}.</div>
