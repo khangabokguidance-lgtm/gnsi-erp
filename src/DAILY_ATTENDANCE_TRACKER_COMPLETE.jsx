@@ -9,11 +9,14 @@
  * FIX-D6  ApplyLeaveModal staff dropdown now shows Active staff only
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, lazy, Suspense } from 'react'
 import { supabase } from './supabase'
 import { PremiumStyles, PremiumHero } from './premiumUI'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
+
+// The Time Table lives inside HR (section 'timetable'); loaded only when opened.
+const Timetable = lazy(() => import('./Timetable'))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -1418,12 +1421,20 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
 // FIX-D5: hr_records fetch wrapped in try/catch
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
+// perms: this user's rights on the 'hr' module; canAccess(key): App's access check, used for the
+// Time Table section ('timetable' permission). section / onSection let App open a section directly
+// (old links to the Timetable module land on HR → Timetable).
+function DailyAttendanceTracker({ currentUser: appUser, staffProp, perms, canAccess, section, onSection }) {
+  const canHR = perms ? !!perms.read : true
+  const canTT = canAccess ? canAccess('timetable') : true
   const [staff, setStaff]     = useState(staffProp || [])
   const [logs, setLogs]       = useState([])
   const [records, setRecords] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [activeSection, setActiveSection] = useState('dashboard')
+  const [loading, setLoading] = useState(canHR)
+  const [localSection, setLocalSection] = useState(canHR ? 'dashboard' : 'timetable')
+  const wanted = section || localSection
+  const activeSection = (wanted === 'timetable' ? canTT : canHR) ? wanted : (canHR ? 'dashboard' : 'timetable')
+  const setActiveSection = s => (onSection ? onSection(s) : setLocalSection(s))
   const currentUser = appUser || { id: 1, role: 'Admin' }
   const canOperate  = isAdminRole(currentUser?.role) || ['Vice Principal', 'Principal'].includes(currentUser?.role)
 
@@ -1447,7 +1458,7 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
     setLoading(false)
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { if (canHR) loadData() }, [loadData, canHR])
 
   const refreshLogs = useCallback(async () => {
     const cutoff = threeMonthsAgo()
@@ -1455,7 +1466,7 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
     if (data) setLogs(data)
   }, [])
 
-  const sections = [
+  const hrSections = [
     { key: 'dashboard',   label: '📊', full: 'Dashboard'   },
     { key: 'daily',       label: '📅', full: 'Daily'       },
     { key: 'absent',      label: '📉', full: 'Absentees'   },
@@ -1467,32 +1478,34 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
     { key: 'geo',         label: '📍', full: 'Geo'         },
     { key: 'bulk',        label: '⚙️', full: 'Bulk Ops'    },
   ]
+  const sections = [...(canHR ? hrSections : []), ...(canTT ? [{ key: 'timetable', label: '🕐', full: 'Timetable' }] : [])]
 
   const colorMap = {
     dashboard: '#1e3a5f', daily: '#15803d', absent: '#c2410c', leave: '#7e22ce',
     risk: '#b91c1c', performance: '#0f766e', compliance: '#a16207',
-    shift: '#0369a1', geo: '#6d28d9', bulk: '#334155',
+    shift: '#0369a1', geo: '#6d28d9', bulk: '#334155', timetable: '#132a4f',
   }
+  const onTimetable = activeSection === 'timetable'
 
-  if (loading) return (
+  if (loading && !onTimetable) return (
     <div style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       ⏳ Loading Attendance System...
     </div>
   )
 
   return (
-    <div className="px-root" style={{ padding: 16, maxWidth: 1080, margin: '0 auto', minHeight: 'auto', background: 'transparent' }}>
+    <div className="px-root" style={{ padding: 16, maxWidth: onTimetable ? 1440 : 1080, margin: '0 auto', minHeight: 'auto', background: 'transparent' }}>
       <PremiumStyles />
-      <PremiumHero eyebrow="GNSI · HR" title="Staff Attendance"
+      {!onTimetable && <PremiumHero eyebrow="GNSI · HR" title="Staff Attendance"
         subtitle={`Attendance tracker · ${fmtDate(new Date())}`}
         icon={<span style={{ fontSize: 24 }}>📊</span>}
         actions={<span className="px-hbtn" style={{ cursor: 'default', color: '#86efac' }}>● Live</span>}
         stats={[
           { label: 'Staff', value: staff.length, sub: 'On record' },
           { label: 'Records', value: logs.length, sub: 'Last 3 months' },
-        ]} />
+        ]} />}
 
-      {!canOperate && (
+      {!canOperate && !onTimetable && canHR && (
         <div style={{ display: 'flex', gap: 10, padding: '10px 14px', borderRadius: 10, marginBottom: 16, backgroundColor: '#fef9c3', border: '1px solid #fde68a' }}>
           <span style={{ fontSize: 18 }}>👁</span>
           <div>
@@ -1533,6 +1546,11 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
       {activeSection === 'shift'       && <ShiftManagement staff={staff} logs={logs} canOperate={canOperate} />}
       {activeSection === 'geo'         && <GeolocationTracker staff={staff} canOperate={canOperate} onAttendanceChange={refreshLogs} />}
       {activeSection === 'bulk'        && <BulkOperations staff={staff} canOperate={canOperate} onAttendanceChange={refreshLogs} />}
+      {onTimetable && (
+        <Suspense fallback={<div style={{ padding: '48px 16px', textAlign: 'center', color: '#8a93a6' }}>Loading timetable…</div>}>
+          <Timetable currentUser={currentUser} embedded />
+        </Suspense>
+      )}
     </div>
   )
 }
