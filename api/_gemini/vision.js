@@ -5,7 +5,7 @@
 // This lives in a "_" folder so Vercel does not count it as another serverless function: the
 // Hobby plan allows 12 per deployment, and adding a separate endpoint made the build fail.
 import { rateLimit } from '../_guard/guard.js'
-import { readWithChain, visionChain } from './visionModels.js'
+import { readWithChain, resolveChain } from './visionModels.js'
 
 const MAX_IMAGES = 2
 const MAX_IMAGE_B64 = 3_000_000              // per image; Vercel caps the whole request near 4.5 MB
@@ -38,7 +38,7 @@ export async function handleVision(req, res, user) {
   try {
     // Gemini first, then the other free models when one is busy or down (see visionModels.js).
     // Google advises no thinking pass for finding boxes: with it, 2.5 Flash's figure boxes drift.
-    const r = await readWithChain({ chain: visionChain(process.env), env: process.env, prompt, images, log: (...a) => console.error('Vision model:', ...a) })
+    const r = await readWithChain({ chain: await resolveChain(process.env), env: process.env, prompt, images, log: (...a) => console.error('Vision model:', ...a) })
     if (r.ok) return res.status(200).json({ text: r.text, model: r.model })
     if (r.status === 429 && r.retryAfter) res.setHeader('Retry-After', String(Math.min(Math.max(1, r.retryAfter), 120)))
     // never pass a provider's 401/403 on: the page would take it for the teacher's own login
