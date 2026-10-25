@@ -14,10 +14,11 @@ const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 // Returns an error message for a bad request body, or '' when it is fine.
 export function checkVisionBody(body) {
-  const { prompt, images } = body || {}
+  const { prompt, images, textOnly } = body || {}
   if (!prompt || typeof prompt !== 'string') return 'No prompt provided'
   if (prompt.length > MAX_PROMPT) return 'Prompt too long'
-  if (!Array.isArray(images) || !images.length) return 'No page image provided'
+  // textOnly: questions sent as text (Model Sets → Auto answer key) use the same models, with no image
+  if (!Array.isArray(images) || (!images.length && textOnly !== true)) return 'No page image provided'
   if (images.length > MAX_IMAGES) return `At most ${MAX_IMAGES} images per request`
   for (const im of images) {
     if (!im || !IMAGE_TYPES.includes(im.mimeType)) return 'Images must be JPEG, PNG or WebP'

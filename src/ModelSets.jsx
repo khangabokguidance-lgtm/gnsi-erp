@@ -31,7 +31,7 @@ const exportLibs = async () => {
 }
 const vision = async (prompt, images) => {
   const res = await authFetch('/api/gemini', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, images }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, images, textOnly: !images.length }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
