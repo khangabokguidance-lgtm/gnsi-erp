@@ -104,6 +104,14 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
   const [payError, setPayError] = useState('')
   const [linkFailed, setLinkFailed] = useState(false) // true once create-payment-link is known unreachable this session
   const [cooldownUntil, setCooldownUntil] = useState(0) // Date.now() timestamp; lookup blocked until then
+  const [nowMs, setNowMs] = useState(() => Date.now()) // refreshed when the cooldown ends so the button re-enables on its own
+  const coolingDown = nowMs < cooldownUntil
+  useEffect(() => {
+    const left = cooldownUntil - Date.now()
+    if (left <= 0) return undefined
+    const t = setTimeout(() => setNowMs(Date.now()), left + 50)
+    return () => clearTimeout(t)
+  }, [cooldownUntil])
 
   // Attempt counters live in refs, not state — they must persist across
   // renders without themselves triggering one, and don't need to be
@@ -139,7 +147,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
       return
     }
     if (lookupAttemptsRef.current >= MAX_LOOKUP_ATTEMPTS) {
-      setCooldownUntil(now + LOOKUP_COOLDOWN_MS)
+      setNowMs(now); setCooldownUntil(now + LOOKUP_COOLDOWN_MS)
       lookupAttemptsRef.current = 0
       setErrorMsg(`Too many lookups — please wait ${Math.ceil(LOOKUP_COOLDOWN_MS / 1000)}s and try again.`)
       return
@@ -338,10 +346,10 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
               )}
               <button
                 type="submit"
-                disabled={loading || Date.now() < cooldownUntil}
-                style={{ width: '100%', padding: '.9rem', background: C.navy, color: C.goldL, border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '1rem', cursor: (loading || Date.now() < cooldownUntil) ? 'not-allowed' : 'pointer', opacity: (loading || Date.now() < cooldownUntil) ? .6 : 1 }}
+                disabled={loading || coolingDown}
+                style={{ width: '100%', padding: '.9rem', background: C.navy, color: C.goldL, border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '1rem', cursor: (loading || coolingDown) ? 'not-allowed' : 'pointer', opacity: (loading || coolingDown) ? .6 : 1 }}
               >
-                {loading ? 'Looking up…' : Date.now() < cooldownUntil ? 'Please wait…' : 'Find My Fee Details →'}
+                {loading ? 'Looking up…' : coolingDown ? 'Please wait…' : 'Find My Fee Details →'}
               </button>
               <p style={{ color: C.mist, fontSize: '.78rem', textAlign: 'center', marginTop: '.9rem' }}>
                 Don't know your GCC number? Call{' '}

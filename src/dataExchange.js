@@ -18,7 +18,7 @@ export function toCsv(rows) {
 export function parseCsv(text) {
   const rows = []
   let field = '', row = [], inQuote = false
-  const src = String(text || '').replace(/^﻿/, '')
+  const src = String(text || '').replace(/^\uFEFF/, '')
   const endField = () => { row.push(field); field = '' }
   const endRow = () => { endField(); if (row.some(v => v.trim() !== '')) rows.push(row); row = [] }
   for (let i = 0; i < src.length; i++) {
