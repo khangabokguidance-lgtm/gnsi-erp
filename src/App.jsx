@@ -129,11 +129,12 @@ const ALL_GROUPS = [
   {
     group: 'PEOPLE',
     items: [
+      // HR is a core module (gold CORE tag, listed first on the staff home). It includes the Time Table,
+      // Leave and Notice as sections, each with its own permission key (HR_SECTIONS below);
+      // keywords let the menu search find them under HR.
+      { id: 'hr',      label: 'HR', icon: '🗂️', core: true, keywords: 'timetable time table leave notice circular attendance staff' },
       { id: 'kitchen', label: 'Kitchen', icon: '🍽️' },
       { id: 'staff',   label: 'Staff',   icon: '👨‍🏫' },
-      // HR includes the Time Table, Leave and Notice as sections, each with its own permission key
-      // (HR_SECTIONS below); keywords let the menu search find them under HR.
-      { id: 'hr',      label: 'HR', icon: '🗂️', keywords: 'timetable time table leave notice circular' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
       { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
@@ -341,6 +342,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
         {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
         <span style={{ display: 'flex', flexShrink: 0 }}><AppIcon id={item.id} size={compact ? 24 : 28} /></span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+        {item.core && !compact && <span title="Core module" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.12em', padding: '2px 6px', borderRadius: 99, background: 'linear-gradient(180deg,#e2c57e,#b8923a)', color: '#1a1406', flexShrink: 0 }}>CORE</span>}
         {badge && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>}
         {isPinned && !hov && <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>}
       </button>
@@ -1198,11 +1200,13 @@ const UD_CSS = `
   .ud-qb:active .ud-round{transform:translateY(2px)}
 }`
 
-function UserDashboard({ onNavigate, currentUser, modules = [] }) {
+function UserDashboard({ onNavigate, currentUser, modules: allowed = [] }) {
+  // core modules (HR) lead the list
+  const modules = [...allowed.filter(m => m.core), ...allowed.filter(m => !m.core)]
   const [udQ, setUdQ] = useState('')
   const udNeedle = udQ.trim().toLowerCase()
   const udIds = new Set(modules.map(m => m.id))
-  const udGroups = ALL_GROUPS.map(g => ({ group: g.group, items: g.items.filter(i => udIds.has(i.id) && (!udNeedle || i.label.toLowerCase().includes(udNeedle))) })).filter(g => g.items.length)
+  const udGroups = ALL_GROUPS.map(g => ({ group: g.group, items: g.items.filter(i => udIds.has(i.id) && navMatches(i, udNeedle)) })).filter(g => g.items.length)
   const udQuick = modules.slice(0, 4)
   const now = new Date()
   const greet = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
@@ -1256,12 +1260,12 @@ function UserDashboard({ onNavigate, currentUser, modules = [] }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
           {modules.map(m => (
             <button key={m.id} onClick={() => onNavigate(m.id)}
-              style={{ textAlign: 'left', background: '#fff', border: '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
+              style={{ textAlign: 'left', background: m.core ? 'linear-gradient(160deg,#fffdf6,#f6efdc)' : '#fff', border: m.core ? '1px solid #e2c57e' : '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 18px 40px rgba(11,30,61,.14)' }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)' }}>
               <span style={{ width: 40, height: 40, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, background: '#0B1E3D', boxShadow: 'inset 0 0 0 1px rgba(226,197,126,.4)', marginBottom: 10, color: '#E2C57E' }}><NavIcon id={m.id} size={20} /></span>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#0B1E3D' }}>{m.label}</div>
-              <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>Open →</div>
+              <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>{m.core ? '★ Core module · Open →' : 'Open →'}</div>
             </button>
           ))}
         </div>
