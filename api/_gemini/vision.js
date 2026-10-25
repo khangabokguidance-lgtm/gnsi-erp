@@ -45,7 +45,9 @@ export async function handleVision(req, res, user) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }, ...images.map((im) => ({ inline_data: { mime_type: im.mimeType, data: im.data } }))] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 16384, responseMimeType: 'application/json' },
+          // Google advises no thinking pass for finding boxes: with it, 2.5 Flash's figure
+          // boxes drift (crops took in neighbouring labels or missed part of a figure).
+          generationConfig: { temperature: 0.1, maxOutputTokens: 16384, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } },
         }),
       }
     )

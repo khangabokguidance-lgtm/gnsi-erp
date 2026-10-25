@@ -316,6 +316,11 @@ textarea.in { resize: vertical; min-height: 62px; }
 .ov-b { overflow-y: auto; padding: 6px 18px 14px; }
 .bank-sec { font-family: var(--f-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
 .bank-row { display: grid; grid-template-columns: auto 30px 44px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 13.5px; }
+.cropbtn { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 3px; line-height: 0; }
+.cropbtn:hover img, .cropbtn:focus-visible img { outline: 2px solid var(--brand); outline-offset: 1px; }
+.cropwrap { position: relative; touch-action: none; cursor: crosshair; user-select: none; border: 1px solid var(--rule); background: #fff; }
+.cropwrap img { display: block; width: 100%; height: auto; pointer-events: none; }
+.croprect { position: absolute; border: 2px dashed #c0392b; background: rgba(192, 57, 43, .08); pointer-events: none; }
 .bank-row input { accent-color: var(--brand); width: 16px; height: 16px; margin: 0; }
 .bank-row .n { font-family: var(--f-display); font-weight: 800; }
 .bank-row svg.fig { width: 40px; height: 40px; }
@@ -1983,8 +1988,7 @@ async function readPage(kind, cv, p, total, signal) {
 /* model reply → clean items; boxes become cropped canvases */
 const str = (v, n = 4000) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '').trim().slice(0, n);
 const okBox = b => Array.isArray(b) && b.length === 4 && b.every(v => typeof v === 'number' && isFinite(v)) && b[2] > b[0] + 5 && b[3] > b[1] + 5;
-function cropBox(cv, b) {
-  const pad = 12;
+function cropBox(cv, b, pad = 12) {
   const y0 = Math.max(0, b[0] - pad), x0 = Math.max(0, b[1] - pad), y1 = Math.min(1000, b[2] + pad), x1 = Math.min(1000, b[3] + pad);
   const sx = Math.round(x0 / 1000 * cv.width), sy = Math.round(y0 / 1000 * cv.height);
   const sw = Math.max(1, Math.round((x1 - x0) / 1000 * cv.width)), sh = Math.max(1, Math.round((y1 - y0) / 1000 * cv.height));
@@ -1992,6 +1996,50 @@ function cropBox(cv, b) {
   c.getContext('2d').drawImage(cv, sx, sy, sw, sh, 0, 0, sw, sh);
   return c;
 }
+/* the model's boxes are often a little off: they clip a figure's edge or take in a neighbour's
+   "(A)" label or text. Snap a box to the ink on the page: every separate mark whose middle lies in
+   the box is kept whole, marks that only reach into it from outside are dropped. */
+function refineBox(cv, b) {
+  const M = 30, CELL = 3;                                 // look this far past the box (of 1000); cell size in px
+  const ry0 = Math.max(0, b[0] - M), rx0 = Math.max(0, b[1] - M), ry1 = Math.min(1000, b[2] + M), rx1 = Math.min(1000, b[3] + M);
+  const X0 = Math.round(rx0 / 1000 * cv.width), Y0 = Math.round(ry0 / 1000 * cv.height);
+  const W = Math.round(rx1 / 1000 * cv.width) - X0, H = Math.round(ry1 / 1000 * cv.height) - Y0;
+  if (W < CELL * 3 || H < CELL * 3) return b;
+  let px;
+  try { px = cv.getContext('2d').getImageData(X0, Y0, W, H).data; } catch (e) { return b; }
+  const gw = Math.ceil(W / CELL), gh = Math.ceil(H / CELL), ink = new Uint8Array(gw * gh);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = (y * W + x) * 4;
+    if (px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 150) ink[((y / CELL) | 0) * gw + ((x / CELL) | 0)] = 1;
+  }
+  // the original box in grid cells
+  const bx0 = (b[1] / 1000 * cv.width - X0) / CELL, by0 = (b[0] / 1000 * cv.height - Y0) / CELL;
+  const bx1 = (b[3] / 1000 * cv.width - X0) / CELL, by1 = (b[2] / 1000 * cv.height - Y0) / CELL;
+  const seen = new Uint8Array(gw * gh), stack = [];
+  let ux0 = Infinity, uy0 = Infinity, ux1 = -1, uy1 = -1;
+  for (let i = 0; i < ink.length; i++) {
+    if (!ink[i] || seen[i]) continue;
+    let x0 = gw, y0 = gh, x1 = -1, y1 = -1, n = 0, inside = 0;
+    seen[i] = 1; stack.push(i);
+    while (stack.length) {
+      const j = stack.pop(), x = j % gw, y = (j / gw) | 0;
+      n++; if (x >= bx0 && x < bx1 && y >= by0 && y < by1) inside++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {   // marks a few px apart (letters of a word) are one
+        const nx = x + dx, ny = y + dy, nj = ny * gw + nx;
+        if (nx >= 0 && ny >= 0 && nx < gw && ny < gh && ink[nj] && !seen[nj]) { seen[nj] = 1; stack.push(nj); }
+      }
+    }
+    const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2;
+    const mid = cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1;
+    if (n < 2 || !(mid || inside / n > .6)) continue;
+    ux0 = Math.min(ux0, x0); uy0 = Math.min(uy0, y0); ux1 = Math.max(ux1, x1 + 1); uy1 = Math.max(uy1, y1 + 1);
+  }
+  if (ux1 < 0) return b;
+  const r = [(Y0 + uy0 * CELL) / cv.height * 1000, (X0 + ux0 * CELL) / cv.width * 1000, (Y0 + Math.min(H, uy1 * CELL)) / cv.height * 1000, (X0 + Math.min(W, ux1 * CELL)) / cv.width * 1000];
+  return okBox(r) ? r.map(v => Math.round(v * 10) / 10) : b;
+}
+const figOf = (cv, page, b) => { const box = refineBox(cv, b); return { cv: cropBox(cv, box, 6), page, box }; };
 function cleanItems(reply, cv, page) {
   const out = [];
   (Array.isArray(reply && reply.items) ? reply.items : []).forEach(r => {
@@ -2007,8 +2055,8 @@ function cleanItems(reply, cv, page) {
     out.push({
       t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true,
       q: cleanQ(str(r.text)), opts, a, gen: a != null,
-      fig: okBox(r.figure) ? cropBox(cv, r.figure) : null,
-      optFigs: ofs ? ofs.map(b => cropBox(cv, b)) : null,
+      fig: okBox(r.figure) ? figOf(cv, page, r.figure) : null,
+      optFigs: ofs ? ofs.map(b => figOf(cv, page, b)) : null,
     });
   });
   return out;
@@ -2071,6 +2119,7 @@ async function runImport() {
     }
     if (imp !== job) return;                             // closed while reading
     imp.items = mergeContinued(items);
+    imp.pages = pages; imp.pageUrls = {}; imp.off = null;
     imp.skipped = total - pages.length;
     renderReview();
   } catch (e) {
@@ -2081,27 +2130,75 @@ async function runImport() {
   }
 }
 const thumb = c => c ? `<img src="${c.toDataURL('image/jpeg', .8)}" alt="" style="max-height:56px;max-width:120px;border:1px solid var(--rule);background:#fff;border-radius:3px">` : '';
+/* in the review a figure is a button: click it to draw its crop again on the page */
+const cropBtn = (f, i, k, label) => f ? `<button type="button" class="cropbtn" data-act="impcrop" data-i="${i}" data-k="${k}" title="Adjust the crop of ${label}" aria-label="Adjust the crop of ${label}">${thumb(f.cv)}</button>` : '';
 function renderReview() {
   const items = imp.items, qs = items.filter(i => i.t === 'q');
   const secs = items.filter(i => i.t === 'section').length, pas = items.filter(i => i.t === 'passage').length;
   const noKey = qs.filter(q => q.a == null).length, figs = qs.filter(q => q.fig || q.optFigs).length;
   const rows = items.map((it, i) => {
-    const box = `<input type="checkbox" data-imp="${i}" checked aria-label="Include">`;
+    const box = `<input type="checkbox" data-imp="${i}"${imp.off && imp.off.has(i) ? '' : ' checked'} aria-label="Include">`;
     if (it.t === 'note') return `<div class="bank-row" style="cursor:default"><span></span><span></span><span></span><span class="tx" style="color:var(--bad)">${esc(it.text)}</span></div>`;
     if (it.t === 'section') return `<label class="bank-row imp-row" style="background:var(--tint)">${box}<span class="n">§</span><span class="chip">Section</span><span class="tx"><b>${esc(it.tag)}</b> ${esc(it.title)}</span></label>`;
     if (it.t === 'head') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Heading</span><span class="tx">${esc([it.sub, it.part].filter(Boolean).join(' · ') || plain(it.dir).slice(0, 90))}</span></label>`;
     if (it.t === 'passage') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Passage</span><span class="tx">${esc(it.title || it.text.slice(0, 90))}</span></label>`;
-    const pics = it.optFigs ? it.optFigs.map(thumb).join(' ') : '';
+    const pics = it.optFigs ? it.optFigs.map((f, k) => cropBtn(f, i, k, `option ${LET[k]}`)).join(' ') : '';
     const chips = [it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
     return `<label class="bank-row" style="grid-template-columns:auto 30px minmax(0,1fr);align-items:start">${box}<span class="n">${it.number ?? '–'}</span>
       <span style="display:grid;gap:4px;min-width:0"><span>${fmtU(it.q || (it.fig || it.optFigs ? 'Question figure' : ''))}</span>
       <span class="subnote" style="overflow-wrap:anywhere">${it.optFigs ? '' : it.opts.map((o, k) => `(${LET[k]}) ${esc(o) || '—'}`).join('&nbsp;&nbsp; ')}</span>
-      <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${thumb(it.fig)} ${pics} ${chips}</span></span></label>`;
+      <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cropBtn(it.fig, i, 'fig', 'the question figure')} ${pics} ${chips}</span></span></label>`;
   }).join('');
   $('#impBody').innerHTML = `<p class="subnote">Found <b>${qs.length}</b> question${qs.length === 1 ? '' : 's'}${pas ? `, ${pas} passage${pas === 1 ? '' : 's'}` : ''}${secs ? ` and ${secs} section${secs === 1 ? '' : 's'}` : ''}. ${figs} with figures, ${noKey} without an answer.${imp.skipped > 0 ? ` ${imp.skipped} more page${imp.skipped === 1 ? ' was' : 's were'} left out (${IMPORT_MAX_PAGES} at a time).` : ''} Untick anything you do not want.</p>
     <div style="max-height:52vh;overflow-y:auto;border-top:1px solid var(--rule)">${rows || '<p class="subnote">Nothing was found on these pages.</p>'}</div>
     <p class="genmsg" id="impMsg" role="status"></p>`;
-  $('#impFoot').innerHTML = `<span class="subnote">Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
+  $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
+}
+/* draw a figure's crop again on its page: drag a box over the drawing, then "Use this crop" */
+function openCrop(i, k) {
+  const it = imp && imp.items && imp.items[i], f = it && (k === 'fig' ? it.fig : (it.optFigs || [])[+k]);
+  if (!f || imp.busy || !imp.pages || !imp.pages[f.page - 1]) return;
+  imp.off = new Set([...ov.querySelectorAll('[data-imp]')].filter(c => !c.checked).map(c => +c.dataset.imp));
+  imp.scroll = ($('#impBody') || {}).scrollTop || 0;
+  const cv = imp.pages[f.page - 1];
+  imp.pageUrls = imp.pageUrls || {};
+  const url = imp.pageUrls[f.page] || (imp.pageUrls[f.page] = cv.toDataURL('image/jpeg', .85));
+  imp.crop = { i, k, box: f.box.slice() };
+  const what = k === 'fig' ? 'the question figure' : `answer figure ${LET[+k]}`;
+  $('#impBody').innerHTML = `<p class="subnote">Question ${esc(it.number ?? '')}: drag a box tightly around <b>${what}</b> on page ${f.page}. Leave out the question number and the (A) (B) (C) (D) labels.</p>
+    <div class="cropwrap" id="cropWrap"><img src="${url}" alt="Page ${f.page}" draggable="false"><div class="croprect" id="cropRect"></div></div>`;
+  $('#impFoot').innerHTML = `<span class="subnote" id="cropMsg">The dashed box is the current crop.</span><div class="addbar"><button class="btn" type="button" data-act="cropback">Cancel</button><button class="btn primary" type="button" data-act="cropuse">Use this crop</button></div>`;
+  const wrap = $('#cropWrap'), rect = $('#cropRect');
+  const show = () => { const b = imp.crop.box; Object.assign(rect.style, { top: b[0] / 10 + '%', left: b[1] / 10 + '%', height: (b[2] - b[0]) / 10 + '%', width: (b[3] - b[1]) / 10 + '%' }); };
+  show();
+  const img = wrap.querySelector('img');
+  const at = e => { const r = img.getBoundingClientRect(); return [Math.min(1000, Math.max(0, (e.clientY - r.top) / r.height * 1000)), Math.min(1000, Math.max(0, (e.clientX - r.left) / r.width * 1000))]; };
+  let start = null;
+  wrap.addEventListener('pointerdown', e => { e.preventDefault(); start = at(e); wrap.setPointerCapture(e.pointerId); });
+  wrap.addEventListener('pointermove', e => {
+    if (!start) return;
+    const p = at(e);
+    imp.crop.box = [Math.min(start[0], p[0]), Math.min(start[1], p[1]), Math.max(start[0], p[0]), Math.max(start[1], p[1])];
+    show();
+  });
+  const end = () => { start = null; };
+  wrap.addEventListener('pointerup', end); wrap.addEventListener('pointercancel', end);
+  const scrollTo = () => { const body = $('#impBody'); if (body) body.scrollTop = Math.max(0, rect.offsetTop + wrap.offsetTop - 80); };
+  if (img.complete) scrollTo(); else img.onload = scrollTo;
+}
+function useCrop(keep) {
+  const c = imp && imp.crop;
+  if (!c) return;
+  imp.crop = null;
+  if (keep) {
+    const it = imp.items[c.i], f = c.k === 'fig' ? it.fig : it.optFigs[+c.k];
+    if (!okBox(c.box)) { imp.crop = c; const m = $('#cropMsg'); if (m) m.textContent = 'That box is too small. Drag a larger box.'; return; }
+    const box = c.box.map(v => Math.round(v * 10) / 10);
+    const nf = { cv: cropBox(imp.pages[f.page - 1], box, 0), page: f.page, box };
+    if (c.k === 'fig') it.fig = nf; else it.optFigs[+c.k] = nf;
+  }
+  renderReview();
+  const body = $('#impBody'); if (body) body.scrollTop = imp.scroll || 0;
 }
 async function finishImport() {
   if (!imp || imp.busy || !imp.items) return;
@@ -2112,7 +2209,7 @@ async function finishImport() {
   try {
     const crops = chosen.filter(q => q.t === 'q').reduce((n, q) => n + (q.fig ? 1 : 0) + (q.optFigs ? 4 : 0), 0);
     let done = 0;
-    const save = async c => { msg(`Saving figures ${++done} of ${crops}…`); return storeImage(await canvasBlob(c, 'image/png')); };
+    const save = async f => { msg(`Saving figures ${++done} of ${crops}…`); return storeImage(await canvasBlob(f.cv, 'image/png')); };
     const built = [];
     for (const it of chosen) {
       if (it.t !== 'q') { built.push(it); continue; }
@@ -2209,6 +2306,8 @@ document.addEventListener('click', async e => {
   else if (act === 'mmstop') { if (mmJob && mmJob.ctl) mmJob.ctl.abort(); return; }
   else if (act === 'impstop') { if (imp && imp.ctl) imp.ctl.abort(); return; }
   else if (act === 'impadd') { finishImport(); return; }
+  else if (act === 'impcrop') { e.preventDefault(); openCrop(+a.dataset.i, a.dataset.k); return; }
+  else if (act === 'cropuse' || act === 'cropback') { useCrop(act === 'cropuse'); return; }
   else if (act === 'expdf') { runExport('pdf'); return; }
   else if (act === 'exdocx') { runExport('docx'); return; }
   if (cur.view !== 'maker') return;
