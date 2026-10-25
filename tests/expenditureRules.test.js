@@ -32,9 +32,11 @@ test('entry rule: reference is not demanded when the database cannot store it ye
 
 test('entry rule: receipt required above the limit, not at or below it', () => {
   const row = { amount: 12500, payment_mode: 'Cash', account_type: 'Cash A/c', category: 'Grocery', note: 'Ta Kumar grocery bill 118' }
-  assert.match(validateExpenseRow(row, { hasReceipt: false }).errors.join(), /receipt/i)          // default limit ₹10,000
-  assert.equal(validateExpenseRow(row, { hasReceipt: true }).errors.length, 0)
-  assert.equal(validateExpenseRow({ ...row, amount: 10000 }, { hasReceipt: false }).errors.length, 0) // at the limit: fine
+  const lim = { receipt_required_above: 10000 }
+  assert.equal(validateExpenseRow(row, { hasReceipt: false }).errors.length, 0)                     // receipts are optional by default
+  assert.match(validateExpenseRow(row, { hasReceipt: false, controls: lim }).errors.join(), /receipt/i) // when a ₹10,000 limit is set
+  assert.equal(validateExpenseRow(row, { hasReceipt: true, controls: lim }).errors.length, 0)
+  assert.equal(validateExpenseRow({ ...row, amount: 10000 }, { hasReceipt: false, controls: lim }).errors.length, 0) // at the limit: fine
   assert.equal(validateExpenseRow(row, { hasReceipt: false, controls: { receipt_required_above: 50000 } }).errors.length, 0)
   assert.equal(validateExpenseRow(row, { hasReceipt: false, controls: { receipt_required_above: null } }).errors.length, 0) // rule off
   assert.equal(validateExpenseRow(row, { hasReceipt: false, controls: { receipt_required_above: '' } }).errors.length, 0)
@@ -154,8 +156,8 @@ test('advance name is pulled out of the note', () => {
   assert.equal(advanceNameFromNote('Johnson salary Advance'), 'Johnson')
 })
 
-test('defaults are what the migration ships with', () => {
-  assert.equal(CONTROL_DEFAULTS.receipt_required_above, 10000)
+test('defaults: receipts optional, database enforcement on', () => {
+  assert.equal(CONTROL_DEFAULTS.receipt_required_above, null)
   assert.equal(CONTROL_DEFAULTS.enforce_in_database, true)
 })
 
