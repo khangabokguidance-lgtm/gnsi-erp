@@ -1968,20 +1968,35 @@ async function buildDocx(set, L, libs, msg) {
     done++;
     if (done % 10 === 0) msg(`Writing Word document… ${Math.round(done / L.units.length * 100)}%`);
   }
-  const keyRows = [];
+  // the answer key, laid out like the PDF's: a heading per section, ten answers to a row
   const keySections = [];
   if (L.withKey) {
-    for (let i = 0; i < L.key.length; i += 10) keyRows.push(L.key.slice(i, i + 10));
-    const cellW = Math.floor(TEXT_W / 10);
+    const kb = L.keyOnly ? Math.round(base * 1.25) : base, cellW = Math.floor(TEXT_W / 10);
+    const line = { style: d.BorderStyle.SINGLE, size: 4, color: 'C4C4C4' };
+    const cellB = { top: line, bottom: line, left: line, right: line };
+    const none = { style: d.BorderStyle.NONE, size: 0, color: 'FFFFFF' }, noB = { top: none, bottom: none, left: none, right: none };
+    const grid = rows => {
+      const out = [];
+      for (let i = 0; i < rows.length; i += 10) out.push(rows.slice(i, i + 10));
+      return new d.Table({ width: { size: TEXT_W, type: d.WidthType.DXA }, columnWidths: Array(10).fill(cellW),
+        borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none },
+        rows: out.map(r => new d.TableRow({ children: Array.from({ length: 10 }, (_, i) => new d.TableCell({ width: { size: cellW, type: d.WidthType.DXA }, borders: r[i] ? cellB : noB,
+          margins: { top: 50, bottom: 50 },
+          children: [P({ alignment: d.AlignmentType.CENTER, children: r[i] ? [new d.TextRun({ text: `${r[i].n}  `, font: HFONT, size: kb - 4, color: '777777' }), new d.TextRun({ text: r[i].a != null ? LET[r[i].a] : '–', font: HFONT, bold: true, size: kb })] : [] })] })) })) });
+    };
+    const bySec = set.sections.map((sec, si) => ({ name: sec.short || sec.title || sec.tag || `Section ${si + 1}`, rows: L.key.filter(k => k.si === si) })).filter(x => x.rows.length);
+    const missing = L.key.filter(k => k.a == null).length;
     keySections.push({
       properties: { type: d.SectionType.NEXT_PAGE, page: PAGE, column: { count: 1 } },
       children: [
-        P({ children: [new d.TextRun({ text: 'Answer key', font: HFONT, bold: true, size: Math.round(base * 1.8) })] }),
-        P({ spacing: { after: 160 }, children: tx(`${set.title || ''} · Practice Set ${set.setNo ?? 1}`, { font: HFONT, size: base, color: '555555' }) }),
-        ...(L.key.some(k => k.a == null) ? [P({ spacing: { after: 120 }, children: [new d.TextRun({ text: `– : no answer set for ${L.key.filter(k => k.a == null).length} question(s).`, font: HFONT, size: base - 4, color: '777777' })] })] : []),
-        new d.Table({ width: { size: TEXT_W, type: d.WidthType.DXA }, columnWidths: Array(10).fill(cellW),
-          rows: keyRows.map(r => new d.TableRow({ children: Array.from({ length: 10 }, (_, i) => new d.TableCell({ width: { size: cellW, type: d.WidthType.DXA },
-            children: [P({ alignment: d.AlignmentType.CENTER, children: r[i] ? [new d.TextRun({ text: `${r[i].n}  `, font: HFONT, size: base - 2, color: '777777' }), new d.TextRun({ text: r[i].a != null ? LET[r[i].a] : '–', font: HFONT, bold: true, size: base })] : [] })] })) })) }),
+        P({ children: [new d.TextRun({ text: 'Answer key', font: HFONT, bold: true, size: Math.round(kb * 1.8) })] }),
+        P({ spacing: { after: 160 }, children: tx(`${set.title || ''} · Practice Set ${set.setNo ?? 1}`, { font: HFONT, size: kb, color: '555555' }) }),
+        ...bySec.flatMap(g => [
+          P({ keepNext: true, spacing: { before: 200, after: 80 }, border: { bottom: { style: d.BorderStyle.SINGLE, size: 4, color: 'C4C4C4', space: 2 } },
+            children: tx(toText(g.name).toUpperCase(), { font: HFONT, bold: true, size: kb - 4, color: '666666', characterSpacing: 30 }) }),
+          grid(g.rows),
+        ]),
+        ...(missing ? [P({ spacing: { before: 200 }, children: [new d.TextRun({ text: `– : no answer set for ${missing} question${missing === 1 ? '' : 's'}.`, font: HFONT, size: kb - 4, color: '777777' })] })] : []),
       ],
     });
   }
