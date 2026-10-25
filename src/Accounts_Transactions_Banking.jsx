@@ -31,6 +31,7 @@ export const TransactionsViewBanking = ({
   openEdit = () => {},
   handleDelete = () => {},
   vendors = [],
+  payers = [],
   printReceiptMemo = () => {},
   isMobile = false,
   runningBalance = null,
@@ -187,28 +188,48 @@ export const TransactionsViewBanking = ({
             </p>
           </div>
 
-          {/* Details: head, payee, who, reference — so each entry is readable without opening it */}
+          {/* Full details of the entry, so nothing needs opening to be read */}
           {(() => {
+            const isInc = item.type === 'Income'
             const vendorName = item.vendor_id ? (vendors.find((v) => String(v.id) === String(item.vendor_id))?.name || '') : ''
+            const payerName = item.payer_id ? (payers.find((v) => String(v.id) === String(item.payer_id))?.name || '') : ''
+            const when = (t) => {
+              if (!t) return ''
+              const d = new Date(t)
+              return isNaN(d) ? String(t) : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            }
             const rows = [
-              ['Category', [item.category, item.sub_category].filter(Boolean).join(' › ')],
-              [item.type === 'Income' ? 'Payer' : 'Paid to', vendorName],
+              ['Entry date', formatDate(item.entry_date)],
+              ['Payment date', item.payment_date && item.payment_date !== item.entry_date ? formatDate(item.payment_date) : ''],
+              ['Type', item.type],
+              ['Category', item.category],
+              ['Sub-category', item.sub_category],
+              [isInc ? 'Payer / source' : 'Paid to (vendor)', isInc ? payerName : vendorName],
+              ['Amount', fmt(item.amount || 0)],
+              ['Payment mode', item.payment_mode],
+              ['Account', item.account_type || 'Cash A/c'],
+              ['Nature', item.expense_nature],
               ['Voucher head', item.voucher_head],
-              ['Entered by', item.added_by || item.edited_by],
               ['Voucher no.', item.voucher_no],
-              ['Txn ref', item.txn_ref],
+              ['Txn ref / UTR', item.txn_ref],
               ['Status', statusLabel.charAt(0) + statusLabel.slice(1).toLowerCase()],
-              ['Receipt', item.receipt_url ? 'Attached' : ''],
-            ].filter(([, v]) => v)
-            if (!rows.length) return null
+              ['Recurring', item.is_recurring ? 'Yes' + (item.recurring_period ? ` (${item.recurring_period})` : '') : ''],
+              ['Source', [item.source_type, item.source_ref].filter(Boolean).join(' · ')],
+              ['Bill id', item.bill_id],
+              ['Entered by', item.added_by],
+              ['Entered on', when(item.created_at)],
+              ['Last edited by', item.edited_by],
+              ['Last edited on', when(item.edited_at)],
+              ['Delete reason', item.delete_reason],
+            ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
             return (
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))',
-                  gap: '6px 14px',
+                  gap: '8px 14px',
                   marginBottom: 10,
-                  padding: '8px 10px',
+                  padding: '10px 12px',
                   backgroundColor: '#f9fafb',
                   borderRadius: 8,
                 }}
@@ -216,9 +237,17 @@ export const TransactionsViewBanking = ({
                 {rows.map(([k, v]) => (
                   <div key={k} style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{k}</div>
-                    <div style={{ fontSize: 12.5, color: '#1f2937', fontWeight: 500, wordBreak: 'break-word' }}>{v}</div>
+                    <div style={{ fontSize: 12.5, color: '#1f2937', fontWeight: 500, wordBreak: 'break-word' }}>{String(v)}</div>
                   </div>
                 ))}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Receipt</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500 }}>
+                    {item.receipt_url
+                      ? <a href={item.receipt_url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8' }}>View attached</a>
+                      : <span style={{ color: '#9ca3af' }}>None</span>}
+                  </div>
+                </div>
               </div>
             )
           })()}
