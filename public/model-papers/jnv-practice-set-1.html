@@ -2337,6 +2337,7 @@ function openImport(mode) {
 async function runImport() {
   if (!imp || imp.busy) return;
   const msg = t => { const m = $('#impMsg'); if (m) m.textContent = t; };
+  const say = (t, w) => { const m = $('#impMsg'); if (m) m.innerHTML = esc(t) + (w ? `<br><span class="subnote">${esc(w)}</span>` : ''); };
   const files = [...($('#impFile').files || [])];
   if (!files.length) return msg('Choose a PDF or at least one photo first.');
   const kind = await readerKind();
@@ -2352,13 +2353,16 @@ async function runImport() {
     // "too many", wait as long as it asks and read the same page again; after the first time, space the
     // pages out. Pages already read are always kept.
     const signal = imp.ctl.signal;
+    // what each AI model answered, e.g. "gemini-2.5-flash: daily free limit used up · llama-4-scout: API key refused…"
+    const whyText = d => (d || []).map(x => `${String(x.model || '').split(':').pop().split('/').pop()}: ${x.why}`).join(' · ');
+    let why = '';
     const wait = (sec, i, again) => new Promise((res, rej) => {
       let left = Math.ceil(sec);
       const tick = () => {
         if (signal.aborted) { clearInterval(t); return rej({ code: 'cancelled' }); }
         if (left <= 0) { clearInterval(t); return res(); }
-        msg(again ? `The AI service is busy (too many pages this minute). Reading page ${i + 1} again in ${left} s… Pages already read are kept.`
-          : `Spacing the pages out to stay under the AI service's limit: page ${i + 1} in ${left} s…`);
+        if (again) say(`The AI models are busy (too many pages this minute). Reading page ${i + 1} again in ${left} s… Pages already read are kept.`, why);
+        else msg(`Spacing the pages out to stay under the AI service's limit: page ${i + 1} in ${left} s…`);
         left--;
       };
       const t = setInterval(tick, 1000); tick();
@@ -2366,7 +2370,7 @@ async function runImport() {
     let pace = 0, last = 0;
     for (let i = 0; i < pages.length; i++) {
       if (signal.aborted) throw { code: 'cancelled' };
-      let reply = null, tries = 0, gaveUp = false;
+      let reply = null, tries = 0, gaveUp = false, noModel = null;
       for (;;) {
         const gap = pace - (Date.now() - last) / 1000;
         if (gap > 0) await wait(gap, i, false);
@@ -2374,7 +2378,9 @@ async function runImport() {
         last = Date.now();
         try { reply = await readPage(kind, await pageCanvas(pages[i]), i + 1, pages.length, signal); break; }
         catch (e) {
+          if (e && e.code === 'no_models') { noModel = whyText(e.details) || e.message || ''; break; }
           if (e && e.code === 'rate_limited') {
+            why = whyText(e.details);
             pace = 7;                                     // about 8 pages a minute from now on
             if (++tries > 4) { gaveUp = true; break; }
             await wait(Math.min(90, Math.max(e.retryAfter || 0, 20 * tries)), i, true);
@@ -2383,6 +2389,12 @@ async function runImport() {
           if (e && (e.code === 'cancelled' || e.code === 'not_granted' || e.code === 'sampling_disabled')) throw e;
           reply = null; break;
         }
+      }
+      if (noModel != null) {
+        // no model can read pages now (keys refused, daily limits used up): waiting will not help
+        if (!items.some(x => x.t !== 'note')) throw { code: 'no_models', why: noModel };
+        items.push({ t: 'note', text: `Pages ${i + 1}–${pages.length} were not read: no AI model can read pages right now (${noModel}). Add what was found, then import those pages again later.` });
+        break;
       }
       if (gaveUp) {
         items.push({ t: 'note', text: `Page${i + 1 < pages.length ? `s ${i + 1}–${pages.length} were` : ` ${i + 1} was`} not read: the AI service stayed busy. Add what was found, then import ${i + 1 < pages.length ? 'those pages' : 'that page'} again in a few minutes.` });
@@ -2398,7 +2410,8 @@ async function runImport() {
     renderReview();
   } catch (e) {
     const t = { cancelled: 'Stopped.', empty: 'No pages found in that file. Use a PDF, JPEG or PNG.', not_granted: 'The AI service is not allowed here. In claude.ai allow Claude for this page; in the portal sign in again.', rate_limited: 'Too many pages read in the last minute. Wait a minute and try again.', sampling_disabled: 'Claude is not available for this account.' }[e && e.code];
-    msg(t || 'Could not read that file. Try a clearer scan or fewer pages.');
+    if (e && e.code === 'no_models') say('No AI model can read pages right now, so waiting will not help. What each one said:', e.why || 'no details');
+    else msg(t || 'Could not read that file. Try a clearer scan or fewer pages.');
   } finally {
     if (imp === job) { imp.busy = false; const r = $('#impRead'), s2 = $('#impStop'); if (r) r.disabled = false; if (s2) s2.hidden = true; }
   }
