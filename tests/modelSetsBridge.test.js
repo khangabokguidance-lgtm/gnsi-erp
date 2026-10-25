@@ -117,3 +117,18 @@ test('Translate to Meetei Mayek goes through the portal translator only for staf
   await assert.rejects(closed.translateMM(['x']), { code: 'not_granted' })
   assert.equal(createModelSetsBridge({ client: fakeClient() }).translateMM, undefined)
 })
+
+test('imageUrl reads a saved picture through the session when its public link fails', async () => {
+  const client = fakeClient()
+  const downloads = []
+  const base = client.storage.from
+  client.storage.from = (bucket) => ({ ...base(bucket), download: async (path) => { downloads.push([bucket, path]); return { data: new Blob(['x'], { type: 'image/webp' }), error: null } } })
+  const bridge = createModelSetsBridge({ client })
+  const url = 'https://x.supabase.co/storage/v1/object/public/question-diagrams/model-sets/ms_1_abc.webp'
+  const a = await bridge.imageUrl(url)
+  assert.match(a, /^blob:/)
+  assert.equal(await bridge.imageUrl(url), a)
+  assert.deepEqual(downloads, [['question-diagrams', 'model-sets/ms_1_abc.webp']])
+  assert.equal(await bridge.imageUrl('https://elsewhere.example/a.png'), null)
+  assert.equal(await bridge.imageUrl('https://x.supabase.co/storage/v1/object/public/question-diagrams/../secret.png'), null)
+})
