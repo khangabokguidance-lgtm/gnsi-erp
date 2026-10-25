@@ -1049,7 +1049,7 @@ function Accounts({role,userId}){
       // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
       // no generic descriptions. The database enforces the first three for manual entries too.
       const vendorName=vendors.find(v=>String(v.id)===String(r.vendor_id))?.name||''
-      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1,receipt_required_above:null},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
+      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1,generic_description_check:false,receipt_required_above:null},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
       if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
       if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
       const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
@@ -3364,11 +3364,10 @@ function Accounts({role,userId}){
                 <div style={{gridColumn: isMobile ? '1' : isTablet ? 'span 2' : 'span 4'}}><label style={lStyle}>{row.type==='Expense'?'Reason — what was bought / paid for, and for whom':'Description / Note'} <span style={{color:'#dc2626'}}>*</span></label>
                   <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={formInput}/>
                   {row.type==='Expense'&&(()=>{
-                    const vn=vendors.find(v=>String(v.id)===String(row.vendor_id))?.name||''
-                    const probs=reasonProblems({note:row.note,category:row.category,subCategory:row.sub_category,vendorName:vn,minLength:5,minWords:1})
-                    if(!row.note)return <div style={{fontSize:11,color:'#8a93a6',marginTop:4}}>Say what was actually bought or paid for — not just the category or "Paytm payment".</div>
-                    return probs.length
-                      ?<div style={{fontSize:11,color:'#b45309',marginTop:4}}>Needs: {probs.join('; ')}.</div>
+                    const len=(row.note||'').trim().length
+                    if(!len)return <div style={{fontSize:11,color:'#8a93a6',marginTop:4}}>Say what was bought or paid for (at least 5 letters).</div>
+                    return len<5
+                      ?<div style={{fontSize:11,color:'#b45309',marginTop:4}}>Needs at least 5 characters (now {len}).</div>
                       :<div style={{fontSize:11,color:'#16a34a',marginTop:4}}>✓ Clear reason</div>
                   })()}
                 </div>
