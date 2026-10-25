@@ -41,7 +41,8 @@ export async function handleVision(req, res, user) {
     const r = await readWithChain({ chain: visionChain(process.env), env: process.env, prompt, images, log: (...a) => console.error('Vision model:', ...a) })
     if (r.ok) return res.status(200).json({ text: r.text, model: r.model })
     if (r.status === 429 && r.retryAfter) res.setHeader('Retry-After', String(Math.min(Math.max(1, r.retryAfter), 120)))
-    return res.status(r.status).json({ error: r.error })
+    // never pass a provider's 401/403 on: the page would take it for the teacher's own login
+    return res.status(r.status === 429 ? 429 : 503).json({ error: r.error, details: r.details || [] })
   } catch (e) {
     console.error('Vision handler error:', e)
     res.status(500).json({ error: e.message })

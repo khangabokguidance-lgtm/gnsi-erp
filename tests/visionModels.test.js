@@ -74,3 +74,26 @@ test('a free model that no longer exists is skipped for later pages', async () =
   await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
   assert.deepEqual(calls, ['gone:free', 'here:free', 'here:free'])
 })
+
+test('a used-up daily limit or a refused key is reported, not waited for', async () => {
+  clearBusy()
+  const env = { GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1', GROQ_API_KEY: 'bad', GROQ_VISION_MODEL: 'scout', OPENROUTER_API_KEY: 'o', OPENROUTER_VISION_MODEL: 'q:free' }
+  const daily = json(429, { error: { message: 'Quota exceeded', details: [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }, { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '69s' }] } })
+  const fetchFn = async (url) => url.includes('generativelanguage') ? daily
+    : url.includes('groq') ? json(401, { error: { message: 'Invalid API Key' } })
+    : json(404, { error: { message: 'No endpoints found matching your data policy' } })
+  const r = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
+  assert.equal(r.status, 503)                                    // not 429: waiting will not help, and not 401 (the page would ask the teacher to sign in)
+  assert.deepEqual(r.details.map((d) => d.why), ['daily free limit used up', 'API key refused: check it in Vercel → Environment Variables', 'free models are turned off in OpenRouter → Settings → Privacy'])
+  // the next page does not call them again, but still says why
+  const again = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn: async () => { throw new Error('not called') } })
+  assert.equal(again.status, 503); assert.equal(again.details.length, 3)
+})
+
+test('one model busy for a minute and the others unusable: wait for that one', async () => {
+  clearBusy()
+  const env = { GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1', GROQ_API_KEY: 'bad' }
+  const fetchFn = async (url) => url.includes('groq') ? json(401, {}) : geminiBusy(25)
+  const r = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
+  assert.equal(r.status, 429); assert.equal(r.retryAfter, 25)
+})

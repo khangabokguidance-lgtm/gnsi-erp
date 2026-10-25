@@ -35,14 +35,15 @@ export function visionChain(env = {}) {
   return chain
 }
 
-// A failure that the next model may not have: its limit is used up, it is down, it does not exist
-// (any more), it refused this request's options, or its key is wrong.
-export const tryNext = (status) => status === 429 || status >= 500 || [400, 401, 403, 404].includes(status)
-
-// Models that said "too many" are skipped until their wait is over (kept while the function is warm).
+// Models that said "too many" (or that cannot be used now) are skipped until their wait is over,
+// with the reason kept to tell the teacher (kept while the function is warm).
 const resting = new Map()
-export function markBusy(entry, seconds, now = Date.now()) { resting.set(`${entry.provider}:${entry.model}`, now + Math.max(5, seconds || 30) * 1000) }
-export function restingFor(entry, now = Date.now()) { const t = resting.get(`${entry.provider}:${entry.model}`) || 0; return t > now ? Math.ceil((t - now) / 1000) : 0 }
+const key = (e) => `${e.provider}:${e.model}`
+export function markBusy(entry, seconds, now = Date.now(), why = 'busy this minute', perMinute = true) {
+  resting.set(key(entry), { until: now + Math.max(5, seconds || 30) * 1000, why, perMinute })
+}
+export function restingFor(entry, now = Date.now()) { const r = resting.get(key(entry)); return r && r.until > now ? Math.ceil((r.until - now) / 1000) : 0 }
+const restInfo = (entry) => resting.get(key(entry))
 export function clearBusy() { resting.clear() }
 
 // The request each provider expects for one prompt and its page images.
@@ -93,40 +94,65 @@ export function retryDelay(entry, data, headers) {
   return Math.ceil(Number(headers?.get?.('retry-after')) || 0)
 }
 
+// Gemini says which allowance ran out: a daily one will not come back by waiting a minute.
+export function isDailyLimit(entry, data) {
+  const v = (data?.error?.details || []).flatMap((d) => d?.violations || []).map((x) => `${x.quotaId || ''} ${x.quotaMetric || ''}`).join(' ')
+  return /per ?day|PerDay|daily/i.test(v) || /per ?day|daily/i.test(String(data?.error?.message || ''))
+}
+
+// A short, plain reason for the teacher, from a failed answer.
+export function reasonFor(entry, status, message) {
+  const m = String(message || '')
+  if (status === 401 || status === 403) return 'API key refused: check it in Vercel → Environment Variables'
+  if (status === 404) return /data policy|privacy|guardrail/i.test(m) ? 'free models are turned off in OpenRouter → Settings → Privacy' : 'model not available'
+  if (status === 402) return 'needs credit on this account'
+  if (status === 413) return 'page image too large for this model'
+  if (status >= 500) return 'service down right now'
+  if (status === 400) return `refused the request (${m.slice(0, 90)})`
+  return m.slice(0, 90) || `HTTP ${status}`
+}
+
 // Try each model in turn. fetchFn is injected so this can be tested without the network.
-// Returns { ok: true, text, model } or { ok: false, status, error, retryAfter }.
+// Returns { ok: true, text, model } or { ok: false, status, error, retryAfter, details }.
+// status 429 means "wait retryAfter seconds and try again"; 503 means no model can read pages now
+// (keys refused, daily limits used up, models gone), and details say why for each one.
 export async function readWithChain({ chain, env, prompt, images, fetchFn = fetch, log = () => {}, budgetMs = 45_000, now = Date.now }) {
   const start = now()
-  if (!chain.length) return { ok: false, status: 500, error: 'No AI model is set up: add GEMINI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY).' }
-  const awake = chain.filter((e) => !restingFor(e))
-  if (!awake.length) return { ok: false, status: 429, error: 'Every free AI model is busy this minute.', retryAfter: Math.min(...chain.map((e) => restingFor(e))) }
-  let last = { status: 500, error: 'AI service error' }, busy = []
-  for (const entry of awake) {
-    if (now() - start > budgetMs) break               // api/gemini.js may run 60 s; leave time to answer
+  if (!chain.length) return { ok: false, status: 503, error: 'No AI model is set up: add GEMINI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY) in Vercel.', details: [] }
+  const details = []
+  for (const entry of chain) {
+    const rest = restInfo(entry), wait = restingFor(entry, now())
+    if (wait) { details.push({ model: key(entry), why: rest.why, wait: rest.perMinute ? wait : 0 }); continue }
+    if (now() - start > budgetMs) { details.push({ model: key(entry), why: 'not tried (out of time)', wait: 0 }); continue }
     let res, data
     try {
       const r = buildRequest(entry, env, prompt, images)
       res = await fetchFn(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body) })
       data = await res.json().catch(() => ({}))
     } catch (e) {
-      log(`${entry.provider}:${entry.model} failed`, e?.message)
-      last = { status: 502, error: e?.message || 'Network error' }
+      log(`${key(entry)} failed`, e?.message)
+      details.push({ model: key(entry), why: 'could not connect', wait: 0 })
       continue
     }
     if (res.ok) {
       const text = replyText(entry, data)
-      if (text.trim()) return { ok: true, text, model: `${entry.provider}:${entry.model}` }
-      last = { status: 502, error: 'Empty reply' }
+      if (text.trim()) return { ok: true, text, model: key(entry) }
+      details.push({ model: key(entry), why: 'empty reply', wait: 0 })
       continue
     }
     const error = data?.error?.message || data?.error || `HTTP ${res.status}`
-    log(`${entry.provider}:${entry.model} → ${res.status}`, error)
-    if (res.status === 429) { const wait = retryDelay(entry, data, res.headers); markBusy(entry, wait); busy.push(wait || 30) }
-    else if (res.status === 404) markBusy(entry, 3600)   // no such model (any more): skip it for an hour
-    last = { status: res.status, error: String(error) }
-    if (!tryNext(res.status)) break
+    log(`${key(entry)} → ${res.status}`, error)
+    if (res.status === 429) {
+      if (isDailyLimit(entry, data)) { markBusy(entry, 3600, now(), 'daily free limit used up', false); details.push({ model: key(entry), why: 'daily free limit used up', wait: 0 }) }
+      else { const w = retryDelay(entry, data, res.headers) || 30; markBusy(entry, w, now()); details.push({ model: key(entry), why: 'busy this minute', wait: w }) }
+      continue
+    }
+    const why = reasonFor(entry, res.status, error)
+    // a model that is gone, or a key that is refused, will not work on the next page either
+    if ([401, 402, 403, 404].includes(res.status)) markBusy(entry, 3600, now(), why, false)
+    details.push({ model: key(entry), why, wait: 0 })
   }
-  // all were busy (or the rest failed): say how long until the first one is free again
-  if (busy.length) return { ok: false, status: 429, error: 'Every free AI model is busy this minute.', retryAfter: Math.min(...chain.map((e) => restingFor(e) || Infinity), ...busy) }
-  return { ok: false, ...last }
+  const waits = details.map((d) => d.wait).filter((w) => w > 0)
+  if (waits.length) return { ok: false, status: 429, error: 'Every free AI model is busy this minute.', retryAfter: Math.min(...waits), details }
+  return { ok: false, status: 503, error: 'No AI model could read the page.', details }
 }
