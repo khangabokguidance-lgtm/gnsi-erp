@@ -2320,6 +2320,12 @@ function findGutter(pieces, W, P) {
   if (rule) return rule.cx;
   const n = pieces.length;
   if (n < 8) return null;
+  // the pale rule or ink-free strip down the middle of the page, when both sides really are columns
+  if (P && P.gutter != null) {
+    const L = pieces.filter(p => p.x1 <= P.gutter), R = pieces.filter(p => p.x0 >= P.gutter);
+    const sp = ps => ps.length ? Math.max(...ps.map(p => p.x1)) - Math.min(...ps.map(p => p.x0)) : 0;
+    if (L.length >= Math.max(5, n * .05) && R.length >= Math.max(5, n * .05) && sp(L) >= W * .2 && sp(R) >= W * .2) return P.gutter;   // a column of drawings holds few words
+  }
   const cross = x => pieces.filter(p => p.x0 < x && p.x1 > x).length;
   const xs = [];
   for (let x = W * .35; x <= W * .65; x += W / 400) xs.push({ x, c: cross(x) });
@@ -2342,10 +2348,13 @@ function readingLines(pieces, W, P) {
   // a section band ("SECTION – 2  ARITHMETIC TEST") runs across both columns: every piece level with
   // the word SECTION belongs to that one line
   const bandPs = new Set();
-  pieces.filter(p => /^(?:SECTION\b|खण्ड|खंड|বিভাগ|খণ্ড)/iu.test(p.str)).forEach(a => {
+  pieces.filter(p => /^(?:SECTION|Section)\b|^(?:खण्ड|खंड|বিভাগ|খণ্ড)/u.test(p.str)).forEach(a => {
     const cy = (a.y0 + a.y1) / 2, h = a.y1 - a.y0;
     pieces.forEach(p => { if (Math.abs((p.y0 + p.y1) / 2 - cy) < h * .6) bandPs.add(p); });
   });
+  // text inside a box that runs across both columns (a framed "Directions: …") is full-width too
+  const boxes = P ? P.marks.filter(m => m.x0 < W * .45 && m.x1 > W * .55 && m.x1 - m.x0 > W * .5 && m.y1 - m.y0 > P.tall * 1.8) : [];
+  if (boxes.length) pieces.forEach(p => { const cx = (p.x0 + p.x1) / 2, cy = (p.y0 + p.y1) / 2; if (boxes.some(b => cx > b.x0 && cx < b.x1 && cy > b.y0 && cy < b.y1)) bandPs.add(p); });
   const bands = [...bandPs];
   pieces = pieces.filter(p => !bandPs.has(p));
   const n = pieces.length;
@@ -2413,10 +2422,48 @@ function splitOpts(text, prevI = -1, prevFam = 0) {
 // the drawings in one question's area: four alike in a row are the answer figures, the rest the question figure
 // the scissors and dashed "cut here" line printed in a page margin: a narrow upright strip, or anything in the outer margin
 const isCutMark = (g, P) => g.cx > P.W * .94 || g.cx < P.W * .03 || (g.w < P.tall * 1.8 && g.h > g.w * 1.8 && g.h < P.tall * 7);
+/* A figure question prints "Question Figure" above the drawing and "Answer Figures" above the four
+   choices. Those two captions cut the question's area into the question figure and the answers, so the
+   choices are the drawings below the second caption (four, whatever their spacing) and the question
+   figure is everything between the captions. Returns null when that does not give four sound answers,
+   and the caller keeps the general detector's result. */
+function captionFigures(cv, P, reg, q) {
+  if (!q.aCap) return null;
+  const tall = P.tall;
+  const gs = groupsIn(P, reg).filter(g => (g.h >= tall * .8 || g.w >= tall * 1.2 && g.h >= tall * .5) && !isCutMark(g, P) && !(g.w > (reg[3] - reg[1]) * .75 && g.h < tall * 1.7));
+  const top = (q.capQ ? q.capQ.y1 : q.y0) - tall * .4;
+  const below = gs.filter(g => g.y0 >= q.aCap.y1 - tall * .4), above = gs.filter(g => g.y1 <= q.aCap.y0 + tall * .4 && g.y0 >= top);
+  const gap = (a, b) => Math.max(0, Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1)) + Math.max(0, Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1));
+  const join = (a, b) => { const m = a.marks.concat(b.marks), u = unionOf(m); return { marks: m, y0: u[0], x0: u[1], y1: u[2], x1: u[3], w: u[3] - u[1], h: u[2] - u[0], cx: (u[1] + u[3]) / 2, cy: (u[0] + u[2]) / 2 }; };
+  // pieces of one drawing (a shape and its dot) come together; a speck beside the answers is dropped
+  let a = below.slice();
+  const area = g => g.w * g.h;
+  for (let guard = 0; a.length > 4 && guard < 20; guard++) {
+    const med = a.map(area).sort((p, r) => p - r)[a.length >> 1];
+    let best = null;
+    a.forEach((g, i) => a.forEach((h, j) => { if (i < j) { const d = gap(g, h); if (d <= Math.min(Math.max(g.w, g.h), Math.max(h.w, h.h)) * .35 && (!best || d < best.d)) best = { i, j, d }; } }));
+    if (best) { const m = join(a[best.i], a[best.j]); a = a.filter((_, k) => k !== best.i && k !== best.j).concat(m); continue; }
+    const small = a.filter(g => area(g) < med * .2);
+    if (!small.length) break;
+    a = a.filter(g => g !== small[0]);
+  }
+  if (a.length !== 4) return null;
+  a.sort((p, r) => (Math.abs(p.cy - r.cy) < Math.max(p.h, r.h) * .5 ? p.cx - r.cx : p.cy - r.cy));
+  const hs = a.map(g => g.h).sort((p, r) => p - r), ws = a.map(g => g.w).sort((p, r) => p - r);
+  if (hs[3] > hs[0] * 2.2 || ws[3] > ws[0] * 2.6) return null;                 // four drawings of about one size, or this is not the row
+  const optionFigures = fourOf(cv, P, a).map(d => d.box);
+  const qs = above.filter(g => !a.includes(g));
+  const figure = qs.length ? to1000(cv, unionOf(qs.flatMap(g => g.marks))) : null;
+  return { figure: figure && okBox(figure) ? figure : null, optionFigures };
+}
+// text that OCR made out of drawings ("WTTw 0] H WOW", "| | |"): fewer than three real lower-case words
+// an option that is only marks and letters of the labels ("(B) (D)", "| | |", "A | B")
+const junkOpt = o => { const t = String(o || '').trim(); return !!t && (/[|\[\]@=]/.test(t) || !/[A-Za-z0-9]{3,}|\d/.test(t.replace(/\b[A-D]\b/g, ''))); };
+const junkStem = t => { const w = String(t || '').split(/\s+/).filter(Boolean); return !!w.length && w.filter(x => /^[a-z]{3,}[.,?:;!]?$/.test(x)).length < 3; };
 function figuresIn(cv, P, reg) {
   const gs = groupsIn(P, reg).filter(g => (g.h >= P.tall * .8 || g.w >= P.tall * 1.2 && g.h >= P.tall * .5)
     && g.y0 >= reg[0] - P.tall * .5 && g.y1 <= reg[2] + P.tall * .5          // inside this question's area
-    && !isCutMark(g, P));
+    && !isCutMark(g, P) && !(g.w > (reg[3] - reg[1]) * .75 && g.h < P.tall * 1.7));          // a heading bar is not a figure
   if (!gs.length) return { figure: null, optionFigures: null };
   const rows = rowsOfFour(gs).map(w4 => ({ w4, cy: w4.reduce((t, c) => t + c.cy, 0) / 4 })).sort((a, b) => b.cy - a.cy);
   const row = rows[0] ? rows[0].w4 : null;
@@ -2566,22 +2613,41 @@ async function localRead(cv, onProgress, lang = 'en') {
   }
   const W = cv.width, H = cv.height, P = pageInk(cv), lines = readingLines(pieces, W, P);
   const items = [];
-  let q = null, head = null, passage = null, lastN = null, optAt = -1, keyOn = false;
+  let q = null, head = null, passage = null, lastN = null, optAt = -1, keyOn = false, lastEnd = null;
   const key = {};
-  const endQ = (yEnd) => {
+  // a question ends where the next line begins; when that line is in the other column (or above it) the
+  // question ran to the foot of its own column, or to the next full-width band
+  const colFoot = (from) => { const band = lines.find(x => x.col === 0 && x.y0 > from + 4); return Math.min(H * .94, band ? band.y0 - 2 : H); };
+  const endQ = (yEnd, lcol) => {
     if (!q) return;
     // leftover bits of the (A)-(D) labels printed under answer figures are not option text
     q.out.options = q.out.options.map(o => /^[\s([]*[A-Da-d8कखगघকখগঘ]?[)\].]*$/u.test(o) ? '' : o);
+    let end = Math.min(H, yEnd);
+    if (end <= q.y0 + 4 || (lcol != null && lcol !== 0 && q.col !== 0 && lcol !== q.col)) end = colFoot(q.y0);
     if (P) {
-      const reg = [q.y0 - 4, q.cx0, Math.min(H, yEnd), q.cx1];
-      const f = figuresIn(cv, P, reg);
+      const reg = [q.y0 - 4, q.cx0, end, q.cx1];
+      let f = figuresIn(cv, P, reg);
+      const c = captionFigures(cv, P, reg, q);
+      if (c && c.optionFigures) f = { figure: c.figure || f.figure, optionFigures: c.optionFigures };
       q.out.figure = f.figure;
-      if (f.optionFigures && !q.out.options.some(o => o.trim())) { q.out.optionFigures = f.optionFigures; q.out.options = ['', '', '', '']; }
+      if (f.optionFigures && !q.out.options.some(o => o.trim() && !junkOpt(o))) { q.out.optionFigures = f.optionFigures; q.out.options = ['', '', '', '']; }
+      // a figure question whose answer figures were not found is kept whole, as a picture of the print, and flagged
+      if ((q.aCap || q.capQ) && !q.out.optionFigures && !q.out.options.some(o => o.trim() && !junkOpt(o))) {
+        const ink = trimInk(cv, q.y0 - 4, q.cx0, end, q.cx1);
+        if (ink) { q.out.figure = to1000(cv, ink); q.out.picture = true; q.out.options = ['A', 'B', 'C', 'D']; q.out.check = 'figure'; }
+      } else if ((q.aCap || q.capQ) && !q.out.picture && (!q.out.figure || !q.out.optionFigures)) q.out.check = 'figure';
     }
     q.out.text = q.text.join(' ').replace(/\s+/g, ' ').trim();
     q.out.options = q.out.options.map(o => o.replace(/\s+/g, ' ').trim());
+    // a figure question's stem and options, read from drawings by OCR, are noise
+    if ((q.capQ || q.aCap || q.out.optionFigures) && !q.out.picture) {
+      if (junkStem(q.out.text)) q.out.text = '';
+      if (!q.out.optionFigures) q.out.options = q.out.options.map(o => junkOpt(o) ? '' : o);
+    }
+    lastEnd = { y: q.lastY1, cx0: q.cx0, cx1: q.cx1, col: q.col };
     items.push(q.out); q = null; optAt = -1;
   };
+  const newQ = (n, l) => ({ out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1, col: l.col, tail: [], lastY1: l.y1, lastCol: l.col });
   const endBlocks = () => { head = null; passage = null; };
   lines.forEach((l, k) => {
     const t = normDigits(l.text);
@@ -2591,23 +2657,53 @@ async function localRead(cv, onProgress, lang = 'en') {
     // the answer key: from its heading on, every "12. (B)" on the page is an answer
     // ("Answer Figures" or "Answer the following" are not a key: nothing else, or answers, follow the heading)
     const rest = KEY_HEAD.test(t) ? t.replace(KEY_HEAD, '').trim() : null;
-    if (rest != null && (!rest || Object.keys(keyPairs(rest)).length >= 2)) { endQ(l.y0); keyOn = true; Object.assign(key, keyPairs(rest)); return; }
+    if (rest != null && (rest ? Object.keys(keyPairs(rest)).length >= 2 : /^[A-Z\u0900-\u097F\u0980-\u09FF\uABC0-\uABFF]/.test(t))) { endQ(l.y0, l.col); keyOn = true; Object.assign(key, keyPairs(rest)); return; }
     if (keyOn) { Object.assign(key, keyPairs(t)); return; }
     const nextTop = () => { for (let j = k + 1; j < lines.length; j++) if (lines[j].col === l.col || lines[j].col === 0) return lines[j].y0; return H; };
     let m;
-    if ((m = t.match(RX.section))) { endQ(l.y0); endBlocks(); items.push({ type: 'section', tag: `Section ${m[1]}`, title: m[2] || '', directions: '' }); head = items[items.length - 1]; return; }
-    if ((m = t.match(RX.part)) && t.length < 40) { endQ(l.y0); endBlocks(); head = { type: 'heading', sub: '', part: `Part – ${/^[1lI|]+$/.test(m[1]) ? 'I'.repeat(m[1].length) : m[1].toUpperCase()}`, directions: '' }; items.push(head); return; }
-    if (RX.dir.test(t)) { endQ(l.y0); passage = null; if (!head || head.directions) { head = { type: 'heading', sub: '', part: '', directions: '' }; items.push(head); } head.directions = t; head.inDir = true; return; }
-    if (RX.cap.test(t)) { if (q) q.fig = true; return; }
+    if ((m = t.match(RX.section))) { endQ(l.y0, l.col); endBlocks(); items.push({ type: 'section', tag: `Section ${m[1]}`, title: m[2] || '', directions: '' }); head = items[items.length - 1]; return; }
+    if ((m = t.match(RX.part)) && t.length < 40) { endQ(l.y0, l.col); endBlocks(); head = { type: 'heading', sub: '', part: `Part – ${/^[1lI|]+$/.test(m[1]) ? 'I'.repeat(m[1].length) : m[1].toUpperCase()}`, directions: '' }; items.push(head); return; }
+    if (RX.dir.test(t)) { endQ(l.y0, l.col); passage = null; if (!head || head.directions) { head = { type: 'heading', sub: '', part: '', directions: '' }; items.push(head); } head.directions = t; head.inDir = true; return; }
+    if (RX.cap.test(t)) {
+      if (/^(?:answer|उत्तर|উত্তর)/i.test(t)) {
+        // a second "Answer Figures" under one question: the next question's own caption was not read
+        if (q && q.aCap && lastN != null) {
+          const prev = q, from = prev.lastY1 + 2;
+          endQ(from, prev.col); endBlocks(); lastN += 1;
+          q = newQ(lastN, { y0: from, y1: l.y1, cx0: prev.cx0, cx1: prev.cx1, col: prev.col });
+          q.aCap = { y0: l.y0, y1: l.y1 }; q.fig = true;
+          return;
+        }
+        if (!q && lastN != null && lastEnd && l.y0 > lastEnd.y) {
+          lastN += 1; endBlocks();
+          q = newQ(lastN, { y0: lastEnd.y + 2, y1: l.y1, cx0: lastEnd.cx0, cx1: lastEnd.cx1, col: lastEnd.col });
+          q.aCap = { y0: l.y0, y1: l.y1 }; q.fig = true;
+          return;
+        }
+        if (q) { q.fig = true; q.aCap = q.aCap || { y0: l.y0, y1: l.y1 }; }
+        return;
+      }
+      // "Question Figure" with no number before it (the number was lost in the rule beside it) starts the
+      // next question, when the one before already has its own caption or answers
+      if (!q || q.capQ || q.aCap || optAt >= 0) {
+        endQ(l.y0, l.col); endBlocks();
+        if (lastN != null) lastN += 1;
+        q = newQ(lastN, l); q.capQ = { y0: l.y0, y1: l.y1 };
+        return;
+      }
+      q.fig = true; q.capQ = q.capQ || { y0: l.y0, y1: l.y1 };
+      return;
+    }
     m = t.match(RX.q);
     const n = m ? +m[1] : null;
     if (m && (lastN == null || (n > lastN && n <= lastN + 6)) && !(q && optAt < 0 && n <= 4 && /^\d\)/.test(t))) {
-      endQ(l.y0);
+      endQ(l.y0, l.col);
       if (head) head.inDir = false;
       if (passage) passage = null;
       lastN = n;
-      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1, tail: [], lastY1: l.y1, lastCol: l.col };
+      q = newQ(n, l);
       const so = splitOpts(m[2]);
+      if (so.before && RX.cap.test(so.before)) { if (/^(?:answer|उत्तर|উত্তর)/i.test(so.before)) q.aCap = { y0: l.y0, y1: l.y1 }; else q.capQ = { y0: l.y0, y1: l.y1 }; }
       if (so.before && !RX.cap.test(so.before)) q.text.push(so.before.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
       so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
       if (so.opts.length) q.fam = so.fam;
@@ -2633,7 +2729,7 @@ async function localRead(cv, onProgress, lang = 'en') {
         prevQ.out.options[3] = prevQ.dText;
         endQ(stem.length ? stem[0].y0 : l.y0);
         lastN = (lastN || 0) + 1;
-        q = { out: { type: 'question', number: lastN, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: stem.map(x => x.t), y0: stem.length ? stem[0].y0 : l.y0, cx0: l.cx0, cx1: l.cx1, tail: [] };
+        q = { out: { type: 'question', number: lastN, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: stem.map(x => x.t), y0: stem.length ? stem[0].y0 : l.y0, cx0: l.cx0, cx1: l.cx1, col: l.col, tail: [], lastY1: l.y1, lastCol: l.col };
         if (so.before) q.text.push(so.before);
         so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
         q.fam = so.fam; q.dText = q.out.options[3];
@@ -2650,7 +2746,7 @@ async function localRead(cv, onProgress, lang = 'en') {
     }
     // outside a question: a heading in capitals, more directions, or a passage
     if ((m = t.match(/^PASSAGE\s*[-–—]?\s*(\d+|[IVX]+)$/i))) { endBlocks(); passage = { type: 'passage', title: `PASSAGE–${m[1].toUpperCase()}`, text: '' }; items.push(passage); return; }
-    if (ended && !bandLine && !(head && head.inDir)) { endBlocks(); passage = { type: 'passage', title: '', text: t, y1: l.y1 }; items.push(passage); return; }
+    if (ended && !bandLine && !junkStem(t) && !(head && head.inDir)) { endBlocks(); passage = { type: 'passage', title: '', text: t, y1: l.y1 }; items.push(passage); return; }
     if (isCaps(t) && !(head && head.inDir)) { endBlocks(); head = { type: 'heading', sub: t, part: '', directions: '' }; items.push(head); return; }
     if (head && head.inDir && !(passage)) {
       if (/passage/i.test(head.directions) && /[.!?]["”']?$/.test(head.directions)) { passage = { type: 'passage', title: '', text: t }; items.push(passage); return; }
@@ -2712,6 +2808,32 @@ function cropBox(cv, b, pad = 12) {
    A box is then fitted to the drawings it mostly covers, kept whole even where they run past it,
    plus the small marks inside them ("?", dots, letters in a figure). */
 const INK = new WeakMap();
+/* the gap between two columns, from the page's pixels: a printed rule (even a pale grey one), else the
+   widest strip down the middle with no ink. Text pieces alone cannot find it when a number hangs into
+   the gap, which then put the right column's question numbers in the left column. */
+function inkGutterOf(px, W, H) {
+  const x0 = Math.round(W * .4), x1 = Math.round(W * .6), y0 = Math.round(H * .06), y1 = Math.round(H * .94), w = x1 - x0, h = y1 - y0;
+  if (w < 8 || h < 8) return null;
+  const dark = new Uint32Array(w), pale = new Uint32Array(w);
+  for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
+    const k = (y * W + x0 + x) * 4, v = px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114;
+    if (v < 232) { pale[x]++; if (v < 150) dark[x]++; }
+  }
+  let best = -1;
+  for (let x = 0; x < w; x++) if (pale[x] > h * .5 && (best < 0 || pale[x] > pale[best])) best = x;
+  if (best >= 0) {
+    let a = best, b = best;
+    while (a > 0 && pale[a - 1] > h * .5) a--;
+    while (b < w - 1 && pale[b + 1] > h * .5) b++;
+    if (b - a <= W * .01) return x0 + (a + b + 1) / 2;
+  }
+  let run = null, top = null;
+  for (let x = 0; x <= w; x++) {
+    if (x < w && dark[x] <= h * .03) { run = run || { a: x }; run.b = x; if (!top || run.b - run.a > top.b - top.a) top = { ...run }; }
+    else run = null;
+  }
+  return top && top.b - top.a >= W * .008 ? x0 + (top.a + top.b + 1) / 2 : null;
+}
 function pageInk(cv) {
   if (INK.has(cv)) return INK.get(cv);
   const CELL = 3, R = 2, W = cv.width, H = cv.height;
@@ -2778,7 +2900,7 @@ function pageInk(cv) {
     }
   });
   extra.forEach(e => marks.push({ ...e, n: 2, cx: (e.x0 + e.x1) / 2, cy: (e.y0 + e.y1) / 2, text: true, draw: false }));
-  const P = { W, H, marks, tall, rules };
+  const P = { W, H, marks, tall, rules, gutter: inkGutterOf(px, W, H) };
   INK.set(cv, P);
   return P;
 }
@@ -2994,6 +3116,8 @@ function tidyItems(items) {
   });
   return out;
 }
+// four answer figures that are all there and of about one size (the biggest no more than six times the smallest in area)
+const soundFour = d => !!d && d.length === 4 && d.every(x => x && okBox(x.box)) && (() => { const a = d.map(x => (x.box[2] - x.box[0]) * (x.box[3] - x.box[1])).sort((p, q) => p - q); return a[0] > 0 && a[3] <= a[0] * 6; })();
 function cleanItems(reply, cv, page) {
   const out = [];
   (Array.isArray(reply && reply.items) ? reply.items : []).forEach(r => {
@@ -3015,7 +3139,7 @@ function cleanItems(reply, cv, page) {
     const parts = (ps, across) => Array.isArray(ps) && ps.length && ps.every(okBox) ? { cv: ps.length > 1 ? joinParts(cv, ps, across) : cropBox(cv, ps[0], 4) } : null;
     const pq = r.picture ? parts(r.figureParts, false) : null, po = r.picture && Array.isArray(r.optionParts) ? r.optionParts.map(ps => parts(ps, true)) : null;
     out.push({
-      t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true, picture: r.picture === true,
+      t: 'q', page, number: Number.isInteger(r.number) ? r.number : null, continued: r.continued === true, picture: r.picture === true, check: r.check === 'figure' || !!(ofs && !r.picture && !soundFour(od)),
       q: cleanQ(str(r.text)), opts, a, gen: a != null,
       fig: pq && qd ? { ...figOf(cv, page, qd), cv: pq.cv } : qd ? figOf(cv, page, qd) : null,
       optFigs: od ? od.map((d, k) => (po && po[k] ? { ...figOf(cv, page, d), cv: po[k].cv } : figOf(cv, page, d))) : null,
@@ -3190,7 +3314,7 @@ function renderReview() {
     if (it.t === 'head') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Heading</span><span class="tx">${esc([it.sub, it.part].filter(Boolean).join(' · ') || plain(it.dir).slice(0, 90))}</span></label>`;
     if (it.t === 'passage') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Passage</span><span class="tx">${esc(it.title || it.text.slice(0, 90))}</span></label>`;
     const pics = it.optFigs ? it.optFigs.map((f, k) => cropBtn(f, i, k, `option ${LET[k]}`)).join(' ') : '';
-    const chips = [it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : it.keyed ? `<span class="chip">Answer ${LET[it.a]} · from the key</span>` : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
+    const chips = [it.check ? '<span class="chip warn">Check the figure crop</span>' : '', it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : it.keyed ? `<span class="chip">Answer ${LET[it.a]} · from the key</span>` : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
     return `<label class="bank-row" style="grid-template-columns:auto 30px minmax(0,1fr);align-items:start">${box}<span class="n">${it.number ?? '–'}</span>
       <span style="display:grid;gap:4px;min-width:0"><span>${fmtU(it.q || (it.fig || it.optFigs ? 'Question figure' : ''))}</span>
       <span class="subnote" style="overflow-wrap:anywhere">${it.optFigs ? '' : it.opts.map((o, k) => `(${LET[k]}) ${esc(o) || '—'}`).join('&nbsp;&nbsp; ')}</span>
