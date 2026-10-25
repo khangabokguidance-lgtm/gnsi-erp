@@ -3588,11 +3588,12 @@ body:has(.ac-bottom){padding-bottom:76px}
     {/* ══ TAB: DAILY EXPENDITURE (dedicated — separate from the combined Daily register) ══ */}
     {activeTab==='expenditure'&&(
       <div>
-        <div style={{backgroundColor:'#7f1d1d',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div className="ac-hero" style={{background:'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.30) 0%,transparent 55%),linear-gradient(135deg,#4a0f12 0%,#7f1d1d 55%,#9b2226 100%)',borderRadius:22,padding: isMobile ? '18px' : '26px 30px',marginBottom:22}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
-              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💵 Daily Expenditure</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.55)',margin:'4px 0 0'}}>All expense entries, grouped by entry date — a dedicated table separate from the combined Daily register.</p>
+              <p style={{fontSize:10.5,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:'#e9c46a',margin:'0 0 6px'}}>Expenditure</p>
+              <h2 style={{fontSize: isMobile ? 22 : 30,fontWeight:600,color:'white',margin:0,fontFamily:AC.serif,letterSpacing:'-0.02em'}}>Daily Expenditure</h2>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.65)',margin:'6px 0 0'}}>All expense entries, grouped by entry date — a dedicated table separate from the combined Daily register.</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportExpenditureCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -3602,19 +3603,19 @@ body:has(.ac-bottom){padding-bottom:76px}
 
           <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
             {[{label:'Total Days',value:expenditureGroups.length,isCurrency:false},{label:'Total Entries',value:expenditureFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:expenditureCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:expenditureBankAmt,color:'#f87171'}].map(c=>(
-              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.08)',borderRadius:10,padding:'12px 14px'}}>
-                <p style={{fontSize:11,color:c.color||'rgba(255,255,255,0.6)',fontWeight:600,margin:'0 0 4px'}}>{c.label}</p>
-                <p style={{fontSize: isMobile ? 16 : 19,fontWeight:800,color:'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.16)',borderTop:'2px solid #e9c46a99',borderRadius:14,padding:'14px 16px'}}>
+                <p style={{fontSize:10,color:c.color||'rgba(255,255,255,0.6)',fontWeight:700,letterSpacing:'.16em',textTransform:'uppercase',margin:'0 0 8px'}}>{c.label}</p>
+                <p style={{fontFamily:AC.serif,fontVariantNumeric:'lining-nums tabular-nums',fontSize: isMobile ? 20 : 27,fontWeight:600,letterSpacing:'-0.02em',color:'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* ── one-click Expenditure Report — reuses the same letterheaded PDF/DOCX/Excel export as the Reports tab ── */}
-        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
+        <div style={{backgroundColor:'white',border:`1px solid ${AC.line}`,borderRadius:20,padding: isMobile ? 16 : 24,marginBottom:22,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 18px 40px -22px rgba(19,42,79,.28)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
             <div>
-              <h3 style={{...chartTitle,fontSize:15,margin:0}}>📑 Expenditure Report</h3>
+              <h3 style={{...chartTitle,fontSize:20,margin:0}}>Expenditure Report</h3>
               <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>Generates the same letterheaded report as the Reports tab, pre-filtered to Expense entries using the filters below.</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
@@ -3638,7 +3639,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           <div style={{display:'flex',gap:8,marginTop:12,alignItems:'center',flexWrap:'wrap'}}>
             <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Quick:</span>
             {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
-              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f3f0e8',color:expQuick===k?'white':'#5d6b82'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
+              <button key={k} style={{padding: isMobile?'7px 12px':'7px 15px',borderRadius:999,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f3f0e8',color:expQuick===k?'white':'#5d6b82'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
             ))}
             {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expSubCategory!=='All'||expVendorFilter!=='All'||expDateFrom||expDateTo)&&
               <button onClick={resetExpFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset</button>}
@@ -3654,7 +3655,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           <div style={{...chartCard,marginBottom:20}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
               <div>
-                <h3 style={{...chartTitle,marginBottom:3}}>📂 All Expense Categories</h3>
+                <h3 style={{...chartTitle,marginBottom:3,fontSize:22}}>All Expense Categories</h3>
                 <p style={{fontSize:12,color:'#8a93a6',margin:0}}>Every category ever used across your expense entries, ranked by total spend</p>
               </div>
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
@@ -3680,7 +3681,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                 const color=CHART_COLORS[idx%CHART_COLORS.length]
                 const catEntries=expanded?entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
                 return (
-                  <div key={c.category} style={{border:'1px solid #f3f0e8',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                  <div key={c.category} style={{border:`1px solid ${AC.line}`,borderTop:`3px solid ${color}`,borderRadius:16,overflow:'hidden',backgroundColor:expanded?'#fdfbf6':'white',boxShadow:'0 1px 2px rgba(19,42,79,.04), 0 12px 28px -18px rgba(19,42,79,.25)',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
                     <div onClick={()=>setCatAllDrilldown(expanded?null:c.category)} style={{padding:'14px 16px',cursor:'pointer'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                         <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
@@ -3693,7 +3694,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                         <span style={{fontSize:14,color:'#d9d2c2',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
-                        <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
+                        <strong style={{fontSize:22,fontWeight:600,color:'#132a4f',fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(c.total)}</strong>
                         <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
                       </div>
                       <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
@@ -3704,9 +3705,16 @@ body:has(.ac-bottom){padding-bottom:76px}
                       <div style={{padding:'0 16px 14px',borderTop:'1px solid #f3f0e8',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
                           {(showAllDrilldown.has(`expcat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
-                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
-                              <span style={{color:'#5d6b82'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
-                              <strong style={{color:'#dc2626',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'10px 0',fontSize:12.5,borderBottom:'1px solid #f1ede2'}}>
+                              <div style={{minWidth:0}}>
+                                <div style={{color:'#0f1b2e',fontWeight:600,wordBreak:'break-word'}}>{e.note||e.category}</div>
+                                <div style={{display:'flex',flexWrap:'wrap',gap:'4px 6px',marginTop:6}}>
+                                  {[['Date',e.entry_date],['Sub',e.sub_category],['Paid to',vendors.find(v=>String(v.id)===String(e.vendor_id))?.name],['Voucher head',e.voucher_head],['Mode',e.payment_mode],['Account',e.account_type||'Cash A/c'],['Ref',e.txn_ref],['By',e.added_by],['Receipt',e.receipt_url?'Attached':'']].filter(([,v])=>v).map(([k,v])=>(
+                                    <span key={k} style={{fontSize:11,padding:'2px 9px',borderRadius:999,backgroundColor:'#f5f3ec',border:'1px solid #ece7d8',color:'#4b4f58'}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'#9c9ea6',marginRight:5}}>{k}</span>{v}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <strong style={{color:'#b91c1c',flexShrink:0,marginLeft:12,fontFamily:AC.serif,fontSize:15,fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
                           {catEntries.length>10&&(
