@@ -318,9 +318,25 @@ textarea.in { resize: vertical; min-height: 62px; }
 .bank-row { display: grid; grid-template-columns: auto 30px 44px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 13.5px; }
 .cropbtn { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 3px; line-height: 0; }
 .cropbtn:hover img, .cropbtn:focus-visible img { outline: 2px solid var(--brand); outline-offset: 1px; }
-.cropwrap { position: relative; touch-action: none; cursor: crosshair; user-select: none; border: 1px solid var(--rule); background: #fff; }
-.cropwrap img { display: block; width: 100%; height: auto; pointer-events: none; }
-.croprect { position: absolute; border: 2px dashed #c0392b; background: rgba(192, 57, 43, .08); pointer-events: none; }
+.crop-ov { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: grid; place-items: center; padding: 12px; }
+.crop-card { background: var(--paper); border-radius: 8px; box-shadow: var(--shadow); width: min(1100px, 100%); height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; }
+.crop-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 18px; border-bottom: 1px solid var(--rule); }
+.crop-tools .btn { min-width: 36px; }
+.crop-z { font-family: var(--f-mono); font-size: 12px; min-width: 48px; text-align: center; }
+.crop-view { position: relative; overflow: auto; background: #8a9693; overscroll-behavior: contain; touch-action: none; }
+.crop-stage { position: relative; margin: 0 auto; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.crop-stage img { display: block; width: 100%; height: auto; pointer-events: none; background: #fff; }
+.croprect { position: absolute; border: 2px solid #c0392b; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .35); cursor: move; box-sizing: border-box; }
+.croprect .h { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #c0392b; border-radius: 2px; box-sizing: border-box; }
+.croprect .h.n, .croprect .h.s { left: calc(50% - 7px); cursor: ns-resize; }
+.croprect .h.e, .croprect .h.w { top: calc(50% - 7px); cursor: ew-resize; }
+.croprect .h.n, .croprect .h.ne, .croprect .h.nw { top: -8px; }
+.croprect .h.s, .croprect .h.se, .croprect .h.sw { bottom: -8px; }
+.croprect .h.w, .croprect .h.nw, .croprect .h.sw { left: -8px; }
+.croprect .h.e, .croprect .h.ne, .croprect .h.se { right: -8px; }
+.croprect .h.nw, .croprect .h.se { cursor: nwse-resize; }
+.croprect .h.ne, .croprect .h.sw { cursor: nesw-resize; }
+.cropbtn2 { font-size: 11px; padding: 3px 8px; }
 .bank-row input { accent-color: var(--brand); width: 16px; height: 16px; margin: 0; }
 .bank-row .n { font-family: var(--f-display); font-weight: 800; }
 .bank-row svg.fig { width: 40px; height: 40px; }
@@ -997,12 +1013,14 @@ function itemCard(it, ii, qn) {
     const optArea = it.optMode === 'img'
       ? `<div class="imgslots">${[0, 1, 2, 3].map(i => { const s = imgSrc((it.optImgs || [])[i]); return `<div class="slot">${s ? `<img src="${esc(s)}" alt="Option ${LET[i]}">` : '<div class="imgph">No image</div>'}
           <span class="btn filebtn">${LET[i]} · Upload<input type="file" accept="image/*" data-f="oimg${i}" aria-label="Upload option ${LET[i]} image"></span>
+          ${s ? `<button class="btn cropbtn2" type="button" data-act="recrop" data-f="oimg${i}" aria-label="Crop option ${LET[i]} image">Crop</button>` : ''}
           <label class="ans" style="display:flex;gap:4px;align-items:center;font-family:var(--f-mono);font-size:11px"><input type="radio" name="a-${k}" data-f="a" value="${i}"${it.a === i ? ' checked' : ''}>Correct</label></div>`; }).join('')}</div>`
       : textOpts;
     return `<div class="item q" data-i="${ii}">${head}<span class="chip">Figure question</span>${noKey}${tools}</div>
       ${field('Question text (optional)', 'q', it.q, { k, area: true, rows: 2, ph: 'e.g. Select the mirror image of the question figure.' })}
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">${src ? `<img class="qimg" style="max-height:120px" src="${esc(src)}" alt="Question figure">` : '<div class="imgph">No figure yet</div>'}
-        <span class="btn filebtn">${src ? 'Replace figure' : 'Upload figure'}<input type="file" accept="image/*" data-f="img" aria-label="Upload question figure"></span></div>
+        <span class="btn filebtn">${src ? 'Replace figure' : 'Upload figure'}<input type="file" accept="image/*" data-f="img" aria-label="Upload question figure"></span>
+        ${src ? '<button class="btn" type="button" data-act="recrop" data-f="img">Crop / zoom</button>' : ''}</div>
       <label class="toggle"><input type="checkbox" data-f="optMode"${it.optMode === 'img' ? ' checked' : ''}>Answer options are pictures</label>
       ${optArea}<p class="genmsg" data-msg></p></div>`;
   }
@@ -1079,9 +1097,9 @@ async function doSave() {
 function flushSave() { if (saveTimer && cur.view === 'maker') doSave(); }
 
 /* image upload: downscale, then store as an asset (shared) or a data URL (this browser) */
-async function storeImage(file) {
+async function storeImage(file, maxSide = 900) {
   const bmp = await createImageBitmap(file);
-  const sc = Math.min(1, 900 / Math.max(bmp.width, bmp.height));
+  const sc = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas'); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
   const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
   let blob = await new Promise(r => c.toBlob(r, 'image/webp', .88));
@@ -2139,7 +2157,7 @@ async function runImport() {
     }
     if (imp !== job) return;                             // closed while reading
     imp.items = mergeContinued(items);
-    imp.pages = pages; imp.pageUrls = {}; imp.off = null;
+    imp.pages = pages; imp.pageUrls = {};
     imp.skipped = total - pages.length;
     renderReview();
   } catch (e) {
@@ -2157,7 +2175,7 @@ function renderReview() {
   const secs = items.filter(i => i.t === 'section').length, pas = items.filter(i => i.t === 'passage').length;
   const noKey = qs.filter(q => q.a == null).length, figs = qs.filter(q => q.fig || q.optFigs).length;
   const rows = items.map((it, i) => {
-    const box = `<input type="checkbox" data-imp="${i}"${imp.off && imp.off.has(i) ? '' : ' checked'} aria-label="Include">`;
+    const box = `<input type="checkbox" data-imp="${i}" checked aria-label="Include">`;
     if (it.t === 'note') return `<div class="bank-row" style="cursor:default"><span></span><span></span><span></span><span class="tx" style="color:var(--bad)">${esc(it.text)}</span></div>`;
     if (it.t === 'section') return `<label class="bank-row imp-row" style="background:var(--tint)">${box}<span class="n">§</span><span class="chip">Section</span><span class="tx"><b>${esc(it.tag)}</b> ${esc(it.title)}</span></label>`;
     if (it.t === 'head') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Heading</span><span class="tx">${esc([it.sub, it.part].filter(Boolean).join(' · ') || plain(it.dir).slice(0, 90))}</span></label>`;
@@ -2174,51 +2192,172 @@ function renderReview() {
     <p class="genmsg" id="impMsg" role="status"></p>`;
   $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
 }
-/* draw a figure's crop again on its page: drag a box over the drawing, then "Use this crop" */
+/* ---------- crop editor: zoom in, then draw, move or resize the box over the page ---------- */
+let cropper = null;
+function closeCropper() { if (cropper) { cropper.el.remove(); cropper = null; } }
+/* o: { canvas, url, box ([ymin, xmin, ymax, xmax] of 1000), title, note, onUse(box) → Promise } */
+function openCropper(o) {
+  closeCropper();
+  const el = document.createElement('div');
+  el.className = 'crop-ov';
+  el.innerHTML = `<div class="crop-card" role="dialog" aria-modal="true" aria-labelledby="cropT" tabindex="-1">
+    <div class="ov-h"><h2 id="cropT">${esc(o.title)}</h2><button class="btn" type="button" data-c="cancel">Cancel</button></div>
+    <div class="crop-tools"><button class="btn" type="button" data-c="out" aria-label="Zoom out" title="Zoom out (−)">−</button><span class="crop-z" id="cropZ" aria-live="polite"></span><button class="btn" type="button" data-c="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
+      <button class="btn" type="button" data-c="box">Zoom to box</button><button class="btn" type="button" data-c="fit">Whole page</button><button class="btn" type="button" data-c="snap" title="Fit the box to the drawing under it">Snap to drawing</button>
+      ${o.note ? `<span class="subnote">${esc(o.note)}</span>` : ''}</div>
+    <div class="crop-view" id="cropView"><div class="crop-stage" id="cropStage"><img src="${o.url}" alt="" draggable="false"><div class="croprect" id="cropRect">${['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(h => `<span class="h ${h}" data-h="${h}"></span>`).join('')}</div></div></div>
+    <div class="ov-f"><span class="subnote" id="cropMsg">Drag to draw a new box; drag inside it to move it, or its handles to resize. Zoom with + / −, Ctrl + scroll or two fingers. Arrow keys nudge it (Shift + arrows resize).</span>
+      <div class="addbar"><button class="btn primary" type="button" data-c="use">Use this crop</button></div></div></div>`;
+  document.body.append(el);
+  const view = el.querySelector('#cropView'), stage = el.querySelector('#cropStage'), rect = el.querySelector('#cropRect'), img = stage.querySelector('img');
+  const msg = t => { el.querySelector('#cropMsg').textContent = t; };
+  const aspect = o.canvas.height / o.canvas.width;
+  const C = cropper = { el, box: o.box.slice(), z: 1 };
+  const clampB = b => { const y0 = Math.max(0, Math.min(b[0], b[2])), x0 = Math.max(0, Math.min(b[1], b[3])), y1 = Math.min(1000, Math.max(b[0], b[2])), x1 = Math.min(1000, Math.max(b[1], b[3])); return [y0, x0, y1, x1]; };
+  const show = () => { const b = C.box; Object.assign(rect.style, { top: b[0] / 10 + '%', left: b[1] / 10 + '%', height: (b[2] - b[0]) / 10 + '%', width: (b[3] - b[1]) / 10 + '%' }); };
+  const fitW = () => view.clientWidth;
+  const zMin = () => Math.min(1, view.clientHeight / (fitW() * aspect));
+  // zoom so that (px, py) in the view stays over the same spot of the page
+  const zoom = (z, px = view.clientWidth / 2, py = view.clientHeight / 2) => {
+    z = Math.max(zMin(), Math.min(10, z));
+    const w0 = stage.offsetWidth || 1, h0 = stage.offsetHeight || 1;
+    const fx = (view.scrollLeft + px - stage.offsetLeft) / w0, fy = (view.scrollTop + py - stage.offsetTop) / h0;
+    C.z = z; stage.style.width = Math.round(fitW() * z) + 'px';
+    view.scrollLeft = fx * stage.offsetWidth + stage.offsetLeft - px; view.scrollTop = fy * stage.offsetHeight + stage.offsetTop - py;
+    el.querySelector('#cropZ').textContent = Math.round(z * 100) + '%';
+  };
+  const toBox = () => {
+    const b = C.box, bw = Math.max(5, b[3] - b[1]) / 1000, bh = Math.max(5, b[2] - b[0]) / 1000 * aspect;
+    zoom(Math.min(view.clientWidth * .6 / (fitW() * bw), view.clientHeight * .6 / (fitW() * bh)));
+    view.scrollLeft = (b[1] + b[3]) / 2000 * stage.offsetWidth + stage.offsetLeft - view.clientWidth / 2;
+    view.scrollTop = (b[0] + b[2]) / 2000 * stage.offsetHeight + stage.offsetTop - view.clientHeight / 2;
+  };
+  const at = e => { const r = stage.getBoundingClientRect(); return [Math.min(1000, Math.max(0, (e.clientY - r.top) / r.height * 1000)), Math.min(1000, Math.max(0, (e.clientX - r.left) / r.width * 1000))]; };
+  // pointer: draw, move, resize; two fingers pinch to zoom
+  const pts = new Map(); let drag = null, pinch = null;
+  stage.addEventListener('pointerdown', e => {
+    e.preventDefault(); stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [p, q] = [...pts.values()]; pinch = { d: Math.hypot(p.x - q.x, p.y - q.y), z: C.z }; drag = null; return; }
+    const p = at(e), h = e.target.dataset && e.target.dataset.h;
+    drag = h ? { mode: 'size', h } : e.target === rect ? { mode: 'move', p, b: C.box.slice() } : { mode: 'draw', p };
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size === 2) {
+      const [p, q] = [...pts.values()], r = view.getBoundingClientRect();
+      zoom(pinch.z * Math.hypot(p.x - q.x, p.y - q.y) / (pinch.d || 1), (p.x + q.x) / 2 - r.left, (p.y + q.y) / 2 - r.top); return;
+    }
+    if (!drag) return;
+    const p = at(e), b = C.box.slice();
+    if (drag.mode === 'draw') C.box = clampB([drag.p[0], drag.p[1], p[0], p[1]]);
+    else if (drag.mode === 'move') {
+      const h = drag.b[2] - drag.b[0], w = drag.b[3] - drag.b[1];
+      const y = Math.max(0, Math.min(1000 - h, drag.b[0] + p[0] - drag.p[0])), x = Math.max(0, Math.min(1000 - w, drag.b[1] + p[1] - drag.p[1]));
+      C.box = [y, x, y + h, x + w];
+    } else {
+      if (drag.h.includes('n')) b[0] = p[0]; if (drag.h.includes('s')) b[2] = p[0];
+      if (drag.h.includes('w')) b[1] = p[1]; if (drag.h.includes('e')) b[3] = p[1];
+      C.box = clampB(b);
+    }
+    show();
+  });
+  const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (!pts.size) drag = null; };
+  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+  view.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const r = view.getBoundingClientRect(); zoom(C.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  const use = async () => {
+    const b = C.box.map(v => Math.round(v * 10) / 10);
+    if (!okBox(b)) return msg('That box is too small. Drag a larger box.');
+    el.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    msg('Saving the crop…');
+    try { await o.onUse(b); closeCropper(); }
+    catch (err) { msg(err && err.code === 'too_large' ? 'That crop is too large to save.' : 'Could not save the crop. Try again.'); el.querySelectorAll('button').forEach(x => { x.disabled = false; }); }
+  };
+  el.addEventListener('click', e => {
+    const c = e.target.closest('[data-c]'); if (!c) return;
+    const k = c.dataset.c;
+    if (k === 'cancel') closeCropper();
+    else if (k === 'in') zoom(C.z * 1.4); else if (k === 'out') zoom(C.z / 1.4);
+    else if (k === 'fit') zoom(zMin()); else if (k === 'box') toBox();
+    else if (k === 'snap') { C.box = refineBox(o.canvas, C.box); show(); msg('Fitted to the drawing. Check it, then use the crop.'); }
+    else if (k === 'use') use();
+  });
+  el.addEventListener('keydown', e => {
+    if (e.target.closest('button') && (e.key === 'Enter' || e.key === ' ')) return;
+    const step = e.altKey ? 1 : 4, b = C.box.slice();
+    const mv = { ArrowUp: [-step, 0], ArrowDown: [step, 0], ArrowLeft: [0, -step], ArrowRight: [0, step] }[e.key];
+    if (e.key === 'Escape') { e.preventDefault(); closeCropper(); }
+    else if (e.key === 'Enter') { e.preventDefault(); use(); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoom(C.z * 1.4); }
+    else if (e.key === '-') { e.preventDefault(); zoom(C.z / 1.4); }
+    else if (mv) {
+      e.preventDefault();
+      if (e.shiftKey) { b[2] = Math.max(b[0] + 6, b[2] + mv[0]); b[3] = Math.max(b[1] + 6, b[3] + mv[1]); C.box = clampB(b); }
+      else { const h = b[2] - b[0], w = b[3] - b[1], y = Math.max(0, Math.min(1000 - h, b[0] + mv[0])), x = Math.max(0, Math.min(1000 - w, b[1] + mv[1])); C.box = [y, x, y + h, x + w]; }
+      show();
+    }
+  });
+  show();
+  const start = () => { toBox(); el.querySelector('.crop-card').focus(); };
+  if (img.complete) start(); else img.onload = start;
+}
+
+/* a stored picture (link, data or /_blob/ id) as a canvas, read through the portal when its link fails */
+async function loadCanvas(ref) {
+  const s = imgSrc(ref); if (!s) return null;
+  const get = u => fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); });
+  const blob = await get(s).catch(async e => { const alt = /^https:/.test(s) ? await portalImage(s) : null; if (!alt) throw e; return get(alt); });
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0);
+  return c;
+}
+
+/* import review: a figure's crop, drawn again on its page */
 function openCrop(i, k) {
   const it = imp && imp.items && imp.items[i], f = it && (k === 'fig' ? it.fig : (it.optFigs || [])[+k]);
   if (!f || imp.busy || !imp.pages || !imp.pages[f.page - 1]) return;
-  imp.off = new Set([...ov.querySelectorAll('[data-imp]')].filter(c => !c.checked).map(c => +c.dataset.imp));
-  imp.scroll = ($('#impBody') || {}).scrollTop || 0;
   const cv = imp.pages[f.page - 1];
   imp.pageUrls = imp.pageUrls || {};
-  const url = imp.pageUrls[f.page] || (imp.pageUrls[f.page] = cv.toDataURL('image/jpeg', .85));
-  imp.crop = { i, k, box: f.box.slice() };
-  const what = k === 'fig' ? 'the question figure' : `answer figure ${LET[+k]}`;
-  $('#impBody').innerHTML = `<p class="subnote">Question ${esc(it.number ?? '')}: drag a box tightly around <b>${what}</b> on page ${f.page}. Leave out the question number and the (A) (B) (C) (D) labels.</p>
-    <div class="cropwrap" id="cropWrap"><img src="${url}" alt="Page ${f.page}" draggable="false"><div class="croprect" id="cropRect"></div></div>`;
-  $('#impFoot').innerHTML = `<span class="subnote" id="cropMsg">The dashed box is the current crop.</span><div class="addbar"><button class="btn" type="button" data-act="cropback">Cancel</button><button class="btn primary" type="button" data-act="cropuse">Use this crop</button></div>`;
-  const wrap = $('#cropWrap'), rect = $('#cropRect');
-  const show = () => { const b = imp.crop.box; Object.assign(rect.style, { top: b[0] / 10 + '%', left: b[1] / 10 + '%', height: (b[2] - b[0]) / 10 + '%', width: (b[3] - b[1]) / 10 + '%' }); };
-  show();
-  const img = wrap.querySelector('img');
-  const at = e => { const r = img.getBoundingClientRect(); return [Math.min(1000, Math.max(0, (e.clientY - r.top) / r.height * 1000)), Math.min(1000, Math.max(0, (e.clientX - r.left) / r.width * 1000))]; };
-  let start = null;
-  wrap.addEventListener('pointerdown', e => { e.preventDefault(); start = at(e); wrap.setPointerCapture(e.pointerId); });
-  wrap.addEventListener('pointermove', e => {
-    if (!start) return;
-    const p = at(e);
-    imp.crop.box = [Math.min(start[0], p[0]), Math.min(start[1], p[1]), Math.max(start[0], p[0]), Math.max(start[1], p[1])];
-    show();
-  });
-  const end = () => { start = null; };
-  wrap.addEventListener('pointerup', end); wrap.addEventListener('pointercancel', end);
-  const scrollTo = () => { const body = $('#impBody'); if (body) body.scrollTop = Math.max(0, rect.offsetTop + wrap.offsetTop - 80); };
-  if (img.complete) scrollTo(); else img.onload = scrollTo;
+  const url = imp.pageUrls[f.page] || (imp.pageUrls[f.page] = cv.toDataURL('image/jpeg', .9));
+  const what = k === 'fig' ? 'question figure' : `answer figure ${LET[+k]}`;
+  openCropper({ canvas: cv, url, box: f.box, title: `Question ${it.number ?? ''} · ${what} (page ${f.page})`, note: 'Leave out the question number and the (A) (B) (C) (D) labels.',
+    onUse: async box => {
+      const nf = { cv: cropBox(cv, box, 0), page: f.page, box };
+      if (k === 'fig') it.fig = nf; else it.optFigs[+k] = nf;
+      const b = ov.querySelector(`[data-act="impcrop"][data-i="${i}"][data-k="${k}"]`);
+      if (b) b.innerHTML = thumb(nf.cv);
+    } });
 }
-function useCrop(keep) {
-  const c = imp && imp.crop;
-  if (!c) return;
-  imp.crop = null;
-  if (keep) {
-    const it = imp.items[c.i], f = c.k === 'fig' ? it.fig : it.optFigs[+c.k];
-    if (!okBox(c.box)) { imp.crop = c; const m = $('#cropMsg'); if (m) m.textContent = 'That box is too small. Drag a larger box.'; return; }
-    const box = c.box.map(v => Math.round(v * 10) / 10);
-    const nf = { cv: cropBox(imp.pages[f.page - 1], box, 0), page: f.page, box };
-    if (c.k === 'fig') it.fig = nf; else it.optFigs[+c.k] = nf;
-  }
-  renderReview();
-  const body = $('#impBody'); if (body) body.scrollTop = imp.scroll || 0;
+
+/* set maker: crop a saved figure again. Figures imported with their page keep a link to it
+   (imgFrom / optFrom), so the box can also be widened; others can only be trimmed. */
+async function recrop(it, f, card) {
+  const k = f === 'img' ? -1 : +f.slice(4);
+  const ref = k < 0 ? it.img : (it.optImgs || [])[k];
+  const from = k < 0 ? it.imgFrom : (it.optFrom || [])[k];
+  const msg = t => { const m = card && card.querySelector('[data-msg]'); if (m) m.textContent = t; };
+  msg('Opening the picture…');
+  const page = from && imgSrc(from.p) && okBox(from.b) ? from : null;
+  const open = r => loadCanvas(r).catch(() => null);
+  let cv = page ? await open(page.p) : null;
+  const onPage = !!cv;
+  if (!cv) cv = await open(ref);
+  if (!cv) return msg('Could not open that picture.');
+  msg('');
+  openCropper({ canvas: cv, url: cv.toDataURL('image/jpeg', .92), box: onPage ? page.b : [0, 0, 1000, 1000],
+    title: k < 0 ? 'Crop the question figure' : `Crop answer figure ${LET[k]}`,
+    note: onPage ? 'Showing the page the figure was cut from.' : 'Only the saved figure is available, so it can be trimmed but not widened.',
+    onUse: async box => {
+      const nref = await storeImage(await canvasBlob(cropBox(cv, box, 0), 'image/png'));
+      if (k < 0) { it.img = nref; if (onPage) it.imgFrom = { p: page.p, b: box }; }
+      else {
+        it.optImgs = it.optImgs || ['', '', '', '']; it.optImgs[k] = nref;
+        if (onPage) { it.optFrom = it.optFrom || [null, null, null, null]; it.optFrom[k] = { p: page.p, b: box }; }
+      }
+      dirty(true);
+    } });
 }
 async function finishImport() {
   if (!imp || imp.busy || !imp.items) return;
@@ -2230,6 +2369,14 @@ async function finishImport() {
     const crops = chosen.filter(q => q.t === 'q').reduce((n, q) => n + (q.fig ? 1 : 0) + (q.optFigs ? 4 : 0), 0);
     let done = 0;
     const save = async f => { msg(`Saving figures ${++done} of ${crops}…`); return storeImage(await canvasBlob(f.cv, 'image/png')); };
+    // each page that figures came from is saved once (shared storage only), so a crop can be redone later
+    const pageRefs = {};
+    const from = async f => {
+      if (!S.assets || !imp.pages[f.page - 1]) return null;
+      if (!(f.page in pageRefs)) pageRefs[f.page] = canvasBlob(imp.pages[f.page - 1], 'image/jpeg', .9).then(b => storeImage(b, 2400)).catch(() => '');
+      const p = await pageRefs[f.page];
+      return p ? { p, b: f.box } : null;
+    };
     const built = [];
     for (const it of chosen) {
       if (it.t !== 'q') { built.push(it); continue; }
@@ -2240,6 +2387,8 @@ async function finishImport() {
         q.optMode = it.optFigs ? 'img' : 'text';
         q.optImgs = it.optFigs ? [] : ['', '', '', ''];
         if (it.optFigs) for (const c of it.optFigs) q.optImgs.push(await save(c));
+        if (it.fig) { const fr = await from(it.fig); if (fr) q.imgFrom = fr; }
+        if (it.optFigs) { const fr = []; for (const c of it.optFigs) fr.push(await from(c)); if (fr.some(Boolean)) q.optFrom = fr; }
       }
       built.push(q);
     }
@@ -2327,7 +2476,6 @@ document.addEventListener('click', async e => {
   else if (act === 'impstop') { if (imp && imp.ctl) imp.ctl.abort(); return; }
   else if (act === 'impadd') { finishImport(); return; }
   else if (act === 'impcrop') { e.preventDefault(); openCrop(+a.dataset.i, a.dataset.k); return; }
-  else if (act === 'cropuse' || act === 'cropback') { useCrop(act === 'cropuse'); return; }
   else if (act === 'expdf') { runExport('pdf'); return; }
   else if (act === 'exdocx') { runExport('docx'); return; }
   if (cur.view !== 'maker') return;
@@ -2348,6 +2496,7 @@ document.addEventListener('click', async e => {
     if (!a.classList.contains('armed')) { a.classList.add('armed'); a.textContent = `Delete with ${(sec.items || []).length} items?`; return; }
     d.sections.splice(cur.sec, 1); cur.sec = Math.max(0, cur.sec - 1); dirty(true);
   }
+  else if (act === 'recrop') { if (S.canWrite && ii >= 0) recrop(items[ii], a.dataset.f, card); return; }
   else if (act === 'add') {
     const k = a.dataset.k;
     const it = k === 'q' ? { t: 'q', kind: 'text', q: '', opts: ['', '', '', ''], a: null }
@@ -2405,8 +2554,8 @@ document.addEventListener('change', async e => {
   const msg = card.querySelector('[data-msg]'); if (msg) msg.textContent = 'Uploading…';
   try {
     const ref = await storeImage(el.files[0]);
-    if (f === 'img') it.img = ref;
-    else { it.optImgs = it.optImgs || ['', '', '', '']; it.optImgs[+f.slice(4)] = ref; }
+    if (f === 'img') { it.img = ref; delete it.imgFrom; }
+    else { it.optImgs = it.optImgs || ['', '', '', '']; it.optImgs[+f.slice(4)] = ref; if (it.optFrom) it.optFrom[+f.slice(4)] = null; }
     dirty(true);
   } catch (err) {
     if (msg) msg.textContent = err && err.code === 'too_large' ? 'That image is too large.' : 'Could not add that image. Try a PNG or JPEG.';
