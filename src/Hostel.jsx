@@ -20,6 +20,7 @@ import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHo
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
 import { allocateStudent, vacateStudent, bulkAllocateStudents, bulkVacateStudents, setStudentsStatus } from './hostelAllocation'
+import { rebrandReport, pdfLetterhead, pdfFooters } from './reportKit'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -1442,34 +1443,21 @@ const isAssigned = (s) => {
 //  this file never needs to know about any tab's internal shape.
 // ══════════════════════════════════════════════════════════════
 const REPORT_NAVY = [30, 58, 95]
-const REPORT_GOLD = [202, 138, 4]
 const REPORT_GREY = [100, 116, 139]
 
 function generateTableReportPDF({ title, subtitle, columns, rows, schoolName = 'Guidance Navodaya & Sainik Institute' }) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const W = 297, H = 210
   const marginX = 12
-  let y = 16
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.setTextColor(...REPORT_NAVY)
-  doc.text(schoolName, W / 2, y, { align: 'center' })
-  y += 6
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.setTextColor(...REPORT_GREY)
-  doc.text(title, W / 2, y, { align: 'center' })
-  y += 5
+  // the shared report letterhead (reportKit.js); schoolName only overrides the settings name when passed
+  let y = pdfLetterhead(doc, { title, margin: marginX, institute: schoolName !== 'Guidance Navodaya & Sainik Institute' ? { name: schoolName } : undefined })
   if (subtitle) {
+    doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
-    doc.text(subtitle, W / 2, y, { align: 'center' })
+    doc.setTextColor(...REPORT_GREY)
+    doc.text(subtitle, marginX, y)
     y += 5
   }
-  doc.setDrawColor(...REPORT_GOLD)
-  doc.setLineWidth(0.6)
-  doc.line(marginX, y, W - marginX, y)
-  y += 6
 
   // Column widths — distribute available width by each column's `width`
   // weight (defaults to 1), so callers can bias wider text columns.
@@ -1526,14 +1514,7 @@ function generateTableReportPDF({ title, subtitle, columns, rows, schoolName = '
     doc.text('No records for the selected range.', W / 2, y + 10, { align: 'center' })
   }
 
-  const pageCount = doc.internal.getNumberOfPages()
-  for (let p = 1; p <= pageCount; p++) {
-    doc.setPage(p)
-    doc.setFontSize(7)
-    doc.setTextColor(...REPORT_GREY)
-    doc.text(`Generated ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`, marginX, H - 8)
-    doc.text(`Page ${p} of ${pageCount}`, W - marginX, H - 8, { align: 'right' })
-  }
+  pdfFooters(doc, { margin: marginX })
 
   doc.save(`${title.replace(/[^\w]+/g, '_')}_${today()}.pdf`)
 }
@@ -1549,7 +1530,7 @@ function printTableReport({ title, subtitle, columns, rows, schoolName = 'Guidan
     }).join('')
     return `<tr style="background:${i % 2 === 1 ? '#f4f6f9' : 'white'}">${cells}</tr>`
   }).join('')
-  w.document.write(`
+  w.document.write(rebrandReport(`
     <html>
       <head>
         <title>${title}</title>
@@ -1574,7 +1555,7 @@ function printTableReport({ title, subtitle, columns, rows, schoolName = 'Guidan
         }
       </body>
     </html>
-  `)
+  `, { title: title, drop: ["body > h1", "body > h2"] }))
   w.document.close()
   w.print()
 }

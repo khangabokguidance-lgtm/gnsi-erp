@@ -4,6 +4,7 @@
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
+import { reportLetterhead, REPORT_CSS, REPORT_FONTS } from '../reportKit';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : (Math.round(n * 10 ** d) / 10 ** d).toString());
@@ -59,15 +60,15 @@ tr.tot td{background:#e0e7ff;font-weight:700}
 export function printDocument(bodyHTML, title = 'Report') {
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><link rel="stylesheet" href="${REPORT_FONTS}"><style>${REPORT_CSS}${CSS}.page .rk-top{padding:0 0 10px}.page .rk-band{margin:0 -2px}.page .rk-accent{margin:0 -2px 12px}body{font-family:'Plus Jakarta Sans',Inter,Arial,sans-serif}</style></head><body>
   <div class="bar"><button onclick="window.print()">🖨️ Print / Save as PDF</button><span>${esc(title)}</span></div>${bodyHTML}</body></html>`);
   w.document.close();
 }
 
+// Every page opens with the portal's shared report letterhead (reportKit.js); inst may override the settings.
 function letterhead(inst = {}) {
-  const logo = inst.logoUrl ? `<img src="${esc(inst.logoUrl)}" alt="" onerror="this.style.display='none'"/>` : '';
-  return `<div class="lh">${logo}<div class="t"><div class="n">${esc(inst.name || 'Guidance Navodaya & Sainik Institute')}</div>
-  <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div>${logo ? '<div style="width:58px"></div>' : ''}</div>`;
+  const institute = Object.fromEntries(Object.entries({ name: inst.name, address: inst.address }).filter(([, v]) => v));
+  return reportLetterhead('Mock Test Analysis', { institute, logo: /^https:\/\//.test(inst.logoUrl || '') ? inst.logoUrl : undefined, tagline: inst.tagline });
 }
 const stamp = (inst) => `<div class="foot">Generated on ${new Date().toLocaleString('en-IN')} · ${esc(inst?.name || 'GNSI')} · This analysis is computer generated from recorded mock-test results.</div>`;
 const sigs = (inst) => `<div class="sig"><div>${esc(inst?.teacher || 'Class Teacher')}</div><div>Parent / Guardian</div><div>${esc(inst?.principal || 'Principal')}</div></div>`;

@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './lib/imageCompress'
-import { sysOr, sysValue } from './systemSettings'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { pdfLetterhead, pdfFooters, PDF_TABLE_STYLES } from './reportKit'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GNSI — Construction & Maintenance
@@ -35,12 +35,6 @@ const STATUS_COLORS = {
 }
 const PRIORITY_COLORS = { Low: '#64748b', Medium: '#0e7490', High: '#d97706', Critical: '#dc2626' }
 const CATEGORY_ICON = { Construction: '🏗️', Maintenance: '🔧' }
-// Name / address follow System Settings → Basic Info.
-const INSTITUTE_INFO = {
-  get name() { const n = sysValue('school_name'); return n ? n.toUpperCase() : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)' },
-  tagline: 'NVS · Sainik School · RMS Entrance Coaching',
-  get address() { return sysOr('school_address', 'Khangabok, Thoubal, Manipur, India') },
-}
 
 const emptyProject = {
   name: '', category: 'Construction', description: '', contractor: '', contractor_phone: '', budget_amount: '',
@@ -99,17 +93,9 @@ async function uploadFile(folder, rawFile, id) {
   if (error) throw new Error(`Upload failed: ${error.message}`)
   return supabase.storage.from(CM_BUCKET).getPublicUrl(path).data.publicUrl
 }
+// The shared report letterhead (reportKit.js); returns where the body starts.
 function pdfHeader(doc, title) {
-  const w = doc.internal.pageSize.getWidth()
-  doc.setFillColor(19, 42, 79); doc.rect(0, 0, w, 78, 'F')
-  doc.setTextColor(255); doc.setFontSize(13); doc.setFont(undefined, 'bold')
-  doc.text(INSTITUTE_INFO.name, w / 2, 30, { align: 'center' })
-  doc.setFontSize(8.5); doc.setFont(undefined, 'normal')
-  doc.text(`${INSTITUTE_INFO.tagline} · ${INSTITUTE_INFO.address}`, w / 2, 46, { align: 'center' })
-  doc.setTextColor(233, 217, 176); doc.setFontSize(11); doc.setFont(undefined, 'bold')
-  doc.text(title, w / 2, 66, { align: 'center' })
-  doc.setTextColor(15, 23, 42); doc.setFont(undefined, 'normal')
-  return 100
+  return pdfLetterhead(doc, { title, margin: doc.internal.pageSize.getWidth() < 500 ? 24 : 36 }) + 8
 }
 
 // ── derived project analytics ─────────────────────────────────────────────
@@ -545,7 +531,7 @@ export default function ConstructionMaintenance() {
       if (!body.length) return
       if (y > 720) { doc.addPage(); y = 50 }
       doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text(title, 40, y + 8); doc.setFont(undefined, 'normal')
-      autoTable(doc, { startY: y + 14, head: [head], body, styles: { fontSize: 8 }, headStyles: { fillColor: [19, 42, 79] }, margin: { left: 40, right: 40 } })
+      autoTable(doc, { startY: y + 14, head: [head], body, styles: { fontSize: 8 }, ...PDF_TABLE_STYLES, margin: { left: 40, right: 40 } })
       y = doc.lastAutoTable.finalY + 18
     }
     y += 6
@@ -554,6 +540,7 @@ export default function ConstructionMaintenance() {
     table('Payment Milestones', ['Milestone', 'Due Date', 'Planned Amount', 'Status'], ms.map(m => [m.label, m.due_date || '—', fmt(m.planned_amount), m.is_paid ? 'Paid' : 'Pending']))
     table('Bill of Quantities', ['Item', 'Unit', 'Est. qty × rate', 'Estimated', 'Actual', 'Variance'], mats.map(m => { const e = m.est_qty * m.est_rate, a = m.actual_qty != null ? m.actual_qty * (m.actual_rate ?? m.est_rate) : null; return [m.item, m.unit || '—', `${m.est_qty} × ${fmt(m.est_rate)}`, fmt(e), a == null ? '—' : fmt(a), a == null ? '—' : fmt(a - e)] }))
     table('Issues', ['Issue', 'Priority', 'Status', 'Assigned', 'Due'], iss.map(i => [i.title, i.priority, i.status, i.assigned_to || '—', i.due_date || '—']))
+    pdfFooters(doc)
     doc.save(`${p.name.replace(/[^a-z0-9]+/gi, '_')}_report.pdf`)
   }
   const portfolioReport = () => {
@@ -563,12 +550,13 @@ export default function ConstructionMaintenance() {
     doc.text(`Projects: ${summary.count}   Active: ${summary.active}   Budget: ${fmt(summary.totalBudget)}   Paid: ${fmt(summary.totalPaid)}   Remaining: ${fmt(summary.remaining)}   Forecast final cost: ${fmt(summary.forecast)}   Health: ${summary.score}% on track`, 40, y)
     autoTable(doc, { startY: y + 12, head: [['Project', 'Category', 'Status', 'Priority', 'Contractor', 'Budget', 'Paid', 'Remaining', 'Progress', 'Target', 'Health']],
       body: filtered.map(p => [p.name, p.category, p.status, p.priority || 'Medium', p.contractor || '—', fmt(p.budget_amount), fmt(p.paid), fmt(p.remaining), `${p.progress}%`, p.target_end_date || '—', HEALTH[p.health][0]]),
-      styles: { fontSize: 8 }, headStyles: { fillColor: [19, 42, 79] }, margin: { left: 40, right: 40 } })
+      styles: { fontSize: 8 }, ...PDF_TABLE_STYLES, margin: { left: 40, right: 40 } })
     if (duePayments.length) {
       let yy = doc.lastAutoTable.finalY + 22
       doc.setFont(undefined, 'bold'); doc.text('Milestone payments due in the next 30 days', 40, yy); doc.setFont(undefined, 'normal')
       autoTable(doc, { startY: yy + 8, head: [['Due', 'Project', 'Milestone', 'Amount', '']], body: duePayments.map(m => [m.due_date, m.project?.name, m.label, fmt(m.planned_amount), m.overdue ? 'OVERDUE' : '']), styles: { fontSize: 8 }, headStyles: { fillColor: [184, 146, 58] }, margin: { left: 40, right: 40 } })
     }
+    pdfFooters(doc)
     doc.save(`GNSI_construction_portfolio_${today()}.pdf`)
   }
   const paymentVoucher = (p, pm) => {
@@ -585,6 +573,7 @@ export default function ConstructionMaintenance() {
     y = doc.lastAutoTable.finalY + 60
     doc.line(30, y, 150, y); doc.line(w / 2 - 60, y, w / 2 + 60, y); doc.line(w - 150, y, w - 30, y)
     doc.setFontSize(8.5); doc.text('Prepared by', 90, y + 12, { align: 'center' }); doc.text('Approved by', w / 2, y + 12, { align: 'center' }); doc.text('Receiver signature', w - 90, y + 12, { align: 'center' })
+    pdfFooters(doc)
     doc.save(`${vno}.pdf`)
   }
   const exportCSV = () => downloadCSV(`GNSI_projects_${today()}.csv`,

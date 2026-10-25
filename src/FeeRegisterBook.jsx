@@ -22,6 +22,7 @@ import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatem
 import { StatementView, InsightsView } from './FeeLedgerTools'
 import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
 import { refundStatementLines, writtenOffFor } from './lib/refundLedger'
+import { rebrandReport } from './reportKit'
 
 // Reprint one receipt with every line that was paid on it.
 function reprintReceipt(student, entries, receiptNo) {
@@ -388,8 +389,10 @@ function printRegister(student, reg, bookRows, session, bookScope) {
   <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div><div>Principal</div></div>
   <div class="np"><button onclick="window.print()">🖨 Print</button></div>
   </body></html>`
+  // the shared report design (reportKit.js); the register's heading becomes its subtitle
+  const doc = rebrandReport(html, { title: `Fee Register — ${student.name}`, drop: ['.inst', '.np'], subtitleFrom: 'body > h1' })
   const w = window.open('', '_blank', 'width=1100,height=800')
-  if (!w) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
-  w.document.write(html); w.document.close()
+  if (!w) { window.open(URL.createObjectURL(new Blob([doc], { type: 'text/html' })), '_blank'); return }
+  w.document.write(doc); w.document.close()
   setTimeout(() => { try { w.focus(); w.print() } catch { /* user can press Print */ } }, 700)
 }

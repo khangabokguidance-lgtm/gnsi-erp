@@ -19,6 +19,7 @@ import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 import { canonicalBatch, courseOf, COURSE_ORDER } from './courseMap'
+import { rebrandReport } from './reportKit'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -387,7 +388,7 @@ ${pendingItems.length > 0 ? `<div class="section"><div class="sh">📦 Pending P
 
   const pw = window.open('', '_blank', 'width=820,height=900')
   if (!pw) return
-  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 450)
+  pw.document.write(rebrandReport(html, { title: 'Reception Daily Summary', drop: ['.hdr', '.title', '.ftr'] })); pw.document.close(); setTimeout(() => pw.print(), 450)
 }
 
 // ── FEATURE 8: Enquiry Source Analytics ──────────────────────────────────────

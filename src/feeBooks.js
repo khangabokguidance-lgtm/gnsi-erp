@@ -7,6 +7,7 @@ import { fmt, fmtDate, escH, shortSession, toEntries } from './feeLedgerModel'
 import { instNameHTML } from './systemSettings'
 import { netRows } from './lib/monthwiseDues'
 import { SOURCE_LABEL, waiverTags } from './lib/waiverDetect'
+import { rebrandReport } from './reportKit'
 
 export const HEAD = { admission: 'Admission', item: 'Kit / Items', advance: 'Advance', course: 'Course Fee', flat: 'Flat Fee' }
 export const localISO = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
@@ -56,7 +57,9 @@ tfoot td,.sub td{font-weight:800;background:#f7f4ea;border-top:1.3px solid #1d3a
 @media print{.np{display:none}}`
 
 function openDoc(title, body, landscape = true) {
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)}</title><style>${CSS}@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:8mm}</style></head><body><div class="np"><button onclick="window.print()">🖨 Print</button><button onclick="window.close()" style="background:#fff">Close</button></div>${body}</body></html>`
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)}</title><style>${CSS}@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:8mm}</style></head><body><div class="np"><button onclick="window.print()">🖨 Print</button><button onclick="window.close()" style="background:#fff">Close</button></div>${body}</body></html>`
+  // the shared report design (reportKit.js): letterhead, title band, footer
+  html = rebrandReport(html, { title, orientation: landscape ? 'landscape' : 'portrait', drop: ['.np', '.inst'], subtitleFrom: 'body > h1', signatures: [] })
   const w = window.open('', '_blank', 'width=1200,height=900')
   if (!w) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
   w.document.write(html); w.document.close()

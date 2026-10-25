@@ -21,6 +21,7 @@ import { confirmFeeMonthOpen } from './monthLock'
 import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff, handoffToAdmissions, handoffToFees } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
+import { rebrandReport } from './reportKit'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -769,7 +770,7 @@ function exportToPDF(title, headers, rows) {
   const w=window.open('','_blank')
   const th=headers.map(h=>`<th>${h.label}</th>`).join('')
   const td=rows.map((r,i)=>`<tr style="background:${i%2?'#f8fafc':'#fff'}">${headers.map(h=>`<td>${r[h.key]??'—'}</td>`).join('')}</tr>`).join('')
-  w.document.write(`<html><head><title>${title}</title><style>
+  w.document.write(rebrandReport(`<html><head><title>${title}</title><style>
     @page{size:A4 landscape;margin:10mm}body{font-family:'Inter',sans-serif;font-size:11px;padding:16px}
     h2{font-size:16px;margin-bottom:4px;color:#0F172A}.meta{color:#64748B;margin-bottom:12px;font-size:10px}
     table{width:100%;border-collapse:collapse}th{background:#0F172A;color:#fff;padding:6px 10px;text-align:left;font-size:10px;font-weight:600}
@@ -778,7 +779,7 @@ function exportToPDF(title, headers, rows) {
     <h2>${title}</h2><div class="meta">${rows.length} records · ${new Date().toLocaleDateString('en-IN')}</div>
     <table><thead><tr>${th}</tr></thead><tbody>${td}</tbody></table>
     <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
-  </body></html>`)
+  </body></html>`, { title: title, drop: ["h2"] }))
   w.document.close()
 }
 
@@ -2168,7 +2169,7 @@ function printBatchList(students, label, canViewPII = false) {
       <td>${canViewPII ? (s.phone||'') : '🔒'}</td>
     </tr>`).join('')
   const w = window.open('', '_blank')
-  w.document.write(`<html><head><title>Student List</title><style>
+  w.document.write(rebrandReport(`<html><head><title>Student List</title><style>
     body{font-family:system-ui,sans-serif;font-size:11px;padding:20px;color:#334155}
     h2{color:#0f172a;margin-bottom:4px}
     table{width:100%;border-collapse:collapse}
@@ -2181,7 +2182,7 @@ function printBatchList(students, label, canViewPII = false) {
       <th>#</th><th>GCC</th><th>Name</th><th>Batch</th><th>House</th><th>Hostel</th>
       <th>${canViewPII ? 'Phone' : 'Phone'}</th>
     </tr></thead><tbody>${rows}</tbody></table>
-  </body></html>`)
+  </body></html>`, { title: 'Student List', drop: ["h2"] }))
   w.document.close()
   w.print()
 }
@@ -2259,7 +2260,7 @@ function printProfessionalReport(cfg) {
   }).join('')
 
   const w = window.open('', '_blank')
-  w.document.write(`<html><head><title>${title}</title><style>
+  w.document.write(rebrandReport(`<html><head><title>${title}</title><style>
     @page { size: A4 portrait; margin: 14mm 12mm; }
     *{box-sizing:border-box}
     body{font-family:'Segoe UI',system-ui,sans-serif;color:#1E293B;padding:0;margin:0;font-size:11px}
@@ -2316,7 +2317,7 @@ function printProfessionalReport(cfg) {
       </div>` : ''}
     <div class="footnote">GNSI Portal · ${reportTypeLabel} · Generated automatically — verify figures before official use</div>
     <script>window.onload=()=>setTimeout(()=>window.print(),350)</script>
-  </body></html>`)
+  </body></html>`, { title: title, drop: [".letterhead"] }))
   w.document.close()
 }
 
@@ -4812,7 +4813,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
         <td class="r">${attData?.[s.id] != null ? attData[s.id].toFixed(0) + '%' : '—'}</td>
         <td class="r">${Number(feeData?.[s.id]?.dues || 0) > 0 ? cdbInr(feeData[s.id].dues) : '—'}</td>
         <td class="c">${cdbEsc(s.status || 'Active')}</td></tr>`).join('')}</tbody></table>`).join('')
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cdbEsc(course)} register</title><style>
+    w.document.write(rebrandReport(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cdbEsc(course)} register</title><style>
       @page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;margin:0;padding:18px;font-size:11px}
       .lh{display:flex;align-items:center;gap:14px;border-bottom:3px double #132a4f;padding-bottom:10px;margin-bottom:12px}
       .crest{width:52px;height:52px;border-radius:50%;background:#132a4f;color:#e9d9b0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:2px solid #b8923a}
@@ -4830,7 +4831,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
       <div><small>With fee dues</small><strong>${rows.filter(s => Number(feeData?.[s.id]?.dues || 0) > 0).length}</strong></div></div>
       ${body}
       <div class="ft"><span>Generated from GNSI Portal · ${today}</span><span class="sig">Principal</span></div>
-      <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`)
+      <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`, { title: `${course} — Student Register`, drop: [".lh"] }))
     w.document.close()
   }
 

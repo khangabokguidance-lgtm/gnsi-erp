@@ -9,7 +9,7 @@ import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDa
 import { writtenOffFor } from './lib/refundLedger'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
 import { loadStanding } from './feeStanding'
-import { instNameHTML, instAddressHTML } from './systemSettings'
+import { reportLetterhead, REPORT_CSS } from './reportKit'
 
 const groupByGcc = rows => {
   const m = new Map()
@@ -101,7 +101,7 @@ export function printLedgerBook(items, session, { includeDayBook = true, title =
   const printed = new Date().toLocaleString('en-IN')
 
   const summary = `<section class="page">
-    <div class="inst">${instNameHTML()} · ${instAddressHTML()}</div>
+    ${reportLetterhead(title)}
     <h1>${escH(title)} — Session ${escH(shortSession(session))}</h1>
     <div class="kpis">
       <div><b>Students</b><span>${items.length}</span></div>
@@ -125,7 +125,7 @@ export function printLedgerBook(items, session, { includeDayBook = true, title =
     let run = 0
     const bRows = book.map((x, i) => `<tr><td>${i + 1}</td><td>${escH(fmtDate(x.date))}</td><td>${escH(x.receipt || '—')}</td><td>${escH(x.particulars)}</td><td>${escH(x.period)}</td><td>${escH(x.mode || '—')}</td><td class="num">${fmt(x.amount)}</td><td class="num">${fmt((run += x.amount))}</td></tr>`).join('')
     return `<section class="page">
-      <div class="inst">${instNameHTML()} · Fee Collection Register</div>
+      ${reportLetterhead('Fee Collection Register')}
       <h2>${escH(s.name)} <small>GCC-${escH(s.gcc_no)} · Session ${escH(shortSession(session))}</small></h2>
       <div class="f"><div><b>Adm. No.</b>${escH(s.admission_no || '—')}</div><div><b>Course</b>${escH([s.course, s.batch].filter(Boolean).join(' · ') || '—')}</div><div><b>Hostel</b>${escH(s.hostel_type || '—')}</div><div><b>Admitted</b>${escH(fmtDate(s.admission_date))}</div><div><b>Paid this session</b>₹${fmt(reg.totalPaid)}</div><div><b>Balance due</b><span class="${reg.totalDue + arrears ? 'bad' : 'ok'}">₹${fmt(reg.totalDue + arrears)}${arrears ? ` <small>(incl. ₹${fmt(arrears)} b/f)</small>` : ''}</span></div></div>
       <table><thead><tr><th>Month</th><th>Fee head</th><th class="num">Due (₹)</th><th class="num">Paid (₹)</th><th>Date</th><th>Receipt</th><th>Status</th></tr></thead><tbody>${mRows}</tbody>
@@ -136,6 +136,7 @@ export function printLedgerBook(items, session, { includeDayBook = true, title =
   }).join('')
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)} — ${escH(shortSession(session))}</title><style>
+  ${REPORT_CSS}.page .rk-top{padding:0 0 10px}.page .rk-accent{margin-bottom:10px}
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;800&family=JetBrains+Mono:wght@600&family=Caveat:wght@600&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#1f2a44;background:#ece7db;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .page{background:#fffdf6;width:277mm;max-width:100%;margin:14px auto;padding:12mm 12mm 10mm 20mm;position:relative;box-shadow:0 10px 30px rgba(0,0,0,.12);page-break-after:always;break-after:page}

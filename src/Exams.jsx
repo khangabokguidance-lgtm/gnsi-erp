@@ -37,6 +37,7 @@ import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
 import { isAdminRole } from './roles'
+import { rebrandReport } from './reportKit'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -622,7 +623,7 @@ function getGrade(pct, scale = GRADE_PRESETS) {
 
 function printHTML(html, title = "GNSI") {
   const w = window.open("", "_blank");
-  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+  w.document.write(rebrandReport(`<!DOCTYPE html><html><head><title>${title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
@@ -665,7 +666,8 @@ function printHTML(html, title = "GNSI") {
   <div class="no-print" style="margin-bottom:14px;text-align:center;">
     <button onclick="window.print()" style="padding:10px 24px;background:#0f2d5e;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;">🖨️ Print / Save as PDF</button>
   </div>
-  ${html}</body></html>`);
+  ${html}</body></html>`, { title: title, drop: [".header .inst-name", ".header .inst-addr", ".header .eyebrow", ".no-print"],
+    extraCss: ".header{background:none!important;color:#0B1E3D!important;padding:0 0 10px!important;text-align:left!important}.header::after{display:none!important}.exam-pill{display:inline-block;border:1px solid #E6DCC3;background:#FFFCF4;color:#0B1E3D;border-radius:999px;padding:3px 12px;font-size:11px;font-weight:700}.page{box-shadow:none!important;border:0!important;margin:0!important;max-width:none!important}" }));
   w.document.close();
 }
 
