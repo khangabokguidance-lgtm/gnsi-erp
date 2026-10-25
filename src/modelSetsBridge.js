@@ -10,6 +10,8 @@
 //   use('user')   → canEdit(): the portal's Model Sets permission
 //   use('assets') → upload(blob): pictures into the question-diagrams bucket
 //   use('downloads') → save({filename, data}): the PDF / Word file the page made
+//   imageUrl(url) → a picture saved here, read through the signed-in session when
+//                   its public link does not load (the bucket is not public)
 //   exportLibs()  → { jsPDF, docx, html2canvasUrl } from the portal's own bundle,
 //                   so Download PDF / Word works without the CDN
 //   visionJSON(prompt, images) → the text Gemini returns for page images
@@ -124,6 +126,31 @@ export function createModelSetsBridge({ client, canWrite = () => false, actor = 
     },
   }
 
+  // A saved picture's public link fails when the bucket is not public. Staff
+  // may still read it (qbank_diagrams_staff_select), so fetch it through the
+  // session and hand the page a blob: URL, which also draws into PDF / Word.
+  const imageCache = new Map()
+  const imagePath = (url) => {
+    const base = client.storage.from(MODEL_SETS_BUCKET).getPublicUrl('').data.publicUrl.replace(/\/*$/, '/')
+    const u = String(url || '')
+    if (!u.startsWith(base)) return null
+    const path = decodeURIComponent(u.slice(base.length).split(/[?#]/)[0])
+    return /^model-sets\/[\w.-]+$/.test(path) ? path : null
+  }
+  const imageUrl = (url) => {
+    const path = imagePath(url)
+    if (!path) return Promise.resolve(null)
+    if (!imageCache.has(path)) {
+      const p = client.storage.from(MODEL_SETS_BUCKET).download(path).then(({ data, error }) => {
+        if (error || !data) throw { code: 'unavailable', message: error?.message || 'Picture not found' }
+        return URL.createObjectURL(data)
+      })
+      p.catch(() => imageCache.delete(path))
+      imageCache.set(path, p)
+    }
+    return imageCache.get(path).catch(() => null)
+  }
+
   const user = { canEdit: async () => !!canWrite(), isOwner: async () => false }
 
   const downloads = saveFile ? {
@@ -138,6 +165,7 @@ export function createModelSetsBridge({ client, canWrite = () => false, actor = 
     storeLabel,
     theme: 'light',
     exportLibs: exportLibs || undefined,
+    imageUrl,
     visionJSON: vision ? (prompt, images) => {
       if (!canWrite()) return Promise.reject({ code: 'not_granted', message: 'Your login is not allowed to change model sets.' })
       return vision(prompt, images)
