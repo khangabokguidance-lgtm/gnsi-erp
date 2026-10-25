@@ -337,6 +337,9 @@ textarea.in { resize: vertical; min-height: 62px; }
 .croprect .h.nw, .croprect .h.se { cursor: nwse-resize; }
 .croprect .h.ne, .croprect .h.sw { cursor: nesw-resize; }
 .cropbtn2 { font-size: 11px; padding: 3px 8px; }
+.cropbtn { position: relative; }
+.cropbtn.done img { outline: 2px solid var(--ok, #2e7d4f); outline-offset: 1px; }
+.cropbtn.done::after { content: "✓"; position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--ok, #2e7d4f); color: #fff; font: 700 10px/16px var(--f-mono); text-align: center; }
 .bank-row input { accent-color: var(--brand); width: 16px; height: 16px; margin: 0; }
 .bank-row .n { font-family: var(--f-display); font-weight: 800; }
 .bank-row svg.fig { width: 40px; height: 40px; }
@@ -2201,13 +2204,13 @@ function openCropper(o) {
   const el = document.createElement('div');
   el.className = 'crop-ov';
   el.innerHTML = `<div class="crop-card" role="dialog" aria-modal="true" aria-labelledby="cropT" tabindex="-1">
-    <div class="ov-h"><h2 id="cropT">${esc(o.title)}</h2><button class="btn" type="button" data-c="cancel">Cancel</button></div>
+    <div class="ov-h"><h2 id="cropT">${esc(o.title)}</h2><div class="addbar"><button class="btn" type="button" data-c="cancel">Cancel</button><button class="btn primary" type="button" data-c="use">Save crop</button></div></div>
     <div class="crop-tools"><button class="btn" type="button" data-c="out" aria-label="Zoom out" title="Zoom out (−)">−</button><span class="crop-z" id="cropZ" aria-live="polite"></span><button class="btn" type="button" data-c="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
       <button class="btn" type="button" data-c="box">Zoom to box</button><button class="btn" type="button" data-c="fit">Whole page</button><button class="btn" type="button" data-c="snap" title="Fit the box to the drawing under it">Snap to drawing</button>
       ${o.note ? `<span class="subnote">${esc(o.note)}</span>` : ''}</div>
     <div class="crop-view" id="cropView"><div class="crop-stage" id="cropStage"><img src="${o.url}" alt="" draggable="false"><div class="croprect" id="cropRect">${['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(h => `<span class="h ${h}" data-h="${h}"></span>`).join('')}</div></div></div>
     <div class="ov-f"><span class="subnote" id="cropMsg">Drag to draw a new box; drag inside it to move it, or its handles to resize. Zoom with + / −, Ctrl + scroll or two fingers. Arrow keys nudge it (Shift + arrows resize).</span>
-      <div class="addbar"><button class="btn primary" type="button" data-c="use">Use this crop</button></div></div></div>`;
+      <div class="addbar"><button class="btn" type="button" data-c="cancel">Cancel</button><button class="btn primary" type="button" data-c="use">Save crop</button></div></div></div>`;
   document.body.append(el);
   const view = el.querySelector('#cropView'), stage = el.querySelector('#cropStage'), rect = el.querySelector('#cropRect'), img = stage.querySelector('img');
   const msg = t => { el.querySelector('#cropMsg').textContent = t; };
@@ -2272,7 +2275,12 @@ function openCropper(o) {
     el.querySelectorAll('button').forEach(x => { x.disabled = true; });
     msg('Saving the crop…');
     try { await o.onUse(b); closeCropper(); }
-    catch (err) { msg(err && err.code === 'too_large' ? 'That crop is too large to save.' : 'Could not save the crop. Try again.'); el.querySelectorAll('button').forEach(x => { x.disabled = false; }); }
+    catch (err) {
+      msg(err && err.code === 'too_large' ? 'That crop is too large to save.'
+        : err && err.code === 'not_granted' ? 'Not saved: your login is not allowed to change model sets.'
+        : err && err.message ? `Not saved: ${err.message}` : 'Could not save the crop. Check the connection and try again.');
+      el.querySelectorAll('button').forEach(x => { x.disabled = false; });
+    }
   };
   el.addEventListener('click', e => {
     const c = e.target.closest('[data-c]'); if (!c) return;
@@ -2280,7 +2288,7 @@ function openCropper(o) {
     if (k === 'cancel') closeCropper();
     else if (k === 'in') zoom(C.z * 1.4); else if (k === 'out') zoom(C.z / 1.4);
     else if (k === 'fit') zoom(zMin()); else if (k === 'box') toBox();
-    else if (k === 'snap') { C.box = refineBox(o.canvas, C.box); show(); msg('Fitted to the drawing. Check it, then use the crop.'); }
+    else if (k === 'snap') { C.box = refineBox(o.canvas, C.box); show(); msg('Fitted to the drawing. Check it, then press Save crop.'); }
     else if (k === 'use') use();
   });
   el.addEventListener('keydown', e => {
@@ -2327,13 +2335,14 @@ function openCrop(i, k) {
       const nf = { cv: cropBox(cv, box, 0), page: f.page, box };
       if (k === 'fig') it.fig = nf; else it.optFigs[+k] = nf;
       const b = ov.querySelector(`[data-act="impcrop"][data-i="${i}"][data-k="${k}"]`);
-      if (b) b.innerHTML = thumb(nf.cv);
+      if (b) { b.innerHTML = thumb(nf.cv); b.classList.add('done'); }
+      const m = $('#impMsg'); if (m) m.textContent = 'Crop saved. The figures are stored with the set when you press the button below.';
     } });
 }
 
 /* set maker: crop a saved figure again. Figures imported with their page keep a link to it
    (imgFrom / optFrom), so the box can also be widened; others can only be trimmed. */
-async function recrop(it, f, card) {
+async function recrop(it, f, card, ii) {
   const k = f === 'img' ? -1 : +f.slice(4);
   const ref = k < 0 ? it.img : (it.optImgs || [])[k];
   const from = k < 0 ? it.imgFrom : (it.optFrom || [])[k];
@@ -2357,6 +2366,10 @@ async function recrop(it, f, card) {
         if (onPage) { it.optFrom = it.optFrom || [null, null, null, null]; it.optFrom[k] = { p: page.p, b: box }; }
       }
       dirty(true);
+      await doSave();                                    // save the set now, not after the usual pause
+      if (cur.dirty) throw { code: 'not_saved', message: 'the picture was cropped, but the set could not be saved. Check the connection.' };
+      const m = document.querySelector(`#mkEdit [data-i="${ii}"] [data-msg]`);
+      if (m) m.textContent = k < 0 ? 'Crop saved.' : `Crop of answer ${LET[k]} saved.`;
     } });
 }
 async function finishImport() {
@@ -2496,7 +2509,7 @@ document.addEventListener('click', async e => {
     if (!a.classList.contains('armed')) { a.classList.add('armed'); a.textContent = `Delete with ${(sec.items || []).length} items?`; return; }
     d.sections.splice(cur.sec, 1); cur.sec = Math.max(0, cur.sec - 1); dirty(true);
   }
-  else if (act === 'recrop') { if (S.canWrite && ii >= 0) recrop(items[ii], a.dataset.f, card); return; }
+  else if (act === 'recrop') { if (S.canWrite && ii >= 0) recrop(items[ii], a.dataset.f, card, ii); return; }
   else if (act === 'add') {
     const k = a.dataset.k;
     const it = k === 'q' ? { t: 'q', kind: 'text', q: '', opts: ['', '', '', ''], a: null }
