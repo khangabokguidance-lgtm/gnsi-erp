@@ -1065,6 +1065,7 @@ function renderEditor() {
         <button class="btn" type="button" data-act="add" data-k="head">+ Part heading</button>
         <button class="btn" type="button" data-act="bank">From Set 1 bank</button>
         <button class="btn" type="button" data-act="import" data-mode="add">Import from PDF</button>
+        <button class="btn" type="button" data-act="tidy" title="Fix words run together, stray marks and footers, and a passage or heading stuck on to option (D), in every section of this set">Tidy text</button>
         ${S.sample ? '<button class="btn gold" type="button" data-act="gen">✦ Draft with Claude</button>' : ''}
         ${aiReady() ? `<button class="btn gold" type="button" data-act="autokey" id="akRun"${ak ? ' hidden' : ''} title="Work out the answers of every question in this set that has none">✦ Auto answer key</button><button class="btn" type="button" data-act="akstop" id="akStop"${ak ? '' : ' hidden'}>Stop answering</button>` : ''}
       </div>
@@ -1528,7 +1529,7 @@ const PRINT_CSS = `
 .pp .p-fi svg.fig{width:4.6em;height:4.6em}
 .pp .p-fi img{width:100%;height:4.6em;object-fit:contain}
 .pp .p-opts{display:grid;gap:.1em 1em}
-.pp .p-o{min-width:0;overflow-wrap:break-word}
+.pp .p-o{min-width:0;overflow-wrap:normal;word-break:normal;hyphens:manual}
 .pp .p-o b{font-weight:600;margin-right:.25em}
 .pp .p-key h2{font:800 1.6em/1.1 var(--f-display);margin:0 0 .3em}
 .pp .p-key h3{font:600 .8em/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:1.2em 0 .5em;padding-bottom:.3em;border-bottom:1px solid var(--rule)}
@@ -1601,8 +1602,10 @@ function printQ(q, n, trusted) {
     }
   }
   const opts = (q.opts || ['', '', '', '']).slice(0, 4).map((o, i) => trusted ? o : cleanOpt(o, i));
-  const max = Math.max(...opts.map(o => plain(trusted ? o : esc(o)).length));
-  const cols = max <= 7 ? 4 : max <= 22 ? 2 : 1;
+  const txts = opts.map(o => plain(trusted ? o : esc(o)));
+  const max = Math.max(...txts.map(t => t.length)), word = Math.max(...txts.map(t => Math.max(0, ...t.split(/\s+/).map(w => w.length))));
+  // four across only for very short options ("Crow" already wraps in a quarter of a column), and a long word needs a wider cell
+  const cols = max <= 4 ? 4 : max <= 20 && word <= 11 ? 2 : 1;
   return `<div class="p-q"><div class="p-qh"><span class="p-n">${n}.</span><span class="p-qt" id="ppq-${n}">${tx(trusted ? q.q || '' : cleanQ(q.q))}</span></div>${fig}
     <div class="p-opts p-in" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${opts.map((o, i) => `<div class="p-o"><b>(${LET[i]})</b>${tx(o) || '—'}</div>`).join('')}</div></div>`;
 }
@@ -1705,6 +1708,15 @@ async function layoutPaper(set, maxPages, keyMode = 'none') {
   }
   measure(best.s);
   best.pages = paginate(units, best.s);
+  // a tall first block (a big figure under the first section band) can push the whole paper off page 1 and
+  // leave it holding only the title: shrink a little until the first section starts on page 1
+  const blankFirst = pg => pg.length > 1 && pg[0].length === 1 && pg[0][0].type === 'full' && pg[0][0].u.blocks[0].kind === 'mast';
+  if (!best.over && blankFirst(best.pages)) {
+    let ps = best.s, pages = best.pages;
+    for (let k = 0; k < 14 && blankFirst(pages); k++) { ps *= .97; measure(ps); pages = paginate(units, ps); }
+    if (!blankFirst(pages) && pages.length <= maxPages) best = { ...best, s: ps, pages };
+    else { measure(best.s); }
+  }
   const s = best.s, G = 9 * s, GF = 12 * s;
   const count = best.pages.length + (withKey ? 1 : 0);
   const pageEl = (inner, i) => `<div class="p-pg"><div class="p-ph"><span>${head}</span><b>${no}-${i + 1}</b></div>${inner}
@@ -2349,7 +2361,7 @@ function readingLines(pieces, W, P) {
     return lines.map(l => {
       const ps = l.ps.sort((a, b) => a.x0 - b.x0);
       let text = '';
-      ps.forEach((p, i) => { text += (i && p.x0 - ps[i - 1].x1 > l.h * .15 ? ' ' : (i ? '' : '')) + p.str; });
+      ps.forEach((p, i) => { text += (i && p.x0 - ps[i - 1].x1 > l.h * .08 ? ' ' : (i ? '' : '')) + p.str; });
       return { text: text.replace(/\s+/g, ' ').trim(), y0: l.y0, y1: l.y1, x0: l.x0, x1: l.x1, h: l.h };
     }).sort((a, b) => a.y0 - b.y0);
   };
@@ -2371,7 +2383,7 @@ function readingLines(pieces, W, P) {
 const RX = {
   section: /^(?:SECTION|खण्ड|खंड|বিভাগ|খণ্ড)\s*[-–—:]?\s*([IVX\d]+|[A-D])(?=$|\s|[-–—:])\s*[-–—:]?\s*(.*)$/iu,
   part: /^(?:PART|भाग|অংশ)\s*[-–—:]?\s*([IVXl|]+|\d+)(?=$|\s|[-–—:])\s*[-–—:]?\s*(.*)$/iu,
-  dir: /^(?:Directions?\s*(\([^)]*\))?\s*[:.\-–—]|निर्देश\S*|নির্দেশ\S*)/iu,
+  dir: /^(?:Directions?\s*(\([^)]*\))?\s*[:.\-–—]|Directions?(?=\s+(?:Read|In|Study|Choose|Find|Select|Answer|Observe|Each|For|There|Given|Look|Fill|Mark|Pick)\b)|निर्देश\S*|নির্দেশ\S*)/iu,
   q: /^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*[.)]\s*(.*)$/i,
   cap: /^(?:(?:question|answer)\s+figures?|(?:प्रश्न|उत्तर)\s*आकृतियाँ?|(?:প্রশ্ন|উত্তর)\s*(?:চিত্র|আকৃতি)\S*)\s*:?\s*$/iu,
   // "(B)" is often read as "(8)" and "(C)"/"(D)" as "(0" or "(O)" by OCR: those count as the next label
@@ -2399,9 +2411,12 @@ function splitOpts(text, prevI = -1, prevFam = 0) {
 }
 
 // the drawings in one question's area: four alike in a row are the answer figures, the rest the question figure
+// the scissors and dashed "cut here" line printed in a page margin: a narrow upright strip, or anything in the outer margin
+const isCutMark = (g, P) => g.cx > P.W * .94 || g.cx < P.W * .03 || (g.w < P.tall * 1.8 && g.h > g.w * 1.8 && g.h < P.tall * 7);
 function figuresIn(cv, P, reg) {
   const gs = groupsIn(P, reg).filter(g => (g.h >= P.tall * .8 || g.w >= P.tall * 1.2 && g.h >= P.tall * .5)
-    && g.y0 >= reg[0] - P.tall * .5 && g.y1 <= reg[2] + P.tall * .5);          // inside this question's area
+    && g.y0 >= reg[0] - P.tall * .5 && g.y1 <= reg[2] + P.tall * .5          // inside this question's area
+    && !isCutMark(g, P));
   if (!gs.length) return { figure: null, optionFigures: null };
   const rows = rowsOfFour(gs).map(w4 => ({ w4, cy: w4.reduce((t, c) => t + c.cy, 0) / 4 })).sort((a, b) => b.cy - a.cy);
   const row = rows[0] ? rows[0].w4 : null;
@@ -2571,6 +2586,8 @@ async function localRead(cv, onProgress, lang = 'en') {
   lines.forEach((l, k) => {
     const t = normDigits(l.text);
     if (!t || /^\d{1,3}$/.test(t) && l.y0 > H * .9) return;   // page number
+    // the running header and footer ("SET-2", "Selection Test for admission…", "Page 3 of 8") are not paper text
+    if ((l.y1 < H * .06 || l.y0 > H * .94) && t.length <= 70 && !RX.q.test(t) && /\bSET\b|\bPage\b|Selection Test|NAVODAYA|PRACTICE|\d\s*of\s*\d/i.test(t)) return;
     // the answer key: from its heading on, every "12. (B)" on the page is an answer
     // ("Answer Figures" or "Answer the following" are not a key: nothing else, or answers, follow the heading)
     const rest = KEY_HEAD.test(t) ? t.replace(KEY_HEAD, '').trim() : null;
@@ -2589,7 +2606,7 @@ async function localRead(cv, onProgress, lang = 'en') {
       if (head) head.inDir = false;
       if (passage) passage = null;
       lastN = n;
-      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1, tail: [] };
+      q = { out: { type: 'question', number: n, text: '', options: ['', '', '', ''], answer: null, figure: null, optionFigures: null }, text: [], y0: l.y0, cx0: l.cx0, cx1: l.cx1, tail: [], lastY1: l.y1, lastCol: l.col };
       const so = splitOpts(m[2]);
       if (so.before && !RX.cap.test(so.before)) q.text.push(so.before.replace(/\b(Question|Answer) Figures?\b/gi, '').trim());
       so.opts.forEach(([i, x]) => { q.out.options[i] = x; optAt = i; });
@@ -2597,6 +2614,16 @@ async function localRead(cv, onProgress, lang = 'en') {
       if (optAt === 3) q.dText = q.out.options[3];
       return;
     }
+    // after the options, a heading band, a new paragraph or a long sentence is not the last option going on:
+    // it is the passage or section that follows the question (it used to be glued on to option (D))
+    let ended = false, bandLine = false;
+    if (q && optAt >= 0 && !splitOpts(t, optAt, q.fam || 0).opts.length) {
+      const gap = q.lastY1 != null && l.col === q.lastCol ? l.y0 - q.lastY1 : 0;
+      bandLine = isCaps(t) || /^(?:PASSAGE|LANGUAGE|ARITHMETIC|MENTAL\s+ABILITY|PART)\b/.test(t);
+      const para = optAt === 3 && q.out.options[3] && t.length >= 38 && /^[A-Z“"‘']/.test(t);
+      if (bandLine || para || gap > l.h * .9) { endQ(Math.max(q.y0, l.y0 - l.h * 1.3)); ended = true; }
+    }
+    if (q) { q.lastY1 = l.y1; q.lastCol = l.col; }
     if (q) {
       const so = splitOpts(t, optAt, q.fam || 0);
       if (so.opts.length && so.opts[0][0] === 0 && optAt === 3) {
@@ -2622,6 +2649,8 @@ async function localRead(cv, onProgress, lang = 'en') {
       return;
     }
     // outside a question: a heading in capitals, more directions, or a passage
+    if ((m = t.match(/^PASSAGE\s*[-–—]?\s*(\d+|[IVX]+)$/i))) { endBlocks(); passage = { type: 'passage', title: `PASSAGE–${m[1].toUpperCase()}`, text: '' }; items.push(passage); return; }
+    if (ended && !bandLine && !(head && head.inDir)) { endBlocks(); passage = { type: 'passage', title: '', text: t, y1: l.y1 }; items.push(passage); return; }
     if (isCaps(t) && !(head && head.inDir)) { endBlocks(); head = { type: 'heading', sub: t, part: '', directions: '' }; items.push(head); return; }
     if (head && head.inDir && !(passage)) {
       if (/passage/i.test(head.directions) && /[.!?]["”']?$/.test(head.directions)) { passage = { type: 'passage', title: '', text: t }; items.push(passage); return; }
@@ -2903,6 +2932,68 @@ function pickAt(cv, y, x) {
   return okBox(r) ? r : null;
 }
 const figOf = (cv, page, d) => ({ cv: cropBox(cv, d.box, 6), page, box: d.box });
+/* ---------- tidying text that came from reading a page ----------
+   A page read by OCR or from a PDF's text layer leaves traces: words run together ("ofthe"), the column of
+   marks ("ml. 1"), the running footer ("SeT-2"), a question number left in the text, and the heading or
+   passage that follows a question read as part of its option (D). tidyItems() cleans them in imported items,
+   and the maker's "Tidy text" button runs it over a set that was saved before. */
+const GLUE_FN = /\b(of|to|in|on|at|by|for|and|or|is|as|than)(the|these|those|this|that|its|their)\b/g;
+const GLUE_CAP = /\b(of|to|in|on|at|by|for|and|or|is|as|the|a)(?=[A-Z][a-z]{2,})/g;
+const tidyText = (v, stem) => {
+  let t = String(v ?? '').replace(GLUE_FN, '$1 $2').replace(GLUE_CAP, '$1 ')
+    .replace(/([.?:!])[ \t]+1[ \t]*$/gm, '$1')                                   // the mark column: "ml. 1"
+    .replace(/[ \t]*\bSET[ \t]*[-–][ \t]*\d{1,2}[ \t]*$/i, '').replace(/[ \t]*\bSets?\)[ \t]*$/, '');   // the running footer
+  if (stem) t = t.replace(/^\s*(?:[1l|I][ \t]+)?\d{1,3}[ \t]*[.)][ \t]+(?=[A-Z])/, '');   // "1 48. Find…": a number left in the text
+  return t.replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').trim();
+};
+const tidyHead = v => String(v ?? '').replace(/\s+\d{1,2}$/, '').replace(/^(\S+)\s+[I1l|]\s+(TEST)$/i, '$1 $2').trim();
+const TAIL_AT = /\s+(?=DIRECTIONS?\b|PASSAGE\s*[-–—]?\s*(?:\d+|[IVX]+)\b|ARITHMETIC\s+TEST\b|LANGUAGE\s+(?:[I1l|]\s+)?TEST\b|MENTAL\s+ABILITY\b|PART\s*[-–—]\s*[IVX]+\b|SSAGE\b)/;
+const TAIL_HEAD = /^(ARITHMETIC\s+TEST|LANGUAGE\s+(?:[I1l|]\s+)?TEST|MENTAL\s+ABILITY(?:\s+TEST)?|PART\s*[-–—]\s*([IVX]+))\b\s*(?:\d{1,2}\b)?\s*/;
+// option (D) that carries on into a heading, directions or a passage → the option, and the items that belong after the question
+function splitTail(text) {
+  text = String(text ?? '');
+  let at = text.search(TAIL_AT);
+  if (at < 0 && text.length > 110) {                       // no heading came through: a long "option" is the passage that follows
+    const w = text.split(' ');
+    for (let i = 1; i <= 4 && i < w.length; i++) {
+      const head = w.slice(0, i).join(' '), rest = w.slice(i).join(' ');
+      if (head.length <= 40 && /^[A-Z]/.test(rest) && rest.length >= 70 && /[.!?]/.test(rest)) { at = head.length; break; }
+    }
+  }
+  if (at < 0) return { text, extra: [] };
+  const extra = [];
+  let rest = text.slice(at).trim(), title = '', m;
+  for (let guard = 0; rest && guard < 6; guard++) {
+    if ((m = rest.match(TAIL_HEAD))) {
+      extra.push(m[2] ? { t: 'head', sub: '', part: `Part – ${m[2]}`, dir: '' } : { t: 'head', sub: tidyHead(m[1]).replace(/\s+/g, ' '), part: '', dir: '' });
+      rest = rest.slice(m[0].length); continue;
+    }
+    if ((m = rest.match(/^DIRECTIONS?\s*[:.\-–—]?\s*(.+?[.!?])(?=\s+[A-Z“"‘']|$)\s*/))) {
+      extra.push({ t: 'head', sub: '', part: '', dir: 'Directions: ' + m[1] }); rest = rest.slice(m[0].length); continue;
+    }
+    if ((m = rest.match(/^(?:PASSAGE|SSAGE)\s*[-–—]?\s*(\d+|[IVX]+)?\s*/))) { if (m[1]) title = `PASSAGE–${m[1]}`; rest = rest.slice(m[0].length); continue; }
+    break;
+  }
+  if (rest.length >= 40) extra.push({ t: 'passage', title, text: rest });
+  return { text: text.slice(0, at).trim(), extra };
+}
+function tidyItems(items) {
+  const out = [];
+  (items || []).forEach(it => {
+    if (!it || typeof it !== 'object') { out.push(it); return; }
+    if (it.t === 'head') { it.sub = tidyHead(tidyText(it.sub)); it.part = tidyText(it.part); it.dir = tidyText(it.dir); if (it.sub || it.part || it.dir) out.push(it); return; }
+    if (it.t === 'passage') { it.title = tidyText(it.title); it.text = tidyText(it.text); if (it.text) out.push(it); return; }
+    if (it.t !== 'q' || it.kind === 'lib') { out.push(it); return; }
+    it.q = tidyText(it.q, true);
+    if (Array.isArray(it.opts)) {
+      it.opts = it.opts.map(o => tidyText(o));
+      const sp = it.opts.length ? splitTail(it.opts[it.opts.length - 1]) : null;
+      if (sp && sp.extra.length) { it.opts[it.opts.length - 1] = tidyText(sp.text); out.push(it); sp.extra.forEach(x => out.push(x)); return; }
+    }
+    out.push(it);
+  });
+  return out;
+}
 function cleanItems(reply, cv, page) {
   const out = [];
   (Array.isArray(reply && reply.items) ? reply.items : []).forEach(r => {
@@ -2930,7 +3021,7 @@ function cleanItems(reply, cv, page) {
       optFigs: od ? od.map((d, k) => (po && po[k] ? { ...figOf(cv, page, d), cv: po[k].cv } : figOf(cv, page, d))) : null,
     });
   });
-  return out;
+  return tidyItems(out);
 }
 /* a question split across two pages becomes one */
 function mergeContinued(items) {
@@ -3431,6 +3522,13 @@ document.addEventListener('click', async e => {
   if (cur.view !== 'maker') return;
   const d = cur.draft, sec = d.sections[cur.sec];
   const card = a.closest('[data-i]'), ii = card ? +card.dataset.i : -1, items = sec ? sec.items : [];
+  if (act === 'tidy') {
+    let n = 0;
+    d.sections.forEach(sx => { const before = JSON.stringify(sx.items), now = tidyItems(sx.items || []); if (JSON.stringify(now) !== before) { sx.items = now; n++; } });
+    dirty(true);
+    setTimeout(() => setStatus(n ? `Tidied ${n} section${n === 1 ? '' : 's'}` : 'Nothing to tidy'), 1500);
+    return;
+  }
   if (act === 'pane') {
     document.querySelectorAll('.mk-tabs .tab').forEach(t => t.setAttribute('aria-selected', t === a));
     $('#mkEdit').hidden = a.dataset.p !== 'edit'; $('#mkPrevWrap').hidden = a.dataset.p !== 'prev';
