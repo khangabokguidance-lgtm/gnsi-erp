@@ -30,6 +30,7 @@ export const TransactionsViewBanking = ({
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
   openEdit = () => {},
   handleDelete = () => {},
+  vendors = [],
   printReceiptMemo = () => {},
   isMobile = false,
   runningBalance = null,
@@ -185,6 +186,42 @@ export const TransactionsViewBanking = ({
               {item.note || item.category || '—'}
             </p>
           </div>
+
+          {/* Details: head, payee, who, reference — so each entry is readable without opening it */}
+          {(() => {
+            const vendorName = item.vendor_id ? (vendors.find((v) => String(v.id) === String(item.vendor_id))?.name || '') : ''
+            const rows = [
+              ['Category', [item.category, item.sub_category].filter(Boolean).join(' › ')],
+              [item.type === 'Income' ? 'Payer' : 'Paid to', vendorName],
+              ['Voucher head', item.voucher_head],
+              ['Entered by', item.added_by || item.edited_by],
+              ['Voucher no.', item.voucher_no],
+              ['Txn ref', item.txn_ref],
+              ['Status', statusLabel.charAt(0) + statusLabel.slice(1).toLowerCase()],
+              ['Receipt', item.receipt_url ? 'Attached' : ''],
+            ].filter(([, v]) => v)
+            if (!rows.length) return null
+            return (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))',
+                  gap: '6px 14px',
+                  marginBottom: 10,
+                  padding: '8px 10px',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: 8,
+                }}
+              >
+                {rows.map(([k, v]) => (
+                  <div key={k} style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{k}</div>
+                    <div style={{ fontSize: 12.5, color: '#1f2937', fontWeight: 500, wordBreak: 'break-word' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* Metadata Badges Row */}
           <div
