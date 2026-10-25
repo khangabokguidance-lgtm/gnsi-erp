@@ -3494,6 +3494,8 @@ body:has(.ac-bottom){padding-bottom:76px}
     openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
     handleDelete={handleDelete}
+    vendors={vendors}
+    payers={payers}
             onExportReport={(fmt)=>exportAllEntriesReport(fmt,'Transactions')}
             exportingReport={generatingReport}
   />
@@ -3572,6 +3574,8 @@ body:has(.ac-bottom){padding-bottom:76px}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
+            vendors={vendors}
+            payers={payers}
             isMobile={isMobile}
             onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Daily')}
             exportingReport={generatingReport}
@@ -3777,6 +3781,8 @@ body:has(.ac-bottom){padding-bottom:76px}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
+            vendors={vendors}
+            payers={payers}
             isMobile={isMobile}
             onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Expenditure')}
             exportingReport={generatingReport}
