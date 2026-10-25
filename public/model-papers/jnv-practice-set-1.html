@@ -2321,7 +2321,7 @@ async function runImport() {
   const files = [...($('#impFile').files || [])];
   if (!files.length) return msg('Choose a PDF or at least one photo first.');
   const kind = await readerKind();
-  if (!kind) return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
+  if (!kind) return msg(CL ? 'Reading a paper needs the AI service. In the portal it uses Gemini and other free AI models; in claude.ai, allow this page to use Claude with images.' : 'Reading a paper needs the portal or claude.ai. It is not available in this copy of the page.');
   const job = imp;
   imp.busy = true; imp.ctl = new AbortController();
   $('#impRead').disabled = true; $('#impStop').hidden = false;
@@ -2351,7 +2351,7 @@ async function runImport() {
       for (;;) {
         const gap = pace - (Date.now() - last) / 1000;
         if (gap > 0) await wait(gap, i, false);
-        msg(`Reading page ${i + 1} of ${pages.length}… ${kind === 'claude' ? '(Claude)' : '(Gemini)'}`);
+        msg(`Reading page ${i + 1} of ${pages.length}… ${kind === 'claude' ? '(Claude)' : '(free AI models)'}`);
         last = Date.now();
         try { reply = await readPage(kind, pages[i], i + 1, pages.length, signal); break; }
         catch (e) {
