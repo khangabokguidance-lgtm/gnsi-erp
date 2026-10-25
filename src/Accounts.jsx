@@ -1049,7 +1049,7 @@ function Accounts({role,userId}){
       // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
       // no generic descriptions. The database enforces the first three for manual entries too.
       const vendorName=vendors.find(v=>String(v.id)===String(r.vendor_id))?.name||''
-      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
+      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1,receipt_required_above:null},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
       if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
       if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
       const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
@@ -3376,7 +3376,7 @@ function Accounts({role,userId}){
             </div>
           ))}
           <div style={{marginTop:16}}>
-            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>({controls.receipt_required_above!=null&&controls.receipt_required_above!==''&&rows.some(r=>r.type==='Expense'&&Number(r.amount)>Number(controls.receipt_required_above))?`required — expenses above ₹${Number(controls.receipt_required_above).toLocaleString('en-IN')}`:'optional'})</span></label>
+            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={async e=>{const f=e.target.files[0]||null;setReceiptFile(f?(await compressImage(f,{maxDim:1800,quality:0.9,targetKB:300})).file:null)}} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}

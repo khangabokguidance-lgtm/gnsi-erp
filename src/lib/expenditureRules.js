@@ -5,7 +5,7 @@
 // these functions give the user the same answer *before* they hit Save, and power the exception report.
 
 export const CONTROL_DEFAULTS = {
-  receipt_required_above: 10000,   // null / blank = rule off
+  receipt_required_above: null,    // receipts are optional by default; null / blank = rule off
   require_txn_ref_for_digital: true,
   block_digital_in_cash_acct: true,
   require_delete_reason: true,
