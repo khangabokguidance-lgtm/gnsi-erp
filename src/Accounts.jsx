@@ -285,17 +285,23 @@ function SeverityBadge({severity}){
 const AC = { navy:'#132a4f', navy2:'#1e3a6e', gold:'#b8923a', goldLight:'#f6efdc', goldBorder:'#e9d9b0', ivory:'#f7f5f0', line:'#e8e3d8', line2:'#d9d2c2', ink:'#0f1b2e', muted:'#5d6b82', serif:"'Fraunces',Georgia,serif" }
 const iStyle     = {width:'100%',padding:'11px 14px',borderRadius:10,border:`1px solid ${AC.line2}`,fontSize:13.5,backgroundColor:'white',color:AC.ink,boxSizing:'border-box',fontFamily:'inherit',minHeight:44,transition:'border-color .15s, box-shadow .15s'}
 const lStyle     = {display:'block',fontSize:11,fontWeight:700,color:AC.muted,marginBottom:7,letterSpacing:'.08em',textTransform:'uppercase'}
-const tdS        = {padding:'13px 14px',color:'#475569',fontSize:'13px',fontWeight:500}
-const chartCard  = {backgroundColor:'white',borderRadius:18,padding:24,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.16)',border:`1px solid ${AC.line}`,transition:'box-shadow .2s'}
-const chartTitle = {fontSize:18,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.01em',fontFamily:AC.serif}
-const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}22`,borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
+const tdS        = {padding:'15px 16px',color:'#3f4a5e',fontSize:'13.5px',fontWeight:500}
+const chartCard  = {background:'linear-gradient(180deg,#ffffff,#fdfbf6)',borderRadius:20,padding:26,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 2px 4px rgba(19,42,79,.04), 0 20px 44px -24px rgba(19,42,79,.28)',border:`1px solid ${AC.line}`,borderTop:`2px solid ${AC.gold}66`,transition:'box-shadow .2s'}
+const chartTitle = {fontSize:21,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.02em',fontFamily:AC.serif}
+const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}33`,borderRadius:999,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
 const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:9,border:`1px solid ${AC.line}`,cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'white',color:disabled?'#d9d2c2':AC.navy2,transition:'all .15s ease',fontFamily:'inherit'})
 
 const AC_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
 .ac-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:${AC.ivory};color:${AC.ink};min-height:100vh;-webkit-font-smoothing:antialiased}
 .ac-root *{box-sizing:border-box}
-.ac-root h1,.ac-root h2,.ac-root h3{letter-spacing:-.01em}
+.ac-root h1,.ac-root h2,.ac-root h3{letter-spacing:-.015em;font-family:'Fraunces',Georgia,serif;font-weight:600}
+.ac-root h4{font-family:'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.02em}
+.ac-root td,.ac-root th,.ac-root strong,.ac-root input[type=number]{font-variant-numeric:lining-nums tabular-nums}
+.ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]),.ac-root select,.ac-root textarea{border-radius:12px!important;border-color:${AC.line2};background-color:#fff;transition:border-color .15s,box-shadow .15s}
+.ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]):hover,.ac-root select:hover{border-color:#c4b88f}
+.ac-root input::placeholder,.ac-root textarea::placeholder{color:#a9afbd}
+.ac-root label{letter-spacing:.1em}
 .ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,.ac-root select:focus,.ac-root textarea:focus{outline:none;border-color:${AC.navy2}!important;box-shadow:0 0 0 3px rgba(30,58,110,.14)!important}
 .ac-root button{font-family:inherit}
 .ac-root button:not(:disabled){transition:transform .12s,filter .12s,box-shadow .15s,background-color .15s}
@@ -303,9 +309,15 @@ const AC_CSS = `
 .ac-root button:not(:disabled):active{transform:scale(.98)}
 .ac-root button:focus-visible{outline:2px solid ${AC.gold};outline-offset:2px}
 .ac-root table{border-collapse:separate;border-spacing:0}
-.ac-root thead th{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;font-weight:700!important;white-space:nowrap}
+.ac-root thead th{font-size:10.5px!important;text-transform:uppercase;letter-spacing:.14em;font-weight:800!important;white-space:nowrap;background:linear-gradient(180deg,#fbf8ef,#f6f1e3)!important;color:#8a6a1f!important;border-bottom:2px solid ${AC.goldBorder}!important}
+.ac-root thead th:first-child{border-top-left-radius:12px}
+.ac-root thead th:last-child{border-top-right-radius:12px}
+.ac-root tbody td{border-bottom:1px solid #f1ede2!important}
+.ac-root tbody tr:nth-child(even){background-color:#fdfcf8}
+.ac-root tbody tr:last-child td{border-bottom:none!important}
+.ac-root table{border:1px solid ${AC.line};border-radius:14px;overflow:hidden}
 .ac-root tbody tr{transition:background-color .12s}
-.ac-root tbody tr:hover{background-color:#faf8f3}
+.ac-root tbody tr:hover{background-color:#f8f2e1!important}
 .ac-root ::selection{background:${AC.goldBorder};color:${AC.navy}}
 .ac-root ::-webkit-scrollbar{width:6px;height:6px}
 .ac-root ::-webkit-scrollbar-thumb{background:${AC.line2};border-radius:6px}
@@ -336,7 +348,7 @@ const AC_CSS = `
 .ac-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:99px;background:${AC.gold};color:#fff;font-size:10.5px;font-weight:800}
 @media (max-width:760px){.ac-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.ac-group-s{display:none}}
 .ac-tab.on .dot{background:${AC.gold}!important}
-.ac-card{background:#fff;border:1px solid ${AC.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 8px 24px -12px rgba(19,42,79,.16)}
+.ac-card{background:linear-gradient(180deg,#fff,#fdfbf6);border:1px solid ${AC.line};border-top:2px solid ${AC.gold}66;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 20px 44px -24px rgba(19,42,79,.28)}
 @keyframes acUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
 .ac-anim{animation:acUp .25s ease both}
 @media (prefers-reduced-motion:reduce){.ac-anim{animation:none}}
