@@ -337,6 +337,7 @@ textarea.in { resize: vertical; min-height: 62px; }
 .croprect .h.nw, .croprect .h.se { cursor: nwse-resize; }
 .croprect .h.ne, .croprect .h.sw { cursor: nesw-resize; }
 .cropbtn2 { font-size: 11px; padding: 3px 8px; }
+.chip.key { background: #e3f1e8; color: #1f5f3a; border-color: #b9dcc6; }
 .crop-stage.picking { cursor: cell; }
 [data-c="pick"][aria-pressed="true"] { outline: 2px solid var(--brand); outline-offset: 1px; }
 .cropbtn { position: relative; }
@@ -1012,7 +1013,8 @@ function itemCard(it, ii, qn) {
   }
   const radios = i => `<label class="ans" title="Mark ${LET[i]} as the correct answer"><input type="radio" name="a-${k}" data-f="a" value="${i}"${it.a === i ? ' checked' : ''}>${LET[i]}</label>`;
   const textOpts = `<div class="optrows">${[0, 1, 2, 3].map(i => `<div class="optrow">${radios(i)}<input class="in" id="f-o${i}-${k}" data-f="o${i}" value="${esc((it.opts || [])[i] ?? '')}" placeholder="Option ${LET[i]}" aria-label="Option ${LET[i]}"></div>`).join('')}</div>`;
-  const noKey = it.a == null ? '<span class="chip warn">Pick the correct answer</span>' : '';
+  const noKey = it.a == null ? '<span class="chip warn">Pick the correct answer</span>'
+    : it.keyed ? '<span class="chip key">From the answer key</span>' : it.gen ? '<span class="chip warn">Answer by AI · check</span>' : '';
   if (it.kind === 'img') {
     const src = imgSrc(it.img);
     const optArea = it.optMode === 'img'
@@ -1029,7 +1031,7 @@ function itemCard(it, ii, qn) {
       <label class="toggle"><input type="checkbox" data-f="optMode"${it.optMode === 'img' ? ' checked' : ''}>Answer options are pictures</label>
       ${optArea}<p class="genmsg" data-msg></p></div>`;
   }
-  return `<div class="item q" data-i="${ii}">${head}<span class="chip">Question</span>${it.gen ? '<span class="chip warn">Claude draft · check answer</span>' : ''}${noKey}${tools}</div>
+  return `<div class="item q" data-i="${ii}">${head}<span class="chip">Question</span>${noKey}${tools}</div>
     ${field('Question · use [3/5] for fractions', 'q', it.q, { k, area: true, rows: 2 })}
     <div class="fld"><span>Options · choose the correct one</span>${textOpts}</div></div>`;
 }
@@ -1064,7 +1066,9 @@ function renderEditor() {
         <button class="btn" type="button" data-act="bank">From Set 1 bank</button>
         <button class="btn" type="button" data-act="import" data-mode="add">Import from PDF</button>
         ${S.sample ? '<button class="btn gold" type="button" data-act="gen">✦ Draft with Claude</button>' : ''}
+        ${aiReady() ? `<button class="btn gold" type="button" data-act="autokey" id="akRun"${ak ? ' hidden' : ''} title="Work out the answers of every question in this set that has none">✦ Auto answer key</button><button class="btn" type="button" data-act="akstop" id="akStop"${ak ? '' : ' hidden'}>Stop answering</button>` : ''}
       </div>
+      <p class="genmsg" id="akMsg" role="status">${esc(akText)}</p>
       ${S.sample ? `<div class="gen" id="gen"${cur.gen ? '' : ' hidden'}><h3>Draft questions with Claude</h3>
         <div class="row"><label class="fld" for="genMode"><span>What to write</span><select class="in" id="genMode"><option value="q">Questions</option><option value="p">Passage with questions</option></select></label>
           <label class="fld" for="genCount"><span>How many</span><input class="in" id="genCount" type="number" min="1" max="10" value="5"></label></div>
@@ -1129,6 +1133,122 @@ function openBank() {
 
 /* Claude drafts */
 let genCtl = null;
+/* ---------- auto answer key ----------
+   Every question in the set without an answer is worked out by the AI models: text questions in
+   batches, figure (and Meetei Mayek picture) questions one at a time as one image with the question
+   figure on top and the answer figures labelled (A)-(D) below. Answers are marked "Answer by AI ·
+   check". A printed key is better: importing it (Import from PDF) fills answers by number. */
+let ak = null, akText = '';
+const aiReady = () => !!((CL && typeof CL.visionJSON === 'function') || S.sample);
+const setAk = t => { akText = t; const m = $('#akMsg'); if (m) m.textContent = t; };
+const reasonsOf = d => (d || []).map(x => `${x.name || String(x.model || '').replace(/^\w+:/, '').split('/').pop()}: ${x.why}`).join(' · ');
+async function askAI(prompt, canvases, signal) {
+  if (CL && typeof CL.visionJSON === 'function') {
+    const imgs = [];
+    for (const c of canvases) imgs.push({ mimeType: 'image/jpeg', data: await blobB64(await canvasBlob(c, 'image/jpeg', .9)) });
+    return parseLooseJSON(await CL.visionJSON(prompt, imgs));
+  }
+  return S.sample.json(prompt, { images: await Promise.all(canvases.map(c => canvasBlob(c, 'image/jpeg', .9))), signal, cache: false });
+}
+// the question figure on top and the four answer figures labelled (A)-(D) below, as one picture
+async function figureSheet(it) {
+  const load = r => r ? loadCanvas(r).catch(() => null) : null;
+  const qf = await load(it.img), os = it.optMode === 'img' ? await Promise.all([0, 1, 2, 3].map(i => load((it.optImgs || [])[i]))) : [];
+  const W = 1000, cell = 230, pad = 20, fit = (c, w, h) => { const k = Math.min(w / c.width, h / c.height, 3); return [c.width * k, c.height * k]; };
+  const qh = qf ? Math.min(420, fit(qf, W - pad * 2, 420)[1]) : 0, H = pad + (qf ? qh + 50 : 0) + (os.some(Boolean) ? cell + 70 : 0) + pad;
+  const c = document.createElement('canvas'); c.width = W; c.height = Math.max(H, 100);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, W, c.height); g.fillStyle = '#000'; g.font = 'bold 26px sans-serif';
+  let y = pad;
+  if (qf) { g.fillText('Question figure', pad, y + 24); y += 40; const [w, h] = fit(qf, W - pad * 2, 420); g.drawImage(qf, (W - w) / 2, y, w, h); y += h + 10; }
+  if (os.some(Boolean)) {
+    g.fillText('Answer figures', pad, y + 24); y += 40;
+    os.forEach((o, i) => {
+      const x = pad + i * ((W - pad * 2) / 4);
+      if (o) { const [w, h] = fit(o, cell - 20, cell - 20); g.drawImage(o, x + (cell - w) / 2, y + (cell - h) / 2, w, h); }
+      g.strokeStyle = '#999'; g.strokeRect(x + 4, y, cell - 8, cell);
+      g.fillText(`(${LET[i]})`, x + cell / 2 - 20, y + cell + 32);
+    });
+  }
+  return c;
+}
+async function autoKey() {
+  if (ak || cur.view !== 'maker' || !S.canWrite) return;
+  const d = cur.draft, todo = [];
+  d.sections.forEach(sec => {
+    let passage = null;
+    (sec.items || []).forEach(it => {
+      if (it.t === 'passage') passage = it.text; else if (it.t === 'head') passage = null;
+      if (it.t === 'q' && it.kind !== 'lib' && it.a == null) todo.push({ it, passage });
+    });
+  });
+  if (!todo.length) return setAk('Every question already has an answer.');
+  const ctl = ak = new AbortController();
+  const btnShow = on => { const r = $('#akRun'), s2 = $('#akStop'); if (r) r.hidden = on; if (s2) s2.hidden = !on; };
+  btnShow(true);
+  let done = 0, failed = 0;
+  // one request, waiting when the models are busy; null when it could not be answered
+  const ask = async (prompt, canvases) => {
+    for (let tries = 0; ; tries++) {
+      if (ctl.signal.aborted) throw { code: 'cancelled' };
+      try { return await askAI(prompt, canvases, ctl.signal); }
+      catch (e) {
+        if (e && e.code === 'rate_limited' && tries < 3) {
+          for (let left = Math.max(10, Math.min(90, e.retryAfter || 30)); left > 0; left--) {
+            if (ctl.signal.aborted) throw { code: 'cancelled' };
+            setAk(`The AI models are busy. Going on in ${left} s… (${done} of ${todo.length} answered)`);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          continue;
+        }
+        if (e && (e.code === 'cancelled' || e.code === 'not_granted' || e.code === 'no_models')) throw e;
+        return null;
+      }
+    }
+  };
+  const put = (it, letter) => {
+    const i = labelIndex(String(letter ?? '').replace(/[^A-Da-d]/g, '').slice(0, 1));
+    if (i < 0 || i > 3 || it.a != null) { failed++; return; }
+    it.a = i; it.gen = true; delete it.keyed; done++;
+  };
+  try {
+    const text = todo.filter(x => x.it.kind !== 'img' || (x.it.optMode !== 'img' && !imgSrc(x.it.img)));
+    const figs = todo.filter(x => !text.includes(x));
+    for (let k = 0; k < text.length; k += 12) {
+      const batch = text.slice(k, k + 12);
+      setAk(`Working out answers… ${done} of ${todo.length}`);
+      const passages = [...new Set(batch.map(x => x.passage).filter(Boolean))];
+      const prompt = `Answer each multiple-choice question below. They are from an Indian school entrance test (Jawahar Navodaya Vidyalaya, class VI). Work each one out carefully and choose the one correct option.
+Reply with only JSON: {"answers": {"<id>": "<A, B, C or D>"}}, with every id.
+${passages.map((p, i) => `\nPassage ${i + 1}:\n${toText(p)}\n`).join('')}
+${batch.map((x, i) => `[q${i + 1}]${x.passage ? ` (about passage ${passages.indexOf(x.passage) + 1})` : ''} ${toText(x.it.q || '')}\n${(x.it.opts || []).map((o, j) => `(${LET[j]}) ${toText(o || '')}`).join('  ')}`).join('\n\n')}`;
+      const r = await ask(prompt, []);
+      const got = r && (r.answers || r);
+      batch.forEach((x, i) => put(x.it, got && (got[`q${i + 1}`] ?? got[i + 1] ?? got[String(i + 1)])));
+      dirty(true);
+    }
+    for (const x of figs) {
+      setAk(`Working out answers… ${done} of ${todo.length} (figure questions take longer)`);
+      const sheet = await figureSheet(x.it);
+      const opts = x.it.optMode === 'img' ? 'The four answer figures are labelled (A) to (D) in the image.' : `Options: ${(x.it.opts || []).map((o, j) => `(${LET[j]}) ${toText(o || '')}`).join('  ')}`;
+      const prompt = `This is a question from an Indian school entrance test (Jawahar Navodaya Vidyalaya, class VI; mental ability).
+${x.it.q ? `Question: ${toText(x.it.q)}\n` : ''}The image shows the question figure${x.it.optMode === 'img' ? ' on top and the answer figures below' : ''}. ${opts}
+Work out the one correct answer. Reply with only JSON: {"answer": "<A, B, C or D>"}`;
+      const r = await ask(prompt, [sheet]);
+      sheet.width = sheet.height = 0;
+      put(x.it, r && (r.answer ?? r.a));
+      dirty(true);
+    }
+    setAk(`Done: ${done} answer${done === 1 ? '' : 's'} worked out by AI${failed ? `, ${failed} could not be` : ''}. They are marked "Answer by AI · check": check them before students use the set.`);
+  } catch (e) {
+    const why = e && e.code === 'no_models' ? `No AI model can answer right now: ${reasonsOf(e.details) || e.message || ''}`
+      : e && e.code === 'cancelled' ? 'Stopped.' : e && e.code === 'not_granted' ? 'The AI service is not allowed here. Sign in again.' : 'Could not finish. Check the connection and try again.';
+    setAk(`${why} ${done} answer${done === 1 ? '' : 's'} were filled in.`);
+  } finally {
+    ak = null; btnShow(false);
+    if (done) dirty(true);
+  }
+}
+
 async function generate() {
   const sec = cur.draft.sections[cur.sec]; if (!sec) return;
   const mode = $('#genMode').value, count = Math.min(10, Math.max(1, +$('#genCount').value || 5));
@@ -1956,6 +2076,7 @@ Rules:
 - "optionFigures": four boxes when the answer choices are pictures (the "Answer Figures" of a figure question), one box around each picture, else null. Then "options" is ["", "", "", ""]. Never leave them out for a figure question, even when the options look empty.
 - Printed captions such as "Question Figure", "Question Figures" and "Answer Figures" are not text of the question and not part of any box.
 - "answer": the index 0–3 of the correct option only when the page prints an answer key or the answer is certain from a simple fact or calculation; otherwise null.
+- If the page prints an answer key (a list or table of question numbers with their answers, often at the end of the paper), add {"type": "key", "answers": {"1": "B", "2": "D"}} with every number and answer letter it shows.
 - A question whose start is on the previous page: give only the part on this page, with "continued": true.
 - If the page has no questions, reply {"items": []}.`;
 
@@ -2081,19 +2202,19 @@ async function ocrWords(cv, langs = 'eng', minConf = 45) {
   const w = await ocrWorker;
   // Tesseract's own layout step can skip whole lines of a two-column page, so each column is read on
   // its own, as one column of text; the gap between the columns is found from the ink on the page
-  const P = pageInk(cv), g = P ? findGutter(P.marks, cv.width) : null;
+  const P = pageInk(cv), g = P ? findGutter(P.marks, cv.width, P) : null;
   // whatever runs across the gap (a section band) is read as one strip of the whole width, and
   // blanked out of the two columns, so a word on the gap is not cut in half
   const strips = [];
   if (g != null) P.marks.filter(m => m.x0 < g - 4 && m.x1 > g + 4).map(m => [m.y0 - 4, m.y1 + 4]).sort((a, b) => a[0] - b[0])
     .forEach(r => { const l = strips[strips.length - 1]; if (l && r[0] <= l[1]) l[1] = Math.max(l[1], r[1]); else strips.push(r); });
   const parts = g == null ? [[0, cv.width, 0, cv.height]] : [[0, Math.round(g), 0, cv.height], [Math.round(g), cv.width, 0, cv.height], ...strips.map(([a, b]) => [0, cv.width, Math.max(0, a), Math.min(cv.height, b)])];
-  const words = [];
+  const words = [], src = withoutLines(cv);
   for (let k = 0; k < parts.length; k++) {
     const [x0, x1, y0, y1] = parts[k], c = document.createElement('canvas');
     c.width = x1 - x0; c.height = y1 - y0;
     const cg = c.getContext('2d');
-    cg.drawImage(cv, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+    cg.drawImage(src, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
     if (g != null && k < 2) { cg.fillStyle = '#fff'; strips.forEach(([a, b]) => cg.fillRect(0, a, c.width, b - a)); }
     await w.setParameters({ tessedit_pageseg_mode: g == null ? '3' : k < 2 ? '4' : '6' });
     const prog = ocrProgress;
@@ -2101,6 +2222,7 @@ async function ocrWords(cv, langs = 'eng', minConf = 45) {
     const { data } = await w.recognize(c, {}, { blocks: true, text: false });
     ocrProgress = prog;
     c.width = c.height = 0;
+    if (k === parts.length - 1) src.width = src.height = 0;
     (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => (l.words || []).forEach(x => {
       const t = String(x.text || '').trim();
       // a question number or option label read with low confidence is still worth keeping
@@ -2112,11 +2234,39 @@ async function ocrWords(cv, langs = 'eng', minConf = 45) {
   const hs = words.map(x => x.y1 - x.y0).sort((a, b) => a - b), mh = hs[hs.length >> 1] || 20;
   return words.filter(x => x.y1 - x.y0 <= mh * 2.6);
 }
+// the page with long straight lines (table borders, rules, frames) painted out: OCR skips text that
+// sits close to them. Only the copy OCR reads changes, never the page that figures are cut from.
+function withoutLines(cv) {
+  const W = cv.width, H = cv.height, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(cv, 0, 0);
+  const img = g.getImageData(0, 0, W, H), d = img.data, dark = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) dark[i] = d[i * 4] * .299 + d[i * 4 + 1] * .587 + d[i * 4 + 2] * .114 < 150 ? 1 : 0;
+  const wipe = new Uint8Array(W * H), hMin = Math.round(W * .2), vMin = Math.round(W * .03);
+  // a rule has nothing hanging from it; the headline of Hindi or Bengali words has letters below it
+  const bare = (y, x0, x1) => { let n = 0; for (let x = x0; x < x1; x++) n += dark[y * W + x]; return n < (x1 - x0) * .3; };
+  for (let y = 0; y < H; y++) for (let x = 0, run = 0; x <= W; x++) {
+    if (x < W && dark[y * W + x]) { run++; continue; }
+    if (run >= hMin && (y < 6 || bare(y - 6, x - run, x)) && (y >= H - 6 || bare(y + 6, x - run, x))) for (let k = x - run; k < x; k++) wipe[y * W + k] = 1;
+    run = 0;
+  }
+  for (let x = 0; x < W; x++) for (let y = 0, run = 0; y <= H; y++) {
+    if (y < H && dark[y * W + x]) { run++; continue; }
+    if (run >= vMin) for (let k = y - run; k < y; k++) wipe[k * W + x] = 1;
+    run = 0;
+  }
+  for (let i = 0; i < W * H; i++) if (wipe[i]) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255; }
+  g.putImageData(img, 0, 0);
+  return c;
+}
 function endOcr() { if (ocrWorker) { const w = ocrWorker; ocrWorker = null; w.then(x => x.terminate()).catch(() => {}); } }
 
 // the gap between two columns: the widest strip near the middle that (almost) nothing crosses
 // (not a gap between two words); null for a one-column page
-function findGutter(pieces, W) {
+function findGutter(pieces, W, P) {
+  // a printed rule down the middle is the gap itself
+  const rule = P && (P.rules || []).filter(r => r.cx > W * .35 && r.cx < W * .65).sort((a, b) => b.h - a.h)[0];
+  if (rule) return rule.cx;
   const n = pieces.length;
   if (n < 8) return null;
   const cross = x => pieces.filter(p => p.x0 < x && p.x1 > x).length;
@@ -2129,12 +2279,14 @@ function findGutter(pieces, W) {
     else run = null;
   });
   if (!best || min > n * .12) return null;
-  const x = (best.x0 + best.x1) / 2, l = pieces.filter(p => p.x1 <= x).length;
-  return l >= n * .2 && n - l - min >= n * .2 ? x : null;
+  const x = (best.x0 + best.x1) / 2, L = pieces.filter(p => p.x1 <= x), R = pieces.filter(p => p.x0 >= x);
+  // two real columns are both wide; a table's narrow first column is not one
+  const span = ps => ps.length ? Math.max(...ps.map(p => p.x1)) - Math.min(...ps.map(p => p.x0)) : 0;
+  return L.length >= n * .2 && R.length >= n * .2 && span(L) >= W * .25 && span(R) >= W * .25 ? x : null;
 }
 // pieces of text → reading order: full-width lines (section bands) where they fall, and between
 // them the left column, then the right
-function readingLines(pieces, W) {
+function readingLines(pieces, W, P) {
   if (!pieces.length) return [];
   // a section band ("SECTION – 2  ARITHMETIC TEST") runs across both columns: every piece level with
   // the word SECTION belongs to that one line
@@ -2146,7 +2298,7 @@ function readingLines(pieces, W) {
   const bands = [...bandPs];
   pieces = pieces.filter(p => !bandPs.has(p));
   const n = pieces.length;
-  const gutter = findGutter(pieces, W);
+  const gutter = findGutter(pieces, W, P);
   const lineUp = ps => {
     const sorted = ps.slice().sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1)), lines = [];
     sorted.forEach(p => {
@@ -2278,7 +2430,7 @@ async function localReadPictures(cv, onProgress) {
   cv.textBoxes = words; INK.delete(cv);
   const P = pageInk(cv);
   if (!P) return { items: [] };
-  const W = cv.width, H = cv.height, g = findGutter(P.marks, W);
+  const W = cv.width, H = cv.height, g = findGutter(P.marks, W, P);
   const cols = g == null ? [[0, W]] : [[0, g], [g, W]];
   const px = b => to1000(cv, b), items = [];
   cols.forEach(([c0, c1]) => {
@@ -2358,9 +2510,10 @@ async function localRead(cv, onProgress, lang = 'en') {
     cv.textBoxes = pieces;                               // the figure detector then knows exactly where the text is
     INK.delete(cv);
   }
-  const W = cv.width, H = cv.height, lines = readingLines(pieces, W), P = pageInk(cv);
+  const W = cv.width, H = cv.height, P = pageInk(cv), lines = readingLines(pieces, W, P);
   const items = [];
-  let q = null, head = null, passage = null, lastN = null, optAt = -1;
+  let q = null, head = null, passage = null, lastN = null, optAt = -1, keyOn = false;
+  const key = {};
   const endQ = (yEnd) => {
     if (!q) return;
     // leftover bits of the (A)-(D) labels printed under answer figures are not option text
@@ -2379,6 +2532,11 @@ async function localRead(cv, onProgress, lang = 'en') {
   lines.forEach((l, k) => {
     const t = normDigits(l.text);
     if (!t || /^\d{1,3}$/.test(t) && l.y0 > H * .9) return;   // page number
+    // the answer key: from its heading on, every "12. (B)" on the page is an answer
+    // ("Answer Figures" or "Answer the following" are not a key: nothing else, or answers, follow the heading)
+    const rest = KEY_HEAD.test(t) ? t.replace(KEY_HEAD, '').trim() : null;
+    if (rest != null && (!rest || Object.keys(keyPairs(rest)).length >= 2)) { endQ(l.y0); keyOn = true; Object.assign(key, keyPairs(rest)); return; }
+    if (keyOn) { Object.assign(key, keyPairs(t)); return; }
     const nextTop = () => { for (let j = k + 1; j < lines.length; j++) if (lines[j].col === l.col || lines[j].col === 0) return lines[j].y0; return H; };
     let m;
     if ((m = t.match(RX.section))) { endQ(l.y0); endBlocks(); items.push({ type: 'section', tag: `Section ${m[1]}`, title: m[2] || '', directions: '' }); head = items[items.length - 1]; return; }
@@ -2434,8 +2592,37 @@ async function localRead(cv, onProgress, lang = 'en') {
     if (head && head.type === 'section' && !head.title && isCaps(t)) { head.title = t; return; }
   });
   endQ(H);
+  // a page that is only a table of numbers and letters is a key even without a heading
+  if (!keyOn && !items.some(it => it.type === 'question' && it.text)) {
+    const all = keyPairs(lines.map(l => l.text).join(' '));
+    if (Object.keys(all).length >= 10) { items.length = 0; Object.assign(key, all); }
+  }
+  if (Object.keys(key).length) items.push({ type: 'key', answers: key });
   items.forEach(it => { delete it.inDir; delete it.y1; });
   return { items: items.filter(it => it.type !== 'heading' || it.sub || it.part || it.directions) };
+}
+
+/* ---------- answer keys ----------
+   A printed key ("1. (B)  2. (D) …", "1-B", or a table of numbers and letters) is read into
+   { number: option index } and filled in by question number. */
+const KEY_HEAD = /^(?:answer\s*keys?|answers?|key\s*answers?|उत्तर\s*(?:कुंजी|माला)|উত্তর(?:মালা)?|ꯄꯥꯎꯈꯨꯝ)\s*[:.\-–—]?/iu;
+// "12. (B)", "12-B", "12 B", and OCR's "12.8)" (B read as 8)
+const KEY_PAIR = /(\d{1,3})\s*[.):\-–—=]?\s*(?:[([]\s*([A-Da-dकखगघকখগঘ1-4])\s*[)\]]|([A-Da-dकखगघকখগঘ])|(8)\s*[)\]])(?=[\s,;|/]|$)/gu;
+function keyPairs(text) {
+  const out = {};
+  normDigits(text).replace(KEY_PAIR, (m, n, a, b, eight) => { const i = eight ? 1 : labelIndex(a || b); if (i >= 0 && +n > 0) out[+n] = i; return m; });
+  return out;
+}
+// whatever shape the AI used: { "1": "B" }, [["1","B"]], [{ "n": 1, "a": "B" }]
+function keyFromReply(v) {
+  const out = {}, put = (n, a) => {
+    n = parseInt(normDigits(n), 10);
+    const i = typeof a === 'number' ? a : labelIndex(String(a ?? '').replace(/[^A-Da-dकखगघকখগঘ1-4]/gu, ''));   // a number is an index 0-3
+    if (n > 0 && i >= 0 && i < 4) out[n] = i;
+  };
+  if (Array.isArray(v)) v.forEach(x => Array.isArray(x) ? put(x[0], x[1]) : x && put(x.n ?? x.number ?? x.q, x.a ?? x.answer));
+  else if (v && typeof v === 'object') Object.entries(v).forEach(([n, a]) => put(n, a));
+  return out;
 }
 
 /* model reply → clean items; boxes become cropped canvases */
@@ -2468,7 +2655,7 @@ function pageInk(cv) {
     const row = ((y / CELL) | 0) * gw;
     for (let x = 0; x < W; x++) { const k = (y * W + x) * 4; if (px[k] * .299 + px[k + 1] * .587 + px[k + 2] * .114 < 150) ink[row + ((x / CELL) | 0)] = 1; }
   }
-  const seen = new Uint8Array(gw * gh), stack = [], marks = [];
+  const seen = new Uint8Array(gw * gh), stack = [], marks = [], rules = [];
   for (let i = 0; i < ink.length; i++) {
     if (!ink[i] || seen[i]) continue;
     let x0 = gw, y0 = gh, x1 = -1, y1 = -1, n = 0;
@@ -2486,7 +2673,10 @@ function pageInk(cv) {
     const w = m.x1 - m.x0, h = m.y1 - m.y0;
     // page borders, column rules and full-width lines are not figures
     // (a slightly tilted scan makes a rule a few px wide over its length, so thin is judged against length)
-    if (((Math.min(w, h) <= CELL * (R + 2) || Math.min(w, h) < Math.max(w, h) * .03) && (h > H * .25 || w > W * .45)) || w * h > W * H * .5) continue;
+    if (((Math.min(w, h) <= CELL * (R + 2) || Math.min(w, h) < Math.max(w, h) * .03) && (h > H * .25 || w > W * .45)) || w * h > W * H * .5) {
+      if (h > H * .25 && w < W * .03) rules.push({ cx: (m.x0 + m.x1) / 2, h });   // a column rule
+      continue;
+    }
     m.cx = (m.x0 + m.x1) / 2; m.cy = (m.y0 + m.y1) / 2;
     marks.push(m);
   }
@@ -2520,7 +2710,7 @@ function pageInk(cv) {
     }
   });
   extra.forEach(e => marks.push({ ...e, n: 2, cx: (e.x0 + e.x1) / 2, cy: (e.y0 + e.y1) / 2, text: true, draw: false }));
-  const P = { W, H, marks, tall };
+  const P = { W, H, marks, tall, rules };
   INK.set(cv, P);
   return P;
 }
@@ -2681,6 +2871,7 @@ function cleanItems(reply, cv, page) {
     if (r.type === 'section') { const it = { t: 'section', tag: str(r.tag, 80), title: str(r.title, 300), dir: str(r.directions) }; if (it.tag || it.title) out.push(it); return; }
     if (r.type === 'heading') { const it = { t: 'head', sub: str(r.sub, 200), part: str(r.part, 80), dir: str(r.directions) }; if (it.sub || it.part || it.dir) out.push(it); return; }
     if (r.type === 'passage') { const it = { t: 'passage', title: str(r.title, 200), text: str(r.text, 12000) }; if (it.text) out.push(it); return; }
+    if (r.type === 'key') { const answers = keyFromReply(r.answers); if (Object.keys(answers).length) out.push({ t: 'key', answers }); return; }
     if (r.type !== 'question') return;
     const opts = (Array.isArray(r.options) ? r.options : []).slice(0, 4).map((o, i) => cleanOpt(str(o, 600), i));
     while (opts.length < 4) opts.push('');
@@ -2835,6 +3026,12 @@ async function runImport() {
     endOcr();
     imp.byLocal = byLocal;
     if (imp !== job) return;                             // closed while reading
+    // answers from a printed key, by question number (the key's own rows are not shown)
+    const key = Object.assign({}, ...items.filter(x => x.t === 'key').map(x => x.answers));
+    items = items.filter(x => x.t !== 'key');
+    let keyed = 0;
+    items.forEach(x => { if (x.t === 'q' && x.number != null && key[x.number] != null) { x.a = key[x.number]; x.gen = false; x.keyed = true; keyed++; } });
+    imp.key = key; imp.keyed = keyed;
     imp.items = mergeContinued(items);
     imp.pages = pages; imp.pageUrls = {};
     imp.skipped = total - pages.length;
@@ -2863,17 +3060,18 @@ function renderReview() {
     if (it.t === 'head') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Heading</span><span class="tx">${esc([it.sub, it.part].filter(Boolean).join(' · ') || plain(it.dir).slice(0, 90))}</span></label>`;
     if (it.t === 'passage') return `<label class="bank-row imp-row">${box}<span class="n">¶</span><span class="chip">Passage</span><span class="tx">${esc(it.title || it.text.slice(0, 90))}</span></label>`;
     const pics = it.optFigs ? it.optFigs.map((f, k) => cropBtn(f, i, k, `option ${LET[k]}`)).join(' ') : '';
-    const chips = [it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
+    const chips = [it.fig || it.optFigs ? '<span class="chip">Figure</span>' : '', it.a == null ? '<span class="chip warn">No answer</span>' : it.keyed ? `<span class="chip">Answer ${LET[it.a]} · from the key</span>` : '<span class="chip warn">Answer by AI · check</span>'].join(' ');
     return `<label class="bank-row" style="grid-template-columns:auto 30px minmax(0,1fr);align-items:start">${box}<span class="n">${it.number ?? '–'}</span>
       <span style="display:grid;gap:4px;min-width:0"><span>${fmtU(it.q || (it.fig || it.optFigs ? 'Question figure' : ''))}</span>
       <span class="subnote" style="overflow-wrap:anywhere">${it.optFigs ? '' : it.opts.map((o, k) => `(${LET[k]}) ${esc(o) || '—'}`).join('&nbsp;&nbsp; ')}</span>
       <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${cropBtn(it.fig, i, 'fig', 'the question figure')} ${pics} ${chips}</span></span></label>`;
   }).join('');
   $('#impBody').innerHTML = `<p class="subnote">Found <b>${qs.length}</b> question${qs.length === 1 ? '' : 's'}${pas ? `, ${pas} passage${pas === 1 ? '' : 's'}` : ''}${secs ? ` and ${secs} section${secs === 1 ? '' : 's'}` : ''}. ${figs} with figures, ${noKey} without an answer.${imp.skipped > 0 ? ` ${imp.skipped} more page${imp.skipped === 1 ? ' was' : 's were'} left out (${IMPORT_MAX_PAGES} at a time).` : ''} Untick anything you do not want.</p>
+    ${Object.keys(imp.key || {}).length ? `<p class="subnote"><b>Answer key found:</b> ${Object.keys(imp.key).length} answers${imp.keyed ? `, filled in for ${imp.keyed} question${imp.keyed === 1 ? '' : 's'} below` : ''}.${imp.mode === 'add' && !qs.length ? ' They will be filled in for this set\'s questions by number.' : ''}</p>` : ''}
     ${imp.byLocal && imp.byLocal.length ? `<p class="subnote"><b>Read by the built-in reader:</b> page${imp.byLocal.length === 1 ? '' : 's'} ${imp.byLocal.join(', ')}. Check those questions closely; it does not set answers.${items.some(it => it.picture) ? ' Meetei Mayek questions and options are kept as pictures of the print.' : ''}</p>` : ''}
     <div style="max-height:52vh;overflow-y:auto;border-top:1px solid var(--rule)">${rows || '<p class="subnote">Nothing was found on these pages.</p>'}</div>
     <p class="genmsg" id="impMsg" role="status"></p>`;
-  $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
+  $('#impFoot').innerHTML = `<span class="subnote">Click a figure to fix its crop. Figures are saved when you add.</span><div class="addbar"><button class="btn primary" type="button" data-act="impadd" id="impAdd"${qs.length || (imp.mode === 'add' && Object.keys(imp.key || {}).length) ? '' : ' disabled'}>${imp.mode === 'new' ? 'Create model set' : 'Add to set'}</button></div>`;
 }
 /* ---------- crop editor: zoom in, then draw, move or resize the box over the page ---------- */
 let cropper = null;
@@ -3085,6 +3283,7 @@ async function finishImport() {
       if (it.t !== 'q') { built.push(it); continue; }
       const q = { t: 'q', kind: it.fig || it.optFigs ? 'img' : 'text', q: it.q, opts: it.opts, a: it.a };
       if (it.gen) q.gen = true;
+      if (it.keyed) q.keyed = true;
       if (q.kind === 'img') {
         q.img = it.fig ? await save(it.fig) : '';
         q.optMode = it.optFigs ? 'img' : 'text';
@@ -3102,6 +3301,15 @@ async function finishImport() {
       if (si < 0 || !set.sections[si]) { set.sections.push({ tag: `Section ${set.sections.length + 1}`, title: '', short: '', dir: DIR_MCQ, items: [] }); si = set.sections.length - 1; }
       return set.sections[si];
     };
+    // a file that is only an answer key: fill in this set's answers by question number
+    if (imp.mode === 'add' && !built.some(x => x.t === 'q') && Object.keys(imp.key || {}).length) {
+      let n = 0, filled = 0;
+      set.sections.forEach(sec => (sec.items || []).forEach(x => { if (x.t !== 'q') return; n++; if (x.kind !== 'lib' && imp.key[n] != null) { x.a = imp.key[n]; delete x.gen; x.keyed = true; filled++; } }));
+      imp = null; ov.innerHTML = '';
+      dirty(true);
+      setTimeout(() => setStatus(`Answer key: ${filled} answer${filled === 1 ? '' : 's'} filled in`), 1500);
+      return;
+    }
     built.forEach(it => {
       if (it.t === 'section') { set.sections.push({ tag: it.tag || `Section ${set.sections.length + 1}`, title: it.title, short: '', dir: it.dir, items: [] }); si = set.sections.length - 1; return; }
       target().items.push(it);
@@ -3226,6 +3434,8 @@ document.addEventListener('click', async e => {
   }
   else if (act === 'gen') { cur.gen = !cur.gen; const g = $('#gen'); if (g) { g.hidden = !cur.gen; if (cur.gen) $('#genTopic').focus(); } }
   else if (act === 'genrun') generate();
+  else if (act === 'autokey') autoKey();
+  else if (act === 'akstop') { if (ak) ak.abort(); }
   else if (act === 'genstop') genCtl && genCtl.abort();
 });
 
@@ -3241,7 +3451,7 @@ document.addEventListener('input', e => {
   }
   const card = el.closest('[data-i]'); if (!card) return;
   const it = d.sections[cur.sec].items[+card.dataset.i];
-  if (f === 'a') { it.a = +el.value; const w = card.querySelector('.chip.warn'); if (w && !it.gen) w.remove(); }
+  if (f === 'a') { it.a = +el.value; delete it.gen; delete it.keyed; card.querySelectorAll('.chip.warn, .chip.key').forEach(w => w.remove()); }
   else if (f === 'optMode') { it.optMode = el.checked ? 'img' : 'text'; return dirty(true); }
   else if (/^o\d$/.test(f)) { it.opts = it.opts || ['', '', '', '']; it.opts[+f[1]] = el.value; }
   else it[f] = el.value;

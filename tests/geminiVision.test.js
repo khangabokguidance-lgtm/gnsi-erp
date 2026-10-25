@@ -10,6 +10,10 @@ test('a prompt with one or two page images is accepted', () => {
   assert.equal(checkVisionBody({ prompt: 'read', images: [page, page] }), '')
 })
 
+test('questions sent as text only (Auto answer key) are accepted without an image', () => {
+  assert.equal(checkVisionBody({ prompt: 'answer', images: [], textOnly: true }), '')
+})
+
 test('missing, oversized or unsafe input is refused before Gemini is called', () => {
   assert.match(checkVisionBody({ images: [page] }), /prompt/i)
   assert.match(checkVisionBody({ prompt: 'x'.repeat(20001), images: [page] }), /too long/i)
