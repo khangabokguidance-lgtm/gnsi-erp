@@ -1,8 +1,9 @@
 @import "tailwindcss";
-/* Premium type system — families are loaded in index.html. */
+/* Premium type system (portal kit, premiumUI.jsx): Plus Jakarta Sans for text, Fraunces for titles.
+   Families are loaded in index.html. */
 html { -webkit-text-size-adjust: 100%; }
 body {
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-feature-settings: 'cv11', 'ss01', 'calt';
   font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;

@@ -21,6 +21,11 @@ const P = {
   studymaterial: <><path d="M4 19V5a2 2 0 012-2h12v14H6a2 2 0 00-2 2zm0 0a2 2 0 002 2h12"/><path d="M9 7h6"/></>,
   teachingaids: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>,
   learninghub: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 8v6"/><path d="M12 13v4"/></>,
+  studentshub: <><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/></>,
+  feeshub: <><path d="M7 5h10M7 9h10"/><path d="M9 5c4 0 5 2 5 4s-2 4-5 4H7l8 7"/></>,
+  examshub: <><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/><path d="M8 14l2 2 4-4"/></>,
+  commshub: <><path d="M3 11v2a1 1 0 001 1h3l6 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></>,
+  adminhub: <><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></>,
   studylockers: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M8 10v2M16 10v2"/></>,
   kitchen: <><path d="M5 3v7a2 2 0 002 2h0a2 2 0 002-2V3M7 12v9"/><path d="M17 21V3c-2 1-3 4-3 7h3"/></>,
   staff: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.6.3 4.5 2.4 4.5 5"/></>,
@@ -107,6 +112,7 @@ const C = {
   system: ['#94a3b8', '#334155'], adminlink: ['#a78bfa', '#6d28d9'], help: ['#38bdf8', '#0284c7'], questionbank: ['#c084fc', '#7e22ce'],
   studymaterial: ['#fbbf24', '#b45309'], teachingaids: ['#60a5fa', '#1d4ed8'], entrance: ['#fcd34d', '#b45309'],
   modelsets: ['#5eead4', '#0f766e'],
+  studentshub: ['#fbbf24', '#d97706'], feeshub: ['#4ade80', '#15803d'], examshub: ['#f87171', '#b91c1c'], commshub: ['#e879f9', '#a21caf'], adminhub: ['#64748b', '#1e293b'],
 }
 const FALLBACK = [['#60a5fa', '#2563eb'], ['#34d399', '#059669'], ['#f472b6', '#db2777'], ['#fbbf24', '#d97706'], ['#a78bfa', '#7c3aed'], ['#fb923c', '#ea580c']]
 const pick = id => C[id] || FALLBACK[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % FALLBACK.length]

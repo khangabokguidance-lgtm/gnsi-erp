@@ -6,11 +6,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavIcon } from './navIcons'
 
 const NAVY = '#0B1E3D', NAVY2 = '#1F4E8C', GOLD = '#C9A24B', INK = '#1c2433', SUB = '#5d6b82'
-const DEFAULT_QUICK = ['dashboard', 'students', 'fees', 'attendance', 'hostel', 'teaching', 'studentfeeledger', 'hr']
+const DEFAULT_QUICK = ['dashboard', 'studentshub', 'feeshub', 'attendance', 'hostel', 'teaching', 'learninghub', 'hr']
 const GROUP_TITLES = { CORE: 'Students & Admissions', FINANCE: 'Fees & Finance', ACADEMIC: 'Academics', PEOPLE: 'Staff & Hostel', OPERATIONS: 'Front Office', MANAGEMENT: 'Management' }
 const PREVIEW = 8 // two rows of four, then "View All"
 // Shorter names for the icon grid so every label fits in two lines.
-const SHORT = { construction: 'Campus Works', questionbankviewer: 'QB Viewer', studentfeeledger: 'Fee Ledger', bulkadmission: 'Bulk Admission', faceattendance: 'Face Attendance', website: 'Website', studymaterial: 'Study Material' }
+const SHORT = { construction: 'Campus Works', questionbankviewer: 'QB Viewer', studentfeeledger: 'Fee Ledger', bulkadmission: 'Bulk Admission', faceattendance: 'Face Attendance', website: 'Website', studymaterial: 'Study Material', studentshub: 'Students', examshub: 'Exams', adminhub: 'Admin' }
 const short = it => SHORT[it.id] || it.label
 
 const CSS = `

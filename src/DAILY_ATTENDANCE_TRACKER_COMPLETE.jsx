@@ -21,6 +21,7 @@ const Timetable = lazy(() => import('./Timetable'))
 const Leave     = lazy(() => import('./Leave'))
 const Notice    = lazy(() => import('./Notice'))
 const MODULE_SECTIONS = [
+  { key: 'staffdir',  perm: 'staff' },
   { key: 'timetable', perm: 'timetable' },
   { key: 'leavedesk', perm: 'leave' },
   { key: 'notice',    perm: 'notice' },
@@ -46,6 +47,9 @@ const HRI = {
 }
 // The launcher: every section as an icon tile on HR home, a chip bar inside a section
 const TAB_GROUPS = [
+  { label: 'People', color: '#6a2c70', tabs: [
+    { id: 'staffdir', label: 'Staff Directory', icon: PIcon.users, hint: 'Profiles, documents, joining' },
+  ] },
   { label: 'Attendance', color: '#132a4f', tabs: [
     { id: 'daily',  label: 'Daily Attendance', icon: HRI.check, hint: 'Mark today, staff by staff' },
     { id: 'absent', label: 'Absentees',        icon: HRI.away,  hint: 'Most absences this month' },
@@ -1670,10 +1674,11 @@ function BulkOperations({ staff, canOperate = true, onAttendanceChange }) {
 // FIX-D5: hr_records fetch wrapped in try/catch
 // ─────────────────────────────────────────────────────────────────────────────
 
+// staffDirectory: the Staff module element (App builds it with the shared staff list).
 // perms: this user's rights on the 'hr' module; canAccess(key) / modulePerms(key): App's access check
 // and rights, used for the module sections (MODULE_SECTIONS). section / onSection let App open a
 // section directly (old links to the Timetable, Leave and Notice modules land on them here).
-function DailyAttendanceTracker({ currentUser: appUser, staffProp, perms, canAccess, modulePerms, section, onSection }) {
+function DailyAttendanceTracker({ currentUser: appUser, staffProp, perms, canAccess, modulePerms, section, onSection, staffDirectory }) {
   const canHR = perms ? !!perms.read : true
   const moduleSections = MODULE_SECTIONS.filter(m => (canAccess ? canAccess(m.perm) : true))
   const canSee = key => (MODULE_SECTIONS.some(m => m.key === key) ? moduleSections.some(m => m.key === key) : canHR)
@@ -1800,6 +1805,7 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp, perms, canAcc
       {activeSection === 'bulk'        && <BulkOperations staff={staff} canOperate={canOperate} onAttendanceChange={refreshLogs} />}
       {onModule && (
         <Suspense fallback={<div className="hr-empty" style={{ padding: '48px 16px' }}>Loading {sectionLabel.toLowerCase()}…</div>}>
+          {activeSection === 'staffdir'  && staffDirectory}
           {activeSection === 'timetable' && <Timetable currentUser={currentUser} embedded />}
           {activeSection === 'leavedesk' && <Leave currentUser={appUser} perms={modulePerm('leave')} />}
           {activeSection === 'notice'    && <Notice currentUser={appUser} perms={modulePerm('notice')} />}
