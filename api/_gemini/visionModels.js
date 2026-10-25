@@ -8,16 +8,17 @@
 //     gemini-2.0-flash, gemini-2.0-flash-lite. Same key, a separate free limit per model.
 //     Change the list with GEMINI_VISION_MODELS="model-a,model-b".
 //   Groq (optional, free key from console.groq.com → API Keys): set GROQ_API_KEY.
-//     Model: GROQ_VISION_MODEL, default meta-llama/llama-4-scout-17b-16e-instruct.
+//     Models: GROQ_VISION_MODEL (comma list), default the Llama 4 Scout and Maverick vision models.
 //   OpenRouter (optional, free key from openrouter.ai → Keys): set OPENROUTER_API_KEY.
-//     Model: OPENROUTER_VISION_MODEL, default qwen/qwen2.5-vl-72b-instruct:free.
+//     Models: OPENROUTER_VISION_MODEL (comma list), default a few free (":free") vision models.
+//     Free models there come and go: one that no longer exists is skipped for an hour.
 //
 // Keys are added in Vercel → Project → Settings → Environment Variables, then redeploy.
 // No Supabase import here, so this file can be tested with `node --test`.
 
 export const DEFAULT_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
-const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
-const OPENROUTER_MODEL = 'qwen/qwen2.5-vl-72b-instruct:free'
+export const DEFAULT_GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct']
+export const DEFAULT_OPENROUTER_MODELS = ['qwen/qwen2.5-vl-72b-instruct:free', 'meta-llama/llama-4-maverick:free', 'google/gemma-3-27b-it:free', 'mistralai/mistral-small-3.2-24b-instruct:free']
 
 const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean)
 
@@ -28,8 +29,9 @@ export function visionChain(env = {}) {
     const models = list(env.GEMINI_VISION_MODELS)
     for (const model of models.length ? models : DEFAULT_GEMINI_MODELS) chain.push({ provider: 'gemini', model })
   }
-  if (env.GROQ_API_KEY) chain.push({ provider: 'groq', model: env.GROQ_VISION_MODEL || GROQ_MODEL })
-  if (env.OPENROUTER_API_KEY) chain.push({ provider: 'openrouter', model: env.OPENROUTER_VISION_MODEL || OPENROUTER_MODEL })
+  const add = (provider, set, defaults) => { const m = list(set); for (const model of m.length ? m : defaults) chain.push({ provider, model }) }
+  if (env.GROQ_API_KEY) add('groq', env.GROQ_VISION_MODEL, DEFAULT_GROQ_MODELS)
+  if (env.OPENROUTER_API_KEY) add('openrouter', env.OPENROUTER_VISION_MODEL, DEFAULT_OPENROUTER_MODELS)
   return chain
 }
 
@@ -120,6 +122,7 @@ export async function readWithChain({ chain, env, prompt, images, fetchFn = fetc
     const error = data?.error?.message || data?.error || `HTTP ${res.status}`
     log(`${entry.provider}:${entry.model} → ${res.status}`, error)
     if (res.status === 429) { const wait = retryDelay(entry, data, res.headers); markBusy(entry, wait); busy.push(wait || 30) }
+    else if (res.status === 404) markBusy(entry, 3600)   // no such model (any more): skip it for an hour
     last = { status: res.status, error: String(error) }
     if (!tryNext(res.status)) break
   }

@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { visionChain, buildRequest, readWithChain, clearBusy, DEFAULT_GEMINI_MODELS } from '../api/_gemini/visionModels.js'
+import { visionChain, buildRequest, readWithChain, clearBusy, DEFAULT_GEMINI_MODELS, DEFAULT_GROQ_MODELS, DEFAULT_OPENROUTER_MODELS } from '../api/_gemini/visionModels.js'
 
 const page = { mimeType: 'image/jpeg', data: 'QUJD' }
 const json = (status, body, headers = {}) => ({ ok: status < 400, status, json: async () => body, headers: { get: (k) => headers[k.toLowerCase()] ?? null } })
@@ -12,7 +12,8 @@ test('the chain is the Gemini models on one key, then Groq and OpenRouter only w
   assert.deepEqual(visionChain({}), [])
   assert.deepEqual(visionChain({ GEMINI_API_KEY: 'g' }).map((e) => e.model), DEFAULT_GEMINI_MODELS)
   const all = visionChain({ GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'a, b', GROQ_API_KEY: 'q', OPENROUTER_API_KEY: 'o', OPENROUTER_VISION_MODEL: 'x:free' })
-  assert.deepEqual(all.map((e) => `${e.provider}:${e.model}`), ['gemini:a', 'gemini:b', 'groq:meta-llama/llama-4-scout-17b-16e-instruct', 'openrouter:x:free'])
+  assert.deepEqual(all.map((e) => `${e.provider}:${e.model}`), ['gemini:a', 'gemini:b', ...DEFAULT_GROQ_MODELS.map((m) => `groq:${m}`), 'openrouter:x:free'])
+  assert.equal(visionChain({ OPENROUTER_API_KEY: 'o' }).length, DEFAULT_OPENROUTER_MODELS.length)
 })
 
 test('only 2.5 and later Gemini models get the no-thinking setting; Groq gets the page as a data URL', () => {
@@ -26,7 +27,7 @@ test('only 2.5 and later Gemini models get the no-thinking setting; Groq gets th
 
 test('a busy model hands the page to the next one, and is skipped while it rests', async () => {
   clearBusy()
-  const env = { GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1,m2', GROQ_API_KEY: 'q' }
+  const env = { GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1,m2', GROQ_API_KEY: 'q', GROQ_VISION_MODEL: 'scout' }
   const calls = []
   const fetchFn = async (url) => {
     calls.push(url.includes('groq') ? 'groq' : url.match(/models\/([^:]+)/)[1])
@@ -35,7 +36,7 @@ test('a busy model hands the page to the next one, and is skipped while it rests
     return json(200, { choices: [{ message: { content: '{"items":[]}' } }] })
   }
   const r = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
-  assert.deepEqual(r, { ok: true, text: '{"items":[]}', model: 'groq:meta-llama/llama-4-scout-17b-16e-instruct' })
+  assert.deepEqual(r, { ok: true, text: '{"items":[]}', model: 'groq:scout' })
   assert.deepEqual(calls, ['m1', 'm2', 'groq'])
   calls.length = 0
   await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
@@ -59,4 +60,17 @@ test('the first model that works answers, and a missing key is a clear error', a
   assert.equal(r.model, 'gemini:gemini-2.5-flash')
   const none = await readWithChain({ chain: [], env: {}, prompt: 'p', images: [page] })
   assert.match(none.error, /GEMINI_API_KEY/)
+})
+
+test('a free model that no longer exists is skipped for later pages', async () => {
+  clearBusy()
+  const env = { OPENROUTER_API_KEY: 'o', OPENROUTER_VISION_MODEL: 'gone:free,here:free' }
+  const calls = []
+  const fetchFn = async (url, o) => {
+    const m = JSON.parse(o.body).model; calls.push(m)
+    return m === 'gone:free' ? json(404, { error: { message: 'No endpoints found' } }) : json(200, { choices: [{ message: { content: '{}' } }] })
+  }
+  assert.equal((await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })).model, 'openrouter:here:free')
+  await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
+  assert.deepEqual(calls, ['gone:free', 'here:free', 'here:free'])
 })
