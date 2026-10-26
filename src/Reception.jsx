@@ -204,9 +204,9 @@ const delBtn = {
 }
 
 // ── Card primitives ───────────────────────────────────────────────────────────
-function Card({ children, style = {} }) {
+function Card({ children, style = {}, className }) {
   return (
-    <div style={{
+    <div className={className} style={{
       background: 'white', borderRadius: 18,
       border: `1px solid ${C.slate[200]}`,
       boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)',
@@ -1922,7 +1922,7 @@ const QUICK_ACTIONS = [
   { key: 'S', tab: 'Student 360°',      label: 'Student 360°',     icon: RIcon.s360,      hint: 'Full profile' },
 ]
 
-function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems, leaveApps, complaints, goTab, onVisitorOut, onGatePassReturn, onFollowUpDone, onSummary }) {
+function FrontDesk({ currentUserName, mob, students, enquiries, visitors, gatePasses, parentItems, leaveApps, complaints, goTab, onVisitorOut, onGatePassReturn, onFollowUpDone, onSummary }) {
   const [q, setQ] = useState('')
   const finderRef = useRef(null)
   const t = today()
@@ -2050,16 +2050,31 @@ function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems
   const maxPulse = Math.max(1, ...pulse.map(p => p.total))
   const sevColor = s => s >= 3 ? C.red : s === 2 ? C.amber : C.sky
 
+  const urgentCount = queue.filter(i => i.sev >= 3).length
+  const health = Math.max(0, Math.min(100, 100 - urgentCount * 18 - queue.filter(i => i.sev === 2).length * 8 - queue.filter(i => i.sev === 1).length * 3))
+  const who = (currentUserName || '').split(' ')[0] || 'team'
   const hour = new Date().getHours()
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const mini = { height: 30, padding: '0 11px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, fontFamily: font, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }
 
   return (
     <>
+      {/* Spotlight */}
+      <div className="rx-spot rx-rise" style={{ display: 'flex', alignItems: 'center', gap: mob ? 14 : 24, flexWrap: mob ? 'wrap' : 'nowrap' }}>
+        <div className="rx-ring" style={{ '--p': health, '--c': health >= 80 ? C.emerald : health >= 50 ? C.gold : C.red }}><span>{health}</span></div>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>Desk health</div>
+          <div style={{ fontFamily: serif, fontSize: mob ? 24 : 30, fontWeight: 600, lineHeight: 1.1, color: C.navy, marginTop: 3 }}>{greet}, <span style={{ fontStyle: 'italic', fontWeight: 500, color: '#8a6118' }}>{who}</span></div>
+          <div style={{ fontSize: 13, color: C.slate[600], marginTop: 6, fontFamily: font }}>
+            {queue.length ? <>{queue.length} item{queue.length > 1 ? 's' : ''} need your attention{urgentCount ? <> — <b style={{ color: C.red }}>{urgentCount} urgent</b></> : null}.</> : 'Everything is in order. Enjoy the calm.'}
+          </div>
+        </div>
+        {!mob && <span style={{ fontSize: 11, color: C.slate[500], fontFamily: font, position: 'relative', zIndex: 1, textAlign: 'right', lineHeight: 1.7 }}>Press a key to jump<br /><kbd className="rx-kbd">/</kbd> finds a student</span>}
+      </div>
+
       {/* Quick actions */}
-      <Card>
-        <CardHead title={greet} sub={queue.length ? `${queue.length} item${queue.length > 1 ? 's' : ''} need your attention` : 'All clear — nothing pending right now'} isMobile={mob}
-          right={!mob && <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font }}>Press a key to jump · <b>/</b> finds a student</span>} />
+      <Card className="rx-rise" style={{ animationDelay: '.08s' }}>
+        <CardHead title="Quick actions" sub="One tap — or one key — to the task" isMobile={mob} />
         <div style={{ padding: mob ? 12 : 18, display: 'grid', gridTemplateColumns: mob ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
           {QUICK_ACTIONS.map(a => (
             <button key={a.key} className="rx-act" onClick={() => goTab(a.tab)}>
@@ -2076,7 +2091,7 @@ function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems
 
       <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr' : '1.35fr 1fr', gap: 16, alignItems: 'start' }}>
         {/* Action queue */}
-        <Card>
+        <Card className="rx-rise" style={{ animationDelay: '.16s' }}>
           <CardHead title="Needs attention" sub="Ranked by urgency — act without leaving this screen" isMobile={mob}
             right={queue.length > 0 && <span className="rx-badge">{queue.length}</span>} />
           {queue.length === 0 ? (
@@ -2086,8 +2101,8 @@ function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems
               <div style={{ fontSize: 12, marginTop: 3 }}>No overdue returns, stale visitors or due follow-ups.</div>
             </div>
           ) : queue.slice(0, 10).map(it => (
-            <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '11px 14px' : '12px 20px', borderTop: `1px solid ${C.slate[100]}`, borderLeft: `3px solid ${sevColor(it.sev)}` }}>
-              <span style={{ fontSize: 20 }}>{it.icon}</span>
+            <div key={it.id} className="rx-q" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '11px 14px' : '13px 20px', borderTop: `1px solid ${C.slate[100]}`, borderLeft: `3px solid ${sevColor(it.sev)}` }}>
+              <span className={'rx-sev s' + it.sev}>{it.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</div>
                 <div style={{ fontSize: 11.5, color: C.slate[500], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</div>
@@ -2131,7 +2146,7 @@ function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems
               {pulse.map((p, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: C.slate[600] }}>{p.total || ''}</span>
-                  <div title={`${p.v} visitors · ${p.e} enquiries`} style={{ width: '100%', maxWidth: 30, height: `${Math.max(4, (p.total / maxPulse) * 70)}px`, borderRadius: 6, background: i === 6 ? `linear-gradient(180deg,${C.gold},${C.goldLight})` : `linear-gradient(180deg,${C.navyMid},${C.navy})`, opacity: i === 6 ? 1 : .72 }} />
+                  <div className="rx-bar" title={`${p.v} visitors · ${p.e} enquiries`} style={{ animationDelay: `${i * 70}ms`, width: '100%', maxWidth: 30, height: `${Math.max(4, (p.total / maxPulse) * 70)}px`, borderRadius: '8px 8px 4px 4px', boxShadow: i === 6 ? '0 8px 16px -8px rgba(184,146,58,.9)' : 'none', background: i === 6 ? `linear-gradient(180deg,${C.gold},${C.goldLight})` : `linear-gradient(180deg,${C.navyMid},${C.navy})`, opacity: i === 6 ? 1 : .72 }} />
                   <span style={{ fontSize: 10, color: C.slate[400], fontWeight: 600 }}>{p.label}</span>
                 </div>
               ))}
@@ -2143,13 +2158,15 @@ function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems
       {/* Activity feed */}
       <Card>
         <CardHead title="Today's activity" sub="Everything logged at the desk, newest first" isMobile={mob} />
+        <div className="rx-tl">
         {feed.length === 0 ? <div style={{ padding: 24, fontSize: 12.5, color: C.slate[500], textAlign: 'center', fontFamily: font }}>Nothing logged yet today.</div> : feed.map(f => (
-          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '9px 14px' : '10px 20px', borderTop: `1px solid ${C.slate[100]}`, fontSize: 13, fontFamily: font }}>
-            <span>{f.icon}</span>
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '9px 14px' : '10px 20px', fontSize: 13, fontFamily: font }}>
+            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', border: `2px solid ${C.goldLight}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, position: 'relative', zIndex: 1, flexShrink: 0 }}>{f.icon}</span>
             <span style={{ flex: 1, minWidth: 0, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.text}</span>
             <span style={{ fontSize: 11.5, color: C.slate[400], fontVariantNumeric: 'tabular-nums' }}>{new Date(f.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         ))}
+        </div>
       </Card>
     </>
   )
@@ -2548,6 +2565,49 @@ export default function ReceptionPage({ currentUser }) {
         .rx-act:hover{transform:translateY(-2px);border-color:${C.gold};box-shadow:0 10px 22px -14px rgba(19,42,79,.5)}
         .rx-act-ic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:linear-gradient(180deg,${C.navyMid},${C.navy});color:${C.goldLight}}
         .rx-kbd{font:700 11px/1 ${font};padding:4px 7px;border-radius:6px;background:${C.slate[100]};border:1px solid ${C.slate[300]};color:${C.slate[600]}}
+        @keyframes rxRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        @keyframes rxSheen{0%{background-position:-200% 0}100%{background-position:200% 0}}
+        @keyframes rxPulse{0%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}70%{box-shadow:0 0 0 9px rgba(220,38,38,0)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0)}}
+        @keyframes rxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+        @keyframes rxGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+        .rx-rise{animation:rxRise .6s cubic-bezier(.2,.7,.2,1) both}
+        .rx-hero-rings{position:absolute;right:-90px;top:-110px;width:380px;height:380px;border-radius:50%;pointer-events:none;
+          background:repeating-radial-gradient(circle at center,transparent 0 38px,rgba(233,217,176,.10) 38px 39px)}
+        .rx-hero-sheen{position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#e9d9b0,#b8923a,#e9d9b0,transparent);background-size:200% 100%;animation:rxSheen 6s linear infinite}
+        .rx-crest{position:relative;display:flex;align-items:center;justify-content:center;border-radius:16px;color:#e9d9b0;
+          background:linear-gradient(145deg,rgba(233,217,176,.22),rgba(255,255,255,.04));border:1px solid rgba(233,217,176,.55);
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 10px 24px -10px rgba(0,0,0,.6)}
+        .rx-crest::after{content:'';position:absolute;inset:-5px;border-radius:20px;border:1px solid rgba(233,217,176,.22)}
+        .rx-clock{font-family:${serif};font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;
+          background:linear-gradient(180deg,#fff,#e9d9b0);-webkit-background-clip:text;background-clip:text;color:transparent}
+        .rx-stat{position:relative;overflow:hidden;backdrop-filter:blur(6px)}
+        .rx-stat::before{content:'';position:absolute;left:12px;right:12px;top:0;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(233,217,176,.7),transparent);opacity:.7}
+        .rx-stat:hover{transform:translateY(-2px);border-color:rgba(233,217,176,.5)}
+        .rx-spot{position:relative;overflow:hidden;border-radius:22px;padding:22px 26px;color:${C.slate[900]};
+          background:radial-gradient(70% 120% at 0% 0%,rgba(184,146,58,.16),transparent 60%),linear-gradient(135deg,#fffdf7,#f6efdc);
+          border:1px solid ${C.goldLight};box-shadow:0 18px 40px -26px rgba(138,97,24,.6),inset 0 1px 0 #fff}
+        .rx-spot::after{content:'';position:absolute;right:-60px;bottom:-80px;width:240px;height:240px;border-radius:50%;
+          background:repeating-radial-gradient(circle at center,transparent 0 22px,rgba(184,146,58,.14) 22px 23px);pointer-events:none}
+        .rx-ring{--p:0;width:92px;height:92px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+          background:conic-gradient(var(--c,#b8923a) calc(var(--p)*1%),rgba(19,42,79,.10) 0);position:relative;animation:rxFloat 5s ease-in-out infinite}
+        .rx-ring::before{content:'';position:absolute;inset:8px;border-radius:50%;background:#fffdf7;box-shadow:inset 0 2px 6px rgba(19,42,79,.12)}
+        .rx-ring>span{position:relative;font:600 24px/1 ${serif};color:${C.navy}}
+        .rx-act{position:relative;overflow:hidden}
+        .rx-act::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent 30%,rgba(233,217,176,.35) 50%,transparent 70%);transform:translateX(-120%);transition:transform .6s}
+        .rx-act:hover::before{transform:translateX(120%)}
+        .rx-act-ic{box-shadow:0 8px 16px -8px rgba(19,42,79,.8),inset 0 1px 0 rgba(255,255,255,.2);width:40px;height:40px;border-radius:12px}
+        .rx-q{transition:background .15s}
+        .rx-q:hover{background:#fcfaf3}
+        .rx-sev{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;position:relative}
+        .rx-sev.s3{background:linear-gradient(145deg,#fee2e2,#fecaca)}
+        .rx-sev.s3::after{content:'';position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:#dc2626;border:2px solid #fff;animation:rxPulse 1.8s infinite}
+        .rx-sev.s2{background:linear-gradient(145deg,#fef3c7,#fde68a)}
+        .rx-sev.s1{background:linear-gradient(145deg,#e4ebf6,#cbd8ee)}
+        .rx-tl{position:relative;padding:6px 0}
+        .rx-tl::before{content:'';position:absolute;left:30px;top:10px;bottom:10px;width:2px;background:linear-gradient(180deg,${C.goldLight},transparent)}
+        .rx-bar{transform-origin:bottom;animation:rxGrow .7s cubic-bezier(.2,.7,.2,1) both}
+        .rx-tabs{border-radius:16px;box-shadow:0 10px 30px -20px rgba(19,42,79,.45),0 1px 2px rgba(19,42,79,.05)}
+        @media (prefers-reduced-motion:reduce){.rx-rise,.rx-ring,.rx-bar,.rx-hero-sheen,.rx-sev.s3::after{animation:none}}
         form input:focus,form select:focus,form textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 4px rgba(184,146,58,.16)!important}
       `}</style>
 
@@ -2557,21 +2617,23 @@ export default function ReceptionPage({ currentUser }) {
           padding: mob ? '16px 14px 14px' : '22px 26px 20px',
           background: 'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%)',
           boxShadow: '0 24px 48px -24px rgba(19,42,79,.55)' }}>
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: `linear-gradient(90deg,transparent,${C.gold},transparent)` }} />
+          <div className="rx-hero-rings" />
+          <div className="rx-hero-sheen" />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14, position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-              <div style={{ width: mob ? 44 : 52, height: mob ? 44 : 52, borderRadius: 14, flexShrink: 0, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(233,217,176,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.goldLight }}>
+              <div className="rx-crest" style={{ width: mob ? 46 : 56, height: mob ? 46 : 56, flexShrink: 0 }}>
                 <RIcon.bell size={mob ? 21 : 24} />
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.goldLight, fontFamily: font }}>GNSI · Front office</div>
-                <div style={{ fontFamily: serif, fontSize: mob ? 24 : 30, fontWeight: 600, lineHeight: 1.1, marginTop: 2 }}>Reception</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 26 : 34, fontWeight: 600, lineHeight: 1.05, marginTop: 3, letterSpacing: '-.01em' }}>Reception <span style={{ color: C.goldLight, fontStyle: 'italic', fontWeight: 500 }}>Desk</span></div>
                 <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.62)', marginTop: 4, fontFamily: font }}>
                   {clock.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · <span style={{ fontVariantNumeric: 'tabular-nums', color: '#fff', fontWeight: 700 }}>{clock.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {!mob && <div className="rx-clock" style={{ fontSize: 44, marginRight: 14 }}>{clock.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>}
               <button className="rx-quick gold" onClick={() => goTab('Visitor Book')}><RIcon.visitor size={15} /> Sign in visitor</button>
               {!mob && <button className="rx-quick" onClick={() => goTab('Gate Pass')}><RIcon.gate size={15} /> Gate pass</button>}
               {!mob && <button className="rx-quick" onClick={() => goTab('Enquiry')}><RIcon.enquiry size={15} /> Enquiry</button>}
@@ -2650,7 +2712,7 @@ export default function ReceptionPage({ currentUser }) {
         )}
 
         {activeTab === 'Front Desk' && (
-          <FrontDesk mob={mob} students={students} enquiries={enquiries} visitors={visitors} gatePasses={gatePasses} parentItems={parentItems} leaveApps={leaveApps} complaints={complaints}
+          <FrontDesk currentUserName={currentUser?.userName || currentUser?.name} mob={mob} students={students} enquiries={enquiries} visitors={visitors} gatePasses={gatePasses} parentItems={parentItems} leaveApps={leaveApps} complaints={complaints}
             goTab={goTab}
             onVisitorOut={async v => { await supabase.from('reception_visitors').update({ out_time: new Date().toTimeString().slice(0, 5) }).eq('id', v.id); fetchAll() }}
             onGatePassReturn={checkInGatePass}
