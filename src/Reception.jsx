@@ -49,9 +49,10 @@ const fmt     = n => Number(n || 0).toLocaleString('en-IN')
 const fmtDate = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
-const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
+const TABS    = ['Front Desk', 'Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
 
 const RIcon = {
+  home:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4Z"/></svg>,
   search:  p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>,
   enquiry: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 9h6M9 13h4"/></svg>,
   visitor: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></svg>,
@@ -67,6 +68,7 @@ const RIcon = {
 }
 // Tabs grouped the way a front office actually works.
 const TAB_META = {
+  'Front Desk':        { tabLabel:'Front Desk', short:'Desk', icon:RIcon.home, group:'Desk', desc:'Your command centre — what needs action now, shortcuts and today\'s activity.' },
   'Student 360°':      { short:'360°',     icon:RIcon.s360,      group:'Desk',     desc:'Look up any student — profile, contacts, fees, attendance, movement.' },
   'Monitors':          { short:'Monitors', icon:RIcon.monitor,   group:'Desk',     desc:'Live board of students outside campus, overdue returns and hostel leave.' },
   'Visitor Book':      { tabLabel:'Visitors', short:'Visitors', icon:RIcon.visitor,   group:'Front office', desc:'Sign visitors in and out, print badges, flag follow-ups.' },
@@ -77,7 +79,7 @@ const TAB_META = {
   'Parent Items':      { short:'Items',    icon:RIcon.items,     group:'Student movement', desc:'Parcels and items left by parents, house by house.' },
 }
 const TAB_GROUPS = ['Desk', 'Front office', 'Student movement']
-const MOBILE_MAIN = ['Student 360°', 'Visitor Book', 'Gate Pass', 'Parent Items']
+const MOBILE_MAIN = ['Front Desk', 'Visitor Book', 'Gate Pass', 'Parent Items']
 const TAB_ICONS = Object.fromEntries(Object.entries(TAB_META).map(([k, v]) => [k, null]))
 
 // ── predefined item catalogue ─────────────────────────────────────────────────
@@ -1896,11 +1898,268 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
+// ── FRONT DESK (home) ─────────────────────────────────────────────────────────
+// One screen the receptionist can run the whole day from: what needs action
+// right now (with the action inline), one-key shortcuts, a student finder that
+// shows live in/out status, the day's activity feed and a 7-day pulse.
+const hhmmNow = () => new Date().toTimeString().slice(0, 5)
+const waLink = (phone, msg) => {
+  const d = String(phone || '').replace(/\D/g, '')
+  if (!d) return null
+  return `https://wa.me/${d.length === 10 ? '91' + d : d}?text=${encodeURIComponent(msg)}`
+}
+const minsSince = iso => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0
+const durLabel = m => m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d`
+
+const QUICK_ACTIONS = [
+  { key: 'V', tab: 'Visitor Book',      label: 'Sign in visitor',  icon: RIcon.visitor,   hint: 'Badge & ID proof' },
+  { key: 'G', tab: 'Gate Pass',         label: 'Issue gate pass',  icon: RIcon.gate,      hint: 'Exit & return' },
+  { key: 'E', tab: 'Enquiry',           label: 'New enquiry',      icon: RIcon.enquiry,   hint: 'Admission lead' },
+  { key: 'L', tab: 'Leave Application', label: 'Leave request',    icon: RIcon.leave,     hint: 'Print & approve' },
+  { key: 'P', tab: 'Parent Items',      label: 'Log parcel',       icon: RIcon.items,     hint: 'House-wise' },
+  { key: 'C', tab: 'Complaint',         label: 'Log complaint',    icon: RIcon.complaint, hint: 'Assign & track' },
+  { key: 'M', tab: 'Monitors',          label: 'Live monitors',    icon: RIcon.monitor,   hint: 'Who is outside' },
+  { key: 'S', tab: 'Student 360°',      label: 'Student 360°',     icon: RIcon.s360,      hint: 'Full profile' },
+]
+
+function FrontDesk({ mob, students, enquiries, visitors, gatePasses, parentItems, leaveApps, complaints, goTab, onVisitorOut, onGatePassReturn, onFollowUpDone, onSummary }) {
+  const [q, setQ] = useState('')
+  const finderRef = useRef(null)
+  const t = today()
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const tag = (e.target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return
+      if (e.key === '/') { e.preventDefault(); finderRef.current?.focus(); return }
+      const hit = QUICK_ACTIONS.find(a => a.key.toLowerCase() === e.key.toLowerCase())
+      if (hit) { e.preventDefault(); goTab(hit.tab) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [goTab])
+
+  // ── Action queue ──────────────────────────────────────────────────────────
+  const queue = useMemo(() => {
+    const items = []
+    const nowHM = hhmmNow()
+
+    gatePasses.filter(g => g.status === 'Issued' || g.status === 'Exited').forEach(g => {
+      const late = (g.return_date && g.return_date < t) ||
+        (g.expected_return_time && (g.exit_date || t) <= t && ((g.exit_date || t) < t || g.expected_return_time < nowHM) && !g.return_date)
+      if (!late) return
+      items.push({
+        id: 'gp' + g.id, sev: 3, icon: '🚪', title: `${g.student_name} is overdue`,
+        sub: `${g.reason || 'Gate pass'}${g.house ? ' · ' + g.house : ''}${g.return_date ? ' · due ' + fmtDate(g.return_date) : g.expected_return_time ? ' · due ' + g.expected_return_time : ''}`,
+        primary: { label: 'Check in', run: () => onGatePassReturn(g) }, tab: 'Gate Pass',
+      })
+    })
+
+    visitors.filter(v => !v.out_time && v.visit_date <= t).forEach(v => {
+      const m = minsSince(v.created_at)
+      const stale = v.visit_date < t
+      if (!stale && m < 120) return
+      items.push({
+        id: 'vi' + v.id, sev: stale ? 3 : 2, icon: '🧑‍💼', title: `${v.visitor_name} still inside`,
+        sub: `${stale ? 'Signed in ' + fmtDate(v.visit_date) : 'Inside ' + durLabel(m)}${v.meeting_with ? ' · ' + v.meeting_with : ''}`,
+        primary: { label: 'Mark out', run: () => onVisitorOut(v) }, tab: 'Visitor Book',
+      })
+    })
+
+    complaints.filter(c => ['Open', 'In Progress', 'Reopened'].includes(c.status) && (c.priority === 'Urgent' || c.priority === 'High' || c.status === 'Reopened')).forEach(c => {
+      items.push({
+        id: 'co' + c.id, sev: c.priority === 'Urgent' ? 3 : 2, icon: '📣', title: `${c.priority || 'High'} complaint · ${c.subject || c.category || 'Complaint'}`,
+        sub: `${c.parent_name || c.student_name || '—'} · ${c.status}${c.assigned_to ? ' · ' + c.assigned_to : ' · unassigned'}`,
+        primary: { label: 'Open', run: () => goTab('Complaint') }, tab: 'Complaint',
+      })
+    })
+
+    enquiries.filter(e => e.follow_up_date && e.follow_up_date <= t && !['Converted', 'Closed'].includes(e.status)).forEach(e => {
+      const link = waLink(e.phone, `Namaste ${e.parent_name || ''}, this is GNSI. Following up on your admission enquiry${e.student_name ? ' for ' + e.student_name : ''}. May we help you with anything further?`)
+      items.push({
+        id: 'en' + e.id, sev: e.follow_up_date < t ? 2 : 1, icon: '📞', title: `Follow up · ${e.student_name || e.parent_name || 'Enquiry'}`,
+        sub: `${e.follow_up_date < t ? 'Overdue since ' + fmtDate(e.follow_up_date) : 'Due today'}${e.phone ? ' · ' + e.phone : ''}${e.class_interest ? ' · ' + e.class_interest : ''}`,
+        link, primary: { label: 'Open', run: () => goTab('Enquiry') }, tab: 'Enquiry',
+      })
+    })
+
+    visitors.filter(v => v.follow_up_required && v.follow_up_status !== 'Done' && (!v.follow_up_date || v.follow_up_date <= t)).forEach(v => {
+      items.push({
+        id: 'vf' + v.id, sev: 1, icon: '🔔', title: `Visitor follow-up · ${v.visitor_name}`,
+        sub: `${v.purpose || 'Visit'}${v.follow_up_date ? ' · ' + fmtDate(v.follow_up_date) : ''}${v.phone ? ' · ' + v.phone : ''}`,
+        link: waLink(v.phone, `Namaste ${v.visitor_name}, this is GNSI following up on your recent visit.`),
+        primary: { label: 'Done', run: () => onFollowUpDone(v.id) }, tab: 'Visitor Book',
+      })
+    })
+
+    leaveApps.filter(a => a.status === 'Pending').forEach(a => {
+      items.push({
+        id: 'la' + a.id, sev: 1, icon: '📝', title: `Leave awaiting approval · ${a.student_name}`,
+        sub: `${fmtDate(a.from_date)} → ${fmtDate(a.to_date)}${a.printed_at ? ' · printed' : ' · print first'}`,
+        primary: { label: 'Review', run: () => goTab('Leave Application') }, tab: 'Leave Application',
+      })
+    })
+
+    const oldParcels = parentItems.filter(p => p.status === 'Pending' && minsSince(p.created_at) > 3 * 1440)
+    if (oldParcels.length) items.push({
+      id: 'pi', sev: 1, icon: '📦', title: `${oldParcels.length} parcel${oldParcels.length > 1 ? 's' : ''} waiting 3+ days`,
+      sub: 'Hand over to students or return to parents',
+      primary: { label: 'Open', run: () => goTab('Parent Items') }, tab: 'Parent Items',
+    })
+
+    return items.sort((a, b) => b.sev - a.sev)
+  }, [gatePasses, visitors, complaints, enquiries, leaveApps, parentItems, t, goTab, onGatePassReturn, onVisitorOut, onFollowUpDone])
+
+  // ── Student finder with live status ───────────────────────────────────────
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (s.length < 2) return []
+    return students.filter(x => String(x.name || '').toLowerCase().includes(s) || String(x.gcc_no || '').includes(s) || String(x.phone || '').includes(s)).slice(0, 6)
+  }, [q, students])
+  const statusOf = s => {
+    const gp = gatePasses.find(g => g.student_name === s.name && (g.status === 'Issued' || g.status === 'Exited'))
+    if (gp) return { label: gp.status === 'Exited' ? 'Outside campus' : 'Pass issued', color: C.red, bg: '#fee2e2' }
+    return { label: 'On campus', color: '#166534', bg: '#dcfce7' }
+  }
+
+  // ── Feed + 7-day pulse ────────────────────────────────────────────────────
+  const feed = useMemo(() => {
+    const isToday = r => (r.created_at || '').slice(0, 10) === t || (r.created_at && new Date(r.created_at).toDateString() === new Date().toDateString())
+    const mk = (rows, icon, text) => rows.filter(isToday).map(r => ({ id: icon + r.id, at: r.created_at, icon, text: text(r) }))
+    return [
+      ...mk(visitors, '🧑‍💼', r => `${r.visitor_name} visited — ${r.purpose || 'visit'}`),
+      ...mk(gatePasses, '🚪', r => `Gate pass · ${r.student_name} (${r.status})`),
+      ...mk(enquiries, '📞', r => `Enquiry · ${r.student_name || r.parent_name || r.phone || '—'}`),
+      ...mk(leaveApps, '📝', r => `Leave · ${r.student_name} (${r.status})`),
+      ...mk(parentItems, '📦', r => `Parcel for ${r.student_name || '—'}`),
+      ...mk(complaints, '📣', r => `Complaint · ${r.subject || r.category || '—'}`),
+    ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 12)
+  }, [visitors, gatePasses, enquiries, leaveApps, parentItems, complaints, t])
+
+  const pulse = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d })
+    const key = d => d.toLocaleDateString('en-CA')
+    return days.map(d => {
+      const k = key(d)
+      const v = visitors.filter(x => x.visit_date === k).length
+      const e = enquiries.filter(x => (x.enquiry_date || (x.created_at || '').slice(0, 10)) === k).length
+      return { label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2), v, e, total: v + e }
+    })
+  }, [visitors, enquiries])
+  const maxPulse = Math.max(1, ...pulse.map(p => p.total))
+  const sevColor = s => s >= 3 ? C.red : s === 2 ? C.amber : C.sky
+
+  const hour = new Date().getHours()
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const mini = { height: 30, padding: '0 11px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, fontFamily: font, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }
+
+  return (
+    <>
+      {/* Quick actions */}
+      <Card>
+        <CardHead title={greet} sub={queue.length ? `${queue.length} item${queue.length > 1 ? 's' : ''} need your attention` : 'All clear — nothing pending right now'} isMobile={mob}
+          right={!mob && <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font }}>Press a key to jump · <b>/</b> finds a student</span>} />
+        <div style={{ padding: mob ? 12 : 18, display: 'grid', gridTemplateColumns: mob ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
+          {QUICK_ACTIONS.map(a => (
+            <button key={a.key} className="rx-act" onClick={() => goTab(a.tab)}>
+              <span className="rx-act-ic"><a.icon size={18} /></span>
+              <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{a.label}</span>
+                <span style={{ display: 'block', fontSize: 11, color: C.slate[500], marginTop: 2 }}>{a.hint}</span>
+              </span>
+              {!mob && <kbd className="rx-kbd">{a.key}</kbd>}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr' : '1.35fr 1fr', gap: 16, alignItems: 'start' }}>
+        {/* Action queue */}
+        <Card>
+          <CardHead title="Needs attention" sub="Ranked by urgency — act without leaving this screen" isMobile={mob}
+            right={queue.length > 0 && <span className="rx-badge">{queue.length}</span>} />
+          {queue.length === 0 ? (
+            <div style={{ padding: '34px 20px', textAlign: 'center', color: C.slate[500], fontFamily: font }}>
+              <div style={{ fontSize: 30 }}>✅</div>
+              <div style={{ fontFamily: serif, fontSize: 16, color: C.slate[800], marginTop: 6 }}>Desk is clear</div>
+              <div style={{ fontSize: 12, marginTop: 3 }}>No overdue returns, stale visitors or due follow-ups.</div>
+            </div>
+          ) : queue.slice(0, 10).map(it => (
+            <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '11px 14px' : '12px 20px', borderTop: `1px solid ${C.slate[100]}`, borderLeft: `3px solid ${sevColor(it.sev)}` }}>
+              <span style={{ fontSize: 20 }}>{it.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</div>
+                <div style={{ fontSize: 11.5, color: C.slate[500], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</div>
+              </div>
+              {it.link && <a href={it.link} target="_blank" rel="noreferrer" style={{ ...mini, background: '#dcfce7', color: '#166534' }} title="WhatsApp">💬</a>}
+              <button style={{ ...mini, background: `linear-gradient(180deg,${C.navyMid},${C.navy})`, color: '#fff' }} onClick={it.primary.run}>{it.primary.label}</button>
+            </div>
+          ))}
+          {queue.length > 10 && <div style={{ padding: '10px 20px', fontSize: 12, color: C.slate[500], borderTop: `1px solid ${C.slate[100]}`, fontFamily: font }}>+ {queue.length - 10} more — clear the top items first</div>}
+        </Card>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Finder */}
+          <Card>
+            <CardHead title="Find a student" sub="Name, GCC no. or phone" isMobile={mob} />
+            <div style={{ padding: mob ? 12 : 16 }}>
+              <input ref={finderRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={{ ...inp, background: '#fff' }} />
+              {matches.map(s => {
+                const st = statusOf(s)
+                const call = String(s.phone || '').replace(/\D/g, '')
+                return (
+                  <div key={s.id || s.gcc_no || s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px', borderBottom: `1px solid ${C.slate[100]}` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{s.name}</div>
+                      <div style={{ fontSize: 11.5, color: C.slate[500] }}>{[classOf(s), s.house, s.gcc_no ? 'GCC ' + gccStr(s.gcc_no) : null].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 8px', borderRadius: 99, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.label}</span>
+                    {call && <a href={`tel:${call}`} style={{ ...mini, background: C.slate[100], color: C.slate[700] }} title="Call parent">📞</a>}
+                  </div>
+                )
+              })}
+              {q.trim().length >= 2 && !matches.length && <div style={{ fontSize: 12, color: C.slate[500], padding: '10px 2px' }}>No student matches “{q}”.</div>}
+              {matches.length > 0 && <button style={{ ...mini, marginTop: 10, background: C.goldSoft, color: '#8a6118' }} onClick={() => goTab('Student 360°')}>Open full Student 360° →</button>}
+            </div>
+          </Card>
+
+          {/* Pulse */}
+          <Card>
+            <CardHead title="7-day pulse" sub="Visitors + enquiries per day" isMobile={mob} right={<button style={{ ...mini, background: C.slate[100], color: C.slate[700] }} onClick={onSummary}>🖨️ Daily summary</button>} />
+            <div style={{ padding: mob ? 12 : 16, display: 'flex', alignItems: 'flex-end', gap: 8, height: 120 }}>
+              {pulse.map((p, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: C.slate[600] }}>{p.total || ''}</span>
+                  <div title={`${p.v} visitors · ${p.e} enquiries`} style={{ width: '100%', maxWidth: 30, height: `${Math.max(4, (p.total / maxPulse) * 70)}px`, borderRadius: 6, background: i === 6 ? `linear-gradient(180deg,${C.gold},${C.goldLight})` : `linear-gradient(180deg,${C.navyMid},${C.navy})`, opacity: i === 6 ? 1 : .72 }} />
+                  <span style={{ fontSize: 10, color: C.slate[400], fontWeight: 600 }}>{p.label}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Activity feed */}
+      <Card>
+        <CardHead title="Today's activity" sub="Everything logged at the desk, newest first" isMobile={mob} />
+        {feed.length === 0 ? <div style={{ padding: 24, fontSize: 12.5, color: C.slate[500], textAlign: 'center', fontFamily: font }}>Nothing logged yet today.</div> : feed.map(f => (
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '9px 14px' : '10px 20px', borderTop: `1px solid ${C.slate[100]}`, fontSize: 13, fontFamily: font }}>
+            <span>{f.icon}</span>
+            <span style={{ flex: 1, minWidth: 0, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.text}</span>
+            <span style={{ fontSize: 11.5, color: C.slate[400], fontVariantNumeric: 'tabular-nums' }}>{new Date(f.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        ))}
+      </Card>
+    </>
+  )
+}
+
 export default function ReceptionPage({ currentUser }) {
   const mob = useIsMobile()
   const userRole = (currentUser?.role || '').toLowerCase()
   const isGatePassIssuer = userRole === 'admin' || userRole === 'administrator' || userRole === 'superintendent' || userRole === 'hostel superintendent'
-  const [activeTab,   setActiveTab]   = useState('Student 360°')
+  const [activeTab,   setActiveTab]   = useState('Front Desk')
   const [search,      setSearch]      = useState('')
   const [loading,     setLoading]     = useState(false)
   const [saving,      setSaving]      = useState(false)
@@ -2256,6 +2515,7 @@ export default function ReceptionPage({ currentUser }) {
   const goTab = tab => { setActiveTab(tab); setSearch(''); setMoreOpen(false); try { window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (_) {} }
 
   const tabBadges = {
+    'Front Desk':        followUpDue + pendingLA + stillOutside + openComplaints,
     'Enquiry':           followUpDue,
     'Leave Application': pendingLA,
     'Gate Pass':         stillOutside,
@@ -2284,6 +2544,10 @@ export default function ReceptionPage({ currentUser }) {
         .rx-quick.gold{background:linear-gradient(180deg,#d4ae58,${C.gold});color:#1a1406;border-color:#a37f2e;box-shadow:0 8px 18px -8px rgba(184,146,58,.8)}
         .rx-stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 13px;min-width:0;text-align:left;cursor:pointer;font-family:${font};transition:background .15s}
         .rx-stat:hover{background:rgba(255,255,255,.11)}
+        .rx-act{display:flex;align-items:center;gap:11px;padding:12px 13px;border:1px solid ${C.slate[200]};border-radius:14px;background:linear-gradient(180deg,#fff,#fcfbf7);cursor:pointer;font-family:${font};transition:transform .12s,box-shadow .15s,border-color .15s;min-width:0}
+        .rx-act:hover{transform:translateY(-2px);border-color:${C.gold};box-shadow:0 10px 22px -14px rgba(19,42,79,.5)}
+        .rx-act-ic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:linear-gradient(180deg,${C.navyMid},${C.navy});color:${C.goldLight}}
+        .rx-kbd{font:700 11px/1 ${font};padding:4px 7px;border-radius:6px;background:${C.slate[100]};border:1px solid ${C.slate[300]};color:${C.slate[600]}}
         form input:focus,form select:focus,form textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 4px rgba(184,146,58,.16)!important}
       `}</style>
 
@@ -2367,12 +2631,12 @@ export default function ReceptionPage({ currentUser }) {
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '12px 12px' : '14px 24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* FEATURE 10: Campus Headcount on Monitors & Student 360° */}
-        {(activeTab === 'Monitors' || activeTab === 'Student 360°') && (
+        {(activeTab === 'Front Desk' || activeTab === 'Monitors' || activeTab === 'Student 360°') && (
           <CampusHeadcount students={students} gatePasses={gatePasses} hlRecords={hlRecords} />
         )}
 
         {/* Search bar */}
-        {activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
+        {activeTab !== 'Front Desk' && activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
           <div style={{ position: 'relative' }}>
             <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: C.slate[400], pointerEvents: 'none', display: 'flex' }}><RIcon.search size={16} /></span>
             <input
@@ -2385,6 +2649,14 @@ export default function ReceptionPage({ currentUser }) {
           </div>
         )}
 
+        {activeTab === 'Front Desk' && (
+          <FrontDesk mob={mob} students={students} enquiries={enquiries} visitors={visitors} gatePasses={gatePasses} parentItems={parentItems} leaveApps={leaveApps} complaints={complaints}
+            goTab={goTab}
+            onVisitorOut={async v => { await supabase.from('reception_visitors').update({ out_time: new Date().toTimeString().slice(0, 5) }).eq('id', v.id); fetchAll() }}
+            onGatePassReturn={checkInGatePass}
+            onFollowUpDone={markVisitorFollowUpDone}
+            onSummary={() => printDailySummary({ enquiries, visitors, gatePasses, parentItems, students })} />
+        )}
         {activeTab === 'Student 360°' && <Student360 students={students} />}
         {activeTab === 'Monitors' && <MonitorsTab students={students} gatePasses={gatePasses} hlRecordsExternal={hlRecords} onGPStatusChange={(id, from, to) => updateGPStatus(id, from, to)} fetchAll={fetchAll} currentUser={currentUser} />}
 
