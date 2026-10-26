@@ -33,6 +33,11 @@ export function askConfirm(message, { confirmLabel = 'Continue', danger = false 
   if (!listeners.size) return Promise.resolve(window.confirm(message))
   return new Promise(resolve => emit({ type: 'confirm', message, confirmLabel, danger, resolve }))
 }
+/** Asks for a line of text. Resolves the text ("" if left empty) or null if cancelled. */
+export function askInput(message, { placeholder = '', confirmLabel = 'OK', initial = '' } = {}) {
+  if (!listeners.size) return Promise.resolve(window.prompt(message, initial))
+  return new Promise(resolve => emit({ type: 'confirm', message, confirmLabel, input: true, placeholder, initial, resolve }))
+}
 /** Non-blocking toast. kind: info | ok | warn | error */
 export function notify(message, kind = 'info') {
   if (!listeners.size) { window.alert(message); return }

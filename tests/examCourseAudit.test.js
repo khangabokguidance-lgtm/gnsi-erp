@@ -55,3 +55,14 @@ test('summary counts live students, sections and ignores phantom secondary rows'
   assert.equal(summary.combinedMm, 1)
   assert.equal(summary.combinedNoSection, 0)
 })
+
+test('a blank-batch student is in the Exam Combined list but is not a declared Combined student', () => {
+  const r = auditStudent({ course: 'Sainik', batch: '' }, keys)
+  assert.equal(r.examSaysCombined, true)
+  assert.equal(r.declaredCombined, false)
+  assert.ok(!r.issues.includes('combined_no_section'))
+  const cs = Object.fromEntries([...keys].map(k => [k, []]))
+  const { summary } = auditStudents([{ id: 1, course: 'Combined Course', batch: '—' }, { id: 2, course: 'Sainik', batch: '' }], cs)
+  assert.equal(summary.combined, 1)
+  assert.equal(summary.examListCombined, 2)
+})

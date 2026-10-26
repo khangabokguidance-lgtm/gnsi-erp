@@ -48,7 +48,8 @@ export function auditStudent(s, examKeys, secondary = []) {
   const studentsCourse = courseOf(s)
   const tags = secondary.map(secTag).filter(Boolean)
   const examSaysCombined = examKey === COMBINED_COURSE_BATCH_LABEL
-  const isCombined = examSaysCombined || rawCourse === 'Combined Course' || secondary.some(t => /COMBINED NAVODAY/i.test(t))
+  const declaredCombined = rawCourse === 'Combined Course' || secondary.some(t => /COMBINED NAVODAY/i.test(t))
+  const isCombined = examSaysCombined || declaredCombined
 
   const issues = []
   if (rawCourse === 'Combined Course' && !blankBatch) issues.push('combined_wrong_batch')
@@ -58,14 +59,14 @@ export function auditStudent(s, examKeys, secondary = []) {
   }
   if (examKey && examKeys && !examKeys.has(examKey)) issues.push('batch_not_in_exam_setup')
   if (rawCourse && rawCourse !== 'Combined Course' && examTrack && examTrack !== rawCourse && !examSaysCombined) issues.push('course_batch_conflict')
-  if (isCombined && examSaysCombined && !tags.length) issues.push('combined_no_section')
+  if (declaredCombined && examSaysCombined && !tags.length) issues.push('combined_no_section')
   if (!rawCourse && !blankBatch && isStandardBatch(canonicalBatch(rawBatch))) issues.push('course_blank_derived')
 
   return {
     id: s.id, name: s.name, gcc: s.gcc_no || s.admission_no || '', status: s.status || '',
     studentsCourse, studentsBatch: batchOf(s) === 'No batch' ? '' : batchOf(s),
     rawCourse: s.course || '', rawBatch: rawBatch,
-    examKey, examTrack, isCombined, examSaysCombined, section: tags[0] || '', dual: secondary.length > 0, issues,
+    examKey, examTrack, isCombined, examSaysCombined, declaredCombined, section: tags[0] || '', dual: secondary.length > 0, issues,
   }
 }
 
@@ -75,7 +76,7 @@ export function auditStudents(students, courseSubjects, secondaryBatchMap = {}) 
   const rows = (students || []).filter(s => !s._isSecondaryBatchView).map(s => auditStudent(s, keys, secondaryBatchMap[s.id] || []))
   const live = rows.filter(r => !/dropout/i.test(r.status))
   const count = id => live.filter(r => r.issues.includes(id)).length
-  const combined = live.filter(r => r.isCombined)
+  const combined = live.filter(r => r.declaredCombined)
   return {
     rows,
     summary: {
@@ -84,7 +85,7 @@ export function auditStudents(students, courseSubjects, secondaryBatchMap = {}) 
       combinedEng: combined.filter(r => r.section === 'ENG').length,
       combinedMm: combined.filter(r => r.section === 'MM').length,
       combinedNoSection: combined.filter(r => !r.section).length,
-      combinedBoth: combined.filter(r => r.examSaysCombined && KEY_TRACK[r.examKey]).length,
+      examListCombined: live.filter(r => r.examSaysCombined).length,
       problems: live.filter(r => r.issues.some(i => ISSUES[i].sev !== 'info')).length,
       byIssue: Object.fromEntries(Object.keys(ISSUES).map(k => [k, count(k)])),
     },
