@@ -14,7 +14,7 @@ import { PremiumStyles, PremiumHero } from './premiumUI'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
-  getFeeRates, saveStudentFlatFeeOverride, TABLES,
+  getFeeRates, saveStudentFlatFeeOverride, TABLES, getCombinedAddonFee, saveCombinedAddonFee,
 } from './feeEngine'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -455,6 +455,26 @@ export default function FeeSetup({ userRole }) {
   }, [])
   const [activeTab,    setActiveTab]    = useState('structures')   // 'structures' | 'overrides'
   const [sessionYear,  setSessionYear]  = useState(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`)
+  // Combined Course monthly add-on (students appearing for both Navodaya and Sainik)
+  const [addonAmt,    setAddonAmt]    = useState('')
+  const [addonSaved,  setAddonSaved]  = useState(0)
+  const [addonBusy,   setAddonBusy]   = useState(false)
+  const [addonMsg,    setAddonMsg]    = useState(null)
+  useEffect(() => {
+    let live = true
+    getCombinedAddonFee(sessionYear).then(n => { if (live) { setAddonSaved(n); setAddonAmt(n ? String(n) : ''); setAddonMsg(null) } })
+    return () => { live = false }
+  }, [sessionYear])
+  const saveAddon = async () => {
+    const n = addonAmt === '' ? 0 : Number(addonAmt)
+    if (!Number.isFinite(n) || n < 0) { setAddonMsg({ ok: false, t: 'Enter a valid amount (0 or more).' }); return }
+    setAddonBusy(true); setAddonMsg(null)
+    const { error: e } = await saveCombinedAddonFee(sessionYear, n)
+    setAddonBusy(false)
+    if (e) { setAddonMsg({ ok: false, t: 'Could not save: ' + (e.message || 'permission denied') }); return }
+    setAddonSaved(Math.round(n)); setAddonAmt(n ? String(Math.round(n)) : '')
+    setAddonMsg({ ok: true, t: n ? `Saved — Combined students are charged ₹${Math.round(n).toLocaleString('en-IN')} extra every month in ${sessionYear}.` : 'Add-on removed for this session.' })
+  }
   const [activeCourse, setActiveCourse] = useState('Sainik')
   const [structures,   setStructures]   = useState({})
   const [loading,      setLoading]      = useState(false)
@@ -726,6 +746,34 @@ export default function FeeSetup({ userRole }) {
               )
             })}
           </div>
+
+          {/* ── Combined Course add-on ── */}
+          {activeCourse === 'Combined Course' && (
+            <div style={{ background: '#fff9ec', border: '1.5px solid #eadbb2', borderRadius: 14, padding: '16px 20px', marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: '#7a4a00' }}>➕ Combined add-on fee <span style={{ fontWeight: 600, color: C.slate[500] }}>· Navodaya + Sainik</span></div>
+                  <div style={{ fontSize: 12, color: C.slate[500], marginTop: 3, lineHeight: 1.5 }}>
+                    Extra amount charged <b>every month</b> to each Combined Course student, on top of the fees below. One amount for {sessionYear}, the same for every hostel type. Leave 0 for no add-on.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.slate[400], fontSize: 13 }}>₹</span>
+                    <input type="number" min="0" value={addonAmt} onChange={e => { setAddonAmt(e.target.value); setAddonMsg(null) }} placeholder="0" aria-label="Combined add-on fee per month"
+                      style={{ width: 120, height: 40, padding: '0 10px 0 24px', border: `1.5px solid ${C.slate[200]}`, borderRadius: 10, fontSize: 15, fontWeight: 700, textAlign: 'right', fontFamily: 'inherit' }} />
+                  </div>
+                  <span style={{ fontSize: 12, color: C.slate[500] }}>/ month</span>
+                  <button onClick={saveAddon} disabled={addonBusy || String(addonSaved || '') === String(addonAmt || '')}
+                    style={{ height: 40, padding: '0 18px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, cursor: addonBusy ? 'wait' : 'pointer', fontFamily: 'inherit',
+                      background: String(addonSaved || '') === String(addonAmt || '') ? C.slate[200] : 'linear-gradient(180deg,#1e3a6e,#132a4f)', color: String(addonSaved || '') === String(addonAmt || '') ? C.slate[400] : '#fff' }}>
+                    {addonBusy ? 'Saving…' : 'Save add-on'}
+                  </button>
+                </div>
+              </div>
+              {addonMsg && <div role="status" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: addonMsg.ok ? '#166534' : '#b42318' }}>{addonMsg.ok ? '✓ ' : '⚠ '}{addonMsg.t}</div>}
+            </div>
+          )}
 
           {/* ── Table ── */}
           {loading ? (

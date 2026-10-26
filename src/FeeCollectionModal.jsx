@@ -1121,6 +1121,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       <strong style={{ color: hasOverride ? C.violet : C.emerald }}>
                         ₹{fmt(feeRates.flatFee).replace('₹','')}/month
                       </strong>
+                      {feeRates.addonFee > 0 && !hasOverride && <span style={{ color:'#7a4a00', fontWeight:600 }}>(includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}
                       {hasOverride && (
                         <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd', letterSpacing:'.04em' }}>
                           OVERRIDE
@@ -1132,7 +1133,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         ✏️ {overrideMode ? 'Cancel' : 'Change'}
                       </button>
                     </span>
-                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}</span>
                   </>
               }
             </div>

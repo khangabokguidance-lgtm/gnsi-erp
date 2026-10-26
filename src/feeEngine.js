@@ -12,6 +12,7 @@ import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
 import { batchKeysFor, pickFeeRow } from './feeRateLookup'
+import { ADDON_SETTING_KEY, parseAddonMap, addonFor, withAddon, applyAddon } from './feeAddon'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
@@ -201,8 +202,34 @@ const _overrideSessions = {} // session -> { at, promise } — every override of
 
 const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cachedAt) < RATE_CACHE_TTL_MS
 
+// ─── Combined Course monthly add-on (see feeAddon.js) ─────────────────────────
+let _addonCache = { at: 0, map: null }
+const _loadAddonMap = async () => {
+  if (_addonCache.map && _isFresh(_addonCache.at)) return _addonCache.map
+  let map = {}
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+    map = parseAddonMap(data?.value)
+  } catch { /* no setting / no access → no add-on */ }
+  _addonCache = { at: Date.now(), map }
+  return map
+}
+/** Monthly add-on (₹) charged to Combined Course students in this session; 0 if none is set. */
+export const getCombinedAddonFee = async (sessionYear) => addonFor(await _loadAddonMap(), normalizeSessionYear(sessionYear))
+/** Admin: set (or clear with 0) the add-on for a session. Reads the stored map fresh and refuses to overwrite it if that read fails. */
+export const saveCombinedAddonFee = async (sessionYear, amount) => {
+  const session = normalizeSessionYear(sessionYear)
+  const { data, error: readErr } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+  if (readErr) return { error: readErr }
+  const next = withAddon(parseAddonMap(data?.value), session, amount)
+  const { error } = await supabase.from('system_settings').upsert({ key: ADDON_SETTING_KEY, value: JSON.stringify(next) }, { onConflict: 'key' })
+  if (!error) clearFeeRateCache()
+  return { error: error || null, map: next }
+}
+
 /** Clear both caches (call after saving fee_structures or student_fee_overrides) */
 export const clearFeeRateCache = () => {
+  _addonCache = { at: 0, map: null }
   Object.keys(_rateCache).forEach(k => delete _rateCache[k])
   Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
   Object.keys(_overrideSessions).forEach(k => delete _overrideSessions[k])
@@ -390,6 +417,9 @@ export const getFeeRates = async (
   // that spread/serialize this object (e.g. into React state, JSON, or a
   // fee_structures upsert) shouldn't see or persist it.
   const { _cachedAt, ...rates } = _rateCache[structKey]
+
+  // ✦ Combined Course add-on: added to the monthly amounts (before any per-student override)
+  if (course === 'Combined Course') Object.assign(rates, applyAddon(rates, course, await getCombinedAddonFee(sessionYear)))
 
   // ✦ Apply per-student flat fee override if gcc supplied
   if (gccNo) {
