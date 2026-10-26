@@ -17,7 +17,7 @@
  *  ⑬ ExamHubHeader — 2×2 stats on mobile
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
@@ -36,6 +36,8 @@ import ExamHome from './ExamHome'
 import { pushRecent } from './examRecent'
 import { useExamSelection, askConfirm, notify, fetchMarksChunked } from './examShared'
 import ExamDialogHost from './ExamDialogs'
+import ExamCourseCheck from './ExamCourseCheck'
+import { auditStudents } from './examCourseAudit'
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon } from './premiumUI'
 import './examsTheme.css'
 import './mobile.css';
@@ -597,6 +599,7 @@ const TAB_GROUPS = [
     groupLabel: "Setup", color: "#5d6b82",
     tabs: [
       { id: "studentsmgr",    icon: "👤", label: "Students",        tip: "Add & manage students" },
+      { id: "coursecheck",    icon: "🛡️", label: "Course Check",    tip: "Find Combined students & course mismatches" },
       { id: "coursesubjects", icon: "📚", label: "Course Subjects",  tip: "Subjects per course/batch" },
       { id: "examtypes",      icon: "⚙️",  label: "Exam Types",      tip: "Configure exam types" },
       { id: "examconfig", icon: "🗂️", label: "Exam Config", tip: "Switch exam mark schemes" },
@@ -927,7 +930,7 @@ function useMobile() {
 // Which tabs the signed-in user may see (shared by the desktop tab bar and the
 // phone home / bottom navigation).
 function visibleTabGroups({ perms, isAdmin, currentUser }) {
-  const SETUP_TABS = ["studentsmgr", "coursesubjects", "examtypes", "settings"];
+  const SETUP_TABS = ["studentsmgr", "coursecheck", "coursesubjects", "examtypes", "settings"];
   const WRITE_TABS = ["entry", "schedule", "seatplan"];
   const DOC_TABS   = ["admitcard", "reportcard", "bulkreport", "toppers"];
 
@@ -10218,6 +10221,8 @@ export default function Exams({ currentUser, perms }) {
     };
   }, [refetchSecondaryBatches]);
  
+  const courseAudit = useMemo(() => auditStudents(students, courseSubjects, secondaryBatchMap).summary, [students, courseSubjects, secondaryBatchMap]);
+
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", background: "#f7f5f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -10280,6 +10285,7 @@ export default function Exams({ currentUser, perms }) {
     seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} secondaryBatchMap={secondaryBatchMap} onSecondaryBatchesChange={refetchSecondaryBatches} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
+    coursecheck:    () => <ExamCourseCheck students={students} courseSubjects={courseSubjects} secondaryBatchMap={secondaryBatchMap} />,
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
     examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); goTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
@@ -10373,7 +10379,8 @@ export default function Exams({ currentUser, perms }) {
         <PremiumTabs tabs={groupTabs} active={onHome ? "home" : activeGroup?.groupLabel} onChange={(g) => { if (g === "home") return goTab("home"); const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) goTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
         {onHome ? (
           <ExamHome groups={visibleGroups} onSelect={goTab} institute={institute} role={currentUser?.role} userName={currentUser?.userName || currentUser?.name}
-            stats={{ students: students.length, batches: courses.length, examTypes: examTypes.length }} schedule={schedule} />
+            stats={{ students: students.length, batches: courses.length, examTypes: examTypes.length }} schedule={schedule}
+            courseIssues={courseAudit.problems} combinedCount={courseAudit.combined} />
         ) : (
           <>
             <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={goTab} /></div>
