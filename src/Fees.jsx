@@ -5,6 +5,7 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents } from './studentQueries'
+import { useAddonResolver } from './useAddonResolver'
 import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 import { monthlyOwed, writeOffShares } from './lib/monthwiseDues'
@@ -1292,6 +1293,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
 
 // ── Student Ledger Tab ────────────────────────────────────────────────────────
 function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect,initialSelected,initialCardTab,adminCount}){
+  const addonWho=useAddonResolver()   // marks Combined students (they pay the monthly add-on)
   const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[selected,setSelected]=useState(null)
   // Land directly on a specific student (and their Revert/Fix tab) when
   // navigated here from elsewhere — e.g. the Month-wise Dues "Fix" button —
@@ -1325,7 +1327,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':s.liveStatus==='Underpaid'?'#c2410c':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':s.liveStatus==='Underpaid'?'#ffedd5':'#fee2e2';return(
               <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #faf8f3',background:isSel?'#eef2f9':'white',borderLeft:isSel?'3px solid #1e3a6e':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#faf8f3'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}{addonWho.eligible(s)&&<span title={addonWho.eligible(s)==='exam'?'Combined add-on fee applies — appears in the Exam Combined papers':'Combined add-on fee applies'} style={{fontSize:8,fontWeight:800,color:'#5b21b6',background:'#f5f3ff',padding:'1px 4px',borderRadius:2,border:'1px solid #ddd6fe'}}>{addonWho.eligible(s)==='exam'?'COMBINED·EXAM':'COMBINED'}</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
                   <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:13,fontWeight:900,color:s.grandTotal>0?'#16a34a':'#8a93a6'}}>{s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}</div><span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,background:sb,color:sc,marginTop:3,display:'inline-block'}}>{s.liveStatus}</span></div>
                 </div>
               </div>

@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { COURSE_ORDER, canonicalBatch } from './courseMap'
-import { getSessionYear } from './feeEngine'
+import { getSessionYear, getCombinedAddonFee } from './feeEngine'
 
 const inr = n => `₹${Number(n || 0).toLocaleString('en-IN')}`
 const HOSTELS = ['Boarder', 'Day Boarder', 'Day Scholar']
@@ -27,6 +27,14 @@ export default function CourseFeeRates({ isMobile }) {
     }).catch(e => { if (live) { setErr(e.message || 'Could not load fee rates'); setRows([]) } })
     return () => { live = false }
   }, [])
+
+  // Combined Course students also pay a monthly add-on (set in Fee Setup) on top of these rates
+  const [addon, setAddon] = useState(0)
+  useEffect(() => {
+    let live = true
+    getCombinedAddonFee(session).then(n => { if (live) setAddon(n) }).catch(() => {})
+    return () => { live = false }
+  }, [session])
 
   // course → batch → hostel → row (batches under their standard names)
   const tree = useMemo(() => {
@@ -77,6 +85,11 @@ export default function CourseFeeRates({ isMobile }) {
               </tbody>
             </table>
           </div>
+          {course === 'Combined Course' && addon > 0 && (
+            <div style={{ padding: '9px 16px', background: '#fff9ec', borderTop: '1px solid #eadbb2', fontSize: 12.5, color: '#7a4a00' }}>
+              ➕ Plus a <b>{inr(addon)} / month Combined add-on</b> on top of every fee above (course fee and flat fee), charged to students who are Combined by course or tagged in the Exam Combined papers.
+            </div>
+          )}
         </div>
       ))}
     </div>
