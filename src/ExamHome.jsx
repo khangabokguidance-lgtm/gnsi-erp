@@ -3,9 +3,10 @@
 // rather than where the tool lives: a search that jumps anywhere, plain-language
 // task cards, a six-step exam journey with a live next-step hint, upcoming
 // papers and the tools you used last. Styles are scoped under .eh-*.
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ExamIcon from './examIcons'
 import { PX } from './premiumUI'
+import { readRecent } from './examRecent'
 
 const TASKS = [
   { id: 'entry',        title: 'Enter marks',          hint: 'Type or paste marks for a batch',         color: '#1e3a6e', key: 'M' },
@@ -27,13 +28,6 @@ const JOURNEY = [
   { id: 'reportcard', n: 6, title: 'Report cards',  hint: 'Print and hand over' },
 ]
 
-const RECENT_KEY = 'gnsi_exam_recent'
-export function readRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') } catch { return [] } }
-export function pushRecent(id) {
-  if (!id || id === 'home') return
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter(x => x !== id)].slice(0, 6))) } catch { /* private mode */ }
-}
-
 const fmtD = d => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) } catch { return d } }
 
 export default function ExamHome({ groups, onSelect, institute, role, userName, stats, schedule = [] }) {
@@ -48,7 +42,6 @@ export default function ExamHome({ groups, onSelect, institute, role, userName, 
 
   const needle = q.trim().toLowerCase()
   const hits = needle ? flat.filter(t => `${t.label} ${t.tip} ${t.group} ${(TASKS.find(x => x.id === t.id) || {}).title || ''}`.toLowerCase().includes(needle)).slice(0, 7) : []
-  useEffect(() => setCur(0), [needle])
 
   useEffect(() => {
     const onKey = e => {
@@ -141,7 +134,7 @@ export default function ExamHome({ groups, onSelect, institute, role, userName, 
         <div className="eh-h">{greet}{who ? <>, <i>{who}</i></> : null}. What would you like to do?</div>
         <div className="eh-search">
           <svg className="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
-          <input ref={ref} value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKeyDown} placeholder="Try “marks”, “admit card”, “rank”, “timetable”…" aria-label="Search exam tools" />
+          <input ref={ref} value={q} onChange={e => { setQ(e.target.value); setCur(0) }} onKeyDown={onKeyDown} placeholder="Try “marks”, “admit card”, “rank”, “timetable”…" aria-label="Search exam tools" />
           <kbd>/</kbd>
           {hits.length > 0 && (
             <div className="eh-pop">
