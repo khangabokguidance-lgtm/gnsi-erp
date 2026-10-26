@@ -32,6 +32,7 @@ import MockTestAnalyzer from './MockTestAnalyzer'
 import ResponsiveTables from './ResponsiveTables'
 import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
 import ExamIcon from './examIcons'
+import ExamHome, { pushRecent } from './ExamHome'
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon } from './premiumUI'
 import './examsTheme.css'
 import './mobile.css';
@@ -9901,7 +9902,8 @@ setLoading(false);
 export default function Exams({ currentUser, perms }) {
   const isPhone = useMobile();
   // On a phone the module opens on the app-style home grid; on desktop it opens on Mark Entry.
-  const [tab, setTab]               = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "home" : "entry"));
+  const [tab, setTab]               = useState("home");
+  useEffect(() => { pushRecent(tab); }, [tab]);
   const [examConfigPrefillName, setExamConfigPrefillName] = useState("");
   const [students, setStudents]     = useState([]);
   const [examTypes, setExamTypes]   = useState([]);
@@ -10248,10 +10250,11 @@ export default function Exams({ currentUser, perms }) {
   }
 
   // ── Desktop: the portal's shared premium shell (hero + pill tabs), as in Courses / Students / Fees ──
-  const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
+  const onHome = tab === "home" || !allowed.includes(tab);
+  const activeGroup = onHome ? null : (visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0]);
   // Real line icons in a tinted chip (group colour) so each tab is recognisable at a glance
   const iconOf = (id, color) => () => <span className="ex-tico" style={{ '--c': color }}><ExamIcon id={id} size={18} stroke={2} /></span>;
-  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }));
+  const groupTabs = [{ id: "home", label: "Home", icon: iconOf("dashboard", "#132a4f") }, ...visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }))];
   const wide = (activeGroup?.tabs || []).length > 5;
   const subTabs = (activeGroup?.tabs || []).map((t) => {
     const mock = t.id === 'mockanalyzer';
@@ -10275,13 +10278,21 @@ export default function Exams({ currentUser, perms }) {
             { label: "Signed in as", value: currentUser?.role || "Admin", sub: currentUser?.name || currentUser?.username || "" },
           ]}
         />
-        <PremiumTabs tabs={groupTabs} active={activeGroup?.groupLabel} onChange={(g) => { const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
-        <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={setTab} /></div>
-        <div className="px-section">
-          <span className="px-eyebrow">{activeTabInfo?.label}</span>
-          <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
-        </div>
-        <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
+        <PremiumTabs tabs={groupTabs} active={onHome ? "home" : activeGroup?.groupLabel} onChange={(g) => { if (g === "home") return setTab("home"); const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
+        {onHome ? (
+          <ExamHome groups={visibleGroups} onSelect={setTab} institute={institute} role={currentUser?.role} userName={currentUser?.userName || currentUser?.name}
+            stats={{ students: students.length, batches: courses.length, examTypes: examTypes.length }} schedule={schedule} />
+        ) : (
+          <>
+            <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={setTab} /></div>
+            <div className="px-section">
+              <button onClick={() => setTab("home")} style={{ border: "none", background: "none", cursor: "pointer", color: "#8a6118", fontWeight: 700, fontSize: 12.5, padding: 0 }}>← Home</button>
+              <span className="px-eyebrow">{activeTabInfo?.label}</span>
+              <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
+            </div>
+            <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
+          </>
+        )}
       </div>
     </div>
   );
