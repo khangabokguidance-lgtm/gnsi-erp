@@ -245,6 +245,17 @@ export const getAddonStatus = async ({ sessionYear, course, batch, gccNo }) => {
   return { eligible, byRecord, byExam, reason: byRecord ? 'course' : 'exam', amount: eligible ? await getCombinedAddonFee(sessionYear) : 0 }
 }
 
+/**
+ * Synchronous add-on lookup for screens that handle many students (checks, fixers, lists).
+ * Loads the amounts and the Exam tags once; then eligible(student) → 'course' | 'exam' | '' and
+ * amount(student, session) → ₹ per month. Same rules as getAddonStatus / getFeeRates.
+ */
+export const getAddonResolver = async () => {
+  const [map, tagged] = await Promise.all([_loadAddonMap(), _loadCombinedTagged()])
+  const eligible = s => isCombinedByRecord(s?.course, s?.batch) ? 'course' : (tagged.set.has(_gccKey(s?.gcc_no)) ? 'exam' : '')
+  return { eligible, amount: (s, session) => eligible(s) ? addonFor(map, normalizeSessionYear(session)) : 0 }
+}
+
 /** Everyone currently charged the add-on (for the Fee Setup card): by record and by Exams tag. */
 export const listAddonStudents = async (students) => {
   const tagged = (await _loadCombinedTagged()).list

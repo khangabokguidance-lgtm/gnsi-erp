@@ -25,7 +25,7 @@ export const sessionOfMonthYear = (month, year) => {
 const gccKey = v => String(parseInt(v) || 0)
 
 // rows: { course: [...adm_course_fees], flat: [...adm_flat_fees] }
-// rateOf({ session, course, batch, type, field }) → configured rate (0 if none)
+// rateOf({ session, course, batch, type, field, student }) → configured rate (0 if none); `student` lets the caller add the Combined add-on
 // beds: Set of student ids with an active hostel bed, or null if unknown
 export function detectFeeTypes({ students = [], courseRows = [], flatRows = [], rateOf, beds = null, overrideGccs = new Set(), window = EVIDENCE_WINDOW }) {
   const pays = new Map()
@@ -55,7 +55,7 @@ export function detectFeeTypes({ students = [], courseRows = [], flatRows = [], 
       const course = p.course || st.course || ''
       const session = sessionOfMonthYear(p.month, p.year)
       if (!session) continue
-      const hits = FEE_TYPES.filter(t => { const r = rateOf({ session, course, batch: st.batch || '', type: t, field }); return r > 0 && r === p.amount })
+      const hits = FEE_TYPES.filter(t => { const r = rateOf({ session, course, batch: st.batch || '', type: t, field, student: st }); return r > 0 && r === p.amount })
       if (hits.length === 1) { score[hits[0]] += 2; byAmount[hits[0]]++; amountVotes++ }
     }
     const hasBed = beds ? beds.has(String(st.id)) : null

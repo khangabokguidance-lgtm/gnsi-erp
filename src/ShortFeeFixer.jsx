@@ -5,6 +5,7 @@
 // fix for each cause: correct the hostel type, approve/refuse the shortfall,
 // correct a wrongly entered amount, move a payment to the right month, fix the
 // date / revert, or collect the balance. Every change is audited.
+import { useAddonResolver } from './useAddonResolver'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { buildAllLedgers } from './feeLedgerBulk'
@@ -47,6 +48,7 @@ const CSS = `
 const btn = (bg, color = '#fff', border = 'none') => ({ background: bg, color, border })
 
 export default function ShortFeeFixer({ student, session, month: initialMonth, year: initialYear, adm_fee_collections = [], adm_flat_fees = [], adm_course_fees = [], currentUser, onClose, onChanged, onCollect, onOpenRevert }) {
+  const addon = useAddonResolver()
   const me = currentUser?.name || currentUser?.userName || 'Admin'
   const gcc = gccStr(student.gcc_no)
   const [led, setLed] = useState(null)          // { reg, rates }
@@ -91,7 +93,8 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
   const rateOf = (sess, course, batch, t) => {
     const same = r => r.session_year === sess && r.course === course && r.hostel_type === t
     const hit = structures.find(r => same(r) && (r.batch || '') === (batch || '')) || structures.find(same)
-    return hit ? Number(hit[field]) || 0 : 0
+    const base = hit ? Number(hit[field]) || 0 : 0
+    return base > 0 ? base + addon.amount(student, sess) : 0   // Combined students also pay the monthly add-on
   }
   const matches = []
   if (sel && paid > 0 && paid !== sel.expected) {
