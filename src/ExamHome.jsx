@@ -30,7 +30,7 @@ const JOURNEY = [
 
 const fmtD = d => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) } catch { return d } }
 
-export default function ExamHome({ groups, onSelect, institute, role, userName, stats, schedule = [] }) {
+export default function ExamHome({ groups, onSelect, institute, role, userName, stats, schedule = [], courseIssues = 0, combinedCount = 0 }) {
   const [q, setQ] = useState('')
   const [cur, setCur] = useState(0)
   const ref = useRef(null)
@@ -100,6 +100,9 @@ export default function ExamHome({ groups, onSelect, institute, role, userName, 
         .eh-hit{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border:none;background:none;cursor:pointer;text-align:left;font-family:${PX.sans}}
         .eh-hit.on,.eh-hit:hover{background:${PX.goldBg}}
         .eh-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--c);background:color-mix(in srgb,var(--c) 12%,#fff);border:1px solid color-mix(in srgb,var(--c) 22%,#fff)}
+        .eh-warn{display:flex;align-items:center;gap:14px;width:100%;padding:14px 18px;border-radius:16px;border:1px solid ${PX.goldLine};cursor:pointer;font-family:${PX.sans};
+          background:linear-gradient(135deg,#fff9ec,#fdf1d3);box-shadow:0 12px 28px -22px rgba(138,97,24,.7);transition:transform .14s}
+        .eh-warn:hover{transform:translateY(-2px)}
         .eh-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
         .eh-task{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:16px;border-radius:18px;border:1px solid ${PX.line};background:linear-gradient(180deg,#fff,#fcfbf7);
           cursor:pointer;text-align:left;font-family:${PX.sans};transition:transform .14s,box-shadow .18s,border-color .18s}
@@ -153,6 +156,16 @@ export default function ExamHome({ groups, onSelect, institute, role, userName, 
           {needle && !hits.length && <div className="eh-pop" style={{ padding: 16, fontSize: 13, color: PX.sub }}>Nothing matches “{q}”. Try “marks”, “report” or “schedule”.</div>}
         </div>
       </div>
+
+      {courseIssues > 0 && allowed('coursecheck') && (
+        <button className="eh-warn" onClick={() => onSelect('coursecheck')}>
+          <span style={{ fontSize: 22 }}>🛡️</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>
+            <b style={{ display: 'block', fontSize: 14, color: '#7a4a00' }}>{courseIssues} student{courseIssues > 1 ? 's' : ''} in the wrong exam list or missing from it</b>
+            <small style={{ color: PX.sub, fontSize: 12 }}>Students module and Exams disagree on course/batch · {combinedCount} Combined students found. Review →</small>
+          </span>
+        </button>
+      )}
 
       {/* Tasks */}
       <div>
