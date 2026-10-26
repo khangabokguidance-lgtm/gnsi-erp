@@ -5468,6 +5468,26 @@ const effectiveCols = visibleCols.filter(col => {
     if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})
   }
 
+  // Moves many students to course + batch in one go (used by Course Check's "Fix all Combined").
+  // Chunked writes through the same wrapper as every other update (so the admissions mirror runs),
+  // ONE audit entry that records each student's previous course/batch so the change can be reversed.
+  const handleBulkCourseFix=async(items,patch)=>{
+    if(!can.write){showToast('No permission',T.red);return 0}
+    const doneIds=new Set()
+    for(let i=0;i<items.length;i+=50){
+      const chunk=items.slice(i,i+50)
+      const{error}=await updateStudentsRows({match:{id:{in:chunk.map(x=>x.id)}},patch})
+      if(error){showToast(`Stopped after ${doneIds.size} — update failed: ${error.message}`,T.red);break}
+      chunk.forEach(x=>doneIds.add(x.id))
+    }
+    if(doneIds.size){
+      setStudents(prev=>prev.map(s=>doneIds.has(s.id)?{...s,...patch}:s))
+      await auditLog('student_bulk_course_fix',{count:doneIds.size,patch,previous:items.filter(x=>doneIds.has(x.id)).map(x=>({id:x.id,gcc:x.gcc,course:x.before.course,batch:x.before.batch}))})
+      broadcastStudentsUpdate({type:'quick_update'})
+    }
+    return doneIds.size
+  }
+
   // FLOW FIX: cloning created a student with no admission record. Kept as
   // a redirect so any old caller still lands somewhere sensible.
   const goToAdmissions=()=>{
@@ -5877,7 +5897,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {pageTab==='courseCheck'&&(
-          <StudentCourseCheck students={students} onQuickSave={handleQuickSave} can={can} isMobile={isMobile}/>
+          <StudentCourseCheck students={students} onQuickSave={handleQuickSave} onBulkFix={handleBulkCourseFix} can={can} isMobile={isMobile}/>
         )}
 
         {pageTab==='courses'&&(

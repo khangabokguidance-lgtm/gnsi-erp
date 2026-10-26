@@ -46,7 +46,7 @@ export default function ExamCourseCheck({ students, courseSubjects, secondaryBat
     { id: 'batch_not_in_exam_setup', n: summary.byIssue.batch_not_in_exam_setup, label: 'Invisible in Exams', sub: 'batch not set up', tone: PX.bad },
   ]
   const filters = [
-    ['problems', 'Needs attention'], ['combined', 'All Combined'], ['combined_wrong_batch', 'Combined + real batch'],
+    ['problems', 'Needs attention'], ['combined', 'All Combined'], ['combined_wrong_batch', 'Combined + real batch'], ['combined_wrong_course', 'Batch says Combined'],
     ['blank_batch_in_combined', 'Blank batch'], ['no_course_no_batch', 'No course & batch'], ['course_batch_conflict', 'Course ≠ batch'],
     ['batch_not_in_exam_setup', 'Batch not in Exam setup'], ['combined_no_section', 'No ENG/MM'], ['all', 'Everyone'],
   ]

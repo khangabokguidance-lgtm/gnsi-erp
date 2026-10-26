@@ -1121,6 +1121,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       <strong style={{ color: hasOverride ? C.violet : C.emerald }}>
                         ₹{fmt(feeRates.flatFee).replace('₹','')}/month
                       </strong>
+                      {feeRates.addonFee > 0 && !hasOverride && <span style={{ color:'#7a4a00', fontWeight:600 }}>(includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}
                       {hasOverride && (
                         <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd', letterSpacing:'.04em' }}>
                           OVERRIDE
@@ -1132,10 +1133,18 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         ✏️ {overrideMode ? 'Cancel' : 'Change'}
                       </button>
                     </span>
-                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on{feeRates.addonReason === 'exam' ? ' — appears in the Exam Combined papers' : ''})</span>}</span>
                   </>
               }
             </div>
+
+            {/* Rates not configured → these amounts are built-in defaults, not what Fee Setup says */}
+            {!ratesLoading && feeRates.usingFallbackRates && (
+              <div role="alert" style={{ marginTop:8, background:'#fff9ec', border:'1px solid #eadbb2', borderRadius:8, padding:'8px 12px', fontSize:11.5, color:'#7a4a00', lineHeight:1.5 }}>
+                ⚠ <strong>Default rates in use.</strong> Fee Setup has no rate for {course || 'this course'}{batch && batch !== '—' ? ` · ${batch}` : ''} · {hostelType} in {sessionYear}.
+                The amounts above (flat ₹{fmt(feeRates.flatFee).replace('₹','')}, course ₹{fmt(feeRates.courseFee).replace('₹','')}) are the old built-in values — set the real rate in Fee Setup before collecting.
+              </div>
+            )}
 
             {/* ── Inline override editor ── */}
             {overrideMode && (

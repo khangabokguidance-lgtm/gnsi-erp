@@ -239,7 +239,7 @@ function validateApplicationData(obj) {
   }
   if (!obj.gender)                                   errors.gender = 'Gender is required'
   if (!obj.course)                                   errors.course = 'Course is required'
-  if (!obj.cls)                                      errors.cls = 'Class/Batch is required'
+  if (!obj.cls && obj.course !== 'Combined Course')  errors.cls = 'Class/Batch is required'   // Combined Course has no batch — stored as '—'
   if (!obj.house)                                    errors.house = 'House is required'
   if (!obj.father?.trim())                           errors.father = "Father's Name is required"
   if (!obj.mother?.trim())                           errors.mother = "Mother's Name is required"
@@ -2390,7 +2390,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     entranceScore:def('entranceScore'), interviewScore:def('interviewScore'), interviewDate:def('interviewDate'),
     followupDate:def('followupDate'), bedNumber:def('bedNumber'),
     emergencyName:def('emergencyName'), emergencyPhone:def('emergencyPhone'), emergencyRel:def('emergencyRel'),
-    siblingGcc:def('siblingGcc'), course:def('course'), subtype:stdBatch(def('subtype')), cls:stdBatch(def('cls')), house:def('house'),
+    siblingGcc:def('siblingGcc'), course:def('course'), subtype:def('course')==='Combined Course'?'':stdBatch(def('subtype')), cls:def('course')==='Combined Course'?'—':stdBatch(def('cls')), house:def('house'),
     session:defaultSession, hostel_type:def('hostel_type','Day Scholar'), status:def('status','Applied'),
     father:def('father'), mother:def('mother'), phone:def('phone'), whatsapp:def('whatsapp'),
     prevSchool:def('prevSchool'), address:def('address'), remarks:def('remarks'), photoUrl:def('photoUrl'),
@@ -2736,7 +2736,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                       {Object.keys(COURSE_STRUCTURE).map(c => {
                         const on = form.course === c, ex = EXAM_BY_COURSE[c] || []
                         return (
-                          <button type="button" key={c} onClick={() => { set('course', c); if (!COURSE_STRUCTURE[c].subtypes.includes(form.subtype)) set('subtype','') }}
+                          <button type="button" key={c} onClick={() => { set('course', c); if (!COURSE_STRUCTURE[c].subtypes.includes(form.subtype)) set('subtype',''); if (c === 'Combined Course') set('cls', '—'); else if (form.cls === '—') set('cls', '') }}
                             style={{ textAlign:'left', padding:'14px 14px', borderRadius:14, cursor:'pointer', fontFamily:AF.sans,
                               border:`1.5px solid ${on ? AF.gold : AF.line}`, background: on ? AF.goldBg : AF.paper,
                               boxShadow: on ? '0 10px 24px -16px rgba(201,162,75,.9)' : 'none', transition:'all .15s' }}>
@@ -2748,14 +2748,18 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                     </div>
                   </AfField>
                   <AfField label="Subtype / batch" required={subtypes.length > 0} error={err('subtype','programme')}>
-                    {subtypes.length > 0
+                    {form.course === 'Combined Course'
+                      ? <select {...I('subtype')} value="" disabled style={{ opacity:.65 }} title="Combined Course has no batch"><option value="">— (none for Combined)</option></select>
+                      : subtypes.length > 0
                       ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}{form.subtype && !subtypes.includes(form.subtype) && <option>{form.subtype}</option>}</select>
                       : <input {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)} placeholder="Optional" />}
                   </AfField>
                   <AfField label="Class / batch" required error={err('cls','programme')}>
-                    <select {...I('cls')} value={form.cls} onChange={e => set('cls', e.target.value)}>
+                    {form.course === 'Combined Course'
+                    ? <select {...I('cls')} value="—" disabled style={{ opacity:.65 }} title="Combined Course has no batch"><option value="—">— (none for Combined)</option></select>
+                    : <select {...I('cls')} value={form.cls} onChange={e => set('cls', e.target.value)}>
                       <option value="">— Class —</option>{CLASSES_LIST.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                    </select>}
                   </AfField>
                   <AfField label="Session" required error={err('session','programme')}>
                     <select {...I('session')} value={allSessions.includes(form.session) ? form.session : '__other__'}

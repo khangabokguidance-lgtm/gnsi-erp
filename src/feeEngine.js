@@ -11,6 +11,8 @@ import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planP
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
+import { batchKeysFor, pickFeeRow } from './feeRateLookup'
+import { ADDON_SETTING_KEY, parseAddonMap, addonFor, withAddon, applyAddon, isCombinedByRecord, isCombinedTag } from './feeAddon'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
@@ -200,8 +202,75 @@ const _overrideSessions = {} // session -> { at, promise } — every override of
 
 const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cachedAt) < RATE_CACHE_TTL_MS
 
+// ─── Combined Course monthly add-on (see feeAddon.js) ─────────────────────────
+let _addonCache = { at: 0, map: null }
+const _loadAddonMap = async () => {
+  if (_addonCache.map && _isFresh(_addonCache.at)) return _addonCache.map
+  let map = {}
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+    map = parseAddonMap(data?.value)
+  } catch { /* no setting / no access → no add-on */ }
+  _addonCache = { at: Date.now(), map }
+  return map
+}
+// Students the Exams module files under a Combined tag (student_secondary_batches) — e.g. a Sainik or Navodaya
+// student who also sits the other course's papers. Keyed by GCC number; loaded once and cached.
+let _taggedCache = { at: 0, set: null, list: [] }
+const _gccKey = g => { const n = parseInt(String(g ?? '').replace(/\D/g, ''), 10); return Number.isFinite(n) ? String(n) : '' }
+const _loadCombinedTagged = async () => {
+  if (_taggedCache.set && _isFresh(_taggedCache.at)) return _taggedCache
+  let list = []
+  try {
+    const { data: tags } = await supabase.from('student_secondary_batches').select('student_id, batch')
+    const ids = [...new Set((tags || []).filter(t => isCombinedTag(t.batch)).map(t => t.student_id))]
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data: studs } = await supabase.from('students').select('id, name, gcc_no, course, batch, status').in('id', ids.slice(i, i + 100))
+      list.push(...(studs || []))
+    }
+  } catch { /* no access / table missing → nobody tagged */ }
+  _taggedCache = { at: Date.now(), set: new Set(list.map(s => _gccKey(s.gcc_no)).filter(Boolean)), list }
+  return _taggedCache
+}
+
+/**
+ * Is this student charged the Combined add-on, and why? Automatic — nobody is ticked by hand:
+ *   'course' → their record says Combined (course field, or a batch naming the Combined course)
+ *   'exam'   → the Exams module tags them as appearing in the Combined papers
+ */
+export const getAddonStatus = async ({ sessionYear, course, batch, gccNo }) => {
+  const byRecord = isCombinedByRecord(course, batch)
+  const byExam = !byRecord && !!gccNo && (await _loadCombinedTagged()).set.has(_gccKey(gccNo))
+  const eligible = byRecord || byExam
+  return { eligible, byRecord, byExam, reason: byRecord ? 'course' : 'exam', amount: eligible ? await getCombinedAddonFee(sessionYear) : 0 }
+}
+
+/** Everyone currently charged the add-on (for the Fee Setup card): by record and by Exams tag. */
+export const listAddonStudents = async (students) => {
+  const tagged = (await _loadCombinedTagged()).list
+  const byRecord = (students || []).filter(s => isCombinedByRecord(s.course, s.batch))
+  const have = new Set(byRecord.map(s => _gccKey(s.gcc_no)))
+  const byExam = tagged.filter(s => !have.has(_gccKey(s.gcc_no)) && !/dropout/i.test(s.status || ''))
+  return { byRecord, byExam }
+}
+
+/** Monthly add-on (₹) charged to Combined Course students in this session; 0 if none is set. */
+export const getCombinedAddonFee = async (sessionYear) => addonFor(await _loadAddonMap(), normalizeSessionYear(sessionYear))
+/** Admin: set (or clear with 0) the add-on for a session. Reads the stored map fresh and refuses to overwrite it if that read fails. */
+export const saveCombinedAddonFee = async (sessionYear, amount) => {
+  const session = normalizeSessionYear(sessionYear)
+  const { data, error: readErr } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+  if (readErr) return { error: readErr }
+  const next = withAddon(parseAddonMap(data?.value), session, amount)
+  const { error } = await supabase.from('system_settings').upsert({ key: ADDON_SETTING_KEY, value: JSON.stringify(next) }, { onConflict: 'key' })
+  if (!error) clearFeeRateCache()
+  return { error: error || null, map: next }
+}
+
 /** Clear both caches (call after saving fee_structures or student_fee_overrides) */
 export const clearFeeRateCache = () => {
+  _addonCache = { at: 0, map: null }
+  _taggedCache = { at: 0, set: null, list: [] }
   Object.keys(_rateCache).forEach(k => delete _rateCache[k])
   Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
   Object.keys(_overrideSessions).forEach(k => delete _overrideSessions[k])
@@ -325,7 +394,7 @@ export const getFeeRates = async (
   // declaration above for why this isn't a permanent cache)
   if (!_rateCache[structKey] || !_isFresh(_rateCache[structKey]._cachedAt)) {
     const courseKeys = [...new Set([course, rawCourse].filter(v => v != null))]
-    const batchKeys = [...new Set([batch, rawBatch, ...(BATCH_ALIASES[batch] || [])].filter(v => v != null))]
+    const batchKeys = batchKeysFor({ course, batch, rawBatch, aliases: BATCH_ALIASES[batch] || [] })
     const { data: matches } = await supabase
       .from(TABLES.feeStructures)
       .select('flat_fee, course_fee, admission_fee, course, batch')
@@ -334,8 +403,7 @@ export const getFeeRates = async (
       .in('batch',        batchKeys.length ? batchKeys : [''])
       .eq('hostel_type',  hostelType)
     // Prefer the row saved under the standard names.
-    const rank = r => (r.course === course ? 0 : 2) + (r.batch === batch ? 0 : 1)
-    let data = (matches || []).slice().sort((a, b) => rank(a) - rank(b))[0] || null
+    let data = pickFeeRow(matches, { course, batch })
 
     // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
     //   batch assigned yet), the exact match above can never succeed because
@@ -390,6 +458,12 @@ export const getFeeRates = async (
   // that spread/serialize this object (e.g. into React state, JSON, or a
   // fee_structures upsert) shouldn't see or persist it.
   const { _cachedAt, ...rates } = _rateCache[structKey]
+
+  // ✦ Combined Course add-on: added to the monthly amounts (before any per-student override)
+  {
+    const a = await getAddonStatus({ sessionYear, course, batch: rawBatch, gccNo })
+    if (a.eligible) Object.assign(rates, applyAddon(rates, true, a.amount, a.reason))
+  }
 
   // ✦ Apply per-student flat fee override if gcc supplied
   if (gccNo) {
@@ -1773,7 +1847,9 @@ export const promoteToStudent = async (admission) => {
   const payload = {
     gcc_no: gccNo, name: admission.name || admission.applicant_name || '',
     dob: admission.dob || null, gender: admission.gender || null,
-    course: admission.course || null, batch: admission.cls || admission.batch || null,
+    course: admission.course || null,
+    // Combined Course has no batch; '—' is what Fee Setup, Exams and Students all expect
+    batch: normalizeCourse(admission.course) === 'Combined Course' ? '—' : (admission.cls || admission.batch || null),
     house: admission.house || null, session: admission.session || null,
     hostel_type: admission.hostel_type || 'Day Scholar', status: 'Active',
     father_name: admission.father || admission.father_name || null,
