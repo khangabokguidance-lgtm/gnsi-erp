@@ -11,6 +11,7 @@ import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planP
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
+import { batchKeysFor, pickFeeRow } from './feeRateLookup'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
@@ -325,7 +326,7 @@ export const getFeeRates = async (
   // declaration above for why this isn't a permanent cache)
   if (!_rateCache[structKey] || !_isFresh(_rateCache[structKey]._cachedAt)) {
     const courseKeys = [...new Set([course, rawCourse].filter(v => v != null))]
-    const batchKeys = [...new Set([batch, rawBatch, ...(BATCH_ALIASES[batch] || [])].filter(v => v != null))]
+    const batchKeys = batchKeysFor({ course, batch, rawBatch, aliases: BATCH_ALIASES[batch] || [] })
     const { data: matches } = await supabase
       .from(TABLES.feeStructures)
       .select('flat_fee, course_fee, admission_fee, course, batch')
@@ -334,8 +335,7 @@ export const getFeeRates = async (
       .in('batch',        batchKeys.length ? batchKeys : [''])
       .eq('hostel_type',  hostelType)
     // Prefer the row saved under the standard names.
-    const rank = r => (r.course === course ? 0 : 2) + (r.batch === batch ? 0 : 1)
-    let data = (matches || []).slice().sort((a, b) => rank(a) - rank(b))[0] || null
+    let data = pickFeeRow(matches, { course, batch })
 
     // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
     //   batch assigned yet), the exact match above can never succeed because
@@ -1773,7 +1773,9 @@ export const promoteToStudent = async (admission) => {
   const payload = {
     gcc_no: gccNo, name: admission.name || admission.applicant_name || '',
     dob: admission.dob || null, gender: admission.gender || null,
-    course: admission.course || null, batch: admission.cls || admission.batch || null,
+    course: admission.course || null,
+    // Combined Course has no batch; '—' is what Fee Setup, Exams and Students all expect
+    batch: normalizeCourse(admission.course) === 'Combined Course' ? '—' : (admission.cls || admission.batch || null),
     house: admission.house || null, session: admission.session || null,
     hostel_type: admission.hostel_type || 'Day Scholar', status: 'Active',
     father_name: admission.father || admission.father_name || null,

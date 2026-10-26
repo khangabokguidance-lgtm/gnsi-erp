@@ -1137,6 +1137,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               }
             </div>
 
+            {/* Rates not configured → these amounts are built-in defaults, not what Fee Setup says */}
+            {!ratesLoading && feeRates.usingFallbackRates && (
+              <div role="alert" style={{ marginTop:8, background:'#fff9ec', border:'1px solid #eadbb2', borderRadius:8, padding:'8px 12px', fontSize:11.5, color:'#7a4a00', lineHeight:1.5 }}>
+                ⚠ <strong>Default rates in use.</strong> Fee Setup has no rate for {course || 'this course'}{batch && batch !== '—' ? ` · ${batch}` : ''} · {hostelType} in {sessionYear}.
+                The amounts above (flat ₹{fmt(feeRates.flatFee).replace('₹','')}, course ₹{fmt(feeRates.courseFee).replace('₹','')}) are the old built-in values — set the real rate in Fee Setup before collecting.
+              </div>
+            )}
+
             {/* ── Inline override editor ── */}
             {overrideMode && (
               <div style={{ marginTop:10, background:'#faf5ff', border:'1.5px solid #c4b5fd', borderRadius:9, padding:'12px 14px' }}>
