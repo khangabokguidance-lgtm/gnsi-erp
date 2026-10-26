@@ -49,9 +49,10 @@ const fmt     = n => Number(n || 0).toLocaleString('en-IN')
 const fmtDate = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
-const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
+const TABS    = ['Front Desk', 'Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
 
 const RIcon = {
+  home:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4Z"/></svg>,
   search:  p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>,
   enquiry: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 9h6M9 13h4"/></svg>,
   visitor: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></svg>,
@@ -67,6 +68,7 @@ const RIcon = {
 }
 // Tabs grouped the way a front office actually works.
 const TAB_META = {
+  'Front Desk':        { tabLabel:'Front Desk', short:'Desk', icon:RIcon.home, group:'Desk', desc:'Your command centre — what needs action now, shortcuts and today\'s activity.' },
   'Student 360°':      { short:'360°',     icon:RIcon.s360,      group:'Desk',     desc:'Look up any student — profile, contacts, fees, attendance, movement.' },
   'Monitors':          { short:'Monitors', icon:RIcon.monitor,   group:'Desk',     desc:'Live board of students outside campus, overdue returns and hostel leave.' },
   'Visitor Book':      { tabLabel:'Visitors', short:'Visitors', icon:RIcon.visitor,   group:'Front office', desc:'Sign visitors in and out, print badges, flag follow-ups.' },
@@ -77,7 +79,7 @@ const TAB_META = {
   'Parent Items':      { short:'Items',    icon:RIcon.items,     group:'Student movement', desc:'Parcels and items left by parents, house by house.' },
 }
 const TAB_GROUPS = ['Desk', 'Front office', 'Student movement']
-const MOBILE_MAIN = ['Student 360°', 'Visitor Book', 'Gate Pass', 'Parent Items']
+const MOBILE_MAIN = ['Front Desk', 'Visitor Book', 'Gate Pass', 'Parent Items']
 const TAB_ICONS = Object.fromEntries(Object.entries(TAB_META).map(([k, v]) => [k, null]))
 
 // ── predefined item catalogue ─────────────────────────────────────────────────
@@ -173,8 +175,8 @@ function Pill({ label }) {
 
 // ── shared styles ─────────────────────────────────────────────────────────────
 const inp = {
-  width: '100%', padding: '11px 13px', borderRadius: 11,
-  border: `1px solid ${C.slate[200]}`, fontSize: 13.5,
+  width: '100%', padding: '11px 13px', borderRadius: 12,
+  border: `1px solid ${C.slate[200]}`, fontSize: 13.5, boxShadow: 'inset 0 1px 2px rgba(19,42,79,.04)',
   boxSizing: 'border-box', fontFamily: font, outline: 'none',
   background: '#fff', color: C.slate[800],
   transition: 'border-color .15s, box-shadow .15s',
@@ -187,8 +189,8 @@ const lbl = {
 const thS = {
   padding: '11px 14px', textAlign: 'left', fontSize: 10.5,
   fontWeight: 700, color: C.slate[500], borderBottom: `1px solid ${C.slate[200]}`,
-  textTransform: 'uppercase', letterSpacing: '.08em', whiteSpace: 'nowrap',
-  background: C.slate[100], fontFamily: font,
+  textTransform: 'uppercase', letterSpacing: '.1em', whiteSpace: 'nowrap',
+  background: `linear-gradient(180deg,#fcfaf3,${C.slate[100]})`, fontFamily: font,
 }
 const tdS = {
   padding: '12px 14px', color: C.slate[700], borderBottom: `1px solid ${C.slate[100]}`,
@@ -202,9 +204,9 @@ const delBtn = {
 }
 
 // ── Card primitives ───────────────────────────────────────────────────────────
-function Card({ children, style = {} }) {
+function Card({ children, style = {}, className }) {
   return (
-    <div style={{
+    <div className={'rx-card rx-rise ' + (className || '').replace('rx-rise', '')} style={{
       background: 'white', borderRadius: 18,
       border: `1px solid ${C.slate[200]}`,
       boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)',
@@ -224,7 +226,9 @@ function CardHead({ icon, title, sub, right, accentColor, isMobile }) {
       justifyContent: 'space-between', gap: 8,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
-        <div style={{ width: 4, alignSelf: 'stretch', minHeight: 26, background: accentColor || `linear-gradient(180deg,${C.gold},${C.goldLight})`, borderRadius: 4, flexShrink: 0 }} />
+        {icon
+          ? <div style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, background: `linear-gradient(145deg,${C.goldSoft},#fff)`, border: `1px solid ${C.goldLight}`, boxShadow: '0 6px 14px -8px rgba(138,97,24,.7)' }}>{icon}</div>
+          : <div style={{ width: 4, alignSelf: 'stretch', minHeight: 26, background: accentColor || `linear-gradient(180deg,${C.gold},${C.goldLight})`, borderRadius: 4, flexShrink: 0, boxShadow: '0 0 10px rgba(184,146,58,.5)' }} />}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 600, color: C.slate[900], lineHeight: 1.25, fontFamily: serif }}>
             {title}
@@ -270,11 +274,11 @@ function Btn({ children, onClick, disabled, variant = 'primary', small, style = 
 
 function SaveBtn({ label, saving }) {
   return (
-    <button type="submit" disabled={saving}
+    <button type="submit" disabled={saving} className="rx-save"
       style={{
         marginTop: 18, background: saving ? C.slate[200] : `linear-gradient(180deg,${C.navyMid},${C.navy})`,
         color: saving ? C.slate[400] : 'white', padding: '13px 24px', boxShadow: saving ? 'none' : '0 10px 22px -12px rgba(19,42,79,.8)',
-        borderRadius: 12, border: 'none', fontWeight: 700, fontSize: 14,
+        borderRadius: 14, border: '1px solid rgba(233,217,176,.35)', fontWeight: 700, fontSize: 14, letterSpacing: '.02em',
         cursor: saving ? 'not-allowed' : 'pointer', fontFamily: font,
         width: '100%', minHeight: 46, transition: 'all .15s',
       }}>
@@ -433,23 +437,24 @@ function CampusHeadcount({ students, gatePasses, hlRecords }) {
   const pct        = total > 0 ? Math.round((onCampus / total) * 100) : 100
 
   return (
-    <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0b1e3d 100%)`, borderRadius: 18, padding: '16px 20px', marginBottom: 14, border: `0.5px solid rgba(255,255,255,.1)` }}>
+    <div className="rx-rise" style={{ position: 'relative', overflow: 'hidden', background: 'radial-gradient(80% 140% at 100% 0%,rgba(184,146,58,.25),transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 55%,#1e3a6e 100%)', borderRadius: 20, padding: '18px 22px', border: '1px solid rgba(233,217,176,.22)', boxShadow: '0 22px 44px -26px rgba(19,42,79,.7)' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 2, background: `linear-gradient(90deg,transparent,${C.gold},transparent)` }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '.1em', fontFamily: font }}>👥 Campus Headcount</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: 'white', fontFamily: font, marginTop: 4 }}>{onCampus} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.5)', fontWeight: 400 }}>/ {total}</span></div>
+          <div style={{ fontSize: 38, fontWeight: 600, color: 'white', fontFamily: serif, marginTop: 4, lineHeight: 1 }}>{onCampus} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.5)', fontWeight: 400 }}>/ {total}</span></div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', marginTop: 2, fontFamily: font }}>students on campus right now</div>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#fca5a5', fontFamily: font }}>{outsideGP}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Gate Pass Out</div>
           </div>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#fde68a', fontFamily: font }}>{outsideHL}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Hostel Leave</div>
           </div>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#86efac', fontFamily: font }}>{pct}%</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Attendance</div>
           </div>
@@ -1147,7 +1152,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
         {rows.map((row, i) => {
           const accentColor = accent ? accent(row) : C.navy
           return (
-            <div key={row.id || i} style={{ background: 'white', borderRadius: 14, border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}>
+            <div key={row.id || i} className="rx-mcard" style={{ background: 'white', borderRadius: 16, border: `1px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 10px 22px -18px rgba(19,42,79,.5)' }}>
               {/* left accent bar + header */}
               <div style={{ display: 'flex', alignItems: 'stretch' }}>
                 <div style={{ width: 4, background: accentColor, flexShrink: 0 }} />
@@ -1197,7 +1202,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500, fontFamily: font }}>
-        <thead>
+        <thead className="rx-thead">
           <tr>
             {columns.map(c => <th key={c.key} style={thS}>{c.label}</th>)}
             {onDelete && <th style={thS}>Del</th>}
@@ -1205,7 +1210,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id || i} style={{ borderBottom: `0.5px solid ${C.slate[100]}`, transition: 'background .1s' }}>
+            <tr key={row.id || i} className="rx-tr" style={{ borderBottom: `0.5px solid ${C.slate[100]}` }}>
               {columns.map(c => <td key={c.key} style={tdS}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</td>)}
               {onDelete && <td style={tdS}><button onClick={() => onDelete(row.id)} style={delBtn}>✕</button></td>}
             </tr>
@@ -1261,10 +1266,10 @@ function MonitorRow({ initLetter, avatarColor, name, sub, meta, elapsedRecord, s
   // ── Mobile card layout ───────────────────────────────────────────────────
   if (mob) {
     return (
-      <div style={{
-        background: 'white', borderRadius: 14, marginBottom: 10,
-        border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden',
-        boxShadow: '0 1px 6px rgba(0,0,0,.05)',
+      <div className="rx-mcard" style={{
+        background: 'white', borderRadius: 16, marginBottom: 10,
+        border: `1px solid ${C.slate[200]}`, overflow: 'hidden',
+        boxShadow: '0 10px 22px -18px rgba(19,42,79,.5)',
       }}>
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           {/* left accent */}
@@ -1896,11 +1901,285 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
+// ── FRONT DESK (home) ─────────────────────────────────────────────────────────
+// One screen the receptionist can run the whole day from: what needs action
+// right now (with the action inline), one-key shortcuts, a student finder that
+// shows live in/out status, the day's activity feed and a 7-day pulse.
+const hhmmNow = () => new Date().toTimeString().slice(0, 5)
+const waLink = (phone, msg) => {
+  const d = String(phone || '').replace(/\D/g, '')
+  if (!d) return null
+  return `https://wa.me/${d.length === 10 ? '91' + d : d}?text=${encodeURIComponent(msg)}`
+}
+const minsSince = iso => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0
+const durLabel = m => m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d`
+
+const QUICK_ACTIONS = [
+  { key: 'V', tab: 'Visitor Book',      label: 'Sign in visitor',  icon: RIcon.visitor,   hint: 'Badge & ID proof' },
+  { key: 'G', tab: 'Gate Pass',         label: 'Issue gate pass',  icon: RIcon.gate,      hint: 'Exit & return' },
+  { key: 'E', tab: 'Enquiry',           label: 'New enquiry',      icon: RIcon.enquiry,   hint: 'Admission lead' },
+  { key: 'L', tab: 'Leave Application', label: 'Leave request',    icon: RIcon.leave,     hint: 'Print & approve' },
+  { key: 'P', tab: 'Parent Items',      label: 'Log parcel',       icon: RIcon.items,     hint: 'House-wise' },
+  { key: 'C', tab: 'Complaint',         label: 'Log complaint',    icon: RIcon.complaint, hint: 'Assign & track' },
+  { key: 'M', tab: 'Monitors',          label: 'Live monitors',    icon: RIcon.monitor,   hint: 'Who is outside' },
+  { key: 'S', tab: 'Student 360°',      label: 'Student 360°',     icon: RIcon.s360,      hint: 'Full profile' },
+]
+
+function FrontDesk({ currentUserName, mob, students, enquiries, visitors, gatePasses, parentItems, leaveApps, complaints, goTab, onVisitorOut, onGatePassReturn, onFollowUpDone, onSummary }) {
+  const [q, setQ] = useState('')
+  const finderRef = useRef(null)
+  const t = today()
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const tag = (e.target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return
+      if (e.key === '/') { e.preventDefault(); finderRef.current?.focus(); return }
+      const hit = QUICK_ACTIONS.find(a => a.key.toLowerCase() === e.key.toLowerCase())
+      if (hit) { e.preventDefault(); goTab(hit.tab) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [goTab])
+
+  // ── Action queue ──────────────────────────────────────────────────────────
+  const queue = useMemo(() => {
+    const items = []
+    const nowHM = hhmmNow()
+
+    gatePasses.filter(g => g.status === 'Issued' || g.status === 'Exited').forEach(g => {
+      const late = (g.return_date && g.return_date < t) ||
+        (g.expected_return_time && (g.exit_date || t) <= t && ((g.exit_date || t) < t || g.expected_return_time < nowHM) && !g.return_date)
+      if (!late) return
+      items.push({
+        id: 'gp' + g.id, sev: 3, icon: '🚪', title: `${g.student_name} is overdue`,
+        sub: `${g.reason || 'Gate pass'}${g.house ? ' · ' + g.house : ''}${g.return_date ? ' · due ' + fmtDate(g.return_date) : g.expected_return_time ? ' · due ' + g.expected_return_time : ''}`,
+        primary: { label: 'Check in', run: () => onGatePassReturn(g) }, tab: 'Gate Pass',
+      })
+    })
+
+    visitors.filter(v => !v.out_time && v.visit_date <= t).forEach(v => {
+      const m = minsSince(v.created_at)
+      const stale = v.visit_date < t
+      if (!stale && m < 120) return
+      items.push({
+        id: 'vi' + v.id, sev: stale ? 3 : 2, icon: '🧑‍💼', title: `${v.visitor_name} still inside`,
+        sub: `${stale ? 'Signed in ' + fmtDate(v.visit_date) : 'Inside ' + durLabel(m)}${v.meeting_with ? ' · ' + v.meeting_with : ''}`,
+        primary: { label: 'Mark out', run: () => onVisitorOut(v) }, tab: 'Visitor Book',
+      })
+    })
+
+    complaints.filter(c => ['Open', 'In Progress', 'Reopened'].includes(c.status) && (c.priority === 'Urgent' || c.priority === 'High' || c.status === 'Reopened')).forEach(c => {
+      items.push({
+        id: 'co' + c.id, sev: c.priority === 'Urgent' ? 3 : 2, icon: '📣', title: `${c.priority || 'High'} complaint · ${c.subject || c.category || 'Complaint'}`,
+        sub: `${c.parent_name || c.student_name || '—'} · ${c.status}${c.assigned_to ? ' · ' + c.assigned_to : ' · unassigned'}`,
+        primary: { label: 'Open', run: () => goTab('Complaint') }, tab: 'Complaint',
+      })
+    })
+
+    enquiries.filter(e => e.follow_up_date && e.follow_up_date <= t && !['Converted', 'Closed'].includes(e.status)).forEach(e => {
+      const link = waLink(e.phone, `Namaste ${e.parent_name || ''}, this is GNSI. Following up on your admission enquiry${e.student_name ? ' for ' + e.student_name : ''}. May we help you with anything further?`)
+      items.push({
+        id: 'en' + e.id, sev: e.follow_up_date < t ? 2 : 1, icon: '📞', title: `Follow up · ${e.student_name || e.parent_name || 'Enquiry'}`,
+        sub: `${e.follow_up_date < t ? 'Overdue since ' + fmtDate(e.follow_up_date) : 'Due today'}${e.phone ? ' · ' + e.phone : ''}${e.class_interest ? ' · ' + e.class_interest : ''}`,
+        link, primary: { label: 'Open', run: () => goTab('Enquiry') }, tab: 'Enquiry',
+      })
+    })
+
+    visitors.filter(v => v.follow_up_required && v.follow_up_status !== 'Done' && (!v.follow_up_date || v.follow_up_date <= t)).forEach(v => {
+      items.push({
+        id: 'vf' + v.id, sev: 1, icon: '🔔', title: `Visitor follow-up · ${v.visitor_name}`,
+        sub: `${v.purpose || 'Visit'}${v.follow_up_date ? ' · ' + fmtDate(v.follow_up_date) : ''}${v.phone ? ' · ' + v.phone : ''}`,
+        link: waLink(v.phone, `Namaste ${v.visitor_name}, this is GNSI following up on your recent visit.`),
+        primary: { label: 'Done', run: () => onFollowUpDone(v.id) }, tab: 'Visitor Book',
+      })
+    })
+
+    leaveApps.filter(a => a.status === 'Pending').forEach(a => {
+      items.push({
+        id: 'la' + a.id, sev: 1, icon: '📝', title: `Leave awaiting approval · ${a.student_name}`,
+        sub: `${fmtDate(a.from_date)} → ${fmtDate(a.to_date)}${a.printed_at ? ' · printed' : ' · print first'}`,
+        primary: { label: 'Review', run: () => goTab('Leave Application') }, tab: 'Leave Application',
+      })
+    })
+
+    const oldParcels = parentItems.filter(p => p.status === 'Pending' && minsSince(p.created_at) > 3 * 1440)
+    if (oldParcels.length) items.push({
+      id: 'pi', sev: 1, icon: '📦', title: `${oldParcels.length} parcel${oldParcels.length > 1 ? 's' : ''} waiting 3+ days`,
+      sub: 'Hand over to students or return to parents',
+      primary: { label: 'Open', run: () => goTab('Parent Items') }, tab: 'Parent Items',
+    })
+
+    return items.sort((a, b) => b.sev - a.sev)
+  }, [gatePasses, visitors, complaints, enquiries, leaveApps, parentItems, t, goTab, onGatePassReturn, onVisitorOut, onFollowUpDone])
+
+  // ── Student finder with live status ───────────────────────────────────────
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (s.length < 2) return []
+    return students.filter(x => String(x.name || '').toLowerCase().includes(s) || String(x.gcc_no || '').includes(s) || String(x.phone || '').includes(s)).slice(0, 6)
+  }, [q, students])
+  const statusOf = s => {
+    const gp = gatePasses.find(g => g.student_name === s.name && (g.status === 'Issued' || g.status === 'Exited'))
+    if (gp) return { label: gp.status === 'Exited' ? 'Outside campus' : 'Pass issued', color: C.red, bg: '#fee2e2' }
+    return { label: 'On campus', color: '#166534', bg: '#dcfce7' }
+  }
+
+  // ── Feed + 7-day pulse ────────────────────────────────────────────────────
+  const feed = useMemo(() => {
+    const isToday = r => (r.created_at || '').slice(0, 10) === t || (r.created_at && new Date(r.created_at).toDateString() === new Date().toDateString())
+    const mk = (rows, icon, text) => rows.filter(isToday).map(r => ({ id: icon + r.id, at: r.created_at, icon, text: text(r) }))
+    return [
+      ...mk(visitors, '🧑‍💼', r => `${r.visitor_name} visited — ${r.purpose || 'visit'}`),
+      ...mk(gatePasses, '🚪', r => `Gate pass · ${r.student_name} (${r.status})`),
+      ...mk(enquiries, '📞', r => `Enquiry · ${r.student_name || r.parent_name || r.phone || '—'}`),
+      ...mk(leaveApps, '📝', r => `Leave · ${r.student_name} (${r.status})`),
+      ...mk(parentItems, '📦', r => `Parcel for ${r.student_name || '—'}`),
+      ...mk(complaints, '📣', r => `Complaint · ${r.subject || r.category || '—'}`),
+    ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 12)
+  }, [visitors, gatePasses, enquiries, leaveApps, parentItems, complaints, t])
+
+  const pulse = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return d })
+    const key = d => d.toLocaleDateString('en-CA')
+    return days.map(d => {
+      const k = key(d)
+      const v = visitors.filter(x => x.visit_date === k).length
+      const e = enquiries.filter(x => (x.enquiry_date || (x.created_at || '').slice(0, 10)) === k).length
+      return { label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2), v, e, total: v + e }
+    })
+  }, [visitors, enquiries])
+  const maxPulse = Math.max(1, ...pulse.map(p => p.total))
+  const sevColor = s => s >= 3 ? C.red : s === 2 ? C.amber : C.sky
+
+  const urgentCount = queue.filter(i => i.sev >= 3).length
+  const health = Math.max(0, Math.min(100, 100 - urgentCount * 18 - queue.filter(i => i.sev === 2).length * 8 - queue.filter(i => i.sev === 1).length * 3))
+  const who = (currentUserName || '').split(' ')[0] || 'team'
+  const hour = new Date().getHours()
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const mini = { height: 30, padding: '0 11px', borderRadius: 9, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 12, fontFamily: font, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }
+
+  return (
+    <>
+      {/* Spotlight */}
+      <div className="rx-spot rx-rise" style={{ display: 'flex', alignItems: 'center', gap: mob ? 14 : 24, flexWrap: mob ? 'wrap' : 'nowrap' }}>
+        <div className="rx-ring" style={{ '--p': health, '--c': health >= 80 ? C.emerald : health >= 50 ? C.gold : C.red }}><span>{health}</span></div>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>Desk health</div>
+          <div style={{ fontFamily: serif, fontSize: mob ? 24 : 30, fontWeight: 600, lineHeight: 1.1, color: C.navy, marginTop: 3 }}>{greet}, <span style={{ fontStyle: 'italic', fontWeight: 500, color: '#8a6118' }}>{who}</span></div>
+          <div style={{ fontSize: 13, color: C.slate[600], marginTop: 6, fontFamily: font }}>
+            {queue.length ? <>{queue.length} item{queue.length > 1 ? 's' : ''} need your attention{urgentCount ? <> — <b style={{ color: C.red }}>{urgentCount} urgent</b></> : null}.</> : 'Everything is in order. Enjoy the calm.'}
+          </div>
+        </div>
+        {!mob && <span style={{ fontSize: 11, color: C.slate[500], fontFamily: font, position: 'relative', zIndex: 1, textAlign: 'right', lineHeight: 1.7 }}>Press a key to jump<br /><kbd className="rx-kbd">/</kbd> finds a student</span>}
+      </div>
+
+      {/* Quick actions */}
+      <Card className="rx-rise" style={{ animationDelay: '.08s' }}>
+        <CardHead title="Quick actions" sub="One tap — or one key — to the task" isMobile={mob} />
+        <div style={{ padding: mob ? 12 : 18, display: 'grid', gridTemplateColumns: mob ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
+          {QUICK_ACTIONS.map(a => (
+            <button key={a.key} className="rx-act" onClick={() => goTab(a.tab)}>
+              <span className="rx-act-ic"><a.icon size={18} /></span>
+              <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{a.label}</span>
+                <span style={{ display: 'block', fontSize: 11, color: C.slate[500], marginTop: 2 }}>{a.hint}</span>
+              </span>
+              {!mob && <kbd className="rx-kbd">{a.key}</kbd>}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr' : '1.35fr 1fr', gap: 16, alignItems: 'start' }}>
+        {/* Action queue */}
+        <Card className="rx-rise" style={{ animationDelay: '.16s' }}>
+          <CardHead title="Needs attention" sub="Ranked by urgency — act without leaving this screen" isMobile={mob}
+            right={queue.length > 0 && <span className="rx-badge">{queue.length}</span>} />
+          {queue.length === 0 ? (
+            <div style={{ padding: '34px 20px', textAlign: 'center', color: C.slate[500], fontFamily: font }}>
+              <div style={{ fontSize: 30 }}>✅</div>
+              <div style={{ fontFamily: serif, fontSize: 16, color: C.slate[800], marginTop: 6 }}>Desk is clear</div>
+              <div style={{ fontSize: 12, marginTop: 3 }}>No overdue returns, stale visitors or due follow-ups.</div>
+            </div>
+          ) : queue.slice(0, 10).map(it => (
+            <div key={it.id} className="rx-q" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '11px 14px' : '13px 20px', borderTop: `1px solid ${C.slate[100]}`, borderLeft: `3px solid ${sevColor(it.sev)}` }}>
+              <span className={'rx-sev s' + it.sev}>{it.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</div>
+                <div style={{ fontSize: 11.5, color: C.slate[500], marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</div>
+              </div>
+              {it.link && <a href={it.link} target="_blank" rel="noreferrer" style={{ ...mini, background: '#dcfce7', color: '#166534' }} title="WhatsApp">💬</a>}
+              <button style={{ ...mini, background: `linear-gradient(180deg,${C.navyMid},${C.navy})`, color: '#fff' }} onClick={it.primary.run}>{it.primary.label}</button>
+            </div>
+          ))}
+          {queue.length > 10 && <div style={{ padding: '10px 20px', fontSize: 12, color: C.slate[500], borderTop: `1px solid ${C.slate[100]}`, fontFamily: font }}>+ {queue.length - 10} more — clear the top items first</div>}
+        </Card>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Finder */}
+          <Card>
+            <CardHead title="Find a student" sub="Name, GCC no. or phone" isMobile={mob} />
+            <div style={{ padding: mob ? 12 : 16 }}>
+              <input ref={finderRef} value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={{ ...inp, background: '#fff' }} />
+              {matches.map(s => {
+                const st = statusOf(s)
+                const call = String(s.phone || '').replace(/\D/g, '')
+                return (
+                  <div key={s.id || s.gcc_no || s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px', borderBottom: `1px solid ${C.slate[100]}` }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: C.slate[900] }}>{s.name}</div>
+                      <div style={{ fontSize: 11.5, color: C.slate[500] }}>{[classOf(s), s.house, s.gcc_no ? 'GCC ' + gccStr(s.gcc_no) : null].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 8px', borderRadius: 99, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.label}</span>
+                    {call && <a href={`tel:${call}`} style={{ ...mini, background: C.slate[100], color: C.slate[700] }} title="Call parent">📞</a>}
+                  </div>
+                )
+              })}
+              {q.trim().length >= 2 && !matches.length && <div style={{ fontSize: 12, color: C.slate[500], padding: '10px 2px' }}>No student matches “{q}”.</div>}
+              {matches.length > 0 && <button style={{ ...mini, marginTop: 10, background: C.goldSoft, color: '#8a6118' }} onClick={() => goTab('Student 360°')}>Open full Student 360° →</button>}
+            </div>
+          </Card>
+
+          {/* Pulse */}
+          <Card>
+            <CardHead title="7-day pulse" sub="Visitors + enquiries per day" isMobile={mob} right={<button style={{ ...mini, background: C.slate[100], color: C.slate[700] }} onClick={onSummary}>🖨️ Daily summary</button>} />
+            <div style={{ padding: mob ? 12 : 16, display: 'flex', alignItems: 'flex-end', gap: 8, height: 120 }}>
+              {pulse.map((p, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: C.slate[600] }}>{p.total || ''}</span>
+                  <div className="rx-bar" title={`${p.v} visitors · ${p.e} enquiries`} style={{ animationDelay: `${i * 70}ms`, width: '100%', maxWidth: 30, height: `${Math.max(4, (p.total / maxPulse) * 70)}px`, borderRadius: '8px 8px 4px 4px', boxShadow: i === 6 ? '0 8px 16px -8px rgba(184,146,58,.9)' : 'none', background: i === 6 ? `linear-gradient(180deg,${C.gold},${C.goldLight})` : `linear-gradient(180deg,${C.navyMid},${C.navy})`, opacity: i === 6 ? 1 : .72 }} />
+                  <span style={{ fontSize: 10, color: C.slate[400], fontWeight: 600 }}>{p.label}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Activity feed */}
+      <Card>
+        <CardHead title="Today's activity" sub="Everything logged at the desk, newest first" isMobile={mob} />
+        <div className="rx-tl">
+        {feed.length === 0 ? <div style={{ padding: 24, fontSize: 12.5, color: C.slate[500], textAlign: 'center', fontFamily: font }}>Nothing logged yet today.</div> : feed.map(f => (
+          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: mob ? '9px 14px' : '10px 20px', fontSize: 13, fontFamily: font }}>
+            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', border: `2px solid ${C.goldLight}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, position: 'relative', zIndex: 1, flexShrink: 0 }}>{f.icon}</span>
+            <span style={{ flex: 1, minWidth: 0, color: C.slate[800], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.text}</span>
+            <span style={{ fontSize: 11.5, color: C.slate[400], fontVariantNumeric: 'tabular-nums' }}>{new Date(f.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        ))}
+        </div>
+      </Card>
+    </>
+  )
+}
+
 export default function ReceptionPage({ currentUser }) {
   const mob = useIsMobile()
   const userRole = (currentUser?.role || '').toLowerCase()
   const isGatePassIssuer = userRole === 'admin' || userRole === 'administrator' || userRole === 'superintendent' || userRole === 'hostel superintendent'
-  const [activeTab,   setActiveTab]   = useState('Student 360°')
+  const [activeTab,   setActiveTab]   = useState('Front Desk')
   const [search,      setSearch]      = useState('')
   const [loading,     setLoading]     = useState(false)
   const [saving,      setSaving]      = useState(false)
@@ -2256,6 +2535,7 @@ export default function ReceptionPage({ currentUser }) {
   const goTab = tab => { setActiveTab(tab); setSearch(''); setMoreOpen(false); try { window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (_) {} }
 
   const tabBadges = {
+    'Front Desk':        followUpDue + pendingLA + stillOutside + openComplaints,
     'Enquiry':           followUpDue,
     'Leave Application': pendingLA,
     'Gate Pass':         stillOutside,
@@ -2284,6 +2564,73 @@ export default function ReceptionPage({ currentUser }) {
         .rx-quick.gold{background:linear-gradient(180deg,#d4ae58,${C.gold});color:#1a1406;border-color:#a37f2e;box-shadow:0 8px 18px -8px rgba(184,146,58,.8)}
         .rx-stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 13px;min-width:0;text-align:left;cursor:pointer;font-family:${font};transition:background .15s}
         .rx-stat:hover{background:rgba(255,255,255,.11)}
+        .rx-act{display:flex;align-items:center;gap:11px;padding:12px 13px;border:1px solid ${C.slate[200]};border-radius:14px;background:linear-gradient(180deg,#fff,#fcfbf7);cursor:pointer;font-family:${font};transition:transform .12s,box-shadow .15s,border-color .15s;min-width:0}
+        .rx-act:hover{transform:translateY(-2px);border-color:${C.gold};box-shadow:0 10px 22px -14px rgba(19,42,79,.5)}
+        .rx-act-ic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:linear-gradient(180deg,${C.navyMid},${C.navy});color:${C.goldLight}}
+        .rx-kbd{font:700 11px/1 ${font};padding:4px 7px;border-radius:6px;background:${C.slate[100]};border:1px solid ${C.slate[300]};color:${C.slate[600]}}
+        @keyframes rxRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        @keyframes rxSheen{0%{background-position:-200% 0}100%{background-position:200% 0}}
+        @keyframes rxPulse{0%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}70%{box-shadow:0 0 0 9px rgba(220,38,38,0)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0)}}
+        @keyframes rxFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+        @keyframes rxGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+        .rx-rise{animation:rxRise .6s cubic-bezier(.2,.7,.2,1) both}
+        .rx-hero-rings{position:absolute;right:-90px;top:-110px;width:380px;height:380px;border-radius:50%;pointer-events:none;
+          background:repeating-radial-gradient(circle at center,transparent 0 38px,rgba(233,217,176,.10) 38px 39px)}
+        .rx-hero-sheen{position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#e9d9b0,#b8923a,#e9d9b0,transparent);background-size:200% 100%;animation:rxSheen 6s linear infinite}
+        .rx-crest{position:relative;display:flex;align-items:center;justify-content:center;border-radius:16px;color:#e9d9b0;
+          background:linear-gradient(145deg,rgba(233,217,176,.22),rgba(255,255,255,.04));border:1px solid rgba(233,217,176,.55);
+          box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 10px 24px -10px rgba(0,0,0,.6)}
+        .rx-crest::after{content:'';position:absolute;inset:-5px;border-radius:20px;border:1px solid rgba(233,217,176,.22)}
+        .rx-clock{font-family:${serif};font-weight:600;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;
+          background:linear-gradient(180deg,#fff,#e9d9b0);-webkit-background-clip:text;background-clip:text;color:transparent}
+        .rx-stat{position:relative;overflow:hidden;backdrop-filter:blur(6px)}
+        .rx-stat::before{content:'';position:absolute;left:12px;right:12px;top:0;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(233,217,176,.7),transparent);opacity:.7}
+        .rx-stat:hover{transform:translateY(-2px);border-color:rgba(233,217,176,.5)}
+        .rx-spot{position:relative;overflow:hidden;border-radius:22px;padding:22px 26px;color:${C.slate[900]};
+          background:radial-gradient(70% 120% at 0% 0%,rgba(184,146,58,.16),transparent 60%),linear-gradient(135deg,#fffdf7,#f6efdc);
+          border:1px solid ${C.goldLight};box-shadow:0 18px 40px -26px rgba(138,97,24,.6),inset 0 1px 0 #fff}
+        .rx-spot::after{content:'';position:absolute;right:-60px;bottom:-80px;width:240px;height:240px;border-radius:50%;
+          background:repeating-radial-gradient(circle at center,transparent 0 22px,rgba(184,146,58,.14) 22px 23px);pointer-events:none}
+        .rx-ring{--p:0;width:92px;height:92px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+          background:conic-gradient(var(--c,#b8923a) calc(var(--p)*1%),rgba(19,42,79,.10) 0);position:relative;animation:rxFloat 5s ease-in-out infinite}
+        .rx-ring::before{content:'';position:absolute;inset:8px;border-radius:50%;background:#fffdf7;box-shadow:inset 0 2px 6px rgba(19,42,79,.12)}
+        .rx-ring>span{position:relative;font:600 24px/1 ${serif};color:${C.navy}}
+        .rx-act{position:relative;overflow:hidden}
+        .rx-act::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent 30%,rgba(233,217,176,.35) 50%,transparent 70%);transform:translateX(-120%);transition:transform .6s}
+        .rx-act:hover::before{transform:translateX(120%)}
+        .rx-act-ic{box-shadow:0 8px 16px -8px rgba(19,42,79,.8),inset 0 1px 0 rgba(255,255,255,.2);width:40px;height:40px;border-radius:12px}
+        .rx-q{transition:background .15s}
+        .rx-q:hover{background:#fcfaf3}
+        .rx-sev{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;position:relative}
+        .rx-sev.s3{background:linear-gradient(145deg,#fee2e2,#fecaca)}
+        .rx-sev.s3::after{content:'';position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:#dc2626;border:2px solid #fff;animation:rxPulse 1.8s infinite}
+        .rx-sev.s2{background:linear-gradient(145deg,#fef3c7,#fde68a)}
+        .rx-sev.s1{background:linear-gradient(145deg,#e4ebf6,#cbd8ee)}
+        .rx-tl{position:relative;padding:6px 0}
+        .rx-tl::before{content:'';position:absolute;left:30px;top:10px;bottom:10px;width:2px;background:linear-gradient(180deg,${C.goldLight},transparent)}
+        .rx-bar{transform-origin:bottom;animation:rxGrow .7s cubic-bezier(.2,.7,.2,1) both}
+        .rx-tabs{border-radius:16px;box-shadow:0 10px 30px -20px rgba(19,42,79,.45),0 1px 2px rgba(19,42,79,.05)}
+        .rx-card{transition:box-shadow .2s,border-color .2s}
+        .rx-card:hover{border-color:${C.goldLight}!important;box-shadow:0 1px 2px rgba(19,42,79,.05),0 22px 44px -24px rgba(19,42,79,.45)!important}
+        .rx-thead th{position:sticky;top:0}
+        .rx-tr{transition:background .15s}
+        .rx-tr:hover{background:linear-gradient(90deg,#fcfaf3,#fff)}
+        .rx-tr:hover td:first-child{box-shadow:inset 3px 0 0 ${C.gold}}
+        .rx-mcard{transition:transform .12s}
+        .rx-mcard:active{transform:scale(.99)}
+        .rx-save{position:relative;overflow:hidden}
+        .rx-save:not(:disabled):hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .rx-save:not(:disabled)::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(233,217,176,.35) 50%,transparent 65%);transform:translateX(-120%);transition:transform .7s}
+        .rx-save:not(:disabled):hover::after{transform:translateX(120%)}
+        .rx-tab.on::after{content:'';position:absolute;left:22%;right:22%;bottom:-6px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,${C.gold},transparent)}
+        .rx-intro{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;border-radius:18px;padding:14px 18px;
+          background:radial-gradient(60% 160% at 0% 0%,rgba(184,146,58,.13),transparent 65%),linear-gradient(135deg,#fffdf7,#faf5e6);border:1px solid ${C.goldLight};
+          box-shadow:0 14px 30px -24px rgba(138,97,24,.6),inset 0 1px 0 #fff}
+        .rx-intro::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,${C.gold},transparent 70%)}
+        .rx-intro-ic{width:46px;height:46px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:${C.goldLight};
+          background:linear-gradient(145deg,${C.navyMid},${C.navy});box-shadow:0 10px 20px -10px rgba(19,42,79,.8),inset 0 1px 0 rgba(255,255,255,.2)}
+        .rx-search:focus-within{box-shadow:0 0 0 4px rgba(184,146,58,.16)!important;border-color:${C.gold}!important}
+        @media (prefers-reduced-motion:reduce){.rx-rise,.rx-ring,.rx-bar,.rx-hero-sheen,.rx-sev.s3::after{animation:none}}
         form input:focus,form select:focus,form textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 4px rgba(184,146,58,.16)!important}
       `}</style>
 
@@ -2293,21 +2640,23 @@ export default function ReceptionPage({ currentUser }) {
           padding: mob ? '16px 14px 14px' : '22px 26px 20px',
           background: 'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%)',
           boxShadow: '0 24px 48px -24px rgba(19,42,79,.55)' }}>
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: `linear-gradient(90deg,transparent,${C.gold},transparent)` }} />
+          <div className="rx-hero-rings" />
+          <div className="rx-hero-sheen" />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14, position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-              <div style={{ width: mob ? 44 : 52, height: mob ? 44 : 52, borderRadius: 14, flexShrink: 0, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(233,217,176,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.goldLight }}>
+              <div className="rx-crest" style={{ width: mob ? 46 : 56, height: mob ? 46 : 56, flexShrink: 0 }}>
                 <RIcon.bell size={mob ? 21 : 24} />
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.goldLight, fontFamily: font }}>GNSI · Front office</div>
-                <div style={{ fontFamily: serif, fontSize: mob ? 24 : 30, fontWeight: 600, lineHeight: 1.1, marginTop: 2 }}>Reception</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 26 : 34, fontWeight: 600, lineHeight: 1.05, marginTop: 3, letterSpacing: '-.01em' }}>Reception <span style={{ color: C.goldLight, fontStyle: 'italic', fontWeight: 500 }}>Desk</span></div>
                 <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.62)', marginTop: 4, fontFamily: font }}>
                   {clock.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · <span style={{ fontVariantNumeric: 'tabular-nums', color: '#fff', fontWeight: 700 }}>{clock.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {!mob && <div className="rx-clock" style={{ fontSize: 44, marginRight: 14 }}>{clock.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>}
               <button className="rx-quick gold" onClick={() => goTab('Visitor Book')}><RIcon.visitor size={15} /> Sign in visitor</button>
               {!mob && <button className="rx-quick" onClick={() => goTab('Gate Pass')}><RIcon.gate size={15} /> Gate pass</button>}
               {!mob && <button className="rx-quick" onClick={() => goTab('Enquiry')}><RIcon.enquiry size={15} /> Enquiry</button>}
@@ -2357,23 +2706,42 @@ export default function ReceptionPage({ currentUser }) {
       )}
 
       {/* Section intro */}
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '14px 12px 0' : '18px 24px 0', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>{TAB_META[activeTab]?.group}</span>
-        <span style={{ fontFamily: serif, fontSize: mob ? 19 : 22, fontWeight: 600, color: C.slate[900] }}>{activeTab}</span>
-        {!mob && <span style={{ fontSize: 12.5, color: C.slate[500], fontFamily: font }}>{TAB_META[activeTab]?.desc}</span>}
-      </div>
+      {activeTab !== 'Front Desk' && (() => {
+        const M = TAB_META[activeTab] || {}
+        const count = { 'Enquiry': enquiries.length, 'Visitor Book': visitors.length, 'Leave Application': leaveApps.length, 'Gate Pass': gatePasses.length, 'Parent Items': parentItems.length, 'Complaint': complaints.length }[activeTab]
+        const live = tabBadges[activeTab]
+        return (
+          <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '14px 12px 0' : '18px 24px 0' }}>
+            <div className="rx-intro rx-rise">
+              {M.icon && <div className="rx-intro-ic"><M.icon size={22} /></div>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>{M.group}</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 21 : 26, fontWeight: 600, color: C.navy, lineHeight: 1.15 }}>{activeTab}</div>
+                {M.desc && <div style={{ fontSize: 12.5, color: C.slate[500], marginTop: 3, fontFamily: font }}>{M.desc}</div>}
+              </div>
+              {!mob && count != null && (
+                <div style={{ textAlign: 'right', position: 'relative', zIndex: 1 }}>
+                  <div style={{ fontFamily: serif, fontSize: 30, fontWeight: 600, color: C.navy, lineHeight: 1 }}>{count}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: C.slate[500], marginTop: 3 }}>records</div>
+                </div>
+              )}
+              {live > 0 && <span className="rx-badge" style={{ position: 'relative', zIndex: 1, height: 24, minWidth: 24, fontSize: 12 }} title="Needs action">{live}</span>}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Content ── */}
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '12px 12px' : '14px 24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* FEATURE 10: Campus Headcount on Monitors & Student 360° */}
-        {(activeTab === 'Monitors' || activeTab === 'Student 360°') && (
+        {(activeTab === 'Front Desk' || activeTab === 'Monitors' || activeTab === 'Student 360°') && (
           <CampusHeadcount students={students} gatePasses={gatePasses} hlRecords={hlRecords} />
         )}
 
         {/* Search bar */}
-        {activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
-          <div style={{ position: 'relative' }}>
+        {activeTab !== 'Front Desk' && activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
+          <div className="rx-search" style={{ position: 'relative', borderRadius: 14 }}>
             <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: C.slate[400], pointerEvents: 'none', display: 'flex' }}><RIcon.search size={16} /></span>
             <input
               style={{ ...inp, paddingLeft: 38, background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}
@@ -2385,6 +2753,14 @@ export default function ReceptionPage({ currentUser }) {
           </div>
         )}
 
+        {activeTab === 'Front Desk' && (
+          <FrontDesk currentUserName={currentUser?.userName || currentUser?.name} mob={mob} students={students} enquiries={enquiries} visitors={visitors} gatePasses={gatePasses} parentItems={parentItems} leaveApps={leaveApps} complaints={complaints}
+            goTab={goTab}
+            onVisitorOut={async v => { await supabase.from('reception_visitors').update({ out_time: new Date().toTimeString().slice(0, 5) }).eq('id', v.id); fetchAll() }}
+            onGatePassReturn={checkInGatePass}
+            onFollowUpDone={markVisitorFollowUpDone}
+            onSummary={() => printDailySummary({ enquiries, visitors, gatePasses, parentItems, students })} />
+        )}
         {activeTab === 'Student 360°' && <Student360 students={students} />}
         {activeTab === 'Monitors' && <MonitorsTab students={students} gatePasses={gatePasses} hlRecordsExternal={hlRecords} onGPStatusChange={(id, from, to) => updateGPStatus(id, from, to)} fetchAll={fetchAll} currentUser={currentUser} />}
 
