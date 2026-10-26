@@ -14,7 +14,7 @@ import { PremiumStyles, PremiumHero } from './premiumUI'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
-  getFeeRates, saveStudentFlatFeeOverride, TABLES, getCombinedAddonFee, saveCombinedAddonFee,
+  getFeeRates, saveStudentFlatFeeOverride, TABLES, getCombinedAddonFee, saveCombinedAddonFee, listAddonStudents,
 } from './feeEngine'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -465,6 +465,18 @@ export default function FeeSetup({ userRole }) {
     getCombinedAddonFee(sessionYear).then(n => { if (live) { setAddonSaved(n); setAddonAmt(n ? String(n) : ''); setAddonMsg(null) } })
     return () => { live = false }
   }, [sessionYear])
+  // Who is charged — found automatically from the student records and the Exams module's Combined tags
+  const [addonWho, setAddonWho] = useState(null)   // { byRecord: [...], byExam: [...] }
+  const [addonOpen, setAddonOpen] = useState(false)
+  useEffect(() => {
+    if (activeCourse !== 'Combined Course') return undefined
+    let live = true
+    getActiveStudents('id,name,gcc_no,course,batch,status')
+      .then(list => listAddonStudents(list || []))
+      .then(r => { if (live) setAddonWho(r) })
+      .catch(() => { if (live) setAddonWho({ byRecord: [], byExam: [] }) })
+    return () => { live = false }
+  }, [activeCourse])
   const saveAddon = async () => {
     const n = addonAmt === '' ? 0 : Number(addonAmt)
     if (!Number.isFinite(n) || n < 0) { setAddonMsg({ ok: false, t: 'Enter a valid amount (0 or more).' }); return }
@@ -754,7 +766,7 @@ export default function FeeSetup({ userRole }) {
                 <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 800, color: '#7a4a00' }}>➕ Combined add-on fee <span style={{ fontWeight: 600, color: C.slate[500] }}>· Navodaya + Sainik</span></div>
                   <div style={{ fontSize: 12, color: C.slate[500], marginTop: 3, lineHeight: 1.5 }}>
-                    Extra amount charged <b>every month</b> to each Combined Course student, on top of the fees below. One amount for {sessionYear}, the same for every hostel type. Leave 0 for no add-on.
+                    Extra amount charged <b>every month</b>, on top of the fees below, to every student who is Combined — by course, or tagged in the Exams module as appearing in the Combined papers (found automatically). One amount for {sessionYear}, the same for every hostel type. Leave 0 for no add-on.
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -771,6 +783,26 @@ export default function FeeSetup({ userRole }) {
                   </button>
                 </div>
               </div>
+              {addonWho && (
+                <div style={{ marginTop: 12, borderTop: '1px dashed #eadbb2', paddingTop: 10 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5, color: C.slate[700] }}>
+                    <span>🔎 <b>Found automatically:</b> {addonWho.byRecord.length + addonWho.byExam.length} students — {addonWho.byRecord.length} with course Combined, {addonWho.byExam.length} tagged as appearing in the Exam Combined papers.</span>
+                    {addonSaved > 0 && <span style={{ fontWeight: 700, color: '#7a4a00' }}>≈ ₹{((addonWho.byRecord.length + addonWho.byExam.length) * addonSaved).toLocaleString('en-IN')} / month</span>}
+                    <button onClick={() => setAddonOpen(o => !o)} style={{ marginLeft: 'auto', border: 'none', background: 'none', color: '#1e3a6e', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>{addonOpen ? 'Hide list' : 'Show list'}</button>
+                  </div>
+                  {addonOpen && (
+                    <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto', background: '#fff', border: `1px solid ${C.slate[200]}`, borderRadius: 10 }}>
+                      {[...addonWho.byRecord.map(s => ({ s, why: 'course' })), ...addonWho.byExam.map(s => ({ s, why: 'exam' }))].map(({ s, why }) => (
+                        <div key={s.id} style={{ display: 'flex', gap: 10, padding: '6px 12px', fontSize: 12.5, borderTop: `1px solid ${C.slate[100]}` }}>
+                          <b style={{ flex: '1 1 160px' }}>{s.name} <span style={{ color: C.slate[400], fontWeight: 500 }}>GCC {s.gcc_no}</span></b>
+                          <span style={{ color: C.slate[500] }}>{s.course || '—'}{s.batch && s.batch !== '—' ? ` · ${s.batch}` : ''}</span>
+                          <span style={{ fontWeight: 700, color: why === 'exam' ? '#7c3aed' : '#166534' }}>{why === 'exam' ? 'Exam Combined tag' : 'Combined course'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {addonMsg && <div role="status" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: addonMsg.ok ? '#166534' : '#b42318' }}>{addonMsg.ok ? '✓ ' : '⚠ '}{addonMsg.t}</div>}
             </div>
           )}

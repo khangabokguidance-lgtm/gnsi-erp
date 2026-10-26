@@ -1133,7 +1133,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         ✏️ {overrideMode ? 'Cancel' : 'Change'}
                       </button>
                     </span>
-                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}</span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on{feeRates.addonReason === 'exam' ? ' — appears in the Exam Combined papers' : ''})</span>}</span>
                   </>
               }
             </div>

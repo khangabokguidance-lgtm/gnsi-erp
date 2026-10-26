@@ -28,13 +28,21 @@ export function withAddon(map, session, amount) {
   return next
 }
 
+/** Does this student's own record say Combined? (course field, or a batch that names the Combined course) */
+export const isCombinedByRecord = (course, batch) =>
+  /^combined/i.test(String(course || '').trim()) || /combined/i.test(String(batch || ''))
+
+/** Is this secondary-batch tag one of the Exams module's Combined tags ("Combined Navodaya Course(ENG)" …)? */
+export const isCombinedTag = tag => /combined/i.test(String(tag || ''))
+
 /**
  * Rates with the add-on included. Every module that bills a month asks getFeeRates for
  * courseFee (most months) or flatFee (Feb–Mar), so adding it to both makes the add-on
  * appear everywhere — collection, dues, ledgers — without touching each of them.
- * Other courses, and a zero add-on, return the rates unchanged.
+ * Students who are not Combined, and a zero add-on, return the rates unchanged.
+ * `reason` says how the student was found: 'course' (their record) or 'exam' (Combined tag in Exams).
  */
-export function applyAddon(rates, course, addon) {
-  if (course !== ADDON_COURSE || !(addon > 0)) return rates
-  return { ...rates, flatFee: Number(rates.flatFee || 0) + addon, courseFee: Number(rates.courseFee || 0) + addon, addonFee: addon }
+export function applyAddon(rates, eligible, addon, reason = 'course') {
+  if (!eligible || !(addon > 0)) return rates
+  return { ...rates, flatFee: Number(rates.flatFee || 0) + addon, courseFee: Number(rates.courseFee || 0) + addon, addonFee: addon, addonReason: reason }
 }

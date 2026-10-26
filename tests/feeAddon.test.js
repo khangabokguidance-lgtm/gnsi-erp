@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseAddonMap, addonFor, withAddon, applyAddon } from '../src/feeAddon.js'
+import { parseAddonMap, addonFor, withAddon, applyAddon, isCombinedByRecord, isCombinedTag } from '../src/feeAddon.js'
 
 test('reads the stored map and ignores junk', () => {
   assert.deepEqual(parseAddonMap('{"2026-2027":500}'), { '2026-2027': 500 })
@@ -24,16 +24,30 @@ test('withAddon sets, replaces and clears without touching other sessions', () =
 })
 
 test('Combined students pay the add-on in every month type', () => {
-  const r = applyAddon({ flatFee: 4000, courseFee: 3000, admissionFee: 6000 }, 'Combined Course', 500)
+  const r = applyAddon({ flatFee: 4000, courseFee: 3000, admissionFee: 6000 }, true, 500)
   assert.equal(r.courseFee, 3500)
   assert.equal(r.flatFee, 4500)
   assert.equal(r.admissionFee, 6000)   // admission is not monthly — untouched
   assert.equal(r.addonFee, 500)
+  assert.equal(r.addonReason, 'course')
+  assert.equal(applyAddon({ flatFee: 1, courseFee: 1 }, true, 50, 'exam').addonReason, 'exam')
 })
 
-test('other courses and a zero add-on are left exactly as they were', () => {
+test('non-Combined students and a zero add-on are left exactly as they were', () => {
   const base = { flatFee: 4000, courseFee: 3000, admissionFee: 6000 }
-  assert.equal(applyAddon(base, 'Sainik', 500), base)
-  assert.equal(applyAddon(base, 'Navodaya', 500), base)
-  assert.equal(applyAddon(base, 'Combined Course', 0), base)
+  assert.equal(applyAddon(base, false, 500), base)
+  assert.equal(applyAddon(base, true, 0), base)
+})
+
+test('a student is Combined by record when the course or the batch text says so', () => {
+  assert.equal(isCombinedByRecord('Combined Course', '—'), true)
+  assert.equal(isCombinedByRecord('Sainik', 'Combined Navodaya Course (Sainik Appearing Group) MAN'), true)
+  assert.equal(isCombinedByRecord('Sainik', 'Achiever'), false)
+  assert.equal(isCombinedByRecord('', ''), false)
+})
+
+test('Exams Combined tags are recognised in every spelling', () => {
+  for (const t of ['Combined Navodaya Course(ENG)', 'Combined Navodaya Course (MM)', 'COMBINED NAVODAY ENG']) assert.equal(isCombinedTag(t), true)
+  assert.equal(isCombinedTag('Achiever'), false)
+  assert.equal(isCombinedTag(null), false)
 })
