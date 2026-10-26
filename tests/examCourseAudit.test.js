@@ -66,3 +66,15 @@ test('a blank-batch student is in the Exam Combined list but is not a declared C
   assert.equal(summary.combined, 1)
   assert.equal(summary.examListCombined, 2)
 })
+
+test('a batch that names the Combined course while the course says otherwise is flagged', () => {
+  const r = auditStudent({ course: 'Sainik', batch: 'Combined Navodaya Course (Sainik Appearing Group) MAN' }, keys)
+  assert.ok(r.issues.includes('combined_wrong_course'))
+  assert.equal(r.declaredCombined, true)
+  assert.ok(auditStudent({ course: '', batch: 'COMBINED NAVODAY ENG' }, keys).issues.includes('combined_wrong_course'))
+})
+
+test('a correctly filed Combined student ("Combined Course" + "—") is not flagged as wrong', () => {
+  const r = auditStudent({ course: 'Combined Course', batch: '—' }, keys, ['Combined Navodaya Course(ENG)'])
+  assert.deepEqual(r.issues, [])
+})

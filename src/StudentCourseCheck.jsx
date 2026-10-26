@@ -67,7 +67,7 @@ function FixEditor({ r, onApply, disabled }) {
   )
 }
 
-export default function StudentCourseCheck({ students, onQuickSave, can, isMobile }) {
+export default function StudentCourseCheck({ students, onQuickSave, onBulkFix, can, isMobile }) {
   const [secondary, setSecondary] = useState({})
   const [filter, setFilter] = useState('problems')
   const [q, setQ] = useState('')
@@ -99,6 +99,27 @@ export default function StudentCourseCheck({ students, onQuickSave, can, isMobil
     })
   }, [rows, filter, q, showDrop])
 
+  // Everyone who is clearly a Combined Course student but filed under the wrong course/batch.
+  const fixable = useMemo(() => rows.filter(r => !/dropout/i.test(r.status) && (r.issues.includes('combined_wrong_batch') || r.issues.includes('combined_wrong_course'))), [rows])
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const downloadPreview = () => {
+    const csv = [['Name', 'GCC', 'Course now', 'Batch now', 'Course after', 'Batch after'], ...fixable.map(r => [r.name, r.gcc, r.rawCourse, r.rawBatch, COMBINED, '—'])]
+      .map(l => l.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + csv)
+    a.download = `GNSI_combined_fix_before_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+  }
+  const runBulk = async () => {
+    const yes = await askConfirm(`Set course to “Combined Course” and batch to “—” for ${fixable.length} student${fixable.length > 1 ? 's' : ''}? Their previous values are saved in the audit log.`, { confirmLabel: `Fix ${fixable.length} students`, danger: true })
+    if (!yes) return
+    setBulkBusy(true)
+    const n = await onBulkFix(fixable.map(r => ({ id: r.id, gcc: r.gcc, before: { course: r.rawCourse, batch: r.rawBatch } })), { course: COMBINED, batch: '—' })
+    setBulkBusy(false); setBulkOpen(false)
+    notify(n === fixable.length ? `${n} students moved to Combined Course` : `${n} of ${fixable.length} updated — see the message above`, n === fixable.length ? 'ok' : 'warn')
+  }
+
   const apply = async (id, fields) => { await onQuickSave(id, fields); notify('Course and batch updated', 'ok') }
 
   const cards = [
@@ -108,7 +129,7 @@ export default function StudentCourseCheck({ students, onQuickSave, can, isMobil
     { id: 'batch_not_in_exam_setup', n: summary.byIssue.batch_not_in_exam_setup, label: 'Invisible in Exams', sub: 'batch not recognised', tone: V.red },
   ]
   const filters = [
-    ['problems', 'Needs attention'], ['combined', 'All Combined'], ['combined_wrong_batch', 'Combined + real batch'], ['blank_batch_in_combined', 'Blank batch'],
+    ['problems', 'Needs attention'], ['combined', 'All Combined'], ['combined_wrong_batch', 'Combined + real batch'], ['combined_wrong_course', 'Batch says Combined'], ['blank_batch_in_combined', 'Blank batch'],
     ['no_course_no_batch', 'No course & batch'], ['course_batch_conflict', 'Course ≠ batch'], ['batch_not_in_exam_setup', 'Batch not recognised'], ['all', 'Everyone'],
   ]
 
@@ -128,6 +149,33 @@ export default function StudentCourseCheck({ students, onQuickSave, can, isMobil
           </button>
         ))}
       </div>
+
+      {fixable.length > 0 && can?.write && onBulkFix && (
+        <div style={{ background: V.surface, border: `1.5px solid ${V.gold}`, borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '14px 18px' }}>
+            <span style={{ fontSize: 22 }}>🛠️</span>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <b style={{ color: V.t1, fontSize: 14 }}>{fixable.length} Combined Course student{fixable.length > 1 ? 's are' : ' is'} filed under the wrong course or batch</b>
+              <div style={{ fontSize: 12, color: V.t3, marginTop: 2 }}>Fix them all at once: course → Combined Course, batch → “—”. Dropouts are left alone.</div>
+            </div>
+            <button onClick={() => setBulkOpen(o => !o)} style={{ height: 36, padding: '0 16px', borderRadius: 10, border: `1px solid ${V.border2}`, background: V.surface, color: V.t1, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{bulkOpen ? 'Hide list' : 'Review list'}</button>
+            <button onClick={runBulk} disabled={bulkBusy} style={{ height: 36, padding: '0 18px', borderRadius: 10, border: 'none', background: `linear-gradient(180deg,${V.navy2},${V.navy})`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: bulkBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{bulkBusy ? 'Fixing…' : `Fix all ${fixable.length}`}</button>
+          </div>
+          {bulkOpen && (
+            <div style={{ borderTop: `1px solid ${V.border}`, maxHeight: 280, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 18px' }}>
+                <button onClick={downloadPreview} style={{ border: 'none', background: 'none', color: V.navy2, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>📥 Download this list (before values)</button>
+              </div>
+              {fixable.map(r => (
+                <div key={r.id} style={{ display: 'flex', gap: 10, padding: '7px 18px', borderTop: `1px solid ${V.border}`, fontSize: 12.5, color: V.t2, flexWrap: 'wrap' }}>
+                  <b style={{ flex: '1 1 160px', color: V.t1 }}>{r.name} <span style={{ color: V.t4, fontWeight: 500 }}>{r.gcc ? `GCC ${r.gcc}` : ''}</span></b>
+                  <span style={{ flex: '2 1 260px' }}>{r.rawCourse || 'no course'} · {r.rawBatch || 'no batch'} <b style={{ color: V.green }}>→ Combined Course · —</b></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ fontSize: 12.5, color: V.t2, lineHeight: 1.6, background: V.goldBg, border: `1px solid ${V.goldLine}`, borderRadius: 12, padding: '10px 14px' }}>
         <b style={{ color: V.navy }}>Why this matters:</b> Exams files a student with <b>no batch</b> under <b>Combined</b>, and a Combined student with a <b>real batch</b> under that batch instead.

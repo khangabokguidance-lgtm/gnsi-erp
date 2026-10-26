@@ -21,6 +21,7 @@ export const ISSUES = {
   no_course_no_batch: { sev: 'error', label: 'No course and no batch', fix: 'Set the course (and batch, unless Combined) in Students. Exams currently treats them as Combined.' },
   batch_not_in_exam_setup: { sev: 'error', label: 'Batch missing from Exam setup', fix: 'Add this batch under Exams → Course Subjects, or correct the student’s batch. They are invisible in exam tools now.' },
   course_batch_conflict: { sev: 'warn', label: 'Course and batch disagree', fix: 'The course field and the batch belong to different courses. Correct whichever is wrong in Students.' },
+  combined_wrong_course: { sev: 'error', label: 'Batch says Combined, course says otherwise', fix: 'The batch text names the Combined course but the course field is different or empty. Set course to Combined Course and batch to "—".' },
   combined_no_section: { sev: 'info', label: 'Combined, no ENG / MM section', fix: 'Tag the medium (ENG or MM) in Exams → Students if you print reports by section.' },
   course_blank_derived: { sev: 'info', label: 'Course empty (taken from batch)', fix: 'Optional: fill the course field in Students so every module reads the same value.' },
 }
@@ -48,11 +49,13 @@ export function auditStudent(s, examKeys, secondary = []) {
   const studentsCourse = courseOf(s)
   const tags = secondary.map(secTag).filter(Boolean)
   const examSaysCombined = examKey === COMBINED_COURSE_BATCH_LABEL
-  const declaredCombined = rawCourse === 'Combined Course' || secondary.some(t => /COMBINED NAVODAY/i.test(t))
+  const declaredCombined = rawCourse === 'Combined Course' || /combined/i.test(rawBatch) || secondary.some(t => /COMBINED NAVODAY/i.test(t))
   const isCombined = examSaysCombined || declaredCombined
 
   const issues = []
-  if (rawCourse === 'Combined Course' && !blankBatch) issues.push('combined_wrong_batch')
+  if (rawCourse === 'Combined Course' && !blankBatch && rawBatch !== '—') issues.push('combined_wrong_batch')
+  // the batch column itself names the Combined course (older imports) but the course field disagrees
+  if (rawCourse !== 'Combined Course' && /combined/i.test(rawBatch)) issues.push('combined_wrong_course')
   if (examSaysCombined && blankBatch) {
     if (!rawCourse) { if (studentsCourse === 'Unassigned') issues.push('no_course_no_batch') }
     else if (rawCourse !== 'Combined Course') issues.push('blank_batch_in_combined')
