@@ -42,7 +42,7 @@ export default function ExamCourseCheck({ students, courseSubjects, secondaryBat
   const cards = [
     { id: 'combined', n: summary.combined, label: 'Combined students', sub: `${summary.combinedEng} ENG · ${summary.combinedMm} MM · ${summary.combinedNoSection} no section`, tone: PX.navy },
     { id: 'problems', n: summary.problems, label: 'Need attention', sub: summary.problems ? 'course / batch mismatches' : 'everything lines up', tone: summary.problems ? PX.bad : PX.ok },
-    { id: 'blank_batch_in_combined', n: summary.byIssue.blank_batch_in_combined + summary.byIssue.no_course_no_batch, label: 'Wrongly in Combined', sub: 'blank batch → shown as Combined', tone: PX.warn },
+    { id: 'blank_batch_in_combined', n: summary.byIssue.blank_batch_in_combined + summary.byIssue.no_course_no_batch, label: 'Wrongly in Combined', sub: `blank batch → Combined · ${summary.examListCombined} in Exam’s Combined list`, tone: PX.warn },
     { id: 'batch_not_in_exam_setup', n: summary.byIssue.batch_not_in_exam_setup, label: 'Invisible in Exams', sub: 'batch not set up', tone: PX.bad },
   ]
   const filters = [

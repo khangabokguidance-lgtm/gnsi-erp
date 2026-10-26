@@ -14,21 +14,22 @@ const TONE = {
 export default function ExamDialogHost() {
   const [toasts, setToasts] = useState([])
   const [ask, setAsk] = useState(null)
+  const [text, setText] = useState('')
 
   useEffect(() => dialogBus.on(ev => {
     if (ev.type === 'toast') {
       setToasts(t => [...t.slice(-3), ev])
       setTimeout(() => setToasts(t => t.filter(x => x.id !== ev.id)), ev.kind === 'error' ? 7000 : 4200)
-    } else if (ev.type === 'confirm') setAsk(ev)
+    } else if (ev.type === 'confirm') { setText(ev.initial || ''); setAsk(ev) }
   }), [])
 
-  const close = ok => { ask?.resolve(ok); setAsk(null) }
+  const close = ok => { ask?.resolve(ask.input ? (ok ? text : null) : ok); setAsk(null) }
   useEffect(() => {
     if (!ask) return undefined
-    const onKey = e => { if (e.key === 'Escape') close(false); if (e.key === 'Enter') close(true) }
+    const onKey = e => { if (e.key === 'Escape') close(false); if (e.key === 'Enter' && !(ask.input && e.target?.tagName === 'TEXTAREA')) close(true) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }) // eslint-disable-line react-hooks/exhaustive-deps
+  })
 
   return (
     <>
@@ -55,12 +56,13 @@ export default function ExamDialogHost() {
         <div className="exd-veil" onClick={() => close(false)}>
           <div className="exd-box" role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()}>
             <div style={{ padding: '22px 24px 8px' }}>
-              <div style={{ fontFamily: PX.serif, fontSize: 19, fontWeight: 600, color: PX.navy }}>{ask.danger ? 'Please confirm' : 'Before you continue'}</div>
+              <div style={{ fontFamily: PX.serif, fontSize: 19, fontWeight: 600, color: PX.navy }}>{ask.input ? 'Add a note' : ask.danger ? 'Please confirm' : 'Before you continue'}</div>
               <div style={{ fontSize: 13.5, color: PX.ink2, marginTop: 8, lineHeight: 1.55 }}>{ask.message}</div>
+              {ask.input && <input autoFocus value={text} onChange={e => setText(e.target.value)} placeholder={ask.placeholder} style={{ marginTop: 12, width: '100%', height: 42, padding: '0 12px', borderRadius: 11, border: `1px solid ${PX.line2}`, font: `600 14px ${PX.sans}`, boxSizing: 'border-box' }} />}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px 20px' }}>
               <button className="exd-btn" onClick={() => close(false)}>Cancel</button>
-              <button className={'exd-btn ' + (ask.danger ? 'd' : 'p')} autoFocus onClick={() => close(true)}>{ask.confirmLabel}</button>
+              <button className={'exd-btn ' + (ask.danger ? 'd' : 'p')} autoFocus={!ask.input} onClick={() => close(true)}>{ask.confirmLabel}</button>
             </div>
           </div>
         </div>
