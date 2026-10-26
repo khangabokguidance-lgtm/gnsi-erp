@@ -14,6 +14,7 @@ import FeeMonthCollection from './FeeMonthCollection'
 import FeeMonthDue from './FeeMonthDue'
 import FeeWaivers from './FeeWaivers'
 import FeeAmountFinder from './FeeAmountFinder'
+import FeePayAmounts from './FeePayAmounts'
 import { loadFeeTypeScan } from './hostelFeeCheck'
 import ExpenseDayBook from './ExpenseDayBook'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
@@ -399,6 +400,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
   const [notFound, setNotFound] = useState('')
   const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly' | 'monthwise' | 'monthdue' | 'waivers'
+  const [finderPick, setFinderPick] = useState(null) // amount chosen on 'Who pays how much' → opens 'Who pays ₹?'
 
   useEffect(() => {
     // Every student, paged past the 1000-row cap so none are missing from search.
@@ -463,7 +465,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
         ]} />
 
       <div role="tablist" aria-label="Fee ledger books" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 16, background: '#fff', borderRadius: 999, border: '1px solid #e6dcc3', boxShadow: '0 8px 24px -18px rgba(11,30,61,.4)', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }}>
-        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'], ['monthwise', '🧾 Month-wise Collection'], ['monthdue', '⚠️ Month-wise Dues'], ['waivers', '🎓 Waivers & Concessions'], ['amounts', '🔎 Who pays ₹?'],
+        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'], ['monthwise', '🧾 Month-wise Collection'], ['monthdue', '⚠️ Month-wise Dues'], ['waivers', '🎓 Waivers & Concessions'], ['payamounts', '💰 Who pays how much'], ['amounts', '🔎 Who pays ₹?'],
           // Expenditure lives in Accounts — only shown to users who can open Accounts.
           ...(canSeeAccounts ? [['expense', '💸 Expenditure Day Book'], ['register', '⚖️ Income & Expenditure']] : [])].map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
@@ -480,7 +482,8 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
       {tab === 'monthwise' && <FeeMonthCollection students={students} />}
       {tab === 'monthdue' && <FeeMonthDue students={students} />}
       {tab === 'waivers' && <FeeWaivers students={students} />}
-      {tab === 'amounts' && <FeeAmountFinder students={students} />}
+      {tab === 'payamounts' && <FeePayAmounts students={students} onPickAmount={p => { setFinderPick(p); setTab('amounts') }} />}
+      {tab === 'amounts' && <FeeAmountFinder key={finderPick ? `${finderPick.amount}|${finderPick.kind}|${finderPick.session}` : 'x'} students={students} initial={finderPick} />}
       {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
       {tab === 'register' && canSeeAccounts && <IncomeExpenditureRegister />}
 

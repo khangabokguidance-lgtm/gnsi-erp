@@ -46,3 +46,49 @@ export function findStudentsByAmount({ students, rows, amount, kind = 'all', ses
   }
   return [...groups.values()].filter(g => g.matches.length).sort((a, b) => b.matches.length - a.matches.length || String(a.student.name).localeCompare(String(b.student.name)))
 }
+
+// ── "Who pays how much" ─────────────────────────────────────────────────────
+
+/** Every fee payment (course and/or flat, one session or all) belonging to a listed student. */
+function paymentsOf({ students, rows, kind = 'all', session = '' }) {
+  const flatten = x => x instanceof Map ? [...x.values()].flat() : (x || [])
+  const byGcc = new Map((students || []).map(s => [gccKeyOf(s.gcc_no), s]))
+  return [
+    ...(kind === 'flat' ? [] : flatten(rows?.crs).map(r => norm('course', r))),
+    ...(kind === 'course' ? [] : flatten(rows?.flat).map(r => norm('flat', r))),
+  ].filter(p => p.gcc && p.amount > 0 && byGcc.has(p.gcc) && (!session || sessionOfMonth(p.month, p.year) === session))
+    .map(p => ({ ...p, student: byGcc.get(p.gcc) }))
+}
+
+/**
+ * How many students pay each amount: [{ amount, students, payments, course, flat }] — most payments first.
+ * `students` counts each student once per amount, however many months they paid it.
+ */
+export function amountDistribution(args) {
+  const m = new Map()
+  for (const p of paymentsOf(args)) {
+    const key = Math.round(p.amount * 100) / 100
+    const g = m.get(key) || { amount: key, gccs: new Set(), payments: 0, course: 0, flat: 0 }
+    g.gccs.add(p.gcc); g.payments++; g[p.kind]++
+    m.set(key, g)
+  }
+  return [...m.values()].map(({ gccs, ...g }) => ({ ...g, students: gccs.size })).sort((a, b) => b.payments - a.payments || b.amount - a.amount)
+}
+
+/**
+ * One line per student: their usual amount (the one they pay most often), the range and the total.
+ * [{ student, payments, usual, usualCount, min, max, total, distinct }]
+ */
+export function studentAmounts(args) {
+  const by = new Map()
+  for (const p of paymentsOf(args)) {
+    const g = by.get(p.gcc) || { student: p.student, payments: 0, total: 0, min: Infinity, max: 0, counts: new Map() }
+    g.payments++; g.total += p.amount; g.min = Math.min(g.min, p.amount); g.max = Math.max(g.max, p.amount)
+    g.counts.set(p.amount, (g.counts.get(p.amount) || 0) + 1)
+    by.set(p.gcc, g)
+  }
+  return [...by.values()].map(g => {
+    const [usual, usualCount] = [...g.counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]
+    return { student: g.student, payments: g.payments, usual, usualCount, min: g.min, max: g.max, total: Math.round(g.total * 100) / 100, distinct: g.counts.size }
+  }).sort((a, b) => String(a.student.name).localeCompare(String(b.student.name)))
+}

@@ -11,12 +11,12 @@ const fmt = n => Number(n || 0).toLocaleString('en-IN')
 const C = { navy: '#132a4f', gold: '#b8923a', line: '#e6dcc3', sub: '#5d6b82', ink: '#14213d', ok: '#146c3a', warn: '#9a5b00', bad: '#b42318' }
 const MON = { January: 'Jan', February: 'Feb', March: 'Mar', April: 'Apr', May: 'May', June: 'Jun', July: 'Jul', August: 'Aug', September: 'Sep', October: 'Oct', November: 'Nov', December: 'Dec' }
 
-export default function FeeAmountFinder({ students }) {
+export default function FeeAmountFinder({ students, initial }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
-  const [amount, setAmount] = useState('6500')
-  const [kind, setKind] = useState('all')
-  const [session, setSession] = useState('')
+  const [amount, setAmount] = useState(initial?.amount ? String(initial.amount) : '6500')
+  const [kind, setKind] = useState(initial?.kind || 'all')
+  const [session, setSession] = useState(initial?.session ?? '')
   const [q, setQ] = useState('')
   const [std, setStd] = useState({})          // gcc → { courseFee, flatFee, addonFee }
   const addon = useAddonResolver()
