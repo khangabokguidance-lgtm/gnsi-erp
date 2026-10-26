@@ -175,8 +175,8 @@ function Pill({ label }) {
 
 // ── shared styles ─────────────────────────────────────────────────────────────
 const inp = {
-  width: '100%', padding: '11px 13px', borderRadius: 11,
-  border: `1px solid ${C.slate[200]}`, fontSize: 13.5,
+  width: '100%', padding: '11px 13px', borderRadius: 12,
+  border: `1px solid ${C.slate[200]}`, fontSize: 13.5, boxShadow: 'inset 0 1px 2px rgba(19,42,79,.04)',
   boxSizing: 'border-box', fontFamily: font, outline: 'none',
   background: '#fff', color: C.slate[800],
   transition: 'border-color .15s, box-shadow .15s',
@@ -189,8 +189,8 @@ const lbl = {
 const thS = {
   padding: '11px 14px', textAlign: 'left', fontSize: 10.5,
   fontWeight: 700, color: C.slate[500], borderBottom: `1px solid ${C.slate[200]}`,
-  textTransform: 'uppercase', letterSpacing: '.08em', whiteSpace: 'nowrap',
-  background: C.slate[100], fontFamily: font,
+  textTransform: 'uppercase', letterSpacing: '.1em', whiteSpace: 'nowrap',
+  background: `linear-gradient(180deg,#fcfaf3,${C.slate[100]})`, fontFamily: font,
 }
 const tdS = {
   padding: '12px 14px', color: C.slate[700], borderBottom: `1px solid ${C.slate[100]}`,
@@ -206,7 +206,7 @@ const delBtn = {
 // ── Card primitives ───────────────────────────────────────────────────────────
 function Card({ children, style = {}, className }) {
   return (
-    <div className={className} style={{
+    <div className={'rx-card rx-rise ' + (className || '').replace('rx-rise', '')} style={{
       background: 'white', borderRadius: 18,
       border: `1px solid ${C.slate[200]}`,
       boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)',
@@ -226,7 +226,9 @@ function CardHead({ icon, title, sub, right, accentColor, isMobile }) {
       justifyContent: 'space-between', gap: 8,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
-        <div style={{ width: 4, alignSelf: 'stretch', minHeight: 26, background: accentColor || `linear-gradient(180deg,${C.gold},${C.goldLight})`, borderRadius: 4, flexShrink: 0 }} />
+        {icon
+          ? <div style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, background: `linear-gradient(145deg,${C.goldSoft},#fff)`, border: `1px solid ${C.goldLight}`, boxShadow: '0 6px 14px -8px rgba(138,97,24,.7)' }}>{icon}</div>
+          : <div style={{ width: 4, alignSelf: 'stretch', minHeight: 26, background: accentColor || `linear-gradient(180deg,${C.gold},${C.goldLight})`, borderRadius: 4, flexShrink: 0, boxShadow: '0 0 10px rgba(184,146,58,.5)' }} />}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 600, color: C.slate[900], lineHeight: 1.25, fontFamily: serif }}>
             {title}
@@ -272,11 +274,11 @@ function Btn({ children, onClick, disabled, variant = 'primary', small, style = 
 
 function SaveBtn({ label, saving }) {
   return (
-    <button type="submit" disabled={saving}
+    <button type="submit" disabled={saving} className="rx-save"
       style={{
         marginTop: 18, background: saving ? C.slate[200] : `linear-gradient(180deg,${C.navyMid},${C.navy})`,
         color: saving ? C.slate[400] : 'white', padding: '13px 24px', boxShadow: saving ? 'none' : '0 10px 22px -12px rgba(19,42,79,.8)',
-        borderRadius: 12, border: 'none', fontWeight: 700, fontSize: 14,
+        borderRadius: 14, border: '1px solid rgba(233,217,176,.35)', fontWeight: 700, fontSize: 14, letterSpacing: '.02em',
         cursor: saving ? 'not-allowed' : 'pointer', fontFamily: font,
         width: '100%', minHeight: 46, transition: 'all .15s',
       }}>
@@ -435,23 +437,24 @@ function CampusHeadcount({ students, gatePasses, hlRecords }) {
   const pct        = total > 0 ? Math.round((onCampus / total) * 100) : 100
 
   return (
-    <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0b1e3d 100%)`, borderRadius: 18, padding: '16px 20px', marginBottom: 14, border: `0.5px solid rgba(255,255,255,.1)` }}>
+    <div className="rx-rise" style={{ position: 'relative', overflow: 'hidden', background: 'radial-gradient(80% 140% at 100% 0%,rgba(184,146,58,.25),transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 55%,#1e3a6e 100%)', borderRadius: 20, padding: '18px 22px', border: '1px solid rgba(233,217,176,.22)', boxShadow: '0 22px 44px -26px rgba(19,42,79,.7)' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 2, background: `linear-gradient(90deg,transparent,${C.gold},transparent)` }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '.1em', fontFamily: font }}>👥 Campus Headcount</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: 'white', fontFamily: font, marginTop: 4 }}>{onCampus} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.5)', fontWeight: 400 }}>/ {total}</span></div>
+          <div style={{ fontSize: 38, fontWeight: 600, color: 'white', fontFamily: serif, marginTop: 4, lineHeight: 1 }}>{onCampus} <span style={{ fontSize: 14, color: 'rgba(255,255,255,.5)', fontWeight: 400 }}>/ {total}</span></div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', marginTop: 2, fontFamily: font }}>students on campus right now</div>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#fca5a5', fontFamily: font }}>{outsideGP}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Gate Pass Out</div>
           </div>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#fde68a', fontFamily: font }}>{outsideHL}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Hostel Leave</div>
           </div>
-          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.08)', borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '10px 16px' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#86efac', fontFamily: font }}>{pct}%</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', fontFamily: font }}>Attendance</div>
           </div>
@@ -1149,7 +1152,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
         {rows.map((row, i) => {
           const accentColor = accent ? accent(row) : C.navy
           return (
-            <div key={row.id || i} style={{ background: 'white', borderRadius: 14, border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}>
+            <div key={row.id || i} className="rx-mcard" style={{ background: 'white', borderRadius: 16, border: `1px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 10px 22px -18px rgba(19,42,79,.5)' }}>
               {/* left accent bar + header */}
               <div style={{ display: 'flex', alignItems: 'stretch' }}>
                 <div style={{ width: 4, background: accentColor, flexShrink: 0 }} />
@@ -1199,7 +1202,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500, fontFamily: font }}>
-        <thead>
+        <thead className="rx-thead">
           <tr>
             {columns.map(c => <th key={c.key} style={thS}>{c.label}</th>)}
             {onDelete && <th style={thS}>Del</th>}
@@ -1207,7 +1210,7 @@ function RecordsTable({ rows, columns, onDelete, loading, mobileConfig }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id || i} style={{ borderBottom: `0.5px solid ${C.slate[100]}`, transition: 'background .1s' }}>
+            <tr key={row.id || i} className="rx-tr" style={{ borderBottom: `0.5px solid ${C.slate[100]}` }}>
               {columns.map(c => <td key={c.key} style={tdS}>{c.render ? c.render(row) : (row[c.key] ?? '—')}</td>)}
               {onDelete && <td style={tdS}><button onClick={() => onDelete(row.id)} style={delBtn}>✕</button></td>}
             </tr>
@@ -1263,10 +1266,10 @@ function MonitorRow({ initLetter, avatarColor, name, sub, meta, elapsedRecord, s
   // ── Mobile card layout ───────────────────────────────────────────────────
   if (mob) {
     return (
-      <div style={{
-        background: 'white', borderRadius: 14, marginBottom: 10,
-        border: `0.5px solid ${C.slate[200]}`, overflow: 'hidden',
-        boxShadow: '0 1px 6px rgba(0,0,0,.05)',
+      <div className="rx-mcard" style={{
+        background: 'white', borderRadius: 16, marginBottom: 10,
+        border: `1px solid ${C.slate[200]}`, overflow: 'hidden',
+        boxShadow: '0 10px 22px -18px rgba(19,42,79,.5)',
       }}>
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           {/* left accent */}
@@ -2607,6 +2610,26 @@ export default function ReceptionPage({ currentUser }) {
         .rx-tl::before{content:'';position:absolute;left:30px;top:10px;bottom:10px;width:2px;background:linear-gradient(180deg,${C.goldLight},transparent)}
         .rx-bar{transform-origin:bottom;animation:rxGrow .7s cubic-bezier(.2,.7,.2,1) both}
         .rx-tabs{border-radius:16px;box-shadow:0 10px 30px -20px rgba(19,42,79,.45),0 1px 2px rgba(19,42,79,.05)}
+        .rx-card{transition:box-shadow .2s,border-color .2s}
+        .rx-card:hover{border-color:${C.goldLight}!important;box-shadow:0 1px 2px rgba(19,42,79,.05),0 22px 44px -24px rgba(19,42,79,.45)!important}
+        .rx-thead th{position:sticky;top:0}
+        .rx-tr{transition:background .15s}
+        .rx-tr:hover{background:linear-gradient(90deg,#fcfaf3,#fff)}
+        .rx-tr:hover td:first-child{box-shadow:inset 3px 0 0 ${C.gold}}
+        .rx-mcard{transition:transform .12s}
+        .rx-mcard:active{transform:scale(.99)}
+        .rx-save{position:relative;overflow:hidden}
+        .rx-save:not(:disabled):hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .rx-save:not(:disabled)::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(233,217,176,.35) 50%,transparent 65%);transform:translateX(-120%);transition:transform .7s}
+        .rx-save:not(:disabled):hover::after{transform:translateX(120%)}
+        .rx-tab.on::after{content:'';position:absolute;left:22%;right:22%;bottom:-6px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,${C.gold},transparent)}
+        .rx-intro{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;border-radius:18px;padding:14px 18px;
+          background:radial-gradient(60% 160% at 0% 0%,rgba(184,146,58,.13),transparent 65%),linear-gradient(135deg,#fffdf7,#faf5e6);border:1px solid ${C.goldLight};
+          box-shadow:0 14px 30px -24px rgba(138,97,24,.6),inset 0 1px 0 #fff}
+        .rx-intro::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,${C.gold},transparent 70%)}
+        .rx-intro-ic{width:46px;height:46px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:${C.goldLight};
+          background:linear-gradient(145deg,${C.navyMid},${C.navy});box-shadow:0 10px 20px -10px rgba(19,42,79,.8),inset 0 1px 0 rgba(255,255,255,.2)}
+        .rx-search:focus-within{box-shadow:0 0 0 4px rgba(184,146,58,.16)!important;border-color:${C.gold}!important}
         @media (prefers-reduced-motion:reduce){.rx-rise,.rx-ring,.rx-bar,.rx-hero-sheen,.rx-sev.s3::after{animation:none}}
         form input:focus,form select:focus,form textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 4px rgba(184,146,58,.16)!important}
       `}</style>
@@ -2683,11 +2706,30 @@ export default function ReceptionPage({ currentUser }) {
       )}
 
       {/* Section intro */}
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '14px 12px 0' : '18px 24px 0', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>{TAB_META[activeTab]?.group}</span>
-        <span style={{ fontFamily: serif, fontSize: mob ? 19 : 22, fontWeight: 600, color: C.slate[900] }}>{activeTab}</span>
-        {!mob && <span style={{ fontSize: 12.5, color: C.slate[500], fontFamily: font }}>{TAB_META[activeTab]?.desc}</span>}
-      </div>
+      {activeTab !== 'Front Desk' && (() => {
+        const M = TAB_META[activeTab] || {}
+        const count = { 'Enquiry': enquiries.length, 'Visitor Book': visitors.length, 'Leave Application': leaveApps.length, 'Gate Pass': gatePasses.length, 'Parent Items': parentItems.length, 'Complaint': complaints.length }[activeTab]
+        const live = tabBadges[activeTab]
+        return (
+          <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '14px 12px 0' : '18px 24px 0' }}>
+            <div className="rx-intro rx-rise">
+              {M.icon && <div className="rx-intro-ic"><M.icon size={22} /></div>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>{M.group}</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 21 : 26, fontWeight: 600, color: C.navy, lineHeight: 1.15 }}>{activeTab}</div>
+                {M.desc && <div style={{ fontSize: 12.5, color: C.slate[500], marginTop: 3, fontFamily: font }}>{M.desc}</div>}
+              </div>
+              {!mob && count != null && (
+                <div style={{ textAlign: 'right', position: 'relative', zIndex: 1 }}>
+                  <div style={{ fontFamily: serif, fontSize: 30, fontWeight: 600, color: C.navy, lineHeight: 1 }}>{count}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: C.slate[500], marginTop: 3 }}>records</div>
+                </div>
+              )}
+              {live > 0 && <span className="rx-badge" style={{ position: 'relative', zIndex: 1, height: 24, minWidth: 24, fontSize: 12 }} title="Needs action">{live}</span>}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Content ── */}
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '12px 12px' : '14px 24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -2699,7 +2741,7 @@ export default function ReceptionPage({ currentUser }) {
 
         {/* Search bar */}
         {activeTab !== 'Front Desk' && activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
-          <div style={{ position: 'relative' }}>
+          <div className="rx-search" style={{ position: 'relative', borderRadius: 14 }}>
             <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: C.slate[400], pointerEvents: 'none', display: 'flex' }}><RIcon.search size={16} /></span>
             <input
               style={{ ...inp, paddingLeft: 38, background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}
