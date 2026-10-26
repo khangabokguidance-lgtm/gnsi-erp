@@ -40,7 +40,8 @@ import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
 import Teaching           from './Teaching'
 import Attendance         from './Attendance'
-import Exams              from './Exams'
+// Exams is the largest module — load it only when someone opens it.
+const Exams = React.lazy(() => import('./Exams'))
 import Cbt                from './Cbt'
 import CbtPublic          from './CbtPublic'
 import FeeSetup           from './FeeSetup'
@@ -1079,7 +1080,7 @@ export default function App() {
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')} onNavigate={navigateTo} />,
     // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
-    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
+    exams:             <React.Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: '#5d6b82', fontFamily: 'inherit' }}>Opening Exams…</div>}><Exams currentUser={currentUser} perms={perms('exams')} /></React.Suspense>,
     cbt:               <Cbt               currentUser={currentUser} perms={perms('cbt')}               />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,

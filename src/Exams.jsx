@@ -32,6 +32,10 @@ import MockTestAnalyzer from './MockTestAnalyzer'
 import ResponsiveTables from './ResponsiveTables'
 import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
 import ExamIcon from './examIcons'
+import ExamHome from './ExamHome'
+import { pushRecent } from './examRecent'
+import { useExamSelection, askConfirm, notify, fetchMarksChunked } from './examShared'
+import ExamDialogHost from './ExamDialogs'
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon } from './premiumUI'
 import './examsTheme.css'
 import './mobile.css';
@@ -976,13 +980,20 @@ function useRemarks(studentId, examTypeId, examDate) {
   return { remark, setRemark, save, saving, saved };
 }
 
-function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, initialCourse, initialExamType, initialExamDate }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, initialCourse, initialExamType, initialExamDate, onDirtyChange, onNavigate }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(initialCourse || courses[0] || "");
-  const [examType, setExamType] = useState(initialExamType || examTypes[0]?.id || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes, initialCourse, initialExamType);
   const [examDate, setExamDate] = useState(initialExamDate || new Date().toISOString().split("T")[0]);
+  // The date box follows the timetable (latest paper of the selected exam) until the user picks one themselves.
+  const dateTouched = useRef(!!initialExamDate);
+  const setExamDateManual = (v) => { dateTouched.current = true; setExamDate(v); };
+  const savedKeys = useRef(new Set());   // "studentId-subject" cells that already have a row in the database
+  const absentCol = useRef(true);        // flips to false if the optional is_absent column hasn't been added yet
+  const [saveProgress, setSaveProgress] = useState("");
+  const [savedInfo, setSavedInfo] = useState(null);   // { at, saved, cleared }
+  const [draft, setDraft] = useState(null);           // unsaved work found from an earlier session
 
   // ── Subjects for the CURRENTLY SELECTED exam (course + examType + examDate) come straight
   // from exam_schedule, not from the static Course Subjects config. The config can drift from
@@ -1084,6 +1095,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
 
     const schedSubs = schedData || [];
     setScheduledSubjects(schedSubs);
+    const lastPaper = schedSubs.map(r => r.exam_date).filter(Boolean).sort().pop();
+    if (lastPaper && !dateTouched.current) setExamDate(lastPaper);
 
     if (!schedSubs.length) {
       setMarks({}); setLoading(false);
@@ -1097,11 +1110,11 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
     const examIds = schedSubs.map(s => s.id);
     if (!ids.length) { setMarks({}); setLoading(false); return; }
 
-    const { data, error } = await supabase
-      .from("exam_marks")
-      .select("student_id, exam_id, marks_obtained")
-      .in("student_id", ids)
-      .in("exam_id", examIds);
+    let { data, error } = await fetchMarksChunked(supabase, ids, examIds, { cols: "student_id, exam_id, marks_obtained, is_absent" });
+    if (error && /is_absent/i.test(error.message || "")) {
+      absentCol.current = false;
+      ({ data, error } = await fetchMarksChunked(supabase, ids, examIds));
+    }
 
     if (error) {
       console.error("Failed to fetch exam_marks:", error);
@@ -1112,11 +1125,23 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
     const examIdToSubject = {};
     schedSubs.forEach(s => { examIdToSubject[s.id] = s.subject; });
     const map = {};
+    const abs = new Set();
+    const have = new Set();
     (data || []).forEach(r => {
       const sub = examIdToSubject[r.exam_id];
-      if (sub) map[`${r.student_id}-${sub}`] = r.marks_obtained;
+      if (!sub) return;
+      const key = `${r.student_id}-${sub}`;
+      map[key] = r.marks_obtained;
+      have.add(key);
+      if (r.is_absent) abs.add(key);
     });
-    setMarks(map); setLoading(false); setIsDirty(false); setAbsentSet(new Set());
+    savedKeys.current = have;
+    setMarks(map); setLoading(false); setIsDirty(false); setAbsentSet(abs);
+    try {
+      const raw = localStorage.getItem(`gnsi_exam_draft:${typeId}:${crs}`);
+      const d = raw ? JSON.parse(raw) : null;
+      setDraft(d && d.marks && Object.keys(d.marks).length ? d : null);
+    } catch { setDraft(null); }
   }, [students]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
@@ -1138,16 +1163,27 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
   // overwrite `marks` with whatever's already in the DB, losing anything
   // entered but not yet saved. Confirms first if dirty, otherwise switches
   // immediately.
-  const confirmSwitch = (setter, value) => {
+  const confirmSwitch = async (setter, value) => {
     if (isDirty) {
-      if (!window.confirm("You have unsaved marks. Switching now will discard them. Continue anyway?")) return;
+      const ok = await askConfirm("You have unsaved marks. Switching now will discard them.", { confirmLabel: "Discard & switch", danger: true });
+      if (!ok) return;
     }
     setter(value);
   };
 
   const handleMark = (sid, sub, val) => {
-    const num = val === "" ? "" : Math.min(Number(val), getSubMax(sub));
-    setMarks(p => ({ ...p, [`${sid}-${sub}`]: num }));
+    const key = `${sid}-${sub}`;
+    const max = getSubMax(sub);
+    let num = "";
+    if (val !== "") {
+      const n = Number(val);
+      if (isNaN(n)) return;
+      if (n < 0) { notify("Marks can't be negative.", "warn"); num = ""; }
+      else if (n > max) { notify(`${sub} is out of ${max} — ${n} is too high, so it was set to ${max}.`, "warn"); num = max; }
+      else num = n;
+      setAbsentSet(prev => { if (!prev.has(key)) return prev; const next = new Set(prev); next.delete(key); return next; });
+    }
+    setMarks(p => ({ ...p, [key]: num }));
     setSaved(false);
     setIsDirty(true);
   };
@@ -1155,14 +1191,34 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
     const key = `${sid}-${sub}`;
     setAbsentSet(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else { next.add(key); setMarks(p => ({ ...p, [key]: 0 })); setSaved(false); }
+      if (next.has(key)) { next.delete(key); setMarks(p => ({ ...p, [key]: "" })); }
+      else { next.add(key); setMarks(p => ({ ...p, [key]: 0 })); }
+      setSaved(false);
       return next;
     });
     setIsDirty(true);
   };
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const calcPctLocal = (total) => courseMax ? (total / courseMax) * 100 : 0;
+
+  // Writes rows in chunks. If the optional is_absent column isn't in the database yet,
+  // it quietly retries without it so saving never breaks.
+  const withoutAbsentFlag = (list) => list.map(r => { const c = { ...r }; delete c.is_absent; return c; });
+  const upsertMarkRows = async (rows, onProgress) => {
+    const errs = [];
+    for (let i = 0; i < rows.length; i += 100) {
+      let chunk = rows.slice(i, i + 100);
+      if (!absentCol.current) chunk = withoutAbsentFlag(chunk);
+      let { error } = await supabase.from("exam_marks").upsert(chunk, { onConflict: "student_id,exam_id" });
+      if (error && absentCol.current && /is_absent/i.test(error.message || "")) {
+        absentCol.current = false;
+        ({ error } = await supabase.from("exam_marks").upsert(withoutAbsentFlag(chunk), { onConflict: "student_id,exam_id" }));
+      }
+      if (error) errs.push(error.message || String(error));
+      onProgress?.(Math.min(i + 100, rows.length), rows.length);
+    }
+    return errs;
+  };
 
   const handleSave = async () => {
     if (perm.canEdit === false && perm.canImport === false) {
@@ -1171,79 +1227,110 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
     }
     setSaving(true);
     setSaveError("");
-    
+    setSaveProgress("");
+
     try {
       if (!scheduledSubjects.length) {
         setSaving(false);
         setSaveError(`No exam scheduled for course="${course}" under this exam type. Create it in Exams → Schedule first.`);
         return;
       }
-      
-      const examIdBySubject = {};
-      scheduledSubjects.forEach(s => { examIdBySubject[s.subject] = s.id; });
-      
-      // Build rows to insert — subjects already comes straight from scheduledSubjects,
-      // so every lookup below is an exact match by construction. No fuzzy matching needed.
-      // REPLACE this block in MarkEntry's handleSave():
-const rows = [];
-for (const st of courseStudents) {
-  for (const sub of subjects) {
-    const raw = marks[`${st.id}-${sub}`];
-    if (raw === "" || raw === undefined || raw === null) continue;
-    const m = Number(raw);
-    if (!isNaN(m)) {
-      const examId = examIdBySubject[sub];
-      if (!examId) continue;
-      rows.push({
-        student_id: st.id,
-        exam_id: examId,
-        exam_type_id: examType,      // ← ADD THIS
-        exam_date: examDate,          // ← ADD THIS
-        subject: sub,                 // ← ADD THIS
-        marks_obtained: m,
-        marks: m,                     // ← ADD THIS (normalized)
-        max_marks: getSubMax(sub),
-        total_marks: getSubMax(sub),  // ← ADD THIS
-        class_name: st.class_name,
-      });
-    }
-  }
-}
-      
-      if (!rows.length) {
-        setSaving(false);
-        setSaved(true);
-        setIsDirty(false);
-        setTimeout(() => setSaved(false), 3000);
-        return;
+
+      const schedBySubject = {};
+      scheduledSubjects.forEach(s => { schedBySubject[s.subject] = s; });
+
+      // Every cell is one of: a mark (saved), absent (saved as 0 + flag), or empty.
+      // Empty cells that already have a saved row are DELETED, so a wrong mark can really be cleared.
+      const rows = [];
+      const rowKeys = [];
+      const deletes = {};   // exam_id -> [student_id]
+      const deleteKeys = [];
+      for (const st of courseStudents) {
+        for (const sub of subjects) {
+          const sched = schedBySubject[sub];
+          if (!sched) continue;
+          const key = `${st.id}-${sub}`;
+          const raw = marks[key];
+          const isAbs = absentSet.has(key);
+          const empty = raw === "" || raw === undefined || raw === null;
+          if (empty && !isAbs) {
+            if (savedKeys.current.has(key)) { (deletes[sched.id] = deletes[sched.id] || []).push(st.id); deleteKeys.push(key); }
+            continue;
+          }
+          const m = isAbs ? 0 : Number(raw);
+          if (isNaN(m)) continue;
+          rows.push({
+            student_id: st.id,
+            exam_id: sched.id,
+            exam_type_id: examType,
+            exam_date: sched.exam_date || examDate,   // the paper's own date from the timetable
+            subject: sub,
+            marks_obtained: m,
+            marks: m,
+            max_marks: getSubMax(sub),
+            total_marks: getSubMax(sub),
+            class_name: st.class_name,
+            is_absent: isAbs,
+          });
+          rowKeys.push(key);
+        }
       }
-      
-      // Upsert marks — use (student_id, exam_id) as the unique key
-      const writeErrors = [];
-      for (let i = 0; i < rows.length; i += 100) {
-        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
-          onConflict: "student_id,exam_id" 
-        });
-        if (error) writeErrors.push(error.message || String(error));
+
+      const writeErrors = await upsertMarkRows(rows, (done, total) => setSaveProgress(`Saving ${done} of ${total} marks…`));
+
+      for (const [examId, sids] of Object.entries(deletes)) {
+        for (let i = 0; i < sids.length; i += 80) {
+          const { error } = await supabase.from("exam_marks").delete().eq("exam_id", examId).in("student_id", sids.slice(i, i + 80));
+          if (error) writeErrors.push(error.message || String(error));
+        }
       }
-      
+
       if (writeErrors.length) {
-        console.error("exam_marks upsert failed:", writeErrors, "rows:", rows);
-        setSaving(false);
+        console.error("exam_marks save failed:", writeErrors);
+        setSaving(false); setSaveProgress("");
         setSaveError(writeErrors[0]);
         return;
       }
-      
-      setSaving(false); 
+
+      rowKeys.forEach(k => savedKeys.current.add(k));
+      deleteKeys.forEach(k => savedKeys.current.delete(k));
+      try { localStorage.removeItem(`gnsi_exam_draft:${examType}:${course}`); } catch { /* ignore */ }
+      setDraft(null);
+      setSaving(false); setSaveProgress("");
       setSaved(true);
       setIsDirty(false);
-      setTimeout(() => setSaved(false), 3000);
+      setSavedInfo({ at: new Date(), saved: rows.length, cleared: deleteKeys.length });
+      setTimeout(() => setSaved(false), 6000);
     } catch (err) {
       console.error("Save error:", err);
-      setSaving(false);
+      setSaving(false); setSaveProgress("");
       setSaveError(String(err?.message || err));
     }
   };
+
+  // ── Draft safety net: unsaved work is mirrored to this browser every second,
+  // so a crash, refresh or accidental close never costs a long entry session.
+  const draftKey = `gnsi_exam_draft:${examType}:${course}`;
+  useEffect(() => {
+    if (!isDirty || loading) return undefined;
+    const t = setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify({ marks, absent: [...absentSet], ts: Date.now() })); } catch { /* quota/private mode */ }
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [marks, absentSet, isDirty, loading, draftKey]);
+  const restoreDraft = () => {
+    if (!draft) return;
+    setMarks(p => ({ ...p, ...draft.marks }));
+    setAbsentSet(new Set(draft.absent || []));
+    setIsDirty(true); setDraft(null);
+  };
+  const discardDraft = () => { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } setDraft(null); };
+
+  // Tell the parent about unsaved work so switching tools can warn too.
+  const dirtyCb = useRef(onDirtyChange);
+  useEffect(() => { dirtyCb.current = onDirtyChange; });
+  useEffect(() => { dirtyCb.current?.(isDirty); }, [isDirty]);
+  useEffect(() => () => dirtyCb.current?.(false), []);
 
   const downloadTemplate = () => {
     const headers = ["Student Name", "GCC NO", ...subjects];
@@ -1298,25 +1385,25 @@ for (const st of courseStudents) {
     // matching, no "combined vs split subject" mismatches between config and schedule.
     const { data: schedRows, error: schedErr } = await supabase
       .from("exam_schedule")
-      .select("id, subject, total_marks")
+      .select("id, subject, total_marks, exam_date")
       .eq("exam_type_id", examType)
-      .eq("exam_date", examDate)
       .eq("course", detectedCourse);
 
     if (schedErr || !schedRows?.length) {
-      alert(`No exam scheduled for course="${detectedCourse}" on ${examDate}. Create the exam schedule first (Exams → Schedule), then try importing again.`);
+      notify(`No exam is scheduled for ${detectedCourse} under this exam type. Create the timetable first (Exams → Schedule), then import again.`, "warn");
       return;
     }
 
     const importSubjects = schedRows.map(s => s.subject);
     const examIdBySubject = {};
     const maxMarksBySubject = {};
-    schedRows.forEach(s => { examIdBySubject[s.subject] = s.id; maxMarksBySubject[s.subject] = s.total_marks; });
+    const dateBySubject = {};
+    schedRows.forEach(s => { examIdBySubject[s.subject] = s.id; maxMarksBySubject[s.subject] = s.total_marks; dateBySubject[s.subject] = s.exam_date; });
 
     const nameCol = headers.findIndex(h => /name/i.test(h));
     const gccCol  = headers.findIndex(h => /gcc/i.test(h));
     const admCol  = headers.findIndex(h => /admission|adm|roll/i.test(h));
-    if (nameCol === -1) { alert("Could not find a 'STUDENTS NAME' column."); return; }
+    if (nameCol === -1) { notify("Could not find a student NAME column in that file. Use the Template button for the right layout.", "warn"); return; }
     const excludedCols = new Set([nameCol, gccCol, admCol, courseCol].filter(c => c !== -1 && c !== undefined));
     const subjectColMap = findBestColumnMatches(importSubjects, headers, excludedCols);
     const allStudentsForCourse = students.filter(s => (s.class_name || "").toUpperCase() === detectedCourse.toUpperCase());
@@ -1336,7 +1423,7 @@ for (const st of courseStudents) {
     }
     setImportRows(matched); setImportErrors(errors);
     setRawImport({ rows, headers });
-    setImportInfo({ detectedCourse, subjects: importSubjects, subjectColMap, examIdBySubject, maxMarksBySubject });
+    setImportInfo({ detectedCourse, subjects: importSubjects, subjectColMap, examIdBySubject, maxMarksBySubject, dateBySubject });
     setImportMode(true); setImportDone(false);
     if (detectedCourse !== course) setCourse(detectedCourse);
   };
@@ -1350,6 +1437,7 @@ for (const st of courseStudents) {
       const detCourse = importInfo?.detectedCourse || course;
       const examIdBySubject = importInfo?.examIdBySubject || {};
       const maxMarksBySubject = importInfo?.maxMarksBySubject || {};
+      const dateBySubject = importInfo?.dateBySubject || {};
       
       if (!Object.keys(examIdBySubject).length) {
         setImporting(false);
@@ -1370,7 +1458,8 @@ for (const st of courseStudents) {
               student_id: st.id,
               exam_id: examId,
               exam_type_id: examType,      // ← ADD
-              exam_date: examDate,          // ← ADD
+              exam_date: dateBySubject[sub] || examDate,
+              is_absent: false,
               subject: sub,  
               marks_obtained: subMarks[sub],
               marks: subMarks[sub],         // ← ADD
@@ -1388,14 +1477,7 @@ for (const st of courseStudents) {
         return;
       }
       
-      // Upsert using (student_id, exam_id) as unique key
-      const writeErrors = [];
-      for (let i = 0; i < rows.length; i += 100) {
-        const { error } = await supabase.from("exam_marks").upsert(rows.slice(i, i + 100), { 
-          onConflict: "student_id,exam_id" 
-        });
-        if (error) writeErrors.push(error.message || String(error));
-      }
+      const writeErrors = await upsertMarkRows(rows);
       
       if (writeErrors.length) {
         console.error("exam_marks upsert failed during CSV import:", writeErrors, "rows:", rows);
@@ -1409,7 +1491,7 @@ for (const st of courseStudents) {
       // Auto-set course and exam date to match the import, then re-fetch
       setCourse(detCourse);
       setExamType(examType);
-      await loadScheduleAndMarks(examType, examDate, detCourse);
+      await loadScheduleAndMarks(examType, detCourse);
 
       setImporting(false); 
       setImportDone(true);
@@ -1563,12 +1645,12 @@ for (const st of courseStudents) {
   // a subject that was cancelled that day, or a flat baseline before manual
   // adjustments. Only touches students in the current filtered/search view,
   // so a search can scope a bulk-fill to a subset if needed.
-  const applyBulkFill = (sub) => {
+  const applyBulkFill = async (sub) => {
     const raw = bulkFillValues[sub];
     if (raw === undefined || raw === "") return;
     const val = Math.min(Number(raw), getSubMax(sub));
     if (isNaN(val)) return;
-    if (!window.confirm(`Set "${sub}" to ${val} for all ${filtered.length} visible student(s)? This overwrites any existing value in this column.`)) return;
+    if (!(await askConfirm(`Set "${sub}" to ${val} for all ${filtered.length} visible student(s)? This overwrites any existing value in this column.`, { confirmLabel: "Fill column" }))) return;
     setMarks(prev => {
       const next = { ...prev };
       filtered.forEach(st => { next[`${st.id}-${sub}`] = val; });
@@ -2126,7 +2208,7 @@ for (const st of courseStudents) {
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Date</label>
-                <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={css.input} />
+                <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDateManual, e.target.value)} style={css.input} />
               </div>
             </div>
             <input placeholder="🔍 Search student…" value={search} onChange={e => setSearch(e.target.value)} style={css.input} />
@@ -2147,7 +2229,7 @@ for (const st of courseStudents) {
             </div>
             <div>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Date</label>
-              <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={{ ...css.input, width: 160 }} />
+              <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDateManual, e.target.value)} style={{ ...css.input, width: 160 }} />
             </div>
             <div style={{ flex: 1, minWidth: 160 }}>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Search Student</label>
@@ -2162,9 +2244,19 @@ for (const st of courseStudents) {
         )}
       </div>
 
-      {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
+      {saving && saveProgress && <div style={{ background: "#eef2f9", border: "1px solid #b7c6e0", color: "#1e3a6e", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⏳ {saveProgress}</div>}
+      {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved{savedInfo ? ` at ${savedInfo.at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} — ${savedInfo.saved} saved${savedInfo.cleared ? `, ${savedInfo.cleared} cleared` : ""}` : "!"}</div>}
+      {!saved && !isDirty && savedInfo && <div style={{ fontSize: 11.5, color: "#5d6b82", marginBottom: 10 }}>Last saved {savedInfo.at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</div>}
+      {isDirty && <div style={{ fontSize: 11.5, color: "#9a5b00", fontWeight: 700, marginBottom: 10 }}>● Unsaved changes — a draft is kept on this computer</div>}
+      {draft && !isDirty && (
+        <div style={{ background: "#fff9ec", border: "1px solid #eadbb2", color: "#7a4a00", padding: "10px 16px", borderRadius: 10, marginBottom: 14, fontSize: 13, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ flex: 1, minWidth: 200 }}>📝 Unsaved marks from {new Date(draft.ts).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} were found for this batch.</span>
+          <button onClick={restoreDraft} style={{ ...css.btn, background: "#132a4f", color: "white", padding: "6px 14px" }}>Restore</button>
+          <button onClick={discardDraft} style={{ ...css.btn, background: "#fff", color: "#5d6b82", border: "1px solid #d9d2c2", padding: "6px 14px" }}>Discard</button>
+        </div>
+      )}
       {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
-      {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
+      {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}{onNavigate && /Schedule first/.test(scheduleError) && <button onClick={() => onNavigate("schedule")} style={{ ...css.btn, background: "#132a4f", color: "white", marginLeft: 12, padding: "5px 14px" }}>Create timetable →</button>}</div>}
       {importMode && renderImportPreview()}
 
       {!loading && subjects.length > 0 && courseStudents.length > 0 && (
@@ -2401,11 +2493,10 @@ for (const st of courseStudents) {
 function MarksGrid({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
@@ -2454,7 +2545,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); setLoading(false); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).eq("exam_date", examDate).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -2540,11 +2631,10 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
 function Analytics({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
@@ -2589,7 +2679,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -2699,11 +2789,10 @@ function Analytics({ courseSubjects, examTypes, students }) {
 function Rankings({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
@@ -2744,7 +2833,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -2845,11 +2934,10 @@ function Rankings({ courseSubjects, examTypes, students }) {
 function ProgressTab({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [search, setSearch] = useState("");
   const [allMarks, setAllMarks] = useState([]);
@@ -3047,11 +3135,10 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
 function CompareTab({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [dates, setDates] = useState([]);
   const [marks, setMarks] = useState({});
@@ -3098,7 +3185,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -3439,7 +3526,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
     setForm({ name: "", description: "" }); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
   const remove = async id => {
-    if (!confirm("Delete this exam type?")) return;
+    if (!(await askConfirm("Delete this exam type? This cannot be undone.", { confirmLabel: "Delete", danger: true }))) return;
     await supabase.from("exam_types").delete().eq("id", id);
     const updated = list.filter(e => e.id !== id); setList(updated); onUpdate(updated);
     if (inspectId === id) setInspectId(null);
@@ -5632,9 +5719,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
     const ids = courseStudents.map(s => s.id);
     if (!ids.length) { setAbsentees([]); setLoading(false); return; }
 
-    let q = supabase.from("exam_marks").select("student_id, exam_id, marks_obtained, exam_date").in("student_id", ids).in("exam_id", examIds);
-    if (examDate) q = q.eq("exam_date", examDate);
-    const { data: marksData } = await q;
+    const { data: marksData } = await fetchMarksChunked(supabase, ids, examIds, { cols: "student_id, exam_id, marks_obtained, exam_date" });
 
     // Group marks by student. A student counts as "absent" for this sitting if
     // every subject they have a row for is 0 AND they have a row for every
@@ -5969,7 +6054,7 @@ function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryB
     const remove = keep === ENG ? MM : ENG;
     const toResolve = remaining.filter(s => !excluded.has(s.id));
     if (!toResolve.length) return;
-    if (!window.confirm(`Keep "${keep}" and remove "${remove}" for ${toResolve.length} student(s)? This cannot be undone.`)) return;
+    if (!(await askConfirm(`Keep "${keep}" and remove "${remove}" for ${toResolve.length} student(s)? This cannot be undone.`, { confirmLabel: "Apply", danger: true }))) return;
     setErr(""); setResolving("bulk"); setBulkResult(null);
     const errors = [];
     for (const s of toResolve) {
@@ -6197,11 +6282,10 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
 function MeritList({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const courseStudents = students.filter(s =>
     (s.class_name || "").toUpperCase() === course.toUpperCase()
   );
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
@@ -6243,7 +6327,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -7027,7 +7111,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   };
 
   const handleDelete = async id => {
-    if (!confirm("Delete this entry?")) return;
+    if (!(await askConfirm("Delete this schedule entry?", { confirmLabel: "Delete", danger: true }))) return;
     await supabase.from("exam_schedule").delete().eq("id", id);
     fetchSchedule(); onScheduleChange?.();
   };
@@ -7040,7 +7124,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   // recorded against it. This updates in place instead.
   const handleUpdateRow = async (id, patch) => {
     const { error } = await supabase.from("exam_schedule").update(patch).eq("id", id);
-    if (error) { alert(error.message); return; }
+    if (error) { notify(error.message, "error"); return; }
     fetchSchedule(); onScheduleChange?.();
   };
 
@@ -7897,7 +7981,7 @@ function PrintReportCardButton({ onPrint }) {
 function ReportCards({ courseSubjects, examTypes, students, institute, secondaryBatchMap }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   // ── Generic secondary-batch filter (any batch from student_secondary_batches,
   // not just Combined Navodaya) — lets staff print report cards scoped to just
   // the dual-appearing students under one secondary tag, e.g. "Combined
@@ -7925,7 +8009,6 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
         }
         return true;
       });
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
   const [dates, setDates] = useState([]);
@@ -7975,7 +8058,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
         (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
         const scopedExamIds = (sched || []).map(s => s.id);
         if (!scopedExamIds.length) { setMarks({}); return; }
-        supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", examType).in("student_id", ids.length ? ids : ["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+        fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: examType } }).then(({ data }) => {
           const map = {};
           (data || []).forEach(r => {
             const sub = examIdToSubject[r.exam_id];
@@ -8069,8 +8152,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const [rcSecondaryBatchFilter, setRcSecondaryBatchFilter] = useState("");
   const [acSecondaryBatchFilter, setAcSecondaryBatchFilter] = useState("");
 
-  const [rcCourse, setRcCourse]       = useState(courses[0] || "");
-  const [rcExamType, setRcExamType]   = useState(examTypes[0]?.id || "");
+  const [rcCourse, setRcCourse, rcExamType, setRcExamType] = useExamSelection(courses, examTypes);
   const [rcExamDate, setRcExamDate]   = useState("");
   const [rcDates, setRcDates]         = useState([]);
   const [rcMarks, setRcMarks]         = useState({});
@@ -8085,8 +8167,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const [rcPageBreak, setRcPageBreak] = useState(true);
   const [rcExcludeAbsent, setRcExcludeAbsent] = useState(true); // hide absent students from bulk report cards + ranking
 
-  const [acCourse, setAcCourse]       = useState(courses[0] || "");
-  const [acExamType, setAcExamType]   = useState(examTypes[0]?.id || "");
+  const [acCourse, setAcCourse, acExamType, setAcExamType] = useExamSelection(courses, examTypes);
   const [acSearch, setAcSearch]       = useState("");
   const [acSortBy, setAcSortBy]       = useState("name");
   const [acProgress, setAcProgress]   = useState(null);
@@ -8136,7 +8217,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
       (sched || []).forEach(s => { examIdToSubject[s.id] = s.subject; });
       const scopedExamIds = (sched || []).map(s => s.id);
       if (!scopedExamIds.length) { setRcMarks({}); setRcLoading(false); return; }
-      supabase.from("exam_marks").select("student_id, exam_id, marks_obtained").eq("exam_type_id", rcExamType).in("student_id", ids.length?ids:["__none__"]).in("exam_id", scopedExamIds).then(({ data }) => {
+      fetchMarksChunked(supabase, ids, scopedExamIds, { match: { exam_type_id: rcExamType } }).then(({ data }) => {
         const map = {};
         (data||[]).forEach(r=>{
           const sub = examIdToSubject[r.exam_id];
@@ -8185,7 +8266,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const printAllReportCards = async () => {
     if (!filteredRcStudents.length) return;
     const w = window.open("", "_blank");
-    if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
+    if (!w) { notify("Popup blocked — please allow popups for this site, then try again.", "warn"); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredRcStudents.length} report cards…</body></html>`);
     setRcProgress({ current: 0, total: filteredRcStudents.length });
     try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }); } catch { /* ignore */ }
@@ -8209,7 +8290,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const printAllAdmitCards = async () => {
     if (!filteredAcStudents.length) return;
     const w = window.open("", "_blank");
-    if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
+    if (!w) { notify("Popup blocked — please allow popups for this site, then try again.", "warn"); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredAcStudents.length} admit cards…</body></html>`);
     setAcProgress({ current: 0, total: filteredAcStudents.length });
     try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }); } catch { /* ignore */ }
@@ -8418,8 +8499,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedule, onScheduleChange, secondaryBatchMap }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
-  const [course, setCourse] = useState(courses[0] || "");
-  const [examType, setExamType] = useState(examTypes[0]?.id || "");
+  const [course, setCourse, examType, setExamType] = useExamSelection(courses, examTypes);
   const [search, setSearch] = useState("");
   const [populating, setPopulating] = useState(false);
   const [populateError, setPopulateError] = useState("");
@@ -9901,7 +9981,19 @@ setLoading(false);
 export default function Exams({ currentUser, perms }) {
   const isPhone = useMobile();
   // On a phone the module opens on the app-style home grid; on desktop it opens on Mark Entry.
-  const [tab, setTab]               = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "home" : "entry"));
+  const [tab, setTab]               = useState("home");
+  useEffect(() => { pushRecent(tab); }, [tab]);
+  // Unsaved Mark Entry work: reported up by MarkEntry so leaving the tab can warn first.
+  const dirtyRef = useRef(false);
+  const goTab = useCallback(async (id) => {
+    if (id === tab) return;
+    if (dirtyRef.current) {
+      const ok = await askConfirm("You have unsaved marks in Mark Entry. Leaving now will discard them.", { confirmLabel: "Leave & discard", danger: true });
+      if (!ok) return;
+      dirtyRef.current = false;
+    }
+    setTab(id);
+  }, [tab]);
   const [examConfigPrefillName, setExamConfigPrefillName] = useState("");
   const [students, setStudents]     = useState([]);
   const [examTypes, setExamTypes]   = useState([]);
@@ -10162,7 +10254,7 @@ export default function Exams({ currentUser, perms }) {
                             canUpload={isAdminRole(currentUser?.role) || perms?.add === true || perms?.edit === true || ['Manager','Accounts','Accountant'].includes(currentUser?.role)}
                             canDelete={isAdminRole(currentUser?.role) || perms?.delete === true} />,
     toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
-    entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} currentUser={currentUser} perms={perms} onStudentsChange={handleMarkEntryStudentsChange} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
+    entry:          () => <MarkEntry onDirtyChange={(v) => { dirtyRef.current = v; }} onNavigate={goTab} key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} currentUser={currentUser} perms={perms} onStudentsChange={handleMarkEntryStudentsChange} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
  
     // ── NEW: smart CSV import tab ──────────────────────────────────────────
     csvimport: () => (
@@ -10189,7 +10281,7 @@ export default function Exams({ currentUser, perms }) {
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} secondaryBatchMap={secondaryBatchMap} onSecondaryBatchesChange={refetchSecondaryBatches} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
-    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
+    examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); goTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
     examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); setActiveExamConfig(cfg); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
@@ -10220,14 +10312,15 @@ export default function Exams({ currentUser, perms }) {
       const t = TAB_GROUPS.flatMap(g => g.tabs).find(x => x.id === id);
       bottomItems.splice(bottomItems.length - 1, 0, { id, label: t.label.split(" ")[0] });
     }
-    const goBottom = (id) => setTab(id === "__more" ? "home" : id);
+    const goBottom = (id) => goTab(id === "__more" ? "home" : id);
     return (
       <div className="exams-root xm-root">
+        <ExamDialogHost />
         <CardTableEngine enabled={isPhone} />
         {tab === "home" || !allowed.includes(tab) ? (
           <ExamHomeMobile
             groups={visibleGroups}
-            onSelect={setTab}
+            onSelect={goTab}
             institute={institute}
             role={currentUser?.role}
             stats={[
@@ -10238,7 +10331,7 @@ export default function Exams({ currentUser, perms }) {
           />
         ) : (
           <>
-            <ExamTopBar title={activeTabInfo?.label} id={activeTabInfo?.id} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
+            <ExamTopBar title={activeTabInfo?.label} id={activeTabInfo?.id} subtitle={activeTabInfo?.tip} onBack={() => goTab("home")} />
             <div className="xm-body"><ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables></div>
           </>
         )}
@@ -10248,10 +10341,11 @@ export default function Exams({ currentUser, perms }) {
   }
 
   // ── Desktop: the portal's shared premium shell (hero + pill tabs), as in Courses / Students / Fees ──
-  const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
+  const onHome = tab === "home" || !allowed.includes(tab);
+  const activeGroup = onHome ? null : (visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0]);
   // Real line icons in a tinted chip (group colour) so each tab is recognisable at a glance
   const iconOf = (id, color) => () => <span className="ex-tico" style={{ '--c': color }}><ExamIcon id={id} size={18} stroke={2} /></span>;
-  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }));
+  const groupTabs = [{ id: "home", label: "Home", icon: iconOf("dashboard", "#132a4f") }, ...visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }))];
   const wide = (activeGroup?.tabs || []).length > 5;
   const subTabs = (activeGroup?.tabs || []).map((t) => {
     const mock = t.id === 'mockanalyzer';
@@ -10262,6 +10356,7 @@ export default function Exams({ currentUser, perms }) {
   return (
     <div className="exams-root px-root">
       <PremiumStyles />
+      <ExamDialogHost />
       <div className="px-wrap">
         <PremiumHero
           icon={<PIcon.cap size={24} />}
@@ -10275,13 +10370,21 @@ export default function Exams({ currentUser, perms }) {
             { label: "Signed in as", value: currentUser?.role || "Admin", sub: currentUser?.name || currentUser?.username || "" },
           ]}
         />
-        <PremiumTabs tabs={groupTabs} active={activeGroup?.groupLabel} onChange={(g) => { const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
-        <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={setTab} /></div>
-        <div className="px-section">
-          <span className="px-eyebrow">{activeTabInfo?.label}</span>
-          <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
-        </div>
-        <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
+        <PremiumTabs tabs={groupTabs} active={onHome ? "home" : activeGroup?.groupLabel} onChange={(g) => { if (g === "home") return goTab("home"); const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) goTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
+        {onHome ? (
+          <ExamHome groups={visibleGroups} onSelect={goTab} institute={institute} role={currentUser?.role} userName={currentUser?.userName || currentUser?.name}
+            stats={{ students: students.length, batches: courses.length, examTypes: examTypes.length }} schedule={schedule} />
+        ) : (
+          <>
+            <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={goTab} /></div>
+            <div className="px-section">
+              <button onClick={() => goTab("home")} style={{ border: "none", background: "none", cursor: "pointer", color: "#8a6118", fontWeight: 700, fontSize: 12.5, padding: 0 }}>← Home</button>
+              <span className="px-eyebrow">{activeTabInfo?.label}</span>
+              <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
+            </div>
+            <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
+          </>
+        )}
       </div>
     </div>
   );
