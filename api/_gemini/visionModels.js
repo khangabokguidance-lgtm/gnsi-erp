@@ -1,4 +1,5 @@
-// Free AI models that can read a page image, tried in order (Model Sets → Import paper).
+// AI models that can read a page image, tried in order (Model Sets → Import paper,
+// Model Set Maker → Import questions).
 //
 // Every free plan allows only so many requests a minute, and each model has its own allowance.
 // So when one model says "too many" (or is down), the page goes to the next one instead of
@@ -7,6 +8,10 @@
 // Providers retire models every few months, so the models are not fixed here: each provider is asked
 // which models it offers now (cached 6 hours), and the ones that can read images are used.
 //
+//   Claude (optional, paid: a key from platform.claude.com → API Keys): set ANTHROPIC_API_KEY.
+//     Tried first when it is set, with the free models below as the backup. Claude Sonnet 5.5
+//     by default; choose others with ANTHROPIC_VISION_MODEL (comma list) and how long it
+//     thinks with ANTHROPIC_EFFORT (low, the default, medium, high).
 //   Gemini (GEMINI_API_KEY, already set): the newest Flash and Flash-Lite models, then Google's
 //     Gemma models (same key, a much larger free daily allowance). Same key, a separate free limit
 //     per model. Fix the list with GEMINI_VISION_MODELS="model-a,model-b".
@@ -18,7 +23,9 @@
 //
 // Keys are added in Vercel → Project → Settings → Environment Variables, then redeploy.
 // No Supabase import here, so this file can be tested with `node --test`.
+import Anthropic from '@anthropic-ai/sdk'
 
+export const DEFAULT_ANTHROPIC_MODELS = ['claude-sonnet-5-5']
 export const DEFAULT_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
 export const DEFAULT_GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct']
 export const DEFAULT_OPENROUTER_MODELS = ['qwen/qwen2.5-vl-72b-instruct:free', 'meta-llama/llama-4-maverick:free', 'google/gemma-3-27b-it:free', 'mistralai/mistral-small-3.2-24b-instruct:free']
@@ -28,11 +35,9 @@ const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boole
 // The models this deployment can use, in the order they are tried.
 export function visionChain(env = {}) {
   const chain = []
-  if (env.GEMINI_API_KEY) {
-    const models = list(env.GEMINI_VISION_MODELS)
-    for (const model of models.length ? models : DEFAULT_GEMINI_MODELS) chain.push({ provider: 'gemini', model })
-  }
   const add = (provider, set, defaults) => { const m = list(set); for (const model of m.length ? m : defaults) chain.push({ provider, model }) }
+  if (env.ANTHROPIC_API_KEY) add('anthropic', env.ANTHROPIC_VISION_MODEL, DEFAULT_ANTHROPIC_MODELS)
+  if (env.GEMINI_API_KEY) add('gemini', env.GEMINI_VISION_MODELS, DEFAULT_GEMINI_MODELS)
   if (env.GROQ_API_KEY) add('groq', env.GROQ_VISION_MODEL, DEFAULT_GROQ_MODELS)
   if (env.OPENROUTER_API_KEY) add('openrouter', env.OPENROUTER_VISION_MODEL, DEFAULT_OPENROUTER_MODELS)
   return chain
@@ -90,11 +95,12 @@ async function discover(provider, env, fetchFn, now) {
 // The chain for this request: a fixed list from the settings, else what each provider offers now,
 // else the defaults.
 export async function resolveChain(env = {}, { fetchFn = fetch, now = Date.now } = {}) {
-  const want = [['gemini', 'GEMINI_API_KEY', 'GEMINI_VISION_MODELS', DEFAULT_GEMINI_MODELS], ['groq', 'GROQ_API_KEY', 'GROQ_VISION_MODEL', DEFAULT_GROQ_MODELS], ['openrouter', 'OPENROUTER_API_KEY', 'OPENROUTER_VISION_MODEL', DEFAULT_OPENROUTER_MODELS]]
+  const want = [['anthropic', 'ANTHROPIC_API_KEY', 'ANTHROPIC_VISION_MODEL', DEFAULT_ANTHROPIC_MODELS], ['gemini', 'GEMINI_API_KEY', 'GEMINI_VISION_MODELS', DEFAULT_GEMINI_MODELS], ['groq', 'GROQ_API_KEY', 'GROQ_VISION_MODEL', DEFAULT_GROQ_MODELS], ['openrouter', 'OPENROUTER_API_KEY', 'OPENROUTER_VISION_MODEL', DEFAULT_OPENROUTER_MODELS]]
     .filter(([, k]) => env[k])
   const lists = await Promise.all(want.map(async ([provider, , setting, defaults]) => {
     const fixed = list(env[setting])
-    return fixed.length ? fixed : (await discover(provider, env, fetchFn, now)) || defaults
+    // Claude's models are named in the settings (the default is Claude Sonnet 5.5), not looked up
+    return fixed.length ? fixed : provider === 'anthropic' ? defaults : (await discover(provider, env, fetchFn, now)) || defaults
   }))
   return want.flatMap(([provider], i) => lists[i].map((model) => ({ provider, model })))
 }
@@ -151,8 +157,41 @@ export function buildRequest(entry, env, prompt, images) {
   }
 }
 
+// Claude: the page images, then the prompt. Effort low keeps a page to a few seconds; a page
+// Claude declines on safety grounds is answered by the model Anthropic picks for that
+// ("fallbacks": "default"), and only when that also declines does the next model in the chain try.
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+export function claudeParams(entry, env, prompt, images) {
+  const rx = relaxedOf(entry)
+  return {
+    model: entry.model,
+    max_tokens: 16000,
+    ...(rx.effort ? {} : { output_config: { effort: EFFORTS.includes(env.ANTHROPIC_EFFORT) ? env.ANTHROPIC_EFFORT : 'low' } }),
+    ...(rx.fallbacks ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
+    messages: [{ role: 'user', content: [
+      ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: im.mimeType, data: im.data } })),
+      { type: 'text', text: prompt },
+    ] }],
+  }
+}
+// One Claude request through the SDK, answered in the same { res, data } shape as the others.
+// A lost connection or timeout is thrown, like a failed fetch.
+async function askClaude(entry, env, prompt, images, fetchFn) {
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: fetchFn, maxRetries: 0, timeout: 40_000 })
+  try {
+    const msg = await client.beta.messages.create(claudeParams(entry, env, prompt, images))
+    if (msg.stop_reason === 'refusal') return { res: { ok: false, status: 422, headers: null }, data: { error: { message: 'declined to read this page' } } }
+    return { res: { ok: true, status: 200 }, data: { text: msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('') } }
+  } catch (e) {
+    if (e instanceof Anthropic.APIConnectionError) throw e
+    if (e instanceof Anthropic.APIError) return { res: { ok: false, status: e.status, headers: e.headers }, data: { error: { message: e.error?.error?.message || e.message } } }
+    throw e
+  }
+}
+
 // The reply text, from either format.
 export function replyText(entry, data) {
+  if (entry.provider === 'anthropic') return String(data?.text || '')
   if (entry.provider === 'gemini') return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('')
   const c = data?.choices?.[0]?.message?.content
   return Array.isArray(c) ? c.map((p) => p.text || '').join('') : String(c || '')
@@ -178,7 +217,7 @@ export function reasonFor(entry, status, message) {
   const m = String(message || '')
   if (status === 401 || status === 403) return 'API key refused: check it in Vercel → Environment Variables'
   if (status === 404) return /data policy|privacy|guardrail/i.test(m) ? 'free models are turned off in OpenRouter → Settings → Privacy' : `model not available${m ? ` (${m.slice(0, 60)})` : ''}`
-  if (status === 402) return 'needs credit on this account'
+  if (status === 402 || /credit balance/i.test(m)) return 'needs credit on this account'
   if (status === 413) return 'page image too large for this model'
   if (status >= 500) return 'service down right now'
   if (status === 400) return `refused the request (${m.slice(0, 90)})`
@@ -191,8 +230,8 @@ export function reasonFor(entry, status, message) {
 // (keys refused, daily limits used up, models gone), and details say why for each one.
 export async function readWithChain({ chain, env, prompt, images, fetchFn = fetch, log = () => {}, budgetMs = 45_000, now = Date.now }) {
   const start = now()
-  if (!chain.length) return { ok: false, status: 503, error: 'No AI model is set up: add GEMINI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY) in Vercel.', details: [] }
-  const details = [], name = (e) => `${e.provider === 'gemini' ? '' : `${e.provider} `}${e.model.split('/').pop()}`
+  if (!chain.length) return { ok: false, status: 503, error: 'No AI model is set up: add ANTHROPIC_API_KEY or GEMINI_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY) in Vercel.', details: [] }
+  const details = [], name = (e) => `${e.provider === 'gemini' || e.provider === 'anthropic' ? '' : `${e.provider} `}${e.model.split('/').pop()}`
   for (let n = 0; n < chain.length; n++) {
     const entry = chain[n]
     const rest = restInfo(entry), wait = restingFor(entry, now())
@@ -200,9 +239,12 @@ export async function readWithChain({ chain, env, prompt, images, fetchFn = fetc
     if (now() - start > budgetMs) { details.push({ model: key(entry), name: name(entry), why: 'not tried (out of time)', wait: 0 }); continue }
     let res, data
     try {
-      const r = buildRequest(entry, env, prompt, images)
-      res = await fetchFn(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body) })
-      data = await res.json().catch(() => ({}))
+      if (entry.provider === 'anthropic') ({ res, data } = await askClaude(entry, env, prompt, images, fetchFn))
+      else {
+        const r = buildRequest(entry, env, prompt, images)
+        res = await fetchFn(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body) })
+        data = await res.json().catch(() => ({}))
+      }
     } catch (e) {
       log(`${key(entry)} failed`, e?.message)
       details.push({ model: key(entry), name: name(entry), why: 'could not connect', wait: 0 })
@@ -223,12 +265,14 @@ export async function readWithChain({ chain, env, prompt, images, fetchFn = fetc
     }
     // a 400 about one setting: try this model once more without it
     if (res.status === 400 && !entry.retried) {
-      const what = /thinking/i.test(error) ? 'thinking' : /json|mime|response_format|responseMimeType/i.test(error) ? 'json' : null
+      const what = entry.provider === 'anthropic'
+        ? (/fallback/i.test(error) ? 'fallbacks' : /effort|output_config/i.test(error) ? 'effort' : null)
+        : /thinking/i.test(error) ? 'thinking' : /json|mime|response_format|responseMimeType/i.test(error) ? 'json' : null
       if (what && !relaxedOf(entry)[what]) { relax(entry, what); chain = [...chain.slice(0, n + 1), { ...entry, retried: true }, ...chain.slice(n + 1)]; continue }
     }
     const why = reasonFor(entry, res.status, error)
     // a model that is gone, or a key that is refused, will not work on the next page either
-    if ([401, 402, 403, 404].includes(res.status)) markBusy(entry, 3600, now(), why, false)
+    if ([401, 402, 403, 404].includes(res.status) || /credit balance/i.test(error)) markBusy(entry, 3600, now(), why, false)
     details.push({ model: key(entry), name: name(entry), why, wait: 0 })
   }
   const waits = details.map((d) => d.wait).filter((w) => w > 0)
