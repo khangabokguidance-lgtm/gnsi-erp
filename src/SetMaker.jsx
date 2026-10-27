@@ -8,13 +8,18 @@
 // added questions and passages in the set_maker_items table
 // (supabase/migrations/20261044_set_maker_items.sql), so all staff share them.
 //
+// Made PDFs can be kept in the portal (set-maker-papers bucket, 20261045_set_maker_papers.sql)
+// for all staff, and "Import questions" reads a PDF or photos of a paper with
+// AI through api/gemini.js (aiVision.js), so its questions join the bank.
+//
 // perms — { read, add, edit, delete } for the 'setmaker' module; add or edit
-// lets a user add and delete their own questions. Everyone who can read it can
-// make sets and download the PDFs.
+// lets a user add, import and delete questions and keep or delete saved papers.
+// Everyone who can read it can make sets and download the PDFs.
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import html2canvasUrl from 'html2canvas/dist/html2canvas.min.js?url'
 import { createSetMakerBridge } from './setMakerBridge'
+import { vision } from './aiVision'
 
 const PAGE = `${import.meta.env.BASE_URL}model-papers/navodaya-model-set-maker.html`
 
@@ -45,6 +50,7 @@ export default function SetMaker({ currentUser, perms }) {
       actor: () => actorRef.current,
       exportLibs,
       saveFile,
+      vision,
     })
     window.__gnsiSetMaker = bridge
     return () => { if (window.__gnsiSetMaker === bridge) delete window.__gnsiSetMaker }

@@ -19,7 +19,7 @@
 // then Bhashini / Google / Gemini); the page draws the Mayek text in BMEI04.
 import { useLayoutEffect, useRef } from 'react'
 import { supabase } from './supabase'
-import { authFetch } from './apiFetch'
+import { vision } from './aiVision'
 import html2canvasUrl from 'html2canvas/dist/html2canvas.min.js?url'
 import { createModelSetsBridge } from './modelSetsBridge'
 
@@ -28,19 +28,6 @@ const PAGE = `${import.meta.env.BASE_URL}model-papers/jnv-practice-set-1.html`
 const exportLibs = async () => {
   const [{ jsPDF }, docx] = await Promise.all([import('jspdf'), import('docx')])
   return { jsPDF, docx, html2canvasUrl: new URL(html2canvasUrl, window.location.href).href }
-}
-const vision = async (prompt, images) => {
-  const res = await authFetch('/api/gemini', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, images, textOnly: !images.length }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const code = res.status === 429 ? 'rate_limited' : res.status === 401 || res.status === 403 ? 'not_granted'
-      : res.status === 503 && Array.isArray(body.details) ? 'no_models' : 'upstream_error'
-    // details: what each AI model answered, e.g. { model: 'groq:…', why: 'API key refused…' }
-    throw { code, message: body.error || `HTTP ${res.status}`, retryAfter: Number(res.headers.get('Retry-After')) || null, details: Array.isArray(body.details) ? body.details : [] }
-  }
-  return body.text
 }
 // texts[] (no newlines) → the same number of Manipuri lines, in chunks so each
 // request stays small; a line the engines could not translate comes back as it was
