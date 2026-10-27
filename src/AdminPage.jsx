@@ -37,6 +37,7 @@ const ALL_MODULES = [
   { key: 'questionbankviewer',label: 'Question Bank Viewer', icon: '📖' },
   { key: 'entrance',         label: 'Entrance Exam',      icon: '🏆'  },
   { key: 'modelsets',        label: 'Model Sets',         icon: '🗂️' },
+  { key: 'setmaker',         label: 'Model Set Maker',    icon: '🖨️' },
   { key: 'studymaterial',    label: 'Study Materials',    icon: '📖'  },
   { key: 'studylockers',     label: 'Study Lockers',      icon: '🗃️' },
   { key: 'kitchen',          label: 'Kitchen',            icon: '🍽️' },

@@ -174,7 +174,7 @@ function addContainers(set) {
   MODULE_HUBS.forEach(h => { if (visibleHubTabs(h, k => set.has(k), false).length) set.add(h.id) })
   return set
 }
-const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets' }
+const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets', setmaker: 'Model Set Maker' }
 const readRecents = () => { try { return JSON.parse(localStorage.getItem('gnsi_nav_recents') || '[]') } catch { return [] } }
 const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
