@@ -8,6 +8,7 @@
 // added questions and passages in the set_maker_items table
 // (supabase/migrations/20261044_set_maker_items.sql), so all staff share them.
 //
+// "Make many sets at once" packs the PDFs of a run of sets into one ZIP (jszip).
 // Made PDFs can be kept in the portal (set-maker-papers bucket, 20261045_set_maker_papers.sql)
 // for all staff, and "Import questions" reads a PDF or photos of a paper with
 // AI through api/gemini.js (aiVision.js), so its questions join the bank.
@@ -24,8 +25,8 @@ import { vision } from './aiVision'
 const PAGE = `${import.meta.env.BASE_URL}model-papers/navodaya-model-set-maker.html`
 
 const exportLibs = async () => {
-  const { jsPDF } = await import('jspdf')
-  return { jsPDF, html2canvasUrl: new URL(html2canvasUrl, window.location.href).href }
+  const [{ jsPDF }, { default: JSZip }] = await Promise.all([import('jspdf'), import('jszip')])
+  return { jsPDF, JSZip, html2canvasUrl: new URL(html2canvasUrl, window.location.href).href }
 }
 const saveFile = (filename, blob) => {
   const url = URL.createObjectURL(blob)

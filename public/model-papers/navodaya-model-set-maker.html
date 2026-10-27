@@ -42,6 +42,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .field input,.field select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
 textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;resize:vertical}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media (max-width:560px){.row3{grid-template-columns:1fr}}
+.checks{display:flex;flex-wrap:wrap;gap:0 16px}.checks .check{margin:2px 0 8px}
 .check{display:flex;gap:8px;align-items:flex-start;margin:4px 0 14px;font-size:13px}
 .check input{margin-top:3px}
 .btn{font:inherit;font-weight:600;border-radius:8px;padding:9px 14px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
@@ -231,6 +233,19 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
         <button type="button" class="btn" id="dl-key">Answer key</button>
         <button type="button" class="btn" id="dl-omr">OMR answer sheet</button>
       </div>
+      <hr class="divider">
+      <h2>Make many sets at once</h2>
+      <div class="row2">
+        <div class="field"><label for="count">Number of sets</label><input id="count" type="number" min="1" max="50" value="10"></div>
+        <div class="field"><label for="allcodes">Booklet codes</label><select id="allcodes"><option value="one">Only the code above</option><option value="all">All four (A, B, C, D)</option></select></div>
+      </div>
+      <p class="hint" id="countnote"></p>
+      <div class="checks">
+        <label class="check" for="bk-paper"><input id="bk-paper" type="checkbox" checked><span>Question papers</span></label>
+        <label class="check" for="bk-key"><input id="bk-key" type="checkbox" checked><span>Answer keys</span></label>
+        <label class="check" for="bk-omr"><input id="bk-omr" type="checkbox"><span>OMR sheets</span></label>
+      </div>
+      <div class="stack"><button type="button" class="btn primary" id="dl-many">Download the sets (ZIP)</button><button type="button" class="btn" id="dl-stop" hidden>Stop</button></div>
       <label class="check" for="keep" id="keepwrap" hidden><input id="keep" type="checkbox" checked><span>Also keep a copy in the portal, for other staff</span></label>
       <p id="status" class="status" role="status"></p>
       <div id="savedwrap" hidden>
@@ -266,8 +281,22 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
     <div class="stats" id="stats"></div>
     <div class="panel imp" id="imp" hidden>
       <h2>Import questions from a PDF or photos</h2>
-      <p class="hint">Upload a question paper as a PDF, or photos of its pages. AI reads its EVS, Arithmetic and reading-passage questions. Check them, fix any answer, and add the ones you want. Figure questions are left out, because new ones are drawn for every set.</p>
-      <div class="imp-row"><input type="file" id="impfile" accept="application/pdf,image/*" multiple><button class="btn primary" id="impbtn" type="button">Read questions</button><button class="btn" id="impstop" type="button" hidden>Stop</button></div>
+      <p class="hint">Upload a PDF, or photos of its pages. From a question paper, AI copies its EVS, Arithmetic and reading-passage questions. From a book or notes, it writes new questions on what the pages teach. Check them, fix any answer, and add the ones you want. Figure questions are not made, because new ones are drawn for every set.</p>
+      <div class="field"><label for="impmode">What is in the file?</label><select id="impmode"><option value="copy">A question paper: copy its questions</option><option value="write">Study material, a book or notes: write new questions from it</option></select></div>
+      <div id="impwant" hidden>
+        <div class="row3">
+          <div class="field"><label for="want-evs">EVS questions</label><input id="want-evs" type="number" min="0" max="200" value="20"></div>
+          <div class="field"><label for="want-arith">Arithmetic</label><input id="want-arith" type="number" min="0" max="200" value="10"></div>
+          <div class="field"><label for="want-psg">Passages (5 questions each)</label><input id="want-psg" type="number" min="0" max="20" value="2"></div>
+        </div>
+        <p class="hint">The AI writes JNVST-level questions using only what is in your file. A page with nothing for a kind (for example, no maths on a page about plants) gets none of that kind.</p>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="imp-from">From page</label><input id="imp-from" type="number" min="1" value="1"></div>
+        <div class="field"><label for="imp-to">To page (blank = to the end)</label><input id="imp-to" type="number" min="1" placeholder="last"></div>
+      </div>
+      <label class="check" for="impkeep" id="impkeepwrap" hidden><input id="impkeep" type="checkbox" checked><span>Also keep the PDF in "Saved in the portal" (Make a set tab)</span></label>
+      <div class="imp-row"><input type="file" id="impfile" accept="application/pdf,image/*" multiple><button class="btn primary" id="impbtn" type="button">Read the file</button><button class="btn" id="impstop" type="button" hidden>Stop</button></div>
       <p class="status" id="impmsg" role="status"></p>
       <div id="implist"></div>
       <div class="stack" id="impact" hidden><button class="btn primary" id="impadd" type="button">Add the ticked questions</button></div>
@@ -953,21 +982,26 @@ let MY={evs:[],arith:[],passages:[]},DOCS={paper:[],key:[],omr:[]},current='pape
 function settings(){return {inst:$('#inst').value.trim()||'Your Institute Name',contact:$('#contact').value.trim(),setno:Math.min(999,Math.max(1,parseInt($('#setno').value,10)||1)),code:$('#code').value,fit:$('#fit').value,pattern:$('#pattern').value,figtypes:$('#figtypes').value,mine:$('#mine').checked}}
 
 // ---------- Assemble one set ----------
+// Your own questions, oldest first, taken a block at a time: set 1 gets the first n,
+// set 2 the next n, and so on, so a run of sets uses them all before any repeats.
+function rotate(list,setno,n){if(list.length<=n)return list;
+  const s=[...list].sort((a,b)=>(a.at||0)-(b.at||0)||String(a.id).localeCompare(String(b.id))),o=((setno-1)*n)%s.length;
+  return [...s.slice(o),...s.slice(0,o)].slice(0,n)}
 function passageQ(q,builtin){return q.st?{q:'Read statements (i) and (ii) and choose the correct answer.',st:q.st,o:STMT,a:q.a,fixed:true,html:builtin}:{q:q.q,o:q.o,a:q.a,html:builtin}}
 function assemble(S){
   const rSel=makeRng('set:'+S.setno),rOrd=makeRng('order:'+S.setno+':'+S.code);
   const order=a=>S.code==='A'?a:rOrd.shuffle(a);
   const fin=q=>{if(q.fixed)return q;const p=rOrd.shuffle([0,1,2,3]);return {...q,o:p.map(i=>q.o[i]),a:p.indexOf(q.a)}};
-  const firstMine=(mine,builtin,n)=>[...(S.mine?rSel.shuffle(mine):[]),...rSel.shuffle(builtin)].slice(0,n);
+  const firstMine=(mine,builtin,n)=>[...(S.mine?rSel.shuffle(rotate(mine,S.setno,n)):[]),...rSel.shuffle(builtin)].slice(0,n);
   const plan=maParts(S),parts=plan.map(([t])=>t);
   const ma=plan.map(([t,k])=>{const qs=MA_TYPES[t].make(rSel,k);return {t,qs:(MA_TYPES[t].fixed?qs:order(qs)).map(fin)}});
   const evs=S.pattern==='old'?[]:order(firstMine(MY.evs.map(x=>({...x,html:false})),EVS.map(r=>({q:r[0],o:r.slice(1,5),a:r[5],html:false})),20)).map(fin);
-  const mineA=S.mine?rSel.shuffle(MY.arith).slice(0,20).map(x=>({...x,html:false,topic:'Your question'})):[];
+  const mineA=S.mine?rSel.shuffle(rotate(MY.arith,S.setno,20)).map(x=>({...x,html:false,topic:'Your question'})):[];
   const byT=Object.fromEntries(ARITH.map((g,i)=>[g.t,i]));
   const core=Object.values(ARITH_SYLLABUS).map(ts=>byT[rSel.pick(ts)]),rest=rSel.shuffle(ARITH.map((_,i)=>i).filter(i=>!core.includes(i)));
   const gi=[...rSel.shuffle(core),...rest].slice(0,20-mineA.length).sort((a,b)=>a-b);
   const arith=order([...gi.map(i=>buildArith(ARITH[i],rSel)),...mineA]).map(fin);
-  const psg=order(firstMine(MY.passages.map(p=>({p:p.text.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean),qs:p.qs.map(q=>passageQ(q,false))})),PASSAGES.map(p=>({p:p.p,qs:p.qs.map(q=>passageQ(q,true))})),4)).map(p=>({...p,qs:p.qs.map(fin)}));
+  const psg=order(firstMine(MY.passages.map(p=>({id:p.id,at:p.at,p:p.text.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean),qs:p.qs.map(q=>passageQ(q,false))})),PASSAGES.map(p=>({p:p.p,qs:p.qs.map(q=>passageQ(q,true))})),4)).map(p=>({...p,qs:p.qs.map(fin)}));
 
   const blocks=[],key=[];let n=0;
   const secHead=(a,b,dir)=>`<div class="sec">${a?`<h3>${a}</h3>`:''}<h4>${b}</h4>${dir?`<p class="dir">${dir}</p>`:''}</div>`;
@@ -1070,7 +1104,7 @@ function status(msg,err){const s=$('#status');s.textContent=msg;s.classList.togg
 let busy=false,again=false;
 function regenerate(){if(busy){again=true;return}busy=true;
   try{const S=settings();SET=assemble(S);SET.parts=SET.parts;DOCS.paper=renderPaper(SET);DOCS.key=[keyHTML(SET)];DOCS.omr=[omrHTML(SET)];showDoc(current);
-    status(`Model set ${S.setno}, booklet ${S.code}: 80 questions on ${DOCS.paper.length} pages.`+(SET.fitOk?'':' This pattern has too many figure questions to fit in 8 pages, so it uses the smallest layout.'),!SET.fitOk)}
+    countNote();status(`Model set ${S.setno}, booklet ${S.code}: 80 questions on ${DOCS.paper.length} pages.`+(SET.fitOk?'':' This pattern has too many figure questions to fit in 8 pages, so it uses the smallest layout.'),!SET.fitOk)}
   catch(e){console.error(e);status('Could not make this set: '+e.message,true)}
   busy=false;if(again){again=false;regenerate()}}
 
@@ -1084,23 +1118,63 @@ async function portalLibs(){if(window.jspdf&&window.html2canvas||!CL||!CL.export
   try{const L=await CL.exportLibs();if(!window.jspdf&&L.jsPDF)window.jspdf={jsPDF:L.jsPDF};if(!window.html2canvas&&L.html2canvasUrl)await loadScript(L.html2canvasUrl)}catch(e){}}
 
 // ---------- PDF download ----------
-async function download(kind){
-  const btns=['#dl-paper','#dl-key','#dl-omr'].map(s=>$(s));
-  const dl=await dlCap;if(!dl){status('Saving files is not available in this view.',true);return}
-  await portalLibs();
-  if(!window.jspdf||!window.html2canvas){status('The PDF tools did not load. Check your internet connection and reload the page.',true);return}
-  btns.forEach(b=>b.disabled=true);const S=SET.S,list=DOCS[kind],cap=$('#capture');
+const DL_BTNS=['#dl-paper','#dl-key','#dl-omr','#dl-many'];
+const pdfName=(S,kind)=>`Navodaya-Model-Set-${String(S.setno).padStart(2,'0')}-${S.code}-${{paper:'Question-Paper',key:'Answer-Key',omr:'OMR-Sheet'}[kind]}.pdf`;
+async function pdfTools(){await portalLibs();
+  if(!window.jspdf||!window.html2canvas)throw {message:'The PDF tools did not load. Check your internet connection and reload the page.'}}
+// pages (HTML) → one A4 PDF blob; onPage(i, n) reports progress
+async function buildPdf(list,onPage){const cap=$('#capture');
   try{const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',compress:true});
-    for(let i=0;i<list.length;i++){status(`Preparing page ${i+1} of ${list.length}…`);cap.innerHTML=list[i];
+    for(let i=0;i<list.length;i++){onPage&&onPage(i+1,list.length);cap.innerHTML=list[i];
       const canvas=await window.html2canvas(cap.firstElementChild,{scale:2,backgroundColor:'#ffffff',logging:false,width:PW,height:PH,windowWidth:1400});
-      if(i)pdf.addPage();pdf.addImage(canvas.toDataURL('image/jpeg',0.9),'JPEG',0,0,210,297,undefined,'FAST')}
-    cap.innerHTML='';const name=`Navodaya-Model-Set-${String(S.setno).padStart(2,'0')}-${S.code}-${{paper:'Question-Paper',key:'Answer-Key',omr:'OMR-Sheet'}[kind]}.pdf`;
-    const blob=pdf.output('blob');status('Waiting for you to confirm the download…');await dl.save({filename:name,data:blob});
+      if(i)pdf.addPage();pdf.addImage(canvas.toDataURL('image/jpeg',0.9),'JPEG',0,0,210,297,undefined,'FAST');canvas.width=canvas.height=0}
+    return pdf.output('blob')}
+  finally{cap.innerHTML=''}}
+async function download(kind){
+  const btns=DL_BTNS.map(s=>$(s));
+  const dl=await dlCap;if(!dl){status('Saving files is not available in this view.',true);return}
+  try{await pdfTools()}catch(e){status(e.message,true);return}
+  btns.forEach(b=>b.disabled=true);const S=SET.S;
+  try{const name=pdfName(S,kind);
+    const blob=await buildPdf(DOCS[kind],(i,n)=>status(`Preparing page ${i} of ${n}…`));status('Waiting for you to confirm the download…');await dl.save({filename:name,data:blob});
     let kept=false;try{status('Saved '+name+'. Keeping a copy in the portal…');kept=await keepPaper(name,blob,{kind,setno:S.setno,code:S.code,pattern:S.pattern,figtypes:S.figtypes})}
     catch(e){status('Saved '+name+', but the portal copy failed: '+(e.message||e.code),true);return}
     status('Saved '+name+'.'+(kept?' A copy is kept in the portal.':''))}
-  catch(e){cap.innerHTML='';status(e&&e.code==='declined'?'Download cancelled.':'Could not save the PDF: '+(e&&(e.message||e.code)||'unknown error'),true)}
+  catch(e){status(e&&e.code==='declined'?'Download cancelled.':'Could not save the PDF: '+(e&&(e.message||e.code)||'unknown error'),true)}
   finally{btns.forEach(b=>b.disabled=false)}}
+
+// Many sets: set no., set no. + 1, … each as its own PDFs, all in one ZIP file.
+const MAX_SETS=50;let manyStop=false;
+async function zipLib(){if(window.JSZip)return window.JSZip;
+  try{const L=CL&&CL.exportLibs?await CL.exportLibs():null;if(L&&L.JSZip)return L.JSZip}catch(e){}
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');return window.JSZip}
+function countNote(){const S=settings(),n=Math.min(MAX_SETS,Math.max(1,parseInt($('#count').value,10)||1)),last=Math.min(999,S.setno+n-1);
+  const codes=$('#allcodes').value==='all'?4:1,kinds=['paper','key','omr'].filter(k=>$('#bk-'+k).checked).length;
+  $('#countnote').textContent=`Sets ${S.setno} to ${last}${codes>1?', booklets A to D':', booklet '+S.code}: ${(last-S.setno+1)*codes*kinds} PDF file${(last-S.setno+1)*codes*kinds===1?'':'s'} in one ZIP.`}
+async function downloadMany(){
+  const S0=settings(),n=Math.min(MAX_SETS,Math.max(1,parseInt($('#count').value,10)||1)),last=Math.min(999,S0.setno+n-1);
+  const codes=$('#allcodes').value==='all'?[...L4]:[S0.code],kinds=['paper','key','omr'].filter(k=>$('#bk-'+k).checked);
+  if(!kinds.length){status('Tick at least one of question papers, answer keys or OMR sheets.',true);return}
+  const dl=await dlCap;if(!dl){status('Saving files is not available in this view.',true);return}
+  let Z;try{await pdfTools();Z=await zipLib()}catch(e){status(e.message||'The ZIP tool did not load. Check your internet connection and reload the page.',true);return}
+  const btns=DL_BTNS.map(s=>$(s));btns.forEach(b=>b.disabled=true);$('#dl-stop').hidden=false;manyStop=false;
+  const zip=new Z(),total=(last-S0.setno+1)*codes.length*kinds.length;let done=0,kept=0,keepErr='',lastNo=S0.setno;
+  try{
+    for(let no=S0.setno;no<=last&&!manyStop;no++)for(const code of codes){if(manyStop)break;
+      const S={...S0,setno:no,code},set=assemble(S),docs={paper:kinds.includes('paper')?renderPaper(set):[],key:[keyHTML(set)],omr:[omrHTML(set)]};
+      for(const kind of kinds){if(manyStop)break;const name=pdfName(S,kind);
+        const blob=await buildPdf(docs[kind],(i,m)=>status(`File ${done+1} of ${total}: set ${no}, booklet ${code}, ${kind==='paper'?'question paper':kind==='key'?'answer key':'OMR sheet'}, page ${i} of ${m}…`));
+        zip.file(name,blob);done++;lastNo=no;
+        try{if(await keepPaper(name,blob,{kind,setno:no,code}))kept++}catch(e){keepErr=e.message||e.code||'error'}}}
+    if(!done){status('Stopped before any file was made.');return}
+    status('Packing the ZIP file…');const out=await zip.generateAsync({type:'blob'});
+    const fname=`Navodaya-Model-Sets-${String(S0.setno).padStart(2,'0')}-to-${String(lastNo).padStart(2,'0')}.zip`;
+    status('Waiting for you to confirm the download…');await dl.save({filename:fname,data:out});
+    status(`${manyStop?'Stopped. ':''}Saved ${fname} with ${done} PDF file${done===1?'':'s'}.`+(kept?` ${kept} kept in the portal.`:'')+(keepErr?` Some portal copies failed: ${keepErr}`:''),!!keepErr)}
+  catch(e){status(e&&e.code==='declined'?'Download cancelled.':'Could not make the sets: '+(e&&(e.message||e.code)||'unknown error'),true)}
+  finally{btns.forEach(b=>b.disabled=false);$('#dl-stop').hidden=true;
+    // the preview is drawn again (making the sets changed the layout), keeping the result message
+    const st=$('#status'),msg=st.textContent,err=st.classList.contains('err');regenerate();status(msg,err)}}
 
 // ---------- Your own questions ----------
 function parseQs(text){const blocks=text.replace(/\r/g,'').split(/\n\s*\n/).map(b=>b.trim()).filter(Boolean),ok=[],bad=[];
@@ -1159,7 +1233,7 @@ async function keepPaper(filename,blob,meta){if(!papersCap||!$('#keep').checked|
   await papersCap.save({filename,data:blob,meta});return true}
 async function startPapers(){
   try{papersCap=CL&&CL.use?await CL.use('papers'):null}catch(e){papersCap=null}
-  if(!papersCap||!db)return;$('#savedwrap').hidden=false;$('#keepwrap').hidden=db.readOnly;$('#upwrap').hidden=db.readOnly;
+  if(!papersCap||!db)return;$('#savedwrap').hidden=false;$('#keepwrap').hidden=db.readOnly;$('#impkeepwrap').hidden=db.readOnly;$('#upwrap').hidden=db.readOnly;
   db.collection('papers').onSnapshot(s=>{MY.papers=s.docs.map(d=>({id:d.id,...d.data()})).filter(p=>typeof p.filename==='string'&&typeof p.path==='string');renderSaved()},()=>{});
   $('#saved').addEventListener('click',async e=>{const g=e.target.closest('.get'),d=e.target.closest('[data-paper]');const msg=$('#savedmsg');
     const id=g?g.dataset.id:d?d.dataset.paper:null,p=id&&MY.papers.find(x=>x.id===id);if(!p)return;
@@ -1194,6 +1268,17 @@ Rules:
 - A question with statements (i) and (ii) keeps both statements in "q", and its four options as printed.
 - "passageQs": questions at the top of this page that belong to a passage printed on the previous page.
 - If the page has none of these questions, reply {"questions": [], "passages": [], "passageQs": []}.`;
+const WRITE_PROMPT=(p,total,w)=>`This image is page ${p} of ${total} of study material (a textbook, notes or a worksheet) used by Class V students preparing for the Jawahar Navodaya Vidyalaya Selection Test (the Class VI entrance test). Using only the facts and ideas on this page, write NEW multiple-choice questions at the level of that test:
+- up to ${w.evs} "evs" questions (Environmental Studies, science, social studies or general knowledge) on what the page teaches
+- up to ${w.arith} "arith" questions (arithmetic) that practise the maths on this page, with new numbers
+- up to ${w.psg} reading passages: a passage of 150 to 250 words in simple English, written from this page's content, followed by exactly 5 questions (three on facts in the passage, then the synonym of a word used in it, then the antonym of a word used in it)
+Write none of a kind when the page has nothing for it: no arithmetic questions from a page about plants, and no EVS questions from a page of sums. Never ask about pictures, and do not copy a question that is already printed on the page word for word.
+Every question has four options and exactly one correct answer; the other three must be plausible. Keep the language simple and clear for a 10-year-old.
+
+Reply with only JSON in this shape:
+{"questions": [{"section": "evs", "q": "...", "o": ["...", "...", "...", "..."], "a": 2}],
+ "passages": [{"text": "paragraph one\\n\\nparagraph two", "qs": [{"q": "...", "o": ["...", "...", "...", "..."], "a": 0}]}]}
+"a" is the index 0 to 3 of the correct option. Write fractions as 3/4 and keep ₹, °, × and ÷.`;
 let IMP={questions:[],passages:[]},impStop=false;
 const loadPdfJs=async()=>{if(!window.pdfjsLib)await loadScript(PDFJS.lib);window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS.worker;return window.pdfjsLib};
 const blobB64=b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result).split(',')[1]);fr.onerror=no;fr.readAsDataURL(b)});
@@ -1201,36 +1286,52 @@ const cvJpeg=cv=>new Promise(r=>cv.toBlob(r,'image/jpeg',.85));
 const parseLooseJSON=t=>{if(t&&typeof t==='object')return t;const x=String(t||'').trim().replace(/^```(?:json)?\s*|\s*```$/g,'');
   try{return JSON.parse(x)}catch(e){const a=x.indexOf('{'),b=x.lastIndexOf('}');try{return a>=0&&b>a?JSON.parse(x.slice(a,b+1)):null}catch(e2){return null}}};
 // every page as a JPEG, one at a time, so a long PDF does not fill a phone's memory
-async function* importPages(files){
-  for(const f of files){
+// from / to: page numbers counted across all the chosen files, 1 = the first page
+async function* importPages(files,from,to){let n=0;const want=()=>n>=from&&n<=to;
+  for(const f of files){if(n>=to)return;
     if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const lib=await loadPdfJs();const doc=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
-      for(let i=1;i<=doc.numPages;i++){const pg=await doc.getPage(i),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:PAGE_PX/v1.width});
+      for(let i=1;i<=doc.numPages;i++){n++;if(!want()){if(n>to)return;continue}const pg=await doc.getPage(i),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:PAGE_PX/v1.width});
         const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);
         await pg.render({canvasContext:g,viewport:vp}).promise;const b=await cvJpeg(cv);cv.width=cv.height=0;yield b}}
-    else if(/^image\//.test(f.type)){const bmp=await createImageBitmap(f),k=Math.min(1,PAGE_PX/bmp.width),cv=document.createElement('canvas');cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);
+    else if(/^image\//.test(f.type)){n++;if(!want())continue;const bmp=await createImageBitmap(f),k=Math.min(1,PAGE_PX/bmp.width),cv=document.createElement('canvas');cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);
       const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);g.drawImage(bmp,0,0,cv.width,cv.height);bmp.close&&bmp.close();const b=await cvJpeg(cv);cv.width=cv.height=0;yield b}}}
 async function countPages(files){let n=0;for(const f of files){if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const lib=await loadPdfJs();n+=(await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise).numPages}else if(/^image\//.test(f.type))n++}return n}
-const cleanQ=q=>{if(!q||typeof q.q!=='string'||!Array.isArray(q.o))return null;const o=q.o.slice(0,4).map(x=>String(x??'').trim().slice(0,200));
-  const a=Number.isInteger(q.a)&&q.a>=0&&q.a<4?q.a:-1;return {q:q.q.replace(/\s+/g,' ').trim().slice(0,600),o,a,ai:q.answerFrom!=='key'}};
-async function runImport(){const files=[...$('#impfile').files],msg=$('#impmsg');
+const cleanQ=(q,made)=>{if(!q||typeof q.q!=='string'||!Array.isArray(q.o))return null;const o=q.o.slice(0,4).map(x=>String(x??'').trim().slice(0,200));
+  const a=Number.isInteger(q.a)&&q.a>=0&&q.a<4?q.a:-1;return {q:q.q.replace(/\s+/g,' ').trim().slice(0,600),o,a,ai:made||q.answerFrom!=='key',made:!!made}};
+const numIn=(sel,lo,hi,dflt)=>{const v=parseInt($(sel).value,10);return Number.isFinite(v)?Math.min(hi,Math.max(lo,v)):dflt};
+async function runImport(){const files=[...$('#impfile').files],msg=$('#impmsg'),write=$('#impmode').value==='write';
   if(!files.length){msg.classList.add('err');msg.textContent='Choose a PDF or photos first.';return}
   msg.classList.remove('err');impStop=false;IMP={questions:[],passages:[]};renderImport();$('#impbtn').disabled=true;$('#impstop').hidden=false;
-  try{msg.textContent='Opening the file…';const total=Math.min(IMPORT_MAX_PAGES,await countPages(files));let p=0,failed=0;
-    for await(const img of importPages(files)){if(impStop||p>=IMPORT_MAX_PAGES)break;p++;msg.textContent=`Reading page ${p} of ${total}…`;
-      try{const out=parseLooseJSON(await CL.visionJSON(IMPORT_PROMPT(p,total),[{mimeType:'image/jpeg',data:await blobB64(img)}]))||{};
-        for(const q of out.questions||[]){const c=cleanQ(q);if(c)IMP.questions.push({...c,section:q.section==='arith'?'arith':'evs',on:c.a>=0})}
+  try{msg.textContent='Opening the file…';const all=await countPages(files),from=numIn('#imp-from',1,9999,1),to=Math.min(all,numIn('#imp-to',from,9999,all),from+IMPORT_MAX_PAGES-1);
+    if(from>all)throw {message:`The file has only ${all} page${all===1?'':'s'}.`};
+    const total=to-from+1,asked=Math.min(all,numIn('#imp-to',from,9999,all));let p=0,failed=0;
+    const left={evs:numIn('#want-evs',0,200,20),arith:numIn('#want-arith',0,200,10),psg:numIn('#want-psg',0,20,2)};
+    if(write&&!left.evs&&!left.arith&&!left.psg)throw {message:'Ask for at least one question or passage.'};
+    // the uploaded PDF itself, kept for staff beside the papers made here
+    if(papersCap&&$('#impkeep').checked&&!$('#impkeepwrap').hidden)for(const f of files.filter(f=>/\.pdf$/i.test(f.name)||f.type==='application/pdf')){
+      try{msg.textContent='Keeping '+f.name+' in the portal…';await papersCap.save({filename:f.name,data:f,meta:{kind:'upload'}})}catch(e){failed++}}
+    for await(const img of importPages(files,from,to)){if(impStop||p>=total)break;p++;
+      // ask each page for its share of what is still wanted, so the totals spread over the pages
+      const share=k=>Math.min(left[k],Math.ceil(left[k]/(total-p+1))+(k==='psg'?0:1));
+      if(write&&!left.evs&&!left.arith&&!left.psg)break;
+      msg.textContent=`${write?'Writing questions from':'Reading'} page ${from+p-1} (${p} of ${total})…`;
+      try{const prompt=write?WRITE_PROMPT(from+p-1,all,{evs:share('evs'),arith:share('arith'),psg:share('psg')}):IMPORT_PROMPT(from+p-1,all);
+        const out=parseLooseJSON(await CL.visionJSON(prompt,[{mimeType:'image/jpeg',data:await blobB64(img)}]))||{};
+        for(const q of out.questions||[]){const sec=q.section==='arith'?'arith':'evs';if(write&&left[sec]<=0)continue;const c=cleanQ(q,write);if(!c)continue;
+          IMP.questions.push({...c,section:sec,on:c.a>=0});if(write)left[sec]--}
         const last=IMP.passages[IMP.passages.length-1];
-        for(const q of out.passageQs||[]){const c=cleanQ(q);if(c&&last&&last.qs.length<5)last.qs.push(c)}
-        for(const ps of out.passages||[]){if(typeof ps.text!=='string')continue;IMP.passages.push({text:ps.text.trim().slice(0,4000),qs:(ps.qs||[]).map(cleanQ).filter(Boolean)})}
+        if(!write)for(const q of out.passageQs||[]){const c=cleanQ(q);if(c&&last&&last.qs.length<5)last.qs.push(c)}
+        for(const ps of out.passages||[]){if(typeof ps.text!=='string'||(write&&left.psg<=0))continue;
+          IMP.passages.push({text:ps.text.trim().slice(0,4000),qs:(ps.qs||[]).map(q=>cleanQ(q,write)).filter(Boolean).slice(0,write?5:99)});if(write)left.psg--}
       }catch(e){failed++;if(e&&(e.code==='not_granted'||e.code==='rate_limited'))throw e}
       IMP.passages.forEach(ps=>ps.on=ps.qs.length===5&&ps.qs.every(q=>q.a>=0));renderImport()}
     const n=IMP.questions.length+IMP.passages.length;
     msg.classList.toggle('err',!n||failed>0);
-    msg.textContent=(impStop?'Stopped. ':'')+(n?`Found ${IMP.questions.length} question${IMP.questions.length===1?'':'s'} and ${IMP.passages.length} passage${IMP.passages.length===1?'':'s'} on ${p} page${p===1?'':'s'}. Answers marked “worked out by AI” need checking.`:`No EVS, Arithmetic or passage questions were found on ${p} page${p===1?'':'s'}.`)+(failed?` ${failed} page${failed===1?'':'s'} could not be read.`:'')}
+    msg.textContent=(impStop?'Stopped. ':'')+(n?`Found ${IMP.questions.length} question${IMP.questions.length===1?'':'s'} and ${IMP.passages.length} passage${IMP.passages.length===1?'':'s'} on ${p} page${p===1?'':'s'}. Answers marked “by AI” need checking.`:(write?`No questions could be written from ${p} page${p===1?'':'s'}.`:`No EVS, Arithmetic or passage questions were found on ${p} page${p===1?'':'s'}.`))+(failed?` ${failed} page${failed===1?'':'s'} could not be read.`:'')+(asked>to&&!impStop?` One run reads up to ${IMPORT_MAX_PAGES} pages: set "From page" to ${to+1} and run again for the rest.`:'')}
   catch(e){msg.classList.add('err');msg.textContent=e&&e.code==='rate_limited'?'The AI service is busy. Wait a minute and try again.':e&&e.code==='not_granted'?'Your login is not allowed to import questions.':'Could not read the file: '+(e&&(e.message||e.code)||'unknown error')}
   finally{$('#impbtn').disabled=false;$('#impstop').hidden=true}}
 const ansSel=(a,attrs)=>`<select ${attrs}><option value="-1"${a<0?' selected':''}>?</option>${[...L4].map((l,i)=>`<option value="${i}"${a===i?' selected':''}>${l}</option>`).join('')}</select>`;
-const qBody=(q,attrs)=>`<p>${esc(q.q)}</p><ol type="A">${q.o.map(o=>`<li>${esc(o)}</li>`).join('')}</ol><span class="ans">Answer ${ansSel(q.a,attrs)} ${q.a<0?'<span class="ai">not found, choose one</span>':q.ai?'<span class="ai">worked out by AI, please check</span>':'from the printed key'}</span>`;
+const qBody=(q,attrs)=>`<p>${esc(q.q)}</p><ol type="A">${q.o.map(o=>`<li>${esc(o)}</li>`).join('')}</ol><span class="ans">Answer ${ansSel(q.a,attrs)} ${q.a<0?'<span class="ai">not found, choose one</span>':q.made?'<span class="ai">written by AI from your file, please check</span>':q.ai?'<span class="ai">worked out by AI, please check</span>':'from the printed key'}</span>`;
 function renderImport(){const box=$('#implist');
   box.innerHTML=[...IMP.questions.map((q,i)=>`<div class="impq"><input type="checkbox" data-q="${i}"${q.on?' checked':''} aria-label="Add this question"><select data-sec="${i}"><option value="evs"${q.section==='evs'?' selected':''}>EVS</option><option value="arith"${q.section==='arith'?' selected':''}>Arithmetic</option></select><div>${qBody(q,`data-qa="${i}"`)}</div></div>`),
     ...IMP.passages.map((ps,i)=>`<div class="impq"><input type="checkbox" data-p="${i}"${ps.on?' checked':''}${ps.qs.length===5?'':' disabled'} aria-label="Add this passage"><span class="tag">Passage</span><div><p>${esc(ps.text.slice(0,260))}${ps.text.length>260?'…':''}</p>${ps.qs.length===5?'':`<p class="bad">A passage needs 5 questions; ${ps.qs.length} were found, so it cannot be added.</p>`}${ps.qs.map((q,k)=>`<div class="pq">${qBody(q,`data-pa="${i}:${k}"`)}</div>`).join('')}</div></div>`)].join('');
@@ -1249,6 +1350,7 @@ $('#implist').addEventListener('change',e=>{const t=e.target,d=t.dataset;
   else if(d.pa!==undefined){const [i,k]=d.pa.split(':').map(Number),ps=IMP.passages[i];ps.qs[k].a=+t.value;ps.qs[k].ai=false;ps.on=ps.qs.length===5&&ps.qs.every(q=>q.a>=0);renderImport()}});
 $('#impbtn').onclick=runImport;$('#impstop').onclick=()=>{impStop=true};$('#impadd').onclick=addImported;
 function startImport(){$('#imp').hidden=!(CL&&typeof CL.visionJSON==='function'&&db&&!db.readOnly)}
+$('#impmode').addEventListener('change',()=>{const w=$('#impmode').value==='write';$('#impwant').hidden=!w;$('#impbtn').textContent=w?'Write questions':'Read the file'});
 
 // ---------- Wire up ----------
 function tab(which){const make=which==='make';$('#view-make').hidden=!make;$('#view-bank').hidden=make;$('#tab-make').setAttribute('aria-selected',String(make));$('#tab-bank').setAttribute('aria-selected',String(!make));if(make)fit()}
@@ -1257,6 +1359,8 @@ document.querySelectorAll('.ptabs button').forEach(b=>b.onclick=()=>showDoc(b.da
 ['#inst','#contact','#setno'].forEach(s=>$(s).addEventListener('input',soon));['#code','#pattern','#figtypes','#mine','#fit'].forEach(s=>$(s).addEventListener('change',regenerate));
 $('#settings').addEventListener('submit',e=>e.preventDefault());
 $('#next').onclick=()=>{$('#setno').value=settings().setno+1;regenerate()};
+$('#dl-many').onclick=downloadMany;$('#dl-stop').onclick=()=>{manyStop=true};
+['#count','#setno'].forEach(x=>$(x).addEventListener('input',countNote));['#allcodes','#bk-paper','#bk-key','#bk-omr','#code'].forEach(x=>$(x).addEventListener('change',countNote));countNote();
 $('#dl-paper').onclick=()=>download('paper');$('#dl-key').onclick=()=>download('key');$('#dl-omr').onclick=()=>download('omr');
 $('#addbtn').onclick=addQuestions;$('#psgbtn').onclick=addPassage;
 $('#mylist').addEventListener('click',async e=>{const b=e.target.closest('.del');if(!b||!db)return;b.disabled=true;try{await db.collection(b.dataset.col).doc(b.dataset.id).delete()}catch(err){b.disabled=false;b.textContent='Retry'}});
