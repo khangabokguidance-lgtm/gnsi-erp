@@ -12,7 +12,7 @@
 //                      bucket, each listed by a row in collection 'papers'
 //   use('user')      → canEdit(): the portal's Model Set Maker permission
 //   use('downloads') → save({filename, data}): the PDF the page made
-//   exportLibs()     → { jsPDF, html2canvasUrl } from the portal's own bundle,
+//   exportLibs()     → { jsPDF, JSZip, html2canvasUrl } from the portal's own bundle,
 //                      used when the CDN copies did not load
 //   visionJSON(prompt, images) → the text the AI returns for a page image
 //                      (api/gemini.js), used by "Import questions"
