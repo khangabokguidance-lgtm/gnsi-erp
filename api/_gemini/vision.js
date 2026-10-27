@@ -1,6 +1,7 @@
 // AI models with page images: Learning Hub → Model Sets → "Import paper" sends each page of a
 // question paper (as a JPEG) to /api/gemini with an `images` list and gets back the questions it
-// found as JSON. Gemini reads it first; other free models take over when one is busy (visionModels.js).
+// found as JSON. Claude reads it first when ANTHROPIC_API_KEY is set, else Gemini; the other
+// models take over when one is busy (visionModels.js).
 // api/gemini.js checks the caller is staff, then hands such requests here.
 // This lives in a "_" folder so Vercel does not count it as another serverless function: the
 // Hobby plan allows 12 per deployment, and adding a separate endpoint made the build fail.
@@ -37,7 +38,7 @@ export async function handleVision(req, res, user) {
 
   const { prompt, images } = req.body
   try {
-    // Gemini first, then the other free models when one is busy or down (see visionModels.js).
+    // Claude (when its key is set) or Gemini first, then the others when one is busy or down (visionModels.js).
     // Google advises no thinking pass for finding boxes: with it, 2.5 Flash's figure boxes drift.
     const r = await readWithChain({ chain: await resolveChain(process.env), env: process.env, prompt, images, log: (...a) => console.error('Vision model:', ...a) })
     if (r.ok) return res.status(200).json({ text: r.text, model: r.model })
