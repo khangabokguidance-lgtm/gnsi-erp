@@ -72,6 +72,14 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
 .myq{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:9px 10px}
 .myq .tag{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:2px 6px;flex:none}
 .myq p{margin:0;flex:1;min-width:0;overflow-wrap:anywhere}
+.imp{margin-bottom:18px}.imp-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.imp-row input[type=file]{flex:1;min-width:0;font:inherit;font-size:13px}
+#implist{display:grid;gap:8px;margin-top:10px}
+.impq{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:10px;align-items:start;border:1px solid var(--line);border-radius:8px;padding:9px 10px}
+.impq p{margin:0 0 4px;overflow-wrap:anywhere}.impq ol{margin:0 0 4px;padding-left:22px;font-size:13px}.impq .ans{font-size:12.5px;color:var(--muted)}
+.impq select{font:inherit;font-size:12.5px;padding:1px 4px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.impq .ai{color:var(--warn)}.impq .bad{color:var(--warn);font-size:12.5px}.impq .pq{border-top:1px dashed var(--line);padding-top:5px;margin-top:5px}
+.myq .meta{display:block;font-size:12px;color:var(--muted)}.myq .act{display:flex;gap:10px;flex:none}
+.myq .get{font:inherit;font-size:12px;border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600}
 .myq .del{font:inherit;font-size:12px;border:0;background:none;color:var(--warn);cursor:pointer;flex:none}
 .empty{color:var(--muted);font-size:13px;border:1px dashed var(--line);border-radius:8px;padding:14px}
 
@@ -112,6 +120,7 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
 .mline.h{width:66px;height:17px}
 .tq-s{display:grid;grid-template-columns:28px 1fr}
 .tq-s b{font-weight:700}
+.dt{border-collapse:collapse;margin:4px 0 5px;font-size:.92em}.dt th,.dt td{border:1px solid var(--sheet-ink);padding:1px 5px;text-align:center}.dt td:first-child{text-align:left}
 .tq-o{padding-left:28px;margin-top:4px;display:grid;grid-template-columns:1fr;gap:2px}
 .tq-o.g2{grid-template-columns:1fr 1fr}
 .st{list-style:none;margin:5px 0 0;padding:0}
@@ -207,7 +216,9 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
         <div class="field"><label for="code">Booklet code</label><select id="code"><option>A</option><option>B</option><option>C</option><option>D</option></select></div>
       </div>
       <div class="field"><label for="pattern">Paper pattern</label>
-        <select id="pattern"><option value="new">20 figure + 20 EVS questions (like your sample)</option><option value="old">40 figure questions (older pattern)</option></select></div>
+        <select id="pattern"><option value="new">JNVST 2026-27: 20 Mental Ability + 20 EVS</option><option value="old">Before 2026: 40 Mental Ability</option></select></div>
+      <div class="field"><label for="figtypes">Mental Ability questions</label>
+        <select id="figtypes"><option value="syllabus">All 10 syllabus types</option><option value="sample">5 types, as in your sample paper</option></select></div>
       <div class="field"><label for="fit">Length</label><select id="fit"><option value="8">Fit in 8 pages (cover included)</option><option value="free">No page limit, larger print</option></select></div>
       <label class="check" for="mine"><input id="mine" type="checkbox" checked><span>Use my own questions first, where I have added some</span></label>
       <div class="stack">
@@ -220,13 +231,23 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
         <button type="button" class="btn" id="dl-key">Answer key</button>
         <button type="button" class="btn" id="dl-omr">OMR answer sheet</button>
       </div>
+      <label class="check" for="keep" id="keepwrap" hidden><input id="keep" type="checkbox" checked><span>Also keep a copy in the portal, for other staff</span></label>
       <p id="status" class="status" role="status"></p>
+      <div id="savedwrap" hidden>
+        <hr class="divider">
+        <h2>Saved in the portal</h2>
+        <p class="hint">Papers kept here can be downloaded again by any staff member. You can also upload a PDF of your own.</p>
+        <div class="stack"><label class="btn" id="upwrap"><input type="file" id="upfile" accept="application/pdf" hidden>Upload a PDF</label></div>
+        <p class="status" id="savedmsg" role="status"></p>
+        <div class="mylist" id="saved"><p class="empty">Nothing saved yet.</p></div>
+      </div>
       <hr class="divider">
       <p class="lbl">How sets are made</p>
       <ul class="mix">
         <li>The same set number always gives the same questions, so you can reprint it later.</li>
         <li>Booklet codes B, C and D shuffle the question and option order of that set. Each code has its own answer key.</li>
         <li>Figure and arithmetic questions are drawn fresh for every set number.</li>
+        <li>Each set follows the JNVST syllabus: all 10 Mental Ability types (or the 5 of your sample paper), every Arithmetic topic, EVS and four reading passages.</li>
       </ul>
     </form>
 
@@ -243,6 +264,14 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padd
 
   <section id="view-bank" role="tabpanel" aria-labelledby="tab-bank" hidden>
     <div class="stats" id="stats"></div>
+    <div class="panel imp" id="imp" hidden>
+      <h2>Import questions from a PDF or photos</h2>
+      <p class="hint">Upload a question paper as a PDF, or photos of its pages. AI reads its EVS, Arithmetic and reading-passage questions. Check them, fix any answer, and add the ones you want. Figure questions are left out, because new ones are drawn for every set.</p>
+      <div class="imp-row"><input type="file" id="impfile" accept="application/pdf,image/*" multiple><button class="btn primary" id="impbtn" type="button">Read questions</button><button class="btn" id="impstop" type="button" hidden>Stop</button></div>
+      <p class="status" id="impmsg" role="status"></p>
+      <div id="implist"></div>
+      <div class="stack" id="impact" hidden><button class="btn primary" id="impadd" type="button">Add the ticked questions</button></div>
+    </div>
     <div class="bankgrid">
       <div class="panel">
         <h2>Add your own questions</h2>
@@ -344,7 +373,84 @@ const EVS = [
 ["Mahatma Gandhi led the Dandi March to protest against the tax on:","Cotton","Salt","Tea","Indigo",1],
 ["Which part of a seed grows into the root?","Radicle","Plumule","Seed coat","Cotyledon",0],
 ["Which animal builds dams across streams using sticks and mud?","Beaver","Otter","Crocodile","Turtle",0],
-["Which of these does a green plant need to make its food?","Sunlight, water and air","Only soil","Only darkness","Only salt",0]
+["Which of these does a green plant need to make its food?","Sunlight, water and air","Only soil","Only darkness","Only salt",0],
+// Class V EVS themes (NCERT "Looking Around"): senses, food, water, health, shelter, fuel, travel, our country
+["Which animal can sleep with one eye open to stay alert?","Dolphin","Cow","Hen","Goat",0],
+["Ants find the way to their food by following a:","Sound","Smell","Light","Colour",1],
+["Which of these birds can see a small animal on the ground from very high up?","Eagle","Sparrow","Hen","Duck",0],
+["Snakes do not have ears outside their body. They sense sound mainly through:","Their eyes","Vibrations in the ground","Their tail","Their skin colour",1],
+["The Braille script, made of raised dots, helps people who cannot:","Hear","Walk","See","Speak",2],
+["Saliva in our mouth helps to:","Break down food","Clean our teeth","Cool the body","Make blood",0],
+["The food we eat is finally digested and absorbed mainly in the:","Mouth","Small intestine","Food pipe","Large intestine",1],
+["A patient who cannot eat is often given glucose because it:","Gives quick energy","Builds muscles","Cures fever","Makes bones strong",0],
+["Mango pickle stays good for a long time mainly because of:","Water and sugar","Oil, salt and spices","Ice","Milk",1],
+["Bread left in a damp place for a few days often grows a fuzzy layer called:","Rust","Fungus (mould)","Moss","Dust",1],
+["Which of these is dried in the sun to keep it for many months?","Fresh milk","Papad","Ice cream","Curd",1],
+["Which of these is a seed that spreads with the help of the wind?","Coconut","Cotton seed","Mango","Pea",1],
+["Coconut seeds are mainly carried to faraway places by:","Wind","Water","Birds","Animals' fur",1],
+["Before germination, a seed is usually soaked in water because it:","Softens the seed coat","Makes the seed heavier","Kills the seed","Changes its colour",0],
+["Which part of a plant makes the seeds?","Root","Stem","Flower","Leaf",2],
+["Which of these vegetables is a root?","Potato","Carrot","Onion","Brinjal",1],
+["Which of these vegetables is a stem?","Carrot","Potato","Radish","Beetroot",1],
+["A baoli or step-well was built in the old days to:","Store water","Grow crops","Keep animals","Make salt",0],
+["Which of these things will float on water?","An iron nail","A stone","A dry leaf","A coin",2],
+["Which of these dissolves completely in water?","Sand","Sugar","Chalk powder","Sawdust",1],
+["Sea water tastes salty because it has a lot of:","Sugar","Common salt","Iron","Soap",1],
+["To get pure drinking water, the safest thing to do with water at home is to:","Boil it","Add colour","Store it uncovered","Freeze it only",0],
+["Mosquitoes breed mostly in:","Dry sand","Stagnant water","Running rivers","Hot ovens",1],
+["Dengue is spread by the bite of the:","Housefly","Aedes mosquito","Cockroach","Bedbug",1],
+["Anaemia is caused by the lack of which mineral in the blood?","Iron","Calcium","Iodine","Sodium",0],
+["Which of these is a rich source of iron?","Green leafy vegetables","Sugar","Butter","Salt",0],
+["Mountaineers carry oxygen cylinders when they climb very high because:","There is less oxygen high up","It is too hot","They feel thirsty","It keeps them clean",0],
+["Bachendri Pal is famous as the first Indian woman to:","Go to space","Climb Mount Everest","Swim across a sea","Fly a plane",1],
+["Golconda Fort, famous for its clever sound system, is near:","Hyderabad","Jaipur","Delhi","Kolkata",0],
+["Kalpana Chawla and Sunita Williams are famous Indian-origin:","Singers","Astronauts","Cricketers","Doctors",1],
+["In space, astronauts float inside their spacecraft because:","They feel no pull towards the floor","They are very light","The air pushes them","They are tired",0],
+["The first Indian to travel in space was:","Rakesh Sharma","Kalpana Chawla","C. V. Raman","A. P. J. Abdul Kalam",0],
+["Petrol and diesel are made from:","Coal","Crude oil (petroleum)","Wood","Natural gas only",1],
+["Which of these fuels causes the least pollution?","Coal","Wood","CNG","Kerosene",2],
+["Which of these is a source of energy that will never run out?","Coal","Petrol","Sunlight","Natural gas",2],
+["Houses in Ladakh have flat roofs and thick walls mainly because:","It is very cold and gets little rain","It is very hot","There are floods","There is no wood",0],
+["Houses built on bamboo stilts are common in:","Rajasthan","Assam and other North-Eastern states","Punjab","Gujarat",1],
+["In an earthquake, the safest thing to do indoors is to:","Run down the stairs","Get under a strong table","Stand near a window","Use the lift",1],
+["Which of these is a natural disaster?","A flood","A traffic jam","A power cut","A broken pipe",0],
+["We blow on hot tea to cool it, but blow on our hands in winter to warm them. This is because:","Fast air from narrowed lips cools, but warm breath from an open mouth warms","Tea is a liquid","Hands are dry","Air is always hot",0],
+["The national bird of India is the:","Sparrow","Peacock","Parrot","Crow",1],
+["The national flower of India is the:","Rose","Lotus","Sunflower","Marigold",1],
+["The national tree of India is the:","Neem","Banyan","Peepal","Mango",1],
+["The Sangai, a deer with brow antlers, lives in which state?","Assam","Manipur","Kerala","Odisha",1],
+["Loktak Lake, famous for its floating islands called phumdis, is in:","Manipur","Meghalaya","Mizoram","Nagaland",0],
+["The rhinoceros with one horn is mostly found in:","Kaziranga National Park","Gir National Park","Jim Corbett National Park","Sundarbans",0],
+["Asiatic lions live in the wild only in the:","Gir forest of Gujarat","Sundarbans","Western Ghats","Kaziranga",0],
+["Which place in Meghalaya is known for very heavy rainfall?","Mawsynram","Jaisalmer","Leh","Chennai",0],
+["Which of these animals is found in the Sundarbans?","Snow leopard","Royal Bengal tiger","Yak","Camel",1],
+["Which of these is a hill station in India?","Shimla","Kanpur","Nagpur","Patna",0],
+["The Ganga river starts from the:","Gangotri glacier","Western Ghats","Thar Desert","Bay of Bengal",0],
+["Which of these is used to find directions?","Thermometer","Compass","Stethoscope","Telescope",1],
+["On a map, the direction at the top is usually:","South","East","North","West",2],
+["A map drawn to show where places are, using small signs, uses symbols called:","Scale","Legend (key)","Grid","Globe",1],
+["A model of the Earth is called a:","Map","Globe","Compass","Atlas",1],
+["The Moon shines because it:","Makes its own light","Reflects the light of the Sun","Is on fire","Has many lamps",1],
+["The Sun is a:","Planet","Star","Satellite","Comet",1],
+["Which of these is a group of stars that seems to form a pattern in the night sky?","Constellation","Planet","Satellite","Orbit",0],
+["Which of these is passed on from parents to children?","The colour of the eyes","A scar from a fall","Knowing how to swim","Short hair",0],
+["People who move from place to place with their animals in search of grass are called:","Farmers","Nomads (herders)","Traders","Fishermen",1],
+["Sugarcane workers often move from Maharashtra to other places at harvest time because:","They get work cutting cane","They go on holiday","They study","They want rain",0],
+["Which of these is an old Indian form of farming in which forest is cleared and land is used for a few years?","Terrace farming","Jhum (shifting) cultivation","Fish farming","Hydroponics",1],
+["Step-like fields cut into hill slopes for growing crops are called:","Terrace fields","Flood plains","Deserts","Valleys",0],
+["Which of these is a major food crop grown in winter (rabi season)?","Rice","Wheat","Jute","Cotton",1],
+["Animals that eat both plants and animals are called:","Herbivores","Carnivores","Omnivores","Decomposers",2],
+["Which of these breathes through gills?","Fish","Frog (adult)","Whale","Snake",0],
+["Which of these is a carnivore?","Cow","Tiger","Rabbit","Goat",1],
+["Honey bees tell other bees where flowers are by:","Singing","A special dance","Changing colour","Writing marks",1],
+["Spiders catch their food with the help of:","Their wings","A web","Their teeth only","Water",1],
+["Which of these is found in an ant hill?","Many ants living together","Only one ant","Bees","Butterflies",0],
+["The Chipko movement was started to save:","Rivers","Trees","Tigers","Birds",1],
+["Which of these is a reason why forests are important?","They give us oxygen and wood","They make noise","They cause floods","They have no use",0],
+["People in Bishnoi villages of Rajasthan are known for protecting:","Trees and blackbuck","Rivers","Mountains","Fish",0],
+["Which of these is a safe way to cross a road?","At a zebra crossing","Between parked cars","Running suddenly","Where there is a curve",0],
+["Which single number can be dialled anywhere in India for any emergency (police, fire or ambulance)?","112","786","121","555",0],
+["Which of these makes the water in a pond dirty and unsafe?","Throwing waste into it","Rain","Fish","Lotus plants",0]
 ];
 
 // Passages: text paragraphs + 5 questions. A question is {q, o, a} or {st:[(i),(ii)], a}.
@@ -427,7 +533,87 @@ qs:[{q:"Mangroves are special because they can grow in:",o:["Deserts","Salty wat
 {q:"How do mangroves help during cyclones?",o:["They bring rain","They slow down winds and waves","They make the sea calm forever","They give shelter to ships"],a:1},
 {q:"Which animal in the Sundarbans has learnt to swim between islands?",o:["Elephant","Royal Bengal tiger","Lion","Rhinoceros"],a:1},
 {q:"What is the antonym of <b>protect</b>?",o:["Guard","Endanger","Save","Shield"],a:1},
-{q:"The Sundarbans is spread across India and ______ .",o:["Nepal","Bangladesh","Bhutan","Myanmar"],a:1}]}
+{q:"The Sundarbans is spread across India and ______ .",o:["Nepal","Bangladesh","Bhutan","Myanmar"],a:1}]},
+
+{p:["In the heart of Imphal there is a market unlike most others. It is called Ima Keithel, which means \"Mothers' Market\". Thousands of women sell goods there every day, and only women may run the stalls. It is one of the largest markets in Asia that is run entirely by women.",
+"Early in the morning, the sellers arrive with baskets of fresh vegetables, fish, fruit, handwoven shawls and pottery. They sit in long rows under tin roofs, chatting with one another while they arrange their goods. Many of them have kept the same stall for years, and some learnt the trade from their own mothers.",
+"The market is more than a place to buy and sell. The women help one another in hard times, lend money to those in need, and speak up together when something unfair happens. In the past, the women of this market even led protests against unjust rules.",
+"Visitors who walk through Ima Keithel see not only colourful goods but also the strength of women who work together."],
+qs:[{q:"What does the name Ima Keithel mean?",o:["Mothers' Market","Fish Market","Old Market","Women's School"],a:0},
+{q:"Who are allowed to run the stalls in this market?",o:["Only men","Only women","Only children","Only visitors"],a:1},
+{st:["Some sellers learnt the trade from their mothers.","The market opens only at night."],a:1},
+{q:"What is the synonym of <b>unjust</b>?",o:["Fair","Unfair","Kind","Strong"],a:1},
+{q:"What is the antonym of <b>arrive</b>?",o:["Come","Reach","Depart","Enter"],a:2}]},
+
+{p:["As a boy, A. P. J. Abdul Kalam lived in the small town of Rameswaram in Tamil Nadu. His family was not rich, and young Kalam wanted to help at home. So, every morning before school, he collected newspapers and delivered them to houses in the town.",
+"The work began very early, but Kalam never complained. He also loved to study. In the evenings, he sat by a lamp and read his lessons with great care. His teachers noticed his curiosity and encouraged him to ask questions.",
+"One teacher took his class to the seashore to show them how birds fly. Kalam watched the birds for a long time and dreamt of making machines that could fly. That dream stayed with him.",
+"Years later, Kalam became a famous scientist who helped India build rockets and missiles. He also became the President of India. Even then, he loved talking to children and told them, \"Dream, dream, dream. Dreams turn into thoughts, and thoughts result in action.\""],
+qs:[{q:"Where did Kalam live as a boy?",o:["Chennai","Rameswaram","Delhi","Madurai"],a:1},
+{q:"What did Kalam do every morning before school?",o:["Sold fruit","Delivered newspapers","Went fishing","Watched birds"],a:1},
+{st:["A teacher showed the class how birds fly.","Kalam later became the President of India."],a:0},
+{q:"What is the synonym of <b>curiosity</b>?",o:["Laziness","Fear","Eagerness to know","Anger"],a:2},
+{q:"What is the antonym of <b>famous</b>?",o:["Unknown","Popular","Great","Rich"],a:0}]},
+
+{p:["Every year, between January and March, a beach in Odisha called Gahirmatha becomes the stage for a wonderful event. Thousands of olive ridley sea turtles swim in from the sea, often on the same few nights, to lay their eggs in the sand. This mass nesting is called an arribada, a Spanish word for \"arrival\".",
+"Each mother turtle digs a pit with her flippers, lays about a hundred eggs, covers them with sand and returns to the sea. She never sees her young ones. About fifty days later, the baby turtles break out of their shells and race towards the water.",
+"Their journey is full of danger. Birds, dogs and crabs wait to catch them, and bright lights from houses can confuse them so that they crawl away from the sea. Fishing nets near the coast also trap many adult turtles.",
+"To protect them, fishing is stopped near the beach during the nesting season, and volunteers guard the nests. Thanks to such efforts, many more hatchlings now reach the sea safely."],
+qs:[{q:"In which state is Gahirmatha beach?",o:["Kerala","Odisha","Goa","Gujarat"],a:1},
+{q:"About how many days do the eggs take to hatch?",o:["Ten","Thirty","Fifty","Hundred"],a:2},
+{st:["Bright lights can make baby turtles crawl the wrong way.","The mother turtle stays to look after her young ones."],a:1},
+{q:"What is the synonym of <b>confuse</b>?",o:["Guide","Puzzle","Help","Feed"],a:1},
+{q:"What is the antonym of <b>danger</b>?",o:["Risk","Safety","Threat","Harm"],a:1}]},
+
+{p:["Ralegan Siddhi was once a dry village in Maharashtra. The rains came for only a few weeks each year, and the water ran off the bare hills and was lost. The wells dried up in summer, crops failed, and many families left to find work in the cities.",
+"Then the villagers decided to change things. Together, they built small check dams across the streams and dug trenches along the slopes of the hills. They planted thousands of trees. Now, when it rained, the water slowed down and soaked into the ground instead of rushing away.",
+"Within a few years, the wells began to fill again. Farmers could grow two crops a year, and the village had enough water for drinking and for cattle. Families who had left came back home.",
+"People from many parts of India and even from other countries have visited the village to learn how it saved its water. Ralegan Siddhi shows that when people work together, even a dry land can turn green."],
+qs:[{q:"Why did many families leave the village at first?",o:["There was no school","Crops failed for lack of water","There were floods","The village was too crowded"],a:1},
+{q:"What did the villagers build across the streams?",o:["Bridges","Check dams","Roads","Houses"],a:1},
+{st:["The villagers planted thousands of trees.","After the work, farmers could grow two crops a year."],a:0},
+{q:"What is the synonym of <b>soaked</b>?",o:["Dried","Absorbed","Burnt","Thrown"],a:1},
+{q:"What is the antonym of <b>enough</b>?",o:["Plenty","Too little","Full","Extra"],a:1}]},
+
+{p:["Tomba had just joined the school football team, but he was the smallest player in it. In his first match, the ball came to him again and again, and each time a bigger boy took it away. The team lost, and Tomba walked home with his head down.",
+"His grandmother saw him and asked what had happened. When he told her, she laughed gently. \"The bamboo near our pond is thin,\" she said, \"but it does not break in a storm. It bends and then stands up again. Be like the bamboo.\"",
+"From the next day, Tomba practised every evening. He could not become bigger, so he learnt to be quicker. He practised turning sharply with the ball and passing it before anyone could reach him. His friends sometimes stayed to help him.",
+"Two months later, his team played the same school again. This time Tomba darted between the tall players and passed the ball for the winning goal. After the match, he ran home to tell his grandmother first."],
+qs:[{q:"Why did Tomba lose the ball in his first match?",o:["He was ill","Bigger boys took it from him","He did not try","The ground was wet"],a:1},
+{q:"What did his grandmother compare him to?",o:["A tall tree","A storm","Bamboo","A pond"],a:2},
+{st:["Tomba practised every evening.","Tomba scored the winning goal himself."],a:1},
+{q:"What is the synonym of <b>darted</b>?",o:["Crawled","Moved quickly","Fell","Waited"],a:1},
+{q:"What is the antonym of <b>sharply</b>?",o:["Quickly","Suddenly","Slowly","Neatly"],a:2}]},
+
+{p:["A honeybee hive is like a busy town. In one hive there may be thousands of bees, and each of them has a job. There is only one queen. She is the largest bee, and her work is to lay eggs. The drones are male bees, and they do not collect food.",
+"Most of the bees are worker bees. Young workers clean the hive and feed the baby bees. Older workers build the wax comb, guard the entrance, and fly out to collect nectar and pollen from flowers.",
+"When a worker finds a field full of flowers, she returns to the hive and performs a little dance. The way she moves tells the other bees in which direction the flowers are and how far away they are.",
+"Bees turn the nectar into honey and store it in the comb for the cold months. While they move from flower to flower, they also carry pollen, which helps plants to make fruits and seeds. Without bees, many of our crops would not grow."],
+qs:[{q:"What is the main work of the queen bee?",o:["Collecting nectar","Laying eggs","Guarding the hive","Building the comb"],a:1},
+{q:"How does a worker bee tell others where the flowers are?",o:["By buzzing loudly","By a dance","By bringing a flower","By changing colour"],a:1},
+{st:["Young worker bees feed the baby bees.","Drones collect most of the food."],a:1},
+{q:"What is the synonym of <b>store</b>?",o:["Keep","Waste","Sell","Throw"],a:0},
+{q:"What is the antonym of <b>largest</b>?",o:["Biggest","Smallest","Heaviest","Oldest"],a:1}]},
+
+{p:["The train left Katra early in the morning. Rahul pressed his face to the window as it climbed into the hills. Soon it entered a long tunnel, and everything went dark. Rahul held his father's hand until the light came back.",
+"\"Look down,\" said his father, a little later. Rahul looked, and his eyes grew wide. The train was crossing a bridge high above a deep valley, and far below, a blue river wound between the rocks. His father told him it was the Chenab Bridge, one of the highest railway bridges in the world.",
+"Rahul asked how anyone could build something so tall. His father explained that engineers had studied the wind, the rocks and even earthquakes for many years before building it, so that it would stay strong for a long time.",
+"When they reached Srinagar, Rahul took out his notebook. On the first page he wrote, \"When I grow up, I will build bridges.\""],
+qs:[{q:"Where did the train journey begin?",o:["Srinagar","Katra","Delhi","Leh"],a:1},
+{q:"What did Rahul do when the train entered the tunnel?",o:["He fell asleep","He held his father's hand","He sang a song","He ate his lunch"],a:1},
+{st:["The engineers studied the wind and the rocks before building the bridge.","The river below the bridge was green."],a:1},
+{q:"What is the synonym of <b>wound</b> (as in 'the river wound between the rocks')?",o:["Hurt","Curved","Stopped","Jumped"],a:1},
+{q:"What is the antonym of <b>deep</b>?",o:["Shallow","Wide","Dark","Long"],a:0}]},
+
+{p:["Old Lakshmi had a small field of groundnuts at the edge of the forest. Every year, just before harvest, a group of monkeys came and dug up much of the crop. Lakshmi tried shouting and banging plates, but the monkeys only ran away for a while and then came back.",
+"One day her grandson, Arjun, had an idea. He noticed that the monkeys always came from the side of the field near a row of tall trees. \"They come because the trees give them a safe place to wait,\" he said. \"What if we give them something to eat over there?\"",
+"So Arjun and his friends planted guava and banana saplings along the forest edge, a little away from the field. In two years, the trees began to bear fruit. The monkeys stayed among the fruit trees and hardly ever came into the groundnut field.",
+"Lakshmi was delighted. \"You did not chase them away,\" she told Arjun. \"You found a way for all of us to live together.\""],
+qs:[{q:"What did Lakshmi grow in her field?",o:["Rice","Groundnuts","Bananas","Wheat"],a:1},
+{q:"Where did the monkeys come from?",o:["The river","The side near a row of tall trees","The village market","The hills far away"],a:1},
+{st:["Arjun planted guava and banana saplings.","After this, the monkeys stopped eating anything."],a:1},
+{q:"What is the synonym of <b>delighted</b>?",o:["Very happy","Angry","Worried","Tired"],a:0},
+{q:"What is the antonym of <b>safe</b>?",o:["Secure","Dangerous","Calm","Quiet"],a:1}]}
 ];
 // ---------- Seeded random numbers ----------
 function seedOf(s){let h=1779033703^s.length;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return (h^h>>>16)>>>0}
@@ -511,8 +697,36 @@ const ARITH=[
   else if(ty===2){const a=r.int(1,8);s=[0,1,2,3,4].map(i=>(a+i)**2);ans=(a+5)**2;w=[ans+1,ans-1,(a+4)**2+(a+4),ans+2]}
   else{const a=r.int(2,10),d=r.int(1,4);s=[a];for(let i=1;i<5;i++)s.push(s[i-1]+d*i);ans=s[4]+d*5;w=[ans+d,ans-d,ans+1,s[4]+d*4]}
   return [`Find the next number in the series: ${s.join(', ')}, ?`,ans,w]}},
-{t:'Ages',f:r=>{const x=r.int(6,15),m=r.int(3,5),y=r.int(2,12);return [`Kiran is ${x} years old. Kiran's mother is ${m} times as old as Kiran. How old will the mother be after ${y} years?`,m*x+y,[m*(x+y),m*x,m*x-y,x+y+m*x/2],v=>v+' years']}}
+{t:'Ages',f:r=>{const x=r.int(6,15),m=r.int(3,5),y=r.int(2,12);return [`Kiran is ${x} years old. Kiran's mother is ${m} times as old as Kiran. How old will the mother be after ${y} years?`,m*x+y,[m*(x+y),m*x,m*x-y,x+y+m*x/2],v=>v+' years']}},
+{t:'Prime factorisation',f:r=>{const ps=r.shuffle([2,2,3,3,5,7,2,3,5,11]).slice(0,r.int(3,4)).sort((a,b)=>a-b),n=ps.reduce((a,b)=>a*b,1),show=a=>a.join(' × ');
+  const merged=ps.length>2?show([ps[0]*ps[1],...ps.slice(2)]):null,swap=[...ps];swap[swap.length-1]=swap[swap.length-1]===2?3:2;
+  return [`The prime factorisation of ${IN(n)} is:`,show(ps),[merged,show(swap.sort((a,b)=>a-b)),show(ps.slice(1)),show([...ps,2]),show(ps.map(x=>x===3?9:x))].filter(Boolean)]}},
+{t:'Approximation',f:r=>{const p=r.pick([10,100,1000]),n=r.int(1001,99999),R=x=>Math.round(n/x)*x,ans=R(p);
+  return [`${IN(n)} rounded off to the nearest ${p===10?'ten':p===100?'hundred':'thousand'} is:`,ans,[Math.floor(n/p)*p,Math.ceil(n/p)*p,R(p*10),p>10?R(p/10):Math.floor(n/100)*100,ans+p]]}},
+{t:'Fraction to decimal',f:r=>{const d=r.pick([4,5,8,20,25]);let n;do{n=r.int(1,d-1)}while(gcd(n,d)!==1);const D=x=>String(+x.toFixed(4));
+  if(r.chance(.5))return [`${frac(n,d)} written as a decimal is:`,D(n/d),[D(n/d/10),`${n}.${d}`,D(n/d*10),D(n/d+0.1),D(d/n)]];
+  return [`${D(n/d)} written as a fraction in its lowest terms is:`,fracShow([n,d]),[fracShow([n*2,d*3]),frac(n,10),fracShow(fracR(n+1,d)),fracShow(fracR(n,d+5)),frac(d,n)]]}},
+{t:'Volume',f:r=>{if(r.chance(.4)){const a=r.int(3,12);return [`What is the volume of a cube whose each edge is ${a} cm?`,a**3,[a*a,6*a*a,12*a,3*a,a**3+a],x=>IN(x)+' cm³']}
+  const l=r.int(5,20),b=r.int(3,12),h=r.int(2,10);return [`A box is ${l} cm long, ${b} cm wide and ${h} cm high. What is its volume?`,l*b*h,[2*(l*b+b*h+h*l),l*b,l+b+h,l*b*h*2,l*b*h-l],x=>IN(x)+' cm³']}},
+{t:'Data handling',f:r=>{const days=['Mon','Tue','Wed','Thu','Fri'],item=r.pick(['mangoes','books','notebooks','pencils','eggs']),v=days.map(()=>r.int(3,19)*5);
+  const table=`<table class="dt"><tr><th>Day</th>${days.map(d=>`<th>${d}</th>`).join('')}</tr><tr><td>${item[0].toUpperCase()+item.slice(1)} sold</td>${v.map(x=>`<td>${x}</td>`).join('')}</tr></table>`;
+  const ty=r.int(0,2);let i,j;do{i=r.int(0,4);j=r.int(0,4)}while(i===j||v[i]===v[j]);if(v[i]<v[j])[i,j]=[j,i];const sum=v.reduce((a,b)=>a+b,0);
+  if(ty===0)return [`The table shows the number of ${item} sold in a shop in a week. ${table}How many more ${item} were sold on ${days[i]} than on ${days[j]}?`,v[i]-v[j],[v[i]+v[j],v[i],v[j],v[i]-v[j]+5,v[i]-v[j]+10]];
+  if(ty===1)return [`The table shows the number of ${item} sold in a shop in a week. ${table}How many ${item} were sold in all?`,sum,[sum-v[0],sum+5,sum+10,sum-10,sum-v[4]]];
+  return [`The table shows the number of ${item} sold in a shop in a week. ${table}What was the average number of ${item} sold per day?`,sum/5,[sum,sum/5+5,sum/4,Math.max(...v),Math.min(...v)]]}},
+{t:'Triangles and quadrilaterals',f:r=>{if(r.chance(.6)){let a,b;do{a=r.int(25,95);b=r.int(25,95)}while(a+b>=165);const c=180-a-b;
+    return [`Two angles of a triangle are ${a}° and ${b}°. What is the third angle?`,c,[360-a-b,a+b,c+10,90-Math.abs(a-b)||c+20,c-10],v=>v+'°']}
+  let a,b,c;do{a=r.int(60,120);b=r.int(60,120);c=r.int(60,120)}while(a+b+c>=330);const d=360-a-b-c;
+  return [`Three angles of a quadrilateral are ${a}°, ${b}° and ${c}°. What is the fourth angle?`,d,[540-a-b-c,d+10,d-10,a+b+c-180,d+20],v=>v+'°']}}
 ];
+// The topics of the NVS Arithmetic syllabus. Every set has one question from each,
+// and its last places go to the extra word-problem types.
+const ARITH_SYLLABUS={'Number and numeration':['Indian place value','Number names','Place and face value','Greatest and smallest numbers','Roman numerals'],
+  'Four fundamental operations':['Missing number','Unit digit'],'Fractions':['Adding fractions','Fraction of a quantity','Fraction word problem'],
+  'Factors and multiples':['Divisibility','Prime numbers','Prime factorisation'],'LCM and HCF':['HCF','LCM','LCM word problem'],'Decimals':['Decimals'],
+  'Conversion of fractions and decimals':['Fraction to decimal'],'Measurement':['Units of measurement','Time'],'Distance, time and speed':['Speed, distance and time'],
+  'Approximation':['Approximation'],'Simplification':['Simplification'],'Percentage':['Percentage'],'Profit and loss':['Profit and loss'],'Simple interest':['Simple interest'],
+  'Perimeter, area and volume':['Area and perimeter','Square','Volume'],'Data analysis':['Data handling'],'Types of angles':['Angles'],'Geometry':['Triangles and quadrilaterals']};
 
 function buildArith(gen,r){
   for(let t=0;t<40;t++){
@@ -553,6 +767,7 @@ function figInner(f,{cell=20,off=10,sw=3,dr=5.5}={}){const P=c=>off+c*cell;let h
   for(const [x,y] of f.o)h+=`<circle cx="${P(x)}" cy="${P(y)}" r="${dr}" fill="#fff" stroke="${INK}" stroke-width="${sw*.8}"/>`;return h}
 const box=(inner,cls='fig')=>`<svg class="${cls}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="97" height="97" fill="#fff" stroke="${INK}" stroke-width="2.5"/>${inner}</svg>`;
 const figBox=f=>box(figInner(f));
+const bare=inner=>`<svg class="fig" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`; // no frame: the figure is the sheet itself
 const qmark=()=>box(`<text x="50" y="52" text-anchor="middle" dominant-baseline="middle" font-family="Arial,Helvetica,sans-serif" font-size="44" font-weight="700" fill="${INK}">?</text>`);
 function pickDistinct(r,correctKey,cands,n=3){const seen=new Set([correctKey]),out=[];for(const c of r.shuffle(cands)){if(seen.has(c.k))continue;seen.add(c.k);out.push(c.svg);if(out.length===n)break}if(out.length<n)throw new Error('distractors');return out}
 
@@ -601,13 +816,132 @@ function maMirror(r,water){
     o=[figBox(ga),...pickDistinct(r,fkey(ga),cands)];q=figBox(f)}
   return {q:water?`<span class="ma-wat">${q}${waterLine}</span>`:`<span class="ma-mir">${q}${mirrorLine}</span>`,o,a:0}}
 
+// ---------- The other five figure types of the JNVST Mental Ability syllabus ----------
+const SHADE='#d4d4d4';
+const polySvg=(pts,{cell=20,ox=10,oy=10,fill=SHADE,sw=2.5}={})=>`<polygon points="${pts.map(([x,y])=>`${ox+x*cell},${oy+y*cell}`).join(' ')}" fill="${fill}" stroke="${INK}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+const ptsKey=pts=>{const mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));return pts.map(([x,y])=>(x-mx)+','+(y-my)).sort().join(';')};
+const tPts=(pts,t)=>pts.map(([x,y])=>TF[t](x,y));
+// a shape drawn alone, centred in its box, at the same scale as the question figure
+function pieceBox(pts){const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),c=20;
+  const ox=50-(Math.min(...xs)+Math.max(...xs))/2*c,oy=50-(Math.min(...ys)+Math.max(...ys))/2*c;return box(polySvg(pts,{cell:c,ox,oy}))}
+
+// Figure matching: the one answer figure that is exactly the question figure; the others are turned, mirrored or changed a little.
+function alterFig(r,f){const g={s:f.s.map(s=>[...s]),d:f.d.map(p=>[...p]),o:f.o.map(p=>[...p])};
+  if((g.d.length||g.o.length)&&r.chance(.4)){if(g.d.length)g.o.push(g.d.pop());else g.d.push(g.o.pop());return g}
+  const i=r.int(0,g.s.length-1),[a,b,c,d]=g.s[i],opts=[];
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nc=c+dx,nd=d+dy;if(nc>=0&&nc<=4&&nd>=0&&nd<=4&&!(nc===a&&nd===b))opts.push([a,b,nc,nd])}
+  g.s[i]=r.pick(opts);return g}
+function maMatch(r){const f=randFig(r);
+  const cands=[...r.shuffle(['mh','mv','r90','r270','r180']).slice(0,2).map(t=>tfig(f,t)),alterFig(r,f),alterFig(r,f),alterFig(r,f)].map(g=>({k:fkey(g),svg:figBox(g)}));
+  return {q:figBox(f),o:[figBox(f),...pickDistinct(r,fkey(f),cands)],a:0}}
+
+// Geometrical figure completion: a corner piece is cut out of a square; find the piece that fills it, without turning.
+const CORNERS=[[0,0],[4,0],[4,4],[0,4]];
+function cornerPiece(r){
+  for(let t=0;t<200;t++){const [cx,cy]=r.pick(CORNERS),sx=cx?-1:1,sy=cy?-1:1,a=r.int(2,4),b=r.int(2,4);if(a===4&&b===4)continue;
+    const inner=[];for(let i=r.int(1,2);i>0;i--)inner.push([cx+sx*r.int(1,3),cy+sy*r.int(1,3)]);
+    const ang=([x,y])=>Math.atan2((y-cy)*sy,(x-cx)*sx);
+    if(new Set(inner.map(ang)).size!==inner.length)continue;inner.sort((p,q)=>ang(p)-ang(q));
+    // each inner corner must stick out past the straight cut, so the piece is not a plain triangle
+    const pts=[[cx,cy],[cx+sx*a,cy],...inner,[cx,cy+sy*b]];
+    const turn=(p,q,s)=>(q[0]-p[0])*(s[1]-q[1])-(q[1]-p[1])*(s[0]-q[0]);let flat=false;
+    for(let i=1;i<pts.length-1;i++)if(turn(pts[i-1],pts[i],pts[i+1])===0)flat=true;if(flat)continue;
+    return {pts,cx,cy,a,b,inner,sx,sy}}
+  throw new Error('piece')}
+function maComplete(r){const P=cornerPiece(r),{cx,cy,sx,sy,a,b,inner}=P;
+  const rest=[[cx+sx*a,cy],[4-cx,cy],[4-cx,4-cy],[cx,4-cy],[cx,cy+sy*b],...[...inner].reverse()].filter((p,i,A)=>i===0||p[0]!==A[i-1][0]||p[1]!==A[i-1][1]);
+  const key=ptsKey(P.pts),cands=[];
+  for(const t of ['r90','r180','r270','mh','mv','td','ta']){const q=tPts(P.pts,t);cands.push({k:ptsKey(q),svg:pieceBox(q)})}
+  for(let i=0;i<6;i++){const q=P.pts.map(p=>[...p]),j=r.int(2,1+inner.length),d=r.pick([[1,0],[-1,0],[0,1],[0,-1]]);q[j]=[q[j][0]+d[0],q[j][1]+d[1]];
+    if(q[j].some(v=>v<0||v>4))continue;cands.push({k:ptsKey(q),svg:pieceBox(q)})}
+  return {q:box(polySvg(rest)),o:[pieceBox(P.pts),...pickDistinct(r,key,cands)],a:0}}
+
+// Punched hole pattern: a square sheet is folded once, holes are punched; which figure shows it opened out?
+const HALF=[0.5,1.5,2.5,3.5];
+function arrowSvg([x1,y1],[x2,y2]){const mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),cx=mx-dy/L*18,cy=my+dx/L*18;
+  const ux=x2-cx,uy=y2-cy,ul=Math.hypot(ux,uy),hx=ux/ul,hy=uy/ul;
+  return `<path d="M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}" fill="none" stroke="${INK}" stroke-width="2.2"/><polygon points="${x2},${y2} ${x2-hx*9-hy*5},${y2-hy*9+hx*5} ${x2-hx*9+hy*5},${y2-hy*9-hx*5}" fill="${INK}"/>`}
+function maPunch(r){
+  const fold=r.pick(['v','h','d','a']),s=r.pick([1,-1]);
+  const keep={v:(x,y)=>(x-2)*s>0,h:(x,y)=>(y-2)*s>0,d:(x,y)=>(x-y)*s>0,a:(x,y)=>(x+y-4)*s>0}[fold];
+  const REF={v:([x,y])=>[4-x,y],h:([x,y])=>[x,4-y],d:([x,y])=>[y,x],a:([x,y])=>[4-y,4-x],o:([x,y])=>[4-x,4-y]};
+  const cells=[];for(const x of HALF)for(const y of HALF)if(keep(x,y))cells.push([x,y]);
+  const H=r.shuffle(cells).slice(0,r.chance(.5)?1:2);
+  const K=hs=>hs.map(p=>p.join(',')).sort().join(';'),uniq=hs=>{const m=new Map();hs.forEach(p=>m.set(p.join(','),p));return [...m.values()]};
+  const holes=hs=>hs.map(([x,y])=>`<circle cx="${10+x*20}" cy="${10+y*20}" r="5.5" fill="${INK}"/>`).join('');
+  const paper=`<rect x="10" y="10" width="80" height="80" fill="#fff" stroke="${INK}" stroke-width="2.5"/>`,sheet=hs=>bare(paper+holes(hs));
+  const full=uniq([...H,...H.map(REF[fold])]);
+  const cands=[H,H.map(REF[fold])];for(const w of Object.keys(REF))if(w!==fold)cands.push(uniq([...H,...H.map(REF[w])]));
+  const shifted=H.map(([x,y])=>[x,y]);if(shifted.length){const p=shifted[0];const q=HALF.filter(v=>v!==p[1]);shifted[0]=[p[0],r.pick(q)];cands.push(uniq([...shifted,...shifted.map(REF[fold])]))}
+  // question: the sheet with its fold line and arrow, then the folded sheet with the holes
+  const line={v:'M50 6V94',h:'M6 50H94',d:'M8 8L92 92',a:'M92 8L8 92'}[fold];
+  const from={v:[50-s*24,50],h:[50,50-s*24],d:[50-s*18,50+s*18],a:[50-s*18,50-s*18]}[fold],to=[100-from[0],100-from[1]];
+  const halfShape={v:s>0?[[2,0],[4,0],[4,4],[2,4]]:[[0,0],[2,0],[2,4],[0,4]],h:s>0?[[0,2],[4,2],[4,4],[0,4]]:[[0,0],[4,0],[4,2],[0,2]],
+    d:s>0?[[0,0],[4,0],[4,4]]:[[0,0],[0,4],[4,4]],a:s>0?[[4,0],[4,4],[0,4]]:[[0,0],[4,0],[0,4]]}[fold];
+  const q1=bare(`${paper}<path d="${line}" stroke="${INK}" stroke-width="2" stroke-dasharray="5 4"/>${arrowSvg(from,to)}`);
+  const q2=bare(polySvg(halfShape,{fill:'#fff',sw:2.5})+holes(H));
+  return {q:q1+SYM('→')+q2,o:[sheet(full),...pickDistinct(r,K(full),cands.map(c=>({k:K(c),svg:sheet(c)})))],a:0}}
+
+// Space visualisation: a square is cut into two pieces along a zigzag line; which answer figure do the pieces make when joined?
+function cutPath(r){for(;;){const xs=[r.int(1,3)];for(let i=1;i<5;i++)xs.push(Math.min(3,Math.max(1,xs[i-1]+r.pick([-1,0,1]))));if(new Set(xs).size>1)return xs}}
+function squarePieces(xs,flip){const path=xs.map((x,y)=>[x,y]);
+  let L=[[0,0],...path,[0,4]],R=[[4,0],[4,4],...[...path].reverse()];if(flip){L=tPts(L,'td');R=tPts(R,'td')}return [L,R]}
+function maSpace(r){const flip=r.chance(.5),xs=cutPath(r),key=x=>x.join(''),made=x=>{const [L,R]=squarePieces(x,flip);return bare(polySvg(L)+polySvg(R))};
+  const [L,R]=squarePieces(xs,flip),c=16,g=9;
+  const q=box(flip?polySvg(L,{cell:c,ox:18,oy:18-g})+polySvg(R,{cell:c,ox:18,oy:18+g}):polySvg(L,{cell:c,ox:18-g,oy:18})+polySvg(R,{cell:c,ox:18+g,oy:18}),'fig big');
+  const cands=[xs.map(x=>4-x),[...xs].reverse(),[...xs].reverse().map(x=>4-x)];for(let i=0;i<6;i++)cands.push(cutPath(r));
+  for(let i=0;i<3;i++){const y=xs.map(v=>v);const j=r.int(0,4);y[j]=y[j]===2?r.pick([1,3]):2;cands.push(y)}
+  return {q,o:[made(xs),...pickDistinct(r,key(xs),cands.map(x=>({k:key(x),svg:made(x)})))],a:0}}
+
+// Embedded figure: the question figure is hidden, same size and same way up, in one answer figure only.
+const unitsOf=segs=>{const out=new Set();for(const [a,b,c,d] of segs){const L=Math.max(Math.abs(c-a),Math.abs(d-b)),dx=(c-a)/L,dy=(d-b)/L;
+  for(let i=0;i<L;i++){const p=[a+dx*i,b+dy*i],q=[a+dx*(i+1),b+dy*(i+1)];out.add((p[0]<q[0]||p[0]===q[0]&&p[1]<q[1]?[...p,...q]:[...q,...p]).join(','))}}return out};
+function hides(big,small){const B=unitsOf(big),S=[...unitsOf(small)].map(k=>k.split(',').map(Number));
+  for(let dx=-4;dx<=4;dx++)for(let dy=-4;dy<=4;dy++)if(S.every(([a,b,c,d])=>B.has([a+dx,b+dy,c+dx,d+dy].join(','))))return true;return false}
+const segsSvg=segs=>box(segs.map(([a,b,c,d])=>`<line x1="${10+a*20}" y1="${10+b*20}" x2="${10+c*20}" y2="${10+d*20}" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/>`).join(''));
+const segsKey=segs=>[...unitsOf(segs)].sort().join(';');
+function smallShape(r){const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for(;;){let x=0,y=0,prev=null;const s=[];for(let i=r.int(3,4);i>0;i--){const c=dirs.filter(d=>!prev||!(d[0]===-prev[0]&&d[1]===-prev[1]));const d=r.pick(c);s.push([x,y,x+d[0],y+d[1]]);x+=d[0];y+=d[1];prev=d}
+    const xs=s.flatMap(g=>[g[0],g[2]]),ys=s.flatMap(g=>[g[1],g[3]]),mx=Math.min(...xs),my=Math.min(...ys);if(Math.max(...xs)-mx>2||Math.max(...ys)-my>2)continue;
+    const f=s.map(([a,b,c,d])=>[a-mx,b-my,c-mx,d-my]);if(unitsOf(f).size!==f.length)continue;
+    if(['mh','mv','r90','r180'].some(t=>hides(tfig({s:f,d:[],o:[]},t).s,f)))continue;return f}}
+function withExtras(r,shape){const xs=shape.flatMap(g=>[g[0],g[2]]),ys=shape.flatMap(g=>[g[1],g[3]]);
+  const ox=r.int(0,4-Math.max(...xs)+Math.min(...xs))-Math.min(...xs),oy=r.int(0,4-Math.max(...ys)+Math.min(...ys))-Math.min(...ys);
+  const segs=shape.map(([a,b,c,d])=>[a+ox,b+oy,c+ox,d+oy]),pts=segs.flatMap(g=>[[g[0],g[1]],[g[2],g[3]]]);
+  for(let n=r.int(4,6),t=0;n>0&&t<200;t++){const [x,y]=r.pick(pts),d=r.pick([[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]),nx=x+d[0],ny=y+d[1];
+    if(nx<0||nx>4||ny<0||ny>4)continue;const g=[x,y,nx,ny];if(unitsOf(segs).has([...unitsOf([g])][0]))continue;segs.push(g);pts.push([nx,ny]);n--}
+  return segs}
+function maEmbed(r){const f=smallShape(r);
+  const xs=f.flatMap(g=>[g[0],g[2]]),ys=f.flatMap(g=>[g[1],g[3]]),cx=Math.round((4-Math.max(...xs))/2),cy=Math.round((4-Math.max(...ys))/2);
+  const qf=f.map(([a,b,c,d])=>[a+cx,b+cy,c+cx,d+cy]);
+  const right=withExtras(r,f),cands=[];
+  for(let t=0;t<40&&cands.length<8;t++){const g=tfig({s:f,d:[],o:[]},r.pick(['mh','mv','r90','r180','r270','td','ta'])).s;const big=withExtras(r,g);if(!hides(big,f))cands.push({k:segsKey(big),svg:segsSvg(big)})}
+  return {q:segsSvg(qf),o:[segsSvg(right),...pickDistinct(r,segsKey(right),cands)],a:0}}
+
+// Each type makes n questions; dir(a,b) is the printed direction for questions a to b.
+const QR=(a,b)=>b===a+1?`questions ${a} and ${b}`:`questions ${a} to ${b}`;
+// a rare figure has too few distinct wrong answers; draw another one
+const many=(f,n,r)=>[...Array(n)].map((_,i)=>{for(let t=0;;t++){try{return f(r,i,n)}catch(e){if(t>30)throw e}}});
 const MA_TYPES={
-  pattern:{name:'Pattern completion',make:(r)=>[0,1,2,3].map(()=>maPattern(r)),dir:(a,b)=>`In questions ${a} to ${b}, a part of the question figure on the left is missing. Find the answer figure (A), (B), (C) or (D) that fits into the missing part to complete the pattern, without turning it.`},
-  series:{name:'Figure series',make:(r)=>[false,false,true,true].map(d=>maSeries(r,d)),dir:(a,b)=>`In questions ${a} to ${b}, the three question figures form a series. Find the answer figure that should come next, in place of the question mark (?).`},
-  odd:{name:'Odd one out',make:(r)=>[0,1,2,3].map(()=>maOdd(r)),dir:(a,b)=>`In questions ${a} to ${b}, four figures (A), (B), (C) and (D) are given. Three of them are alike in a certain way and one is different. Find the figure that is different.`},
-  mirror:{name:'Mirror and water images',make:(r)=>[false,false,true,true].map(w=>maMirror(r,w)),dir:(a,b)=>`In questions ${a} and ${a+1}, find the correct mirror image of the question figure when a mirror is placed along the line XY. In questions ${b-1} and ${b}, find the correct water image of the question figure when the water surface is along the line XY.`},
-  analogy:{name:'Figure analogy',make:(r)=>[0,1,2,3].map(()=>maAnalogy(r)),dir:(a,b)=>`In questions ${a} to ${b}, the first two figures are related in a certain way. Find the answer figure that is related to the third figure in the same way.`}
+  odd:{name:'Odd one out',make:(r,n)=>many(maOdd,n,r),dir:(a,b)=>`In ${QR(a,b)}, four figures (A), (B), (C) and (D) are given. Three of them are alike in a certain way and one is different. Find the figure that is different.`},
+  match:{name:'Figure matching',make:(r,n)=>many(maMatch,n,r),dir:(a,b)=>`In ${QR(a,b)}, find the answer figure that is exactly the same as the question figure.`},
+  pattern:{name:'Pattern completion',make:(r,n)=>many(maPattern,n,r),dir:(a,b)=>`In ${QR(a,b)}, a part of the question figure on the left is missing. Find the answer figure (A), (B), (C) or (D) that fits into the missing part to complete the pattern, without turning it.`},
+  series:{name:'Figure series completion',make:(r,n)=>many((r,i,n)=>maSeries(r,i>=n/2),n,r),dir:(a,b)=>`In ${QR(a,b)}, the three question figures form a series. Find the answer figure that should come next, in place of the question mark (?).`},
+  analogy:{name:'Analogy',make:(r,n)=>many(maAnalogy,n,r),dir:(a,b)=>`In ${QR(a,b)}, the first two figures are related in a certain way. Find the answer figure that is related to the third figure in the same way.`},
+  complete:{name:'Geometrical figure completion',make:(r,n)=>many(maComplete,n,r),dir:(a,b)=>`In ${QR(a,b)}, a piece is missing from the square in the question figure. Find the answer figure that completes the square when it is put in place, without turning it.`},
+  mirror:{name:'Mirror imaging',fixed:true,make:(r,n)=>many((r,i,n)=>maMirror(r,i>=n/2),n,r),dir:(a,b)=>{const h=(b-a+1)/2,m=a+h-1;
+    return `In ${h===1?`question ${a}`:QR(a,m)}, find the correct mirror image of the question figure when a mirror is placed along the line XY. In ${h===1?`question ${b}`:QR(m+1,b)}, find the correct water image of the question figure when the water surface is along the line XY.`}},
+  punch:{name:'Punched hole pattern',make:(r,n)=>many(maPunch,n,r),dir:(a,b)=>`In ${QR(a,b)}, a square sheet of paper is folded along the dotted line in the direction of the arrow, and holes are punched through the folded sheet. Find the answer figure that shows the sheet when it is opened out.`},
+  space:{name:'Space visualisation',make:(r,n)=>many(maSpace,n,r),dir:(a,b)=>`In ${QR(a,b)}, the question figure shows two pieces of a square. Find the answer figure that is formed when the two pieces are joined together, without turning them.`},
+  embed:{name:'Embedded figure',make:(r,n)=>many(maEmbed,n,r),dir:(a,b)=>`In ${QR(a,b)}, the question figure is hidden in one of the answer figures, in the same size and the same way up. Find that answer figure.`}
 };
+// The ten parts of the JNVST Mental Ability syllabus, in the order of the NVS prospectus.
+const MA_SYLLABUS=['odd','match','pattern','series','analogy','complete','mirror','punch','space','embed'];
+const MA_SAMPLE=['pattern','series','odd','mirror','analogy'];
+// [type, questions] for each part of Section I
+function maParts(S){const n=S.pattern==='old'?40:20,list=S.figtypes==='sample'?MA_SAMPLE:MA_SYLLABUS;
+  if(S.figtypes==='sample'&&S.pattern==='old')return [...MA_SAMPLE,...[...MA_SAMPLE].reverse()].map(t=>[t,4]);
+  return list.map(t=>[t,n/list.length])}
 // ---------- App ----------
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -616,7 +950,7 @@ const STMT=['Both (i) and (ii) are true.','(i) is true, but (ii) is false.','(i)
 const PW=794,PH=1123,CW=698,H=1013,GAP=26,COLW=(CW-GAP)/2;
 let MY={evs:[],arith:[],passages:[]},DOCS={paper:[],key:[],omr:[]},current='paper',SET=null,db=null,dlCap;
 
-function settings(){return {inst:$('#inst').value.trim()||'Your Institute Name',contact:$('#contact').value.trim(),setno:Math.min(999,Math.max(1,parseInt($('#setno').value,10)||1)),code:$('#code').value,fit:$('#fit').value,pattern:$('#pattern').value,mine:$('#mine').checked}}
+function settings(){return {inst:$('#inst').value.trim()||'Your Institute Name',contact:$('#contact').value.trim(),setno:Math.min(999,Math.max(1,parseInt($('#setno').value,10)||1)),code:$('#code').value,fit:$('#fit').value,pattern:$('#pattern').value,figtypes:$('#figtypes').value,mine:$('#mine').checked}}
 
 // ---------- Assemble one set ----------
 function passageQ(q,builtin){return q.st?{q:'Read statements (i) and (ii) and choose the correct answer.',st:q.st,o:STMT,a:q.a,fixed:true,html:builtin}:{q:q.q,o:q.o,a:q.a,html:builtin}}
@@ -625,17 +959,19 @@ function assemble(S){
   const order=a=>S.code==='A'?a:rOrd.shuffle(a);
   const fin=q=>{if(q.fixed)return q;const p=rOrd.shuffle([0,1,2,3]);return {...q,o:p.map(i=>q.o[i]),a:p.indexOf(q.a)}};
   const firstMine=(mine,builtin,n)=>[...(S.mine?rSel.shuffle(mine):[]),...rSel.shuffle(builtin)].slice(0,n);
-  const parts=S.pattern==='old'?['pattern','series','odd','mirror','analogy','analogy','mirror','odd','series','pattern']:['pattern','series','odd','mirror','analogy'];
-  const ma=parts.map(t=>{const qs=MA_TYPES[t].make(rSel);return {t,qs:(t==='mirror'?qs:order(qs)).map(fin)}});
+  const plan=maParts(S),parts=plan.map(([t])=>t);
+  const ma=plan.map(([t,k])=>{const qs=MA_TYPES[t].make(rSel,k);return {t,qs:(MA_TYPES[t].fixed?qs:order(qs)).map(fin)}});
   const evs=S.pattern==='old'?[]:order(firstMine(MY.evs.map(x=>({...x,html:false})),EVS.map(r=>({q:r[0],o:r.slice(1,5),a:r[5],html:false})),20)).map(fin);
   const mineA=S.mine?rSel.shuffle(MY.arith).slice(0,20).map(x=>({...x,html:false,topic:'Your question'})):[];
-  const gi=rSel.shuffle(ARITH.map((_,i)=>i)).slice(0,20-mineA.length).sort((a,b)=>a-b);
+  const byT=Object.fromEntries(ARITH.map((g,i)=>[g.t,i]));
+  const core=Object.values(ARITH_SYLLABUS).map(ts=>byT[rSel.pick(ts)]),rest=rSel.shuffle(ARITH.map((_,i)=>i).filter(i=>!core.includes(i)));
+  const gi=[...rSel.shuffle(core),...rest].slice(0,20-mineA.length).sort((a,b)=>a-b);
   const arith=order([...gi.map(i=>buildArith(ARITH[i],rSel)),...mineA]).map(fin);
   const psg=order(firstMine(MY.passages.map(p=>({p:p.text.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean),qs:p.qs.map(q=>passageQ(q,false))})),PASSAGES.map(p=>({p:p.p,qs:p.qs.map(q=>passageQ(q,true))})),4)).map(p=>({...p,qs:p.qs.map(fin)}));
 
   const blocks=[],key=[];let n=0;
   const secHead=(a,b,dir)=>`<div class="sec">${a?`<h3>${a}</h3>`:''}<h4>${b}</h4>${dir?`<p class="dir">${dir}</p>`:''}</div>`;
-  ma.forEach((part,pi)=>{const T=MA_TYPES[part.t],a=n+1,b=n+4;
+  ma.forEach((part,pi)=>{const T=MA_TYPES[part.t],a=n+1,b=n+part.qs.length;
     blocks.push({k:'full',keep:true,html:`${pi===0?secHead('Section I','Mental Ability Test')+'<div style="height:4px"></div>':''}<div class="part"><h5>Part ${pi+1}</h5><p class="dir">Directions: ${T.dir(a,b)} Darken the circle for your answer on the OMR answer sheet.</p><div class="ma-head"><span>Question Figure</span><span>Answer Figure</span></div></div>`});
     part.qs.forEach(q=>{n++;key.push({n,a:L4[q.a],sec:'ma',topic:T.name});
       blocks.push({k:'full',html:`<div class="ma"><div class="ma-n">${n}.</div><div class="ma-q ${part.t==='analogy'?'an':''}">${q.q}</div><div class="ma-a">${q.o.map((o,i)=>`<div class="ma-o">${o}<span>(${L4[i]})</span></div>`).join('')}</div></div>`})})});
@@ -759,7 +1095,10 @@ async function download(kind){
       const canvas=await window.html2canvas(cap.firstElementChild,{scale:2,backgroundColor:'#ffffff',logging:false,width:PW,height:PH,windowWidth:1400});
       if(i)pdf.addPage();pdf.addImage(canvas.toDataURL('image/jpeg',0.9),'JPEG',0,0,210,297,undefined,'FAST')}
     cap.innerHTML='';const name=`Navodaya-Model-Set-${String(S.setno).padStart(2,'0')}-${S.code}-${{paper:'Question-Paper',key:'Answer-Key',omr:'OMR-Sheet'}[kind]}.pdf`;
-    status('Waiting for you to confirm the download…');await dl.save({filename:name,data:pdf.output('blob')});status('Saved '+name+'.')}
+    const blob=pdf.output('blob');status('Waiting for you to confirm the download…');await dl.save({filename:name,data:blob});
+    let kept=false;try{status('Saved '+name+'. Keeping a copy in the portal…');kept=await keepPaper(name,blob,{kind,setno:S.setno,code:S.code,pattern:S.pattern,figtypes:S.figtypes})}
+    catch(e){status('Saved '+name+', but the portal copy failed: '+(e.message||e.code),true);return}
+    status('Saved '+name+'.'+(kept?' A copy is kept in the portal.':''))}
   catch(e){cap.innerHTML='';status(e&&e.code==='declined'?'Download cancelled.':'Could not save the PDF: '+(e&&(e.message||e.code)||'unknown error'),true)}
   finally{btns.forEach(b=>b.disabled=false)}}
 
@@ -789,7 +1128,7 @@ async function startDb(){
   // the portal's Model Set Maker permission: without add/edit you may use the questions, not change them
   let u=null;try{u=db?await CL.use('user'):null}catch(e){u=null}
   try{if(u&&u.canEdit&&!(await u.canEdit()))db={readOnly:true,collection:db.collection.bind(db)}}catch(e){}
-  if(!db){set(false);return}set(!db.readOnly);
+  if(!db){set(false);return}set(!db.readOnly);startImport();startPapers();
   db.collection('questions').onSnapshot(s=>{const all=s.docs.map(d=>({id:d.id,...d.data()})).filter(validQ);MY.evs=all.filter(d=>d.section==='evs');MY.arith=all.filter(d=>d.section==='arith');renderMine();if($('#mine').checked)soon()},()=>{});
   db.collection('passages').onSnapshot(s=>{MY.passages=s.docs.map(d=>({id:d.id,...d.data()})).filter(p=>typeof p.text==='string'&&Array.isArray(p.qs)&&p.qs.length===5&&p.qs.every(validQ));renderMine();if($('#mine').checked)soon()},()=>{});
 }
@@ -808,11 +1147,114 @@ async function addPassage(){const msg=$('#psgmsg');const text=$('#psgtext').valu
   catch(e){msg.textContent='Saving failed: '+(e.message||e.code)}
   $('#psgbtn').disabled=false}
 
+// ---------- Saved papers (portal only): PDFs kept in the portal for every staff member ----------
+let papersCap=null;MY.papers=[];
+const fmtSize=b=>b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB';
+const KIND={paper:'Question paper',key:'Answer key',omr:'OMR sheet',upload:'Uploaded PDF'};
+function renderSaved(){const box=$('#saved');if(!box)return;const ro=!db||db.readOnly;
+  const rows=[...MY.papers].sort((a,b)=>(b.at||0)-(a.at||0));
+  box.innerHTML=rows.length?rows.map(p=>`<div class="myq"><span class="tag">${esc(KIND[p.kind]||'PDF')}</span><p>${esc(p.filename)}<span class="meta">${p.setno?`Set ${String(p.setno).padStart(2,'0')}${p.code?' · booklet '+esc(p.code):''} · `:''}${new Date(p.at||Date.now()).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}${p.by?' · '+esc(p.by):''}${p.size?' · '+fmtSize(p.size):''}</span></p><span class="act"><button class="get" type="button" data-id="${esc(p.id)}">Download</button>${ro?'':`<button class="del" type="button" data-paper="${esc(p.id)}">Delete</button>`}</span></div>`).join('')
+    :'<p class="empty">Nothing saved yet.</p>'}
+async function keepPaper(filename,blob,meta){if(!papersCap||!$('#keep').checked||!db||db.readOnly)return false;
+  await papersCap.save({filename,data:blob,meta});return true}
+async function startPapers(){
+  try{papersCap=CL&&CL.use?await CL.use('papers'):null}catch(e){papersCap=null}
+  if(!papersCap||!db)return;$('#savedwrap').hidden=false;$('#keepwrap').hidden=db.readOnly;$('#upwrap').hidden=db.readOnly;
+  db.collection('papers').onSnapshot(s=>{MY.papers=s.docs.map(d=>({id:d.id,...d.data()})).filter(p=>typeof p.filename==='string'&&typeof p.path==='string');renderSaved()},()=>{});
+  $('#saved').addEventListener('click',async e=>{const g=e.target.closest('.get'),d=e.target.closest('[data-paper]');const msg=$('#savedmsg');
+    const id=g?g.dataset.id:d?d.dataset.paper:null,p=id&&MY.papers.find(x=>x.id===id);if(!p)return;
+    try{if(g){g.disabled=true;msg.classList.remove('err');msg.textContent='Downloading '+p.filename+'…';await papersCap.open(p);msg.textContent='Downloaded '+p.filename+'.'}
+      else{if(!confirm('Delete "'+p.filename+'" from the portal for everyone?'))return;d.disabled=true;await papersCap.remove(p);msg.classList.remove('err');msg.textContent='Deleted '+p.filename+'.'}}
+    catch(err){msg.classList.add('err');msg.textContent='Could not do that: '+(err.message||err.code)}
+    finally{if(g)g.disabled=false;if(d)d.disabled=false}});
+  $('#upfile').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const msg=$('#savedmsg');
+    if(!/\.pdf$/i.test(f.name)&&f.type!=='application/pdf'){msg.classList.add('err');msg.textContent='Choose a PDF file.';return}
+    msg.classList.remove('err');msg.textContent='Uploading '+f.name+'…';
+    try{await papersCap.save({filename:f.name,data:f,meta:{kind:'upload'}});msg.textContent='Uploaded '+f.name+'.'}
+    catch(err){msg.classList.add('err');msg.textContent='Upload failed: '+(err.message||err.code)}});
+}
+
+// ---------- Import: read a PDF or photos of a paper with AI, check, then add ----------
+const PDFJS={lib:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',worker:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'};
+const IMPORT_MAX_PAGES=30,PAGE_PX=1400;
+const IMPORT_PROMPT=(p,total)=>`This image is page ${p} of ${total} of a printed question paper for the Jawahar Navodaya Vidyalaya Selection Test (Class VI) or a similar school test. Find the text-only multiple-choice questions of these kinds:
+- "evs": Environmental Studies, science, social studies or general knowledge
+- "arith": arithmetic or mathematics
+- reading passages of the Language Test, with the questions that follow them
+Leave out figure questions (Mental Ability Test) and any question that needs a picture or diagram to answer. A small table may be written out in the question text.
+
+Reply with only JSON in this shape:
+{"questions": [{"section": "evs", "q": "...", "o": ["...", "...", "...", "..."], "a": 1, "answerFrom": "key"}],
+ "passages": [{"text": "paragraph one\\n\\nparagraph two", "qs": [{"q": "...", "o": ["...", "...", "...", "..."], "a": 0, "answerFrom": "solved"}]}],
+ "passageQs": [{"q": "...", "o": ["...", "...", "...", "..."], "a": 2, "answerFrom": "solved"}]}
+
+Rules:
+- Copy the wording exactly, without question numbers or the (A) (B) (C) (D) labels. Write fractions as 3/4 and keep ₹, °, × and ÷.
+- "a" is the index 0 to 3 of the correct option. If the paper prints an answer key, use it and set "answerFrom": "key". Otherwise work the answer out and set "answerFrom": "solved".
+- A question with statements (i) and (ii) keeps both statements in "q", and its four options as printed.
+- "passageQs": questions at the top of this page that belong to a passage printed on the previous page.
+- If the page has none of these questions, reply {"questions": [], "passages": [], "passageQs": []}.`;
+let IMP={questions:[],passages:[]},impStop=false;
+const loadPdfJs=async()=>{if(!window.pdfjsLib)await loadScript(PDFJS.lib);window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS.worker;return window.pdfjsLib};
+const blobB64=b=>new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result).split(',')[1]);fr.onerror=no;fr.readAsDataURL(b)});
+const cvJpeg=cv=>new Promise(r=>cv.toBlob(r,'image/jpeg',.85));
+const parseLooseJSON=t=>{if(t&&typeof t==='object')return t;const x=String(t||'').trim().replace(/^```(?:json)?\s*|\s*```$/g,'');
+  try{return JSON.parse(x)}catch(e){const a=x.indexOf('{'),b=x.lastIndexOf('}');try{return a>=0&&b>a?JSON.parse(x.slice(a,b+1)):null}catch(e2){return null}}};
+// every page as a JPEG, one at a time, so a long PDF does not fill a phone's memory
+async function* importPages(files){
+  for(const f of files){
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const lib=await loadPdfJs();const doc=await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+      for(let i=1;i<=doc.numPages;i++){const pg=await doc.getPage(i),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:PAGE_PX/v1.width});
+        const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);
+        await pg.render({canvasContext:g,viewport:vp}).promise;const b=await cvJpeg(cv);cv.width=cv.height=0;yield b}}
+    else if(/^image\//.test(f.type)){const bmp=await createImageBitmap(f),k=Math.min(1,PAGE_PX/bmp.width),cv=document.createElement('canvas');cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);
+      const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);g.drawImage(bmp,0,0,cv.width,cv.height);bmp.close&&bmp.close();const b=await cvJpeg(cv);cv.width=cv.height=0;yield b}}}
+async function countPages(files){let n=0;for(const f of files){if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){const lib=await loadPdfJs();n+=(await lib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise).numPages}else if(/^image\//.test(f.type))n++}return n}
+const cleanQ=q=>{if(!q||typeof q.q!=='string'||!Array.isArray(q.o))return null;const o=q.o.slice(0,4).map(x=>String(x??'').trim().slice(0,200));
+  const a=Number.isInteger(q.a)&&q.a>=0&&q.a<4?q.a:-1;return {q:q.q.replace(/\s+/g,' ').trim().slice(0,600),o,a,ai:q.answerFrom!=='key'}};
+async function runImport(){const files=[...$('#impfile').files],msg=$('#impmsg');
+  if(!files.length){msg.classList.add('err');msg.textContent='Choose a PDF or photos first.';return}
+  msg.classList.remove('err');impStop=false;IMP={questions:[],passages:[]};renderImport();$('#impbtn').disabled=true;$('#impstop').hidden=false;
+  try{msg.textContent='Opening the file…';const total=Math.min(IMPORT_MAX_PAGES,await countPages(files));let p=0,failed=0;
+    for await(const img of importPages(files)){if(impStop||p>=IMPORT_MAX_PAGES)break;p++;msg.textContent=`Reading page ${p} of ${total}…`;
+      try{const out=parseLooseJSON(await CL.visionJSON(IMPORT_PROMPT(p,total),[{mimeType:'image/jpeg',data:await blobB64(img)}]))||{};
+        for(const q of out.questions||[]){const c=cleanQ(q);if(c)IMP.questions.push({...c,section:q.section==='arith'?'arith':'evs',on:c.a>=0})}
+        const last=IMP.passages[IMP.passages.length-1];
+        for(const q of out.passageQs||[]){const c=cleanQ(q);if(c&&last&&last.qs.length<5)last.qs.push(c)}
+        for(const ps of out.passages||[]){if(typeof ps.text!=='string')continue;IMP.passages.push({text:ps.text.trim().slice(0,4000),qs:(ps.qs||[]).map(cleanQ).filter(Boolean)})}
+      }catch(e){failed++;if(e&&(e.code==='not_granted'||e.code==='rate_limited'))throw e}
+      IMP.passages.forEach(ps=>ps.on=ps.qs.length===5&&ps.qs.every(q=>q.a>=0));renderImport()}
+    const n=IMP.questions.length+IMP.passages.length;
+    msg.classList.toggle('err',!n||failed>0);
+    msg.textContent=(impStop?'Stopped. ':'')+(n?`Found ${IMP.questions.length} question${IMP.questions.length===1?'':'s'} and ${IMP.passages.length} passage${IMP.passages.length===1?'':'s'} on ${p} page${p===1?'':'s'}. Answers marked “worked out by AI” need checking.`:`No EVS, Arithmetic or passage questions were found on ${p} page${p===1?'':'s'}.`)+(failed?` ${failed} page${failed===1?'':'s'} could not be read.`:'')}
+  catch(e){msg.classList.add('err');msg.textContent=e&&e.code==='rate_limited'?'The AI service is busy. Wait a minute and try again.':e&&e.code==='not_granted'?'Your login is not allowed to import questions.':'Could not read the file: '+(e&&(e.message||e.code)||'unknown error')}
+  finally{$('#impbtn').disabled=false;$('#impstop').hidden=true}}
+const ansSel=(a,attrs)=>`<select ${attrs}><option value="-1"${a<0?' selected':''}>?</option>${[...L4].map((l,i)=>`<option value="${i}"${a===i?' selected':''}>${l}</option>`).join('')}</select>`;
+const qBody=(q,attrs)=>`<p>${esc(q.q)}</p><ol type="A">${q.o.map(o=>`<li>${esc(o)}</li>`).join('')}</ol><span class="ans">Answer ${ansSel(q.a,attrs)} ${q.a<0?'<span class="ai">not found, choose one</span>':q.ai?'<span class="ai">worked out by AI, please check</span>':'from the printed key'}</span>`;
+function renderImport(){const box=$('#implist');
+  box.innerHTML=[...IMP.questions.map((q,i)=>`<div class="impq"><input type="checkbox" data-q="${i}"${q.on?' checked':''} aria-label="Add this question"><select data-sec="${i}"><option value="evs"${q.section==='evs'?' selected':''}>EVS</option><option value="arith"${q.section==='arith'?' selected':''}>Arithmetic</option></select><div>${qBody(q,`data-qa="${i}"`)}</div></div>`),
+    ...IMP.passages.map((ps,i)=>`<div class="impq"><input type="checkbox" data-p="${i}"${ps.on?' checked':''}${ps.qs.length===5?'':' disabled'} aria-label="Add this passage"><span class="tag">Passage</span><div><p>${esc(ps.text.slice(0,260))}${ps.text.length>260?'…':''}</p>${ps.qs.length===5?'':`<p class="bad">A passage needs 5 questions; ${ps.qs.length} were found, so it cannot be added.</p>`}${ps.qs.map((q,k)=>`<div class="pq">${qBody(q,`data-pa="${i}:${k}"`)}</div>`).join('')}</div></div>`)].join('');
+  $('#impact').hidden=!(IMP.questions.length||IMP.passages.length)}
+async function addImported(){const msg=$('#impmsg');let n=0,skip=0;$('#impadd').disabled=true;
+  try{for(const q of IMP.questions.filter(q=>q.on)){const d={section:q.section,q:q.q,o:q.o,a:q.a};if(!validQ(d)||q.o.some(x=>!x)){skip++;continue}await db.collection('questions').add({...d,at:Date.now()});q.on=false;q.done=true;n++}
+    for(const ps of IMP.passages.filter(p=>p.on)){const qs=ps.qs.map(q=>({q:q.q,o:q.o,a:q.a}));if(qs.length!==5||!qs.every(validQ)||ps.text.length<100){skip++;continue}await db.collection('passages').add({text:ps.text,qs,at:Date.now()});ps.on=false;ps.done=true;n++}
+    IMP.questions=IMP.questions.filter(q=>!q.done);IMP.passages=IMP.passages.filter(p=>!p.done);renderImport();
+    msg.classList.toggle('err',skip>0);msg.textContent=`Added ${n}.`+(skip?` ${skip} ticked item${skip===1?' was':'s were'} skipped: each needs four options and a chosen answer (a passage needs 5 questions).`:'')}
+  catch(e){msg.classList.add('err');msg.textContent=`Added ${n}, then saving failed: ${e.message||e.code}`}
+  $('#impadd').disabled=false}
+$('#implist').addEventListener('change',e=>{const t=e.target,d=t.dataset;
+  if(d.q!==undefined)IMP.questions[d.q].on=t.checked;else if(d.p!==undefined)IMP.passages[d.p].on=t.checked;
+  else if(d.sec!==undefined)IMP.questions[d.sec].section=t.value;
+  else if(d.qa!==undefined){const q=IMP.questions[d.qa];q.a=+t.value;q.ai=false;q.on=q.a>=0}
+  else if(d.pa!==undefined){const [i,k]=d.pa.split(':').map(Number),ps=IMP.passages[i];ps.qs[k].a=+t.value;ps.qs[k].ai=false;ps.on=ps.qs.length===5&&ps.qs.every(q=>q.a>=0);renderImport()}});
+$('#impbtn').onclick=runImport;$('#impstop').onclick=()=>{impStop=true};$('#impadd').onclick=addImported;
+function startImport(){$('#imp').hidden=!(CL&&typeof CL.visionJSON==='function'&&db&&!db.readOnly)}
+
 // ---------- Wire up ----------
 function tab(which){const make=which==='make';$('#view-make').hidden=!make;$('#view-bank').hidden=make;$('#tab-make').setAttribute('aria-selected',String(make));$('#tab-bank').setAttribute('aria-selected',String(!make));if(make)fit()}
 $('#tab-make').onclick=()=>tab('make');$('#tab-bank').onclick=()=>tab('bank');
 document.querySelectorAll('.ptabs button').forEach(b=>b.onclick=()=>showDoc(b.dataset.doc));
-['#inst','#contact','#setno'].forEach(s=>$(s).addEventListener('input',soon));['#code','#pattern','#mine','#fit'].forEach(s=>$(s).addEventListener('change',regenerate));
+['#inst','#contact','#setno'].forEach(s=>$(s).addEventListener('input',soon));['#code','#pattern','#figtypes','#mine','#fit'].forEach(s=>$(s).addEventListener('change',regenerate));
 $('#settings').addEventListener('submit',e=>e.preventDefault());
 $('#next').onclick=()=>{$('#setno').value=settings().setno+1;regenerate()};
 $('#dl-paper').onclick=()=>download('paper');$('#dl-key').onclick=()=>download('key');$('#dl-omr').onclick=()=>download('omr');
