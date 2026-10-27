@@ -17,6 +17,7 @@ const P = {
   questionbank: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></>,
   questionbankviewer: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
   modelsets: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6"/><circle cx="9" cy="12" r="1.3"/><circle cx="9" cy="16.5" r="1.3"/><path d="M12.5 12h3M12.5 16.5h3"/></>,
+  setmaker: <><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/><path d="M10 17.5h4"/></>,
   entrance: <><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0z"/><path d="M7 6H4a3 3 0 003 4M17 6h3a3 3 0 01-3 4"/></>,
   studymaterial: <><path d="M4 19V5a2 2 0 012-2h12v14H6a2 2 0 00-2 2zm0 0a2 2 0 002 2h12"/><path d="M9 7h6"/></>,
   teachingaids: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>,
@@ -111,7 +112,7 @@ const C = {
   teachersday: ['#fbbf24', '#b45309'], designstudio: ['#f472b6', '#7c3aed'], admin: ['#64748b', '#1e293b'], student360: ['#38bdf8', '#0369a1'],
   system: ['#94a3b8', '#334155'], adminlink: ['#a78bfa', '#6d28d9'], help: ['#38bdf8', '#0284c7'], questionbank: ['#c084fc', '#7e22ce'],
   studymaterial: ['#fbbf24', '#b45309'], teachingaids: ['#60a5fa', '#1d4ed8'], entrance: ['#fcd34d', '#b45309'],
-  modelsets: ['#5eead4', '#0f766e'],
+  modelsets: ['#5eead4', '#0f766e'], setmaker: ['#67e8f9', '#0f5f66'],
   studentshub: ['#fbbf24', '#d97706'], feeshub: ['#4ade80', '#15803d'], examshub: ['#f87171', '#b91c1c'], commshub: ['#e879f9', '#a21caf'], adminhub: ['#64748b', '#1e293b'],
 }
 const FALLBACK = [['#60a5fa', '#2563eb'], ['#34d399', '#059669'], ['#f472b6', '#db2777'], ['#fbbf24', '#d97706'], ['#a78bfa', '#7c3aed'], ['#fb923c', '#ea580c']]

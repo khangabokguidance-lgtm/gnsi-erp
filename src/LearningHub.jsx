@@ -1,8 +1,8 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
 // ONE module for everything academic-content: Study Materials, Teaching Aids, Study Lockers,
-// Question Bank, Question Bank Viewer, Entrance Exam and Model Sets are tabs of this page
+// Question Bank, Question Bank Viewer, Entrance Exam, Model Sets and Model Set Maker are tabs of this page
 // (sidebar id 'learninghub'), laid out as a flow:
-//   Learn (Study Materials · Teaching Aids · Study Lockers) → Practice (Question Bank · Viewer) → Assess (Entrance Exam · Model Sets)
+//   Learn (Study Materials · Teaching Aids · Study Lockers) → Practice (Question Bank · Viewer) → Assess (Entrance Exam · Model Sets · Model Set Maker)
 // • it opens on an icon page of the sections (phones and computers); inside a
 //   section, "‹ All sections" (computers) or the back arrow (phones) returns there;
 // • a premium ribbon is the tab bar, with a live count on every tab (refreshes
@@ -27,6 +27,7 @@ const QuestionBank = lazy(() => import('./QuestionBank'));
 const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
 const ModelSets = lazy(() => import('./ModelSets'));
+const SetMaker = lazy(() => import('./SetMaker'));
 
 const MODULES = {
   studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
@@ -36,12 +37,13 @@ const MODULES = {
   questionbankviewer: { label: 'Question Bank Viewer', short: 'Viewer',     metric: 'questions', unit: 'questions' },
   entrance:           { label: 'Entrance Exam',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
   modelsets:          { label: 'Model Sets',           short: 'Model Sets', metric: 'modelsets', unit: 'sets' },
+  setmaker:           { label: 'Model Set Maker',      short: 'Set Maker',  metric: 'setmaker',  unit: 'added' },
 };
 
 const FLOW = [
   { stage: 'Learn', ids: ['studymaterial', 'teachingaids', 'studylockers'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
-  { stage: 'Assess', ids: ['entrance', 'modelsets'] },
+  { stage: 'Assess', ids: ['entrance', 'modelsets', 'setmaker'] },
 ];
 
 // For each module: the other modules it connects to, and why.
@@ -70,6 +72,12 @@ const RELATED = {
     { to: 'entrance', title: 'Entrance exams', hint: 'Run the real entrance exam after practice papers' },
     { to: 'questionbank', title: 'Question Bank', hint: 'More questions for the same topics' },
     { to: 'studymaterial', title: 'Prepare candidates', hint: 'Study materials for the JNV syllabus' },
+    { to: 'setmaker', title: 'Model Set Maker', hint: 'Print a fresh booklet, answer key and OMR sheet' },
+  ],
+  setmaker: [
+    { to: 'modelsets', title: 'Model sets', hint: 'Take a practice paper on screen with a timer' },
+    { to: 'questionbank', title: 'Question Bank', hint: 'More questions for the same topics' },
+    { to: 'entrance', title: 'Entrance exams', hint: 'Run the real entrance exam after practice papers' },
   ],
   studymaterial: [
     { to: 'questionbank', title: 'Practice questions', hint: 'Question Bank questions for the same chapters' },
@@ -84,7 +92,7 @@ const RELATED = {
 };
 
 // ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets' };
+const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets', setmaker: 'set_maker_items' };
 let cache = { at: 0, data: {}, pending: null };
 async function countOf(table) {
   try {
@@ -403,6 +411,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
       case 'questionbankviewer': return <QuestionBankViewer {...common} />;
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
       case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
+      case 'setmaker': return <SetMaker {...common} perms={perms('setmaker')} />;
       default: return null;
     }
   };
