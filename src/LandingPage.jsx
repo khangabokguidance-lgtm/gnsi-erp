@@ -19,6 +19,7 @@ import { receiptCheckParams } from './lib/receiptCheckParams';
 import './LandingPage.css';
 import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch } from './LandingExtras';
 import { CreativeFX, LegacySection, JourneySection } from './LandingCreative';
+import MegaMenu, { MenuButton } from './LandingMenu';
 // Programme logos (Home admissions panel), embedded as small WebP images so
 // no separate image files are needed in src/.
 const logoNvs = 'data:image/webp;base64,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';
@@ -849,7 +850,6 @@ export default function LandingPage({ onLogin }) {
   }, [site.theme, hiContrast, fontStep]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [secFilter, setSecFilter] = useState('all');
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -1171,75 +1171,7 @@ export default function LandingPage({ onLogin }) {
 
   // Hamburger menu, grouped into collapsible categories (one open at a time).
   // A category with a single link renders as a direct clickable item.
-  const navCategories = [
-    {
-      label: 'Admissions', icon: '📋',
-      links: [
-        { label: 'Apply / Enquire', href: '#enquiry' },
-        { label: 'Apply Online', href: '/apply' },
-        { label: 'Application Status', href: '/apply-status' },
-        { label: 'Exam Registration', href: '/exam-registration' },
-        { label: 'Courses', href: '#courses' },
-        { label: 'Scholarship / Free Test', href: '#scholarship' },
-        { label: 'Fee Payment', href: '#fee-payment' },
-        { label: 'Important Dates', href: '#important-dates' },
-      ]
-    },
-    {
-      label: 'Academics', icon: '📚',
-      links: [
-        { label: 'Syllabus', href: '#syllabus' },
-        { label: 'Question Papers', href: '#question-papers' },
-        { label: 'Mock Tests', href: '#mock-tests' },
-        { label: 'Exam Calendar', href: '#exam-calendar' },
-        { label: 'Admit Card / Result', href: '#admit-card' },
-      ]
-    },
-    {
-      label: 'Results', icon: '🏆',
-      links: [
-        { label: 'Results', href: '#results' },
-        { label: "Toppers' Wall", href: '#rankers' },
-        { label: 'Student Reviews', href: '#reviews' },
-      ]
-    },
-    {
-      label: 'Campus', icon: '🏫',
-      links: [
-        { label: 'About GNSI', href: '#about' },
-        { label: 'Head of the Institute', href: '#head-institute' },
-        { label: 'Faculty', href: '#faculty' },
-        { label: 'Facilities', href: '#facilities' },
-        { label: 'Hostel Life', href: '#hostel' },
-        { label: 'Gallery', href: '#gallery' },
-        { label: 'Videos', href: '#videos' },
-        { label: 'Events', href: '#events' },
-      ]
-    },
-    {
-      label: 'Updates', icon: '📢',
-      links: [
-        { label: 'Notices', href: '#notices' },
-        { label: 'Blog & News', href: '#blog' },
-      ]
-    },
-    {
-      label: 'Support', icon: '🛟',
-      links: [
-        { label: 'Contact', href: '#contact' },
-        { label: 'FAQ', href: '#faq' },
-        { label: 'Helpdesk / Grievance', href: '#helpdesk' },
-        { label: 'Download App', href: '#app-download' },
-        { label: 'Alumni & TC', href: '#alumni' },
-        { label: 'Careers', href: '#careers' },
-        { label: 'Verify Receipt / Certificate', href: '/verify' },
-        { label: 'GNSI Store', href: '/store' },
-        { label: 'Student Leave', href: '/student-leave' },
-      ]
-    },
-  ];
 
-  const toggleCat = (idx) => setExpandedCat(expandedCat === idx ? null : idx);
   const closeCats = () => setExpandedCat(null);
   const closeMobile = () => { setMobileOpen(false); setExpandedCat(null); };
 
@@ -1373,16 +1305,6 @@ export default function LandingPage({ onLogin }) {
     return () => tabRevealObserver.disconnect();
   }, [activeTab]);
 
-  // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
-  // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
-  // own, so it maps to the enquiry tab and then scrolls to #contact.
-  const goToHash = (href) => {
-    if ((href || '').startsWith('/')) { window.location.href = href; return; }
-    const hashId = (href || '').replace('#', '');
-    if (!hashId) return;
-    if (hashId === 'contact') { goToTab('enquiry', 'contact'); return; }
-    goToTab(hashId);
-  };
 
   // cat drives each section tile's accent colour (see .sec-tile.cat-* in the grid styles):
   // gold = core/home, blue = institute info, green = results & community,
@@ -2371,16 +2293,7 @@ window.submitGrievance = async () => {
         <button type="button" onClick={onLogin} className="nv-btn nv-link">
           Staff Login
         </button>
-        <button
-          className={"hamburger" + (mobileOpen ? " open" : "")}
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
-          aria-expanded={mobileOpen}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
+        <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
       </div>
     </div>
   </nav>
@@ -2421,94 +2334,16 @@ window.submitGrievance = async () => {
       <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
     </div>
   </div>
-  <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
-    <div className="mob-menu-hd">
-      <div className="mob-menu-brand">
-        {!emblemFailed && (
-          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
-        )}
-        <span>GNSI</span>
-      </div>
-      <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
-        ✕
-      </button>
-    </div>
-    <div className="mob-menu-scroll">
-      <a
-        href="#home"
-        onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('home'); }}
-        className="mob-cat-link-flat"
-      >
-        🏠 Home
-      </a>
-      {navCategories.map((cat, idx) => (
-        cat.links.length === 1 ? (
-          <a
-            key={cat.label}
-            href={cat.links[0].href}
-            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(cat.links[0].href); }}
-            className="mob-cat-link-flat"
-          >
-            {cat.icon} {cat.label}
-          </a>
-        ) : (
-          <div className="mob-cat" key={cat.label}>
-            <button
-              type="button"
-              className={"mob-cat-btn" + (expandedCat === idx ? " expanded" : "")}
-              onClick={() => toggleCat(idx)}
-            >
-              <span>{cat.icon} {cat.label}</span>
-              <span className="mob-cat-arrow">▾</span>
-            </button>
-            {expandedCat === idx && (
-              <div className="mob-cat-links">
-                {cat.links.map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="mob-sub-link"
-                    onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
-                  >
-                    {link.label}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      ))}
-      <a
-        href="#"
-        onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); closeMobile(); }}
-        className="mob-par"
-      >
-        Parents Portal →
-      </a>
-      <a
-        href={site.apk}
-        download=""
-        className="mob-par"
-        onClick={closeMobile}
-      >
-        📱 Get Android App →
-      </a>
-      <button
-        onClick={() => { onLogin(); closeMobile(); }}
-        className="mob-staff"
-      >
-        Staff Login →
-      </button>
-    </div>
-    <div className="mob-menu-bottom">
-      <button onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="mmb-fee">
-        💳 Pay Fee
-      </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
-        Apply Now →
-      </a>
-    </div>
-  </div>
+  <MegaMenu
+    open={mobileOpen}
+    onClose={closeMobile}
+    tabs={tabList}
+    icons={TAB_ICONS}
+    active={activeTab}
+    goToTab={goToTab}
+    site={{ ...site, emblem: EMBLEM_URL }}
+    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), onLogin }}
+  />
   {/* HERO */}
   <section className="hero">
     <div className="hero-pattern" />
@@ -2682,55 +2517,6 @@ window.submitGrievance = async () => {
           <div className="ps-count">{photoIdx + 1} / {photoSlides.length}</div>
         </>
       )}
-    </div>
-  </div>
-  {/* ALL SECTIONS GRID — replaces the old horizontally-scrolling tab
-      strip: every section (except Home — the logo and "Back to Home"
-      cover that) is visible at once as a tile, no scrolling. Uses the same tabList,
-      so a new tab added there shows up here automatically. */}
-  <style>{`
-    .sec-grid-wrap{background:#f6f3ea;padding:1.1rem 0 1.25rem;border-bottom:1px solid rgba(15,31,61,.08)}
-    .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
-    .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
-    .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
-    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
-    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
-    .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
-    .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{font-size:1.35rem;line-height:1}
-    .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
-    .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
-    .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
-    @media (max-width:1024px){.sec-grid{--per:7}}
-    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
-    @media (max-width:340px){.sec-grid{--per:4}}
-  `}</style>
-  <div className={'sec-grid-wrap' + (site.sectionsStyle === 'dark' ? ' sec-theme-dark' : '')}>
-    <div className="container">
-      <p className="sec-grid-title">Explore GNSI</p>
-      <h2 className="sec-grid-h">Everything you need, in one place</h2>
-      <div className="sec-filter" role="tablist" aria-label="Filter sections">
-        {[['all', 'All'], ['gold', 'Admissions'], ['red', 'Exams & Prep'], ['green', 'Results'], ['blue', 'Institute'], ['purple', 'Updates & Help']].map(([k, lb]) => (
-          <button key={k} type="button" role="tab" aria-selected={secFilter === k}
-            className={'sec-chip' + (secFilter === k ? ' on' : '')} onClick={() => setSecFilter(k)}>{lb}</button>
-        ))}
-      </div>
-      <div className="sec-grid" role="list">
-        {tabList.filter((t) => t.id !== 'home' && (secFilter === 'all' || t.cat === secFilter)).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="listitem"
-            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
-            aria-current={activeTab === t.id ? 'page' : undefined}
-            onClick={() => goToTab(t.id)}
-          >
-            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
-            <span className="sec-tile-lb">{t.label}</span>
-            <svg className="sec-tile-go" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-          </button>
-        ))}
-      </div>
     </div>
   </div>
   {/* TAB CONTENT WRAPPER — used by the outside-click auto-close handler.
