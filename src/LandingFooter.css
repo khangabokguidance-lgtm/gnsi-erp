@@ -82,3 +82,7 @@
 /* beat the site-wide heading font rules (body.lp-gov h2/h4) */
 .lf .lf-crown h2,.lf .lf-col h4{font-family:var(--lf-display)}
 .lf .lf-crown h2{font-weight:700;letter-spacing:.04em}
+
+/* new logo mark: no circle */
+.lf-crest{width:auto;height:auto;border-radius:0;background:none;box-shadow:none;display:block}
+.lf-crest img{width:auto;height:72px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(0,0,0,.6))}
