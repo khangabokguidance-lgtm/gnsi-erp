@@ -20,6 +20,7 @@ import './LandingPage.css';
 import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
 import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
 import MegaMenu, { MenuButton } from './LandingMenu';
+import MajesticFooter from './LandingFooter';
 import './LandingFinale.css';
 // Programme logos (Home admissions panel), embedded as small WebP images so
 // no separate image files are needed in src/.
@@ -6245,169 +6246,12 @@ window.submitGrievance = async () => {
     onPick={(r) => { setSearchOpen(false); if (r.id === '__verify') { setVerifyOpen(true); } else if (r.href) { window.location.href = r.href; } else { goToTab(r.id); } }}
   />
   {/* FOOTER */}
-  <footer>
-    <div className="footer-grid">
-      <div>
-        <h4>GNSI — Guidance Navodaya &amp; Sainik Institute</h4>
-        <p
-          style={{
-            color: "rgba(230,230,230,.85)",
-            lineHeight: "1.85",
-            fontSize: "clamp(0.82rem,2.2vw,0.88rem)",
-            maxWidth: 320,
-            marginBottom: "1rem"
-          }}
-        >
-          Residential coaching institution in Khangabok, Thoubal, Manipur —
-          focused on NVS, Sainik School, and RMS entrance preparation.
-          Established 2016.
-        </p>
-        <div className="footer-tricolor">
-          <div />
-          <div />
-          <div />
-        </div>
-        <div className="foot-social" style={{ marginTop: ".9rem" }}>
-          <a
-            className="foot-soc-icon"
-            href={site.facebook}
-            target="_blank"
-            aria-label="Facebook"
-           rel="noopener noreferrer">
-            <svg viewBox="0 0 24 24"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.13 8.44 9.94v-7.03H7.9v-2.91h2.54V9.41c0-2.51 1.49-3.89 3.78-3.89 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.78-1.63 1.57v1.88h2.78l-.44 2.91h-2.34V22c4.78-.81 8.44-4.94 8.44-9.94Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.youtube}
-            target="_blank"
-            aria-label="YouTube"
-           rel="noopener noreferrer">
-            <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.instagram}
-            target="_blank"
-            aria-label="Instagram"
-           rel="noopener noreferrer">
-            <svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.6 0 4.85.07 1.17.05 1.97.24 2.43.4a4.9 4.9 0 0 1 1.77 1.15 4.9 4.9 0 0 1 1.15 1.77c.16.46.35 1.26.4 2.43.07 1.25.07 1.65.07 4.85s0 3.6-.07 4.85c-.05 1.17-.24 1.97-.4 2.43a4.9 4.9 0 0 1-1.15 1.77 4.9 4.9 0 0 1-1.77 1.15c-.46.16-1.26.35-2.43.4-1.25.07-1.65.07-4.85.07s-3.6 0-4.85-.07c-1.17-.05-1.97-.24-2.43-.4a4.9 4.9 0 0 1-1.77-1.15 4.9 4.9 0 0 1-1.15-1.77c-.16-.46-.35-1.26-.4-2.43C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.85c.05-1.17.24-1.97.4-2.43a4.9 4.9 0 0 1 1.15-1.77A4.9 4.9 0 0 1 5.6 1.8c.46-.16 1.26-.35 2.43-.4C9.27 2.2 9.67 2.2 12 2.2Zm0 1.8c-3.16 0-3.53 0-4.77.07-.96.04-1.48.2-1.82.34-.46.18-.78.39-1.13.73-.34.35-.55.67-.73 1.13-.13.34-.3.86-.34 1.82C3.14 8.83 3.14 9.2 3.14 12s0 3.17.07 4.41c.04.96.2 1.48.34 1.82.18.46.39.78.73 1.13.35.34.67.55 1.13.73.34.13.86.3 1.82.34 1.24.07 1.61.07 4.77.07s3.53 0 4.77-.07c.96-.04 1.48-.2 1.82-.34.46-.18.78-.39 1.13-.73.34-.35.55-.67.73-1.13.13-.34.3-.86.34-1.82.07-1.24.07-1.61.07-4.41s0-3.17-.07-4.41c-.04-.96-.2-1.48-.34-1.82a2.9 2.9 0 0 0-.73-1.13 2.9 2.9 0 0 0-1.13-.73c-.34-.13-.86-.3-1.82-.34C15.53 3.84 15.16 3.84 12 3.84Zm0 3.3a4.86 4.86 0 1 1 0 9.72 4.86 4.86 0 0 1 0-9.72Zm0 1.8a3.06 3.06 0 1 0 0 6.12 3.06 3.06 0 0 0 0-6.12Zm5.5-3.18a1.13 1.13 0 1 1 0 2.27 1.13 1.13 0 0 1 0-2.27Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.wa}
-            target="_blank"
-            aria-label="WhatsApp"
-            style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
-           rel="noopener noreferrer">
-            <svg viewBox="0 0 24 24"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.47-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.07.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.42-.07-.12-.27-.2-.57-.35M12.05 21.78h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26C2.16 6.45 6.6 2 12.05 2c2.64 0 5.12 1.03 6.99 2.9a9.83 9.83 0 0 1 2.89 6.99c0 5.45-4.44 9.89-9.88 9.89Z"/></svg>
-          </a>
-          {site.whatsappChannel && (
-            <a
-              className="foot-soc-icon"
-              href={site.whatsappChannel}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="WhatsApp Channel"
-              title="WhatsApp Channel"
-              style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)", fontSize: ".7rem", fontWeight: 700 }}
-            >
-              CH
-            </a>
-          )}
-        </div>
-      </div>
-      <div>
-        <h4>Navigate</h4>
-        <a href="#notices" onClick={(e) => { e.preventDefault(); goToTab('notices'); }}>Notice Board</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Courses</a>
-        <a href="#results" onClick={(e) => { e.preventDefault(); goToTab('results'); }}>Results</a>
-        <a href="#rankers" onClick={(e) => { e.preventDefault(); goToTab('rankers'); }}>Ranker Wall</a>
-        <a href="#facilities" onClick={(e) => { e.preventDefault(); goToTab('facilities'); }}>Facilities</a>
-        <a href="#faculty" onClick={(e) => { e.preventDefault(); goToTab('faculty'); }}>Faculty</a>
-        <a href="#blog" onClick={(e) => { e.preventDefault(); goToTab('blog'); }}>News &amp; Blog</a>
-        <a href="#gallery" onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}>Gallery</a>
-        <a href="#alumni" onClick={(e) => { e.preventDefault(); goToTab('alumni'); }}>Alumni &amp; TC</a>
-        <a href="#careers" onClick={(e) => { e.preventDefault(); goToTab('careers'); }}>Careers</a>
-        <a href="#verify" onClick={(e) => { e.preventDefault(); setVerifyOpen(true); }}>Verify Fee Receipt</a>
-        <a href="/store">GNSI Store</a>
-      </div>
-      <div>
-        <h4>Admissions</h4>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Sainik School Prep</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Navodaya Prep</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Foundation Programme</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Combined Course</a>
-        <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Apply Now</a>
-        <a href="/apply">Apply Online</a>
-        <a href="/apply-status">Application Status</a>
-        <a href="#hostel" onClick={(e) => { e.preventDefault(); goToTab('hostel'); }}>Hostel Life</a>
-        <a
-          href={site.brochure}
-          target="_blank"
-          download=""
-         rel="noopener noreferrer">
-          Download Brochure
-        </a>
-      </div>
-      <div>
-        <h4>Contact</h4>
-        <a href={site.tel}>{site.phone}</a>
-        <a
-          href={site.wa}
-          target="_blank"
-          style={{ color: "#4AE382" }}
-         rel="noopener noreferrer">
-          WhatsApp
-        </a>
-        <button
-          onClick={() => setIsFeeOpen(true)}
-          style={{ color: "var(--goldL)", background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", display: "block", marginBottom: ".6rem", textAlign: "left" }}
-        >
-          Pay Fee Online
-        </button>
-        <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Admission Enquiry</a>
-        <a
-          href="#"
-          onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); }}
-          style={{ color: "#4AE382" }}
-        >
-          Parents Portal
-        </a>
-        <a
-          href={site.apk}
-          download=""
-          style={{ color: "#4AE382" }}
-        >
-          Download Android App
-        </a>
-        <button
-          onClick={onLogin}
-          style={{
-            display: "block",
-            marginBottom: ".55rem",
-            color: "rgba(230,230,230,.85)",
-            fontSize: "clamp(0.82rem,2.2vw,0.88rem)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            textAlign: "left",
-            padding: 0,
-            fontFamily: "inherit",
-            transition: ".2s"
-          }}
-        >
-          Staff Login
-        </button>
-      </div>
-    </div>
-    <div className="footer-bottom">
-      <span>
-        © 2026 Guidance Navodaya &amp; Sainik Institute, Khangabok, Thoubal,
-        Manipur
-      </span>
-      <span>Established 2016 · guidancekhangabok.in</span>
-    </div>
-  </footer>
+  <MajesticFooter
+    site={site}
+    emblem={EMBLEM_URL}
+    goToTab={goToTab}
+    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
+  />
   {/* WA FLOAT */}
   <a
     id="waFloat"
