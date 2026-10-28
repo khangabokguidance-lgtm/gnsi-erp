@@ -842,3 +842,31 @@ export async function saveFaq(form, editingId = null) {
 export async function deleteFaq(id) {
   return supabase.from('website_faq').delete().eq('id', id);
 }
+// ─── TC / ALUMNI REQUESTS & CAREER APPLICATIONS ─────────────────────────────
+// Both land in the website enquiries inbox (Website → Enquiries), tagged by a
+// course prefix, so the office sees them without any new table.
+export async function submitTcRequest(form) {
+  return supabase.from('enquiries').insert({
+    student_name: form.student_name,
+    parent_name: form.parent_name || '',
+    phone: form.phone,
+    class_grade: form.passout_year || '',
+    course: 'TC REQUEST: ' + (form.request_type || 'Transfer Certificate'),
+    message: [form.gcc_no ? `GCC No: ${form.gcc_no}` : '', form.message || ''].filter(Boolean).join('\n'),
+    replied: false,
+    created_at: new Date().toISOString(),
+  });
+}
+
+export async function submitCareerApplication(form) {
+  return supabase.from('enquiries').insert({
+    student_name: form.name,
+    parent_name: '',
+    phone: form.phone,
+    class_grade: form.experience || '',
+    course: 'CAREER: ' + (form.position || 'General'),
+    message: [form.email ? `Email: ${form.email}` : '', form.qualification ? `Qualification: ${form.qualification}` : '', form.resume_url ? `Resume: ${form.resume_url}` : '', form.message || ''].filter(Boolean).join('\n'),
+    replied: false,
+    created_at: new Date().toISOString(),
+  });
+}
