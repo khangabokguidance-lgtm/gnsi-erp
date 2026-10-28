@@ -1,0 +1,161 @@
+/* GovTheme.css — "government portal" look for the public landing page
+   (clean white, official blue + saffron/red accent, utility bar, service tiles,
+   left-aligned headings, dark-blue link-column footer).
+   Active when <body class="lp-gov">; Website → Settings → Site Theme = `classic` turns it off.
+   Inspired by the layout conventions of Indian government portals; uses GNSI's own branding only. */
+
+body.lp-gov{
+  --gv-blue:#1B3A8A; --gv-blue2:#0F2A6B; --gv-blue-soft:#EAF0FB;
+  --gv-accent:#E4572E; --gv-saffron:#F28C28; --gv-green:#138808;
+  --gv-bg:#F4F6FA; --gv-line:#DCE2EC; --gv-text:#1F2937; --gv-mute:#5B6678;
+  --navy:#0F2A6B; --navy1:#0B1F52; --navy2:#16357F; --navy3:#1B3A8A;
+  --gold:#E4572E; --goldD:#C2410C; --goldL:#F28C28; --goldLL:#FFD7A8;
+  --px-navy-grad:linear-gradient(150deg,#0F2A6B,#1B3A8A);
+  --px-gold-grad:linear-gradient(135deg,#F28C28,#E4572E);
+  --px-ivory:#F4F6FA; --px-ivory2:#F4F6FA; --px-r:8px; --px-r-sm:6px;
+  --px-line:#DCE2EC;
+  --px-sh1:0 1px 2px rgba(15,42,107,.06),0 4px 14px -6px rgba(15,42,107,.14);
+  --px-sh2:0 2px 4px rgba(15,42,107,.08),0 14px 30px -12px rgba(15,42,107,.28);
+  --serif:'Inter','Segoe UI',Arial,sans-serif;
+  background:var(--gv-bg);color:var(--gv-text);
+}
+body.lp-gov h1,body.lp-gov h2,body.lp-gov h3,body.lp-gov h4,body.lp-gov h5{font-family:'Inter','Segoe UI',Arial,sans-serif;font-weight:700;letter-spacing:-.01em}
+
+/* ── Tricolour strip + utility bar ── */
+.gov-stripe{display:none;height:4px}
+body.lp-gov .gov-stripe{display:flex}
+.gov-stripe i{flex:1}
+.gov-stripe i:nth-child(1){background:#FF9933}.gov-stripe i:nth-child(2){background:#fff}.gov-stripe i:nth-child(3){background:#138808}
+.gov-skip,.gov-a11y{display:none}
+body.lp-gov #langBar{background:#fff;border-bottom:1px solid var(--gv-line);justify-content:flex-end;gap:.9rem;padding:.3rem 5%;font-size:.74rem}
+body.lp-gov #langBar span{color:var(--gv-mute)!important;font-family:inherit!important;letter-spacing:.06em}
+body.lp-gov .gov-skip{display:inline;margin-right:auto;color:var(--gv-blue);font-size:.74rem;text-decoration:underline;text-underline-offset:3px}
+body.lp-gov .gov-a11y{display:inline-flex;gap:.25rem}
+.gov-a11y button{min-width:28px;padding:0 .35rem;height:26px;border:1px solid var(--gv-line,#DCE2EC);border-radius:4px;background:#fff;color:#1B3A8A;font:700 .72rem Inter,sans-serif;cursor:pointer}
+.gov-a11y button:hover,.gov-a11y button[aria-pressed=true]{background:#1B3A8A;color:#fff}
+body.lp-gov .lang-btn{border-radius:4px;border:1px solid var(--gv-line);background:#fff;color:var(--gv-blue);padding:.2rem .6rem}
+body.lp-gov .lang-btn.active{background:var(--gv-blue);color:#fff;border-color:var(--gv-blue)}
+
+/* ── Contact strip ── */
+body.lp-gov .top-bar{background:var(--gv-blue2);border:0}
+body.lp-gov .top-bar *{color:rgba(255,255,255,.92)}
+body.lp-gov .top-bar-soc{border-color:rgba(255,255,255,.35)!important;color:#fff!important}
+
+/* ── Header / main navigation ── */
+body.lp-gov .lp-nav{background:#fff!important;border-bottom:3px solid var(--gv-blue);box-shadow:0 2px 12px rgba(15,42,107,.1);backdrop-filter:none}
+body.lp-gov .lp-nav .brand-text h2,body.lp-gov .lp-nav .brand-text small{color:var(--gv-blue2)!important}
+body.lp-gov .lp-nav .brand-text small{color:var(--gv-mute)!important}
+body.lp-gov .lp-nav .brand-text h2{font-weight:800;font-size:1.05rem}
+body.lp-gov .nv-btn{border-radius:4px;font-weight:600;font-size:.82rem}
+body.lp-gov .nv-primary{background:var(--gv-accent)!important;color:#fff!important;border:0}
+body.lp-gov .nv-ghost{background:#fff!important;color:var(--gv-blue)!important;border:1px solid var(--gv-blue)!important}
+body.lp-gov .nv-link{color:var(--gv-blue)!important}
+body.lp-gov .lx-nav-search{border-color:var(--gv-blue)!important;color:var(--gv-blue)!important;background:#fff!important;border-radius:4px}
+body.lp-gov .hamburger span{background:var(--gv-blue)!important}
+
+/* ── What's New ticker ── */
+body.lp-gov .ticker-wrap{background:#fff;border-bottom:1px solid var(--gv-line)}
+body.lp-gov .ticker-label{background:var(--gv-accent);color:#fff;font-weight:700;letter-spacing:.04em;text-transform:none;font-size:.8rem}
+body.lp-gov .ticker-track,body.lp-gov .ticker-scroll{color:var(--gv-blue2);font-weight:600}
+
+/* ── Banner + hero + body backgrounds ── */
+body.lp-gov .ten-years-banner,body.lp-gov .tyb-frame{background:var(--gv-blue2)}
+body.lp-gov .hero{background:var(--gv-bg)}
+body.lp-gov .lx-banner{background:linear-gradient(90deg,var(--gv-blue2),var(--gv-blue))}
+body.lp-gov .lx-banner-cta{background:var(--gv-saffron);color:#fff}
+
+/* ── Service tiles (the signature "services" grid) ── */
+body.lp-gov .lx-services{background:#fff;border-top:1px solid var(--gv-line);border-bottom:1px solid var(--gv-line);padding:2.4rem 0 2.8rem}
+body.lp-gov .lx-eyebrow{display:none}
+.lx-svc-title{display:none}
+body.lp-gov .lx-svc-title{display:block;font-size:1.5rem;color:var(--gv-blue2);margin-bottom:1.3rem;padding-bottom:.55rem;position:relative}
+body.lp-gov .lx-svc-title::after{content:'';position:absolute;left:0;bottom:0;width:56px;height:4px;background:var(--gv-accent);border-radius:2px}
+body.lp-gov .lx-grid{grid-template-columns:repeat(5,1fr);gap:1rem}
+body.lp-gov .lx-tile{flex-direction:column;align-items:center;text-align:center;gap:.7rem;padding:1.4rem 1rem 1.2rem;background:#fff;border:1px solid var(--gv-line);border-radius:8px;box-shadow:none;position:relative}
+body.lp-gov .lx-tile::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--gv-blue);border-radius:0 0 8px 8px;transform:scaleX(0);transition:.25s}
+body.lp-gov .lx-tile:hover{transform:none;border-color:var(--gv-blue);box-shadow:var(--px-sh2)}
+body.lp-gov .lx-tile:hover::after{transform:scaleX(1)}
+body.lp-gov .lx-ic{width:56px;height:56px;border-radius:50%;background:var(--gv-blue-soft);color:var(--gv-blue)}
+body.lp-gov .lx-tile:hover .lx-ic{background:var(--gv-blue);color:#fff}
+body.lp-gov .lx-tx{align-items:center}
+body.lp-gov .lx-tx strong{font-size:.92rem;color:var(--gv-blue2)}
+body.lp-gov .lx-tx small{font-size:.76rem;color:var(--gv-mute)}
+@media(max-width:1000px){body.lp-gov .lx-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){body.lp-gov .lx-grid{grid-template-columns:repeat(2,1fr);gap:.6rem}body.lp-gov .lx-tile{padding:1rem .6rem}}
+
+/* ── Section bands, headings (left, red underline), cards ── */
+body.lp-gov .pad,body.lp-gov .papers-section,body.lp-gov .timeline-section,body.lp-gov .ranker-section,body.lp-gov .portal-section,body.lp-gov .fee-section,body.lp-gov .app-section,body.lp-gov .testi-section{background:#fff}
+body.lp-gov .pad-alt,body.lp-gov .syllabus-section,body.lp-gov .calendar-section,body.lp-gov .helpdesk-section,body.lp-gov .video-section,body.lp-gov .reviews-section{background:var(--gv-bg)}
+body.lp-gov #home>.container:nth-of-type(n){--band:#fff;--acc:var(--gv-accent)}
+body.lp-gov #home>.container:nth-of-type(even){--band:var(--gv-bg)}
+body.lp-gov .pad::before,body.lp-gov .pad-alt::before,body.lp-gov section::before{background:none}
+body.lp-gov section > .container > .eyebrow,body.lp-gov .container > .eyebrow.reveal,body.lp-gov #home>.container>.eyebrow{
+  margin:0 0 .35rem!important;padding:0;background:none;border:0;border-radius:0;color:var(--gv-accent)!important;font-size:.72rem!important;letter-spacing:.14em}
+body.lp-gov section > .container > .st,body.lp-gov .container > h2.st,body.lp-gov #home>.container>h2.st{text-align:left;color:var(--gv-blue2);font-size:clamp(1.5rem,3vw,2rem);margin:0 0 .6rem;letter-spacing:-.01em}
+body.lp-gov section > .container > .rule,body.lp-gov #home>.container>.rule{justify-content:flex-start;margin:0 0 1.2rem!important}
+body.lp-gov section > .container > .rule .rule-line:first-child,body.lp-gov #home>.container>.rule .rule-line:first-child{flex:0 0 56px;height:4px;border-radius:2px;background:var(--gv-accent)!important}
+body.lp-gov section > .container > .rule + p,body.lp-gov #home>.container>p{text-align:left;margin-left:0;margin-right:0;max-width:760px;color:var(--gv-mute)}
+body.lp-gov #home .btn-out,body.lp-gov .btn-out{border-radius:4px!important;border:1.5px solid var(--gv-blue)!important;color:var(--gv-blue)!important;background:#fff!important}
+body.lp-gov #home .btn-out:hover,body.lp-gov .btn-out:hover{background:var(--gv-blue)!important;color:#fff!important;box-shadow:none;transform:none}
+body.lp-gov #home>.container>div:has(>.btn-out){text-align:left}
+
+body.lp-gov :is(.course-card,.papers-card,.mock-card,.syl-card,.testi-card,.ranker-card,.test-date-card,.home-video-card,.blog-card,.video-card,.facility-card,.event-card,.notice-card,.lx-card,.faq-pro .faq-item){
+  border-radius:8px!important;border:1px solid var(--gv-line)!important;box-shadow:none!important;background:#fff}
+body.lp-gov :is(.course-card,.papers-card,.mock-card,.syl-card,.ranker-card,.home-video-card,.blog-card,.video-card,.facility-card,.event-card,.notice-card,.lx-card):hover{transform:none!important;border-color:var(--gv-blue)!important;box-shadow:var(--px-sh2)!important}
+body.lp-gov .course-card::before,body.lp-gov .papers-card::before{background:var(--gv-blue);height:4px}
+body.lp-gov #home .course-card{border-top:1px solid var(--gv-line)!important}
+body.lp-gov .faculty-card{border-radius:8px!important;box-shadow:var(--px-sh1)!important}
+
+/* ── Buttons, tables, forms ── */
+body.lp-gov .btn,body.lp-gov .course-enquire,body.lp-gov .admit-download,body.lp-gov .scholar-btn,body.lp-gov .grv-btn,body.lp-gov .blog-read,body.lp-gov .mock-dl{border-radius:4px;letter-spacing:0}
+body.lp-gov .btn:hover,body.lp-gov .course-enquire:hover{transform:none;box-shadow:var(--px-sh1)}
+body.lp-gov .btn-gold,body.lp-gov .scholar-btn,body.lp-gov .sb-btn-gold{background:var(--gv-accent)!important;color:#fff!important}
+body.lp-gov .course-enquire{background:var(--gv-blue)!important;color:#fff!important}
+body.lp-gov .adm-btn-primary{background:var(--gv-blue)!important;color:#fff!important;border-radius:4px}
+body.lp-gov .adm-btn-secondary{border-radius:4px;border-color:var(--gv-blue);color:var(--gv-blue)}
+body.lp-gov .adm-panel{border-radius:8px;box-shadow:var(--px-sh1);border:1px solid var(--gv-line)}
+body.lp-gov table th{background:var(--gv-blue2)!important}
+body.lp-gov table{border-radius:6px}
+body.lp-gov .form-panel{background:#fff;color:var(--gv-text);border-radius:8px;box-shadow:var(--px-sh1)}
+body.lp-gov .form-panel .fl,body.lp-gov .form-panel label{color:var(--gv-blue2)}
+body.lp-gov .form-panel .ff,body.lp-gov .form-panel input,body.lp-gov .form-panel select,body.lp-gov .form-panel textarea{background:#fff;color:var(--gv-text);border:1px solid #B8C2D6;border-radius:4px}
+body.lp-gov .enq-type-btn{border-radius:4px;background:#fff;color:var(--gv-blue);border:1px solid var(--gv-line)}
+body.lp-gov .enq-type-btn.on{background:var(--gv-blue);color:#fff}
+body.lp-gov .form-msg{color:var(--gv-text)}
+
+/* ── All-sections grid: flat service cards ── */
+body.lp-gov .sec-grid-wrap{background:var(--gv-bg)!important;border-bottom:1px solid var(--gv-line)}
+body.lp-gov .sec-grid-title{color:var(--gv-accent)!important}
+body.lp-gov .sec-grid-h{font-family:inherit;font-weight:700;color:var(--gv-blue2);text-align:left}
+body.lp-gov .sec-chip{border-radius:4px;border-color:var(--gv-line);color:var(--gv-blue)}
+body.lp-gov .sec-chip.on{background:var(--gv-blue);box-shadow:none}
+body.lp-gov .sec-filter{justify-content:flex-start}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile{border-radius:8px!important;box-shadow:none!important;align-items:center;text-align:center;min-height:112px!important;gap:.55rem}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile::before,body.lp-gov .sec-grid-wrap .sec-grid .sec-tile::after{display:none}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile .sec-tile-ic{border-radius:50%;background:var(--gv-blue-soft);box-shadow:none}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile .sec-tile-lb{padding-right:0;color:var(--gv-blue2);text-align:center}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile:hover{transform:none!important;border-color:var(--gv-blue)!important;box-shadow:var(--px-sh2)!important}
+body.lp-gov .sec-tile-go{display:none}
+body.lp-gov .sec-grid-wrap .sec-grid .sec-tile.active{background:var(--gv-blue)!important}
+
+/* ── Navy sections → official blue ── */
+body.lp-gov .scholar-section,body.lp-gov .mocktest-section{background:linear-gradient(160deg,var(--gv-blue2),var(--gv-blue))!important}
+body.lp-gov .promo-banner,body.lp-gov .cta-pro{background:linear-gradient(160deg,var(--gv-blue2),var(--gv-blue))}
+body.lp-gov .scholar-section .st,body.lp-gov .mocktest-section .st{color:#fff!important}
+
+/* ── Footer: dark-blue link columns ── */
+body.lp-gov footer{background:var(--gv-blue2);border-top:4px solid var(--gv-accent)}
+body.lp-gov footer h4{color:#fff;font-family:inherit;font-size:.95rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding-bottom:.5rem;border-bottom:2px solid var(--gv-accent);display:inline-block}
+body.lp-gov footer a{color:rgba(255,255,255,.82)}
+body.lp-gov footer .footer-grid a:hover{color:#fff;transform:none;text-decoration:underline}
+
+/* ── Sticky bar + chips ── */
+body.lp-gov #stickyBar{background:var(--gv-blue2)}
+
+/* ── High-contrast mode (A11y toggle) ── */
+body.lp-contrast{--gv-blue:#000; --gv-blue2:#000; --gv-accent:#B00020; --gv-bg:#fff; --gv-line:#000; --gv-text:#000; --gv-mute:#000}
+body.lp-contrast img{filter:contrast(1.1)}
+body.lp-contrast a{text-decoration:underline}
+
+body.lp-gov .sec-chip.on{background:var(--gv-blue);color:#fff;border-color:var(--gv-blue)}
+body.lp-gov .sec-grid-wrap .sec-grid-title{text-align:left}

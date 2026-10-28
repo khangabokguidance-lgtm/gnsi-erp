@@ -135,6 +135,7 @@ function buildSite(cfg) {
     reviewCount: text('google_review_count', ''),
     admissionsOpen: ['yes', 'true', 'open', '1'].includes(text('admissions_open').toLowerCase()),
     sectionsStyle: text('sections_style', 'light').toLowerCase(),
+    theme: text('site_theme', 'gov').toLowerCase(),
     admissionBanner: text('admission_banner_text', 'Admissions open for the new batch'),
     mapQuery: text('map_query', 'GNSI Khangabok, Thoubal, Manipur'),
     seats: [
@@ -825,7 +826,18 @@ export default function LandingPage({ onLogin }) {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
+  const [fontStep, setFontStep] = useState(0);
+  const [hiContrast, setHiContrast] = useState(false);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+
+  // Government-portal style theme (set Website → Settings → "Site Theme" to `classic` to turn off).
+  useEffect(() => {
+    const cls = document.body.classList;
+    cls.toggle('lp-gov', site.theme !== 'classic');
+    cls.toggle('lp-contrast', hiContrast);
+    document.documentElement.style.fontSize = fontStep ? `${100 + fontStep * 8}%` : '';
+    return () => { cls.remove('lp-gov', 'lp-contrast'); document.documentElement.style.fontSize = ''; };
+  }, [site.theme, hiContrast, fontStep]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
   const [secFilter, setSecFilter] = useState('all');
@@ -2165,7 +2177,15 @@ window.submitGrievance = async () => {
   />
   <div id="sp" />
   {/* LANGUAGE BAR */}
+  <div className="gov-stripe" aria-hidden="true"><i /><i /><i /></div>
   <div id="langBar">
+    <a className="gov-skip" href="#main-content" onClick={(e) => { e.preventDefault(); document.getElementById('main-content')?.scrollIntoView(); }}>Skip to main content</a>
+    <span className="gov-a11y" role="group" aria-label="Text size and contrast">
+      <button type="button" aria-label="Decrease text size" onClick={() => setFontStep((v) => Math.max(-1, v - 1))}>A-</button>
+      <button type="button" aria-label="Normal text size" onClick={() => setFontStep(0)}>A</button>
+      <button type="button" aria-label="Increase text size" onClick={() => setFontStep((v) => Math.min(2, v + 1))}>A+</button>
+      <button type="button" aria-pressed={hiContrast} aria-label="Toggle high contrast" title="High contrast" onClick={() => setHiContrast((v) => !v)}>HC</button>
+    </span>
     <span
       style={{
         color: "rgba(230,230,230,.85)",
@@ -2294,43 +2314,6 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </div>
-  <AdmissionsBanner site={site} />
-  {/* TICKER */}
-  <div className="ticker-wrap">
-    <div className="ticker-inner">
-      <div className="ticker-label">Latest</div>
-      <div className="ticker-scroll">
-        <div className="ticker-track">
-          {(() => {
-            // Live notices from Website Manager → Notices (newest first,
-            // archived hidden). Falls back to the standing message if none.
-            // Controlled from Website Manager → Notices → "Latest" strip.
-            const useNotices = (siteCfg.ticker_use_notices || 'yes') !== 'no';
-            const showContact = (siteCfg.ticker_show_contact || 'yes') !== 'no';
-            const extra = String(siteCfg.ticker_extra || '').split('\n').map((x) => x.trim()).filter(Boolean).map((x) => x.toUpperCase());
-            let items = [
-              ...(useNotices ? tickerNotices.map((n) => (n.priority === 'High' ? '🔴 ' : '') + n.title.toUpperCase()) : []),
-              ...extra,
-            ];
-            if (!items.length) items = ['RESULT: 66 SELECTED IN NVS & SAINIK SCHOOL 2025–26', 'SUNDAY MOCK TESTS ONGOING', 'EST. 2016'];
-            const line = [...items, ...(showContact ? [`CALL ${site.phone.toUpperCase()}`, 'KHANGABOK, THOUBAL, MANIPUR'] : [])].join('  ◆  ');
-            return (<>{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</>);
-          })()}
-        </div>
-      </div>
-    </div>
-  </div>
-  {/* Countdown bar removed — no active admissions deadline (admissions closed Feb) */}
-  {/* ② 10-YEARS CELEBRATION BANNER — replaces the old rotating result-banner
-      slider; single static full-bleed photo, no text overlay (the banner
-      image already carries its own text). */}
-  {/* 10-YEARS BANNER — full image at its natural ratio (see
-      .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
-  <div className="ten-years-banner">
-    <div className="tyb-frame">
-      <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
-    </div>
-  </div>
   {/* NAV */}
   <nav className="lp-nav">
     <div className="nav-inner">
@@ -2392,6 +2375,43 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </nav>
+  <AdmissionsBanner site={site} />
+  {/* TICKER */}
+  <div className="ticker-wrap">
+    <div className="ticker-inner">
+      <div className="ticker-label">What&apos;s New</div>
+      <div className="ticker-scroll">
+        <div className="ticker-track">
+          {(() => {
+            // Live notices from Website Manager → Notices (newest first,
+            // archived hidden). Falls back to the standing message if none.
+            // Controlled from Website Manager → Notices → "Latest" strip.
+            const useNotices = (siteCfg.ticker_use_notices || 'yes') !== 'no';
+            const showContact = (siteCfg.ticker_show_contact || 'yes') !== 'no';
+            const extra = String(siteCfg.ticker_extra || '').split('\n').map((x) => x.trim()).filter(Boolean).map((x) => x.toUpperCase());
+            let items = [
+              ...(useNotices ? tickerNotices.map((n) => (n.priority === 'High' ? '🔴 ' : '') + n.title.toUpperCase()) : []),
+              ...extra,
+            ];
+            if (!items.length) items = ['RESULT: 66 SELECTED IN NVS & SAINIK SCHOOL 2025–26', 'SUNDAY MOCK TESTS ONGOING', 'EST. 2016'];
+            const line = [...items, ...(showContact ? [`CALL ${site.phone.toUpperCase()}`, 'KHANGABOK, THOUBAL, MANIPUR'] : [])].join('  ◆  ');
+            return (<>{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</>);
+          })()}
+        </div>
+      </div>
+    </div>
+  </div>
+  {/* Countdown bar removed — no active admissions deadline (admissions closed Feb) */}
+  {/* ② 10-YEARS CELEBRATION BANNER — replaces the old rotating result-banner
+      slider; single static full-bleed photo, no text overlay (the banner
+      image already carries its own text). */}
+  {/* 10-YEARS BANNER — full image at its natural ratio (see
+      .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
+  <div className="ten-years-banner">
+    <div className="tyb-frame">
+      <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
+    </div>
+  </div>
   <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
     <div className="mob-menu-hd">
       <div className="mob-menu-brand">
@@ -2616,6 +2636,7 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
+  <div id="main-content" tabIndex={-1} />
   <QuickServices goToTab={goToTab} openFee={() => setIsFeeOpen(true)} openPortal={() => setIsPortalOpen(true)} />
   {/* STAFF PHOTO — replaces the old stats ribbon. Shown whole at the
       photo's own 3:2 proportion (no cropping). */}
