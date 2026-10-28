@@ -1128,6 +1128,9 @@ export default function LandingPage({ onLogin }) {
       label: 'Admissions', icon: '📋',
       links: [
         { label: 'Apply / Enquire', href: '#enquiry' },
+        { label: 'Apply Online', href: '/apply' },
+        { label: 'Application Status', href: '/apply-status' },
+        { label: 'Exam Registration', href: '/exam-registration' },
         { label: 'Courses', href: '#courses' },
         { label: 'Scholarship / Free Test', href: '#scholarship' },
         { label: 'Fee Payment', href: '#fee-payment' },
@@ -1320,6 +1323,7 @@ export default function LandingPage({ onLogin }) {
   // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
   // own, so it maps to the enquiry tab and then scrolls to #contact.
   const goToHash = (href) => {
+    if ((href || '').startsWith('/')) { window.location.href = href; return; }
     const hashId = (href || '').replace('#', '');
     if (!hashId) return;
     if (hashId === 'contact') { goToTab('enquiry', 'contact'); return; }
@@ -2418,6 +2422,9 @@ window.submitGrievance = async () => {
             <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="adm-btn adm-btn-primary">
               Enquire for Admission
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+            <a href="/apply" className="adm-btn adm-btn-secondary">
+              Apply Online
             </a>
             <button type="button" onClick={() => setIsFeeOpen(true)} className="adm-btn adm-btn-secondary">
               Pay Fee Online
@@ -5260,6 +5267,10 @@ window.submitGrievance = async () => {
           Send your details and our team will respond regarding courses, hostel
           availability, and the admission process.
         </p>
+        <p className="reveal enq-lead">
+          Ready to apply? <a href="/apply"><b>Apply online</b></a> or{' '}
+          <a href="/apply-status">check your application status</a>.
+        </p>
         <ul className="enq-trust reveal">
           <li><b>66</b><span>selections in 2025–26</span></li>
           <li><b>2016</b><span>established, Khangabok</span></li>
@@ -5290,6 +5301,7 @@ window.submitGrievance = async () => {
           </div>
           {enqType !== 'general' && (
             <div className="enq-app-note">
+              <a href="/apply" className="btn btn-gold" style={{ display: 'inline-block', marginBottom: '.6rem' }}>Apply Online Instead →</a><br />
               {enqType === 'navodaya'
                 ? 'Coaching admission form for JNVST preparation. Our office will call to confirm the seat and fees.'
                 : 'Coaching admission form for AISSEE (Sainik School) preparation. Our office will call to confirm the seat and fees.'}
