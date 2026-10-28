@@ -1,0 +1,66 @@
+/* LandingFinale.css — last-mile polish that makes the whole page read as one piece:
+   centred editorial headings everywhere, single-row stats, premium testimonial,
+   back-to-top, banner sheen, tighter rhythm. Loaded after every other landing stylesheet. */
+
+/* ── 1. One heading system: pill label · bold title · gradient bar · centred lead ── */
+body.lp-gov section > .container > .eyebrow,body.lp-gov .container > .eyebrow.reveal,body.lp-gov #home>.container>.eyebrow{
+  display:flex!important;width:fit-content;margin:0 auto .8rem!important;padding:.4rem 1rem;border-radius:999px;
+  background:color-mix(in srgb,var(--gv-accent,#E4572E) 9%,#fff);border:1px solid color-mix(in srgb,var(--gv-accent,#E4572E) 30%,transparent);
+  color:var(--gv-accent,#E4572E)!important;font-size:.7rem!important;letter-spacing:.2em}
+body.lp-gov section > .container > .st,body.lp-gov .container > h2.st,body.lp-gov #home>.container>h2.st{
+  text-align:center;font-size:clamp(1.8rem,4.2vw,2.7rem);letter-spacing:-.025em;line-height:1.12;margin:0 auto .8rem}
+body.lp-gov section > .container > .rule,body.lp-gov #home>.container>.rule{justify-content:center;margin:0 0 1.4rem!important}
+body.lp-gov section > .container > .rule .rule-line:first-child,body.lp-gov #home>.container>.rule .rule-line:first-child{
+  flex:0 0 72px;height:4px;border-radius:4px;background:linear-gradient(90deg,#FF9933,var(--gv-accent,#E4572E),#1B3A8A)!important}
+body.lp-gov section > .container > .rule + p,body.lp-gov #home>.container>p{text-align:center;margin-left:auto;margin-right:auto}
+body.lp-gov #home>.container>div:has(>.btn-out){text-align:center}
+/* two-column sections keep headings beside their copy */
+body.lp-gov :is(.enquiry-grid,.fee-grid,.about-grid,.head-institute-grid,.app-grid,.helpdesk-grid,.scholar-grid,.portal-grid) .eyebrow{margin-left:0!important}
+body.lp-gov :is(.enquiry-grid,.fee-grid,.about-grid,.head-institute-grid,.app-grid,.helpdesk-grid,.scholar-grid,.portal-grid) :is(.st,.rule){text-align:left;justify-content:flex-start}
+
+/* ── 2. Stats: always one balanced row ── */
+.cx-stats{flex-wrap:nowrap}
+.cx-stat{flex:1 1 0;min-width:0;max-width:none}
+.cx-num{font-size:clamp(1.7rem,3.6vw,3rem)}
+@media(max-width:900px){.cx-stats{flex-wrap:wrap}.cx-stat{flex:1 1 calc(50% - .5rem)}}
+
+/* ── 3. Testimonials: editorial quote card ── */
+.testi-card{text-align:center;padding:3rem 2.4rem 2.2rem;border:1px solid transparent!important;
+  background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,#FF9933,#E4572E 45%,#1B3A8A) border-box!important;box-shadow:0 24px 50px -26px rgba(15,42,107,.35)!important}
+.testi-card::after{left:50%!important;top:-.4rem!important;transform:translateX(-50%);font-size:7rem!important;opacity:.12!important;color:var(--gv-accent,#E4572E)!important}
+.testi-card blockquote{font-size:clamp(1.1rem,2.6vw,1.35rem)!important;font-style:normal!important;font-weight:500;color:#12285f}
+.testi-card .stars{letter-spacing:.2em;color:#F5A623!important}
+.testi-foot{justify-content:center;border-top:1px solid rgba(15,42,107,.1)!important}
+.testi-avatar{box-shadow:0 0 0 4px #fff,0 0 0 6px rgba(228,87,46,.35)}
+
+/* ── 4. Back to top ── */
+.cx-top{position:fixed;left:18px;bottom:22px;z-index:900;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  border:1px solid rgba(255,255,255,.25);background:linear-gradient(135deg,#1B3A8A,#0F2A6B);color:#fff;box-shadow:0 14px 28px -10px rgba(15,42,107,.8);
+  opacity:0;transform:translateY(14px) scale(.9);pointer-events:none;transition:opacity .3s,transform .3s,background .25s}
+.cx-top.show{opacity:1;transform:none;pointer-events:auto}
+.cx-top:hover{background:linear-gradient(135deg,#F28C28,#E4572E);transform:translateY(-3px)}
+.cx-top:focus-visible{outline:2px solid #F28C28;outline-offset:3px}
+
+/* ── 5. Banner sheen + magnetic buttons smoothness ── */
+.tyb-frame{position:relative;overflow:hidden}
+.tyb-frame::after{content:'';position:absolute;top:0;bottom:0;width:30%;left:-40%;pointer-events:none;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.16),transparent);transform:skewX(-18deg);animation:fnSheen 9s ease-in-out infinite}
+@keyframes fnSheen{0%,60%{left:-40%}100%{left:140%}}
+.btn-gold,.adm-btn-primary,.cx-btn-p,.mm-act-p,.nv-primary,.mm-burger{transition:translate .18s ease-out,transform .25s,box-shadow .25s,background .25s}
+
+/* ── 6. Rhythm: consistent section spacing and soft joins ── */
+body.lp-gov #home>.container{padding-top:clamp(3rem,6vw,4.6rem);padding-bottom:clamp(3rem,6vw,4.6rem)}
+.cx-journey,.cx-legacy{scroll-margin-top:80px}
+.cx-legacy::after{content:'';position:absolute;left:0;right:0;bottom:0;height:90px;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(7,18,44,.5))}
+
+@media(max-width:640px){.cx-top{left:12px;bottom:78px;width:42px;height:42px}}
+@media(prefers-reduced-motion:reduce){.tyb-frame::after{animation:none;display:none}}
+
+/* Videos: balanced 3-up grid with play badge, whatever the thumbnail state */
+.home-video-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))!important;max-width:1000px;margin-left:auto;margin-right:auto}
+.home-video-thumb{background:linear-gradient(135deg,#0F2A6B,#1B3A8A)}
+.home-video-play{display:none}
+.home-video-play-overlay{opacity:1!important;font-size:0!important;background:linear-gradient(180deg,rgba(8,22,41,0) 40%,rgba(8,22,41,.45))!important}
+.home-video-play-overlay::before{content:'';width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.95) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23E4572E'%3E%3Cpath d='M9 6.5v11l9-5.5z'/%3E%3C/svg%3E") 55% 50%/26px no-repeat;box-shadow:0 10px 24px -8px rgba(0,0,0,.6);transition:transform .25s}
+.home-video-card:hover .home-video-play-overlay::before{transform:scale(1.14)}
+.home-video-title{padding:.9rem 1rem;font-size:.9rem}
