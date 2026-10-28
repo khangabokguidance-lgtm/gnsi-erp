@@ -90,6 +90,13 @@ const SITE_FALLBACK = {
   founderQuote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
   batchStart: '20 Dec 2026',
 };
+// "2026-06-30T23:59:59" / "2026-07-01" → "30 Jun 2026"; anything else is shown as typed.
+function prettyDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || '');
+  if (!m) return v;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
 function buildSite(cfg) {
   const text = (k, fb = '') => {
     const v = cfg && cfg[k];
@@ -122,11 +129,12 @@ function buildSite(cfg) {
     reviewUrl: url('google_review_url', SITE_FALLBACK.reviewUrl),
     founderQuote: text('founder_quote', SITE_FALLBACK.founderQuote).replace(/^["“]+|["”]+$/g, ''),
     founderBio: text('founder_bio', ''),
-    batchStart: text('batch_start_date', SITE_FALLBACK.batchStart),
-    admissionDeadline: text('admission_deadline', ''),
+    batchStart: prettyDate(text('batch_start_date', SITE_FALLBACK.batchStart)),
+    admissionDeadline: prettyDate(text('admission_deadline', '')),
     reviewScore: text('google_review_score', ''),
     reviewCount: text('google_review_count', ''),
     admissionsOpen: ['yes', 'true', 'open', '1'].includes(text('admissions_open').toLowerCase()),
+    sectionsStyle: text('sections_style', 'light').toLowerCase(),
     admissionBanner: text('admission_banner_text', 'Admissions open for the new batch'),
     mapQuery: text('map_query', 'GNSI Khangabok, Thoubal, Manipur'),
     seats: [
@@ -820,6 +828,7 @@ export default function LandingPage({ onLogin }) {
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [secFilter, setSecFilter] = useState('all');
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -2664,11 +2673,18 @@ window.submitGrievance = async () => {
     @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
     @media (max-width:340px){.sec-grid{--per:4}}
   `}</style>
-  <div className="sec-grid-wrap">
+  <div className={'sec-grid-wrap' + (site.sectionsStyle === 'dark' ? ' sec-theme-dark' : '')}>
     <div className="container">
-      <p className="sec-grid-title">Explore GNSI · All Sections</p>
+      <p className="sec-grid-title">Explore GNSI</p>
+      <h2 className="sec-grid-h">Everything you need, in one place</h2>
+      <div className="sec-filter" role="tablist" aria-label="Filter sections">
+        {[['all', 'All'], ['gold', 'Admissions'], ['red', 'Exams & Prep'], ['green', 'Results'], ['blue', 'Institute'], ['purple', 'Updates & Help']].map(([k, lb]) => (
+          <button key={k} type="button" role="tab" aria-selected={secFilter === k}
+            className={'sec-chip' + (secFilter === k ? ' on' : '')} onClick={() => setSecFilter(k)}>{lb}</button>
+        ))}
+      </div>
       <div className="sec-grid" role="list">
-        {tabList.filter((t) => t.id !== 'home').map((t) => (
+        {tabList.filter((t) => t.id !== 'home' && (secFilter === 'all' || t.cat === secFilter)).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -2679,6 +2695,7 @@ window.submitGrievance = async () => {
           >
             <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
             <span className="sec-tile-lb">{t.label}</span>
+            <svg className="sec-tile-go" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
         ))}
       </div>
@@ -6493,6 +6510,10 @@ window.submitGrievance = async () => {
         <a href="#faculty" onClick={(e) => { e.preventDefault(); goToTab('faculty'); }}>Faculty</a>
         <a href="#blog" onClick={(e) => { e.preventDefault(); goToTab('blog'); }}>News &amp; Blog</a>
         <a href="#gallery" onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}>Gallery</a>
+        <a href="#alumni" onClick={(e) => { e.preventDefault(); goToTab('alumni'); }}>Alumni &amp; TC</a>
+        <a href="#careers" onClick={(e) => { e.preventDefault(); goToTab('careers'); }}>Careers</a>
+        <a href="/verify">Verify Receipt / Certificate</a>
+        <a href="/store">GNSI Store</a>
       </div>
       <div>
         <h4>Admissions</h4>
@@ -6501,12 +6522,15 @@ window.submitGrievance = async () => {
         <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Foundation Programme</a>
         <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Combined Course</a>
         <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Apply Now</a>
+        <a href="/apply">Apply Online</a>
+        <a href="/apply-status">Application Status</a>
+        <a href="#hostel" onClick={(e) => { e.preventDefault(); goToTab('hostel'); }}>Hostel Life</a>
         <a
           href={site.brochure}
           target="_blank"
           download=""
         >
-          📄 Download Brochure
+          Download Brochure
         </a>
       </div>
       <div>
@@ -6523,7 +6547,7 @@ window.submitGrievance = async () => {
           onClick={() => setIsFeeOpen(true)}
           style={{ color: "var(--goldL)", background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", display: "block", marginBottom: ".6rem", textAlign: "left" }}
         >
-          💳 Pay Fee Online
+          Pay Fee Online
         </button>
         <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Admission Enquiry</a>
         <a
@@ -6538,7 +6562,7 @@ window.submitGrievance = async () => {
           download=""
           style={{ color: "#4AE382" }}
         >
-          📱 Download Android App
+          Download Android App
         </a>
         <button
           onClick={onLogin}
