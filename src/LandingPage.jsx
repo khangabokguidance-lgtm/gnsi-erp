@@ -820,6 +820,7 @@ export default function LandingPage({ onLogin }) {
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [secFilter, setSecFilter] = useState('all');
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -2666,9 +2667,16 @@ window.submitGrievance = async () => {
   `}</style>
   <div className="sec-grid-wrap">
     <div className="container">
-      <p className="sec-grid-title">Explore GNSI · All Sections</p>
+      <p className="sec-grid-title">Explore GNSI</p>
+      <h2 className="sec-grid-h">Everything you need, in one place</h2>
+      <div className="sec-filter" role="tablist" aria-label="Filter sections">
+        {[['all', 'All'], ['gold', 'Admissions'], ['red', 'Exams & Prep'], ['green', 'Results'], ['blue', 'Institute'], ['purple', 'Updates & Help']].map(([k, lb]) => (
+          <button key={k} type="button" role="tab" aria-selected={secFilter === k}
+            className={'sec-chip' + (secFilter === k ? ' on' : '')} onClick={() => setSecFilter(k)}>{lb}</button>
+        ))}
+      </div>
       <div className="sec-grid" role="list">
-        {tabList.filter((t) => t.id !== 'home').map((t) => (
+        {tabList.filter((t) => t.id !== 'home' && (secFilter === 'all' || t.cat === secFilter)).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -2679,6 +2687,7 @@ window.submitGrievance = async () => {
           >
             <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
             <span className="sec-tile-lb">{t.label}</span>
+            <svg className="sec-tile-go" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
         ))}
       </div>
