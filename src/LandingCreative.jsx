@@ -45,14 +45,28 @@ export function CreativeFX() {
         el.classList.add('cx-tilt');
       }
     };
-    const onLeave = () => { reset(last); last = null; };
+    // magnetic pull on primary buttons (a few px toward the pointer)
+    const MAG = '.btn-gold,.adm-btn-primary,.cx-btn-p,.mm-act-p,.nv-primary,.mm-burger';
+    let mag = null;
+    const onMag = (e) => {
+      const el = e.target instanceof Element ? e.target.closest(MAG) : null;
+      if (mag && mag !== el) { mag.style.translate = ''; }
+      mag = el;
+      if (!el || reduceMotion()) return;
+      const r = el.getBoundingClientRect();
+      const dx = ((e.clientX - r.left) / r.width - 0.5) * 8, dy = ((e.clientY - r.top) / r.height - 0.5) * 6;
+      el.style.translate = `${dx.toFixed(1)}px ${dy.toFixed(1)}px`;
+    };
+    const onLeave = () => { reset(last); last = null; if (mag) { mag.style.translate = ''; mag = null; } };
     if (fine) {
       document.addEventListener('pointermove', onMove, { passive: true });
+      document.addEventListener('pointermove', onMag, { passive: true });
       document.addEventListener('pointerleave', onLeave);
     }
     return () => {
       window.removeEventListener('scroll', onScroll);
       document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointermove', onMag);
       document.removeEventListener('pointerleave', onLeave);
       cancelAnimationFrame(raf);
     };
@@ -143,7 +157,7 @@ export function LegacySection({ site, goToTab }) {
         <div className="cx-kicker">A decade of selections</div>
         <h2 className="cx-title">Where discipline becomes <em>distinction</em></h2>
         <p className="cx-sub">Every year, students from Khangabok walk into Sainik Schools, Navodaya Vidyalayas and Military Schools across India. These are their numbers.</p>
-        <div className="cx-stats">
+        <div className="cx-stats" style={{ '--n': stats.length }}>
           {stats.map((s) => (
             <div className="cx-stat" key={s.label}>
               <div className="cx-num"><CountUp value={s.value} /></div>
@@ -203,5 +217,22 @@ export function JourneySection({ goToTab }) {
         </ol>
       </div>
     </section>
+  );
+}
+
+// ── Back-to-top button (appears after the first screen) ──
+export function BackToTop() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const on = () => setShow(window.scrollY > 700);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
+  return (
+    <button type="button" className={'cx-top' + (show ? ' show' : '')} aria-label="Back to top" tabIndex={show ? 0 : -1}
+      onClick={() => window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' })}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+    </button>
   );
 }
