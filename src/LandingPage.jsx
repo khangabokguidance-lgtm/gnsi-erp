@@ -21,6 +21,7 @@ import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, Site
 import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
 import MegaMenu, { MenuButton } from './LandingMenu';
 import MajesticFooter from './LandingFooter';
+import { UtilityBar, HeaderLinks } from './LandingHeader';
 import './LandingFinale.css';
 // Programme logos (Home admissions panel), embedded as small WebP images so
 // no separate image files are needed in src/.
@@ -845,14 +846,16 @@ export default function LandingPage({ onLogin }) {
   // Government-portal style theme (set Website → Settings → "Site Theme" to `classic` to turn off).
   useEffect(() => {
     const cls = document.body.classList;
+    cls.add('lp-page');
     cls.toggle('lp-gov', site.theme !== 'classic');
     cls.toggle('lp-contrast', hiContrast);
     document.documentElement.style.fontSize = fontStep ? `${100 + fontStep * 8}%` : '';
-    return () => { cls.remove('lp-gov', 'lp-contrast'); document.documentElement.style.fontSize = ''; };
+    return () => { cls.remove('lp-page', 'lp-gov', 'lp-contrast'); document.documentElement.style.fontSize = ''; };
   }, [site.theme, hiContrast, fontStep]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [navScrolled, setNavScrolled] = useState(false);
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -1364,6 +1367,14 @@ export default function LandingPage({ onLogin }) {
     { href: '/store', label: 'GNSI Store', icon: '🛍️', keywords: 'uniform books shop' },
     { href: '/student-leave', label: 'Student leave application', icon: '🏖️', keywords: 'parent leave' },
   ], []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Header compacts once the page is scrolled.
+  useEffect(() => {
+    const on = () => setNavScrolled(window.scrollY > 120);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
 
   // "/" opens site search (ignored while typing in a field).
   useEffect(() => {
@@ -2111,103 +2122,7 @@ window.submitGrievance = async () => {
   />
   <div id="sp" />
   {/* LANGUAGE BAR */}
-  <div className="gov-stripe" aria-hidden="true"><i /><i /><i /></div>
-  <div id="langBar">
-    <a className="gov-skip" href="#main-content" onClick={(e) => { e.preventDefault(); document.getElementById('main-content')?.scrollIntoView(); }}>Skip to main content</a>
-    <span className="gov-a11y" role="group" aria-label="Text size and contrast">
-      <button type="button" aria-label="Decrease text size" onClick={() => setFontStep((v) => Math.max(-1, v - 1))}>A-</button>
-      <button type="button" aria-label="Normal text size" onClick={() => setFontStep(0)}>A</button>
-      <button type="button" aria-label="Increase text size" onClick={() => setFontStep((v) => Math.min(2, v + 1))}>A+</button>
-      <button type="button" aria-pressed={hiContrast} aria-label="Toggle high contrast" title="High contrast" onClick={() => setHiContrast((v) => !v)}>HC</button>
-    </span>
-    <span
-      style={{
-        color: "rgba(230,230,230,.85)",
-        fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
-        fontSize: ".65rem",
-        letterSpacing: ".1em",
-        textTransform: "uppercase"
-      }}
-    >
-      Language:
-    </span>
-    <button className="lang-btn active" onClick={(e) => window.setLang('en', e.currentTarget)}>
-      English
-    </button>
-    <button className="lang-btn" onClick={(e) => window.setLang('hi', e.currentTarget)}>
-      हिंदी
-    </button>
-    <a className="lang-btn lx-lang-mni" href={'https://translate.google.com/translate?sl=en&tl=mni-Mtei&u=' + encodeURIComponent('https://guidancekhangabok.in/')} target="_blank" rel="noopener noreferrer" title="Machine-translated to Meitei Mayek by Google Translate">
-      ꯃꯤꯇꯩꯂꯣꯟ
-    </a>
-  </div>
-  {/* ① TOP CONTACT BAR */}
-  <div className="top-bar">
-    <div className="top-bar-left">
-      <a href={site.tel} className="top-bar-item">
-        <span>📞</span>
-        <span data-en="">{site.phone}</span>
-        <span data-hi="">{site.phone}</span>
-      </a>
-      <a href={'mailto:' + site.email} className="top-bar-item">
-        <span>✉</span> {site.email}
-      </a>
-      <span className="top-bar-item">
-        <span>📍</span>
-        <span data-en="">{site.address}</span>
-        <span data-hi="">खंगाबोक, थौबल, मणिपुर</span>
-      </span>
-    </div>
-    <div className="top-bar-right">
-      <span className="top-bar-hours">
-        <span data-en="">Mon–Sat: 08:30–17:00</span>
-        <span data-hi="">सोम–शनि: 08:30–17:00</span>
-      </span>
-      <div className="top-bar-social">
-        <a
-          className="top-bar-soc"
-          href={site.facebook}
-          target="_blank"
-          title="Facebook"
-         rel="noopener noreferrer">
-          f
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.youtube}
-          target="_blank"
-          title="YouTube"
-         rel="noopener noreferrer">
-          ▶
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.instagram}
-          target="_blank"
-          title="Instagram"
-         rel="noopener noreferrer">
-          ◉
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.wa}
-          target="_blank"
-          title="WhatsApp"
-          style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
-         rel="noopener noreferrer">
-          W
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.appLink}
-          target="_blank"
-          title="Play Store"
-         rel="noopener noreferrer">
-          ▲
-        </a>
-      </div>
-    </div>
-  </div>
+  <UtilityBar site={site} fontStep={fontStep} setFontStep={setFontStep} hiContrast={hiContrast} setHiContrast={setHiContrast} />
   {/* STICKY APPLY BAR */}
   <div id="stickyBar">
     <div className="sb-inner">
@@ -2249,7 +2164,7 @@ window.submitGrievance = async () => {
     </div>
   </div>
   {/* NAV */}
-  <nav className="lp-nav">
+  <nav className={"lp-nav" + (navScrolled ? " is-scrolled" : "")}>
     <div className="nav-inner">
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
         <span className="nv-crest">
@@ -2270,14 +2185,11 @@ window.submitGrievance = async () => {
           )}
         </span>
         <div className="brand-text">
-          <h2><span className="brand-full">Guidance Navodaya &amp; Sainik Institute</span><span className="brand-short">GNSI</span></h2>
-          <small>Khangabok, Manipur · Est. 2016</small>
+          <h2><span className="brand-full">Guidance</span><span className="brand-short">GNSI</span></h2>
+          <small>Navodaya &amp; Sainik Institute</small>
         </div>
       </a>
-      {/* Full nav (Admissions, Results, Courses, etc.) now lives only inside
-          the hamburger menu at every screen size — collapsed until the user
-          opens it. Only the logo (left, above) and these two frequent
-          actions plus the menu toggle stay fixed in the bar. */}
+      <HeaderLinks active={activeTab} goToTab={goToTab} />
       <div className="nav-fixed-actions">
         <button type="button" className="lx-nav-search" aria-label="Search the site (press /)" onClick={() => setSearchOpen(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2285,16 +2197,9 @@ window.submitGrievance = async () => {
         <button type="button" onClick={() => setIsFeeOpen(true)} className="nv-btn nv-primary">
           Pay Fee
         </button>
-        <a href={site.apk} download="" className="nv-btn nv-ghost nv-hide-sm">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          Get App
-        </a>
         {/* Visible at every width; label shortens to "Parents" on small phones. */}
         <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
           <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
-        </button>
-        <button type="button" onClick={onLogin} className="nv-btn nv-link">
-          Staff Login
         </button>
         <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
       </div>
