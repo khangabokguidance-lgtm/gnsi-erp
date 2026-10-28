@@ -119,7 +119,7 @@ export async function deleteNotice(id) {
 // ─── ENQUIRIES (enquiries) ───────────────────────────────────────────────────
 export async function submitEnquiry(form) {
   // form: { student_name, parent_name, phone, class_grade, course, message }
-  return supabase.from('enquiries').insert({
+  const res = await supabase.from('enquiries').insert({
     student_name: form.student_name,
     parent_name: form.parent_name || '',
     phone: form.phone,
@@ -129,6 +129,31 @@ export async function submitEnquiry(form) {
     replied: false,
     created_at: new Date().toISOString(),
   });
+
+  // Also drop the lead into the Reception → Enquiry pipeline (the Admissions
+  // "enquiry to enrolment" funnel) so the front office can follow it up
+  // there. Best-effort: the website inbox row above is the source of truth,
+  // so a failure here must never fail the visitor's submission.
+  if (!res.error) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await supabase.from('reception_enquiries').insert({
+        student_name: form.student_name,
+        parent_name: form.parent_name || '',
+        phone: form.phone,
+        class_interest: [form.course, form.class_grade].filter(Boolean).join(' · '),
+        source: 'Website',
+        enquiry_date: today,
+        follow_up_date: today,
+        status: 'New',
+        remarks: form.message || '',
+      });
+      if (error) console.warn('Reception enquiry sync skipped:', error.message);
+    } catch (e) {
+      console.warn('Reception enquiry sync skipped:', e);
+    }
+  }
+  return res;
 }
 
 export async function submitScholarRegistration(form) {
