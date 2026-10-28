@@ -6503,6 +6503,10 @@ window.submitGrievance = async () => {
         <a href="#faculty" onClick={(e) => { e.preventDefault(); goToTab('faculty'); }}>Faculty</a>
         <a href="#blog" onClick={(e) => { e.preventDefault(); goToTab('blog'); }}>News &amp; Blog</a>
         <a href="#gallery" onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}>Gallery</a>
+        <a href="#alumni" onClick={(e) => { e.preventDefault(); goToTab('alumni'); }}>Alumni &amp; TC</a>
+        <a href="#careers" onClick={(e) => { e.preventDefault(); goToTab('careers'); }}>Careers</a>
+        <a href="/verify">Verify Receipt / Certificate</a>
+        <a href="/store">GNSI Store</a>
       </div>
       <div>
         <h4>Admissions</h4>
@@ -6511,12 +6515,15 @@ window.submitGrievance = async () => {
         <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Foundation Programme</a>
         <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Combined Course</a>
         <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Apply Now</a>
+        <a href="/apply">Apply Online</a>
+        <a href="/apply-status">Application Status</a>
+        <a href="#hostel" onClick={(e) => { e.preventDefault(); goToTab('hostel'); }}>Hostel Life</a>
         <a
           href={site.brochure}
           target="_blank"
           download=""
         >
-          📄 Download Brochure
+          Download Brochure
         </a>
       </div>
       <div>
@@ -6533,7 +6540,7 @@ window.submitGrievance = async () => {
           onClick={() => setIsFeeOpen(true)}
           style={{ color: "var(--goldL)", background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", display: "block", marginBottom: ".6rem", textAlign: "left" }}
         >
-          💳 Pay Fee Online
+          Pay Fee Online
         </button>
         <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Admission Enquiry</a>
         <a
@@ -6548,7 +6555,7 @@ window.submitGrievance = async () => {
           download=""
           style={{ color: "#4AE382" }}
         >
-          📱 Download Android App
+          Download Android App
         </a>
         <button
           onClick={onLogin}

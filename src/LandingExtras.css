@@ -108,3 +108,32 @@
 .sec-grid-wrap .sec-grid .sec-tile.cat-gold{--tc:#c9a227}.sec-grid-wrap .sec-grid .sec-tile.cat-red{--tc:#c0392b}.sec-grid-wrap .sec-grid .sec-tile.cat-green{--tc:#1e8e4e}.sec-grid-wrap .sec-grid .sec-tile.cat-blue{--tc:#2563eb}.sec-grid-wrap .sec-grid .sec-tile.cat-purple{--tc:#7c3aed}
 @media(max-width:1100px){.sec-grid-wrap .sec-grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:760px){.sec-grid-wrap .sec-grid{grid-template-columns:repeat(2,1fr);gap:.65rem}.sec-grid-wrap .sec-grid .sec-tile{min-height:104px!important;padding:.85rem .8rem!important}.sec-grid-wrap .sec-grid .sec-tile .sec-tile-ic{width:40px;height:40px}.sec-grid-wrap .sec-grid .sec-tile .sec-tile-lb{font-size:.84rem!important}.sec-tile-go{opacity:.5;transform:none}}
+
+/* ═══ PROFESSIONAL FINISH ═══ */
+/* nav search button — visible on the dark bar */
+.lx-nav-search{border-color:rgba(255,255,255,.4)!important;color:#fff!important;background:rgba(255,255,255,.08)!important;transition:.2s}
+.lx-nav-search:hover{background:rgba(255,255,255,.18)!important;border-color:var(--goldL,#C9A24B)!important}
+/* admissions panel: one primary + two secondary actions on a single row */
+.adm-panel .adm-actions{grid-template-columns:1.5fr 1fr 1fr!important}
+.adm-panel .adm-actions .adm-btn{justify-content:center;text-align:center;white-space:nowrap}
+@media(max-width:560px){.adm-panel .adm-actions{grid-template-columns:1fr!important}}
+/* All-sections grid: centre the last, partial row */
+.sec-grid-wrap .sec-grid{display:flex!important;flex-wrap:wrap;justify-content:center;gap:.9rem}
+.sec-grid-wrap .sec-grid .sec-tile{flex:0 0 calc((100% - 5 * .9rem) / 6)!important}
+@media(max-width:1100px){.sec-grid-wrap .sec-grid .sec-tile{flex-basis:calc((100% - 3 * .9rem) / 4)!important}}
+@media(max-width:760px){.sec-grid-wrap .sec-grid{gap:.65rem}.sec-grid-wrap .sec-grid .sec-tile{flex-basis:calc((100% - .65rem) / 2)!important}}
+/* section headings: consistent, refined rhythm */
+.pad,.pad-alt{padding-top:clamp(2.6rem,6vw,4.6rem);padding-bottom:clamp(2.6rem,6vw,4.6rem)}
+.st{font-size:clamp(1.6rem,3.6vw,2.4rem);color:var(--navy,#0B1E3D);text-align:center;margin-bottom:.5rem}
+.eyebrow{font-weight:700;letter-spacing:.2em;text-transform:uppercase}
+/* cards & media: consistent radius, quiet shadow, crisp image rendering */
+.blog-card,.papers-card,.mock-card,.faculty-card,.video-card,.testi-card{border-radius:16px;box-shadow:0 1px 2px rgba(11,30,61,.05),0 12px 28px -14px rgba(11,30,61,.18)}
+/* footer: tidy columns and link affordance */
+footer a{transition:color .2s,transform .2s}
+footer .footer-grid a:hover{color:var(--goldLL,#E2C57E);transform:translateX(3px)}
+footer h4{letter-spacing:.02em}
+/* sticky bottom bar: elevated, never blocks reading on small screens */
+#stickyBar{box-shadow:0 -10px 30px rgba(8,22,41,.25);backdrop-filter:blur(10px)}
+/* links inside reading text */
+.lx-lead a,.enq-lead a{color:var(--navy3,#1F4E8C);text-decoration:underline;text-underline-offset:3px}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
