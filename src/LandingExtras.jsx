@@ -7,33 +7,51 @@ import { submitTcRequest, submitCareerApplication } from './websiteApi';
 import './LandingExtras.css';
 import './SectionsThemes.css';
 import './PremiumSystem.css';
+import './GovTheme.css';
 
 const PHONE_RE = /^[6-9]\d{9}$/;
 const cleanPhone = (v) => (v || '').replace(/[\s\-()]/g, '').replace(/^\+?91/, '');
 
 // ── Quick services: links to the public ERP pages ───────────────────────────
+const SVG = {
+  apply: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></>,
+  status: <><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8.5 11l1.8 1.8L14 9"/></>,
+  exam: <><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.6 1.7-2 3-2s2.4.4 3 2M14 10h4M14 13h3"/></>,
+  fees: <><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/></>,
+  verify: <><path d="M12 3 5 6v5c0 4.4 2.9 8.3 7 10 4.1-1.7 7-5.6 7-10V6z"/><path d="m9 12 2 2 4-4"/></>,
+  store: <><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></>,
+  leave: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></>,
+  portal: <><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.5-3.5 3-5 6-5s5.5 1.5 6 5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14.2c2.6 0 4.1 1.3 4.5 4.3"/></>,
+  hostel: <><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10M10 20v-6h4v6"/></>,
+  alumni: <><path d="m2 9 10-5 10 5-10 5z"/><path d="M6 11.5V16c0 1.2 2.7 3 6 3s6-1.8 6-3v-4.5M22 9v6"/></>,
+};
+const Ico = ({ n }) => (
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{SVG[n]}</svg>
+);
+
 export function QuickServices({ goToTab, openFee, openPortal }) {
   const items = [
-    { ic: '📝', t: 'Apply Online', d: 'Admission application', href: '/apply' },
-    { ic: '🔎', t: 'Application Status', d: 'Track your application', href: '/apply-status' },
-    { ic: '🪪', t: 'Exam Registration', d: 'Register & admit card', href: '/exam-registration' },
-    { ic: '💳', t: 'Pay Fees', d: 'Online fee payment', onClick: openFee },
-    { ic: '🧾', t: 'Verify Receipt / Certificate', d: 'Check authenticity', href: '/verify' },
-    { ic: '🛍️', t: 'GNSI Store', d: 'Uniforms, books & more', href: '/store' },
-    { ic: '🏖️', t: 'Student Leave', d: 'Parent leave request', href: '/student-leave' },
-    { ic: '👪', t: 'Parents Portal', d: 'Attendance, results, fees', onClick: openPortal },
-    { ic: '🏠', t: 'Hostel Life', d: 'Rooms, meals, routine', onClick: () => goToTab('hostel') },
-    { ic: '🎓', t: 'Alumni & TC', d: 'Certificates & alumni', onClick: () => goToTab('alumni') },
+    { ic: 'apply', t: 'Apply Online', d: 'Admission application', href: '/apply' },
+    { ic: 'status', t: 'Application Status', d: 'Track your application', href: '/apply-status' },
+    { ic: 'exam', t: 'Exam Registration', d: 'Register & admit card', href: '/exam-registration' },
+    { ic: 'fees', t: 'Pay Fees', d: 'Online fee payment', onClick: openFee },
+    { ic: 'verify', t: 'Verify Receipt / Certificate', d: 'Check authenticity', href: '/verify' },
+    { ic: 'store', t: 'GNSI Store', d: 'Uniforms, books & more', href: '/store' },
+    { ic: 'leave', t: 'Student Leave', d: 'Parent leave request', href: '/student-leave' },
+    { ic: 'portal', t: 'Parents Portal', d: 'Attendance, results, fees', onClick: openPortal },
+    { ic: 'hostel', t: 'Hostel Life', d: 'Rooms, meals, routine', onClick: () => goToTab('hostel') },
+    { ic: 'alumni', t: 'Alumni & TC', d: 'Certificates & alumni', onClick: () => goToTab('alumni') },
   ];
   return (
-    <section className="lx-services" aria-label="Quick services">
+    <section className="lx-services" aria-label="GNSI online services">
       <div className="lx-wrap">
         <div className="lx-eyebrow">Quick services</div>
+        <h2 className="lx-svc-title">GNSI Online Services</h2>
         <div className="lx-grid">
           {items.map((i) => {
             const inner = (
               <>
-                <span className="lx-ic" aria-hidden="true">{i.ic}</span>
+                <span className="lx-ic" aria-hidden="true"><Ico n={i.ic} /></span>
                 <span className="lx-tx"><strong>{i.t}</strong><small>{i.d}</small></span>
               </>
             );
