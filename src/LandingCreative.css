@@ -1,0 +1,88 @@
+/* LandingCreative.css — motion & storytelling layer. Colours follow the active theme
+   (gov: blue + saffron; classic: navy + gold) through CSS variables with fallbacks. */
+
+:root{--cx-bg1:var(--gv-blue2,#0B1E3D);--cx-bg2:var(--gv-blue,#1F4E8C);--cx-acc:var(--gv-saffron,#E2C57E);--cx-acc2:var(--gv-accent,#B8913F)}
+
+/* ── Scroll progress ── */
+.cx-progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:10001;transform-origin:0 50%;transform:scaleX(0);background:linear-gradient(90deg,#FF9933,#fff 50%,#138808);pointer-events:none;box-shadow:0 0 10px rgba(255,153,51,.6)}
+
+/* ── Pointer spotlight + tilt (CSS vars set by CreativeFX) ── */
+.lx-grid,.sec-grid,.cx-steps,.cx-stats{perspective:1100px}
+.cx-tilt{rotate:var(--ax,0) var(--ay,0) 0 var(--ang,0deg);transition:rotate .12s ease-out,box-shadow .25s,border-color .25s!important;will-change:rotate}
+.lx-tile:hover,.sec-grid-wrap .sec-grid .sec-tile:hover,.cx-step:hover,.course-card:hover{
+  background-image:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(242,140,40,.14),transparent 70%)}
+.cx-stat:hover{background-image:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.14),transparent 70%)}
+
+/* ── Legacy: cinematic band ── */
+.cx-legacy{position:relative;overflow:hidden;color:#fff;padding:clamp(3.2rem,8vw,6rem) 0 0;background:radial-gradient(1000px 500px at 80% -10%,color-mix(in srgb,var(--cx-bg2) 70%,transparent),transparent 60%),linear-gradient(170deg,var(--cx-bg1),#07122c 90%)}
+.cx-stars{position:absolute;inset:0;width:100%;height:100%;opacity:.8}
+.cx-aurora{position:absolute;inset:-20% -10% auto -10%;height:70%;pointer-events:none;filter:blur(60px);opacity:.55;
+  background:conic-gradient(from 90deg at 50% 50%,rgba(242,140,40,.0),rgba(242,140,40,.35),rgba(19,136,8,.0) 40%,rgba(43,95,200,.4) 60%,rgba(242,140,40,.0));animation:cxSpin 28s linear infinite}
+@keyframes cxSpin{to{transform:rotate(360deg)}}
+.cx-legacy-in{position:relative;z-index:2;text-align:center;padding-bottom:clamp(2rem,5vw,3.4rem)}
+.cx-kicker{display:inline-block;font:700 .72rem/1 var(--sans,Inter,sans-serif);letter-spacing:.28em;text-transform:uppercase;color:var(--cx-acc);padding:.5rem 1rem;border:1px solid color-mix(in srgb,var(--cx-acc) 40%,transparent);border-radius:999px;background:rgba(255,255,255,.05);margin-bottom:1.1rem}
+.cx-title{font:800 clamp(2rem,5.6vw,3.8rem)/1.08 var(--sans,Inter,sans-serif);letter-spacing:-.03em;max-width:15ch;margin:0 auto .9rem;color:#fff}
+.cx-title em{font-style:normal;background:linear-gradient(100deg,#FFD58A,#F28C28 45%,#FFD58A);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:cxShine 6s linear infinite}
+@keyframes cxShine{to{background-position:-200% 0}}
+.cx-sub{max-width:640px;margin:0 auto 2.2rem;color:rgba(255,255,255,.78);line-height:1.8}
+.cx-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:1rem;margin:0 auto 2rem;max-width:1000px}
+.cx-stat{flex:1 1 200px;max-width:232px;position:relative;padding:1.6rem 1rem 1.4rem;border-radius:16px;background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(8px);overflow:hidden}
+.cx-stat::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,transparent,var(--cx-acc),transparent)}
+.cx-num{font:800 clamp(2.2rem,5vw,3.6rem)/1 var(--sans,Inter,sans-serif);letter-spacing:-.03em;color:#fff;text-shadow:0 6px 30px rgba(242,140,40,.45)}
+.cx-lbl{margin-top:.6rem;font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.7)}
+.cx-cta{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+.cx-btn{padding:.85rem 1.6rem;border-radius:999px;border:1.5px solid rgba(255,255,255,.5);background:transparent;color:#fff;font:700 .9rem var(--sans,Inter,sans-serif);cursor:pointer;transition:.25s}
+.cx-btn:hover{background:#fff;color:var(--cx-bg1)}
+.cx-btn-p{background:linear-gradient(135deg,#F7A94B,#E4572E);border-color:transparent;box-shadow:0 14px 30px -12px rgba(228,87,46,.8)}
+.cx-btn-p:hover{background:linear-gradient(135deg,#FFBE6B,#F0683E);color:#fff;transform:translateY(-2px)}
+
+/* marquee */
+.cx-marquee{position:relative;z-index:2;overflow:hidden;border-top:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.22);padding:.9rem 0;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.cx-marquee-track{display:flex;width:max-content;gap:0;animation:cxMarquee 38s linear infinite}
+.cx-marquee:hover .cx-marquee-track{animation-play-state:paused}
+.cx-marquee span{display:inline-flex;align-items:center;gap:1.4rem;padding-right:1.4rem;font:600 .86rem var(--sans,Inter,sans-serif);letter-spacing:.06em;color:rgba(255,255,255,.85);white-space:nowrap}
+.cx-marquee i{font-style:normal;color:var(--cx-acc);font-size:.6rem}
+@keyframes cxMarquee{to{transform:translateX(-50%)}}
+
+/* ── Journey ── */
+.cx-journey{position:relative;padding:clamp(3rem,7vw,5.5rem) 0;background:#fff;overflow:hidden}
+.cx-journey::before{content:'';position:absolute;inset:0;background:radial-gradient(700px 300px at 10% 0,rgba(242,140,40,.08),transparent 70%),radial-gradient(700px 300px at 90% 100%,rgba(27,58,138,.08),transparent 70%);pointer-events:none}
+.cx-journey .cx-kicker-d{color:var(--gv-accent,#B8913F);border-color:color-mix(in srgb,var(--gv-accent,#B8913F) 35%,transparent);background:#fff}
+.cx-journey .lx-wrap{text-align:center;position:relative}
+.cx-title-d{color:var(--gv-blue2,#0B1E3D);margin-bottom:2.8rem}
+.cx-steps{list-style:none;display:grid;grid-template-columns:repeat(5,1fr);gap:1.2rem;position:relative;text-align:center;padding-top:.5rem}
+.cx-line{position:absolute;left:10%;right:10%;top:calc(.5rem + 28px);height:4px;border-radius:4px;background:rgba(15,42,107,.1);overflow:hidden;z-index:0}
+.cx-line i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:0 50%;background:linear-gradient(90deg,#FF9933,#E4572E,#1B3A8A);transition:transform 1.6s cubic-bezier(.3,.7,.2,1) .15s}
+.cx-on .cx-line i{transform:scaleX(1)}
+.cx-step{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:0 .3rem 1rem;border-radius:16px;opacity:0;transform:translateY(24px);transition:opacity .7s var(--d,.3s),transform .7s var(--d,.3s)}
+.cx-on .cx-step{opacity:1;transform:none}
+.cx-node{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font:800 1.15rem var(--sans,Inter,sans-serif);color:#fff;background:linear-gradient(135deg,#1B3A8A,#0F2A6B);box-shadow:0 0 0 6px #fff,0 0 0 8px rgba(27,58,138,.2),0 12px 24px -8px rgba(15,42,107,.6);transition:.35s}
+.cx-step:hover .cx-node{background:linear-gradient(135deg,#F28C28,#E4572E);transform:scale(1.1)}
+.cx-step h3{font-size:1.02rem;color:var(--gv-blue2,#0B1E3D);margin-top:.5rem}
+.cx-step p{font-size:.86rem;line-height:1.65;color:var(--gv-mute,#4A5466);max-width:24ch}
+.cx-link{margin-top:.2rem;background:none;border:0;font:700 .82rem var(--sans,Inter,sans-serif);color:var(--gv-accent,#B8913F);cursor:pointer;padding:.3rem 0}
+.cx-link:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* ── Small signature touches elsewhere ── */
+.cta-pro-logo{animation:cxFloat 7s ease-in-out infinite}
+@keyframes cxFloat{50%{transform:translateY(-8px)}}
+.hero h1 em,.cta-pro h2 em{background:linear-gradient(100deg,#F28C28,#E4572E 45%,#F28C28);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:cxShine 7s linear infinite}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .cx-stat{flex-basis:calc(50% - .5rem)}
+  .cx-steps{grid-template-columns:1fr;gap:0;text-align:left;padding-left:.5rem}
+  .cx-line{left:27px;right:auto;top:28px;bottom:60px;width:4px;height:auto}
+  .cx-line i{transform:scaleY(0);transform-origin:50% 0}
+  .cx-on .cx-line i{transform:scaleY(1)}
+  .cx-step{flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:.2rem 1rem;padding:0 0 1.6rem;text-align:left}
+  .cx-node{flex:none}
+  .cx-step h3{margin-top:.2rem;flex:1 1 calc(100% - 80px)}
+  .cx-step p,.cx-link{margin-left:72px;max-width:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .cx-aurora,.cx-marquee-track,.cta-pro-logo,.cx-title em,.hero h1 em{animation:none!important}
+  .cx-step{opacity:1;transform:none;transition:none}.cx-line i{transform:none;transition:none}
+}
+
+.cx-title-d em{background:linear-gradient(100deg,#E4572E,#F28C28 50%,#E4572E);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent}
