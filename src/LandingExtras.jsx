@@ -146,7 +146,8 @@ export function AlumniTab({ site }) {
   const [msg, setMsg] = useState(null);
   const submit = async (e) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget; // React clears currentTarget after the first await
+    const f = new FormData(formEl);
     const form = Object.fromEntries(f.entries());
     if (form.website) return setMsg({ ok: true, t: 'Request received.' }); // honeypot
     if (!form.student_name?.trim() || !PHONE_RE.test(cleanPhone(form.phone))) {
@@ -157,7 +158,7 @@ export function AlumniTab({ site }) {
       const { error } = await submitTcRequest(form);
       if (error) throw error;
       setMsg({ ok: true, t: 'Request received. The office will contact you within 2 working days.' });
-      e.currentTarget.reset();
+      formEl.reset();
     } catch {
       setMsg({ ok: false, t: 'Something went wrong. Please call ' + site.phone + '.' });
     } finally { setBusy(false); }
