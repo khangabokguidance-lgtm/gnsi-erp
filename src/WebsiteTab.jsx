@@ -1847,6 +1847,7 @@ function SettingsSection() {
     {key:"hostel_visits", label:"Hostel · Parent Visits", type:"text", ph:"", group:"Hostel Page"},
     {key:"hostel_medical", label:"Hostel · Medical", type:"text", ph:"", group:"Hostel Page"},
     {key:"map_query", label:"Google Map Search Text", type:"text", ph:"GNSI Khangabok, Thoubal, Manipur", group:"Contact"},
+    {key:"sections_style", label:"All Sections Grid Style (light / dark)", type:"text", ph:"light", group:"Homepage Stats"},
     {key:"brochure_url",        label:"Brochure PDF URL",            type:"text",    ph:"https://…/GNSI-Brochure-2026.pdf", group:"Admissions"},
     // Fee
     {key:"upi_id",              label:"UPI ID for Fee Payment",      type:"text",    ph:"gnsikhangabok@upi",  group:"Fee Payment"},

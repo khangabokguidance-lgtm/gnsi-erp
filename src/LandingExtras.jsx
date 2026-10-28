@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { submitTcRequest, submitCareerApplication } from './websiteApi';
 import './LandingExtras.css';
+import './SectionsThemes.css';
 
 const PHONE_RE = /^[6-9]\d{9}$/;
 const cleanPhone = (v) => (v || '').replace(/[\s\-()]/g, '').replace(/^\+?91/, '');

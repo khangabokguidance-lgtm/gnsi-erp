@@ -127,6 +127,7 @@ function buildSite(cfg) {
     reviewScore: text('google_review_score', ''),
     reviewCount: text('google_review_count', ''),
     admissionsOpen: ['yes', 'true', 'open', '1'].includes(text('admissions_open').toLowerCase()),
+    sectionsStyle: text('sections_style', 'light').toLowerCase(),
     admissionBanner: text('admission_banner_text', 'Admissions open for the new batch'),
     mapQuery: text('map_query', 'GNSI Khangabok, Thoubal, Manipur'),
     seats: [
@@ -2665,7 +2666,7 @@ window.submitGrievance = async () => {
     @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
     @media (max-width:340px){.sec-grid{--per:4}}
   `}</style>
-  <div className="sec-grid-wrap">
+  <div className={'sec-grid-wrap' + (site.sectionsStyle === 'dark' ? ' sec-theme-dark' : '')}>
     <div className="container">
       <p className="sec-grid-title">Explore GNSI</p>
       <h2 className="sec-grid-h">Everything you need, in one place</h2>
