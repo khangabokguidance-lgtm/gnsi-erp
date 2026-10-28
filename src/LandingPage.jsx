@@ -90,6 +90,13 @@ const SITE_FALLBACK = {
   founderQuote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
   batchStart: '20 Dec 2026',
 };
+// "2026-06-30T23:59:59" / "2026-07-01" → "30 Jun 2026"; anything else is shown as typed.
+function prettyDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || '');
+  if (!m) return v;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
 function buildSite(cfg) {
   const text = (k, fb = '') => {
     const v = cfg && cfg[k];
@@ -122,8 +129,8 @@ function buildSite(cfg) {
     reviewUrl: url('google_review_url', SITE_FALLBACK.reviewUrl),
     founderQuote: text('founder_quote', SITE_FALLBACK.founderQuote).replace(/^["“]+|["”]+$/g, ''),
     founderBio: text('founder_bio', ''),
-    batchStart: text('batch_start_date', SITE_FALLBACK.batchStart),
-    admissionDeadline: text('admission_deadline', ''),
+    batchStart: prettyDate(text('batch_start_date', SITE_FALLBACK.batchStart)),
+    admissionDeadline: prettyDate(text('admission_deadline', '')),
     reviewScore: text('google_review_score', ''),
     reviewCount: text('google_review_count', ''),
     admissionsOpen: ['yes', 'true', 'open', '1'].includes(text('admissions_open').toLowerCase()),
