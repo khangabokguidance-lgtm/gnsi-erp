@@ -17,7 +17,7 @@ const SERVICES = [
   { href: '/apply', icon: '📝', label: 'Apply Online' },
   { href: '/apply-status', icon: '🔎', label: 'Application Status' },
   { href: '/exam-registration', icon: '🪪', label: 'Exam Registration' },
-  { href: '/verify', icon: '🧾', label: 'Verify Receipt / Certificate' },
+  { act: 'verify', icon: '🧾', label: 'Verify Fee Receipt' },
   { href: '/store', icon: '🛍️', label: 'GNSI Store' },
   { href: '/student-leave', icon: '🏖️', label: 'Student Leave' },
 ];
@@ -119,13 +119,18 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
             <section className="mm-group cat-svc" aria-label="Online services">
               <h3><span className="mm-dot" />Online Services<em>{services.length}</em></h3>
               <div className="mm-tiles">
-                {services.map((s) => (
-                  <a key={s.href} href={s.href} className="mm-tile" style={stagger()} onClick={onClose}>
-                    <span className="mm-tile-ic" aria-hidden="true">{s.icon}</span>
-                    <span className="mm-tile-lb">{s.label}</span>
-                    <svg className="mm-tile-go" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                  </a>
-                ))}
+                {services.map((s) => {
+                  const inner = (
+                    <>
+                      <span className="mm-tile-ic" aria-hidden="true">{s.icon}</span>
+                      <span className="mm-tile-lb">{s.label}</span>
+                      <svg className="mm-tile-go" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </>
+                  );
+                  return s.href
+                    ? <a key={s.label} href={s.href} className="mm-tile" style={stagger()} onClick={onClose}>{inner}</a>
+                    : <button type="button" key={s.label} className="mm-tile" style={stagger()} onClick={pick(actions.openVerify)}>{inner}</button>;
+                })}
               </div>
             </section>
           )}

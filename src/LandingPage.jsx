@@ -17,7 +17,7 @@ import { receiptCheckParams } from './lib/receiptCheckParams';
 // and the browser caches it separately from the JS, and normal CSS tooling can
 // read it. Place LandingPage.css next to this file.
 import './LandingPage.css';
-import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch } from './LandingExtras';
+import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
 import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
 import MegaMenu, { MenuButton } from './LandingMenu';
 import './LandingFinale.css';
@@ -851,6 +851,7 @@ export default function LandingPage({ onLogin }) {
   }, [site.theme, hiContrast, fontStep]);
   const [enqType, setEnqType] = useState('general');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -1358,7 +1359,7 @@ export default function LandingPage({ onLogin }) {
     { href: '/apply', label: 'Apply online (admission form)', icon: '📝', keywords: 'admission application register' },
     { href: '/apply-status', label: 'Check application status', icon: '🔎', keywords: 'track' },
     { href: '/exam-registration', label: 'Exam registration / admit card', icon: '🪪' },
-    { href: '/verify', label: 'Verify receipt or certificate', icon: '🧾', keywords: 'check authenticity' },
+    { id: '__verify', label: 'Verify a fee receipt', icon: '🧾', keywords: 'check authenticity genuine' },
     { href: '/store', label: 'GNSI Store', icon: '🛍️', keywords: 'uniform books shop' },
     { href: '/student-leave', label: 'Student leave application', icon: '🏖️', keywords: 'parent leave' },
   ], []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2343,7 +2344,7 @@ window.submitGrievance = async () => {
     active={activeTab}
     goToTab={goToTab}
     site={{ ...site, emblem: EMBLEM_URL }}
-    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), onLogin }}
+    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
   />
   {/* HERO */}
   <section className="hero">
@@ -2484,7 +2485,7 @@ window.submitGrievance = async () => {
   <div id="main-content" tabIndex={-1} />
   {site.creative && <CreativeFX />}
   {site.creative && <BackToTop />}
-  <QuickServices goToTab={goToTab} openFee={() => setIsFeeOpen(true)} openPortal={() => setIsPortalOpen(true)} />
+  <QuickServices goToTab={goToTab} openFee={() => setIsFeeOpen(true)} openPortal={() => setIsPortalOpen(true)} openVerify={() => setVerifyOpen(true)} />
   {site.creative && activeTab === 'home' && <LegacySection site={site} goToTab={goToTab} />}
   {/* STAFF PHOTO — replaces the old stats ribbon. Shown whole at the
       photo's own 3:2 proportion (no cropping). */}
@@ -6241,7 +6242,7 @@ window.submitGrievance = async () => {
     open={searchOpen}
     onClose={() => setSearchOpen(false)}
     entries={searchEntries}
-    onPick={(r) => { setSearchOpen(false); if (r.href) { window.location.href = r.href; } else { goToTab(r.id); } }}
+    onPick={(r) => { setSearchOpen(false); if (r.id === '__verify') { setVerifyOpen(true); } else if (r.href) { window.location.href = r.href; } else { goToTab(r.id); } }}
   />
   {/* FOOTER */}
   <footer>
@@ -6327,7 +6328,7 @@ window.submitGrievance = async () => {
         <a href="#gallery" onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}>Gallery</a>
         <a href="#alumni" onClick={(e) => { e.preventDefault(); goToTab('alumni'); }}>Alumni &amp; TC</a>
         <a href="#careers" onClick={(e) => { e.preventDefault(); goToTab('careers'); }}>Careers</a>
-        <a href="/verify">Verify Receipt / Certificate</a>
+        <a href="#verify" onClick={(e) => { e.preventDefault(); setVerifyOpen(true); }}>Verify Fee Receipt</a>
         <a href="/store">GNSI Store</a>
       </div>
       <div>
@@ -6528,6 +6529,21 @@ window.submitGrievance = async () => {
     );
   })()}
   <PublicFeeLookup isOpen={isFeeOpen} onClose={() => setIsFeeOpen(false)} upi={feePaymentInfo} />
+  <ReceiptVerifyForm
+    open={verifyOpen}
+    onClose={() => setVerifyOpen(false)}
+    onSubmit={({ receipt, gcc, amt }) => {
+      // Reuse the QR flow: put the same query on the URL, then open the checker.
+      try {
+        const u = new URL(window.location.href);
+        u.search = '?' + new URLSearchParams({ verifyReceipt: receipt, gcc, ...(amt ? { amt } : {}) }).toString();
+        window.history.replaceState(window.history.state, '', u.toString());
+      } catch { /* history unavailable */ }
+      setVerifyOpen(false);
+      setReceiptCheckOpen(false);
+      setTimeout(() => setReceiptCheckOpen(true), 0);
+    }}
+  />
   {receiptCheckOpen && <PublicReceiptCheck onClose={() => setReceiptCheckOpen(false)} />}
 </>  );
 }

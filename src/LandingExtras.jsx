@@ -29,13 +29,13 @@ const Ico = ({ n }) => (
   <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{SVG[n]}</svg>
 );
 
-export function QuickServices({ goToTab, openFee, openPortal }) {
+export function QuickServices({ goToTab, openFee, openPortal, openVerify }) {
   const items = [
     { ic: 'apply', t: 'Apply Online', d: 'Admission application', href: '/apply' },
     { ic: 'status', t: 'Application Status', d: 'Track your application', href: '/apply-status' },
     { ic: 'exam', t: 'Exam Registration', d: 'Register & admit card', href: '/exam-registration' },
     { ic: 'fees', t: 'Pay Fees', d: 'Online fee payment', onClick: openFee },
-    { ic: 'verify', t: 'Verify Receipt / Certificate', d: 'Check authenticity', href: '/verify' },
+    { ic: 'verify', t: 'Verify Fee Receipt', d: 'Check a receipt is genuine', onClick: openVerify },
     { ic: 'store', t: 'GNSI Store', d: 'Uniforms, books & more', href: '/store' },
     { ic: 'leave', t: 'Student Leave', d: 'Parent leave request', href: '/student-leave' },
     { ic: 'portal', t: 'Parents Portal', d: 'Attendance, results, fees', onClick: openPortal },
@@ -288,6 +288,36 @@ function SearchBox({ onClose, entries, onPick }) {
           {!results.length && <li className="lx-empty">No matches — try “apply”, “fees” or “hostel”.</li>}
         </ul>
       </div>
+    </div>
+  );
+}
+
+// ── Fee receipt check (manual entry; same check the receipt's QR code runs) ──
+export function ReceiptVerifyForm({ open, onClose, onSubmit }) {
+  const [err, setErr] = useState('');
+  if (!open) return null;
+  const submit = (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const receipt = (f.receipt || '').trim(), gcc = (f.gcc || '').trim(), amt = (f.amt || '').trim();
+    if (!receipt || !gcc) return setErr('Please enter the receipt number and the student ID (GCC No.).');
+    setErr('');
+    onSubmit({ receipt, gcc, amt });
+  };
+  return (
+    <div className="lx-search-ov" onClick={onClose} role="dialog" aria-modal="true" aria-label="Verify a fee receipt">
+      <form className="lx-form lx-verify" onClick={(e) => e.stopPropagation()} onSubmit={submit} noValidate>
+        <h3>Verify a fee receipt</h3>
+        <p className="lx-note">Enter the details printed on the receipt. You can also scan the QR code on the receipt. No student details are shown — only whether the receipt is genuine.</p>
+        <label>Receipt number *<input name="receipt" required autoComplete="off" autoFocus /></label>
+        <label>Student ID (GCC No.) *<input name="gcc" required autoComplete="off" /></label>
+        <label>Amount on the receipt (optional)<input name="amt" inputMode="decimal" placeholder="e.g. 6500" /></label>
+        {err && <div className="lx-msg err">{err}</div>}
+        <div className="lx-cta-row">
+          <button className="lx-btn lx-btn-p" type="submit">Check receipt</button>
+          <button className="lx-btn" type="button" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
     </div>
   );
 }
