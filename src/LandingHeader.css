@@ -111,3 +111,20 @@ body.lp-page{overflow-x:clip!important}
   .hd-util-l,.hd-util-r{justify-content:center;flex-wrap:wrap;gap:.5rem}
   :is(body.lp-gov,body) .lp-nav .nav-inner{gap:.4rem}
 }
+
+/* ═══ New logo artwork: no circles ═══ */
+/* header mark */
+:is(body.lp-gov,body) .lp-nav .nv-crest{width:auto;height:auto;border-radius:0;background:none!important;box-shadow:none!important;padding:0;display:block}
+:is(body.lp-gov,body) .lp-nav .nv-crest img.hd-mark{width:auto;height:54px;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55));transition:height .3s}
+:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest img.hd-mark{height:42px;width:auto}
+@media(max-width:640px){:is(body.lp-gov,body) .lp-nav .nv-crest img.hd-mark,:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest img.hd-mark{height:42px;width:auto}}
+
+/* top banner: logo + "Celebrating 10 Years" side by side on the brand blue */
+.ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}
+.ten-years-banner .tyb-frame{max-width:1100px;display:flex;align-items:center;justify-content:center;gap:clamp(1rem,4vw,4rem);padding:clamp(1.4rem,3vw,2.6rem) clamp(1rem,4vw,2rem);line-height:normal}
+.ten-years-banner .tyb-frame img{width:auto}
+.ten-years-banner .tyb-frame img.tyb-logo{height:clamp(190px,30vw,400px);filter:drop-shadow(0 18px 30px rgba(0,0,0,.4))}
+.ten-years-banner .tyb-frame img.tyb-celebrate{height:clamp(110px,17vw,230px);filter:drop-shadow(0 14px 24px rgba(0,0,0,.4))}
+@media(max-width:640px){.ten-years-banner .tyb-frame{flex-direction:column;gap:.4rem}.ten-years-banner .tyb-frame img.tyb-logo{height:230px}.ten-years-banner .tyb-frame img.tyb-celebrate{height:120px}}
+:is(body.lp-gov,body) .ten-years-banner .tyb-frame{background:none!important}
+:is(body.lp-gov,body) .ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}

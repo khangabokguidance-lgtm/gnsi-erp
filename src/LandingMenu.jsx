@@ -69,7 +69,7 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
 
       <header className="mm-top">
         <button type="button" className="mm-brand" onClick={pick(() => goToTab('home'))} aria-label="GNSI home">
-          <span className="mm-crest"><img src={site.emblem} alt="" width="40" height="40" /></span>
+          <span className="mm-crest"><img src={site.emblem} alt="" width="46" height="47" /></span>
           <span className="mm-brand-tx"><strong>GNSI</strong><small>Guidance Navodaya &amp; Sainik Institute</small></span>
         </button>
         <label className="mm-search">

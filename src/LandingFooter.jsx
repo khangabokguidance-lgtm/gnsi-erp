@@ -45,7 +45,7 @@ export default function MajesticFooter({ site, emblem, goToTab, actions }) {
       <div className="lf-main">
         <div className="lf-brand">
           <div className="lf-lockup">
-            <span className="lf-crest"><img src={emblem} alt="" width="56" height="56" /></span>
+            <span className="lf-crest"><img src={emblem} alt="" width="70" height="72" /></span>
             <span className="lf-name"><strong>Guidance</strong><em>Navodaya &amp; Sainik Institute</em></span>
           </div>
           <p className="lf-motto">“Empowering Future Leaders”</p>

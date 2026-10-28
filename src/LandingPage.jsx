@@ -51,7 +51,6 @@ const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/p
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
 // bucket's existing "banners" folder (same bucket as EMBLEM_URL above).
-const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner-2400.jpg";
 
 // Latest result/achievement poster — shown as a popup 10s after page load,
 // then collapses into a small sticky corner badge. Swap this URL (or the
@@ -879,7 +878,6 @@ export default function LandingPage({ onLogin }) {
   }, []);
   // If the emblem image fails to load, show a "GNSI" monogram in the nav
   // crest instead of an empty white box.
-  const [emblemFailed, setEmblemFailed] = useState(false);
   const [progDetail, setProgDetail] = useState(null); // key of PROGRAMMES shown in the details panel
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'home';
@@ -2167,23 +2165,7 @@ window.submitGrievance = async () => {
   <nav className={"lp-nav" + (navScrolled ? " is-scrolled" : "")}>
     <div className="nav-inner">
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-        <span className="nv-crest">
-          {!emblemFailed ? (
-            <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
-          ) : (
-            <span
-              aria-label="GNSI"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: '100%', height: '100%', color: 'var(--navy, #0f1f3d)',
-                fontWeight: 800, fontSize: '.95rem', letterSpacing: '.04em',
-                fontFamily: 'Georgia, "Times New Roman", serif'
-              }}
-            >
-              GNSI
-            </span>
-          )}
-        </span>
+        <span className="nv-crest"><img className="hd-mark" src="/gnsi-mark.webp" alt="GNSI emblem" width={50} height={51} /></span>
         <div className="brand-text">
           <h2><span className="brand-full">Guidance</span><span className="brand-short">GNSI</span></h2>
           <small>Navodaya &amp; Sainik Institute</small>
@@ -2239,7 +2221,8 @@ window.submitGrievance = async () => {
       .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
   <div className="ten-years-banner">
     <div className="tyb-frame">
-      <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
+      <img className="tyb-logo" src="/gnsi-logo-top.webp" alt="Guidance Navodaya & Sainik Institute" width={640} height={928} fetchpriority="high" />
+      <img className="tyb-celebrate" src="/gnsi-celebrate.webp" alt="Celebrating 10 years of success" width={760} height={334} fetchpriority="high" />
     </div>
   </div>
   <MegaMenu
@@ -2249,7 +2232,7 @@ window.submitGrievance = async () => {
     icons={TAB_ICONS}
     active={activeTab}
     goToTab={goToTab}
-    site={{ ...site, emblem: EMBLEM_URL }}
+    site={{ ...site, emblem: '/gnsi-mark.webp' }}
     actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
   />
   {/* HERO */}
@@ -6153,7 +6136,7 @@ window.submitGrievance = async () => {
   {/* FOOTER */}
   <MajesticFooter
     site={site}
-    emblem={EMBLEM_URL}
+    emblem="/gnsi-mark.webp"
     goToTab={goToTab}
     actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
   />
