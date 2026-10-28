@@ -158,7 +158,7 @@ export async function submitEnquiry(form) {
 
 export async function submitScholarRegistration(form) {
   // Reuses enquiries table; prefix course with 'SCHOLAR:'
-  return supabase.from('enquiries').insert({
+  const res = await supabase.from('enquiries').insert({
     student_name: form.student_name,
     parent_name: form.parent_name || '',
     phone: form.phone,
@@ -168,6 +168,29 @@ export async function submitScholarRegistration(form) {
     replied: false,
     created_at: new Date().toISOString(),
   });
+
+  // Mirror into Reception → Enquiry so the front office follows it up
+  // (best-effort; the website inbox row is the source of truth).
+  if (!res.error) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await supabase.from('reception_enquiries').insert({
+        student_name: form.student_name,
+        parent_name: form.parent_name || '',
+        phone: form.phone,
+        class_interest: ['Scholarship: ' + (form.type || 'Free Demo'), form.class_age].filter(Boolean).join(' · '),
+        source: 'Website',
+        enquiry_date: today,
+        follow_up_date: today,
+        status: 'New',
+        remarks: 'Scholarship/Demo registration from website.',
+      });
+      if (error) console.warn('Reception scholarship sync skipped:', error.message);
+    } catch (e) {
+      console.warn('Reception scholarship sync skipped:', e);
+    }
+  }
+  return res;
 }
 
 export async function submitGrievance(form) {
@@ -185,6 +208,24 @@ export async function submitGrievance(form) {
     replied: false,
     created_at: new Date().toISOString(),
   });
+  // Mirror into the Grievances module (best-effort; the website inbox row
+  // above is the source of truth).
+  if (!res.error) {
+    try {
+      const { error } = await supabase.from('grievances').insert({
+        subject: ticketId,
+        category: (form.message || '').match(/^\[([^\]]+)\]/)?.[1] || 'General',
+        description: `${ticketId}\n${form.message || ''}`,
+        source: 'parent_portal',
+        filed_by_name: form.student_name || 'Anonymous',
+        filed_by_contact: form.phone || null,
+        status: 'Open',
+      });
+      if (error) console.warn('Grievance module sync skipped:', error.message);
+    } catch (e) {
+      console.warn('Grievance module sync skipped:', e);
+    }
+  }
   return { ...res, ticketId };
 }
 
