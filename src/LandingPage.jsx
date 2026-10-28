@@ -6386,13 +6386,7 @@ window.submitGrievance = async () => {
   <section className="cta-pro">
     <div className="cta-pro-glow" aria-hidden="true" />
     <div className="cta-pro-inner">
-      <div className="cta-pro-crest">
-        {!emblemFailed ? (
-          <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
-        ) : (
-          <span>GNSI</span>
-        )}
-      </div>
+      <img className="cta-pro-logo" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years of success" width={684} height={1100} loading="lazy" />
       <div className="cta-pro-eyebrow">Admissions · Guidance Navodaya &amp; Sainik Institute</div>
       <h2>Begin the Journey</h2>
       <p className="cta-pro-lead">
