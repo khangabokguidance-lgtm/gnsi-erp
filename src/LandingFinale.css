@@ -34,7 +34,7 @@ body.lp-gov :is(.enquiry-grid,.fee-grid,.about-grid,.head-institute-grid,.app-gr
 .testi-avatar{box-shadow:0 0 0 4px #fff,0 0 0 6px rgba(228,87,46,.35)}
 
 /* ── 4. Back to top ── */
-.cx-top{position:fixed;left:18px;bottom:22px;z-index:900;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+.cx-top{position:fixed;right:22px;bottom:104px;z-index:900;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
   border:1px solid rgba(255,255,255,.25);background:linear-gradient(135deg,#1B3A8A,#0F2A6B);color:#fff;box-shadow:0 14px 28px -10px rgba(15,42,107,.8);
   opacity:0;transform:translateY(14px) scale(.9);pointer-events:none;transition:opacity .3s,transform .3s,background .25s}
 .cx-top.show{opacity:1;transform:none;pointer-events:auto}
@@ -53,7 +53,7 @@ body.lp-gov #home>.container{padding-top:clamp(3rem,6vw,4.6rem);padding-bottom:c
 .cx-journey,.cx-legacy{scroll-margin-top:80px}
 .cx-legacy::after{content:'';position:absolute;left:0;right:0;bottom:0;height:90px;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(7,18,44,.5))}
 
-@media(max-width:640px){.cx-top{left:12px;bottom:78px;width:42px;height:42px}}
+@media(max-width:640px){.cx-top{right:16px;bottom:96px;width:42px;height:42px}}
 @media(prefers-reduced-motion:reduce){.tyb-frame::after{animation:none;display:none}}
 
 /* Videos: balanced 3-up grid with play badge, whatever the thumbnail state */

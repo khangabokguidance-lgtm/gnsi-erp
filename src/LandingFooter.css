@@ -1,0 +1,84 @@
+/* LandingFooter.css — majestic footer. Self-hosted display fonts (no external requests). */
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:500;font-display:swap;src:url(/design-studio/fonts/cinzel-latin-500-normal.woff2) format('woff2')}
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/design-studio/fonts/cinzel-latin-700-normal.woff2) format('woff2')}
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/design-studio/fonts/cinzel-latin-800-normal.woff2) format('woff2')}
+@font-face{font-family:'Playfair Display';font-style:normal;font-weight:400;font-display:swap;src:url(/design-studio/fonts/playfair-display-latin-400-normal.woff2) format('woff2')}
+@font-face{font-family:'Playfair Display';font-style:italic;font-weight:400;font-display:swap;src:url(/design-studio/fonts/playfair-display-latin-400-italic.woff2) format('woff2')}
+@font-face{font-family:'Playfair Display';font-style:normal;font-weight:700;font-display:swap;src:url(/design-studio/fonts/playfair-display-latin-700-normal.woff2) format('woff2')}
+@font-face{font-family:'Great Vibes';font-style:normal;font-weight:400;font-display:swap;src:url(/design-studio/fonts/great-vibes-latin-400-normal.woff2) format('woff2')}
+
+.lf{--lf-gold:#E9C46A;--lf-gold2:#C9A24B;--lf-ink:#050d22;--lf-navy:#0A1B45;
+  --lf-display:'Cinzel','Trajan Pro',Georgia,serif;--lf-serif:'Playfair Display',Georgia,serif;--lf-script:'Great Vibes','Brush Script MT',cursive;
+  position:relative;isolation:isolate;overflow:hidden;color:rgba(255,255,255,.8);font-family:var(--lf-serif);
+  background:linear-gradient(180deg,#0A1B45 0%,#06122e 45%,#030a1c 100%)!important;border-top:0!important;padding:0!important;margin-top:0}
+.lf::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,#FF9933 0 33%,#fff 33% 66%,#138808 66%);z-index:3}
+.lf-bg{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.lf-glow{position:absolute;left:50%;top:-10%;width:1100px;height:560px;transform:translateX(-50%);background:radial-gradient(closest-side,rgba(233,196,106,.2),transparent);filter:blur(10px)}
+.lf-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 20% 80%,rgba(43,95,200,.25),transparent 45%),repeating-conic-gradient(from 0deg at 50% 120%,rgba(233,196,106,.045) 0 2deg,transparent 2deg 6deg);mask-image:linear-gradient(180deg,transparent,#000 40%)}
+.lf-mark{position:absolute;right:-1.5%;bottom:3.5rem;font:800 clamp(7rem,22vw,19rem)/.8 var(--lf-display);letter-spacing:.04em;color:transparent;-webkit-text-stroke:1px rgba(233,196,106,.1);user-select:none}
+
+/* ── Crown CTA ── */
+.lf-crown{padding:clamp(2.6rem,6vw,4.2rem) 5% 0}
+.lf-crown-in{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:2rem;flex-wrap:wrap;padding:clamp(1.6rem,4vw,2.6rem) clamp(1.4rem,4vw,3rem);border-radius:22px;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,rgba(233,196,106,.16),rgba(233,196,106,.04) 50%,rgba(255,255,255,.04));border:1px solid rgba(233,196,106,.4);box-shadow:0 30px 70px -30px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.12)}
+.lf-crown-in::before{content:'';position:absolute;inset:7px;border-radius:16px;border:1px solid rgba(233,196,106,.22);pointer-events:none}
+.lf-script{display:block;font:400 clamp(1.9rem,4vw,2.8rem)/1 var(--lf-script);color:var(--lf-gold);margin-bottom:.15rem}
+.lf-crown h2{font:700 clamp(1.5rem,3.4vw,2.35rem)/1.15 var(--lf-display);letter-spacing:.03em;color:#fff;margin-bottom:.6rem}
+.lf-crown p{max-width:560px;font:italic 400 1rem/1.7 var(--lf-serif);color:rgba(255,255,255,.78)}
+.lf-crown-btns{display:flex;gap:.8rem;flex-wrap:wrap}
+.lf-btn{display:inline-flex;align-items:center;justify-content:center;padding:.95rem 1.8rem;border-radius:999px;font:700 .8rem var(--lf-display);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;transition:transform .25s,box-shadow .25s,background .25s}
+.lf-btn-gold{background:linear-gradient(135deg,#F6D98B,#C9A24B);color:#1a1206;box-shadow:0 16px 34px -14px rgba(233,196,106,.9)}
+.lf-btn-gold:hover{transform:translateY(-3px);box-shadow:0 22px 40px -14px rgba(233,196,106,1)}
+.lf-btn-ghost{border:1px solid rgba(233,196,106,.55);color:var(--lf-gold);background:transparent}
+.lf-btn-ghost:hover{background:rgba(233,196,106,.14)}
+
+/* ── Main grid ── */
+.lf-main{max-width:1180px;margin:0 auto;padding:clamp(2.6rem,6vw,4rem) 5% 2.4rem;display:grid;grid-template-columns:1.7fr 1fr 1fr 1fr 1.25fr;gap:clamp(1.4rem,3vw,2.6rem)}
+.lf-lockup{display:flex;align-items:center;gap:.9rem;margin-bottom:1rem}
+.lf-crest{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 0 0 2px var(--lf-gold),0 0 0 7px rgba(233,196,106,.18),0 14px 30px -10px rgba(0,0,0,.7);flex:none}
+.lf-crest img{width:50px;height:50px;object-fit:contain}
+.lf-name{display:flex;flex-direction:column;line-height:1.1}
+.lf-name strong{font:800 1.7rem var(--lf-display);letter-spacing:.14em;text-transform:uppercase;background:linear-gradient(180deg,#fff,#E9C46A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lf-name em{font:500 .72rem var(--lf-display);letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.7);font-style:normal;margin-top:.35rem}
+.lf-motto{font:400 clamp(1.7rem,3vw,2.2rem)/1.1 var(--lf-script);color:var(--lf-gold);margin:.2rem 0 .8rem}
+.lf-about{font:italic 400 .95rem/1.85 var(--lf-serif);color:rgba(255,255,255,.72);max-width:360px}
+.lf-orn{display:flex;align-items:center;gap:.6rem;max-width:210px;margin:1.2rem 0 1rem;color:var(--lf-gold)}
+.lf-orn i{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--lf-gold2))}.lf-orn i:last-child{background:linear-gradient(90deg,var(--lf-gold2),transparent)}
+.lf-orn b{font-size:.55rem}
+.lf-socials{display:flex;gap:.6rem;flex-wrap:wrap}
+.lf-soc{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(233,196,106,.4);color:var(--lf-gold);background:rgba(255,255,255,.04);transition:.3s;text-decoration:none}
+.lf-soc svg{width:18px;height:18px;fill:currentColor}
+.lf-soc:hover{background:linear-gradient(135deg,#F6D98B,#C9A24B);color:#1a1206;transform:translateY(-4px) rotate(-6deg);box-shadow:0 12px 24px -10px rgba(233,196,106,.9)}
+.lf-soc-wa{color:#6CF0A2;border-color:rgba(108,240,162,.4)}
+.lf-soc-txt{font:700 .7rem var(--lf-display)}
+
+.lf-col h4{font:700 .86rem var(--lf-display);letter-spacing:.22em;text-transform:uppercase;color:#fff;margin:0 0 1.2rem;padding-bottom:.8rem;position:relative}
+.lf-col h4::after{content:'';position:absolute;left:0;bottom:0;width:44px;height:2px;background:linear-gradient(90deg,var(--lf-gold),transparent)}
+.lf-col a,.lf-col button{display:block;width:fit-content;margin:0 0 .7rem;padding:0;background:none;border:0;cursor:pointer;text-align:left;font:400 1rem/1.4 var(--lf-serif);color:rgba(255,255,255,.78);text-decoration:none;position:relative;transition:color .25s,transform .25s}
+.lf-col a::before,.lf-col button::before{content:'◆';position:absolute;left:-1.1rem;top:.35em;font-size:.45rem;color:var(--lf-gold);opacity:0;transform:translateX(-4px);transition:.25s}
+.lf-col a:hover,.lf-col button:hover{color:var(--lf-gold);transform:translateX(1.1rem);padding-left:0}
+.lf-col a:hover::before,.lf-col button:hover::before{opacity:1;transform:none}
+.lf-contact{font-style:normal}
+.lf-contact p{display:flex;gap:.7rem;align-items:flex-start;margin:0 0 .85rem;font:400 .98rem/1.55 var(--lf-serif);color:rgba(255,255,255,.78)}
+.lf-contact p span{color:var(--lf-gold);font-size:1.05rem;line-height:1.4;flex:none;width:1.2rem}
+.lf-contact a{display:inline;margin:0;font-size:inherit;transform:none!important}.lf-contact a::before{display:none}
+
+/* ── Seals + bottom ── */
+.lf-seals{max-width:1180px;margin:0 auto;padding:1.6rem 5%;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;border-top:1px solid rgba(233,196,106,.18);border-bottom:1px solid rgba(233,196,106,.18);position:relative}
+.lf-seal{text-align:center;padding:.3rem}
+.lf-seal strong{display:block;font:800 clamp(1.6rem,3vw,2.3rem)/1 var(--lf-display);background:linear-gradient(180deg,#fff,#E9C46A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lf-seal span{display:block;margin-top:.4rem;font:500 .7rem var(--lf-display);letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65)}
+.lf-bottom{max-width:1180px;margin:0 auto;padding:1.3rem 5% 1.8rem;display:flex;justify-content:space-between;gap:.6rem 1.5rem;flex-wrap:wrap;font:italic 400 .88rem var(--lf-serif);color:rgba(255,255,255,.6)}
+.lf-bottom-r{font-style:normal;letter-spacing:.12em;font-family:var(--lf-display);font-size:.72rem;color:var(--lf-gold)}
+
+@media(max-width:1100px){.lf-main{grid-template-columns:1.4fr 1fr 1fr}.lf-brand{grid-column:1/-1}.lf-contact{grid-column:span 1}}
+@media(max-width:700px){
+  .lf-main{grid-template-columns:1fr 1fr;gap:1.8rem 1.2rem}.lf-brand,.lf-contact{grid-column:1/-1}
+  .lf-crown-in{text-align:center;justify-content:center}.lf-crown-btns{justify-content:center}.lf-crown p{margin:0 auto}
+  .lf-name strong{font-size:1.4rem}.lf-bottom{justify-content:center;text-align:center}
+}
+@media(prefers-reduced-motion:reduce){.lf-soc:hover,.lf-btn:hover,.lf-col a:hover,.lf-col button:hover{transform:none}}
+
+/* beat the site-wide heading font rules (body.lp-gov h2/h4) */
+.lf .lf-crown h2,.lf .lf-col h4{font-family:var(--lf-display)}
+.lf .lf-crown h2{font-weight:700;letter-spacing:.04em}
