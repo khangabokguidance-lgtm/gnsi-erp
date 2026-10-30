@@ -42,11 +42,11 @@ function Spark({ values, color = GOLD_LT, h = 110 }) {
 
 function Tile({ icon, label, value, sub, onClick, accent, wide }) {
   return (
-    <button type="button" onClick={onClick} style={{ ...card, gridColumn: wide ? 'span 2' : undefined, textAlign: 'left', border: 0, cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', color: INK,
+    <button type="button" className={wide ? 'ac-full' : undefined} onClick={onClick} style={{ ...card, gridColumn: wide ? 'span 2' : undefined, textAlign: 'left', border: 0, cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', color: INK,
       ...(accent ? { background: 'linear-gradient(150deg,#d9b566,#b8923a)', color: '#1a1406' } : null) }}>
       <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 20 }}>{icon}</span>
       <div style={{ ...lbl, color: accent ? 'rgba(26,20,6,.7)' : SUB }}>{label}</div>
-      <div style={{ fontFamily: serif, fontSize: 28, marginTop: 6, lineHeight: 1.1 }}>{value}</div>
+      <div className="ac-val" style={{ fontFamily: serif, fontSize: 28, marginTop: 6, lineHeight: 1.1 }}>{value}</div>
       {sub && <div style={{ fontSize: 11.5, marginTop: 4, color: accent ? 'rgba(26,20,6,.75)' : SUB }}>{sub}</div>}
     </button>
   )
@@ -66,8 +66,14 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
   const open = (section, module) => () => (section ? onOpenSection(section) : onNavigate?.(module))
   const L = briefing || []
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gridAutoRows: 'minmax(118px,auto)', gap: 14, gridAutoFlow: 'dense' }}>
-      <button type="button" onClick={open('finance')} style={{ ...card, gridColumn: 'span 3', gridRow: 'span 3', border: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, color: '#fff', fontFamily: 'inherit',
+    <div className="ac-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gridAutoRows: 'minmax(118px,auto)', gap: 14, gridAutoFlow: 'dense' }}>
+      <style>{`@media(max-width:767px){
+        .ac-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;grid-auto-rows:auto !important;gap:10px !important}
+        .ac-grid > *{grid-column:span 1 !important;grid-row:auto !important;min-width:0;padding:14px !important;border-radius:18px !important}
+        .ac-grid > .ac-full{grid-column:1/-1 !important}
+        .ac-grid .ac-val{font-size:24px !important}
+      }`}</style>
+      <button type="button" className="ac-full" onClick={open('finance')} style={{ ...card, gridColumn: 'span 3', gridRow: 'span 3', border: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, color: '#fff', fontFamily: 'inherit',
         background: 'linear-gradient(150deg,#13294f,#0b1730 70%)', padding: 24 }}>
         <div style={{ ...lbl, color: 'rgba(255,255,255,.7)' }}>Fees collected</div>
         <div style={{ fontFamily: serif, fontSize: 'clamp(34px,5vw,54px)', lineHeight: 1, margin: '10px 0 6px', color: GOLD_LT }}>{inr(data.totalFeeCollected)}</div>
@@ -93,7 +99,7 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
       <Tile icon="🛏️" label="Hostel" value={`${data.hostelOccupied ?? 0}`} sub={`occupied of ${data.hostelTotalRooms ?? 0} rooms`} onClick={open('hostel')} />
       <Tile icon="📝" label="Tests" value={data.totalTests ?? 0} sub={`${data.totalTestEntries ?? 0} entries`} onClick={open('tests')} />
       <Tile icon="👨‍💼" label="Staff & HR" value={data.activeStaffCnt ?? data.totalStaff ?? 0} sub="active" onClick={open('staff')} />
-      <div style={{ ...card, gridColumn: 'span 2', gridRow: 'span 2', padding: 18 }}>
+      <div className="ac-full" style={{ ...card, gridColumn: 'span 2', gridRow: 'span 2', padding: 18 }}>
         <div style={lbl}>Daily briefing</div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
           {L.length ? L.map((b, i) => <li key={i} style={{ fontSize: 12.5, padding: '7px 0', borderBottom: '1px solid #eef0f6', display: 'flex', gap: 8, color: (LEVEL[b.level] || LEVEL.info)[1] }}><span>{(LEVEL[b.level] || LEVEL.info)[0]}</span><span style={{ color: INK }}>{b.text}</span></li>)
