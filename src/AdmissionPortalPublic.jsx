@@ -32,7 +32,8 @@ const PORTAL_CSS = `
 .ap-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(230,199,122,.6),transparent)}
 .ap-wrap{max-width:1120px;margin:0 auto;padding:0 20px;position:relative;z-index:1}
 .ap-bar{display:flex;align-items:center;gap:14px;padding:18px 0;flex-wrap:wrap}
-.ap-logo{width:52px;height:52px;border-radius:50%;background:#fff;color:var(--navy);display:flex;align-items:center;justify-content:center;font:800 15px Georgia,serif;box-shadow:0 0 0 3px rgba(230,199,122,.9),0 10px 24px rgba(0,0,0,.28)}
+.ap-logo{width:54px;height:54px;border-radius:50%;background:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px rgba(230,199,122,.9),0 10px 24px rgba(0,0,0,.28)}
+.ap-logo img{width:100%;height:100%;object-fit:contain}
 .ap-brand{flex:1;min-width:200px}
 .ap-brand b{display:block;font:700 19px/1.2 Georgia,'Iowan Old Style',serif;letter-spacing:.01em}
 .ap-brand span{font-size:12px;opacity:.78;letter-spacing:.04em}
@@ -40,7 +41,10 @@ const PORTAL_CSS = `
 .ap-nav a{padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;color:rgba(255,255,255,.86);transition:.2s}
 .ap-nav a:hover{background:rgba(255,255,255,.14)}
 .ap-nav a.on{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--navy);font-weight:800}
-.ap-hero{padding:26px 0 74px}
+.ap-hero{position:relative;padding:26px 0 74px;min-height:290px}
+.ap-hero>*:not(.ap-art){position:relative;z-index:1}
+.ap-hero p{max-width:min(640px,60%)}
+.ap-art{position:absolute;right:0;bottom:78px;height:240px;width:auto;filter:drop-shadow(0 18px 30px rgba(0,0,0,.35));pointer-events:none}
 .ap-eyebrow{font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2)}
 .ap-hero h1{margin:8px 0 6px;color:#fff;font:700 clamp(28px,5vw,42px)/1.1 Georgia,'Iowan Old Style',serif;letter-spacing:-.01em;text-shadow:0 2px 18px rgba(0,0,0,.25)}
 .ap-hero p{margin:0;max-width:640px;font-size:14.5px;line-height:1.6;color:rgba(255,255,255,.8)}
@@ -153,11 +157,16 @@ select.ap-input{padding-right:42px;background-image:url("data:image/svg+xml,%3Cs
 .ap-sum img{width:96px;height:120px;object-fit:cover;border-radius:16px;box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold),0 12px 22px -10px rgba(15,42,74,.5)}
 .ap-lookup{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;align-items:end;margin-top:18px}
 @media (max-width:960px){
+  .ap-art{height:190px;bottom:84px}
+  .ap-hero{min-height:0}
+  .ap-hero p{max-width:min(640px,64%)}
   .ap-layout{grid-template-columns:minmax(0,1fr)}
   .ap-rail{display:none}
   .ap-mprog{display:block}
 }
 @media (max-width:640px){
+  .ap-art{display:none}
+  .ap-hero p{max-width:none}
   .ap-wrap,.ap-main{padding-left:14px;padding-right:14px}
   .ap-bar{padding:14px 0 6px}
   .ap-nav{width:100%}
@@ -199,11 +208,11 @@ function Shell({ title, children, nav, hero }) {
       <header className="ap-head">
         <div className="ap-wrap">
           <div className="ap-bar">
-            <div className="ap-logo">GNSI</div>
+            <div className="ap-logo"><img src="/gnsi-mark.webp" alt="GNSI" width="52" height="52" /></div>
             <div className="ap-brand"><b>{inst.name || 'GNSI'}</b><span>{title}</span></div>
             <nav className="ap-nav">{(nav || NAV).map(([href, label]) => <a key={href} href={href} className={here.startsWith(href) ? 'on' : ''}>{label}</a>)}</nav>
           </div>
-          <div className="ap-hero">{hero}</div>
+          <div className="ap-hero">{hero}<img className="ap-art" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years of success" width="684" height="1100" /></div>
         </div>
       </header>
       <main className="ap-main">{children}</main>
