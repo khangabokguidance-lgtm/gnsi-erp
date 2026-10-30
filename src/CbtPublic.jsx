@@ -7,6 +7,7 @@ import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { examInfo, startExam, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
+import ResponsiveTables from './ResponsiveTables'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
 const backupKey = id => `gnsi-cbt-bk:${id}`
@@ -30,7 +31,7 @@ function makeRemote({ testId, code, candidate, gcc, parent, attemptId = null, to
   return r
 }
 
-export default function CbtPublic() {
+function CbtPublicInner() {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const testId = params.get('t') || ''
   const [info, setInfo] = useState(null)
@@ -187,4 +188,8 @@ export default function CbtPublic() {
       )}
     </div>
   )
+}
+
+export default function CbtPublic() {
+  return <ResponsiveTables><CbtPublicInner /></ResponsiveTables>
 }

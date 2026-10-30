@@ -21,6 +21,7 @@ import { instNameHTML, instAddressHTML, getInstitute, whatsappEnabled } from './
 import { ledgerUrl } from './ledgerLink'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText, sessionOfDate } from './feeLedgerModel'
 import { StatementView, InsightsView } from './FeeLedgerTools'
+import ResponsiveTables from './ResponsiveTables'
 import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
 import { refundStatementLines, writtenOffFor } from './lib/refundLedger'
 
@@ -244,8 +245,8 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           ))}
         </div>
 
-        {pane === 'statement' && <StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} extraLines={refundLines} />}
-        {pane === 'insights' && <InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} />}
+        {pane === 'statement' && <ResponsiveTables><StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} extraLines={refundLines} /></ResponsiveTables>}
+        {pane === 'insights' && <ResponsiveTables><InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} /></ResponsiveTables>}
 
         {pane === 'register' && <>
         {/* ── Month-wise register ── */}
