@@ -12,6 +12,7 @@ import { PublishModal, OnlineTab } from './CbtOnline'
 import { CbtCertificateTool } from './CbtCertificate'
 import CbtIntegrity, { RiskTag } from './CbtIntegrity'
 import { integrityReport } from './lib/cbtIntegrity'
+import ResponsiveTables from './ResponsiveTables'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -21,7 +22,7 @@ const download = (name, blob) => {
 const fileSafe = s => String(s || 'test').replace(/[^\w.-]+/g, '-')
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 
-export default function Cbt({ perms, currentUser }) {
+function CbtInner({ perms, currentUser }) {
   const canEdit = perms ? !!(perms.add && perms.edit) : true
   const [tab, setTab] = useState('tests')
   const [tests, setTests] = useState(null)
@@ -210,4 +211,8 @@ export default function Cbt({ perms, currentUser }) {
       )}
     </div>
   )
+}
+
+export default function Cbt(props) {
+  return <ResponsiveTables><CbtInner {...props} /></ResponsiveTables>
 }

@@ -13,6 +13,7 @@ import FeeMonthlyLedger from './FeeMonthlyLedger'
 import FeeMonthCollection from './FeeMonthCollection'
 import FeeMonthDue from './FeeMonthDue'
 import FeeWaivers from './FeeWaivers'
+import ResponsiveTables from './ResponsiveTables'
 import FeeAmountFinder from './FeeAmountFinder'
 import FeePayAmounts from './FeePayAmounts'
 import { loadFeeTypeScan } from './hostelFeeCheck'
@@ -477,11 +478,13 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
       </div>
 
       {certOpen && selected && <CertificateDialog student={selected} onClose={() => setCertOpen(false)} />}
+      <ResponsiveTables>
       {tab === 'daybook' && <FeeDayBook students={students} />}
       {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
       {tab === 'monthwise' && <FeeMonthCollection students={students} />}
       {tab === 'monthdue' && <FeeMonthDue students={students} />}
       {tab === 'waivers' && <FeeWaivers students={students} />}
+      </ResponsiveTables>
       {tab === 'payamounts' && <FeePayAmounts students={students} onPickAmount={p => { setFinderPick(p); setTab('amounts') }} />}
       {tab === 'amounts' && <FeeAmountFinder key={finderPick ? `${finderPick.amount}|${finderPick.kind}|${finderPick.session}` : 'x'} students={students} initial={finderPick} />}
       {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
