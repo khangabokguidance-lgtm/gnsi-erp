@@ -5,6 +5,7 @@
 // the api/entrance adm-* actions, never by this file.
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { api, payPortalFee } from './entrancePay'
+import gnsiCrest from './gnsi-crest.png' // blue emblem for the white logo disc
 import { compressImage, sizeNote } from './lib/imageCompress'
 import { getInstitute, loadSystemSettings } from './systemSettings'
 import { openPrint } from './entrancePrint'
@@ -208,7 +209,7 @@ function Shell({ title, children, nav, hero }) {
       <header className="ap-head">
         <div className="ap-wrap">
           <div className="ap-bar">
-            <div className="ap-logo"><img src="/gnsi-mark.webp" alt="GNSI" width="52" height="52" /></div>
+            <div className="ap-logo"><img src={gnsiCrest} alt="GNSI" width="52" height="52" /></div>
             <div className="ap-brand"><b>{inst.name || 'GNSI'}</b><span>{title}</span></div>
             <nav className="ap-nav">{(nav || NAV).map(([href, label]) => <a key={href} href={href} className={here.startsWith(href) ? 'on' : ''}>{label}</a>)}</nav>
           </div>

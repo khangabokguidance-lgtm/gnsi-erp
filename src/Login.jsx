@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { loadSystemSettings, useSystemSettings, getInstitute } from './systemSettings'
+import gnsiCrest from './gnsi-crest.png' // blue emblem — reads on the white tile (the white-line logo disappears on white)
 
 // ─────────────────────────────────────────────────────────────────────────
 // Login — "Ledger & Crest" design (navy + brass gold, serif headings).
@@ -458,7 +459,7 @@ onLogin({
             noValidate
           >
             <div className="gl-head">
-              <div className="gl-mark"><img src="/gnsi-mark.webp" alt="" aria-hidden="true" /></div>
+              <div className="gl-mark"><img src={gnsiCrest} alt="" aria-hidden="true" /></div>
               <div>
                 <div className="gl-eyebrow">Staff Portal</div>
                 <h1 className="gl-title">Welcome back</h1>
