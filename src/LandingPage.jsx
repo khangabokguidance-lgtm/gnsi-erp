@@ -806,6 +806,37 @@ function hydrateTabSections(setFeePaymentInfo) {
 
 }
 
+// One-time-per-visit pop-up pointing staff to the sign-in screen (dismissed with Not now / Esc; remembered for the browser session).
+function StaffFlashCard({ onLogin }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    let seen = false
+    try { seen = sessionStorage.getItem('gnsi_staff_flash') === '1' } catch { /* storage blocked — just show it once per page load */ }
+    if (seen) return undefined
+    const t = setTimeout(() => setOpen(true), 2500)
+    return () => clearTimeout(t)
+  }, [])
+  const close = () => { setOpen(false); try { sessionStorage.setItem('gnsi_staff_flash', '1') } catch { /* ignore */ } }
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+  if (!open) return null
+  return (
+    <aside className="sfc" role="dialog" aria-label="Staff login">
+      <button type="button" className="sfc-x" aria-label="Close" onClick={close}>×</button>
+      <div className="sfc-ic" aria-hidden="true">🔐</div>
+      <div className="sfc-tx"><strong>Staff? Sign in here</strong><span>Teachers &amp; office staff — open your dashboard.</span></div>
+      <div className="sfc-btns">
+        <button type="button" className="sfc-go" onClick={() => { close(); onLogin?.() }}>Staff Login →</button>
+        <button type="button" className="sfc-no" onClick={close}>Not now</button>
+      </div>
+    </aside>
+  )
+}
+
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
   const [expandedCat, setExpandedCat] = useState(null);
@@ -2183,13 +2214,14 @@ window.submitGrievance = async () => {
         <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
           <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
         </button>
-        <button type="button" onClick={onLogin} className="nv-btn nv-ghost nv-parents nv-staff">
+        <button type="button" onClick={onLogin} className="nv-btn nv-ghost nv-staff">
           <span className="nv-lbl-full">Staff Login</span><span className="nv-lbl-short">Staff</span>
         </button>
         <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
       </div>
     </div>
   </nav>
+  <StaffFlashCard onLogin={onLogin} />
   <AdmissionsBanner site={site} />
   {/* TICKER */}
   <div className="ticker-wrap">
