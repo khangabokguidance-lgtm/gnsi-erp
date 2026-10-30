@@ -319,6 +319,7 @@ function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, t
   const live = !!onClick
   return (
     <div
+      className="kpi-card"
       onClick={onClick}
       role={live ? "button" : undefined}
       tabIndex={live ? 0 : undefined}
@@ -2729,6 +2730,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
         }
         .fee-banner-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;width:100%}
         @media(min-width:700px){.fee-banner-meta{width:auto}}
+        @media(max-width:767px){
+          .ov-hero{padding:18px 16px 16px !important;margin-bottom:14px !important;border-radius:16px !important;align-items:stretch !important}
+          .ov-hero button{width:100%}
+          .ov-briefing{padding:14px 14px !important;margin-bottom:14px !important}
+          .fee-banner{padding:14px 14px;margin-bottom:14px}
+          .fee-banner > div:nth-child(2){max-width:none !important;min-width:100% !important}
+          .grid-kpi{gap:8px}
+          .kpi-card{padding:12px 12px 10px !important;border-radius:14px !important;gap:6px !important}
+          .kpi-card > div:nth-child(4){font-size:22px !important}
+        }
         .funnel-row{display:flex;flex-wrap:wrap;gap:8px}
         .funnel-row > div{flex:1;min-width:120px}
       `}</style>
@@ -2743,7 +2754,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
         </div>
 
         <div ref={setSectionRef('overview')} className="dash-section" style={{display: activeSection === 'overview' ? 'block' : 'none'}}>
-          <div style={{
+          <div className="ov-hero" style={{
             display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16,
             marginBottom:20,padding:"26px 26px 24px",borderRadius:20,position:"relative",overflow:"hidden",
             background:"radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)",
@@ -2788,7 +2799,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser
           {/* Daily Briefing — rule-based summary (getDailyBriefing →
               getModuleInsights), sorted worst-first so anything critical
               is never buried under routine info lines. */}
-          <div style={{
+          <div className="ov-briefing" style={{
             background:T.bgCard,
             border:`1px solid ${T.border}`,
             borderLeft:`4px solid ${T.goldLt}`,
