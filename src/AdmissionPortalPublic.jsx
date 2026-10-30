@@ -5,7 +5,6 @@
 // the api/entrance adm-* actions, never by this file.
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { api, payPortalFee } from './entrancePay'
-import gnsiCrest from './gnsi-crest.png' // blue emblem for the white logo disc
 import { compressImage, sizeNote } from './lib/imageCompress'
 import { getInstitute, loadSystemSettings } from './systemSettings'
 import { openPrint } from './entrancePrint'
@@ -33,7 +32,7 @@ const PORTAL_CSS = `
 .ap-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(230,199,122,.6),transparent)}
 .ap-wrap{max-width:1120px;margin:0 auto;padding:0 20px;position:relative;z-index:1}
 .ap-bar{display:flex;align-items:center;gap:14px;padding:18px 0;flex-wrap:wrap}
-.ap-logo{width:54px;height:54px;border-radius:50%;background:#fff;overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px rgba(230,199,122,.9),0 10px 24px rgba(0,0,0,.28)}
+.ap-logo{width:58px;height:58px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)) drop-shadow(0 0 14px rgba(230,199,122,.3))}
 .ap-logo img{width:100%;height:100%;object-fit:contain}
 .ap-brand{flex:1;min-width:200px}
 .ap-brand b{display:block;font:700 19px/1.2 Georgia,'Iowan Old Style',serif;letter-spacing:.01em}
@@ -209,7 +208,7 @@ function Shell({ title, children, nav, hero }) {
       <header className="ap-head">
         <div className="ap-wrap">
           <div className="ap-bar">
-            <div className="ap-logo"><img src={gnsiCrest} alt="GNSI" width="52" height="52" /></div>
+            <div className="ap-logo"><img src="/gnsi-mark.webp" alt="GNSI" width="56" height="56" /></div>
             <div className="ap-brand"><b>{inst.name || 'GNSI'}</b><span>{title}</span></div>
             <nav className="ap-nav">{(nav || NAV).map(([href, label]) => <a key={href} href={href} className={here.startsWith(href) ? 'on' : ''}>{label}</a>)}</nav>
           </div>

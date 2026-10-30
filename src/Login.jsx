@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { loadSystemSettings, useSystemSettings, getInstitute } from './systemSettings'
-import gnsiCrest from './gnsi-crest.png' // blue emblem — reads on the white tile (the white-line logo disappears on white)
 
 // ─────────────────────────────────────────────────────────────────────────
 // Login — "Ledger & Crest" design (navy + brass gold, serif headings).
@@ -77,8 +76,8 @@ const injectStyles = () => {
       -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
     .gl-card.shake { animation: gl-shake .5s both; }
     .gl-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
-    .gl-mark { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(160deg, #fff, #E9EEF7); box-shadow: 0 0 0 2px rgba(232,207,142,.85), 0 12px 24px -8px rgba(0,0,0,.6); }
-    .gl-mark img { width: 38px; height: 38px; object-fit: contain; }
+    .gl-mark { width: 64px; height: 64px; flex: 0 0 64px; display: grid; place-items: center; }
+    .gl-mark img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)) drop-shadow(0 0 16px rgba(232,207,142,.3)); }
     .gl-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; color: var(--goldL); }
     .gl-title { margin: 3px 0 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 31px; line-height: 1.1; letter-spacing: -.01em; color: #fff; }
     .gl-sub { margin: 0 0 24px; font-size: 14px; line-height: 1.55; color: rgba(255,255,255,.7); }
@@ -459,7 +458,7 @@ onLogin({
             noValidate
           >
             <div className="gl-head">
-              <div className="gl-mark"><img src={gnsiCrest} alt="" aria-hidden="true" /></div>
+              <div className="gl-mark"><img src="/gnsi-mark.webp" alt="" aria-hidden="true" /></div>
               <div>
                 <div className="gl-eyebrow">Staff Portal</div>
                 <h1 className="gl-title">Welcome back</h1>
