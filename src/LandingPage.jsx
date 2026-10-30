@@ -2183,6 +2183,9 @@ window.submitGrievance = async () => {
         <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
           <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
         </button>
+        <button type="button" onClick={onLogin} className="nv-btn nv-ghost nv-parents nv-staff">
+          <span className="nv-lbl-full">Staff Login</span><span className="nv-lbl-short">Staff</span>
+        </button>
         <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
       </div>
     </div>
