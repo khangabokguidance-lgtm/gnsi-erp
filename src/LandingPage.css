@@ -1866,3 +1866,15 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 @media (max-width:430px){
   .nv-parents.nv-staff{display:none!important}
 }
+
+/* Mid-width laptops / zoomed browsers: tighten the majestic header so every action (incl. Staff Login and Menu) fits in the bar */
+@media (min-width:901px) and (max-width:1279px){
+  .nav-inner{gap:.5rem!important}
+  .brand-text small{display:none!important}
+  .nav-links a{letter-spacing:.04em!important;padding-left:.22rem!important;padding-right:.22rem!important;font-size:.68rem!important}
+  .nav-fixed-actions{gap:.3rem!important}
+  .nav-fixed-actions .nv-btn{padding:0 .5rem!important;letter-spacing:.04em!important;font-size:.68rem!important}
+  .brand-text h2{font-size:.92rem!important;letter-spacing:.06em!important}
+  .nav-fixed-actions .nv-lbl-full{display:none!important}
+  .nav-fixed-actions .nv-lbl-short{display:inline!important}
+}
