@@ -44,6 +44,7 @@ import Attendance         from './Attendance'
 const Exams = React.lazy(() => import('./Exams'))
 import Cbt                from './Cbt'
 import CbtPublic          from './CbtPublic'
+import ResponsiveTables   from './ResponsiveTables'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import ConstructionMaintenance from './ConstructionMaintenance'
@@ -1110,16 +1111,17 @@ export default function App() {
     if (active === 'student-leave') return <StudentSelfService />
     if (active === 'verify')        return <GatePassVerifyPage />
     if (active === 'cast-receiver') return <CastReceiver />
-    if (active === 'dashboard') return isAdmin
+    // Every table in every module becomes stacked cards on phones (see ResponsiveTables)
+    if (active === 'dashboard') return <ResponsiveTables>{isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />}</ResponsiveTables>
     if (!canAccess(active)) return <AccessDenied />
-    return moduleMap[active] || (
+    return <ResponsiveTables>{moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
         <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
       </div>
-    )
+    )}</ResponsiveTables>
   }
 
   // Command palette (Ctrl+K): modules, sections inside hubs, and everyday actions this user may open
