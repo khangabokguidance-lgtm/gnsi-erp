@@ -96,6 +96,9 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
               <button type="button" className="mm-act" style={stagger()} onClick={pick(actions.openPortal)}>
                 <span className="mm-act-ic">👪</span><span><strong>Parents Portal</strong><small>Attendance, marks, notices</small></span><b aria-hidden="true">→</b>
               </button>
+              <button type="button" className="mm-act" style={stagger()} onClick={pick(actions.onLogin)}>
+                <span className="mm-act-ic">🔐</span><span><strong>Staff Login</strong><small>Teachers &amp; office staff</small></span><b aria-hidden="true">→</b>
+              </button>
             </div>
           )}
 
