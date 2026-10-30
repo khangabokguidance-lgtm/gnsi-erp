@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import { loadSystemSettings, useSystemSettings, getInstitute } from './systemSettings'
-// Put both images next to Login.jsx (Vite bundles them)
-import loginPoster from './login-poster.jpg'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Login — "Ledger & Crest" design (navy + brass gold, serif headings).
@@ -11,286 +9,144 @@ import loginPoster from './login-poster.jpg'
 // lookup, set_staff_context RPC, Remember me) is unchanged.
 // ─────────────────────────────────────────────────────────────────────────
 
-const STYLE_ID = 'gnsi-login-styles-v5'
+const STYLE_ID = 'gnsi-login-styles-v6'
 const injectStyles = () => {
   if (document.getElementById(STYLE_ID)) return
   // Remove the old login stylesheet if an earlier version injected it
   document.getElementById('gnsi-login-styles')?.remove()
   document.getElementById('gnsi-login-styles-v3')?.remove()
   document.getElementById('gnsi-login-styles-v4')?.remove()
+  document.getElementById('gnsi-login-styles-v5')?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700;800&display=swap');
 
     .gl-page, .gl-page *, .gl-page *::before, .gl-page *::after { box-sizing: border-box; }
-
-    @keyframes gl-fade { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-    @keyframes gl-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-    @keyframes gl-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 50%{transform:translateX(6px)} 75%{transform:translateX(-3px)} }
-    @keyframes gl-spin { to { transform: rotate(360deg); } }
-    @keyframes gl-sheen { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
-    @keyframes gl-glow { 0%,100% { opacity: .55; } 50% { opacity: .9; } }
-
     .gl-page {
-      --navy: #0B1E3D; --navy2: #132B52; --navy3: #1B3A6B; --gold: #C9A24B; --goldL: #E8CF8E; --goldD: #A8832F;
-      --ink: #0F172A; --muted: #5B6475; --line: #E1E5EC; --bg: #F4F1EA; --err: #B42318;
-      min-height: 100vh; min-height: 100dvh;
-      display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-      background: var(--bg);
-      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-      color: var(--ink);
-      margin: 0;
-      -webkit-font-smoothing: antialiased;
+      --gold: #C9A24B; --goldL: #E8CF8E; --goldLL: #F6E7B8; --navy: #0B1E3D; --ink: #050E1F;
+      position: relative; min-height: 100vh; min-height: 100dvh; overflow: hidden; isolation: isolate;
+      display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+      background: var(--ink); color: #fff; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Left: GNSI poster (panel navy matches the poster's #0E3266) ── */
-    .gl-brand {
-      position: relative;
-      background: radial-gradient(120% 90% at 50% 0%, #17448a 0%, #0E3266 55%, #081f45 100%);
-      display: flex; align-items: center; justify-content: center;
-      padding: 40px; overflow: hidden;
-    }
-    .gl-brand::before {            /* brass hairline frame */
-      content: ''; position: absolute; inset: 18px; border-radius: 14px; pointer-events: none;
-      border: 1px solid rgba(226,197,126,.38);
-      box-shadow: inset 0 0 0 4px rgba(8,31,69,.55), inset 0 0 0 5px rgba(226,197,126,.16);
-    }
-    .gl-brand::after {             /* vertical gold seam to the sign-in side */
-      content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 3px;
-      background: linear-gradient(180deg, transparent, var(--goldL) 18%, var(--gold) 50%, var(--goldL) 82%, transparent);
-    }
-    .gl-poster {
-      position: relative; z-index: 1;
-      display: block; width: auto; height: auto;
-      max-width: 100%; max-height: calc(100dvh - 112px);
-      object-fit: contain; border-radius: 6px;
-      filter: drop-shadow(0 24px 40px rgba(2,10,28,.55));
-      animation: gl-fade .7s cubic-bezier(.2,.7,.2,1) both;
-    }
+    /* ── living background: aurora blobs, fine grid, drifting gold dust ── */
+    .gl-aurora, .gl-grid, .gl-dust { position: absolute; inset: 0; pointer-events: none; z-index: -1; }
+    .gl-aurora::before, .gl-aurora::after { content: ''; position: absolute; border-radius: 50%; filter: blur(70px); opacity: .75; }
+    .gl-aurora::before { width: 62vmax; height: 62vmax; left: -16vmax; top: -22vmax; background: radial-gradient(circle, #1D4F91 0%, rgba(29,79,145,0) 68%); animation: gl-drift 22s ease-in-out infinite alternate; }
+    .gl-aurora::after { width: 52vmax; height: 52vmax; right: -14vmax; bottom: -22vmax; background: radial-gradient(circle, rgba(201,162,75,.55) 0%, rgba(201,162,75,0) 66%); animation: gl-drift 28s ease-in-out infinite alternate-reverse; }
+    .gl-grid { background-image: linear-gradient(rgba(232,207,142,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(232,207,142,.06) 1px, transparent 1px); background-size: 56px 56px;
+      -webkit-mask-image: radial-gradient(70% 70% at 35% 45%, #000 20%, transparent 78%); mask-image: radial-gradient(70% 70% at 35% 45%, #000 20%, transparent 78%); }
+    .gl-dust i { position: absolute; bottom: -12px; width: 3px; height: 3px; border-radius: 50%; background: var(--goldL); box-shadow: 0 0 10px 2px rgba(232,207,142,.55); opacity: 0; animation: gl-float linear infinite; }
 
-    /* ── Right: sign-in ── */
-    .gl-main {
-      position: relative; display: flex; align-items: center; justify-content: center; padding: 40px 24px;
-      background:
-        radial-gradient(60% 50% at 85% 8%, rgba(201,162,75,.20), transparent 70%),
-        radial-gradient(55% 45% at 5% 95%, rgba(19,43,82,.12), transparent 70%),
-        linear-gradient(180deg, #FAF8F3 0%, #F1EEE6 100%);
-      overflow: hidden;
-    }
-    .gl-main::before {             /* faint engraved grid */
-      content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
-      background-image: linear-gradient(rgba(11,30,61,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(11,30,61,.035) 1px, transparent 1px);
-      background-size: 36px 36px;
-      -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
-      mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
-    }
-    .gl-wrap { position: relative; z-index: 1; width: 100%; max-width: 420px; }
+    @keyframes gl-drift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(7vmax, 5vmax, 0) scale(1.15); } }
+    @keyframes gl-float { 0% { transform: translateY(0) translateX(0); opacity: 0; } 12% { opacity: .9; } 100% { transform: translateY(-105vh) translateX(26px); opacity: 0; } }
+    @keyframes gl-spin { to { transform: rotate(360deg); } }
+    @keyframes gl-spin-r { to { transform: rotate(-360deg); } }
+    @keyframes gl-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+    @keyframes gl-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    @keyframes gl-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
+    @keyframes gl-shine { from { transform: translateX(-130%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
+    @keyframes gl-pulse { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
 
-    .gl-card {
-      position: relative; width: 100%;
-      background: linear-gradient(180deg, #FFFFFF 0%, #FCFCFD 100%);
-      border: 1px solid rgba(225,229,236,.9); border-radius: 20px;
-      padding: 40px 36px 30px;
-      box-shadow:
-        0 1px 0 rgba(255,255,255,.9) inset,
-        0 2px 4px rgba(11,30,61,.04),
-        0 16px 32px -8px rgba(11,30,61,.10),
-        0 40px 80px -24px rgba(11,30,61,.20);
-      animation: gl-fade .6s cubic-bezier(.2,.7,.2,1) both;
-      overflow: hidden;
-    }
-    .gl-card::before {             /* brass accent edge */
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-      background: linear-gradient(90deg, var(--goldD), var(--goldL) 35%, var(--gold) 65%, var(--goldD));
-    }
-    .gl-card::after {              /* soft corner glow */
-      content: ''; position: absolute; top: -90px; right: -90px; width: 220px; height: 220px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(201,162,75,.18), transparent 70%); pointer-events: none;
-      animation: gl-glow 6s ease-in-out infinite;
-    }
-    .gl-card.shake { animation: gl-shake .35s ease; }
-    .gl-card > * { position: relative; z-index: 1; }
-    .gl-card > .gl-card-crest, .gl-eyebrow, .gl-title, .gl-sub, .gl-field, .gl-row, .gl-btn, .gl-card-foot { animation: gl-rise .55s cubic-bezier(.2,.7,.2,1) backwards; }
-    .gl-card-crest { animation-delay: .05s !important; }
-    .gl-eyebrow { animation-delay: .10s !important; }
-    .gl-title { animation-delay: .14s !important; }
-    .gl-sub { animation-delay: .18s !important; }
-    .gl-sub + .gl-field { animation-delay: .24s !important; }
-    .gl-field + .gl-field { animation-delay: .30s !important; }
-    .gl-row { animation-delay: .36s !important; }
-    .gl-btn { animation-delay: .42s !important; }
-    .gl-card-foot { animation-delay: .48s !important; }
+    /* ── stage (left): emblem inside slowly turning gold rings ── */
+    .gl-stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 40px; text-align: center; }
+    .gl-emblem { --px: 0px; --py: 0px; position: relative; width: min(46vmin, 430px); height: min(46vmin, 430px); display: grid; place-items: center; transform: translate(var(--px), var(--py)); transition: transform .25s ease-out; }
+    .gl-ring { position: absolute; border-radius: 50%; border: 1px solid rgba(232,207,142,.35); }
+    .gl-ring.r1 { inset: 0; border-style: dashed; border-color: rgba(232,207,142,.38); animation: gl-spin 60s linear infinite; }
+    .gl-ring.r2 { inset: 7%; border-color: rgba(232,207,142,.22); animation: gl-spin-r 44s linear infinite; }
+    .gl-ring.r2::before { content: ''; position: absolute; top: -5px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: var(--goldL); box-shadow: 0 0 16px 4px rgba(232,207,142,.7); }
+    .gl-ring.r3 { inset: 15%; border: 0; background: radial-gradient(circle, rgba(29,79,145,.55), rgba(11,30,61,.0) 70%); animation: gl-pulse 6s ease-in-out infinite; }
+    .gl-logo { position: relative; height: 68%; width: auto; max-width: 78%; object-fit: contain; animation: gl-bob 7s ease-in-out infinite;
+      filter: drop-shadow(0 18px 30px rgba(0,0,0,.55)) drop-shadow(0 0 34px rgba(232,207,142,.25)); }
+    .gl-tag { margin-top: 44px; font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: clamp(22px, 2.4vw, 34px); line-height: 1.25; letter-spacing: -.005em; color: #fff; animation: gl-rise .8s .2s both; }
+    .gl-tag em { font-style: normal; background: linear-gradient(90deg, var(--goldLL), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .gl-where { margin-top: 10px; font-size: 12px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; color: rgba(232,207,142,.85); animation: gl-rise .8s .35s both; }
+    .gl-chips { margin-top: 22px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; animation: gl-rise .8s .5s both; }
+    .gl-chips span { padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.88); background: rgba(255,255,255,.06); border: 1px solid rgba(232,207,142,.25); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 
-    .gl-mobile-brand { display: none; }
+    /* ── sign-in (right): glass card with a gold hairline border ── */
+    .gl-main { position: relative; display: flex; align-items: center; justify-content: center; padding: 40px 36px; }
+    .gl-wrap { width: min(440px, 100%); }
+    .gl-card { position: relative; padding: 38px 36px 28px; border-radius: 30px; background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+      border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(26px) saturate(1.5); -webkit-backdrop-filter: blur(26px) saturate(1.5);
+      box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 40px 80px -30px rgba(0,0,0,.75), 0 0 0 1px rgba(5,14,31,.5); animation: gl-rise .7s cubic-bezier(.2,.7,.2,1) both; }
+    .gl-card::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+      background: linear-gradient(140deg, rgba(246,231,184,.95), rgba(201,162,75,.15) 38%, rgba(201,162,75,.0) 60%, rgba(232,207,142,.7));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+    .gl-card.shake { animation: gl-shake .5s both; }
+    .gl-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+    .gl-mark { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(160deg, #fff, #E9EEF7); box-shadow: 0 0 0 2px rgba(232,207,142,.85), 0 12px 24px -8px rgba(0,0,0,.6); }
+    .gl-mark img { width: 38px; height: 38px; object-fit: contain; }
+    .gl-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; color: var(--goldL); }
+    .gl-title { margin: 3px 0 0; font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 31px; line-height: 1.1; letter-spacing: -.01em; color: #fff; }
+    .gl-sub { margin: 0 0 24px; font-size: 14px; line-height: 1.55; color: rgba(255,255,255,.7); }
 
-    .gl-card-crest { display: block; width: 72px; height: auto; margin: 0 0 20px; filter: drop-shadow(0 6px 10px rgba(11,30,61,.18)); }
-    .gl-eyebrow { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--goldD); margin: 0 0 10px; }
-    .gl-eyebrow::after { content: ''; flex: 0 0 36px; height: 1px; background: linear-gradient(90deg, var(--gold), transparent); }
-    .gl-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 34px; line-height: 1.1; font-weight: 700; letter-spacing: -.015em; color: var(--navy); margin: 0 0 8px; }
-    .gl-sub { font-size: 14.5px; line-height: 1.5; color: var(--muted); margin: 0 0 30px; }
-
-    .gl-field { margin-bottom: 18px; }
-    .gl-label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #334155; margin-bottom: 8px; }
+    .gl-field { margin-bottom: 16px; }
     .gl-input-wrap { position: relative; }
-    .gl-ico { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8A93A3; display: flex; pointer-events: none; transition: color .18s; }
-    .gl-input-wrap:focus-within .gl-ico { color: var(--navy); }
-    .gl-input {
-      width: 100%; height: 52px; padding: 0 16px 0 44px;
-      font: 500 15.5px 'Inter', system-ui, sans-serif; color: var(--ink);
-      background: #F7F8FA; border: 1px solid var(--line); border-radius: 12px;
-      outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
-      -webkit-appearance: none; appearance: none;
-    }
-    .gl-input::placeholder { color: #9AA3B2; font-weight: 400; }
-    .gl-input:hover { border-color: #C6CDD9; background: #fff; }
-    .gl-input:focus { background: #fff; border-color: var(--navy); box-shadow: 0 0 0 4px rgba(201,162,75,.22), 0 1px 2px rgba(11,30,61,.06); }
+    .gl-input { width: 100%; height: 58px; padding: 22px 16px 6px 48px; font: 500 16px 'Inter', sans-serif; color: #fff; caret-color: var(--goldL);
+      background: rgba(5,14,31,.55); border: 1.5px solid rgba(255,255,255,.14); border-radius: 16px; outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
     .gl-input.has-toggle { padding-right: 84px; }
-    .gl-input[aria-invalid="true"] { border-color: var(--err); background: #FFFBFA; }
-    .gl-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 40px #fff inset; -webkit-text-fill-color: var(--ink); }
+    .gl-input::placeholder { color: transparent; }
+    .gl-input:hover { border-color: rgba(232,207,142,.4); }
+    .gl-input:focus { border-color: var(--goldL); background: rgba(5,14,31,.75); box-shadow: 0 0 0 4px rgba(232,207,142,.16), 0 10px 26px -12px rgba(232,207,142,.5); }
+    .gl-input:-webkit-autofill { -webkit-text-fill-color: #fff; -webkit-box-shadow: 0 0 0 40px #0B1E3D inset; }
+    .gl-label { position: absolute; left: 48px; top: 19px; font-size: 15px; font-weight: 500; color: rgba(255,255,255,.55); pointer-events: none; transform-origin: left top; transition: transform .18s ease, color .18s ease; }
+    .gl-input:focus + .gl-label, .gl-input:not(:placeholder-shown) + .gl-label { transform: translateY(-11px) scale(.76); color: var(--goldL); font-weight: 700; letter-spacing: .04em; }
+    .gl-ico { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: rgba(232,207,142,.8); display: flex; pointer-events: none; transition: color .2s; }
+    .gl-input:focus ~ .gl-ico { color: var(--goldLL); }
+    .gl-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: 0; border-radius: 10px; background: rgba(255,255,255,.07); color: var(--goldL); font: 700 12px 'Inter', sans-serif; cursor: pointer; transition: background .2s; }
+    .gl-toggle:hover { background: rgba(255,255,255,.14); }
 
-    .gl-toggle {
-      position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
-      height: 36px; padding: 0 11px; border: 0; border-radius: 8px; background: transparent;
-      font: 600 12px 'Inter', system-ui, sans-serif; color: var(--navy2); cursor: pointer;
-      display: inline-flex; align-items: center; gap: 6px; transition: background .15s;
-    }
-    .gl-toggle:hover { background: #EAEEF5; }
-    .gl-toggle:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+    .gl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; margin: 2px 0 20px; }
+    .gl-remember { display: inline-flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(255,255,255,.85); cursor: pointer; user-select: none; }
+    .gl-remember input { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin: 0; border-radius: 7px; border: 1.5px solid rgba(255,255,255,.35); background: rgba(5,14,31,.5); display: grid; place-items: center; cursor: pointer; transition: .15s; }
+    .gl-remember input:checked { background: linear-gradient(160deg, var(--goldLL), var(--gold)); border-color: var(--goldL); }
+    .gl-remember input:checked::after { content: ''; width: 5px; height: 10px; margin-top: -2px; border: solid #2A1D05; border-width: 0 2.4px 2.4px 0; transform: rotate(45deg); }
+    .gl-remember input:focus-visible { outline: 2px solid var(--goldL); outline-offset: 2px; }
+    .gl-help { font-size: 12px; color: rgba(255,255,255,.55); }
 
-    .gl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 24px; flex-wrap: wrap; }
-    .gl-remember { display: inline-flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; user-select: none; }
-    .gl-remember input { width: 17px; height: 17px; accent-color: var(--navy); cursor: pointer; margin: 0; }
-    .gl-help { font-size: 12.5px; color: var(--muted); }
+    .gl-error { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; font-size: 13px; line-height: 1.5; font-weight: 600; color: #FFD3CE; background: rgba(180,35,24,.22); border: 1px solid rgba(255,140,128,.45); }
+    .gl-error svg { flex: 0 0 auto; margin-top: 2px; }
 
-    .gl-error {
-      display: flex; gap: 10px; align-items: flex-start;
-      background: #FEF3F2; border: 1px solid #FECDCA; border-left: 3px solid var(--err); color: var(--err);
-      font-size: 13px; line-height: 1.45; border-radius: 10px; padding: 11px 13px; margin-bottom: 16px;
-    }
-    .gl-error svg { flex-shrink: 0; margin-top: 1px; }
-
-    .gl-btn {
-      position: relative; overflow: hidden;
-      width: 100%; height: 54px; border: 0; border-radius: 12px;
-      background: linear-gradient(180deg, var(--navy3) 0%, var(--navy) 100%); color: #fff;
-      font: 600 15.5px 'Inter', system-ui, sans-serif; letter-spacing: .3px;
-      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-      cursor: pointer; transition: transform .18s, box-shadow .18s, filter .18s;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -3px 0 var(--gold), 0 10px 22px -8px rgba(11,30,61,.55);
-    }
-    .gl-btn::after {               /* brass sheen sweep on hover */
-      content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 38%;
-      background: linear-gradient(90deg, transparent, rgba(232,207,142,.35), transparent);
-      transform: translateX(-120%) skewX(-18deg); pointer-events: none;
-    }
-    .gl-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -3px 0 var(--goldL), 0 16px 28px -10px rgba(11,30,61,.6); }
-    .gl-btn:hover:not(:disabled)::after { animation: gl-sheen .9s ease; }
+    .gl-btn { position: relative; overflow: hidden; width: 100%; height: 58px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 18px; cursor: pointer;
+      font: 800 16px 'Inter', sans-serif; letter-spacing: .01em; color: #2A1D05; background: linear-gradient(180deg, #F6E1A0, #C9A24B 92%);
+      box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 18px 34px -14px rgba(201,162,75,.85); transition: transform .18s, box-shadow .18s, filter .18s; }
+    .gl-btn::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); transform: translateX(-130%) skewX(-18deg); }
+    .gl-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 24px 40px -14px rgba(201,162,75,1); }
+    .gl-btn:hover:not(:disabled)::after { animation: gl-shine .9s ease; }
     .gl-btn:active:not(:disabled) { transform: translateY(0); }
-    .gl-btn:focus-visible { outline: 3px solid rgba(201,162,75,.6); outline-offset: 3px; }
-    .gl-btn:disabled { opacity: .75; cursor: default; }
-    .gl-btn-arrow { transition: transform .18s; }
-    .gl-btn:hover:not(:disabled) .gl-btn-arrow { transform: translateX(3px); }
-    .gl-spinner { width: 17px; height: 17px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: gl-spin .7s linear infinite; }
+    .gl-btn:disabled { cursor: default; filter: saturate(.7) brightness(.92); }
+    .gl-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+    .gl-btn-arrow { transition: transform .2s; }
+    .gl-btn:hover:not(:disabled) .gl-btn-arrow { transform: translateX(5px); }
+    .gl-spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(42,29,5,.3); border-top-color: #2A1D05; animation: gl-spin .7s linear infinite; }
 
-    .gl-card-foot { margin-top: 24px; padding-top: 18px; border-top: 1px solid #EEF0F4; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
-    .gl-card-foot svg { color: var(--goldD); }
+    .gl-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.12); font-size: 12px; color: rgba(255,255,255,.6); }
+    .gl-card-foot span { display: inline-flex; align-items: center; gap: 7px; }
+    .gl-card-foot a { color: var(--goldL); font-weight: 700; text-decoration: none; }
+    .gl-card-foot a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .gl-legal { margin: 18px 0 0; text-align: center; font-size: 11.5px; color: rgba(255,255,255,.4); }
 
-    .gl-legal { text-align: center; font-size: 12px; color: #8A93A3; margin-top: 20px; letter-spacing: .02em; }
+    /* field entrance */
+    .gl-head, .gl-sub, .gl-field, .gl-row, .gl-btn, .gl-card-foot { animation: gl-rise .6s cubic-bezier(.2,.7,.2,1) backwards; }
+    .gl-sub { animation-delay: .08s; } .gl-field:nth-of-type(1) { animation-delay: .14s; } .gl-field:nth-of-type(2) { animation-delay: .2s; }
+    .gl-row { animation-delay: .26s; } .gl-btn { animation-delay: .32s; } .gl-card-foot { animation-delay: .38s; }
 
-    @media (max-width: 900px) {
-      .gl-page { grid-template-columns: 1fr; }
-      .gl-brand { display: none; }
-      .gl-main { align-items: flex-start; padding: 32px 16px 24px; }
-      .gl-mobile-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px; }
-      .gl-crest-img { width: 92px; height: auto; margin-bottom: 12px; filter: drop-shadow(0 8px 14px rgba(11,30,61,.2)); }
-      .gl-card-crest { display: none; }
-      .gl-mobile-name { font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 19px; color: var(--navy); }
-      .gl-mobile-sub { font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--goldD); margin-top: 4px; }
-      .gl-card { padding: 32px 22px 24px; border-radius: 18px; }
-      .gl-title { font-size: 30px; }
+    /* ── tablet / phone: stage collapses to a compact crest above the card ── */
+    @media (max-width: 960px) {
+      .gl-page { grid-template-columns: minmax(0, 1fr); align-content: start; }
+      .gl-stage { padding: 30px 20px 4px; }
+      .gl-emblem { width: 168px; height: 168px; }
+      .gl-tag { margin-top: 14px; font-size: 22px; }
+      .gl-where { margin-top: 6px; font-size: 10.5px; letter-spacing: .2em; }
+      .gl-chips { display: none; }
+      .gl-main { padding: 18px 16px 34px; align-items: flex-start; }
+      .gl-card { padding: 28px 22px 22px; border-radius: 26px; }
+      .gl-title { font-size: 27px; }
     }
-
-    /* ═════════ "Midnight Glass" theme — applied via .gl-b on the page root ═════════ */
-    .gl-b { grid-template-columns: 1fr; background: #06142C; }
-    .gl-b .gl-brand { display: block; position: fixed; inset: 0; padding: 0; z-index: 0; background: #06142C; }
-    .gl-b .gl-brand::before {
-      inset: 0; border: 0; border-radius: 0; box-shadow: none; z-index: 2;
-      background:
-        radial-gradient(70% 60% at 50% 38%, rgba(6,20,44,.15), rgba(6,20,44,.82) 100%),
-        linear-gradient(180deg, rgba(6,20,44,.55), rgba(6,20,44,.85));
-    }
-    .gl-b .gl-brand::after { display: none; }
-    .gl-b .gl-poster {
-      position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; max-width: none;
-      object-fit: cover; border-radius: 0; animation: none;
-      filter: blur(30px) saturate(1.2) brightness(.7); transform: scale(1.18);
-    }
-    .gl-b .gl-main { z-index: 1; background: none; }
-    .gl-b .gl-main::before { display: none; }
-
-    .gl-b .gl-card {
-      text-align: center;
-      background: linear-gradient(155deg, rgba(255,255,255,.15) 0%, rgba(255,255,255,.05) 100%);
-      border: 1px solid rgba(232,207,142,.32);
-      -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
-      box-shadow: 0 1px 0 rgba(255,255,255,.22) inset, 0 30px 70px -20px rgba(0,0,0,.65), 0 0 0 1px rgba(6,20,44,.4);
-    }
-    .gl-b .gl-card::before { height: 3px; background: linear-gradient(90deg, transparent, var(--goldL), var(--gold), var(--goldL), transparent); }
-    .gl-b .gl-card::after { background: radial-gradient(circle, rgba(232,207,142,.22), transparent 70%); }
-    .gl-b .gl-card-crest, .gl-b .gl-crest-img {
-      background: radial-gradient(circle at 35% 30%, #fff, #EEF1F7); border-radius: 50%; padding: 12px;
-      box-shadow: 0 0 0 2px rgba(232,207,142,.9), 0 0 0 6px rgba(232,207,142,.18), 0 12px 26px -6px rgba(0,0,0,.55);
-    }
-    .gl-b .gl-card-crest { margin: 0 auto 20px; width: 88px; height: 88px; object-fit: contain; filter: none; }
-    /* The artwork has a transparent background: no white disc, it blends straight into the glass card with a soft gold glow */
-    .gl-b .gl-card-crest, .gl-b .gl-crest-img {
-      background: none; border-radius: 0; padding: 0; box-shadow: none; width: auto; object-fit: contain;
-      filter: drop-shadow(0 10px 22px rgba(0,0,0,.45)) drop-shadow(0 0 26px rgba(232,207,142,.22));
-    }
-    .gl-b .gl-card-crest { height: 190px; margin: -6px auto 14px; }
-    .gl-b .gl-crest-img { height: 150px; margin-bottom: 8px; }
-    .gl-b .gl-eyebrow { justify-content: center; color: var(--goldL); }
-    .gl-b .gl-eyebrow::before { content: ''; flex: 0 0 36px; height: 1px; background: linear-gradient(270deg, var(--gold), transparent); }
-    .gl-b .gl-title { color: #fff; }
-    .gl-b .gl-sub { color: rgba(255,255,255,.72); }
-    .gl-b .gl-field, .gl-b .gl-row { text-align: left; }
-    .gl-b .gl-label { color: rgba(255,255,255,.82); }
-    .gl-b .gl-ico { color: rgba(255,255,255,.5); }
-    .gl-b .gl-input-wrap:focus-within .gl-ico { color: var(--goldL); }
-    .gl-b .gl-input { color: #fff; background: rgba(6,20,44,.45); border-color: rgba(255,255,255,.2); }
-    .gl-b .gl-input::placeholder { color: rgba(255,255,255,.4); }
-    .gl-b .gl-input:hover { background: rgba(6,20,44,.6); border-color: rgba(255,255,255,.35); }
-    .gl-b .gl-input:focus { background: rgba(6,20,44,.7); border-color: var(--goldL); box-shadow: 0 0 0 4px rgba(232,207,142,.22); }
-    .gl-b .gl-input[aria-invalid="true"] { border-color: #F97066; background: rgba(120,20,15,.25); }
-    .gl-b .gl-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 40px #0c2247 inset; -webkit-text-fill-color: #fff; caret-color: #fff; }
-    .gl-b .gl-toggle { color: var(--goldL); }
-    .gl-b .gl-toggle:hover { background: rgba(255,255,255,.1); }
-    .gl-b .gl-remember { color: rgba(255,255,255,.88); }
-    .gl-b .gl-remember input { accent-color: var(--gold); }
-    .gl-b .gl-help { color: rgba(255,255,255,.6); }
-    .gl-b .gl-error { background: rgba(180,35,24,.22); border-color: rgba(249,112,102,.5); border-left-color: #F97066; color: #FFD5D1; text-align: left; }
-    .gl-b .gl-btn {
-      background: linear-gradient(180deg, #F2DC96 0%, #D8B35A 55%, #C09333 100%); color: #0B1E3D;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -2px 0 rgba(120,85,10,.35), 0 14px 30px -10px rgba(201,162,75,.6);
-    }
-    .gl-b .gl-btn::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); }
-    .gl-b .gl-btn:hover:not(:disabled) { filter: brightness(1.05); box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -2px 0 rgba(120,85,10,.35), 0 20px 36px -12px rgba(232,207,142,.75); }
-    .gl-b .gl-btn:focus-visible { outline-color: rgba(255,255,255,.7); }
-    .gl-b .gl-spinner { border-color: rgba(11,30,61,.25); border-top-color: #0B1E3D; }
-    .gl-b .gl-card-foot { border-top-color: rgba(255,255,255,.14); color: rgba(255,255,255,.62); }
-    .gl-b .gl-card-foot svg { color: var(--goldL); }
-    .gl-b .gl-legal { color: rgba(255,255,255,.5); }
-    .gl-b .gl-mobile-name { color: #fff; }
-    .gl-b .gl-mobile-sub { color: var(--goldL); }
-    @media (max-width: 900px) {
-      .gl-b .gl-card-crest { display: none; }
-      .gl-b .gl-crest-img { width: auto; height: 150px; object-fit: contain; margin-bottom: 8px; }
-      .gl-b .gl-main { padding-top: 40px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .gl-card, .gl-card *, .gl-poster, .gl-card::after { animation: none !important; transition: none !important; }
-    }
+    @media (max-width: 380px) { .gl-emblem { width: 140px; height: 140px; } .gl-card { padding: 24px 18px 20px; } }
+    @media (prefers-reduced-motion: reduce) { .gl-page *, .gl-page *::before, .gl-page *::after { animation: none !important; transition: none !important; } }
 `
   document.head.appendChild(style)
 }
@@ -390,6 +246,7 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
   const [loading,      setLoading]      = useState(false)
   const [shakeCard,    setShakeCard]    = useState(false)
   const cardRef = useRef(null)
+  const emblemRef = useRef(null)
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
@@ -560,48 +417,64 @@ onLogin({
 
   const year = new Date().getFullYear()
 
+  // Gentle pointer parallax for the emblem (skipped when the user prefers reduced motion)
+  const onMove = (e) => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const el = emblemRef.current
+    if (!el) return
+    const x = (e.clientX / window.innerWidth - 0.5) * 22
+    const y = (e.clientY / window.innerHeight - 0.5) * 22
+    el.style.setProperty('--px', `${x.toFixed(1)}px`)
+    el.style.setProperty('--py', `${y.toFixed(1)}px`)
+  }
+  const dust = [[8, 11], [17, 15], [26, 9], [35, 13], [47, 12], [58, 16], [67, 10], [76, 14], [86, 12], [93, 17]]
+
   return (
-    <div className="gl-page gl-b">
-      {/* Institute panel (hidden on phones) */}
-      <aside className="gl-brand">
-        <img
-          className="gl-poster"
-          src={loginPoster}
-          alt="Guidance Navodaya & Sainik Institute — Celebrating 10 Years of Success"
-        />
+    <div className="gl-page" onMouseMove={onMove}>
+      <div className="gl-aurora" aria-hidden="true" />
+      <div className="gl-grid" aria-hidden="true" />
+      <div className="gl-dust" aria-hidden="true">
+        {dust.map(([left, dur], i) => <i key={i} style={{ left: `${left}%`, animationDuration: `${dur + 6}s`, animationDelay: `${-i * 1.7}s` }} />)}
+      </div>
+
+      {/* Stage: institute emblem inside turning gold rings */}
+      <aside className="gl-stage">
+        <div className="gl-emblem" ref={emblemRef}>
+          <span className="gl-ring r1" /><span className="gl-ring r2" /><span className="gl-ring r3" />
+          <img className="gl-logo" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years of success" />
+        </div>
+        <div className="gl-tag">Guiding every child to <em>Navodaya &amp; Sainik</em> success</div>
+        <div className="gl-where">Khangabok · Thoubal · Manipur</div>
+        <div className="gl-chips"><span>Est. 2016</span><span>10 years of success</span><span>GNSI ERP · Staff Portal</span></div>
       </aside>
 
       {/* Sign-in */}
       <main className="gl-main">
         <div className="gl-wrap">
-          <div className="gl-mobile-brand">
-            <img className="gl-crest-img" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years" />
-            <div className="gl-mobile-name">{instName}</div>
-            <div className="gl-mobile-sub">GNSI ERP · Staff Portal</div>
-          </div>
-
           <form
             ref={cardRef}
             className={`gl-card${shakeCard ? ' shake' : ''}`}
             onSubmit={handleLogin}
             noValidate
           >
-            <img className="gl-card-crest" src="/gnsi-logo-10y.webp" alt="" aria-hidden="true" />
-            <div className="gl-eyebrow">Staff Portal</div>
-            <h1 className="gl-title">Sign in</h1>
-            <p className="gl-sub">Use your GNSI staff account to continue.</p>
+            <div className="gl-head">
+              <div className="gl-mark"><img src="/gnsi-mark.webp" alt="" aria-hidden="true" /></div>
+              <div>
+                <div className="gl-eyebrow">Staff Portal</div>
+                <h1 className="gl-title">Welcome back</h1>
+              </div>
+            </div>
+            <p className="gl-sub">Sign in with your GNSI staff account to open your dashboard.</p>
 
             <div className="gl-field">
-              <label className="gl-label" htmlFor="gl-username">Username</label>
               <div className="gl-input-wrap">
-                <span className="gl-ico"><UserIcon /></span>
                 <input
                   id="gl-username"
                   className="gl-input"
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="Your username"
+                  placeholder=" "
                   autoComplete="username"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -609,24 +482,26 @@ onLogin({
                   aria-invalid={error ? 'true' : undefined}
                   autoFocus={!username}
                 />
+                <label className="gl-label" htmlFor="gl-username">Username</label>
+                <span className="gl-ico"><UserIcon /></span>
               </div>
             </div>
 
             <div className="gl-field">
-              <label className="gl-label" htmlFor="gl-password">Password</label>
               <div className="gl-input-wrap">
-                <span className="gl-ico"><LockIcon /></span>
                 <input
                   id="gl-password"
                   className="gl-input has-toggle"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder=" "
                   autoComplete="current-password"
                   aria-invalid={error ? 'true' : undefined}
                   autoFocus={!!username}
                 />
+                <label className="gl-label" htmlFor="gl-password">Password</label>
+                <span className="gl-ico"><LockIcon /></span>
                 <button
                   type="button"
                   className="gl-toggle"
@@ -663,7 +538,8 @@ onLogin({
             </button>
 
             <div className="gl-card-foot">
-              <ShieldIcon /> For authorised GNSI staff only.
+              <span><ShieldIcon /> Authorised GNSI staff only</span>
+              <a href="/">← Back to website</a>
             </div>
           </form>
 
