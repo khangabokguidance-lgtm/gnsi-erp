@@ -40,19 +40,30 @@ function Spark({ values, color = GOLD_LT, h = 110 }) {
   return <svg viewBox={`0 0 ${W} ${h}`} width="100%" height={h} preserveAspectRatio="none" style={{ display: 'block' }}><polyline points={pts} fill="none" stroke={color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" /></svg>
 }
 
-function Tile({ icon, label, value, sub, onClick, accent, wide }) {
+function Tile({ icon, label, value, sub, onClick, accent, wide, phone }) {
   return (
-    <button type="button" className={wide ? 'ac-full' : undefined} onClick={onClick} style={{ ...card, gridColumn: wide ? 'span 2' : undefined, textAlign: 'left', border: 0, cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', color: INK,
+    <button type="button" onClick={onClick} style={{ ...card, gridColumn: wide ? (phone ? '1 / -1' : 'span 2') : undefined, ...(phone ? { padding: 14, minWidth: 0 } : null), textAlign: 'left', border: 0, cursor: onClick ? 'pointer' : 'default', fontFamily: 'inherit', color: INK,
       ...(accent ? { background: 'linear-gradient(150deg,#d9b566,#b8923a)', color: '#1a1406' } : null) }}>
       <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 20 }}>{icon}</span>
       <div style={{ ...lbl, color: accent ? 'rgba(26,20,6,.7)' : SUB }}>{label}</div>
-      <div className="ac-val" style={{ fontFamily: serif, fontSize: 28, marginTop: 6, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontFamily: serif, fontSize: phone ? 24 : 28, marginTop: 6, lineHeight: 1.1 }}>{value}</div>
       {sub && <div style={{ fontSize: 11.5, marginTop: 4, color: accent ? 'rgba(26,20,6,.75)' : SUB }}>{sub}</div>}
     </button>
   )
 }
 
+function usePhone() {
+  const [p, setP] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
+  useEffect(() => {
+    const fn = () => setP(window.innerWidth < 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return p
+}
+
 function Overview({ data, briefing, onOpenSection, onNavigate }) {
+  const phone = usePhone()
   const [pending, setPending] = useState(null)   // null | { busy, done, total } | { total, count }
   const workOutDues = async () => {
     setPending({ busy: true, done: 0, total: 0 })
@@ -66,14 +77,8 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
   const open = (section, module) => () => (section ? onOpenSection(section) : onNavigate?.(module))
   const L = briefing || []
   return (
-    <div className="ac-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gridAutoRows: 'minmax(118px,auto)', gap: 14, gridAutoFlow: 'dense' }}>
-      <style>{`@media(max-width:767px){
-        .ac-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;grid-auto-rows:auto !important;gap:10px !important}
-        .ac-grid > *{grid-column:span 1 !important;grid-row:auto !important;min-width:0;padding:14px !important;border-radius:18px !important}
-        .ac-grid > .ac-full{grid-column:1/-1 !important}
-        .ac-grid .ac-val{font-size:24px !important}
-      }`}</style>
-      <button type="button" className="ac-full" onClick={open('finance')} style={{ ...card, gridColumn: 'span 3', gridRow: 'span 3', border: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, color: '#fff', fontFamily: 'inherit',
+    <div style={{ display: 'grid', gridTemplateColumns: phone ? 'repeat(2,minmax(0,1fr))' : 'repeat(auto-fill,minmax(190px,1fr))', gridAutoRows: phone ? 'auto' : 'minmax(118px,auto)', gap: phone ? 10 : 14, gridAutoFlow: 'dense' }}>
+      <button type="button" onClick={open('finance')} style={{ ...card, gridColumn: phone ? '1 / -1' : 'span 3', gridRow: phone ? 'auto' : 'span 3', border: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, color: '#fff', fontFamily: 'inherit',
         background: 'linear-gradient(150deg,#13294f,#0b1730 70%)', padding: 24 }}>
         <div style={{ ...lbl, color: 'rgba(255,255,255,.7)' }}>Fees collected</div>
         <div style={{ fontFamily: serif, fontSize: 'clamp(34px,5vw,54px)', lineHeight: 1, margin: '10px 0 6px', color: GOLD_LT }}>{inr(data.totalFeeCollected)}</div>
@@ -81,9 +86,9 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
         <div style={{ marginTop: 22 }}><Spark values={collected} /></div>
         <div style={{ fontSize: 11, opacity: .6, marginTop: 6 }}>Income by month this session · tap for the Finance report</div>
       </button>
-      <Tile icon="🎓" label="Students" value={Number(data.activeStudentCount ?? data.totalStudents ?? 0).toLocaleString('en-IN')} sub={`${data.totalStudents ?? 0} on record`} onClick={open('students')} />
-      <Tile icon="✅" label="Attendance today" value={att == null ? '—' : `${att}%`} sub={data.totalToday ? `${data.presentToday} of ${data.totalToday} present` : 'not marked yet'} onClick={open('attendance')} />
-      <Tile icon="📋" label="Admissions" value={Number(data.totalAdmissions || 0).toLocaleString('en-IN')} sub={`${data.admEnrolled || 0} enrolled`} onClick={open('admissions')} />
+      <Tile phone={phone} icon="🎓" label="Students" value={Number(data.activeStudentCount ?? data.totalStudents ?? 0).toLocaleString('en-IN')} sub={`${data.totalStudents ?? 0} on record`} onClick={open('students')} />
+      <Tile phone={phone} icon="✅" label="Attendance today" value={att == null ? '—' : `${att}%`} sub={data.totalToday ? `${data.presentToday} of ${data.totalToday} present` : 'not marked yet'} onClick={open('attendance')} />
+      <Tile phone={phone} icon="📋" label="Admissions" value={Number(data.totalAdmissions || 0).toLocaleString('en-IN')} sub={`${data.admEnrolled || 0} enrolled`} onClick={open('admissions')} />
       <div style={{ ...card, gridColumn: 'span 1', background: 'linear-gradient(150deg,#d9b566,#b8923a)', color: '#1a1406', display: 'flex', flexDirection: 'column', gap: 4, padding: '14px 16px' }}>
         <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 20 }}>💸</span>
         <div style={{ ...lbl, color: 'rgba(26,20,6,.7)' }}>Fee pending</div>
@@ -95,24 +100,24 @@ function Overview({ data, briefing, onOpenSection, onNavigate }) {
           <div style={{ fontSize: 11.5 }}>{pending.count} of {pending.of} students owe{pending.partial ? ' · some figures incomplete' : ''}</div>
           <button type="button" onClick={() => onNavigate?.('fees')} style={{ ...btn, padding: '4px 10px', fontSize: 11.5, marginTop: 4, background: 'rgba(255,255,255,.55)' }}>Open Fees →</button></>}
       </div>
-      <Tile wide icon="📉" label="Net P&L" value={compact(data.netPL)} sub={`Expenses ${compact(data.totalExpenses)} · income ${compact(data.totalFeeCollected)}`} onClick={open('expenses')} />
-      <Tile icon="🛏️" label="Hostel" value={`${data.hostelOccupied ?? 0}`} sub={`occupied of ${data.hostelTotalRooms ?? 0} rooms`} onClick={open('hostel')} />
-      <Tile icon="📝" label="Tests" value={data.totalTests ?? 0} sub={`${data.totalTestEntries ?? 0} entries`} onClick={open('tests')} />
-      <Tile icon="👨‍💼" label="Staff & HR" value={data.activeStaffCnt ?? data.totalStaff ?? 0} sub="active" onClick={open('staff')} />
-      <div className="ac-full" style={{ ...card, gridColumn: 'span 2', gridRow: 'span 2', padding: 18 }}>
+      <Tile wide phone={phone} icon="📉" label="Net P&L" value={compact(data.netPL)} sub={`Expenses ${compact(data.totalExpenses)} · income ${compact(data.totalFeeCollected)}`} onClick={open('expenses')} />
+      <Tile phone={phone} icon="🛏️" label="Hostel" value={`${data.hostelOccupied ?? 0}`} sub={`occupied of ${data.hostelTotalRooms ?? 0} rooms`} onClick={open('hostel')} />
+      <Tile phone={phone} icon="📝" label="Tests" value={data.totalTests ?? 0} sub={`${data.totalTestEntries ?? 0} entries`} onClick={open('tests')} />
+      <Tile phone={phone} icon="👨‍💼" label="Staff & HR" value={data.activeStaffCnt ?? data.totalStaff ?? 0} sub="active" onClick={open('staff')} />
+      <div style={{ ...card, gridColumn: phone ? '1 / -1' : 'span 2', gridRow: phone ? 'auto' : 'span 2', padding: 18 }}>
         <div style={lbl}>Daily briefing</div>
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
           {L.length ? L.map((b, i) => <li key={i} style={{ fontSize: 12.5, padding: '7px 0', borderBottom: '1px solid #eef0f6', display: 'flex', gap: 8, color: (LEVEL[b.level] || LEVEL.info)[1] }}><span>{(LEVEL[b.level] || LEVEL.info)[0]}</span><span style={{ color: INK }}>{b.text}</span></li>)
             : <li style={{ fontSize: 12.5, color: SUB }}>Nothing needs attention right now.</li>}
         </ul>
       </div>
-      <Tile icon="📚" label="Academic" value={data.avgScore != null ? `${Math.round(data.avgScore)}%` : '—'} sub="average score" onClick={open('academic')} />
-      <Tile icon="🔍" label="Enquiry" value={data.openEnquiries ?? 0} sub={`${data.totalEnquiries ?? 0} leads`} onClick={open('enquiry')} />
-      <Tile icon="🗂️" label="Batches" value={data.activeBatches ?? 0} sub={`${data.totalBatches ?? 0} total`} onClick={open('batches')} />
-      <Tile icon="🏅" label="Selections" value={data.totalSelections ?? 0} sub={`JNV ${data.jnvSelections ?? 0} · Sainik ${data.sainikSelections ?? 0}`} onClick={open('results')} />
-      <Tile icon="💬" label="Doubts open" value={data.unresolvedDoubts ?? 0} sub={`${data.totalDoubts ?? 0} raised`} onClick={open('doubts')} />
-      <Tile icon="👨‍👩‍👧" label="Parent SMS" value={data.totalSMSSent ?? 0} sub="sent" onClick={open('parents')} />
-      <Tile icon="🏆" label="Entrance exams" value={data.totalEntranceExams ?? 0} sub={`${data.totalEntranceCandidates ?? 0} candidates`} onClick={open('entrance')} />
+      <Tile phone={phone} icon="📚" label="Academic" value={data.avgScore != null ? `${Math.round(data.avgScore)}%` : '—'} sub="average score" onClick={open('academic')} />
+      <Tile phone={phone} icon="🔍" label="Enquiry" value={data.openEnquiries ?? 0} sub={`${data.totalEnquiries ?? 0} leads`} onClick={open('enquiry')} />
+      <Tile phone={phone} icon="🗂️" label="Batches" value={data.activeBatches ?? 0} sub={`${data.totalBatches ?? 0} total`} onClick={open('batches')} />
+      <Tile phone={phone} icon="🏅" label="Selections" value={data.totalSelections ?? 0} sub={`JNV ${data.jnvSelections ?? 0} · Sainik ${data.sainikSelections ?? 0}`} onClick={open('results')} />
+      <Tile phone={phone} icon="💬" label="Doubts open" value={data.unresolvedDoubts ?? 0} sub={`${data.totalDoubts ?? 0} raised`} onClick={open('doubts')} />
+      <Tile phone={phone} icon="👨‍👩‍👧" label="Parent SMS" value={data.totalSMSSent ?? 0} sub="sent" onClick={open('parents')} />
+      <Tile phone={phone} icon="🏆" label="Entrance exams" value={data.totalEntranceExams ?? 0} sub={`${data.totalEntranceCandidates ?? 0} candidates`} onClick={open('entrance')} />
     </div>
   )
 }
