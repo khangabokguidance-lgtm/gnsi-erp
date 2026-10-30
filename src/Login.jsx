@@ -3,7 +3,6 @@ import { supabase } from './supabase'
 import { loadSystemSettings, useSystemSettings, getInstitute } from './systemSettings'
 // Put both images next to Login.jsx (Vite bundles them)
 import loginPoster from './login-poster.jpg'
-import gnsiCrest from './gnsi-crest.png'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Login — "Ledger & Crest" design (navy + brass gold, serif headings).
@@ -244,6 +243,13 @@ const injectStyles = () => {
       box-shadow: 0 0 0 2px rgba(232,207,142,.9), 0 0 0 6px rgba(232,207,142,.18), 0 12px 26px -6px rgba(0,0,0,.55);
     }
     .gl-b .gl-card-crest { margin: 0 auto 20px; width: 88px; height: 88px; object-fit: contain; filter: none; }
+    /* The artwork has a transparent background: no white disc, it blends straight into the glass card with a soft gold glow */
+    .gl-b .gl-card-crest, .gl-b .gl-crest-img {
+      background: none; border-radius: 0; padding: 0; box-shadow: none; width: auto; object-fit: contain;
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,.45)) drop-shadow(0 0 26px rgba(232,207,142,.22));
+    }
+    .gl-b .gl-card-crest { height: 190px; margin: -6px auto 14px; }
+    .gl-b .gl-crest-img { height: 150px; margin-bottom: 8px; }
     .gl-b .gl-eyebrow { justify-content: center; color: var(--goldL); }
     .gl-b .gl-eyebrow::before { content: ''; flex: 0 0 36px; height: 1px; background: linear-gradient(270deg, var(--gold), transparent); }
     .gl-b .gl-title { color: #fff; }
@@ -279,7 +285,7 @@ const injectStyles = () => {
     .gl-b .gl-mobile-sub { color: var(--goldL); }
     @media (max-width: 900px) {
       .gl-b .gl-card-crest { display: none; }
-      .gl-b .gl-crest-img { width: 100px; height: 100px; object-fit: contain; margin-bottom: 14px; filter: none; }
+      .gl-b .gl-crest-img { width: auto; height: 150px; object-fit: contain; margin-bottom: 8px; }
       .gl-b .gl-main { padding-top: 40px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -569,7 +575,7 @@ onLogin({
       <main className="gl-main">
         <div className="gl-wrap">
           <div className="gl-mobile-brand">
-            <img className="gl-crest-img" src={gnsiCrest} alt="GNSI crest" />
+            <img className="gl-crest-img" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years" />
             <div className="gl-mobile-name">{instName}</div>
             <div className="gl-mobile-sub">GNSI ERP · Staff Portal</div>
           </div>
@@ -580,7 +586,7 @@ onLogin({
             onSubmit={handleLogin}
             noValidate
           >
-            <img className="gl-card-crest" src={gnsiCrest} alt="" aria-hidden="true" />
+            <img className="gl-card-crest" src="/gnsi-logo-10y.webp" alt="" aria-hidden="true" />
             <div className="gl-eyebrow">Staff Portal</div>
             <h1 className="gl-title">Sign in</h1>
             <p className="gl-sub">Use your GNSI staff account to continue.</p>
