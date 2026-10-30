@@ -36,14 +36,34 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
   const [q, setQ] = useState('');
   const inputRef = useRef(null);
   const panelRef = useRef(null);
+  const closeRef = useRef(onClose);                         // latest onClose without re-running the open/close effect
+  useEffect(() => { closeRef.current = onClose; });
 
   useEffect(() => {
     if (!open) return undefined;
+    const opener = document.activeElement;                 // give focus back to the Menu button when the panel closes
     const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 350);
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { closeRef.current(); return; }
+      if (e.key !== 'Tab' || !panelRef.current) return;     // keep Tab inside the open menu
+      const items = [...panelRef.current.querySelectorAll('a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!panelRef.current.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
-    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey); };
-  }, [open, onClose]);
+    return () => {
+      clearTimeout(t); window.removeEventListener('keydown', onKey);
+      // Hand focus back to the Menu button — deferred so the Enter that closed the menu cannot also "press" it, and skipped
+      // when the user already moved on (e.g. a dialog opened and took focus).
+      setTimeout(() => {
+        const a = document.activeElement;
+        if (opener && opener.focus && (!a || a === document.body || panelRef.current?.contains(a))) opener.focus({ preventScroll: true });
+      }, 0);
+    };
+  }, [open]);
 
   const needle = q.trim().toLowerCase();
   const match = (label, extra = '') => !needle || (label + ' ' + extra).toLowerCase().includes(needle);
@@ -56,8 +76,12 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
 
   const pick = (fn) => () => { fn(); onClose(); setQ(''); };
   const firstHit = () => {
+    if (!needle) return;                                   // Enter on an empty box must not jump anywhere
     if (groups[0]) return pick(() => goToTab(groups[0].items[0].id))();
-    if (services[0]) window.location.href = services[0].href;
+    const s = services[0];
+    if (!s) return;
+    if (s.href) window.location.href = s.href;
+    else pick(actions.openVerify)();                       // "Verify Fee Receipt" has no URL — it opens the checker
   };
 
   let idx = 0;

@@ -2256,8 +2256,8 @@ window.submitGrievance = async () => {
       .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
   <div className="ten-years-banner">
     <div className="tyb-frame">
-      <img className="tyb-logo" src="/gnsi-logo-top.webp" alt="Guidance Navodaya & Sainik Institute" width={640} height={928} fetchpriority="high" />
-      <img className="tyb-celebrate" src="/gnsi-celebrate.webp" alt="Celebrating 10 years of success" width={760} height={334} fetchpriority="high" />
+      <img className="tyb-logo" src="/gnsi-logo-top.webp" alt="Guidance Navodaya & Sainik Institute" width={640} height={928} fetchPriority="high" />
+      <img className="tyb-celebrate" src="/gnsi-celebrate.webp" alt="Celebrating 10 years of success" width={760} height={334} fetchPriority="high" />
     </div>
   </div>
   <MegaMenu
@@ -2287,7 +2287,7 @@ window.submitGrievance = async () => {
             alt="GNSI AISSEE 2026 results — 10 students as state toppers, 25+ in top 10,000 All India Rank, 80+ qualified for the written test"
             width={1182}
             height={1280}
-            fetchpriority="high"
+            fetchPriority="high"
             style={{ display: "block", width: "100%", height: "auto", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,.18)" }}
           />
         </div>
