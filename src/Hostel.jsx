@@ -14,6 +14,7 @@ import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWind
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
+import DutyRosterTab from './DutyRosterTab'
 import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
@@ -245,6 +246,7 @@ const TABS = [
   { id: 'sickbay', label: '➕ Sickbay' },
   { id: 'kitchen', label: '🍽️ Kitchen' },
   { id: 'nightduty', label: '🌙 Mess Duty' },
+  { id: 'dutyroster', label: '🕰️ Study Duty' },
   { id: 'allotments', label: '🚌 Day Scholar' },
   { id: 'transfer', label: '🔄 Transfer' },
   // ─── NEW: House Master Daily Features ──────────────────
@@ -272,7 +274,7 @@ const TABS = [
 const TAB_GROUPS = [
   { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash', 'a4stock', 'studymaterial'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
-  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
+  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'dutyroster', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
   { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
@@ -280,7 +282,7 @@ const TAB_GROUPS = [
 // A housemaster/housemistress logging in sees only these tabs, each
 // limited to their own house; everything else stays with the office.
 const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
-const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'dutyroster', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
 
 // Rows of one house: matched by the row's student (when it has one) or by
 // the row's own house. No lockHouse = everything (admins, office staff).
@@ -12970,7 +12972,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','dutyroster','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [requestedTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -13112,6 +13114,7 @@ function Hostel() {
     allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={myStudents} currentUser={currentUser} canDropout={!hmOnly} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
     nightduty: <NightDutyTab staffProfiles={staffProfiles} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
+    dutyroster: <DutyRosterTab lockHouse={lockHouse} houses={Object.keys(houseColorMap)} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     discipline: <DisciplineTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
     superintendentdash: <SuperintendentDashboard students={students} currentUser={currentUser} />,
     sickbay: <SickbayTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
