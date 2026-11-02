@@ -177,3 +177,103 @@ export async function saveSettings(series, cfg, mode, who = '') {
   );
   if (error) throw error;
 }
+
+// ─── Manual self-study groups ────────────────────────────────────────────────
+// The admin's own choice of group (1 = weakest … 7 = strongest) for a student, kept per series and per basis
+// ('overall' or a subject name). Table `mock_test_study_groups` (20261049_mock_test_study_groups.sql); a copy
+// is always kept in this browser too, so choices survive while the migration is pending.
+const GRP_TABLE = 'mock_test_study_groups';
+const GRP_LS = 'gnsi_mock_study_groups_v1';
+export const GROUP_BASIS_ALL = 'overall';
+const grpRead = () => { try { return JSON.parse(localStorage.getItem(GRP_LS) || '{}') || {}; } catch { return {}; } };
+const grpWrite = (all) => { try { localStorage.setItem(GRP_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+const basisKey = (b) => b || GROUP_BASIS_ALL;
+
+// → { choices: { [basis]: { [sid]: 1..7 } }, mode: 'cloud' | 'local' }
+export async function loadGroupChoices(series) {
+  const local = grpRead()[series] || {};
+  const { data, error } = await supabase.from(GRP_TABLE).select('basis, student_key, grp').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { choices: local, mode: 'local' };
+    throw error;
+  }
+  const choices = {};
+  data.forEach((r) => { (choices[r.basis] ||= {})[r.student_key] = Number(r.grp); });
+  return { choices, mode: 'cloud' };
+}
+
+// grp: 1..7, or null to remove the manual choice (back to the automatic group).
+export async function saveGroupChoice(series, basis, sid, grp, mode, who = '') {
+  const b = basisKey(basis);
+  const all = grpRead();
+  const cur = { ...(all[series] || {}) };
+  const forBasis = { ...(cur[b] || {}) };
+  if (grp === null) delete forBasis[sid]; else forBasis[sid] = grp;
+  cur[b] = forBasis;
+  grpWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (grp === null) {
+    const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b).eq('student_key', sid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(GRP_TABLE).upsert(
+    { series, basis: b, student_key: sid, grp, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series,basis,student_key' },
+  );
+  if (error) throw error;
+}
+
+// Remove every manual choice for one basis of a series.
+export async function clearGroupChoices(series, basis, mode) {
+  const b = basisKey(basis);
+  const all = grpRead();
+  if (all[series]) { const cur = { ...all[series] }; delete cur[b]; grpWrite({ ...all, [series]: cur }); }
+  if (mode === 'local') return;
+  const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b);
+  if (error) throw error;
+}
+
+// ─── House Master / Mistress assigned to a self-study group ──────────────────
+// The admin picks, for each group of each subject (or overall), the House Master / Mistress who looks after it.
+// Key = basis ('overall' or a subject) + set (one class, or the mixed set of a language) + group number.
+// Table `mock_test_group_mentors` (20261050_mock_test_group_mentors.sql); browser copy kept as the fallback.
+const MEN_TABLE = 'mock_test_group_mentors';
+const MEN_LS = 'gnsi_mock_group_mentors_v1';
+const menRead = () => { try { return JSON.parse(localStorage.getItem(MEN_LS) || '{}') || {}; } catch { return {}; } };
+const menWrite = (all) => { try { localStorage.setItem(MEN_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+export const mentorKey = (basis, set, grp) => `${basis || GROUP_BASIS_ALL}|${set}|${grp}`;
+
+// → { mentors: { [mentorKey]: { name, title } }, mode: 'cloud' | 'local' }
+export async function loadGroupMentors(series) {
+  const local = menRead()[series] || {};
+  const { data, error } = await supabase.from(MEN_TABLE).select('basis, scope, grp, mentor_name, mentor_title').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { mentors: local, mode: 'local' };
+    throw error;
+  }
+  const mentors = {};
+  data.forEach((r) => { mentors[mentorKey(r.basis, r.scope, r.grp)] = { name: r.mentor_name, title: r.mentor_title || '' }; });
+  return { mentors, mode: 'cloud' };
+}
+
+// mentor: { name, title } or null to clear.
+export async function saveGroupMentor(series, basis, set, grp, mentor, mode, who = '') {
+  const k = mentorKey(basis, set, grp);
+  const all = menRead();
+  const cur = { ...(all[series] || {}) };
+  if (mentor) cur[k] = mentor; else delete cur[k];
+  menWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  const b = basis || GROUP_BASIS_ALL;
+  if (!mentor) {
+    const { error } = await supabase.from(MEN_TABLE).delete().eq('series', series).eq('basis', b).eq('scope', set).eq('grp', grp);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(MEN_TABLE).upsert(
+    { series, basis: b, scope: set, grp, mentor_name: mentor.name, mentor_title: mentor.title || null, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series,basis,scope,grp' },
+  );
+  if (error) throw error;
+}

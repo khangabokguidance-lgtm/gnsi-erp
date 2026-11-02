@@ -42,5 +42,10 @@ export function buildHouseDirectory({ students = [], housemasters = [], staff = 
     const masters = house ? (byHouse.get(houseKey(house)) || []) : [];
     return { house, masters, label: masters.map((m) => m.name).join(' / ') };
   };
-  return { lookup, houses };
+  // Everyone who can be chosen as a House Master / Mistress (one entry per person), for assigning to a group.
+  const seen = new Set();
+  const masters = [];
+  [...byHouse.values()].flat().forEach((m) => { const k = m.name.toLowerCase(); if (!seen.has(k)) { seen.add(k); masters.push({ key: k, name: m.name, title: m.title }); } });
+  masters.sort((a, b) => a.name.localeCompare(b.name));
+  return { lookup, houses, masters };
 }

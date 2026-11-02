@@ -15,9 +15,9 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
-import { classGroups, LANGUAGES, GROUP_COUNT } from './lib/mockTestGroups';
+import { classGroups, subjectsOf, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -212,7 +212,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
-      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
@@ -223,6 +223,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
 
 // ─── Data filter ──────────────────────────────────────────────────────────────
 const chip = (on) => ({ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? NAVY : '#d9d2c2'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : '#2e3b52' });
+const EMPTY_OBJ = {};
 const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
 function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
@@ -919,7 +920,7 @@ function hmSummary(group, hmOf) {
   return `House Master/Mistress: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} unassigned` : ''}`;
 }
 
-function GroupsView({ rows, institute, series }) {
+function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '' }) {
   const [language, setLanguage] = useState('');
   const [batch, setBatch] = useState('');
   const [mode, setMode] = useState('equal');
@@ -934,34 +935,96 @@ function GroupsView({ rows, institute, series }) {
   }, []);
   const hmOf = useCallback((gcc) => (dir ? dir.lookup(gcc) : { house: '', masters: [], label: '' }), [dir]);
   const scoped = useMemo(() => (house && dir ? rows.filter((r) => dir.lookup(r.gcc_no).house === house) : rows), [rows, house, dir]);
+  // Layout: one set of 7 groups per class, or ONE mixed set across the chosen classes. Basis: overall marks, or one subject.
+  const [layout, setLayout] = useState('class');
+  const [mixPick, setMixPick] = useState([]);
+  const [basis, setBasis] = useState('');
+  const subjects = useMemo(() => subjectsOf(rows), [rows]);
+  // Manual choices (admin): { [basis]: { [sid]: 1..7 } }, saved per series.
+  const [choices, setChoices] = useState({});
+  const [choiceMode, setChoiceMode] = useState('local');
+  const [editing, setEditing] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  useEffect(() => {
+    let live = true;
+    loadGroupChoices(seriesName).then((r) => { if (live) { setChoices(r.choices); setChoiceMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Manual group choices could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const basisKey = basis || GROUP_BASIS_ALL;
+  const overrides = choices[basisKey] || EMPTY_OBJ;
+  const manualTotal = Object.keys(overrides).length;
+  const move = async (sid, grp) => {
+    setSaveMsg('');
+    setChoices((cur) => { const b = { ...(cur[basisKey] || {}) }; if (grp === null) delete b[sid]; else b[sid] = grp; return { ...cur, [basisKey]: b }; });
+    try { await saveGroupChoice(seriesName, basis, sid, grp, choiceMode, who); }
+    catch (e) { setSaveMsg(`Could not save the change: ${e.message || e}`); }
+  };
+  const resetManual = async () => {
+    if (!window.confirm(`Remove all ${manualTotal} manual group choice${manualTotal === 1 ? '' : 's'} for ${basis || 'overall marks'}? Students go back to their automatic group.`)) return;
+    setChoices((cur) => ({ ...cur, [basisKey]: {} }));
+    try { await clearGroupChoices(seriesName, basis, choiceMode); } catch (e) { setSaveMsg(`Could not reset: ${e.message || e}`); }
+  };
+  // Top group (admin's choice): Group 7 = the best N students (across all chosen classes when mixed). 0 = automatic.
+  const [topText, setTopText] = useState('');
+  const topN = Math.max(0, Math.floor(Number(topText) || 0));
+  // House Master / Mistress assigned to each group (per subject / overall, per set of students).
+  const [mentors, setMentors] = useState({});
+  const [mentorMode, setMentorMode] = useState('local');
+  useEffect(() => {
+    let live = true;
+    loadGroupMentors(seriesName).then((r) => { if (live) { setMentors(r.mentors); setMentorMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Assigned House Masters could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const setKeyOf = (c) => (c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`);
+  const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
+  const assign = async (c, g, key) => {
+    setSaveMsg('');
+    const person = key ? (dir?.masters || []).find((m) => m.key === key) : null;
+    const value = person ? { name: person.name, title: person.title } : null;
+    const k = mentorKey(basis, setKeyOf(c), g.no);
+    setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
+    try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
+    catch (e) { setSaveMsg(`Could not save the House Master: ${e.message || e}`); }
+  };
   const everything = useMemo(() => classGroups(rows, { mode }), [rows, mode]);
-  const classes = useMemo(() => classGroups(scoped, { language, batch, mode }), [scoped, language, batch, mode]);
+  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN]);
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
   const pickable = everything.filter((c) => !language || c.language === language);
 
-  const flat = () => classes.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
-    Class: c.batch, Language: c.language || '—', Group: `${g.name} — ${g.tag}`, GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—', 'Average %': Math.round(s.avg * 10) / 10,
+  const flatOf = (cls, b) => cls.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
+    'Assigned House Master / Mistress (group)': mentorOf(c, b, g)?.name || '—',
+    Class: s.batch || c.batch, 'Group layout': c.mixed ? `Mixed (${c.classes.join(' + ')})` : 'Class-wise', Language: c.language || '—', Basis: b || 'Overall marks', Group: `${g.name} — ${g.tag}`,
+    'Group set by': s.manual ? 'Admin (manual)' : 'Automatic', GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—',
+    [`${b || 'Average'} %`]: Math.round(s.avg * 10) / 10, 'Overall %': Math.round(s.overall * 10) / 10,
     'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
   }))));
+  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN });
   const exportXlsx = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat()), 'Self-study groups');
-    XLSX.writeFile(wb, `${series} - self-study groups${language ? ` - ${language}` : ''}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classes, basis)), 'Self-study groups');
+    XLSX.writeFile(wb, `${series} - self-study groups${basis ? ` - ${basis}` : ''}${language ? ` - ${language}` : ''}.xlsx`);
+  };
+  // One sheet per subject (each subject has its own 7 groups), using the same layout, filters and manual choices.
+  const exportAllSubjects = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    subjects.forEach((sub) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classGroups(scoped, opts(sub)), sub)), sub.slice(0, 31)));
+    XLSX.writeFile(wb, `${series} - self-study groups - every subject.xlsx`);
   };
   const print = () => {
-    const body = classes.map((c) => `<h2>${escH(c.batch)}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
-      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>Avg %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
-    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
+    const body = classes.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, basis, g) ? `House Master/Mistress: ${escH(mentorOf(c, basis, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(basis || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
+    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${basis ? `subject: ${escH(basis)}` : 'overall marks'} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
 
   return (
     <>
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 100%', fontSize: 12.5, color: '#5d6b82' }}>
-          Each class is split into <b>{GROUP_COUNT} self-study groups</b>, from <b style={{ color: '#b91c1c' }}>Group 1 (weakest marks)</b> to <b style={{ color: '#047857' }}>Group 7 (strongest marks)</b>, by every student's average % over the tests in view. Each group gets a focus subject — the one its members score lowest in.
+          Students are split into <b>{GROUP_COUNT} self-study groups</b>, from <b style={{ color: '#b91c1c' }}>Group 1 (weakest marks)</b> to <b style={{ color: '#047857' }}>Group 7 (strongest marks)</b>, by their average % over the tests in view — overall, or in one subject. Groups can be per class or <b>mixed across classes</b>{canEdit ? <>, and you can <b>move students by hand</b>.</> : '.'}
         </div>
         <Field label="Language">
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -969,12 +1032,33 @@ function GroupsView({ rows, institute, series }) {
             {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
           </div>
         </Field>
-        <Field label="Class">
-          <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}>
-            <option value="">All classes</option>
-            {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
+        <Field label="Groups">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button style={chip(layout === 'class')} onClick={() => setLayout('class')}>Class-wise</button>
+            <button style={chip(layout === 'mix')} onClick={() => setLayout('mix')}>Mixed classes</button>
+          </div>
+        </Field>
+        <Field label="Marks of">
+          <select style={ui.input} value={basis} onChange={(e) => setBasis(e.target.value)}>
+            <option value="">Overall marks</option>
+            {subjects.map((sub) => <option key={sub} value={sub}>{sub} only</option>)}
           </select>
         </Field>
+        {layout === 'class' ? (
+          <Field label="Class">
+            <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}>
+              <option value="">All classes</option>
+              {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
+            </select>
+          </Field>
+        ) : (
+          <Field label="Classes in the mix">
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={chip(!mixPick.length)} onClick={() => setMixPick([])}>All{language ? ` ${language}` : ''}</button>
+              {pickable.map((c) => <button key={c.batch} style={chip(mixPick.includes(c.batch))} onClick={() => setMixPick((cur) => toggleIn(cur, c.batch))}>{c.batch}</button>)}
+            </div>
+          </Field>
+        )}
         {dir && dir.houses.length ? (
           <Field label="House">
             <select style={ui.input} value={house} onChange={(e) => setHouse(e.target.value)}>
@@ -989,9 +1073,24 @@ function GroupsView({ rows, institute, series }) {
             <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
           </select>
         </Field>
+        <Field label={layout === 'mix' ? 'Top group = best … students' : 'Top group = best … per class'}>
+          <input type="number" min={0} placeholder="0 = automatic" style={{ ...ui.input, width: 120 }} value={topText} onChange={(e) => setTopText(e.target.value)} aria-label="Number of students in the top group" />
+        </Field>
         <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
+        <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
         <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
+        {canEdit ? (
+          <div style={{ flex: '1 1 100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', paddingTop: 10 }}>
+            <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done editing' : '✏️ Move students by hand'}</button>
+            <span style={{ fontSize: 12, color: '#5d6b82' }}>
+              {manualTotal ? `${manualTotal} manual choice${manualTotal === 1 ? '' : 's'} for ${basis || 'overall marks'} (marked ✎)` : `No manual choices for ${basis || 'overall marks'} yet`}
+              {' · '}<b style={{ color: choiceMode === 'cloud' ? '#047857' : '#b45309' }}>{choiceMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b>
+            </span>
+            {manualTotal ? <button style={ui.ghost} onClick={resetManual}>↺ Reset to automatic</button> : null}
+          </div>
+        ) : null}
       </div>
+      {saveMsg ? <div style={{ fontSize: 12, color: '#991B1B', margin: '0 2px 10px' }}>{saveMsg}</div> : null}
       {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
       {language && !classes.length ? (
         <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
@@ -1003,8 +1102,10 @@ function GroupsView({ rows, institute, series }) {
         <div key={c.batch} style={ui.card}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 10 }}>
             <h3 style={{ margin: 0 }}>{c.batch}</h3>
+            {c.mixed ? <span style={{ fontSize: 12.5, color: '#2e3b52' }}>{c.classes.join(' + ')}</span> : null}
+            {basis ? <Pill text={`${basis} only`} color="#be185d" /> : null}
             {c.language ? <Pill text={c.language} color={c.language === 'English' ? '#1e3a6e' : '#7c3aed'} /> : null}
-            <span style={{ fontSize: 12.5, color: '#5d6b82' }}>{c.count} students · class average {fx(c.avg)}%</span>
+            <span style={{ fontSize: 12.5, color: '#5d6b82' }}>{c.count} students · {c.mixed ? 'average' : 'class average'} {fx(c.avg)}%</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
             {c.groups.map((g) => (
@@ -1015,14 +1116,31 @@ function GroupsView({ rows, institute, series }) {
                     <span style={{ fontSize: 12, fontWeight: 700 }}>{g.n}</span>
                   </div>
                   <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
-                  {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>Focus: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
+                  {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
                   {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
+                  {canEdit && dir ? (
+                    <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned House Master / Mistress
+                      <select aria-label={`Assigned House Master for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
+                        value={(dir.masters.find((m) => m.name === mentorOf(c, basis, g)?.name) || {}).key || ''} onChange={(e) => assign(c, g, e.target.value)}>
+                        <option value="">— not assigned —</option>
+                        {dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}
+                      </select>
+                    </label>
+                  ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}
                 </div>
                 <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                   {g.students.map((s) => (
                     <div key={s.sid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 10px', borderTop: '1px solid #f1ede3', fontSize: 12.5 }}>
-                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.manual ? <span title="Placed here by an admin" style={{ color: '#be185d' }}>✎ </span> : null}{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span>
+                        {c.mixed ? <span style={{ display: 'block', fontSize: 11, color: '#7c3aed' }}>{s.batch}</span> : null}
                         {dir ? <span style={{ display: 'block', fontSize: 11, color: '#5d6b82' }}>{hmOf(s.gcc).house ? `${hmOf(s.gcc).house} · ${hmOf(s.gcc).label || 'no House Master / Mistress assigned'}` : 'House not recorded'}</span> : null}</span>
+                      {editing && canEdit ? (
+                        <select aria-label={`Group for ${s.name}`} style={{ ...ui.input, padding: '2px 4px', fontSize: 12, flexShrink: 0 }} value={s.manual ? g.no : 'auto'}
+                          onChange={(e) => move(s.sid, e.target.value === 'auto' ? null : Number(e.target.value))}>
+                          <option value="auto">Auto</option>
+                          {GROUP_META.map((m) => <option key={m.no} value={m.no}>Group {m.no}</option>)}
+                        </select>
+                      ) : null}
                       <b style={{ color: g.color, flexShrink: 0 }}>{fx(s.avg)}%</b>
                     </div>
                   ))}

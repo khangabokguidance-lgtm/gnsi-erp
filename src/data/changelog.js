@@ -8,6 +8,8 @@ export const CHANGELOG = [
       { type: 'new', module: 'exams', text: 'Results → Pre Mock Analyser and Mega Mock Analyser are now two separate tabs, each with its own results. Mega results are saved into a series with “Mega” in its name.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups: every class is split into 7 groups from weakest to strongest marks, with a focus subject for each group, an English / Meitei Mayek filter, and Excel / Print.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups show each student’s house and the assigned House Master / Mistress (name from the Staff Records), with a House filter and the same in Excel / Print.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: mixed-class groups (one set of 7 groups across the chosen classes), subject-wise groups (marks of one subject only, or one Excel sheet per subject), and manual moves — an admin can put any student in any of the 7 groups, saved per subject.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: the admin can choose how many students form the top group (best N across all chosen classes), and assign a House Master / Mistress to each group of each subject.' },
       { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
     ],
   },

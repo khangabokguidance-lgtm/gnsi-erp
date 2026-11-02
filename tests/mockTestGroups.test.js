@@ -58,3 +58,75 @@ test('a group names the subject its members are weakest in', () => {
   // weakest overall is 'c' (80% Maths, 16% EVS) -> EVS; next is 'a' (20% Maths, 80% EVS) -> Maths
   assert.deepEqual(withStudents.slice(0, 2).map((x) => x.focus), ['EVS', 'Maths'])
 })
+
+import { subjectsOf } from '../src/lib/mockTestGroups.js'
+// a (strong Maths, weak EVS) .. d (weak Maths, strong EVS) — overall averages are equal-ish
+const sub = [row('a', 'X', 1, 25, 5), row('b', 'X', 1, 20, 10), row('c', 'X', 1, 10, 20), row('d', 'X', 1, 5, 25)]
+
+test('subject-wise groups order students by that subject only', () => {
+  const m = selfStudyGroups(studentAverages(sub), { basis: 'Maths' })
+  const e = selfStudyGroups(studentAverages(sub), { basis: 'EVS' })
+  const names = (g) => g.filter((x) => x.n).map((x) => x.students.map((s) => s.name).join())
+  assert.deepEqual(names(m), ['d', 'c', 'b', 'a'])   // weakest Maths first
+  assert.deepEqual(names(e), ['a', 'b', 'c', 'd'])   // weakest EVS first
+  assert.equal(m.find((g) => g.n).focus, 'Maths')
+  assert.deepEqual(subjectsOf(sub), ['Maths', 'EVS'])
+})
+test('a student with no marks in the chosen subject is left out of that subject’s groups', () => {
+  const rows = [row('a', 'X', 1, 25, 5), { ...row('b', 'X', 1, 20, 10), marks: { EVS: 10 }, max_marks: { EVS: 25 } }]
+  const g = selfStudyGroups(studentAverages(rows), { basis: 'Maths' })
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 1)
+})
+test('manual choice moves a student to the chosen group, per basis, and is flagged', () => {
+  const st = studentAverages(sub)
+  const g = selfStudyGroups(st, { basis: 'Maths', overrides: { a: 1 } })   // best in Maths forced into the weakest group
+  assert.ok(g[0].students.some((s) => s.name === 'a' && s.manual))
+  assert.equal(g[0].manualCount, 1)
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 4)                 // nobody lost or duplicated
+  const other = selfStudyGroups(st, { basis: 'EVS', overrides: { a: 1 } })  // override applies by sid for any basis it is passed to
+  assert.ok(other[0].students.some((s) => s.name === 'a'))
+  const none = selfStudyGroups(st, { basis: 'Maths', overrides: { a: 99, b: 'x' } })   // invalid choices are ignored
+  assert.equal(none.reduce((t, x) => t + x.manualCount, 0), 0)
+})
+test('mixed classes: one set of 7 groups across the classes, students keep their class', () => {
+  const rows = [...cls('Combined English', 7), ...cls('Combined Manipuri', 7).map((r) => ({ ...r, sid: 'm' + r.sid }))]
+  const [m] = classGroups(rows, { mix: true })
+  assert.equal(m.mixed, true)
+  assert.deepEqual(m.classes, ['Combined English', 'Combined Manipuri'])
+  assert.equal(m.count, 14)
+  assert.deepEqual(m.groups.map((g) => g.n), [2, 2, 2, 2, 2, 2, 2])
+  assert.ok(m.groups.some((g) => new Set(g.students.map((s) => s.batch)).size === 2))   // a group holds both classes
+  assert.deepEqual(classGroups(rows, { mix: true, classes: ['Combined English'] })[0].count, 7)
+  assert.deepEqual(classGroups(rows, { mix: true, language: 'Meitei Mayek' })[0].classes, ['Combined Manipuri'])
+  assert.deepEqual(classGroups(rows, { mix: true, classes: ['Nope'] }), [])
+})
+
+test('top group: Group 7 is exactly the best N, the rest spread over Groups 1-6', () => {
+  const st = studentAverages(cls('X', 20))
+  const g = selfStudyGroups(st, { topN: 5 })
+  assert.equal(g[6].n, 5)
+  assert.deepEqual(g[6].students.map((s) => s.name).sort(), ['s15', 's16', 's17', 's18', 's19'])
+  assert.equal(g.slice(0, 6).reduce((t, x) => t + x.n, 0), 15)
+  const sizes = g.slice(0, 6).map((x) => x.n)
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1)
+})
+test('top group: N larger than the class takes everyone; 0 means automatic; bands never reach Group 7 below the top', () => {
+  const st = studentAverages(cls('X', 6))
+  assert.equal(selfStudyGroups(st, { topN: 50 })[6].n, 6)
+  assert.deepEqual(selfStudyGroups(st, { topN: 0 }).map((x) => x.n), selfStudyGroups(st).map((x) => x.n))
+  const b = selfStudyGroups(studentAverages(cls('X', 14)), { topN: 3, mode: 'bands' })
+  assert.equal(b[6].n, 3)
+  assert.equal(b.reduce((t, x) => t + x.n, 0), 14)
+})
+test('top group across all classes of a language, mixed', () => {
+  const rows = [...cls('Combined English', 10), ...cls('Combined English', 10).map((r) => ({ ...r, sid: 'e' + r.sid, batch: 'Lakshya A' })), ...cls('Combined Manipuri', 10).map((r) => ({ ...r, sid: 'm' + r.sid }))]
+  const [m] = classGroups(rows, { mix: true, language: 'English', topN: 4 })
+  assert.deepEqual(m.classes, ['Combined English'])
+  assert.equal(m.groups[6].n, 4)
+  assert.equal(classGroups(rows, { mix: true, topN: 6 })[0].groups[6].n, 6)
+})
+test('a manual choice still wins over the top group', () => {
+  const g = selfStudyGroups(studentAverages(cls('X', 10)), { topN: 3, overrides: { s0: 7 } })
+  assert.ok(g[6].students.some((s) => s.name === 's0' && s.manual))
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 10)
+})
