@@ -6,6 +6,7 @@
 //   buildReport        one of six report types → { title, columns, rows }
 //   smartInsights      plain-language findings (weak subject, below pass mark, who is declining, unassigned groups…)
 import { mean } from './mockTestEngine.js';
+import { pickInstruction, slotText } from './dutyInstruction.js';
 
 export const REPORT_TYPES = [
   { id: 'roster', label: 'Group roster', hint: 'Every student with group, house, House Master / Mistress, weakest subject and trend' },
@@ -46,7 +47,7 @@ export function recordsFrom(classes, ctx) {
       name: s.name, gcc: s.gcc, score: s.avg, overall: s.overall, subj: s.subj || {}, tests: s.tests,
       weakest: s.weakest || '', strongest: s.strongest || '', trend: t, trendText: trendLabel(t),
       manual: !!s.manual, autoGroup: autoGroupOf ? autoGroupOf(s.sid, c) : null,
-      house: h.house || '', hm: h.label || '', mentor: mentorOf?.(c, g)?.name || '', mentorTitle: mentorOf?.(c, g)?.title || '', focus: g.focus || '',
+      house: h.house || '', hm: h.label || '', mentor: mentorOf?.(c, g)?.name || '', mentorTitle: mentorOf?.(c, g)?.title || '', instruction: pickInstruction(mentorOf?.(c, g)), focus: g.focus || '',
       below: s.avg < passPct,
     };
   })));
@@ -149,9 +150,10 @@ export function buildReport(type, records, ctx = {}) {
       const bs = by.get(name), rs = bs.flatMap((b) => b.rs);
       const title = bs[0].rs[0].mentorTitle || '';
       const isHouse = /^house/i.test(title);
-      return { Person: name ? `${name}${title ? ` (${title})` : ''}` : 'Nobody on duty', 'Groups on duty': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name && isHouse ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
+      const details = bs.map((b) => { const d = b.rs[0].instruction; return [d.venue && `Where: ${d.venue}`, slotText(d) && `When: ${slotText(d)}`, d.reason && `Why: ${d.reason}`].filter(Boolean).length ? `${b.set} · G${b.group} — ${[d.venue && `Where: ${d.venue}`, slotText(d) && `When: ${slotText(d)}`, d.reason && `Why: ${d.reason}`].filter(Boolean).join(' · ')}` : ''; }).filter(Boolean).join(' | ');
+      return { Person: name ? `${name}${title ? ` (${title})` : ''}` : 'Nobody on duty', 'Groups on duty': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Where / when / why': details || (name ? 'No instruction yet' : '—'), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name && isHouse ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
     });
-    return { type, title: 'Duty roster', columns: cols(['Person', 'On duty'], ['Groups on duty', 'Groups on duty'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house (House Masters)']), rows };
+    return { type, title: 'Duty roster', columns: cols(['Person', 'On duty'], ['Groups on duty', 'Groups on duty'], ['Where / when / why', 'Where / when / why'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house (House Masters)']), rows };
   }
   if (type === 'moves') {
     return {

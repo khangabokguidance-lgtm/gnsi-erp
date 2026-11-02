@@ -8,6 +8,8 @@ import { useMemo, useState } from 'react';
 import { printDocument, letterhead } from './lib/mockTestReports';
 import { studentAverages, GROUP_META } from './lib/mockTestGroups';
 import { collectDuties, removedList, mayAct, sameName, initials } from './lib/mockTestDuty';
+import { pickInstruction, slotText, slotClashes, instructionMessage, hasInstruction, emptyInstruction } from './lib/dutyInstruction';
+import { InstructionForm, InstructionSummary } from './DutyInstruction';
 
 const NAVY = '#132a4f';
 const GOLD = '#b8923a';
@@ -79,7 +81,7 @@ const Avatar = ({ name, sm }) => <span className={`mdd-av${sm ? ' sm' : ''}`} st
 
 export default function MockDutyDesk({
   rows, series, institute, subjects, optsFor, mentorFor, removed, removedFor, custom, hmOf, dir,
-  canEdit, userName, userStaffId, onRemove, onRestore, onTransfer, onSaveCustom, onDeleteCustom, storageNote, onClose,
+  canEdit, userName, userStaffId, onRemove, onRestore, onTransfer, onSaveCustom, onDeleteCustom, onSaveInstruction, storageNote, onClose,
 }) {
   const bases = useMemo(() => ['', ...subjects], [subjects]);
   const duties = useMemo(() => collectDuties({ rows, bases, optsFor, mentorFor, removedFor, custom, hmOf }), [rows, bases, optsFor, mentorFor, removedFor, custom, hmOf]);
@@ -92,6 +94,7 @@ export default function MockDutyDesk({
   const [removing, setRemoving] = useState(null);     // { key, reason }
   const [builder, setBuilder] = useState(null);       // custom group being created / edited
   const [msg, setMsg] = useState('');
+  const [instEdit, setInstEdit] = useState(null);     // { id, draft, all } — the instruction being edited for a duty section
 
   const sel = duties.find((p) => p.name === selName) || (!canEdit && me ? me : duties[0]) || null;
   const shown = duties.filter((p) => !q.trim() || p.name.toLowerCase().includes(q.trim().toLowerCase()));
@@ -102,9 +105,20 @@ export default function MockDutyDesk({
 
   // ── duty sheet (print) and Excel ───────────────────────────────────────────
   const dutyPages = (people) => people.map((p) => {
-    const secs = p.sections.map((s) => `<div class="avoid"><h3>${esc(s.label)} <span style="font-weight:600;color:#475569;text-transform:none;letter-spacing:0">· ${esc(s.subject)} · ${s.students.length} student${s.students.length === 1 ? '' : 's'}</span></h3>${s.note ? `<div style="font-size:10px;color:#475569;margin:-3px 0 4px">${esc(s.note)}</div>` : ''}
+    const secs = p.sections.map((s) => { const d = pickInstruction(s.instruction); const slot = slotText(d); const given = d.venue || d.reason || slot || d.instruction;
+      return `<div class="avoid"><h3>${esc(s.label)} <span style="font-weight:600;color:#475569;text-transform:none;letter-spacing:0">· ${esc(s.subject)} · ${s.students.length} student${s.students.length === 1 ? '' : 's'}</span></h3>
+      <div style="border:1px solid #cbd5e1;border-left:4px solid ${given ? '#b8923a' : '#dc2626'};border-radius:5px;padding:6px 9px;margin:0 0 6px;background:${given ? '#fffbeb' : '#fef2f2'};font-size:10.5px">
+        ${given ? `${d.venue ? `<div><b>📍 Where:</b> ${esc(d.venue)}</div>` : ''}${d.reason ? `<div><b>🎯 Why (reason):</b> ${esc(d.reason)}</div>` : ''}${slot ? `<div><b>🕔 When:</b> ${esc(slot)}</div>` : ''}${d.instruction ? `<div><b>📋 What you must do:</b> ${esc(d.instruction)}</div>` : ''}` : '<b>No instruction has been given for this group yet — please ask the admin where, why and when you are to be on duty.</b>'}
+        ${s.note && !d.instruction ? `<div style="color:#475569">${esc(s.note)}</div>` : ''}</div>
       <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Class</th><th class="l">House</th><th>${esc(s.basis || 'Avg')} %</th><th class="l">Weakest</th>${[1, 2, 3, 4, 5, 6].map((n) => `<th style="width:20px">${n}</th>`).join('')}<th class="l" style="width:70px">Remarks</th></tr></thead>
-      <tbody>${s.students.map((x, i) => `<tr><td>${i + 1}</td><td class="l"><b>${esc(x.name)}</b></td><td>${esc(x.gcc)}</td><td class="l">${esc(x.class)}</td><td class="l">${esc(x.house || '—')}</td><td>${fx(x.score)}</td><td class="l">${esc(x.weakest || '—')}</td>${'<td></td>'.repeat(6)}<td></td></tr>`).join('')}</tbody></table></div>`).join('');
+      <tbody>${s.students.map((x, i) => `<tr><td>${i + 1}</td><td class="l"><b>${esc(x.name)}</b></td><td>${esc(x.gcc)}</td><td class="l">${esc(x.class)}</td><td class="l">${esc(x.house || '—')}</td><td>${fx(x.score)}</td><td class="l">${esc(x.weakest || '—')}</td>${'<td></td>'.repeat(6)}<td></td></tr>`).join('')}</tbody></table></div>`; }).join('');
+    const clash = slotClashes(p.sections);
+    const dutyBox = p.sections.length ? `<div style="border:2px solid #0f2d5e;border-radius:8px;padding:10px 12px;margin:0 0 12px;background:#f8fafc">
+        <div style="font-weight:800;color:#0f2d5e;letter-spacing:1.5px;text-transform:uppercase;font-size:11.5px">Your duty — please read</div>
+        <p style="margin:5px 0 7px;font-size:11px">Dear <b>${esc(p.name)}</b>, you have been assigned to <b>${p.groups}</b> self-study group${p.groups === 1 ? '' : 's'} (<b>${p.students}</b> student${p.students === 1 ? '' : 's'}) for ${esc(series)}. Please be at the <b>place</b> below, at the <b>time</b> shown, for the <b>reason</b> given, and follow the instruction for each group.</p>
+        <table><thead><tr><th>#</th><th class="l">Group / subject</th><th class="l">Where</th><th class="l">Why (reason)</th><th class="l">Days &amp; time</th><th>Students</th></tr></thead>
+        <tbody>${p.sections.map((s, i) => { const d = pickInstruction(s.instruction); return `<tr><td>${i + 1}</td><td class="l"><b>${esc(s.label)}</b><br><span style="color:#475569">${esc(s.subject)}</span></td><td class="l">${esc(d.venue || 'to be told')}</td><td class="l">${esc(d.reason || '—')}</td><td class="l"><b>${esc(slotText(d) || 'to be told')}</b></td><td>${s.students.length}</td></tr>`; }).join('')}</tbody></table>
+        ${clash.length ? `<div style="color:#b42318;font-weight:700;margin-top:4px">⚠ Two of your duties overlap: ${clash.map((c) => `${esc(c.a)} and ${esc(c.b)} on ${c.day}`).join('; ')}. Please tell the admin.</div>` : ''}</div>` : '';
     const rem = removedAll.filter((r) => p.sections.some((s) => (s.basis || '') === r.basis));
     return `<div class="page"><div class="dp">${letterhead(institute)}<div class="title">Self-study duty sheet</div>
       <div class="sub">${esc(series)}</div>
@@ -113,7 +127,7 @@ export default function MockDutyDesk({
         <div style="flex:1"><div style="font-size:15px;font-weight:800;color:#0f2d5e">${esc(p.name)}</div><div style="color:#475569">${esc(p.title || 'On duty')}</div></div>
         <div style="text-align:center"><b style="font-size:18px">${p.groups}</b><br><span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569">Groups</span></div>
         <div style="text-align:center"><b style="font-size:18px">${p.students}</b><br><span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569">Students</span></div></div>
-      ${secs || '<p>No groups assigned.</p>'}
+      ${dutyBox}${secs || '<p>No groups assigned.</p>'}
       ${rem.length ? `<h3>Removed / transferred out</h3><table><thead><tr><th class="l">Student</th><th>GCC</th><th class="l">Subject</th><th class="l">Reason</th><th class="l">By</th></tr></thead><tbody>${rem.map((r) => `<tr><td class="l">${esc(r.name)}</td><td>${esc(r.gcc)}</td><td class="l">${esc(r.basis || 'Overall marks')}</td><td class="l">${esc(r.reason || '—')}</td><td class="l">${esc(r.by || '—')}</td></tr>`).join('')}</tbody></table>` : ''}
       <div class="sig"><span>Duty teacher: ${esc(p.name)}</span><span>House Master / Mistress</span><span>Principal</span></div>
       <div class="foot">Generated ${esc(new Date().toLocaleString('en-IN'))} · marks 1–6 = attendance for each self-study session</div></div></div>`;
@@ -125,7 +139,7 @@ export default function MockDutyDesk({
   const exportXlsx = async (people) => {
     const XLSX = await import('xlsx');
     const data = people.flatMap((p) => p.sections.flatMap((s) => s.students.map((x) => ({
-      'Person on duty': p.name, Title: p.title, Subject: s.subject, Group: s.label, Class: x.class, GCC: x.gcc, Name: x.name, House: x.house || '—', 'House Master / Mistress': x.hm || '—', 'Score %': fx(x.score) === '—' ? '' : Math.round(x.score * 10) / 10, 'Weakest subject': x.weakest || '—',
+      'Person on duty': p.name, Title: p.title, Subject: s.subject, Group: s.label, Where: pickInstruction(s.instruction).venue || '', Why: pickInstruction(s.instruction).reason || '', 'Days & time': slotText(s.instruction), Instruction: pickInstruction(s.instruction).instruction || '', Class: x.class, GCC: x.gcc, Name: x.name, House: x.house || '—', 'House Master / Mistress': x.hm || '—', 'Score %': fx(x.score) === '—' ? '' : Math.round(x.score * 10) / 10, 'Weakest subject': x.weakest || '—',
     }))));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'Nobody is on duty yet.' }]), 'Duty list');
@@ -145,7 +159,7 @@ export default function MockDutyDesk({
 
   // ── manual group builder ────────────────────────────────────────────────────
   const pool = useMemo(() => studentAverages(rows), [rows]);
-  const openBuilder = (g) => setBuilder(g ? { ...g } : { id: '', name: '', basis: '', dutyName: !canEdit && isTeacherUser ? userName : '', dutyTitle: '', students: [], note: '', _q: '', _cls: [], _weak: '' });
+  const openBuilder = (g) => setBuilder(g ? { ...g, ...(hasInstruction(g) || !g.note ? pickInstruction(g) : { ...pickInstruction(g), instruction: g.note }) } : { id: '', name: '', basis: '', dutyName: !canEdit && isTeacherUser ? userName : '', dutyTitle: '', students: [], note: '', ...emptyInstruction(), _q: '', _cls: [], _weak: '' });
   const pickPerson = (key) => { const p = everyone.find((x) => x.key === key); setBuilder((b) => ({ ...b, dutyName: p?.name || '', dutyTitle: p?.title || '' })); };
   const scoreIn = (s, basis) => (basis ? (s.subj?.[basis] ?? null) : s.avg);
   const builderPool = useMemo(() => {
@@ -207,7 +221,10 @@ export default function MockDutyDesk({
                   {(dir?.masters || []).length ? <optgroup label="House Masters / Mistresses">{dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
                   {(dir?.teachers || []).length ? <optgroup label="Teaching staff">{dir.teachers.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
                 </select></label>
-              <label style={{ flex: '1 1 200px' }}><small style={{ display: 'block', fontWeight: 700, color: '#5d6b82' }}>NOTE (TIME / PLACE)</small><input style={{ width: '100%' }} value={builder.note} onChange={(e) => setBuilder({ ...builder, note: e.target.value })} placeholder="e.g. Tue & Thu 5 pm, Room 4" aria-label="Group note" /></label>
+            </div>
+            <div style={{ background: '#fffbeb', border: '1px solid #f1deaa', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+              <b style={{ fontSize: 13 }}>Instruction for {builder.dutyName || 'the person on duty'}</b>
+              <div style={{ marginTop: 8 }}><InstructionForm value={builder} onChange={(d) => setBuilder({ ...builder, ...d })} who={builder.dutyName || 'they'} /></div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
               <input placeholder="Search name or GCC" value={builder._q} onChange={(e) => setBuilder({ ...builder, _q: e.target.value })} aria-label="Search students" style={{ flex: '1 1 180px' }} />
@@ -261,8 +278,10 @@ export default function MockDutyDesk({
                   <Avatar name={sel.name} />
                   <div style={{ flex: '1 1 200px' }}><h4>{sel.name}</h4><div style={{ fontSize: 12.5, color: '#5d6b82' }}>{sel.title || 'On duty'} · {sel.groups} group{sel.groups === 1 ? '' : 's'} · {sel.students} student{sel.students === 1 ? '' : 's'}</div></div>
                   <button className="mdd-btn" onClick={() => printSheets([sel])}>🖨️ Print duty sheet</button>
+                  <button className="mdd-ghost" onClick={async () => { try { await navigator.clipboard.writeText(instructionMessage(sel, series)); setMsg(`Instruction message for ${sel.name} copied — paste it into WhatsApp or a message.`); } catch { setMsg('Could not copy automatically.'); } }}>📋 Copy instruction message</button>
                   <button className="mdd-ghost" onClick={() => exportXlsx([sel])}>⬇️ Excel</button>
                 </div>
+                {slotClashes(sel.sections).length ? <div role="alert" style={{ padding: '8px 16px', background: '#fef2f2', color: '#b42318', fontSize: 12.5, fontWeight: 700 }}>⚠ Overlapping slots: {slotClashes(sel.sections).map((c) => `${c.a} and ${c.b} on ${c.day}`).join('; ')}</div> : null}
                 {sel.sections.map((sec) => {
                   const act = canAct(sel.name);
                   return (
@@ -272,8 +291,25 @@ export default function MockDutyDesk({
                         <b style={{ fontSize: 13.5 }}>{sec.label}</b>
                         <span className="mdd-chip">{sec.subject}</span>
                         <span style={{ fontSize: 12, color: '#5d6b82' }}>{sec.students.length} student{sec.students.length === 1 ? '' : 's'}{sec.note ? ` · ${sec.note}` : ''}</span>
-                        {sec.kind === 'custom' && act ? <button className="mdd-ghost" style={{ marginLeft: 'auto' }} onClick={() => openBuilder(custom.find((g) => g.id === sec.id))}>✏️ Edit group</button> : null}
+                        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+                          {canEdit ? <button className="mdd-ghost" onClick={() => setInstEdit(instEdit?.id === sec.id ? null : { id: sec.id, draft: pickInstruction(sec.instruction), all: false })} aria-label={`Instructions for ${sec.label}`}>📋 Instructions</button> : null}
+                          {sec.kind === 'custom' && act ? <button className="mdd-ghost" onClick={() => openBuilder(custom.find((g) => g.id === sec.id))}>✏️ Edit group</button> : null}
+                        </span>
                       </div>
+                      {hasInstruction(sec.instruction) || (sec.note && !sec.instruction.instruction) ? (
+                        <div style={{ padding: '8px 16px', background: '#fffbeb', borderTop: '1px solid #f4ead0' }}>
+                          <InstructionSummary value={sec.instruction} />
+                          {sec.note && !sec.instruction.instruction ? <div style={{ fontSize: 12.5, color: '#2e3b52' }}>📋 {sec.note}</div> : null}
+                        </div>
+                      ) : <div style={{ padding: '6px 16px', background: '#fef2f2', borderTop: '1px solid #fbd5d5', fontSize: 12, color: '#b42318' }}>No instruction yet — where, why and when are not set for this group.</div>}
+                      {instEdit?.id === sec.id ? (
+                        <div style={{ padding: 14, background: '#fffdf5', borderTop: '1px solid #f4ead0' }}>
+                          <InstructionForm value={instEdit.draft} onChange={(d) => setInstEdit({ ...instEdit, draft: d })} who={sel.name} />
+                          <label style={{ display: 'block', fontSize: 12.5, margin: '8px 0' }}><input type="checkbox" checked={instEdit.all} onChange={(e) => setInstEdit({ ...instEdit, all: e.target.checked })} /> Use the same instruction for all {sel.sections.length} of {sel.name}'s groups</label>
+                          <button className="mdd-btn" disabled={!!(instEdit.draft.from && instEdit.draft.to && instEdit.draft.to <= instEdit.draft.from)} onClick={async () => { const targets = instEdit.all ? sel.sections : [sec]; for (const t of targets) await onSaveInstruction(t, instEdit.draft); setMsg(`Instruction saved for ${sel.name}${instEdit.all ? ` (${targets.length} groups)` : ''}.`); setInstEdit(null); }}>💾 Save instruction</button>
+                          <button className="mdd-ghost" style={{ marginLeft: 8 }} onClick={() => setInstEdit(null)}>Cancel</button>
+                        </div>
+                      ) : null}
                       {sec.students.map((x) => (
                         <div key={rowKey(sec, x)} className="mdd-row">
                           <Avatar name={x.name} sm />

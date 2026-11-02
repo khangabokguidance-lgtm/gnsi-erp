@@ -92,3 +92,13 @@ test('duty roster names the person and title; house counts only for House Master
   assert.ok(men.rows.some((r) => r.Person === 'Rohit Sharma (House Master)' && typeof r['Students from their house'] === 'number'))
   assert.equal(men.title, 'Duty roster')
 })
+
+test('the duty roster says where, when and why for each group', () => {
+  const inst = { venue: 'Room 4', reason: 'Maths revision', days: ['Tue'], from: '17:00', to: '18:00' }
+  const ctx2 = ctxFor({ mentorOf: (c, g) => (g.no === 1 ? { name: 'Mentor One', title: 'Teacher', ...inst } : null) })
+  const men = buildReport('mentors', recordsFrom(classes, ctx2), {})
+  const row = men.rows.find((r) => r.Person.startsWith('Mentor One'))
+  assert.match(row['Where / when / why'], /Where: Room 4 · When: Tue · 5:00 pm–6:00 pm · Why: Maths revision/)
+  assert.equal(men.rows.find((r) => r.Person === 'Nobody on duty')['Where / when / why'], '—')
+  assert.ok(men.columns.some((c) => c.key === 'Where / when / why'))
+})
