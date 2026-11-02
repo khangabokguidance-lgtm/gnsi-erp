@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { printDocument, letterhead } from './lib/mockTestReports';
 import {
   REPORT_TYPES, QUICK_REPORTS, SORT_OPTIONS, NOT_ASSIGNED, emptyReportFilter, isReportFilterActive, recordsFrom,
-  applyReportFilter, sortRecords, buildReport, smartInsights, describeReportFilter,
+  applyReportFilter, sortRecords, buildReport, smartInsights, describeReportFilter, sheetName,
 } from './lib/mockTestReport';
 
 const NAVY = '#132a4f';
@@ -65,7 +65,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
   const exportXlsx = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.rows.length ? report.rows : [{ Note: 'No students match the filters.' }]), report.title.slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(report.rows.length ? report.rows : [{ Note: 'No students match the filters.' }]), sheetName(report.title));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Report', report.title], ['Series', series], ['Marks of', basis || 'Overall marks'], ['Groups', layoutLabel], ['Filters', desc], [], ['Smart summary'], ...insights.map((l) => [l])]), 'Summary');
     XLSX.writeFile(wb, `${series} - ${report.title}.xlsx`);
   };
@@ -111,9 +111,9 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
     <div style={{ ...S.card, border: '1.5px solid #be185d' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>📑 Smart report generator</h3>
-        <button style={S.ghost} onClick={onClose}>✕ Close</button>
+        <button style={S.ghost} onClick={onClose}>← Back to groups</button>
       </div>
-      <div style={{ fontSize: 12.5, color: '#5d6b82', margin: '4px 0 10px' }}>Works on the groups shown below ({layoutLabel}{basis ? `, ${basis}` : ''}). Pick a report, narrow it with the advanced filters, then print or export it.</div>
+      <div style={{ fontSize: 12.5, color: '#5d6b82', margin: '4px 0 10px' }}>Based on the groups chosen in the Groups view ({layoutLabel}{basis ? `, ${basis}` : ''}) — change them there with “← Back to groups”. Pick a report, narrow it with the advanced filters, then print or export it.</div>
 
       <span style={S.label}>Quick reports</span>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>

@@ -138,3 +138,13 @@ test('insights say who supervises what and which subjects have nobody', () => {
   assert.match(t, /2 people supervise study duty across 3 subjects: Overall marks \(Meera Singh\); EVS \(Rohit Sharma\); Mathematics \(Meera Singh\)/)
   assert.match(t, /Nobody is assigned to supervise: Passage\./)
 })
+
+import { sheetName } from '../src/lib/mockTestReport.js'
+test('Excel sheet names are valid and unique', () => {
+  assert.equal(sheetName('Maths/Science: Paper [1]'), 'Maths-Science- Paper -1-')
+  assert.equal(sheetName('x'.repeat(40)).length, 31)
+  const used = new Set()
+  assert.equal(sheetName('Maths', used), 'Maths'); assert.equal(sheetName('MATHS', used), 'MATHS (2)'); assert.equal(sheetName('Maths', used), 'Maths (3)')
+  assert.equal(sheetName('', new Set()), 'Sheet')
+  const long = 'y'.repeat(31), u2 = new Set([long]); assert.ok(sheetName(long, u2).length <= 31)
+})

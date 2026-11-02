@@ -258,3 +258,12 @@ export function describeReportFilter(f) {
   if (String(f.q || '').trim()) bits.push(`Search “${String(f.q).trim()}”`);
   return bits.join(' · ') || 'No extra filters';
 }
+
+// A valid Excel sheet name: no  : \\ / ? * [ ]  , at most 31 characters, and unique within the workbook.
+export function sheetName(name, used = new Set()) {
+  let base = String(name || 'Sheet').replace(/[:\\/?*[\]]/g, '-').trim().slice(0, 31) || 'Sheet';
+  let n = base, i = 2;
+  while (used.has(n.toLowerCase())) { const suffix = ` (${i++})`; n = base.slice(0, 31 - suffix.length) + suffix; }
+  used.add(n.toLowerCase());
+  return n;
+}

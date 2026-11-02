@@ -17,13 +17,14 @@ import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } 
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
-import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
+import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
 import MockGroupReport from './MockGroupReport';
 import MockDutyDesk from './MockDutyDesk';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 import { pickInstruction, hasInstruction } from './lib/dutyInstruction';
-import { collectDuties } from './lib/mockTestDuty';
+import { collectDuties, assignmentsFrom, parseScope, mixScope } from './lib/mockTestDuty';
+import { sheetName } from './lib/mockTestReport';
 import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -222,7 +223,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
-      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={`${series}|${viewKey}`} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
@@ -926,8 +927,8 @@ function hmSummary(group, hmOf) {
   group.students.forEach((s) => { const l = hmOf(s.gcc).label || ''; counts.set(l, (counts.get(l) || 0) + 1); });
   const named = [...counts].filter(([l]) => l).sort((a, b) => b[1] - a[1]);
   const none = counts.get('') || 0;
-  if (!named.length) return 'House Master/Mistress: not assigned';
-  return `House Master/Mistress: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} unassigned` : ''}`;
+  if (!named.length) return 'Their House Masters: none recorded';
+  return `Their House Masters: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} not recorded` : ''}`;
 }
 
 function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '', passPct = 40, currentUser = null }) {
@@ -967,7 +968,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     setSaveMsg('');
     const bk = b || GROUP_BASIS_ALL;
     setChoices((cur) => { const m = { ...(cur[bk] || {}) }; if (grp === null) delete m[sid]; else m[sid] = grp; return { ...cur, [bk]: m }; });
-    try { await saveGroupChoice(seriesName, b, sid, grp, choiceMode, who); }
+    try { await saveGroupChoice(seriesName, b, sid, grp, choiceMode, who); flash(grp === null ? 'Back to the automatic group ✓' : `Moved to Group ${grp} ✓`); }
     catch (e) { setSaveMsg(`Could not save the change: ${e.message || e}`); }
   };
   const resetManual = async () => {
@@ -998,10 +999,10 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     setSaveMsg('');
     setLanguages((cur) => { const n = { ...cur }; if (value) n[name] = value; else delete n[name]; return n; });
     if (language && value !== language) setBatch('');
-    try { await saveClassLanguage(name, value || null, langMode, who); }
+    try { await saveClassLanguage(name, value || null, langMode, who); flash('Class language saved ✓'); }
     catch (e) { setSaveMsg(`Could not save the class language: ${e.message || e}`); }
   };
-  const setKeyOf = (c) => (c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`);
+  const setKeyOf = (c) => (c.mixed ? mixScope(language, mixPick) : `class:${c.batch}`);
   const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
   const assign = async (c, g, key) => {
     setSaveMsg('');
@@ -1009,17 +1010,24 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     const value = person ? { ...pickInstruction(mentorOf(c, basis, g)), name: person.name, title: person.title } : null;   // a new person keeps the instruction of the slot
     const k = mentorKey(basis, setKeyOf(c), g.no);
     setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
-    try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
+    try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); flash(value ? `${value.name} is now on duty ✓` : 'Duty removed ✓'); }
     catch (e) { setSaveMsg(`Could not save who is on duty: ${e.message || e}`); }
   };
   // Duty desk: students a teacher/admin removed from the groups, and groups built by hand.
-  const userName = loggedInName(currentUser);
+  const userName = String(currentUser?.name || '').trim() || loggedInName(currentUser);
   const userStaffId = currentUser?.staff_profile_id ?? null;
   const [removed, setRemoved] = useState({});
   const [removedMode, setRemovedMode] = useState('local');
   const [custom, setCustom] = useState([]);
   const [customMode, setCustomMode] = useState('local');
-  const [showDesk, setShowDesk] = useState(false);
+  const [view, setView] = useState('groups');          // 'groups' | 'duty' | 'report'
+  const [guideOpen, setGuideOpen] = useState(() => { try { return localStorage.getItem('gnsi_mock_groups_guide_v1') !== 'done'; } catch { return true; } });
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const flash = useCallback((m) => { setToast(m); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 2600); }, []);
+  const closeGuide = () => { setGuideOpen(false); try { localStorage.setItem('gnsi_mock_groups_guide_v1', 'done'); } catch { /* storage unavailable */ } };
   useEffect(() => {
     let live = true;
     loadRemoved(seriesName).then((r) => { if (live) { setRemoved(r.removed); setRemovedMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Removed students could not be loaded: ${e.message || e}`); });
@@ -1030,26 +1038,32 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const removeIn = async (b, sid, reason) => {
     const bk = b || GROUP_BASIS_ALL;
     setRemoved((cur) => ({ ...cur, [bk]: { ...(cur[bk] || {}), [sid]: { reason, by: userName || who, at: new Date().toISOString() } } }));
-    try { await saveRemoved(seriesName, b, sid, { reason }, removedMode, userName || who); } catch (e) { setSaveMsg(`Could not save the removal: ${e.message || e}`); }
+    try { await saveRemoved(seriesName, b, sid, { reason }, removedMode, userName || who); flash('Student removed ✓'); } catch (e) { setSaveMsg(`Could not save the removal: ${e.message || e}`); }
   };
   const restoreIn = async (b, sid) => {
     const bk = b || GROUP_BASIS_ALL;
     setRemoved((cur) => { const m = { ...(cur[bk] || {}) }; delete m[sid]; return { ...cur, [bk]: m }; });
-    try { await saveRemoved(seriesName, b, sid, null, removedMode, userName || who); } catch (e) { setSaveMsg(`Could not restore: ${e.message || e}`); }
+    try { await saveRemoved(seriesName, b, sid, null, removedMode, userName || who); flash('Student restored ✓'); } catch (e) { setSaveMsg(`Could not restore: ${e.message || e}`); }
   };
   const saveCustom = async (g) => {
     const group = { ...g, id: g.id || newGroupId() };
     setCustom((cur) => [...cur.filter((x) => x.id !== group.id), group]);
-    try { await saveCustomGroup(seriesName, group, customMode, userName || who); } catch (e) { setSaveMsg(`Could not save the group: ${e.message || e}`); }
+    try { await saveCustomGroup(seriesName, group, customMode, userName || who); flash('Group saved ✓'); } catch (e) { setSaveMsg(`Could not save the group: ${e.message || e}`); }
   };
   const deleteCustom = async (id) => {
     setCustom((cur) => cur.filter((x) => x.id !== id));
-    try { await deleteCustomGroup(seriesName, id, customMode); } catch (e) { setSaveMsg(`Could not delete the group: ${e.message || e}`); }
+    try { await deleteCustomGroup(seriesName, id, customMode); flash('Group deleted ✓'); } catch (e) { setSaveMsg(`Could not delete the group: ${e.message || e}`); }
   };
   const removedHere = removedFor(basis);
   const viewRows = useMemo(() => (Object.keys(removedHere).length ? scoped.filter((r) => !removedHere[r.sid]) : scoped), [scoped, removedHere]);
-  const optsFor = useCallback((b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [language, layout, batch, mode, choices, mixPick, topN, languages]);
-  const mentorFor = useCallback((b, c, g) => mentors[mentorKey(b, c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`, g.no)] || null, [mentors, language]);
+  // Duties are built from the saved assignments themselves (not from the layout / filters on screen), so the
+  // Duty desk, the duty sheets and the report always show everyone who is on duty.
+  const assignments = useMemo(() => assignmentsFrom(mentors), [mentors]);
+  const dutyOpts = useCallback((b, scope) => {
+    const sc = parseScope(scope);
+    return { mode, basis: b, topN, languages, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, ...(sc.mix ? { mix: true, language: sc.language, classes: sc.classes } : { batch: sc.batch }) };
+  }, [mode, topN, languages, choices]);
+  const duties = useMemo(() => collectDuties({ rows, assignments, optsFor: dutyOpts, removedFor, custom, hmOf }), [rows, assignments, dutyOpts, removedFor, custom, hmOf]);
   // Instruction (where / why / when / what to do) for the person on duty of a group.
   const [instEditKey, setInstEditKey] = useState(null);   // `${setKey}|${group}` of the card being edited
   const [instDraft, setInstDraft] = useState(null);
@@ -1060,7 +1074,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     if (!cur?.name) return;
     const value = { ...cur, ...pickInstruction(details) };
     setMentors((m) => ({ ...m, [k]: value }));
-    try { await saveGroupMentor(seriesName, b, setKey, grp, value, mentorMode, who); }
+    try { await saveGroupMentor(seriesName, b, setKey, grp, value, mentorMode, who); flash('Instruction saved ✓'); }
     catch (e) { setSaveMsg(`Could not save the instruction: ${e.message || e}`); }
   };
   const saveInstructionFor = async (sec, details) => {
@@ -1069,15 +1083,12 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
       if (cg) await saveCustom({ ...cg, ...pickInstruction(details) });
       return;
     }
-    await saveDutyDetails(sec.basis, sec.mixed ? `mix:${language || 'all'}` : `class:${sec.set}`, sec.group, details);
+    await saveDutyDetails(sec.basis, sec.scope, sec.group, details);
   };
   const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
   const classes = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
   // The same groups without any manual moves — to show where manually moved students started.
   const autoClasses = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, layout, mixPick, topN, languages]);
-  const [showReport, setShowReport] = useState(false);
-  // Everyone on duty with the subjects they supervise (all subjects), for the report generator.
-  const reportDuties = useMemo(() => (showReport ? collectDuties({ rows: scoped, bases: ['', ...subjects], optsFor, mentorFor, removedFor, custom, hmOf }) : null), [showReport, scoped, subjects, optsFor, mentorFor, removedFor, custom, hmOf]);
   const layoutLabel = layout === 'mix' ? `Mixed classes${language ? ` · ${language}` : ''}` : `Class-wise${language ? ` · ${language}` : ''}`;
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
@@ -1101,7 +1112,8 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const exportAllSubjects = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
-    subjects.forEach((sub) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classGroups(scoped, opts(sub)), sub)), sub.slice(0, 31)));
+    const used = new Set();
+    subjects.forEach((sub) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classGroups(scoped, opts(sub)), sub)), sheetName(sub, used)));
     XLSX.writeFile(wb, `${series} - self-study groups - every subject.xlsx`);
   };
   const print = () => {
@@ -1111,115 +1123,173 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${basis ? `subject: ${escH(basis)}` : 'overall marks'} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
 
+  const prog = (() => { let total = 0, assigned = 0, instr = 0; classes.forEach((c) => c.groups.forEach((g) => { if (!g.n) return; total++; const m = mentorOf(c, basis, g); if (m?.name) { assigned++; if (hasInstruction(m)) instr++; } })); return { total, assigned, instr }; })();
+  const emptyHidden = showEmpty ? 0 : classes.reduce((t, c) => t + c.groups.filter((g) => !g.n).length, 0);
   return (
     <>
-      <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div style={{ flex: '1 1 100%', fontSize: 12.5, color: '#5d6b82' }}>
-          Students are split into <b>{GROUP_COUNT} self-study groups</b>, from <b style={{ color: '#b91c1c' }}>Group 1 (weakest marks)</b> to <b style={{ color: '#047857' }}>Group 7 (strongest marks)</b>, by their average % over the tests in view — overall, or in one subject. Groups can be per class or <b>mixed across classes</b>{canEdit ? <>, and you can <b>move students by hand</b>.</> : '.'}
+      <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'linear-gradient(135deg,#0f2347 0%,#1e3a6e 60%,#2b4f8f 100%)', color: '#fff', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 700 }}>Self-Study Groups</div>
+              <div style={{ fontSize: 12.5, color: '#d6def0', marginTop: 2, maxWidth: 560 }}>Split students into 7 groups from weakest to strongest marks, choose who looks after each group, and print their duty sheets.</div>
+            </div>
+            <button style={{ ...ui.ghost, background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.3)', padding: '6px 12px' }} onClick={() => (guideOpen ? closeGuide() : setGuideOpen(true))} aria-expanded={guideOpen}>❓ How it works</button>
+          </div>
+          <div role="tablist" aria-label="Self-study views" style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+            {[['groups', '👥 Groups'], ['duty', `🧑‍🏫 Duty desk${duties.length ? ` (${duties.length})` : ''}`], ['report', '📑 Reports']].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)} style={{ padding: '8px 16px', borderRadius: 999, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: view === id ? '#fff' : 'rgba(255,255,255,.14)', color: view === id ? NAVY : '#fff' }}>{label}</button>
+            ))}
+          </div>
         </div>
-        <Field label="Language">
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button style={chip(!language)} onClick={() => { setLanguage(''); setBatch(''); }}>All</button>
-            {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
-          </div>
-        </Field>
-        {canEdit ? (
-          <details style={{ flex: '1 1 100%' }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#2e3b52' }}>⚙️ Set each class's language (English / Meitei Mayek)</summary>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '8px 0 2px' }}>
-              {everything.map((c) => (
-                <label key={c.batch} style={{ fontSize: 12, color: '#5d6b82' }}>{c.batch}
-                  <select aria-label={`Language of ${c.batch}`} style={{ ...ui.input, display: 'block', padding: '3px 6px', fontSize: 12.5, marginTop: 2 }} value={LANGUAGES.includes(languages[c.batch]) ? languages[c.batch] : ''} onChange={(e) => setClassLanguage(c.batch, e.target.value)}>
-                    <option value="">{`Automatic (${languageOfBatch(c.batch) || 'none — from the name'})`}</option>
-                    {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <div style={{ fontSize: 11.5, color: '#5d6b82' }}>Used by the Language filter above. Saved for every series · <b style={{ color: langMode === 'cloud' ? '#047857' : '#b45309' }}>{langMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></div>
-          </details>
-        ) : null}
-        <Field label="Groups">
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button style={chip(layout === 'class')} onClick={() => setLayout('class')}>Class-wise</button>
-            <button style={chip(layout === 'mix')} onClick={() => setLayout('mix')}>Mixed classes</button>
-          </div>
-        </Field>
-        <Field label="Marks of">
-          <select style={ui.input} value={basis} onChange={(e) => setBasis(e.target.value)}>
-            <option value="">Overall marks</option>
-            {subjects.map((sub) => <option key={sub} value={sub}>{sub} only</option>)}
-          </select>
-        </Field>
-        {layout === 'class' ? (
-          <Field label="Class">
-            <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}>
-              <option value="">All classes</option>
-              {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
-            </select>
-          </Field>
-        ) : (
-          <Field label="Classes in the mix">
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={chip(!mixPick.length)} onClick={() => setMixPick([])}>All{language ? ` ${language}` : ''}</button>
-              {pickable.map((c) => <button key={c.batch} style={chip(mixPick.includes(c.batch))} onClick={() => setMixPick((cur) => toggleIn(cur, c.batch))}>{c.batch}</button>)}
-            </div>
-          </Field>
-        )}
-        {dir && dir.houses.length ? (
-          <Field label="House">
-            <select style={ui.input} value={house} onChange={(e) => setHouse(e.target.value)}>
-              <option value="">All houses</option>
-              {dir.houses.map((h) => <option key={h} value={h}>{h}</option>)}
-            </select>
-          </Field>
-        ) : null}
-        <Field label="Split by">
-          <select style={ui.input} value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="equal">7 equal groups (by rank)</option>
-            <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
-          </select>
-        </Field>
-        <Field label={layout === 'mix' ? 'Top group = best … students' : 'Top group = best … per class'}>
-          <input type="number" min={0} placeholder="0 = automatic" style={{ ...ui.input, width: 120 }} value={topText} onChange={(e) => setTopText(e.target.value)} aria-label="Number of students in the top group" />
-        </Field>
-        <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
-        <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
-        <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
-        <button style={showReport ? { ...ui.btn, background: '#be185d' } : ui.ghost} disabled={!classes.length} onClick={() => setShowReport((v) => !v)}>📑 Smart report</button>
-        <button style={showDesk ? { ...ui.btn, background: '#b8923a', color: '#1b1303' } : ui.ghost} disabled={!classes.length && !custom.length} onClick={() => setShowDesk((v) => !v)}>🧑‍🏫 Duty desk</button>
-        {canEdit ? (
-          <div style={{ flex: '1 1 100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', paddingTop: 10 }}>
-            <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done editing' : '✏️ Move students by hand'}</button>
-            <span style={{ fontSize: 12, color: '#5d6b82' }}>
-              {manualTotal ? `${manualTotal} manual choice${manualTotal === 1 ? '' : 's'} for ${basis || 'overall marks'} (marked ✎)` : `No manual choices for ${basis || 'overall marks'} yet`}
-              {' · '}<b style={{ color: choiceMode === 'cloud' ? '#047857' : '#b45309' }}>{choiceMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b>
-            </span>
-            {manualTotal ? <button style={ui.ghost} onClick={resetManual}>↺ Reset to automatic</button> : null}
+        {guideOpen ? (
+          <div style={{ padding: '12px 16px', background: '#fffbeb', borderTop: '1px solid #f1deaa', fontSize: 13, lineHeight: 1.6 }}>
+            <b>How it works — 3 steps</b>
+            <ol style={{ margin: '4px 0 6px', paddingLeft: 20 }}>
+              <li><b>Groups:</b> choose the subject, and whether students are grouped within each class or mixed across classes. Group 1 is the weakest, Group 7 the strongest.</li>
+              <li><b>Duty:</b> on each group, pick who is on duty (a House Master or a teacher) and add an instruction — where, why and when.</li>
+              <li><b>Duty desk:</b> every person's groups and students in one place. Print their duty sheet; teachers can remove or transfer their own students.</li>
+            </ol>
+            <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={closeGuide}>Got it — hide this</button>
           </div>
         ) : null}
       </div>
-      {saveMsg ? <div style={{ fontSize: 12, color: '#991B1B', margin: '0 2px 10px' }}>{saveMsg}</div> : null}
-      {showDesk ? (
-        <MockDutyDesk rows={scoped} series={series} institute={institute} subjects={subjects} optsFor={optsFor} mentorFor={mentorFor}
-          removed={removed} removedFor={removedFor} custom={custom} hmOf={hmOf} dir={dir} canEdit={canEdit} userName={userName} userStaffId={userStaffId}
+      {saveMsg ? <div role="alert" style={{ fontSize: 12.5, color: '#991B1B', background: '#fef2f2', border: '1px solid #fbd5d5', borderRadius: 10, padding: '6px 12px', margin: '0 0 10px' }}>{saveMsg}</div> : null}
+
+      {view === 'groups' ? (
+        <>
+          <div style={ui.card}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <Field label="Group by marks in">
+                <select style={ui.input} value={basis} onChange={(e) => setBasis(e.target.value)} aria-label="Group by marks in">
+                  <option value="">Overall marks (all subjects)</option>
+                  {subjects.map((sub) => <option key={sub} value={sub}>{sub} only</option>)}
+                </select>
+              </Field>
+              <Field label="Group students">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button style={chip(layout === 'class')} onClick={() => setLayout('class')}>Within each class</button>
+                  <button style={chip(layout === 'mix')} onClick={() => setLayout('mix')}>Mixed across classes</button>
+                </div>
+              </Field>
+              <Field label="Language">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button style={chip(!language)} onClick={() => { setLanguage(''); setBatch(''); }}>All</button>
+                  {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
+                </div>
+              </Field>
+              {layout === 'class' ? (
+                <Field label="Class">
+                  <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)} aria-label="Class">
+                    <option value="">All classes</option>
+                    {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Classes in the mix">
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button style={chip(!mixPick.length)} onClick={() => setMixPick([])}>All{language ? ` ${language}` : ''}</button>
+                    {pickable.map((c) => <button key={c.batch} style={chip(mixPick.includes(c.batch))} onClick={() => setMixPick((cur) => toggleIn(cur, c.batch))}>{c.batch}</button>)}
+                  </div>
+                </Field>
+              )}
+            </div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#2e3b52' }}>⚙️ More options — house, how to divide, top group size{canEdit ? ', class languages' : ''}</summary>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', margin: '10px 0 4px' }}>
+                {dir && dir.houses.length ? (
+                  <Field label="House">
+                    <select style={ui.input} value={house} onChange={(e) => setHouse(e.target.value)} aria-label="House">
+                      <option value="">All houses</option>
+                      {dir.houses.map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </Field>
+                ) : null}
+                <Field label="How to divide">
+                  <select style={ui.input} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="How to divide">
+                    <option value="equal">7 equal groups (by rank)</option>
+                    <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
+                  </select>
+                </Field>
+                <Field label={layout === 'mix' ? 'Top group size — best … students' : 'Top group size — best … per class'}>
+                  <input type="number" min={0} placeholder="0 = automatic" style={{ ...ui.input, width: 130 }} value={topText} onChange={(e) => setTopText(e.target.value)} aria-label="Number of students in the top group" />
+                </Field>
+                <label style={{ fontSize: 13, paddingBottom: 8 }}><input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} /> Show empty groups</label>
+              </div>
+              {canEdit ? (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2e3b52', marginBottom: 4 }}>Language of each class (English / Meitei Mayek)</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {everything.map((c) => (
+                      <label key={c.batch} style={{ fontSize: 12, color: '#5d6b82' }}>{c.batch}
+                        <select aria-label={`Language of ${c.batch}`} style={{ ...ui.input, display: 'block', padding: '3px 6px', fontSize: 12.5, marginTop: 2 }} value={LANGUAGES.includes(languages[c.batch]) ? languages[c.batch] : ''} onChange={(e) => setClassLanguage(c.batch, e.target.value)}>
+                          <option value="">{`Automatic (${languageOfBatch(c.batch) || 'none — from the name'})`}</option>
+                          {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 4 }}>Used by the Language filter. Saved for every series · <b style={{ color: langMode === 'cloud' ? '#047857' : '#b45309' }}>{langMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></div>
+                </div>
+              ) : null}
+            </details>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', marginTop: 12, paddingTop: 10 }}>
+              <span style={{ fontSize: 12.5, color: '#5d6b82', flex: '1 1 220px' }}>
+                {classes.length ? <>Showing <b>{classes.reduce((t, c) => t + c.count, 0)} students</b> in {classes.length} {layout === 'mix' ? 'mixed set' : `class${classes.length === 1 ? '' : 'es'}`} · by <b>{basis || 'overall marks'}</b>{language ? ` · ${language}` : ''}{house ? ` · ${house}` : ''}{topN ? ` · top group of ${topN}` : ''}</> : 'No students match these choices.'}
+              </span>
+              <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
+              <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
+              <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
+              {canEdit ? <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done moving' : '✏️ Move students by hand'}</button> : null}
+            </div>
+            {canEdit && (editing || manualTotal) ? (
+              <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 8 }}>
+                {manualTotal ? `${manualTotal} student${manualTotal === 1 ? '' : 's'} moved by hand for ${basis || 'overall marks'} (marked ✎)` : `Nobody moved by hand for ${basis || 'overall marks'} yet`}
+                {' · '}<b style={{ color: choiceMode === 'cloud' ? '#047857' : '#b45309' }}>{choiceMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b>
+                {manualTotal ? <> {' · '}<button style={{ ...ui.ghost, padding: '2px 10px', fontSize: 12 }} onClick={resetManual}>↺ Reset to automatic</button></> : null}
+              </div>
+            ) : null}
+          </div>
+
+          {prog.total ? (
+            <div style={{ ...ui.card, padding: '10px 14px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 13 }}>Duty setup</b>
+              <div style={{ flex: '1 1 140px', maxWidth: 240 }} aria-label={`${prog.assigned} of ${prog.total} groups have someone on duty`}>
+                <div style={{ height: 8, borderRadius: 999, background: '#eceff4', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.round((prog.assigned / prog.total) * 100)}%`, background: prog.assigned === prog.total ? '#16a34a' : '#ca8a04' }} /></div>
+              </div>
+              <span style={{ fontSize: 12.5 }}><b>{prog.assigned}</b> of {prog.total} groups have someone on duty{prog.assigned ? <> · <b>{prog.instr}</b> with an instruction</> : null}</span>
+              {canEdit && prog.assigned < prog.total ? <span style={{ fontSize: 12, color: '#92400E' }}>Use “Assigned for duty” on each group below.</span> : null}
+              <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5, marginLeft: 'auto' }} onClick={() => setView('duty')}>Open Duty desk →</button>
+            </div>
+          ) : null}
+          {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — restore them in the Duty desk.</div> : null}
+          {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
+          {language && !classes.length ? (
+            <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
+              No class is marked <b>{language}</b>. {canEdit ? 'Open “More options” and set the language of each class.' : 'Ask an admin to set the language of each class.'}
+            </div>
+          ) : null}
+          {!language && unlabelled.length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>No language is set for {unlabelled.join(', ')} — they appear under “All” only.</div> : null}
+          {emptyHidden ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{emptyHidden} empty group{emptyHidden === 1 ? ' is' : 's are'} hidden — tick “Show empty groups” in More options to see {emptyHidden === 1 ? 'it' : 'them'}.</div> : null}
+        </>
+      ) : null}
+
+      {view === 'duty' ? (
+        <MockDutyDesk rows={rows} series={series} institute={institute} subjects={subjects} duties={duties}
+          removed={removed} custom={custom} dir={dir} canEdit={canEdit} userName={userName} userStaffId={userStaffId}
           onRemove={removeIn} onRestore={restoreIn} onTransfer={(b, sid, grp) => move(sid, grp, b)} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom} onSaveInstruction={saveInstructionFor}
           storageNote={removedMode === 'local' || customMode === 'local' ? 'Removals and manual groups are saved in this browser only until the database tables are added (migration 20261052).' : ''}
-          onClose={() => setShowDesk(false)} />
+          onClose={() => setView('groups')} />
       ) : null}
-      {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — open the Duty desk to restore them.</div> : null}
-      {showReport && classes.length ? (
-        <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct} duties={reportDuties} allSubjects={subjects}
-          hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setShowReport(false)} />
+
+      {view === 'report' ? (
+        classes.length ? (
+          <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct} duties={duties} allSubjects={subjects}
+            hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setView('groups')} />
+        ) : <div style={{ ...ui.card, textAlign: 'center', color: '#5d6b82' }}>There are no students to report on with the current choices. <button style={{ ...ui.ghost, marginLeft: 8 }} onClick={() => setView('groups')}>← Back to groups</button></div>
       ) : null}
-      {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
-      {language && !classes.length ? (
-        <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
-          No class is marked <b>{language}</b>. A class is English when its name contains “English”, and Meitei Mayek when it contains “Manipuri” or “MM”.
-        </div>
-      ) : null}
-      {!language && unlabelled.length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>No language in the class name for {unlabelled.join(', ')} — shown under “All” only.</div> : null}
-      {classes.map((c) => (
+
+      {view === 'groups' ? classes.map((c) => (
         <div key={c.batch} style={ui.card}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 10 }}>
             <h3 style={{ margin: 0 }}>{c.batch}</h3>
@@ -1229,7 +1299,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
             <span style={{ fontSize: 12.5, color: '#5d6b82' }}>{c.count} students · {c.mixed ? 'average' : 'class average'} {fx(c.avg)}%</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
-            {c.groups.map((g) => (
+            {c.groups.filter((g) => showEmpty || g.n).map((g) => (
               <div key={g.no} style={{ border: '1px solid #e8e3d8', borderTop: `4px solid ${g.color}`, borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
                 <div style={{ padding: '8px 10px', background: `${g.color}12` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
@@ -1239,6 +1309,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                   <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
                   {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
                   {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
+                  {g.n && !mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#b45309', fontWeight: 700 }}>⚠ Nobody on duty yet</div> : null}
                   {canEdit && dir ? (
                     <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned for duty
                       <select aria-label={`Assigned for duty for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
@@ -1296,7 +1367,8 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
             ))}
           </div>
         </div>
-      ))}
+      )) : null}
+      {toast ? <div role="status" style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', background: '#0f2347', color: '#fff', padding: '9px 18px', borderRadius: 999, fontSize: 13, fontWeight: 600, boxShadow: '0 10px 26px -10px rgba(0,0,0,.5)', zIndex: 9999 }}>{toast}</div> : null}
     </>
   );
 }
