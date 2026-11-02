@@ -81,6 +81,10 @@ const MOBILE_CSS = `
   .mta .mta-half { flex: 1 1 calc(50% - 6px); }
   .mta .mta-svg { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .mta .mta-svg > div { min-width: var(--mw, 0); }
+  /* sub-tabs: two per row, every tab visible (no sideways scrolling) */
+  .mta .mta-tabs { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px !important; }
+  .mta .mta-tab { width: 100%; min-width: 0; min-height: 40px; padding: 4px 10px 4px 5px !important; gap: 7px !important; font-size: 12.5px !important; white-space: normal !important; text-align: left; line-height: 1.2; }
+  .mta .mta-tab > span:first-child { width: 26px !important; height: 26px !important; }
 }`;
 
 // scope: 'pre' = the Pre Mock Test tab, 'mega' = the Mega Mock Test tab. Each keeps its own series.
@@ -186,9 +190,9 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
       {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="mta-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 12px', padding: '2px 0 6px' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
+          <button key={t.id} className="mta-tab" onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 1 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (
