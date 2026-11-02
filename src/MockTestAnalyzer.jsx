@@ -18,6 +18,7 @@ import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, LANGUAGES, GROUP_COUNT } from './lib/mockTestGroups';
+import { loadHouseDirectory } from './houseDirectory';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
@@ -908,18 +909,39 @@ function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSe
 // by each student's average % over the tests in view. See lib/mockTestGroups.js.
 const escH = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+// "House Master/Mistress: Rohit Sharma (5), Anita Devi (3)" — who is assigned to the students in a group.
+function hmSummary(group, hmOf) {
+  const counts = new Map();
+  group.students.forEach((s) => { const l = hmOf(s.gcc).label || ''; counts.set(l, (counts.get(l) || 0) + 1); });
+  const named = [...counts].filter(([l]) => l).sort((a, b) => b[1] - a[1]);
+  const none = counts.get('') || 0;
+  if (!named.length) return 'House Master/Mistress: not assigned';
+  return `House Master/Mistress: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} unassigned` : ''}`;
+}
+
 function GroupsView({ rows, institute, series }) {
   const [language, setLanguage] = useState('');
   const [batch, setBatch] = useState('');
   const [mode, setMode] = useState('equal');
+  const [house, setHouse] = useState('');
+  // Assigned House Master / Mistress for each student's house, from the Staff Records (null while loading / unavailable).
+  const [dir, setDir] = useState(null);
+  const [dirErr, setDirErr] = useState('');
+  useEffect(() => {
+    let live = true;
+    loadHouseDirectory().then((d) => { if (live) setDir(d); }).catch((e) => { if (live) setDirErr(e.message || String(e)); });
+    return () => { live = false; };
+  }, []);
+  const hmOf = useCallback((gcc) => (dir ? dir.lookup(gcc) : { house: '', masters: [], label: '' }), [dir]);
+  const scoped = useMemo(() => (house && dir ? rows.filter((r) => dir.lookup(r.gcc_no).house === house) : rows), [rows, house, dir]);
   const everything = useMemo(() => classGroups(rows, { mode }), [rows, mode]);
-  const classes = useMemo(() => classGroups(rows, { language, batch, mode }), [rows, language, batch, mode]);
+  const classes = useMemo(() => classGroups(scoped, { language, batch, mode }), [scoped, language, batch, mode]);
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
   const pickable = everything.filter((c) => !language || c.language === language);
 
   const flat = () => classes.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
-    Class: c.batch, Language: c.language || '—', Group: `${g.name} — ${g.tag}`, GCC: s.gcc, Name: s.name, 'Average %': Math.round(s.avg * 10) / 10,
+    Class: c.batch, Language: c.language || '—', Group: `${g.name} — ${g.tag}`, GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—', 'Average %': Math.round(s.avg * 10) / 10,
     'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
   }))));
   const exportXlsx = async () => {
@@ -931,7 +953,7 @@ function GroupsView({ rows, institute, series }) {
   const print = () => {
     const body = classes.map((c) => `<h2>${escH(c.batch)}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
       ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
-      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>Avg %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${fx(s.avg)}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
+      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>Avg %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
     printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
 
@@ -953,6 +975,14 @@ function GroupsView({ rows, institute, series }) {
             {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
           </select>
         </Field>
+        {dir && dir.houses.length ? (
+          <Field label="House">
+            <select style={ui.input} value={house} onChange={(e) => setHouse(e.target.value)}>
+              <option value="">All houses</option>
+              {dir.houses.map((h) => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </Field>
+        ) : null}
         <Field label="Split by">
           <select style={ui.input} value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="equal">7 equal groups (by rank)</option>
@@ -962,6 +992,7 @@ function GroupsView({ rows, institute, series }) {
         <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
         <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
       </div>
+      {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
       {language && !classes.length ? (
         <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
           No class is marked <b>{language}</b>. A class is English when its name contains “English”, and Meitei Mayek when it contains “Manipuri” or “MM”.
@@ -985,11 +1016,13 @@ function GroupsView({ rows, institute, series }) {
                   </div>
                   <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
                   {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>Focus: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
+                  {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
                 </div>
                 <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                   {g.students.map((s) => (
                     <div key={s.sid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 10px', borderTop: '1px solid #f1ede3', fontSize: 12.5 }}>
-                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span></span>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span>
+                        {dir ? <span style={{ display: 'block', fontSize: 11, color: '#5d6b82' }}>{hmOf(s.gcc).house ? `${hmOf(s.gcc).house} · ${hmOf(s.gcc).label || 'no House Master / Mistress assigned'}` : 'House not recorded'}</span> : null}</span>
                       <b style={{ color: g.color, flexShrink: 0 }}>{fx(s.avg)}%</b>
                     </div>
                   ))}
