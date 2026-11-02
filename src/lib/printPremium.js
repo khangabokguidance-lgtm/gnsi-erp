@@ -10,6 +10,7 @@
 //   • PAGES   tables flow across pages (no half-empty pages); every page has the same top / bottom margin and a
 //             footer, and the browser's own header / footer (date, "about:blank", page count) is not printed.
 //   • LAYOUT  fixed column widths so every table looks the same; crisp inline icons instead of emoji.
+import { denyPrint } from './printGuard.js';
 export const DESIGN_CREDIT = 'Design by Moirangthem Himan Singh';
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -138,6 +139,7 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 // institute : { name, address, tagline, logoUrl }
 // docLabel  : short label for the footer, e.g. "Duty sheet · Meera Singh · Pre Mock Test 2026"
 export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '' } = {}) {
+  if (denyPrint()) return;
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
   const logo = esc(logoSrc(institute));

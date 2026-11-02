@@ -3,6 +3,7 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
+import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
 import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
 
@@ -63,6 +64,7 @@ tr.tot td{background:#e0e7ff;font-weight:700}
 `;
 
 export function printDocument(bodyHTML, title = 'Report', institute = null) {
+  if (denyPrint()) return;
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
   // the web fonts are loaded in the print window too (it is a blank page), and printing waits for them

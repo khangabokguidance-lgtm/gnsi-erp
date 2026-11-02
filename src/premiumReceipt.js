@@ -5,6 +5,7 @@
 //  bill · gross / concession / NET PAID · amount in words · PAID stamp.
 // ════════════════════════════════════════════════════════════════════════
 import QRCode from 'qrcode'
+import { denyPrint } from './lib/printGuard.js'
 import { getInstitute } from './systemSettings'
 
 const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
@@ -224,6 +225,7 @@ export function receiptDocument(title, sheets, { extraCss = '', extraHead = '', 
 // Open a print window synchronously (inside the click, so pop-up blockers
 // allow it) and fill it with html — or a promise of html.
 export function openReceiptWindow(title, html, { autoPrint = true, held = null } = {}) {
+  if (denyPrint()) return
   const pw = window.open('', '_blank', 'width=860,height=1000,scrollbars=yes')
   if (pw) pw.document.write(`<p style="font:600 14px system-ui;color:#475569;padding:40px;text-align:center">Preparing ${escH(title)}…</p>`)
   Promise.all([html, held]).then(([h, isHeld]) => {

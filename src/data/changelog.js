@@ -3,6 +3,12 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Exams: printing is admin-only',
+    items: [
+      { type: 'security', module: 'exams', text: 'Printing inside the Exams module (report cards, admit cards, certificates, merit lists, Mock Analyzer reports, duty sheets and the Revision Plan) is now switched off for everyone except admins. Other staff get a notice instead of a print window, Ctrl+P is blocked, and the browser’s own page print comes out blank. Fees, Accounts and the other modules still print normally.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Learning Hub: staff see only what they need',
     items: [
       { type: 'security', module: 'learninghub', text: 'Learning Hub tabs that create or run things — Question Bank, Entrance Exam and Model Set Maker — now stay hidden from staff unless the admin gives that user add / edit / delete rights on them; read access alone no longer opens them. Study Materials, Class Material, Teaching Aids, Study Lockers, Question Bank Viewer and Model Sets stay open for viewing.' },

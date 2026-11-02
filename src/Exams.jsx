@@ -43,6 +43,7 @@ import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
 import { isAdminRole } from './roles'
+import { blockExamPrinting, denyPrint } from './lib/printGuard'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -629,6 +630,7 @@ function getGrade(pct, scale = GRADE_PRESETS) {
 }
 
 function printHTML(html, title = "GNSI") {
+  if (denyPrint()) return;
   const w = window.open("", "_blank");
   w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -8268,7 +8270,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const filteredAcStudents = sortedAcStudents.filter(s=>!acSearch || s.name.toLowerCase().includes(acSearch.toLowerCase()) || String(s.gcc_no).includes(acSearch));
 
   const printAllReportCards = async () => {
-    if (!filteredRcStudents.length) return;
+    if (!filteredRcStudents.length || denyPrint()) return;
     const w = window.open("", "_blank");
     if (!w) { notify("Popup blocked — please allow popups for this site, then try again.", "warn"); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredRcStudents.length} report cards…</body></html>`);
@@ -8292,7 +8294,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   const buildAdmitCardHTML = (st) => generateAdmitCardHTML(st, { examTypeName: acExamName, examSchedule: acSchedule, institute, course: acCourse });
 
   const printAllAdmitCards = async () => {
-    if (!filteredAcStudents.length) return;
+    if (!filteredAcStudents.length || denyPrint()) return;
     const w = window.open("", "_blank");
     if (!w) { notify("Popup blocked — please allow popups for this site, then try again.", "warn"); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredAcStudents.length} admit cards…</body></html>`);
@@ -9984,6 +9986,9 @@ setLoading(false);
 // ─── ROOT EXPORT ──────────────────────────────────────────────────────────────
 export default function Exams({ currentUser, perms }) {
   const isPhone = useMobile();
+  // Printing inside Exams is for admins only; everyone else is blocked while this module is open.
+  const canPrintExams = isAdminRole(currentUser?.role);
+  useEffect(() => (canPrintExams ? undefined : blockExamPrinting()), [canPrintExams]);
   // On a phone the module opens on the app-style home grid; on desktop it opens on Mark Entry.
   const [tab, setTab]               = useState("home");
   useEffect(() => { pushRecent(tab); }, [tab]);
