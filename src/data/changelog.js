@@ -12,6 +12,7 @@ export const CHANGELOG = [
       { type: 'new', module: 'exams', text: 'Self-Study Groups: the admin can choose how many students form the top group (best N across all chosen classes), and assign a House Master / Mistress to each group of each subject.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups: an admin can set the language (English / Meitei Mayek) of every class, so Lakshya, Umeed and other classes count in the language filter.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups → Smart report: six report types (group roster, student study cards, group summary, subject-wise matrix, House Master / Mistress workload, manual moves), advanced filters (groups, class, house, House Master, mentor, weakest subject, trend, marks, below pass, moved by admin), automatic insights, saved setups, quick reports, print / PDF and Excel.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: teaching staff from the Staff Records can now be put on duty for a group, alongside House Masters / Mistresses (“Assigned for duty”); the report type is now a Duty roster.' },
       { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
     ],
   },

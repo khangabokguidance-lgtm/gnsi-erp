@@ -999,12 +999,12 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
   const assign = async (c, g, key) => {
     setSaveMsg('');
-    const person = key ? (dir?.masters || []).find((m) => m.key === key) : null;
+    const person = key ? [...(dir?.masters || []), ...(dir?.teachers || [])].find((m) => m.key === key) : null;
     const value = person ? { name: person.name, title: person.title } : null;
     const k = mentorKey(basis, setKeyOf(c), g.no);
     setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
     try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
-    catch (e) { setSaveMsg(`Could not save the House Master: ${e.message || e}`); }
+    catch (e) { setSaveMsg(`Could not save who is on duty: ${e.message || e}`); }
   };
   const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
   const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
@@ -1017,7 +1017,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const pickable = everything.filter((c) => !language || c.language === language);
 
   const flatOf = (cls, b) => cls.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
-    'Assigned House Master / Mistress (group)': mentorOf(c, b, g)?.name || '—',
+    'Assigned for duty (group)': mentorOf(c, b, g)?.name || '—',
     Class: s.batch || c.batch, 'Group layout': c.mixed ? `Mixed (${c.classes.join(' + ')})` : 'Class-wise', Language: c.language || '—', Basis: b || 'Overall marks', Group: `${g.name} — ${g.tag}`,
     'Group set by': s.manual ? 'Admin (manual)' : 'Automatic', GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—',
     [`${b || 'Average'} %`]: Math.round(s.avg * 10) / 10, 'Overall %': Math.round(s.overall * 10) / 10,
@@ -1039,7 +1039,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   };
   const print = () => {
     const body = classes.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, basis, g) ? `House Master/Mistress: ${escH(mentorOf(c, basis, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, basis, g) ? `On duty: ${escH(mentorOf(c, basis, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
       ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(basis || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
     printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${basis ? `subject: ${escH(basis)}` : 'overall marks'} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
@@ -1164,11 +1164,12 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                   {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
                   {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
                   {canEdit && dir ? (
-                    <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned House Master / Mistress
-                      <select aria-label={`Assigned House Master for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
-                        value={(dir.masters.find((m) => m.name === mentorOf(c, basis, g)?.name) || {}).key || ''} onChange={(e) => assign(c, g, e.target.value)}>
+                    <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned for duty
+                      <select aria-label={`Assigned for duty for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
+                        value={([...dir.masters, ...dir.teachers].find((m) => m.name === mentorOf(c, basis, g)?.name) || {}).key || ''} onChange={(e) => assign(c, g, e.target.value)}>
                         <option value="">— not assigned —</option>
-                        {dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}
+                        {dir.masters.length ? <optgroup label="House Masters / Mistresses">{dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
+                        {dir.teachers.length ? <optgroup label="Teaching staff">{dir.teachers.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
                       </select>
                     </label>
                   ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}

@@ -16,6 +16,13 @@ export function hmTitle(designation) {
   return 'House Master/Mistress';
 }
 
+// Teaching staff in the Staff Records: role "Teaching" / "Teaching + Admin", or a teacher-type designation.
+export function isTeachingStaff(s) {
+  const role = String(s?.role || '').trim().toLowerCase();
+  if (role === 'teaching' || role === 'teaching + admin') return true;
+  return /teacher|lecturer|faculty|\btgt\b|\bpgt\b|\bprt\b/i.test(String(s?.designation || ''));
+}
+
 export function buildHouseDirectory({ students = [], housemasters = [], staff = [] }) {
   const staffById = new Map(staff.map((s) => [String(s.id), s]));
   const byHouse = new Map();
@@ -47,5 +54,11 @@ export function buildHouseDirectory({ students = [], housemasters = [], staff = 
   const masters = [];
   [...byHouse.values()].flat().forEach((m) => { const k = m.name.toLowerCase(); if (!seen.has(k)) { seen.add(k); masters.push({ key: k, name: m.name, title: m.title }); } });
   masters.sort((a, b) => a.name.localeCompare(b.name));
-  return { lookup, houses, masters };
+  // Active teaching staff who can be put on duty for a group (a House Master who also teaches is listed once, as a House Master).
+  const teachers = staff
+    .filter((x) => (!x.status || /^active$/i.test(String(x.status))) && isTeachingStaff(x) && String(x.name || '').trim() && !seen.has(String(x.name).trim().toLowerCase()))
+    .map((x) => ({ key: `t:${String(x.name).trim().toLowerCase()}`, name: String(x.name).trim(), title: String(x.designation || '').trim() || 'Teaching staff', kind: 'teacher' }))
+    .filter((t, i, a) => a.findIndex((y) => y.key === t.key) === i)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { lookup, houses, masters, teachers };
 }
