@@ -68,6 +68,8 @@ import FaceAttendance     from './FaceAttendance'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
 import { ADMIN_ROLES, isAdminRole } from './roles'
+import ReadOnlyShield from './ReadOnlyShield'
+import { hasWriteRights } from './lib/readOnlyShield'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -1051,6 +1053,9 @@ export default function App() {
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
+  // Older modules never read their `perms` prop, so "read" used to mean full edit rights there. For the sensitive ones,
+  // a non-admin without add / edit / delete rights now gets a view-only screen.
+  const viewOnly = (key, label, node) => (!isAdmin && !hasWriteRights(permMap[key]) ? <ReadOnlyShield label={label}>{node}</ReadOnlyShield> : node)
   const moduleMap = {
     // onNavigate: Students is edit-only now — its "New Admission" button sends staff to Admissions.
     students:          <Students          currentUser={currentUser} perms={perms('students')} onNavigate={setActive} />,
@@ -1061,12 +1066,12 @@ export default function App() {
     bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}     />,
     fees:              <Fees              currentUser={currentUser} perms={perms('fees')}              />,
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-    salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    salary:            viewOnly('salary', 'Salary', <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />),
     staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection}
                           staffDirectory={<Staff currentUser={currentUser} perms={perms('staff')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />} />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
-    awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
+    awards:            viewOnly('awards', 'Awards', <Awards            currentUser={currentUser} perms={perms('awards')}            />),
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null}
                           onNavigate={setActive} onLogout={handleLogout} onStaffChange={fetchSharedStaff} />,
@@ -1088,7 +1093,7 @@ export default function App() {
     cbt:               <Cbt               currentUser={currentUser} perms={perms('cbt')}               />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
-    construction:      <ConstructionMaintenance />,
+    construction:      viewOnly('construction', 'Construction', <ConstructionMaintenance />),
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass

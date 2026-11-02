@@ -96,7 +96,7 @@ export default function Entrance({ currentUser, perms }) {
   const [newExam, setNewExam] = useState(0)
 
   const can = useMemo(() => ({
-    add: perms ? !!perms.add : true, edit: perms ? !!perms.edit : true, delete: perms ? !!perms.delete : true,
+    add: !!perms?.add, edit: !!perms?.edit, delete: !!perms?.delete,
   }), [perms])
   const user = currentUser?.name || currentUser?.username || currentUser?.role || 'staff'
 
