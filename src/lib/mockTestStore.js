@@ -315,3 +315,83 @@ export async function saveClassLanguage(batch, language, mode, who = '') {
   );
   if (error) throw error;
 }
+
+// ─── Duty desk: students removed from a group, and manually built groups ─────
+// removed: a teacher/admin takes a student out of the self-study groups (kept per series + basis, restorable).
+// custom : a group built from a manual choice of students, with its own name, duty person and student list.
+// Tables `mock_test_removed_students` and `mock_test_custom_groups` (20261052_mock_test_duty_desk.sql);
+// browser copies are kept as the fallback while the migration is pending.
+const REM_TABLE = 'mock_test_removed_students';
+const REM_LS = 'gnsi_mock_removed_students_v1';
+const CUS_TABLE = 'mock_test_custom_groups';
+const CUS_LS = 'gnsi_mock_custom_groups_v1';
+const jread = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v ?? d; } catch { return d; } };
+const jwrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
+
+// → { removed: { [basis]: { [sid]: { reason, by, at } } }, mode }
+export async function loadRemoved(series) {
+  const local = (jread(REM_LS, {}) || {})[series] || {};
+  const { data, error } = await supabase.from(REM_TABLE).select('basis, student_key, reason, removed_by, removed_at').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { removed: local, mode: 'local' };
+    throw error;
+  }
+  const removed = {};
+  data.forEach((r) => { (removed[r.basis] ||= {})[r.student_key] = { reason: r.reason || '', by: r.removed_by || '', at: r.removed_at || '' }; });
+  return { removed, mode: 'cloud' };
+}
+
+// info: { reason } to remove, or null to bring the student back.
+export async function saveRemoved(series, basis, sid, info, mode, who = '') {
+  const b = basisKey(basis);
+  const all = jread(REM_LS, {}) || {};
+  const cur = { ...(all[series] || {}) };
+  const forBasis = { ...(cur[b] || {}) };
+  if (info) forBasis[sid] = { reason: info.reason || '', by: who, at: new Date().toISOString() }; else delete forBasis[sid];
+  cur[b] = forBasis;
+  jwrite(REM_LS, { ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (!info) {
+    const { error } = await supabase.from(REM_TABLE).delete().eq('series', series).eq('basis', b).eq('student_key', sid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(REM_TABLE).upsert(
+    { series, basis: b, student_key: sid, reason: info.reason || null, removed_by: who || null, removed_at: new Date().toISOString() },
+    { onConflict: 'series,basis,student_key' },
+  );
+  if (error) throw error;
+}
+
+// → { groups: [{ id, name, basis, dutyName, dutyTitle, students: [sid], note }], mode }
+export async function loadCustomGroups(series) {
+  const local = (jread(CUS_LS, {}) || {})[series] || [];
+  const { data, error } = await supabase.from(CUS_TABLE).select('*').eq('series', series).order('created_at', { ascending: true });
+  if (error) {
+    if (missingTable(error)) return { groups: local, mode: 'local' };
+    throw error;
+  }
+  return { groups: data.map((r) => ({ id: r.id, name: r.name, basis: r.basis || '', dutyName: r.duty_name || '', dutyTitle: r.duty_title || '', students: Array.isArray(r.student_keys) ? r.student_keys : [], note: r.note || '' })), mode: 'cloud' };
+}
+
+export const newGroupId = () => `cg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export async function saveCustomGroup(series, group, mode, who = '') {
+  const all = jread(CUS_LS, {}) || {};
+  const list = [...(all[series] || []).filter((g) => g.id !== group.id), group];
+  jwrite(CUS_LS, { ...all, [series]: list });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(CUS_TABLE).upsert(
+    { id: group.id, series, name: group.name, basis: group.basis || null, duty_name: group.dutyName || null, duty_title: group.dutyTitle || null, student_keys: group.students, note: group.note || null, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'id' },
+  );
+  if (error) throw error;
+}
+
+export async function deleteCustomGroup(series, id, mode) {
+  const all = jread(CUS_LS, {}) || {};
+  jwrite(CUS_LS, { ...all, [series]: (all[series] || []).filter((g) => g.id !== id) });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(CUS_TABLE).delete().eq('series', series).eq('id', id);
+  if (error) throw error;
+}

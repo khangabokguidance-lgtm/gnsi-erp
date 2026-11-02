@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildHouseDirectory, hmTitle } from '../src/lib/houseMasters.js'
+import { buildHouseDirectory, hmTitle, isTeachingStaff } from '../src/lib/houseMasters.js'
 
 const students = [
   { gcc_no: 11, house: 'Shivaji', status: 'Active' },
@@ -48,4 +48,22 @@ test('an assignment with no linked staff record falls back to its own name', () 
 test('the list of people who can be chosen: one entry each, names from the Staff Records', () => {
   const d = buildHouseDirectory({ students, housemasters: [...housemasters, { name: 'Rohit Sharma', house: 'Ashoka', staff_profile_id: 7, status: 'Active' }], staff })
   assert.deepEqual(d.masters.map((m) => [m.name, m.title]), [['Anita Devi', 'House Mistress'], ['Rohit Sharma', 'House Master']])
+})
+
+test('teaching staff from the Staff Records can be chosen for duty', () => {
+  assert.equal(isTeachingStaff({ role: 'Teaching' }), true)
+  assert.equal(isTeachingStaff({ role: 'Teaching + Admin' }), true)
+  assert.equal(isTeachingStaff({ role: 'Non-Teaching', designation: 'Accountant' }), false)
+  assert.equal(isTeachingStaff({ role: '', designation: 'PGT Mathematics' }), true)
+  const staffAll = [
+    ...staff,
+    { id: 20, name: 'Meera Singh', designation: 'Senior Teacher', role: 'Teaching', status: 'Active' },
+    { id: 21, name: 'Old Teacher', designation: 'Teacher', role: 'Teaching', status: 'Inactive' },
+    { id: 22, name: 'Cashier', designation: 'Accountant', role: 'Non-Teaching', status: 'Active' },
+    { id: 7, name: 'Rohit Sharma', designation: 'House Master', role: 'Teaching', status: 'Active' },
+  ]
+  const d = buildHouseDirectory({ students, housemasters, staff: staffAll })
+  assert.deepEqual(d.teachers.map((t) => [t.name, t.title, t.kind]), [['Meera Singh', 'Senior Teacher', 'teacher']])   // no inactive, no non-teaching, House Master not repeated
+  assert.deepEqual(d.masters.map((m) => m.name), ['Anita Devi', 'Rohit Sharma'])
+  assert.ok(d.teachers[0].key.startsWith('t:'))
 })

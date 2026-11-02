@@ -17,7 +17,7 @@ const rows = [
 ]
 const ctxFor = (extra = {}) => ({
   hmOf: (g) => (g === 'a'.charCodeAt(0) ? { house: 'Shivaji', label: 'Rohit Sharma' } : { house: 'Ashoka', label: 'Anita Devi' }),
-  mentorOf: (c, g) => (g.no === 1 ? { name: 'Mentor One' } : null),
+  mentorOf: (c, g) => (g.no === 1 ? { name: 'Mentor One', title: 'Teacher' } : g.no === 2 ? { name: 'Rohit Sharma', title: 'House Master' } : null),
   autoGroupOf: () => 2, basis: '', passPct: 40, ...extra,
 })
 const classes = classGroups(rows, {})
@@ -48,7 +48,8 @@ test('filters: group range, class, house, trend, score, below pass, search, ment
   assert.ok(withMentor.length && withMentor.every((r) => r.mentor === 'Mentor One'))
   const none = applyReportFilter(recs, { ...emptyReportFilter(), mentor: NOT_ASSIGNED })
   assert.ok(none.length && none.every((r) => !r.mentor))
-  assert.equal(none.length + withMentor.length, 8)
+  const other = applyReportFilter(recs, { ...emptyReportFilter(), mentor: 'Rohit Sharma' })
+  assert.equal(none.length + withMentor.length + other.length, 8)
 })
 test('sorting', () => {
   assert.equal(sortRecords(recs, 'scoreAsc')[0].name, 'A')
@@ -60,7 +61,7 @@ test('the six report types', () => {
   const ctx = {}
   const roster = buildReport('roster', recs, ctx)
   assert.equal(roster.rows.length, 8); assert.ok(roster.columns.some((c) => c.label === 'House Master / Mistress'))
-  assert.equal(roster.rows[0]['Assigned mentor'] !== undefined, true)
+  assert.equal(roster.rows[0]['On duty'] !== undefined, true)
   const cards = buildReport('cards', recs, ctx)
   assert.deepEqual(cards.subjects.sort(), ['EVS', 'Maths']); assert.ok(cards.rows.find((r) => r.Name === 'C')['Study focus'].startsWith('EVS'))
   const sum = buildReport('summary', recs, ctx)
@@ -68,7 +69,7 @@ test('the six report types', () => {
   const sub = buildReport('subjects', recs, ctx)
   assert.ok(sub.columns.some((c) => c.key === 'Maths')); assert.ok(sub.heat.includes('EVS'))
   const men = buildReport('mentors', recs, ctx)
-  assert.ok(men.rows.some((r) => r.Person === 'Mentor One') && men.rows.some((r) => r.Person === 'Not assigned'))
+  assert.ok(men.rows.some((r) => r.Person === 'Mentor One (Teacher)') && men.rows.some((r) => r.Person === 'Nobody on duty'))
   assert.equal(men.rows.reduce((t, r) => t + r['Students in those groups'], 0), 8)
   const moved = buildReport('moves', recordsFrom(classGroups(rows, { overrides: { a: 7 } }), ctxFor()), ctx)
   assert.deepEqual(moved.rows.map((r) => [r.Name, r.From, r.To.startsWith('Group 7')]), [['A', 'Group 2', true]])
@@ -76,11 +77,18 @@ test('the six report types', () => {
 test('smart insights say what matters', () => {
   const t = smartInsights(recs, { passPct: 40 }).join(' | ')
   assert.match(t, /8 students/); assert.match(t, /below the 40% pass mark/); assert.match(t, /Weakest subject overall: EVS/)
-  assert.match(t, /Groups 1–2/); assert.match(t, /1 declining: A/); assert.match(t, /no House Master/)
+  assert.match(t, /Groups 1–2/); assert.match(t, /1 declining: A/); assert.match(t, /nobody assigned for duty/)
   assert.deepEqual(smartInsights([]), ['No students match the filters.'])
 })
 test('quick reports set a type and filters that exist', () => {
   const ids = QUICK_REPORTS.map((q) => q.id)
   assert.ok(ids.includes('support') && ids.includes('declining'))
   QUICK_REPORTS.forEach((q) => { assert.ok(['roster', 'cards', 'summary', 'subjects', 'mentors', 'moves'].includes(q.type)); Object.keys(q.filter).forEach((k) => assert.ok(k in emptyReportFilter())) })
+})
+
+test('duty roster names the person and title; house counts only for House Masters', () => {
+  const men = buildReport('mentors', recs, {})
+  assert.ok(men.rows.some((r) => r.Person === 'Mentor One (Teacher)' && r['Students from their house'] === '—'))
+  assert.ok(men.rows.some((r) => r.Person === 'Rohit Sharma (House Master)' && typeof r['Students from their house'] === 'number'))
+  assert.equal(men.title, 'Duty roster')
 })

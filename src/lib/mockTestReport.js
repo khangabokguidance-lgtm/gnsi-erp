@@ -9,10 +9,10 @@ import { mean } from './mockTestEngine.js';
 
 export const REPORT_TYPES = [
   { id: 'roster', label: 'Group roster', hint: 'Every student with group, house, House Master / Mistress, weakest subject and trend' },
-  { id: 'cards', label: 'Student study cards', hint: 'One card per student: marks by subject, study focus and the assigned mentor' },
-  { id: 'summary', label: 'Group summary', hint: 'Per group: students, average, range, focus subject, below pass mark, assigned mentor' },
+  { id: 'cards', label: 'Student study cards', hint: 'One card per student: marks by subject, study focus and the person on duty' },
+  { id: 'summary', label: 'Group summary', hint: 'Per group: students, average, range, focus subject, below pass mark, who is on duty' },
   { id: 'subjects', label: 'Subject-wise matrix', hint: 'Average % in every subject, group by group' },
-  { id: 'mentors', label: 'House Master / Mistress workload', hint: 'The groups and students each person looks after' },
+  { id: 'mentors', label: 'Duty roster (House Masters & teaching staff)', hint: 'Who is on duty for which group, and how many students each person looks after' },
   { id: 'moves', label: 'Manual moves', hint: 'Students an admin moved away from their automatic group' },
 ];
 
@@ -46,7 +46,7 @@ export function recordsFrom(classes, ctx) {
       name: s.name, gcc: s.gcc, score: s.avg, overall: s.overall, subj: s.subj || {}, tests: s.tests,
       weakest: s.weakest || '', strongest: s.strongest || '', trend: t, trendText: trendLabel(t),
       manual: !!s.manual, autoGroup: autoGroupOf ? autoGroupOf(s.sid, c) : null,
-      house: h.house || '', hm: h.label || '', mentor: mentorOf?.(c, g)?.name || '', focus: g.focus || '',
+      house: h.house || '', hm: h.label || '', mentor: mentorOf?.(c, g)?.name || '', mentorTitle: mentorOf?.(c, g)?.title || '', focus: g.focus || '',
       below: s.avg < passPct,
     };
   })));
@@ -94,7 +94,7 @@ export const QUICK_REPORTS = [
   { id: 'declining', label: 'Declining students', type: 'roster', filter: { trend: 'Declining', sort: 'trendAsc' } },
   { id: 'improving', label: 'Most improved', type: 'roster', filter: { trend: 'Improving', sort: 'trendDesc' } },
   { id: 'moved', label: 'Moved by admin', type: 'moves', filter: { manualOnly: true } },
-  { id: 'nomentor', label: 'No mentor assigned', type: 'summary', filter: { mentor: NONE } },
+  { id: 'nomentor', label: 'Nobody on duty', type: 'summary', filter: { mentor: NONE } },
 ];
 
 const gLabel = (r) => `Group ${r.group} · ${r.tag}`;
@@ -121,16 +121,16 @@ export function buildReport(type, records, ctx = {}) {
     const subs = subjectsIn(recs);
     return {
       type, title: 'Student study cards', groupBy: 'Group',
-      columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], [basisName + ' %', `${basisName} %`], ...subs.map((s) => [s + ' %', `${s} %`]), ['Study focus', 'Study focus'], ['Trend', 'Trend'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['Assigned mentor', 'Assigned mentor']),
-      rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, [basisName + ' %']: r1(r.score), ...Object.fromEntries(subs.map((s) => [s + ' %', r1(r.subj[s] ?? null)])), 'Study focus': focusText(r) || '—', Trend: r.trendText || '—', House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'Assigned mentor': r.mentor || '—' })),
+      columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], [basisName + ' %', `${basisName} %`], ...subs.map((s) => [s + ' %', `${s} %`]), ['Study focus', 'Study focus'], ['Trend', 'Trend'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty', 'On duty']),
+      rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, [basisName + ' %']: r1(r.score), ...Object.fromEntries(subs.map((s) => [s + ' %', r1(r.subj[s] ?? null)])), 'Study focus': focusText(r) || '—', Trend: r.trendText || '—', House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty': r.mentor || '—' })),
       cards: recs, subjects: subs,
     };
   }
   if (type === 'summary') {
     return {
       type, title: 'Group summary',
-      columns: cols(['Class / set', 'Class / set'], ['Group', 'Group'], ['Students', 'Students'], [`Average %`, 'Average %'], ['Lowest %', 'Lowest %'], ['Highest %', 'Highest %'], ['Below pass', 'Below pass mark'], ['Declining', 'Declining'], ['Focus subject', 'Focus subject'], ['Moved by admin', 'Moved by admin'], ['Assigned mentor', 'Assigned mentor']),
-      rows: buckets(recs).map(({ set, group, tag, rs }) => { const low = lowestSubject(rs); return { 'Class / set': set, Group: `Group ${group} · ${tag}`, Students: rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Lowest %': r1(Math.min(...rs.map((r) => r.score))), 'Highest %': r1(Math.max(...rs.map((r) => r.score))), 'Below pass': rs.filter((r) => r.below).length, Declining: rs.filter((r) => r.trendText === 'Declining').length, 'Focus subject': low ? `${low.subject} (${Math.round(low.pct)}%)` : '—', 'Moved by admin': rs.filter((r) => r.manual).length, 'Assigned mentor': rs[0].mentor || 'not assigned' }; }),
+      columns: cols(['Class / set', 'Class / set'], ['Group', 'Group'], ['Students', 'Students'], [`Average %`, 'Average %'], ['Lowest %', 'Lowest %'], ['Highest %', 'Highest %'], ['Below pass', 'Below pass mark'], ['Declining', 'Declining'], ['Focus subject', 'Focus subject'], ['Moved by admin', 'Moved by admin'], ['On duty', 'On duty']),
+      rows: buckets(recs).map(({ set, group, tag, rs }) => { const low = lowestSubject(rs); return { 'Class / set': set, Group: `Group ${group} · ${tag}`, Students: rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Lowest %': r1(Math.min(...rs.map((r) => r.score))), 'Highest %': r1(Math.max(...rs.map((r) => r.score))), 'Below pass': rs.filter((r) => r.below).length, Declining: rs.filter((r) => r.trendText === 'Declining').length, 'Focus subject': low ? `${low.subject} (${Math.round(low.pct)}%)` : '—', 'Moved by admin': rs.filter((r) => r.manual).length, 'On duty': rs[0].mentor || 'not assigned' }; }),
     };
   }
   if (type === 'subjects') {
@@ -147,22 +147,24 @@ export function buildReport(type, records, ctx = {}) {
     const people = [...by.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
     const rows = [...people, ...(by.has('') ? [''] : [])].map((name) => {
       const bs = by.get(name), rs = bs.flatMap((b) => b.rs);
-      return { Person: name || 'Not assigned', 'Groups looked after': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
+      const title = bs[0].rs[0].mentorTitle || '';
+      const isHouse = /^house/i.test(title);
+      return { Person: name ? `${name}${title ? ` (${title})` : ''}` : 'Nobody on duty', 'Groups on duty': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name && isHouse ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
     });
-    return { type, title: 'House Master / Mistress workload', columns: cols(['Person', 'House Master / Mistress'], ['Groups looked after', 'Groups looked after'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house']), rows };
+    return { type, title: 'Duty roster', columns: cols(['Person', 'On duty'], ['Groups on duty', 'Groups on duty'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house (House Masters)']), rows };
   }
   if (type === 'moves') {
     return {
       type, title: 'Manual moves',
-      columns: cols(['Name', 'Student'], ['GCC', 'GCC'], ['Class', 'Class'], ['From', 'Automatic group'], ['To', 'Group now'], [`${basisName} %`, `${basisName} %`], ['Assigned mentor', 'Assigned mentor']),
-      rows: recs.filter((r) => r.manual).map((r) => ({ Name: r.name, GCC: r.gcc, Class: r.class, From: r.autoGroup ? `Group ${r.autoGroup}` : '—', To: `Group ${r.group} · ${r.tag}`, [`${basisName} %`]: r1(r.score), 'Assigned mentor': r.mentor || '—' })),
+      columns: cols(['Name', 'Student'], ['GCC', 'GCC'], ['Class', 'Class'], ['From', 'Automatic group'], ['To', 'Group now'], [`${basisName} %`, `${basisName} %`], ['On duty', 'On duty']),
+      rows: recs.filter((r) => r.manual).map((r) => ({ Name: r.name, GCC: r.gcc, Class: r.class, From: r.autoGroup ? `Group ${r.autoGroup}` : '—', To: `Group ${r.group} · ${r.tag}`, [`${basisName} %`]: r1(r.score), 'On duty': r.mentor || '—' })),
     };
   }
   // roster (default)
   return {
     type: 'roster', title: 'Group roster', groupBy: 'Group',
-    columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['Assigned mentor', 'Assigned mentor'], [`${basisName} %`, `${basisName} %`], ['Weakest subject', 'Weakest subject'], ['Trend', 'Trend'], ['Moved', 'Moved by admin']),
-    rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'Assigned mentor': r.mentor || '—', [`${basisName} %`]: r1(r.score), 'Weakest subject': r.weakest || '—', Trend: r.trendText || '—', Moved: r.manual ? 'Yes' : '' })),
+    columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty', 'On duty'], [`${basisName} %`, `${basisName} %`], ['Weakest subject', 'Weakest subject'], ['Trend', 'Trend'], ['Moved', 'Moved by admin']),
+    rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty': r.mentor || '—', [`${basisName} %`]: r1(r.score), 'Weakest subject': r.weakest || '—', Trend: r.trendText || '—', Moved: r.manual ? 'Yes' : '' })),
   };
 }
 
@@ -184,7 +186,7 @@ export function smartInsights(records, { passPct = 40, basis = '' } = {}) {
   if (imp.length) out.push(`${imp.length} improving: ${names(imp)}${imp.length > 3 ? '…' : ''}.`);
   const sets = buckets(records);
   const unassigned = sets.filter((b) => !b.rs[0].mentor).length;
-  if (unassigned) out.push(`${unassigned} of ${sets.length} group${sets.length === 1 ? '' : 's'} ha${unassigned === 1 ? 's' : 've'} no House Master / Mistress assigned yet.`);
+  if (unassigned) out.push(`${unassigned} of ${sets.length} group${sets.length === 1 ? '' : 's'} ha${unassigned === 1 ? 's' : 've'} nobody assigned for duty yet.`);
   const moved = records.filter((r) => r.manual).length;
   if (moved) out.push(`${moved} student${moved === 1 ? ' was' : 's were'} moved by an admin from the automatic group.`);
   return out;
@@ -197,7 +199,7 @@ export function describeReportFilter(f) {
   if (f.classes.length) bits.push(`Class: ${f.classes.join(', ')}`);
   if (f.house) bits.push(`House: ${f.house}`);
   if (f.hm) bits.push(`House Master/Mistress: ${f.hm}`);
-  if (f.mentor) bits.push(f.mentor === NONE ? 'No assigned mentor' : `Assigned: ${f.mentor}`);
+  if (f.mentor) bits.push(f.mentor === NONE ? 'Nobody on duty' : `On duty: ${f.mentor}`);
   if (f.weakest) bits.push(`Weakest subject: ${f.weakest}`);
   if (f.trend) bits.push(f.trend);
   const lo = numOrNull(f.scoreMin), hi = numOrNull(f.scoreMax);

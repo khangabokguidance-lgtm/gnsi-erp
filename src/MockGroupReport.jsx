@@ -78,7 +78,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
     if (type === 'cards') {
       body = `<div class="grid2">${report.cards.map((r) => `<div class="box avoid"><b style="font-size:12.5px">${esc(r.name)}</b> <span style="color:#475569">· ${esc(r.class)} · GCC ${esc(r.gcc)}</span><br><span class="pill" style="background:${r.group <= 2 ? '#dc2626' : r.group >= 6 ? '#047857' : '#ca8a04'}">Group ${r.group} · ${esc(r.tag)}</span> <b>${fx(r.score)}%</b>${r.trendText ? ` · ${esc(r.trendText)}` : ''}
         <div style="margin-top:5px">${subs.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:92px;font-size:10px">${esc(s)}</span><span style="flex:1;background:#e2e8f0;border-radius:4px;height:8px"><span style="display:block;height:8px;width:${Math.min(100, Math.max(0, r.subj[s] ?? 0))}%;background:${barColor(r.subj[s] ?? 0, passPct)};border-radius:4px"></span></span><span style="width:34px;text-align:right;font-size:10px">${fx(r.subj[s])}%</span></div>`).join('')}</div>
-        <div style="margin-top:4px;font-size:10px"><b>Focus:</b> ${esc(report.rows.find((x) => x.Name === r.name && x.GCC === r.gcc)?.['Study focus'] || '—')}<br><b>House:</b> ${esc(r.house || '—')} · <b>House Master/Mistress:</b> ${esc(r.hm || '—')}<br><b>Assigned mentor:</b> ${esc(r.mentor || '—')}</div></div>`).join('')}</div>`;
+        <div style="margin-top:4px;font-size:10px"><b>Focus:</b> ${esc(report.rows.find((x) => x.Name === r.name && x.GCC === r.gcc)?.['Study focus'] || '—')}<br><b>House:</b> ${esc(r.house || '—')} · <b>House Master/Mistress:</b> ${esc(r.hm || '—')}<br><b>On duty:</b> ${esc(r.mentor || '—')}</div></div>`).join('')}</div>`;
     } else if (report.groupBy === 'Group') {
       const groups = [...new Set(report.rows.map((r) => r.Group))];
       body = groups.map((g) => { const rs = report.rows.filter((r) => r.Group === g); return `<div class="avoid"><h3>${esc(g)} — ${rs.length} student${rs.length === 1 ? '' : 's'}</h3><table>${head(report.columns.filter((c) => c.key !== 'Group'))}<tbody>${rs.map((r) => rowHtml(report.columns.filter((c) => c.key !== 'Group'), r)).join('')}</tbody></table></div>`; }).join('');
@@ -88,7 +88,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
     printDocument(`<div class="page">${letterhead(institute)}<div class="title">${esc(report.title)}</div>
       <div class="sub">${esc(series)}${basis ? ` · ${esc(basis)}` : ''} · ${esc(layoutLabel)}<br>${esc(desc)}</div>${kpis}
       <h3>Smart summary</h3><ul class="ins">${insights.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${body}
-      <div class="sig"><span>Prepared by</span><span>House Master / Mistress</span><span>Principal</span></div>
+      <div class="sig"><span>Prepared by</span><span>Person on duty</span><span>Principal</span></div>
       <div class="foot">Generated ${esc(new Date().toLocaleString('en-IN'))}</div></div>`, `${report.title} - ${series}`);
   };
 
@@ -131,7 +131,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
           </F>
           <F label="House"><select style={S.input} value={f.house} onChange={(e) => set({ house: e.target.value })} aria-label="House"><option value="">All houses</option>{houses.map((h) => <option key={h}>{h}</option>)}</select></F>
           <F label="House Master / Mistress"><select style={S.input} value={f.hm} onChange={(e) => set({ hm: e.target.value })} aria-label="House Master or Mistress"><option value="">Anyone</option>{hms.map((h) => <option key={h}>{h}</option>)}</select></F>
-          <F label="Assigned mentor"><select style={S.input} value={f.mentor} onChange={(e) => set({ mentor: e.target.value })} aria-label="Assigned mentor"><option value="">Anyone</option><option value={NOT_ASSIGNED}>Not assigned</option>{mentors.map((h) => <option key={h}>{h}</option>)}</select></F>
+          <F label="On duty"><select style={S.input} value={f.mentor} onChange={(e) => set({ mentor: e.target.value })} aria-label="Person on duty"><option value="">Anyone</option><option value={NOT_ASSIGNED}>Nobody assigned</option>{mentors.map((h) => <option key={h}>{h}</option>)}</select></F>
           <F label="Weakest subject"><select style={S.input} value={f.weakest} onChange={(e) => set({ weakest: e.target.value })} aria-label="Weakest subject"><option value="">Any</option>{weakSubs.map((h) => <option key={h}>{h}</option>)}</select></F>
           <F label="Trend"><select style={S.input} value={f.trend} onChange={(e) => set({ trend: e.target.value })} aria-label="Trend"><option value="">Any</option><option>Improving</option><option>Steady</option><option>Declining</option></select></F>
           <F label="Marks from %"><input type="number" min={0} max={100} style={{ ...S.input, width: 80 }} value={f.scoreMin} onChange={(e) => set({ scoreMin: e.target.value })} aria-label="Marks from" /></F>
