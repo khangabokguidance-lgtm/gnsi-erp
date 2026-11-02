@@ -21,6 +21,7 @@ import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from 
 import { loadHouseDirectory } from './houseDirectory';
 import MockGroupReport from './MockGroupReport';
 import MockDutyDesk from './MockDutyDesk';
+import MockRevisionPlan from './MockRevisionPlan';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 import { pickInstruction, hasInstruction, slotText, DAYS } from './lib/dutyInstruction';
 import { mergeSchedule, withSchedule, stripScheduleDefaults } from './lib/studySchedule';
@@ -49,6 +50,7 @@ const SUBTABS = [
   { id: 'subject', color: '#b45309', icon: 'subject', label: 'Subject Analysis' },
   { id: 'batch', color: '#047857', icon: 'batch', label: 'Batch / Test Report' },
   { id: 'groups', color: '#be185d', icon: 'groups', label: 'Self-Study Groups' },
+  { id: 'revision', color: '#0369a1', icon: 'subject', label: 'Revision Plan' },
   { id: 'data', color: '#6d28d9', icon: 'data', label: 'Upload & Data' },
 ];
 
@@ -204,7 +206,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
           <button key={t.id} className="mta-tab" onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 1 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
         ))}
       </div>
-      {!rows.length && tab !== 'data' ? (
+      {!rows.length && tab !== 'data' && tab !== 'revision' ? (
         resolved.length ? (
           <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
             <div style={{ fontSize: 34 }}>🔎</div>
@@ -226,6 +228,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'groups' ? <GroupsView key={`${series}|${viewKey}`} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
+      {tab === 'revision' ? <MockRevisionPlan key={`${series}|${viewKey}`} rows={rows} series={seriesLabel} passPct={passPct} institute={institute} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />

@@ -3,6 +3,13 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Mock Analyzer → Revision Plan & time table',
+    items: [
+      { type: 'new', module: 'exams', text: 'Pre Mock and Mega Mock Analyser have a new “Revision Plan” tab built on the Academic Time Table valid from 2 Nov 2026: for each class, every subject’s average, students below the pass mark, how many revision periods (and minutes) a day it gets, the teacher, and whether the time given matches how weak the class is — with plain advice such as moving a period from a strong subject to a weak one.' },
+      { type: 'new', module: 'exams', text: 'Revision Plan: a period-by-period day sheet for each class (weakest subject starred), the full colour time table for all 8 classes, a time table check (no teacher in two classes at once, one subject per period, teacher load) and print / PDF for the class plan and the time table.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Checklist → Today: daily teacher tool',
     items: [
       { type: 'new', module: 'checklist', text: 'Checklist now opens on a new “Today” tab for every teacher: your tasks for the day for Navodaya, Sainik and Foundation (with batch and subject), a tick-off progress bar, and day-by-day navigation.' },
