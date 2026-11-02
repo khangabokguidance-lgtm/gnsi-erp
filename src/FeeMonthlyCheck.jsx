@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { loadMonthlyFeeScan } from './hostelFeeCheck'
 import StudentJump from './StudentJump'
 import { sessionOfMonthYear } from './lib/feeTypeDetect'
+import { roundingCandidates } from './lib/monthlyFeeCheck'
+import { correctFeeCollectionAmount } from './feeEngine'
+import { loggedInName } from './lib/collector'
 import { sessionOfDate } from './feeLedgerModel'
 import { card, cell, head, btn, input, pill, titleStyle, subtitleStyle } from './feeTheme'
 
@@ -28,7 +31,7 @@ function downloadCsv(rows, filename) {
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
 }
 
-export default function FeeMonthlyCheck({ students = [], adm_course_fees = [], adm_flat_fees = [], onCollect, onLedger }) {
+export default function FeeMonthlyCheck({ students = [], adm_course_fees = [], adm_flat_fees = [], onCollect, onLedger, isAdmin = false, currentUser = null, onChanged }) {
   const [scan, setScan] = useState(null)       // { results, summary } | { error }
   const [session, setSession] = useState(sessionOfDate(new Date()))
   const [only, setOnly] = useState('problems')  // 'problems' | 'all'
@@ -70,6 +73,30 @@ export default function FeeMonthlyCheck({ students = [], adm_course_fees = [], a
     return c
   }, [scan, session])
 
+  // ── Round small differences (admin) ──────────────────────────────────────
+  const candidates = useMemo(() => (scan && !scan.error ? roundingCandidates(scan.results).filter((c) => c.session === session) : []), [scan, session]);
+  const [skip, setSkip] = useState(() => new Set());           // ids the admin un-ticked
+  const [roundBusy, setRoundBusy] = useState(false);
+  const [roundMsg, setRoundMsg] = useState('');
+  const ticked = candidates.filter((c) => !skip.has(`${c.table}:${c.id}`));
+  const toggle = (c) => setSkip((cur) => { const n = new Set(cur); const k = `${c.table}:${c.id}`; if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const beforeCsv = () => downloadCsv(ticked.map((c) => ({ GCC: c.student.gcc_no, Student: c.student.name, Fee: c.kind === 'flat' ? 'Flat' : 'Course', Month: c.month, Year: c.year, Receipt: c.receipt, Mode: c.mode, Table: c.table, 'Row id': c.id, 'Recorded amount': c.from, 'Rounded to': c.to, Difference: c.diff })), `rounding-before-${session}.csv`);
+  const applyRounding = async () => {
+    if (!ticked.length) return;
+    const net = ticked.reduce((t, c) => t + (c.to - c.from), 0);
+    if (!window.confirm(`Round ${ticked.length} payment${ticked.length > 1 ? 's' : ''} to the standard rate (net ${net >= 0 ? '+' : '−'}₹${Math.abs(Math.round(net * 100) / 100)})?\n\nEach payment and its Accounts entry are changed and the old amount is saved in the audit log. Receipts already printed keep the old amount. For UPI / bank payments, check the money actually received first.`)) return;
+    setRoundBusy(true); setRoundMsg('');
+    const by = loggedInName(currentUser) || 'Admin';
+    let ok = 0; const failed = [];
+    for (const c of ticked) {
+      try { await correctFeeCollectionAmount({ table: c.table, id: c.id, newAmount: c.to, reason: `Rounded to the standard rate (₹${c.from} → ₹${c.to})`, correctedBy: by }); ok++; }
+      catch (e) { failed.push(`${c.student.name} ${c.month} ${c.year}: ${e.message || e}`); }
+    }
+    setRoundBusy(false);
+    setRoundMsg(`${ok} payment${ok === 1 ? '' : 's'} rounded.${failed.length ? ` ${failed.length} failed — ${failed.slice(0, 3).join('; ')}` : ''}`);
+    onChanged?.();
+  };
+
   const exportCsv = () => downloadCsv(rows.flatMap(r => r.months.map(m => ({
     GCC: r.student.gcc_no, Student: r.student.name, Course: m.course, 'Hostel type': m.hostelType, Fee: m.kind === 'flat' ? 'Flat' : 'Course',
     Month: m.month, Year: m.year, Expected: m.expected, Paid: m.paid, Difference: m.diff, Result: VERDICT[m.verdict]?.[0] || m.verdict,
@@ -103,6 +130,35 @@ export default function FeeMonthlyCheck({ students = [], adm_course_fees = [], a
             ))}
             <span style={{ ...card, padding: '8px 12px', color: '#64748b' }}>{counts.months} month payments checked</span>
           </div>
+
+          {isAdmin && (candidates.length > 0 || roundMsg) ? (
+            <div style={{ ...card, marginBottom: 12, border: '1.5px solid #b8923a' }}>
+              {candidates.length > 0 ? (
+                <>
+                  <b>{candidates.length} payment{candidates.length > 1 ? 's are' : ' is'} only a few rupees off the standard rate</b>
+                  <div style={{ fontSize: 12.5, color: '#64748b', margin: '2px 0 8px' }}>One payment in the month, ₹10 or less short or over, no concession, not an online payment. Rounding sets the payment to the standard rate, updates its Accounts entry and saves the old amount in the audit log. Untick any you want to leave.</div>
+                  <div style={{ overflowX: 'auto', maxHeight: 260, overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>{['', 'Student', 'Month', 'Fee', 'Receipt', 'Mode', 'Recorded', 'Rounded to'].map((h) => <th key={h} style={{ ...head, textAlign: 'left' }}>{h}</th>)}</tr></thead>
+                      <tbody>{candidates.map((c) => (
+                        <tr key={`${c.table}:${c.id}`}>
+                          <td style={cell}><input type="checkbox" aria-label={`Round ${c.student.name} ${c.month}`} checked={!skip.has(`${c.table}:${c.id}`)} onChange={() => toggle(c)} /></td>
+                          <td style={cell}>{c.student.name} <span style={{ color: '#94a3b8' }}>GCC {c.student.gcc_no}</span></td>
+                          <td style={cell}>{c.month} {c.year}</td><td style={cell}>{c.kind === 'flat' ? 'Flat' : 'Course'}</td>
+                          <td style={cell}>{c.receipt || '—'}</td><td style={cell}>{c.mode || '—'}</td>
+                          <td style={cell}>{inr(c.from)}</td><td style={{ ...cell, fontWeight: 700 }}>{inr(c.to)} <span style={{ color: c.diff < 0 ? '#b42318' : '#9a5b00', fontWeight: 600 }}>({c.diff > 0 ? '+' : ''}{c.diff})</span></td>
+                        </tr>))}</tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button type="button" style={btn} onClick={beforeCsv} disabled={!ticked.length}>Download before-values (CSV)</button>
+                    <button type="button" style={{ ...btn, background: '#132a4f', color: '#fff' }} onClick={applyRounding} disabled={!ticked.length || roundBusy}>{roundBusy ? 'Rounding…' : `Round ${ticked.length} payment${ticked.length === 1 ? '' : 's'}`}</button>
+                  </div>
+                </>
+              ) : null}
+              {roundMsg ? <div style={{ marginTop: 8, fontSize: 12.5, color: '#146c3a' }} role="status">{roundMsg}</div> : null}
+            </div>
+          ) : null}
 
           {rows.length === 0 ? (
             <div style={{ ...card, color: '#146c3a' }}>{only === 'problems' ? 'No mismatched months found for this session.' : 'No payments found for this session.'}</div>

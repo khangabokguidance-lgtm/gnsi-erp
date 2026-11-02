@@ -52,3 +52,23 @@ test('students with problems sort first and the summary counts them', () => {
   assert.equal(r.results[0].student.name, 'Bad')
   assert.deepEqual([r.summary.students, r.summary.withProblems, r.summary.short, r.summary.ok], [2, 1, 1, 1])
 })
+
+import { roundingCandidates } from '../src/lib/monthlyFeeCheck.js'
+test('rounding candidates: a single payment a few rupees off the rate, nothing else', () => {
+  const rows = [
+    crs('April', 2998, { id: 1 }),                                  // 2 short  -> candidate (to 3000)
+    crs('May', 3003, { id: 2 }),                                    // 3 over   -> candidate
+    crs('June', 2000, { id: 3 }),                                   // 1000 short -> not a rounding
+    crs('July', 2995, { id: 4, concession_status: 'approved' }),    // concession -> skip
+    crs('August', 2999, { id: 5, pay_mode: 'Razorpay' }),           // online -> skip
+    crs('September', 1500, { id: 6 }), crs('September', 1498, { id: 7 }), // two payments -> skip
+  ]
+  const c = roundingCandidates(run(rows).results)
+  assert.deepEqual(c.map((x) => [x.month, x.id, x.from, x.to, x.diff]), [['April', 1, 2998, 3000, -2], ['May', 2, 3003, 3000, 3]])
+  assert.equal(c[0].table, 'adm_course_fees')
+})
+test('rounding candidates: the limit is adjustable', () => {
+  const c = roundingCandidates(run([crs('April', 2985, { id: 1 })]).results, { maxDiff: 20 })
+  assert.equal(c.length, 1)
+  assert.equal(roundingCandidates(run([crs('April', 2985, { id: 1 })]).results).length, 0)
+})
