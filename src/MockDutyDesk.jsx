@@ -5,7 +5,7 @@
 //   • premium A4 duty sheets (one page set per person) and Excel
 // Logic lives in lib/mockTestDuty.js; saving is done by GroupsView (MockTestAnalyzer.jsx).
 import { useMemo, useState } from 'react';
-import { printDocument, letterhead } from './lib/mockTestReports';
+import { printPremium, ICON } from './lib/printPremium';
 import { studentAverages, GROUP_META } from './lib/mockTestGroups';
 import { removedList, mayAct, sameName, initials, filterDutiesBySubjects, dutySubjects, dutyRoomClashes } from './lib/mockTestDuty';
 import { pickInstruction, slotText, slotClashes, instructionMessage, hasInstruction, emptyInstruction } from './lib/dutyInstruction';
@@ -107,37 +107,43 @@ export default function MockDutyDesk({
   const canCreate = canEdit || isTeacherUser;
 
   // ── duty sheet (print) and Excel ───────────────────────────────────────────
+  // ── premium A4 duty sheet (one section per person, a new page for each) ────────────
+  const attCols = [1, 2, 3, 4, 5, 6];
   const dutyPages = (people) => people.map((p) => {
-    const secs = p.sections.map((s) => { const d = pickInstruction(s.instruction); const slot = slotText(d); const given = d.venue || d.reason || slot || d.instruction;
-      return `<div class="avoid"><h3>${esc(s.label)} <span style="font-weight:600;color:#475569;text-transform:none;letter-spacing:0">· ${esc(s.subject)} · ${s.students.length} student${s.students.length === 1 ? '' : 's'}</span></h3>
-      <div style="border:1px solid #cbd5e1;border-left:4px solid ${given ? '#b8923a' : '#dc2626'};border-radius:5px;padding:6px 9px;margin:0 0 6px;background:${given ? '#fffbeb' : '#fef2f2'};font-size:10.5px">
-        ${given ? `${d.venue ? `<div><b>📍 Where:</b> ${esc(d.venue)}</div>` : ''}${d.reason ? `<div><b>🎯 Why (reason):</b> ${esc(d.reason)}</div>` : ''}${slot ? `<div><b>🕔 When:</b> ${esc(slot)}</div>` : ''}${d.instruction ? `<div><b>📋 What you must do:</b> ${esc(d.instruction)}</div>` : ''}` : '<b>No instruction has been given for this group yet — please ask the admin where, why and when you are to be on duty.</b>'}
-        ${s.note && !d.instruction ? `<div style="color:#475569">${esc(s.note)}</div>` : ''}</div>
-      <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Class</th><th class="l">House</th><th>${esc(s.basis || 'Avg')} %</th><th class="l">Weakest</th>${[1, 2, 3, 4, 5, 6].map((n) => `<th style="width:20px">${n}</th>`).join('')}<th class="l" style="width:70px">Remarks</th></tr></thead>
-      <tbody>${s.students.map((x, i) => `<tr><td>${i + 1}</td><td class="l"><b>${esc(x.name)}</b></td><td>${esc(x.gcc)}</td><td class="l">${esc(x.class)}</td><td class="l">${esc(x.house || '—')}</td><td>${fx(x.score)}</td><td class="l">${esc(x.weakest || '—')}</td>${'<td></td>'.repeat(6)}<td></td></tr>`).join('')}</tbody></table></div>`; }).join('');
+    const secs = p.sections.map((sec) => {
+      const d = pickInstruction(sec.instruction), slot = slotText(d), given = d.venue || d.reason || slot || d.instruction;
+      const badge = sec.kind === 'custom' ? '#7c3aed' : (sec.group <= 2 ? '#dc2626' : sec.group >= 6 ? '#047857' : '#b8860b');
+      return `<div class="grp"><span class="pill" style="background:${badge}">${sec.kind === 'custom' ? 'Manual' : `Group ${sec.group}`}</span><span class="gt">${esc(sec.label)}</span><span class="gs">${esc(sec.subject)} · ${sec.students.length} student${sec.students.length === 1 ? '' : 's'}</span></div>
+      <div class="inst${given ? '' : ' none'}">
+        ${given ? `${d.venue ? `<div>${ICON.pin}<b>Where:</b> ${esc(d.venue)}</div>` : ''}${d.reason ? `<div>${ICON.target}<b>Why (reason):</b> ${esc(d.reason)}</div>` : ''}${slot ? `<div>${ICON.clock}<b>When:</b> ${esc(slot)}</div>` : ''}${d.instruction ? `<div>${ICON.note}<b>What you must do:</b> ${esc(d.instruction)}</div>` : ''}` : `<b>${ICON.alert}No instruction has been given for this group yet — please ask the admin where, why and when you are to be on duty.</b>`}
+        ${sec.note && !d.instruction ? `<div>${esc(sec.note)}</div>` : ''}</div>
+      <table class="t"><colgroup><col style="width:4%"><col style="width:21%"><col style="width:6%"><col style="width:14%"><col style="width:8%"><col style="width:10%"><col style="width:11%">${attCols.map(() => '<col style="width:2.7%">').join('')}<col style="width:9.8%"></colgroup>
+      <thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Class</th><th class="l">House</th><th>${esc(sec.basis || 'Avg')} %</th><th class="l">Weakest</th>${attCols.map((n) => `<th>${n}</th>`).join('')}<th class="l">Remarks</th></tr></thead>
+      <tbody>${sec.students.map((x, i) => `<tr><td>${i + 1}</td><td class="l"><b>${esc(x.name)}</b></td><td>${esc(x.gcc)}</td><td class="l">${esc(x.class)}</td><td class="l">${esc(x.house || '—')}</td><td>${fx(x.score)}</td><td class="l">${esc(x.weakest || '—')}</td>${attCols.map(() => '<td class="box"></td>').join('')}<td></td></tr>`).join('')}</tbody></table>`;
+    }).join('');
+    const rem = removedAll.filter((r) => p.sections.some((x) => (x.basis || '') === r.basis));
     const clash = slotClashes(p.sections);
-    const dutyBox = p.sections.length ? `<div style="border:2px solid #0f2d5e;border-radius:8px;padding:10px 12px;margin:0 0 12px;background:#f8fafc">
-        <div style="font-weight:800;color:#0f2d5e;letter-spacing:1.5px;text-transform:uppercase;font-size:11.5px">Your duty — please read</div>
-        <p style="margin:5px 0 7px;font-size:11px">Dear <b>${esc(p.name)}</b>, you have been assigned to <b>${p.groups}</b> self-study group${p.groups === 1 ? '' : 's'} (<b>${p.students}</b> student${p.students === 1 ? '' : 's'}) for ${esc(series)}. Please be at the <b>place</b> below, at the <b>time</b> shown, for the <b>reason</b> given, and follow the instruction for each group.</p>
-        <table><thead><tr><th>#</th><th class="l">Group / subject</th><th class="l">Where</th><th class="l">Why (reason)</th><th class="l">Days &amp; time</th><th>Students</th></tr></thead>
-        <tbody>${p.sections.map((s, i) => { const d = pickInstruction(s.instruction); return `<tr><td>${i + 1}</td><td class="l"><b>${esc(s.label)}</b><br><span style="color:#475569">${esc(s.subject)}</span></td><td class="l">${esc(d.venue || 'to be told')}</td><td class="l">${esc(d.reason || '—')}</td><td class="l"><b>${esc(slotText(d) || 'to be told')}</b></td><td>${s.students.length}</td></tr>`; }).join('')}</tbody></table>
-        ${clash.length ? `<div style="color:#b42318;font-weight:700;margin-top:4px">⚠ Two of your duties overlap: ${clash.map((c) => `${esc(c.a)} and ${esc(c.b)} on ${c.day}`).join('; ')}. Please tell the admin.</div>` : ''}</div>` : '';
-    const rem = removedAll.filter((r) => p.sections.some((s) => (s.basis || '') === r.basis));
-    return `<div class="page"><div class="dp">${letterhead(institute)}<div class="title">Self-study duty sheet</div>
+    const dutyBox = p.sections.length ? `<div class="duty">
+        <div class="dh">Your duty — please read</div>
+        <p style="margin:5px 0 8px;font-size:10.5px">Dear <b>${esc(p.name)}</b>, you have been assigned to <b>${p.groups}</b> self-study group${p.groups === 1 ? '' : 's'} (<b>${p.students}</b> student${p.students === 1 ? '' : 's'}) for ${esc(series)}. Please be at the <b>place</b> below, at the <b>time</b> shown, for the <b>reason</b> given, and follow the instruction for each group.</p>
+        <table class="t"><colgroup><col style="width:5%"><col style="width:35%"><col style="width:13%"><col style="width:17%"><col style="width:19%"><col style="width:11%"></colgroup>
+        <thead><tr><th>#</th><th class="l">Group / subject</th><th class="l">Where</th><th class="l">Why (reason)</th><th class="l">Days &amp; time</th><th>Students</th></tr></thead>
+        <tbody>${p.sections.map((x, i) => { const d = pickInstruction(x.instruction); return `<tr><td>${i + 1}</td><td class="l"><b>${esc(x.label)}</b><br><span style="color:#5b6678">${esc(x.subject)}</span></td><td class="l">${esc(d.venue || 'to be told')}</td><td class="l">${esc(d.reason || '—')}</td><td class="l"><b>${esc(slotText(d) || 'to be told')}</b></td><td>${x.students.length}</td></tr>`; }).join('')}</tbody></table>
+        ${clash.length ? `<div class="warn">${ICON.alert}Two of your duties overlap: ${clash.map((c) => `${esc(c.a)} and ${esc(c.b)} on ${c.day}`).join('; ')}. Please tell the admin.</div>` : ''}</div>` : '';
+    return `<section class="person"><div class="title">Self-study duty sheet</div>
       <div class="sub">${esc(series)}${subj.length ? ` · Subject${subj.length === 1 ? '' : 's'}: ${esc(subj.join(', '))}` : ''}</div>
-      <div style="display:flex;gap:14px;align-items:center;border:1px solid #cbd5e1;border-radius:8px;padding:9px 12px;margin:6px 0 10px;background:linear-gradient(180deg,#f8fafc,#fff)">
-        <div style="width:46px;height:46px;border-radius:50%;background:#0f2d5e;color:#f3d58a;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">${esc(initials(p.name))}</div>
-        <div style="flex:1"><div style="font-size:15px;font-weight:800;color:#0f2d5e">${esc(p.name)}</div><div style="color:#475569">${esc(p.title || 'On duty')}</div></div>
-        <div style="text-align:center"><b style="font-size:18px">${p.groups}</b><br><span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569">Groups</span></div>
-        <div style="text-align:center"><b style="font-size:18px">${p.students}</b><br><span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569">Students</span></div></div>
+      <div class="pcard"><div class="pav">${esc(initials(p.name))}</div>
+        <div style="flex:1;min-width:0"><div class="pname">${esc(p.name)}</div><div class="prole">${esc(p.title || 'On duty')}</div></div>
+        <div class="pnum"><b>${p.groups}</b><span>Groups</span></div><div class="pnum"><b>${p.students}</b><span>Students</span></div></div>
       ${dutyBox}${secs || '<p>No groups assigned.</p>'}
-      ${rem.length ? `<h3>Removed / transferred out</h3><table><thead><tr><th class="l">Student</th><th>GCC</th><th class="l">Subject</th><th class="l">Reason</th><th class="l">By</th></tr></thead><tbody>${rem.map((r) => `<tr><td class="l">${esc(r.name)}</td><td>${esc(r.gcc)}</td><td class="l">${esc(r.basis || 'Overall marks')}</td><td class="l">${esc(r.reason || '—')}</td><td class="l">${esc(r.by || '—')}</td></tr>`).join('')}</tbody></table>` : ''}
-      <div class="sig"><span>Duty teacher: ${esc(p.name)}</span><span>House Master / Mistress</span><span>Principal</span></div>
-      <div class="foot">Generated ${esc(new Date().toLocaleString('en-IN'))} · marks 1–6 = attendance for each self-study session</div></div></div>`;
+      ${rem.length ? `<h3>Removed / transferred out</h3><table class="t"><colgroup><col style="width:34%"><col style="width:10%"><col style="width:18%"><col style="width:24%"><col style="width:14%"></colgroup><thead><tr><th class="l">Student</th><th>GCC</th><th class="l">Subject</th><th class="l">Reason</th><th class="l">By</th></tr></thead><tbody>${rem.map((r) => `<tr><td class="l">${esc(r.name)}</td><td>${esc(r.gcc)}</td><td class="l">${esc(r.basis || 'Overall marks')}</td><td class="l">${esc(r.reason || '—')}</td><td class="l">${esc(r.by || '—')}</td></tr>`).join('')}</tbody></table>` : ''}
+      <div class="sig"><span>Duty teacher</span><span>House Master / Mistress</span><span>Principal</span></div>
+      <div class="note">Boxes 1–6 are for marking attendance at each self-study session.</div></section>`;
   }).join('');
   const printSheets = (people) => {
     if (!people.length) return;
-    printDocument(`<style>.dp{font-size:10.5px}</style>${dutyPages(people)}`, `Duty sheet - ${people.length === 1 ? people[0].name : 'all teachers'} - ${series}`);
+    const who = people.length === 1 ? people[0].name : 'all teachers';
+    printPremium(dutyPages(people), { title: `Duty sheet - ${who} - ${series}`, institute, docLabel: `Duty sheet${people.length === 1 ? ` · ${people[0].name}` : ''} · ${series}` });
   };
   const exportXlsx = async (people) => {
     const XLSX = await import('xlsx');
