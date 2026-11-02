@@ -576,7 +576,8 @@ const TAB_GROUPS = [
       { id: "compare",   icon: "⚖️",  label: "Compare",    tip: "Side-by-side comparison" },
       { id: "merit",     icon: "📜", label: "Merit List",  tip: "Generate merit lists" },
       { id: "dashboard", icon: "🏠", label: "Dashboard",   tip: "Exam HUB overview" },
-      { id: "mockanalyzer", icon: "🧠", label: "Mock Analyzer", tip: "Advanced student, subject & batch analysis of mock tests — upload Excel, save records, print reports" }
+      { id: "mockanalyzer", icon: "🧠", label: "Pre Mock Analyser", tip: "Pre Mock Test analysis — student, subject, batch and self-study groups; upload Excel, save records, print reports" },
+      { id: "megamockanalyzer", icon: "🚀", label: "Mega Mock Analyser", tip: "Mega Mock Test analysis — student, subject, batch and self-study groups; upload Excel, save records, print reports" }
     ]
   },
   {
@@ -10255,7 +10256,10 @@ export default function Exams({ currentUser, perms }) {
   // ── Section map ────────────────────────────────────────────────────────────
   const sectionMap = {
     dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
-    mockanalyzer:   () => <MockTestAnalyzer institute={institute} currentUser={currentUser}
+    mockanalyzer:   () => <MockTestAnalyzer scope="pre" institute={institute} currentUser={currentUser}
+                            canUpload={isAdminRole(currentUser?.role) || perms?.add === true || perms?.edit === true || ['Manager','Accounts','Accountant'].includes(currentUser?.role)}
+                            canDelete={isAdminRole(currentUser?.role) || perms?.delete === true} />,
+    megamockanalyzer: () => <MockTestAnalyzer scope="mega" institute={institute} currentUser={currentUser}
                             canUpload={isAdminRole(currentUser?.role) || perms?.add === true || perms?.edit === true || ['Manager','Accounts','Accountant'].includes(currentUser?.role)}
                             canDelete={isAdminRole(currentUser?.role) || perms?.delete === true} />,
     toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
@@ -10354,7 +10358,7 @@ export default function Exams({ currentUser, perms }) {
   const groupTabs = [{ id: "home", label: "Home", icon: iconOf("dashboard", "#132a4f") }, ...visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }))];
   const wide = (activeGroup?.tabs || []).length > 5;
   const subTabs = (activeGroup?.tabs || []).map((t) => {
-    const mock = t.id === 'mockanalyzer';
+    const mock = t.id === 'mockanalyzer' || t.id === 'megamockanalyzer';
     const text = <span className="ex-tl"><b>{t.label}{mock ? <span className="ex-new">NEW</span> : null}</b>{wide ? <small>{mock ? 'Student & batch analysis' : t.tip}</small> : null}</span>;
     return { id: t.id, label: text, icon: iconOf(t.id, mock ? '#c026d3' : activeGroup.color) };
   });

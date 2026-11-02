@@ -13,6 +13,10 @@
 //     rank, sid? }
 
 export const DEFAULT_SERIES = 'Pre Mock Test 2026';
+export const MEGA_SERIES = 'Mega Mock Test 2026';
+// The two analyser tabs keep separate series: any series with "Mega" in its name belongs to the Mega Mock Test tab.
+export const isMegaSeries = (name) => /mega/i.test(String(name || ''));
+export const inScope = (name, scope) => (scope === 'mega') === isMegaSeries(name);
 
 // ─── small numeric helpers ────────────────────────────────────────────────────
 export const num = (v) => {
