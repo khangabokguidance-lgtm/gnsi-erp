@@ -18,6 +18,7 @@ export const CHANGELOG = [
       { type: 'new', module: 'exams', text: 'Smart report: the Duty roster now shows clearly WHICH SUBJECT each person supervises study duty for (all subjects at once), with group, where, when and why; filter by supervised subject; subjects with nobody on duty are flagged; the other reports name the subject next to the person on duty.' },
       { type: 'improved', module: 'exams', text: 'Self-Study Groups is easier to use: three clear views (Groups, Duty desk, Reports), simple filters first with “More options” for the rest, a “How it works” guide, a duty-setup progress bar, hidden empty groups, plain-language labels and a “saved ✓” confirmation after each change.' },
       { type: 'fixed', module: 'exams', text: 'Self-Study Groups: the Duty desk, duty sheets and duty roster now always show everyone on duty — previously people disappeared when you switched between class-wise and mixed groups or set a class filter. Mixed-class duties remember which classes were mixed. Excel sheets with “/” or “:” in a subject name no longer fail.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: choose which subject(s) to print — “Print…” on the Groups view lets you tick the subjects (each prints as its own section), and the Duty desk has a “Show & print only” subject filter that applies to duty sheets, Excel and the copied instruction message.' },
       { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
     ],
   },

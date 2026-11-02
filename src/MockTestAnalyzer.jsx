@@ -1116,11 +1116,17 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     subjects.forEach((sub) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classGroups(scoped, opts(sub)), sub)), sheetName(sub, used)));
     XLSX.writeFile(wb, `${series} - self-study groups - every subject.xlsx`);
   };
-  const print = () => {
-    const body = classes.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, basis, g) ? `On duty: ${escH(mentorOf(c, basis, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
-      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(basis || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
-    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${basis ? `subject: ${escH(basis)}` : 'overall marks'} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
+  // Print: the admin chooses which subject(s) to include; each subject prints as its own section.
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printPick, setPrintPick] = useState([]);
+  const groupsFor = (b) => (b === basis ? classes : classGroups(scoped.filter((r) => !removedFor(b)[r.sid]), opts(b)));
+  const groupsHtml = (cls, b) => cls.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(b || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
+  const print = (bases = [basis]) => {
+    const list = (bases.length ? bases : [basis]);
+    const body = list.map((b, i) => `<div style="${i ? 'break-before:page;page-break-before:always' : ''}"><h2 style="background:#0f2d5e;color:#fff;padding:5px 10px;border-radius:4px">Subject: ${escH(b || 'Overall marks')}</h2>${groupsHtml(groupsFor(b), b)}</div>`).join('');
+    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${list.length === 1 ? `subject: ${escH(list[0] || 'overall marks')}` : `subjects: ${escH(list.map((b) => b || 'Overall marks').join(', '))}`} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
 
   const prog = (() => { let total = 0, assigned = 0, instr = 0; classes.forEach((c) => c.groups.forEach((g) => { if (!g.n) return; total++; const m = mentorOf(c, basis, g); if (m?.name) { assigned++; if (hasInstruction(m)) instr++; } })); return { total, assigned, instr }; })();
@@ -1237,11 +1243,24 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
               <span style={{ fontSize: 12.5, color: '#5d6b82', flex: '1 1 220px' }}>
                 {classes.length ? <>Showing <b>{classes.reduce((t, c) => t + c.count, 0)} students</b> in {classes.length} {layout === 'mix' ? 'mixed set' : `class${classes.length === 1 ? '' : 'es'}`} · by <b>{basis || 'overall marks'}</b>{language ? ` · ${language}` : ''}{house ? ` · ${house}` : ''}{topN ? ` · top group of ${topN}` : ''}</> : 'No students match these choices.'}
               </span>
-              <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
+              <button style={printOpen ? { ...ui.btn } : ui.ghost} disabled={!classes.length} onClick={() => { setPrintPick([basis]); setPrintOpen((v) => !v); }} aria-expanded={printOpen}>🖨️ Print…</button>
               <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
               <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
               {canEdit ? <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done moving' : '✏️ Move students by hand'}</button> : null}
             </div>
+            {printOpen ? (
+              <div style={{ marginTop: 10, background: '#f8fafc', border: '1px solid #d9e2f0', borderRadius: 12, padding: '10px 12px' }} role="group" aria-label="Subjects to print">
+                <b style={{ fontSize: 13 }}>Print which subjects?</b>
+                <span style={{ fontSize: 12, color: '#5d6b82', marginLeft: 8 }}>Each subject prints as its own section.</span>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
+                  {[['', 'Overall marks'], ...subjects.map((x) => [x, x])].map(([b, label]) => <button key={label} style={chip(printPick.includes(b))} onClick={() => setPrintPick((cur) => (cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b]))} aria-pressed={printPick.includes(b)}>{label}</button>)}
+                  <button style={{ ...chip(false), borderStyle: 'dashed' }} onClick={() => setPrintPick(['', ...subjects])}>All subjects</button>
+                  <button style={{ ...chip(false), borderStyle: 'dashed' }} onClick={() => setPrintPick([basis])}>Only {basis || 'overall marks'}</button>
+                </div>
+                <button style={ui.btn} disabled={!printPick.length} onClick={() => { print(printPick); setPrintOpen(false); }}>🖨️ Print {printPick.length || ''} subject{printPick.length === 1 ? '' : 's'}</button>
+                <button style={{ ...ui.ghost, marginLeft: 8 }} onClick={() => setPrintOpen(false)}>Cancel</button>
+              </div>
+            ) : null}
             {canEdit && (editing || manualTotal) ? (
               <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 8 }}>
                 {manualTotal ? `${manualTotal} student${manualTotal === 1 ? '' : 's'} moved by hand for ${basis || 'overall marks'} (marked ✎)` : `Nobody moved by hand for ${basis || 'overall marks'} yet`}

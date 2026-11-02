@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { collectDuties, removedList, mayAct, sameName, initials, assignmentsFrom, parseScope, mixScope } from '../src/lib/mockTestDuty.js'
+import { collectDuties, removedList, mayAct, sameName, initials, assignmentsFrom, parseScope, mixScope, filterDutiesBySubjects, dutySubjects } from '../src/lib/mockTestDuty.js'
 
 const row = (sid, batch, p1, p2, name = sid) => [1, 2].map((t, i) => ({ sid, student_name: name.toUpperCase(), gcc_no: sid.charCodeAt(0), batch, test_no: t, marks: { Maths: (i ? p2 : p1) / 4, EVS: 20 }, max_marks: { Maths: 25, EVS: 25 }, total: 0, max_total: 50 })).map((r) => ({ ...r, total: r.marks.Maths + r.marks.EVS }))
 const rows = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].flatMap((s, i) => row(s, 'X', 20 + i * 12, 22 + i * 12)).concat(row('p', 'Y', 50, 50))
@@ -86,4 +86,20 @@ test('a mixed assignment keeps the classes it was made for', () => {
   const d = collectDuties({ rows, assignments: a, optsFor, removedFor: () => ({}) })
   const sec = d[0].sections[0]
   assert.ok(sec.students.every((s) => s.class === 'Y')); assert.match(sec.label, /\(Y\)/)
+})
+
+test('choosing subjects keeps only those duties and recounts each person', () => {
+  const st = (sid) => ({ sid })
+  const duties = [
+    { name: 'Meera', sections: [{ subject: 'Overall marks', students: [st('a'), st('b')] }, { subject: 'Mathematics', students: [st('b'), st('c')] }], groups: 2, students: 3 },
+    { name: 'Rohit', sections: [{ subject: 'EVS', students: [st('d')] }], groups: 1, students: 1 },
+  ]
+  assert.deepEqual(dutySubjects(duties), ['Overall marks', 'EVS', 'Mathematics'])
+  assert.equal(filterDutiesBySubjects(duties, []), duties)                          // nothing chosen = everything
+  const m = filterDutiesBySubjects(duties, ['Mathematics'])
+  assert.deepEqual(m.map((p) => [p.name, p.groups, p.students]), [['Meera', 1, 2]])  // Rohit has no Mathematics duty
+  const both = filterDutiesBySubjects(duties, ['Overall marks', 'EVS'])
+  assert.deepEqual(both.map((p) => [p.name, p.groups, p.students]), [['Meera', 1, 2], ['Rohit', 1, 1]])
+  assert.deepEqual(filterDutiesBySubjects(duties, ['Passage']), [])
+  assert.equal(duties[0].groups, 2)                                                   // the original is not changed
 })
