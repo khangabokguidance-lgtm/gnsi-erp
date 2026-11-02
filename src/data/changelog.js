@@ -3,6 +3,13 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Learning Hub: staff see only what they need',
+    items: [
+      { type: 'security', module: 'learninghub', text: 'Learning Hub tabs that create or run things — Question Bank, Entrance Exam and Model Set Maker — now stay hidden from staff unless the admin gives that user add / edit / delete rights on them; read access alone no longer opens them. Study Materials, Class Material, Teaching Aids, Study Lockers, Question Bank Viewer and Model Sets stay open for viewing.' },
+      { type: 'security', module: 'classmaterial', text: 'Class Material is now admin-only for uploading, hiding and deleting in the database itself (not just on screen), and visible only to signed-in staff — never to the public website.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Learning Hub → Class Material (view-only study material & test series)',
     items: [
       { type: 'new', module: 'classmaterial', text: 'New Learning Hub section “Class Material”: the admin uploads study material and test-series papers (PDF or images) by course (Navodaya / Sainik / Foundation), class and subject; staff browse subject by subject and open them for class use.' },

@@ -31,7 +31,7 @@ import ModuleHub from './ModuleHub'
 import CommandPalette from './CommandPalette'
 import { openPalette } from './paletteEvents'
 import { MODULE_HUBS, HUB_BY_ID, HUB_OF, visibleHubTabs } from './moduleHubs'
-import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
+import { HUB_ID, HUB_TABS, isHubTab, canSeeHub, hubTabAllowed } from './learningHubTabs'
 import { NavIcon, AppIcon } from './navIcons'
 import TabIcons from './TabIcons'
 import MultiLoginWatch from './MultiLoginWatch'
@@ -448,7 +448,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
     return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
@@ -561,7 +561,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
     return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
@@ -1042,7 +1042,9 @@ export default function App() {
     // the component itself only exposes enrollment management to admins.
     if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
-    if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
+    if (key === HUB_ID) return canSeeHub(k => hubTabAllowed(k, permMap[k]))
+    // Learning Hub tabs: staff get view tabs on read access; tabs that create / run things need edit-type rights too
+    if (isHubTab(key)) return hubTabAllowed(key, permMap[key])
     if (key === 'hr') return ['hr', ...Object.keys(HR_SECTIONS)].some(k => permMap[k]?.read === true)
     if (HUB_BY_ID[key]) return visibleHubTabs(HUB_BY_ID[key], k => permMap[k]?.read === true, false).length > 0
     return permMap[key]?.read === true
