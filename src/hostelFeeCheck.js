@@ -14,6 +14,7 @@ import { supabase } from './supabase'
 import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
 import { canonicalBatch, normalizeCourse, courseOf } from './courseMap'
 import { detectFeeTypes } from './lib/feeTypeDetect'
+import { checkMonthlyFees } from './lib/monthlyFeeCheck'
 import { getAddonResolver } from './feeEngine'
 
 export const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
@@ -173,6 +174,24 @@ export async function loadFeeTypeScan({ students, courseRows, flatRows }) {
   const rateOf = ({ session, course, batch, type, field, student }) => { const b = rateFrom(structures || [], { session, course, batch, type, field }); return b > 0 && student ? b + resolver.amount(student, session) : b }
   // A single student's bed set only holds that student, so "no bed" cannot be told from "not loaded" — treat as unknown.
   return detectFeeTypes({ students, courseRows, flatRows, rateOf, beds: ids ? (beds && beds.size ? beds : null) : beds, overrideGccs })
+}
+
+// Month-by-month check of every active student's payments against the rate for their course and the
+// hostel type in force that month (see lib/monthlyFeeCheck.js). Students with a custom flat fee have
+// their flat-fee months left out, since the standard flat rate does not apply to them.
+export async function loadMonthlyFeeScan({ students, courseRows, flatRows }) {
+  const [{ data: structures, error }, { data: ov }, { map: history }] = await Promise.all([
+    supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
+    supabase.from('student_fee_overrides').select('gcc_no'),
+    loadHostelHistory(),
+  ])
+  if (error) throw new Error(error.message)
+  const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
+  const resolver = await getAddonResolver()
+  const rateOf = ({ session, course, batch, type, field, student }) => { const b = rateFrom(structures || [], { session, course, batch, type, field }); return b > 0 && student ? b + resolver.amount(student, session) : b }
+  const typeAt = (st, month, year) => typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
+  const flat = (flatRows || []).filter(r => !overrideGccs.has(gccKey(r.adm_app_id)))
+  return checkMonthlyFees({ students, courseRows, flatRows: flat, rateOf, typeAt })
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {

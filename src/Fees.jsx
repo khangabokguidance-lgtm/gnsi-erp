@@ -59,6 +59,7 @@ import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
+import FeeMonthlyCheck from './FeeMonthlyCheck'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
@@ -4874,6 +4875,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
     ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
     ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
+    ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
@@ -5426,6 +5428,7 @@ export default function Fees() {
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} /></FeeTabShell>}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (
