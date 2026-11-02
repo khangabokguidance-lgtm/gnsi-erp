@@ -64,7 +64,7 @@ export function printDocument(bodyHTML, title = 'Report') {
   w.document.close();
 }
 
-function letterhead(inst = {}) {
+export function letterhead(inst = {}) {
   const logo = inst.logoUrl ? `<img src="${esc(inst.logoUrl)}" alt="" onerror="this.style.display='none'"/>` : '';
   return `<div class="lh">${logo}<div class="t"><div class="n">${esc(inst.name || 'Guidance Navodaya & Sainik Institute')}</div>
   <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div>${logo ? '<div style="width:58px"></div>' : ''}</div>`;
