@@ -5430,7 +5430,7 @@ export default function Fees() {
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} /></FeeTabShell>}
+      {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} onChanged={loadAll} /></FeeTabShell>}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (

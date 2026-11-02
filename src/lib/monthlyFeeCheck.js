@@ -44,11 +44,11 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
   }
   for (const r of courseRows) {
     if (r.reverted || !r.for_month || !(Number(r.amount_paid) > 0)) continue
-    push(gccKey(r.adm_app_id), 'course', r.for_month, Number(r.year), { amount: Number(r.amount_paid), tag: r.hostel_type, course: r.course, concession: !!r.concession_status })
+    push(gccKey(r.adm_app_id), 'course', r.for_month, Number(r.year), { amount: Number(r.amount_paid), tag: r.hostel_type, course: r.course, concession: !!r.concession_status, table: 'adm_course_fees', id: r.id, receipt: r.receipt_no, mode: r.pay_mode })
   }
   for (const r of flatRows) {
     if (!r.paid || r.reverted || !r.month || !(Number(r.amount) > 0)) continue
-    push(gccKey(r.adm_app_id), 'flat', r.month, Number(r.year), { amount: Number(r.amount), tag: r.hostel_type, course: null, concession: !!r.concession_status })
+    push(gccKey(r.adm_app_id), 'flat', r.month, Number(r.year), { amount: Number(r.amount), tag: r.hostel_type, course: null, concession: !!r.concession_status, table: 'adm_flat_fees', id: r.id, receipt: r.receipt_no, mode: r.pay_mode })
   }
 
   const byGcc = new Map()
@@ -89,6 +89,7 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
       months.push({
         month: g.month, year: g.year, session, kind: g.kind, hostelType: type, course: st.course || '',
         expected, paid, diff: r2(paid - expected), verdict, detectedType, flags,
+        pays: g.pays.map((p) => ({ table: p.table, id: p.id, receipt: p.receipt, mode: p.mode, amount: p.amount })),
       })
     }
     months.sort((a, b) => a.year - b.year || MONTH_NUM[a.month] - MONTH_NUM[b.month] || a.kind.localeCompare(b.kind))
@@ -98,4 +99,23 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
   }
   out.sort((a, b) => b.problems.length - a.problems.length || String(a.student.name).localeCompare(String(b.student.name)))
   return { results: out, summary }
+}
+
+// Payments that are only a few rupees off the standard rate (e.g. ₹4,998 or ₹6,503 for a ₹5,000 / ₹6,500 fee):
+// the month has ONE payment, it is short or over by at most `maxDiff` rupees, no concession is recorded, and it
+// was not an online (Razorpay) payment — online money must match what the gateway actually received.
+// Each candidate says what the payment should be rounded to (the standard rate) and by how much it moves.
+export function roundingCandidates(results, { maxDiff = 10 } = {}) {
+  const out = [];
+  for (const r of results || []) {
+    for (const m of r.months) {
+      if (!['short', 'excess'].includes(m.verdict)) continue;
+      if (!(Math.abs(m.diff) > 0.005 && Math.abs(m.diff) <= maxDiff)) continue;
+      if (m.pays.length !== 1) continue;
+      const p = m.pays[0];
+      if (!p.id || !p.table || /razorpay|online/i.test(String(p.mode || ''))) continue;
+      out.push({ student: r.student, session: m.session, month: m.month, year: m.year, kind: m.kind, table: p.table, id: p.id, receipt: p.receipt || '', mode: p.mode || '', from: p.amount, to: m.expected, diff: m.diff });
+    }
+  }
+  return out;
 }
