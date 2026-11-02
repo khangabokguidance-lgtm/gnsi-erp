@@ -14,9 +14,8 @@
 // npm install razorpay  (in your API project)
 
 import Razorpay from 'razorpay'
-import { requireStaff, rateLimit } from '../_guard/guard.js'
-
-const MAX_ORDER_PAISE = 100_000 * 100 // ₹1,00,000 per order
+import { requireStaff, rateLimit, service } from '../_guard/guard.js'
+import { checkOrderRequest } from '../_razorpay/orderCheck.js'
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -40,18 +39,22 @@ export default async function handler(req, res) {
     if (!gcc || !studentId) {
       return res.status(400).json({ error: 'gcc and studentId are required' })
     }
-    const amountPaise = Math.round(Number(amount) * 100)
-    if (!Number.isFinite(amountPaise) || amountPaise <= 0 || amountPaise > MAX_ORDER_PAISE) {
-      return res.status(400).json({ error: 'Invalid amount' })
-    }
+    // The amount must equal the total of the itemised lines that get recorded, and every line must be
+    // well formed (see api/_razorpay/orderCheck.js).
+    const check = checkOrderRequest({ amount, items })
+    if (!check.ok) return res.status(400).json({ error: check.error })
+    const amountPaise = check.amountPaise
 
-    // ── Recommended hardening (uncomment once you have server-side access
-    // to the same fee-rate tables the client uses, e.g. via Supabase
-    // service-role key) ────────────────────────────────────────────────────
-    // const expected = await recomputeExpectedAmount({ gcc, items })
-    // if (Math.abs(expected - Number(amount)) > 1) {
-    //   return res.status(400).json({ error: 'Amount mismatch — refusing to create order' })
-    // }
+    // The student must exist, be active, and the id must belong to that GCC — so a request can't mix
+    // one student's id with another's GCC, or create an order for someone who isn't enrolled.
+    const { data: stu, error: stuErr } = await service()
+      .from('students').select('id, gcc_no, name, status').eq('id', studentId).eq('gcc_no', gcc).maybeSingle()
+    if (stuErr) {
+      console.error('razorpay create-order student lookup failed:', stuErr)
+      return res.status(503).json({ error: 'Could not verify the student. Try again.' })
+    }
+    if (!stu) return res.status(400).json({ error: 'Student not found for this GCC' })
+    if (stu.status && stu.status !== 'Active') return res.status(400).json({ error: 'Student is not active' })
 
     // Razorpay requires a receipt id under 40 chars.
     const receipt = `gnsi_${gcc}_${Date.now()}`.slice(0, 40)
@@ -63,7 +66,7 @@ export default async function handler(req, res) {
       notes: {
         gcc: String(gcc),
         student_id: String(studentId),
-        student_name: studentName || '',
+        student_name: String(stu.name || '').slice(0, 80),
         items_count: String((items || []).length),
       },
     })

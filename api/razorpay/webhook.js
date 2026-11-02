@@ -113,6 +113,8 @@ export default async function handler(req, res) {
       // instead of being lost while Razorpay is told "received".
       const { table, row, account } = buildOnlineRecords({ notes, paymentId, amount, payDate })
       const fee = await supabase.from(table).insert([row])
+      // 23505 = the unique index on txn_ref (20261047): a concurrent retry of the same payment got in first.
+      if (fee.error?.code === '23505') return res.status(200).json({ received: true, skipped: 'already recorded' })
       if (fee.error) throw new Error(`could not save the ${table} row for ${paymentId}: ${fee.error.message}`)
       const acc = await supabase.from('accounts').upsert([account], { onConflict: 'source_ref,source_type', ignoreDuplicates: false })
       if (acc.error) throw new Error(`fee row saved but the Accounts entry for ${paymentId} failed: ${acc.error.message}`)
