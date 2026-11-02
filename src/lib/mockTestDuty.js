@@ -17,12 +17,36 @@ const studentRow = (s, basis, hmOf) => {
   return { sid: s.sid, name: s.name, gcc: s.gcc, class: s.batch, score, overall: s.overall ?? s.avg, weakest: s.weakest || '', house: h.house || '', hm: h.label || '', manual: !!s.manual };
 };
 
-// bases: ['' (overall), 'Mathematics', …]
-// optsFor(basis)      → classGroups options (language, layout, top-N, manual moves…) for that basis
-// mentorFor(basis, c, g) → { name, title } | null     (who is on duty for that group)
-// removedFor(basis)   → { [sid]: … } students taken out of that basis' groups
-// custom              → [{ id, name, basis, dutyName, dutyTitle, students: [sid], note }]
-export function collectDuties({ rows, bases, optsFor, mentorFor, removedFor, custom = [], hmOf }) {
+// ── assignments are saved against a "scope": one class ("class:Lakshya A") or a mix of classes
+//    ("mix:all", "mix:English", "mix:all:Lakshya A~Umeed"). The duty desk is built from the saved assignments
+//    themselves, so it never depends on which layout or filter happens to be on screen.
+export const mixScope = (language, classes = []) => `mix:${language || 'all'}${classes.length ? `:${[...classes].sort().join('~')}` : ''}`;
+export function parseScope(scope) {
+  const sc = String(scope || '');
+  if (sc.startsWith('class:')) return { mix: false, batch: sc.slice(6), language: '', classes: [] };
+  const [, lang = 'all', list = ''] = sc.split(':');
+  return { mix: true, batch: '', language: lang === 'all' ? '' : lang, classes: list ? list.split('~') : [] };
+}
+// the saved assignment map { 'basis|scope|grp': { name, title, ...instruction } } as a list
+export function assignmentsFrom(mentors) {
+  return Object.entries(mentors || {}).map(([key, mentor]) => {
+    const parts = key.split('|');
+    const grp = Number(parts[parts.length - 1]);
+    const basis = parts[0] === 'overall' ? '' : parts[0];
+    return { basis, scope: parts.slice(1, -1).join('|'), grp, mentor };
+  }).filter((a) => a.mentor && a.mentor.name && Number.isInteger(a.grp));
+}
+const scopeLabel = (c, scope) => {
+  if (!c.mixed) return c.batch;
+  const { language, classes } = parseScope(scope);
+  return `Mixed classes · ${language || 'all languages'}${classes.length ? ` (${classes.join(' + ')})` : ''}`;
+};
+
+// assignments: assignmentsFrom(mentors)
+// optsFor(basis, scope) → classGroups options for that assignment's view (mode, top-N, manual moves, language, classes…)
+// removedFor(basis)     → { [sid]: … } students taken out of that basis' groups
+// custom                → [{ id, name, basis, dutyName, dutyTitle, students: [sid], … }]
+export function collectDuties({ rows, assignments, optsFor, removedFor, custom = [], hmOf }) {
   const people = new Map();
   const person = (name, title) => {
     const k = norm(name);
@@ -31,26 +55,29 @@ export function collectDuties({ rows, bases, optsFor, mentorFor, removedFor, cus
     if (!p.title && title) p.title = title;
     return p;
   };
-  bases.forEach((basis) => {
-    const gone = removedFor ? removedFor(basis) || {} : {};
-    const kept = rows.filter((r) => !gone[r.sid]);
-    classGroups(kept, optsFor(basis)).forEach((c) => c.groups.forEach((g) => {
-      if (!g.n) return;
-      const m = mentorFor(basis, c, g);
-      if (!m || !m.name) return;
-      person(m.name, m.title).sections.push({
-        kind: 'group', id: `${basis}|${c.batch}|${g.no}`, basis, subject: basis || 'Overall marks', set: c.batch, mixed: !!c.mixed,
-        group: g.no, tag: g.tag, color: g.color, label: `${c.batch} · Group ${g.no} · ${g.tag}`,
-        students: g.students.map((s) => studentRow(s, basis, hmOf)), instruction: pickInstruction(m),
+  const computed = new Map();   // `${basis}|${scope}` → the groups of that view (worked out once)
+  assignments.forEach((a) => {
+    const ck = `${a.basis}|${a.scope}`;
+    if (!computed.has(ck)) {
+      const gone = removedFor ? removedFor(a.basis) || {} : {};
+      computed.set(ck, classGroups(rows.filter((r) => !gone[r.sid]), optsFor(a.basis, a.scope)));
+    }
+    computed.get(ck).forEach((c) => {
+      const g = c.groups.find((x) => x.no === a.grp);
+      if (!g || !g.n) return;
+      person(a.mentor.name, a.mentor.title).sections.push({
+        kind: 'group', id: `${a.basis}|${a.scope}|${g.no}`, scope: a.scope, basis: a.basis, subject: a.basis || 'Overall marks',
+        set: c.batch, mixed: !!c.mixed, group: g.no, tag: g.tag, color: g.color, label: `${scopeLabel(c, a.scope)} · Group ${g.no} · ${g.tag}`,
+        students: g.students.map((s) => studentRow(s, a.basis, hmOf)), instruction: pickInstruction(a.mentor),
       });
-    }));
+    });
   });
   const index = new Map(studentAverages(rows).map((s) => [s.sid, s]));
   custom.forEach((cg) => {
     if (!cg.dutyName) return;
     const students = cg.students.map((sid) => index.get(sid)).filter(Boolean).map((s) => studentRow(s, cg.basis, hmOf));
     person(cg.dutyName, cg.dutyTitle).sections.push({
-      kind: 'custom', id: cg.id, basis: cg.basis || '', subject: cg.basis || 'Overall marks', set: 'Manual group', mixed: false,
+      kind: 'custom', id: cg.id, scope: '', basis: cg.basis || '', subject: cg.basis || 'Overall marks', set: 'Manual group', mixed: false,
       group: 0, tag: 'Manual', color: '#7c3aed', label: cg.name, note: cg.note || '', students,
       // an older group may only have a free-text note: that note is its instruction
       instruction: (() => { const d = pickInstruction(cg); return d.instruction || !cg.note ? d : { ...d, instruction: String(cg.note).trim() }; })(),

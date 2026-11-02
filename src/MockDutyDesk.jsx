@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { printDocument, letterhead } from './lib/mockTestReports';
 import { studentAverages, GROUP_META } from './lib/mockTestGroups';
-import { collectDuties, removedList, mayAct, sameName, initials } from './lib/mockTestDuty';
+import { removedList, mayAct, sameName, initials } from './lib/mockTestDuty';
 import { pickInstruction, slotText, slotClashes, instructionMessage, hasInstruction, emptyInstruction } from './lib/dutyInstruction';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 
@@ -80,11 +80,9 @@ const CSS = `
 const Avatar = ({ name, sm }) => <span className={`mdd-av${sm ? ' sm' : ''}`} style={{ background: `linear-gradient(135deg, hsl(${hue(name)} 62% 46%), hsl(${hue(name)} 62% 34%))` }}>{initials(name)}</span>;
 
 export default function MockDutyDesk({
-  rows, series, institute, subjects, optsFor, mentorFor, removed, removedFor, custom, hmOf, dir,
+  rows, series, institute, subjects, duties, removed, custom, dir,
   canEdit, userName, userStaffId, onRemove, onRestore, onTransfer, onSaveCustom, onDeleteCustom, onSaveInstruction, storageNote, onClose,
 }) {
-  const bases = useMemo(() => ['', ...subjects], [subjects]);
-  const duties = useMemo(() => collectDuties({ rows, bases, optsFor, mentorFor, removedFor, custom, hmOf }), [rows, bases, optsFor, mentorFor, removedFor, custom, hmOf]);
   const everyone = useMemo(() => [...(dir?.masters || []), ...(dir?.teachers || [])], [dir]);
   const staffIdOf = (name) => everyone.find((p) => sameName(p.name, name))?.staffId ?? null;
   const canAct = (dutyName) => mayAct({ canEdit, userName, dutyName, userStaffId, dutyStaffId: staffIdOf(dutyName) });
@@ -187,7 +185,7 @@ export default function MockDutyDesk({
             <h3>Duty Desk</h3>
             <p>Who looks after which self-study group — with each student's list. Duty teachers can remove or transfer their own students, and groups can be built from a hand-picked list of students.</p>
           </div>
-          <button className="mdd-ghost" onClick={onClose} style={{ alignSelf: 'flex-start' }}>✕ Close</button>
+          <button className="mdd-ghost" onClick={onClose} style={{ alignSelf: 'flex-start' }}>← Back to groups</button>
         </div>
         <div className="mdd-kpis">
           <div className="mdd-kpi"><b>{duties.length}</b><small>On duty</small></div>
