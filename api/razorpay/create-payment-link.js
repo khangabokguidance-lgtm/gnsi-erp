@@ -12,7 +12,7 @@
 // Env vars required: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET (server-only)
 
 import Razorpay from 'razorpay'
-import { getUser, isStaff, rateLimit } from '../_guard/guard.js'
+import { getUser, isStaff, rateLimit, service } from '../_guard/guard.js'
 
 const MAX_LINK_PAISE = 100_000 * 100 // ₹1,00,000 per link
 
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   if (!rateLimit(req, res, { key: 'rzp-link', max: staff ? 60 : 8, id: user?.id })) return
 
   try {
-    const { gcc, studentName, amount, kind, for_month, year, course, subtype } = req.body || {}
+    const { gcc, amount, kind, for_month, year, course, subtype } = req.body || {}
     const parentPhone = staff ? req.body?.parentPhone : ''
 
     if (!gcc || !amount) {
@@ -48,6 +48,18 @@ export default async function handler(req, res) {
     if (!Number.isFinite(amountPaise) || amountPaise <= 0 || amountPaise > MAX_LINK_PAISE) {
       return res.status(400).json({ error: 'Invalid amount' })
     }
+
+    // The GCC must belong to a real active student; the name used in the link comes from the database,
+    // not from the (possibly anonymous) request.
+    const { data: stu, error: stuErr } = await service()
+      .from('students').select('gcc_no, name, status').eq('gcc_no', String(gcc).trim()).maybeSingle()
+    if (stuErr) {
+      console.error('razorpay create-payment-link student lookup failed:', stuErr)
+      return res.status(503).json({ error: 'Could not verify the student. Try again.' })
+    }
+    if (!stu) return res.status(400).json({ error: 'Student not found for this GCC' })
+    if (stu.status && stu.status !== 'Active') return res.status(400).json({ error: 'Student is not active' })
+    const studentName = stu.name || ''
 
     const link = await razorpay.paymentLink.create({
       amount: amountPaise,

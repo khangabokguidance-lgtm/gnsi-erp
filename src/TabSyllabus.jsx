@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { PX } from './premiumUI'
 import SyllabusOfficial from './SyllabusOfficial'
+import { isAdminRole } from './roles'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SUBJECTS = [
@@ -496,8 +497,11 @@ const _name = (
   currentUser?.email ||
   ''
 )
-const isAdmin = ['admin','manager','administrator','co-admin','principal'].includes(_rawRole)
-const isStaff = _rawRole === 'teacher'
+// Admin rights come only from the shared admin roles (Admin/Administrator/Co-Admin)
+// or the explicit 'Teaching + Admin' role. 'manager'/'principal' used to be
+// treated as admin here, handing full syllabus control to non-admin staff.
+const isAdmin = isAdminRole(currentUser?.role) || _rawRole === 'teaching + admin'
+const isStaff = !isAdmin && (_rawRole === 'teacher' || _rawRole === 'teaching')
 const staffName = _name
 
   // ── State ──
