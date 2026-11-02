@@ -19,6 +19,7 @@ import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries,
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
+import MockGroupReport from './MockGroupReport';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
@@ -216,7 +217,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
-      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
@@ -924,7 +925,7 @@ function hmSummary(group, hmOf) {
   return `House Master/Mistress: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} unassigned` : ''}`;
 }
 
-function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '' }) {
+function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '', passPct = 40 }) {
   const [language, setLanguage] = useState('');
   const [batch, setBatch] = useState('');
   const [mode, setMode] = useState('equal');
@@ -1007,6 +1008,10 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   };
   const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
   const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
+  // The same groups without any manual moves — to show where manually moved students started.
+  const autoClasses = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, layout, mixPick, topN, languages]);
+  const [showReport, setShowReport] = useState(false);
+  const layoutLabel = layout === 'mix' ? `Mixed classes${language ? ` · ${language}` : ''}` : `Class-wise${language ? ` · ${language}` : ''}`;
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
   const pickable = everything.filter((c) => !language || c.language === language);
@@ -1114,6 +1119,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
         <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
         <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
         <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
+        <button style={showReport ? { ...ui.btn, background: '#be185d' } : ui.ghost} disabled={!classes.length} onClick={() => setShowReport((v) => !v)}>📑 Smart report</button>
         {canEdit ? (
           <div style={{ flex: '1 1 100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', paddingTop: 10 }}>
             <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done editing' : '✏️ Move students by hand'}</button>
@@ -1126,6 +1132,10 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
         ) : null}
       </div>
       {saveMsg ? <div style={{ fontSize: 12, color: '#991B1B', margin: '0 2px 10px' }}>{saveMsg}</div> : null}
+      {showReport && classes.length ? (
+        <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct}
+          hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setShowReport(false)} />
+      ) : null}
       {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
       {language && !classes.length ? (
         <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>

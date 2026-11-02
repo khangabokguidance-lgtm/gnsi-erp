@@ -13,7 +13,7 @@
 //   mix        one set of 7 groups across several classes together, instead of one set per class
 //   overrides  { [sid]: 1..7 } — the admin's manual choice; moves that student to that group
 //              (kept per basis, so a student can be in a different group for each subject)
-import { mean, rowPct, num } from './mockTestEngine.js';
+import { mean, rowPct, num, slope } from './mockTestEngine.js';
 
 export const GROUP_COUNT = 7;
 export const BAND_LIMITS = [30, 40, 50, 60, 70, 80]; // upper limits (%) of groups 1..6
@@ -58,6 +58,12 @@ export function studentAverages(rows, languages = null) {
     const subj = {};
     subjects.forEach((s) => { const v = rs.map((r) => subjPct(r, s)).filter((x) => x !== null); if (v.length) subj[s] = mean(v); });
     const ranked = Object.entries(subj).sort((a, b) => a[1] - b[1]);
+    // progress over the tests, in percentage points per test (needs 2+ tests): + improving, - declining
+    const ordered = [...rs].sort((a, b) => (a.test_no || 0) - (b.test_no || 0));
+    const trendOf = (get) => { const pts = ordered.map((r) => [r.test_no || 0, get(r)]).filter(([, v]) => v !== null && v !== undefined); return pts.length >= 2 ? slope(pts.map((p) => p[1]), pts.map((p) => p[0])) : null; };
+    const trend = trendOf(rowPct);
+    const trendSubj = {};
+    subjects.forEach((sb) => { const t = trendOf((r) => subjPct(r, sb)); if (t !== null) trendSubj[sb] = t; });
     // the batch the student sat most tests in
     const counts = {};
     rs.forEach((r) => { counts[r.batch] = (counts[r.batch] || 0) + 1; });
@@ -65,7 +71,7 @@ export function studentAverages(rows, languages = null) {
     const named = rs.find((r) => r.student_name) || rs[0];
     return {
       sid, name: named.student_name, gcc: rs.find((r) => r.gcc_no)?.gcc_no || '', batch, language: languageOfBatch(batch, languages),
-      tests: rs.length, avg: mean(pcts), subj, weakest: ranked[0]?.[0] || '', strongest: ranked[ranked.length - 1]?.[0] || '',
+      tests: rs.length, avg: mean(pcts), subj, trend, trendSubj, weakest: ranked[0]?.[0] || '', strongest: ranked[ranked.length - 1]?.[0] || '',
     };
   }).filter((s) => s.avg !== null);
 }
