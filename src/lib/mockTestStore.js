@@ -233,3 +233,47 @@ export async function clearGroupChoices(series, basis, mode) {
   const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b);
   if (error) throw error;
 }
+
+// ─── House Master / Mistress assigned to a self-study group ──────────────────
+// The admin picks, for each group of each subject (or overall), the House Master / Mistress who looks after it.
+// Key = basis ('overall' or a subject) + set (one class, or the mixed set of a language) + group number.
+// Table `mock_test_group_mentors` (20261050_mock_test_group_mentors.sql); browser copy kept as the fallback.
+const MEN_TABLE = 'mock_test_group_mentors';
+const MEN_LS = 'gnsi_mock_group_mentors_v1';
+const menRead = () => { try { return JSON.parse(localStorage.getItem(MEN_LS) || '{}') || {}; } catch { return {}; } };
+const menWrite = (all) => { try { localStorage.setItem(MEN_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+export const mentorKey = (basis, set, grp) => `${basis || GROUP_BASIS_ALL}|${set}|${grp}`;
+
+// → { mentors: { [mentorKey]: { name, title } }, mode: 'cloud' | 'local' }
+export async function loadGroupMentors(series) {
+  const local = menRead()[series] || {};
+  const { data, error } = await supabase.from(MEN_TABLE).select('basis, scope, grp, mentor_name, mentor_title').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { mentors: local, mode: 'local' };
+    throw error;
+  }
+  const mentors = {};
+  data.forEach((r) => { mentors[mentorKey(r.basis, r.scope, r.grp)] = { name: r.mentor_name, title: r.mentor_title || '' }; });
+  return { mentors, mode: 'cloud' };
+}
+
+// mentor: { name, title } or null to clear.
+export async function saveGroupMentor(series, basis, set, grp, mentor, mode, who = '') {
+  const k = mentorKey(basis, set, grp);
+  const all = menRead();
+  const cur = { ...(all[series] || {}) };
+  if (mentor) cur[k] = mentor; else delete cur[k];
+  menWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  const b = basis || GROUP_BASIS_ALL;
+  if (!mentor) {
+    const { error } = await supabase.from(MEN_TABLE).delete().eq('series', series).eq('basis', b).eq('scope', set).eq('grp', grp);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(MEN_TABLE).upsert(
+    { series, basis: b, scope: set, grp, mentor_name: mentor.name, mentor_title: mentor.title || null, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series,basis,scope,grp' },
+  );
+  if (error) throw error;
+}

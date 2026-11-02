@@ -100,3 +100,33 @@ test('mixed classes: one set of 7 groups across the classes, students keep their
   assert.deepEqual(classGroups(rows, { mix: true, language: 'Meitei Mayek' })[0].classes, ['Combined Manipuri'])
   assert.deepEqual(classGroups(rows, { mix: true, classes: ['Nope'] }), [])
 })
+
+test('top group: Group 7 is exactly the best N, the rest spread over Groups 1-6', () => {
+  const st = studentAverages(cls('X', 20))
+  const g = selfStudyGroups(st, { topN: 5 })
+  assert.equal(g[6].n, 5)
+  assert.deepEqual(g[6].students.map((s) => s.name).sort(), ['s15', 's16', 's17', 's18', 's19'])
+  assert.equal(g.slice(0, 6).reduce((t, x) => t + x.n, 0), 15)
+  const sizes = g.slice(0, 6).map((x) => x.n)
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1)
+})
+test('top group: N larger than the class takes everyone; 0 means automatic; bands never reach Group 7 below the top', () => {
+  const st = studentAverages(cls('X', 6))
+  assert.equal(selfStudyGroups(st, { topN: 50 })[6].n, 6)
+  assert.deepEqual(selfStudyGroups(st, { topN: 0 }).map((x) => x.n), selfStudyGroups(st).map((x) => x.n))
+  const b = selfStudyGroups(studentAverages(cls('X', 14)), { topN: 3, mode: 'bands' })
+  assert.equal(b[6].n, 3)
+  assert.equal(b.reduce((t, x) => t + x.n, 0), 14)
+})
+test('top group across all classes of a language, mixed', () => {
+  const rows = [...cls('Combined English', 10), ...cls('Combined English', 10).map((r) => ({ ...r, sid: 'e' + r.sid, batch: 'Lakshya A' })), ...cls('Combined Manipuri', 10).map((r) => ({ ...r, sid: 'm' + r.sid }))]
+  const [m] = classGroups(rows, { mix: true, language: 'English', topN: 4 })
+  assert.deepEqual(m.classes, ['Combined English'])
+  assert.equal(m.groups[6].n, 4)
+  assert.equal(classGroups(rows, { mix: true, topN: 6 })[0].groups[6].n, 6)
+})
+test('a manual choice still wins over the top group', () => {
+  const g = selfStudyGroups(studentAverages(cls('X', 10)), { topN: 3, overrides: { s0: 7 } })
+  assert.ok(g[6].students.some((s) => s.name === 's0' && s.manual))
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 10)
+})

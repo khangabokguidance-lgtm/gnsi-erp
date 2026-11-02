@@ -8,6 +8,8 @@
 //
 // Options (all optional):
 //   basis      ''  = overall average %, or a subject name = that subject's average % (subject-wise groups)
+//   topN       admin's choice: Group 7 is exactly the best N students (across all chosen classes when mixed);
+//              everyone else is split over Groups 1–6
 //   mix        one set of 7 groups across several classes together, instead of one set per class
 //   overrides  { [sid]: 1..7 } — the admin's manual choice; moves that student to that group
 //              (kept per basis, so a student can be in a different group for each subject)
@@ -70,18 +72,22 @@ export const scoreOf = (s, basis = '') => (basis ? (s.subj?.[basis] ?? null) : s
 
 // Split students into 7 groups, weakest first. mode: 'equal' | 'bands'. basis: '' | subject.
 // overrides: manual choices { sid: 1..7 } that win over the automatic split.
-export function selfStudyGroups(students, { mode = 'equal', basis = '', overrides = {} } = {}) {
+export function selfStudyGroups(students, { mode = 'equal', basis = '', overrides = {}, topN = 0 } = {}) {
   const scored = students.map((s) => ({ ...s, overall: s.avg, avg: scoreOf(s, basis) })).filter((s) => s.avg !== null && s.avg !== undefined);
   const sorted = [...scored].sort((a, b) => a.avg - b.avg || String(a.name).localeCompare(String(b.name)));
   const n = sorted.length;
+  const top = Math.max(0, Math.min(n, Math.floor(Number(topN) || 0)));   // size of the top group (Group 7), 0 = automatic
+  const rest = n - top;
+  const lanes = top ? GROUP_COUNT - 1 : GROUP_COUNT;                     // groups left for everyone below the top group
   const groups = GROUP_META.map((m) => ({ ...m, name: `Group ${m.no}`, students: [] }));
   sorted.forEach((s, i) => {
     const manual = Number(overrides?.[s.sid]);
     const isManual = Number.isInteger(manual) && manual >= 1 && manual <= GROUP_COUNT;
-    const idx = isManual ? manual - 1
+    const auto = top && i >= rest ? GROUP_COUNT - 1
       : mode === 'bands'
-        ? BAND_LIMITS.filter((l) => s.avg >= l).length
-        : Math.min(GROUP_COUNT - 1, Math.floor((i * GROUP_COUNT) / n));
+        ? Math.min(lanes - 1, BAND_LIMITS.filter((l) => s.avg >= l).length)
+        : Math.min(lanes - 1, Math.floor((i * lanes) / (top ? rest : n)));
+    const idx = isManual ? manual - 1 : auto;
     groups[idx].students.push(isManual ? { ...s, manual: true } : s);
   });
   groups.forEach((g) => {
@@ -106,11 +112,11 @@ export function selfStudyGroups(students, { mode = 'equal', basis = '', override
 // not state a medium only appear under "all". batch: '' for every class, or one class.
 // mix: true → ONE set of 7 groups across the chosen classes together (classes: [] = every class that passes the
 // language filter); each student keeps their own class on the row.
-export function classGroups(rows, { language = '', mode = 'equal', batch = '', basis = '', overrides = {}, mix = false, classes = [] } = {}) {
+export function classGroups(rows, { language = '', mode = 'equal', batch = '', basis = '', overrides = {}, mix = false, classes = [], topN = 0 } = {}) {
   const all = studentAverages(rows);
   const batches = [...new Set(all.map((s) => s.batch))].sort()
     .filter((b) => (!batch || b === batch) && (!language || languageOfBatch(b) === language));
-  const opt = { mode, basis, overrides };
+  const opt = { mode, basis, overrides, topN };
   if (mix) {
     const picked = classes.length ? batches.filter((b) => classes.includes(b)) : batches;
     const students = all.filter((s) => picked.includes(s.batch));

@@ -15,7 +15,7 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
@@ -964,19 +964,42 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     setChoices((cur) => ({ ...cur, [basisKey]: {} }));
     try { await clearGroupChoices(seriesName, basis, choiceMode); } catch (e) { setSaveMsg(`Could not reset: ${e.message || e}`); }
   };
+  // Top group (admin's choice): Group 7 = the best N students (across all chosen classes when mixed). 0 = automatic.
+  const [topText, setTopText] = useState('');
+  const topN = Math.max(0, Math.floor(Number(topText) || 0));
+  // House Master / Mistress assigned to each group (per subject / overall, per set of students).
+  const [mentors, setMentors] = useState({});
+  const [mentorMode, setMentorMode] = useState('local');
+  useEffect(() => {
+    let live = true;
+    loadGroupMentors(seriesName).then((r) => { if (live) { setMentors(r.mentors); setMentorMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Assigned House Masters could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const setKeyOf = (c) => (c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`);
+  const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
+  const assign = async (c, g, key) => {
+    setSaveMsg('');
+    const person = key ? (dir?.masters || []).find((m) => m.key === key) : null;
+    const value = person ? { name: person.name, title: person.title } : null;
+    const k = mentorKey(basis, setKeyOf(c), g.no);
+    setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
+    try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
+    catch (e) { setSaveMsg(`Could not save the House Master: ${e.message || e}`); }
+  };
   const everything = useMemo(() => classGroups(rows, { mode }), [rows, mode]);
-  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick }), [scoped, language, batch, mode, basis, overrides, layout, mixPick]);
+  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN]);
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
   const pickable = everything.filter((c) => !language || c.language === language);
 
   const flatOf = (cls, b) => cls.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
+    'Assigned House Master / Mistress (group)': mentorOf(c, b, g)?.name || '—',
     Class: s.batch || c.batch, 'Group layout': c.mixed ? `Mixed (${c.classes.join(' + ')})` : 'Class-wise', Language: c.language || '—', Basis: b || 'Overall marks', Group: `${g.name} — ${g.tag}`,
     'Group set by': s.manual ? 'Admin (manual)' : 'Automatic', GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—',
     [`${b || 'Average'} %`]: Math.round(s.avg * 10) / 10, 'Overall %': Math.round(s.overall * 10) / 10,
     'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
   }))));
-  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick });
+  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN });
   const exportXlsx = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
@@ -992,7 +1015,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   };
   const print = () => {
     const body = classes.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, basis, g) ? `House Master/Mistress: ${escH(mentorOf(c, basis, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
       ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(basis || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
     printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${basis ? `subject: ${escH(basis)}` : 'overall marks'} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
   };
@@ -1050,6 +1073,9 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
             <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
           </select>
         </Field>
+        <Field label={layout === 'mix' ? 'Top group = best … students' : 'Top group = best … per class'}>
+          <input type="number" min={0} placeholder="0 = automatic" style={{ ...ui.input, width: 120 }} value={topText} onChange={(e) => setTopText(e.target.value)} aria-label="Number of students in the top group" />
+        </Field>
         <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
         <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
         <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
@@ -1092,6 +1118,15 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                   <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
                   {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
                   {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
+                  {canEdit && dir ? (
+                    <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned House Master / Mistress
+                      <select aria-label={`Assigned House Master for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
+                        value={(dir.masters.find((m) => m.name === mentorOf(c, basis, g)?.name) || {}).key || ''} onChange={(e) => assign(c, g, e.target.value)}>
+                        <option value="">— not assigned —</option>
+                        {dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}
+                      </select>
+                    </label>
+                  ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}
                 </div>
                 <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                   {g.students.map((s) => (

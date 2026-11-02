@@ -44,3 +44,8 @@ test('an assignment with no linked staff record falls back to its own name', () 
   const d = buildHouseDirectory({ students: [{ gcc_no: 1, house: 'Z' }], housemasters: [{ name: 'Local HM', house: 'Z', status: 'Active' }], staff: [] })
   assert.deepEqual(d.lookup(1).masters.map((m) => [m.name, m.fromStaffRecord]), [['Local HM', false]])
 })
+
+test('the list of people who can be chosen: one entry each, names from the Staff Records', () => {
+  const d = buildHouseDirectory({ students, housemasters: [...housemasters, { name: 'Rohit Sharma', house: 'Ashoka', staff_profile_id: 7, status: 'Active' }], staff })
+  assert.deepEqual(d.masters.map((m) => [m.name, m.title]), [['Anita Devi', 'House Mistress'], ['Rohit Sharma', 'House Master']])
+})
