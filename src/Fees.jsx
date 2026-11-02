@@ -60,6 +60,7 @@ import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
 import FeeMonthlyCheck from './FeeMonthlyCheck'
+import { loggedInName } from './lib/collector'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
@@ -2948,7 +2949,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
   const [txnRef,      setTxnRef]      = useState('')
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const [collectedBy, setCollectedBy] = useState(() => loggedInName(currentUser))
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null)
   // Populated right after a successful collectFee() — drives the "Send
@@ -3024,9 +3026,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // backfill collectedBy once it's available if the field is still empty,
   // without ever overwriting something staff already typed in.
   useEffect(() => {
-    const authName = currentUser?.userName || currentUser?.name
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the name once sign-in resolves, never overwriting typed text
-    if (authName) setCollectedBy(c => c || authName)
+    const authName = loggedInName(currentUser)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the signed-in user (also after sign-in resolves or the user changes)
+    setCollectedBy(authName)
   }, [currentUser])
 
   // Flat months priced at the hostel type in effect that month.
@@ -3517,7 +3519,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     // transaction reference for non-cash modes, since a UPI/bank/cheque
     // payment with no ref number can't be reconciled or looked up later.
     if (!collectedBy.trim()) {
-      showToast('Collected By is required — enter the name of the staff collecting this payment.', '#dc2626')
+      showToast('Collected By is required and is filled in from your login — sign out and in again.', '#dc2626')
       return
     }
     if (payMode !== 'Cash' && !txnRef.trim()) {
@@ -4363,8 +4365,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
                 <div><span className="fp-lbl">Payment date</span><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} aria-label="Payment date" style={inp} /></div>
                 <div>
-                  <span className="fp-lbl">Collected by *</span>
-                  <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : inp} />
+                  <span className="fp-lbl">Collected by * <span style={{ fontWeight: 500, opacity: .7 }}>(automatic — you)</span></span>
+                  <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : { ...inp, background: '#f4f1e8', cursor: 'not-allowed' }} />
                 </div>
               </div>
               <div style={{ marginTop: 10 }}>
