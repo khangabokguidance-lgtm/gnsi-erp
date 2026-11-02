@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { printDocument, letterhead } from './lib/mockTestReports';
 import { studentAverages, GROUP_META } from './lib/mockTestGroups';
-import { removedList, mayAct, sameName, initials } from './lib/mockTestDuty';
+import { removedList, mayAct, sameName, initials, filterDutiesBySubjects, dutySubjects } from './lib/mockTestDuty';
 import { pickInstruction, slotText, slotClashes, instructionMessage, hasInstruction, emptyInstruction } from './lib/dutyInstruction';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 
@@ -80,9 +80,13 @@ const CSS = `
 const Avatar = ({ name, sm }) => <span className={`mdd-av${sm ? ' sm' : ''}`} style={{ background: `linear-gradient(135deg, hsl(${hue(name)} 62% 46%), hsl(${hue(name)} 62% 34%))` }}>{initials(name)}</span>;
 
 export default function MockDutyDesk({
-  rows, series, institute, subjects, duties, removed, custom, dir,
+  rows, series, institute, subjects, duties: allDuties, removed, custom, dir,
   canEdit, userName, userStaffId, onRemove, onRestore, onTransfer, onSaveCustom, onDeleteCustom, onSaveInstruction, storageNote, onClose,
 }) {
+  // "Show and print only these subjects" — the choice applies to the list, the duty sheets, Excel and the copied message.
+  const [subj, setSubj] = useState([]);   // [] = every subject
+  const allSubjects = useMemo(() => dutySubjects(allDuties), [allDuties]);
+  const duties = useMemo(() => filterDutiesBySubjects(allDuties, subj), [allDuties, subj]);
   const everyone = useMemo(() => [...(dir?.masters || []), ...(dir?.teachers || [])], [dir]);
   const staffIdOf = (name) => everyone.find((p) => sameName(p.name, name))?.staffId ?? null;
   const canAct = (dutyName) => mayAct({ canEdit, userName, dutyName, userStaffId, dutyStaffId: staffIdOf(dutyName) });
@@ -119,7 +123,7 @@ export default function MockDutyDesk({
         ${clash.length ? `<div style="color:#b42318;font-weight:700;margin-top:4px">⚠ Two of your duties overlap: ${clash.map((c) => `${esc(c.a)} and ${esc(c.b)} on ${c.day}`).join('; ')}. Please tell the admin.</div>` : ''}</div>` : '';
     const rem = removedAll.filter((r) => p.sections.some((s) => (s.basis || '') === r.basis));
     return `<div class="page"><div class="dp">${letterhead(institute)}<div class="title">Self-study duty sheet</div>
-      <div class="sub">${esc(series)}</div>
+      <div class="sub">${esc(series)}${subj.length ? ` · Subject${subj.length === 1 ? '' : 's'}: ${esc(subj.join(', '))}` : ''}</div>
       <div style="display:flex;gap:14px;align-items:center;border:1px solid #cbd5e1;border-radius:8px;padding:9px 12px;margin:6px 0 10px;background:linear-gradient(180deg,#f8fafc,#fff)">
         <div style="width:46px;height:46px;border-radius:50%;background:#0f2d5e;color:#f3d58a;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px">${esc(initials(p.name))}</div>
         <div style="flex:1"><div style="font-size:15px;font-weight:800;color:#0f2d5e">${esc(p.name)}</div><div style="color:#475569">${esc(p.title || 'On duty')}</div></div>
@@ -205,6 +209,14 @@ export default function MockDutyDesk({
         <button className="mdd-ghost" disabled={!duties.length} onClick={() => exportXlsx(duties)}>⬇️ Excel — all</button>
       </div>
 
+      {allSubjects.length > 1 ? (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }} role="group" aria-label="Subjects to show and print">
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.8px', marginRight: 4 }}>Show &amp; print only:</span>
+          <button className="mdd-ghost" style={!subj.length ? { background: NAVY, color: '#fff', borderColor: NAVY } : undefined} onClick={() => setSubj([])} aria-pressed={!subj.length}>All subjects</button>
+          {allSubjects.map((x) => <button key={x} className="mdd-ghost" style={subj.includes(x) ? { background: NAVY, color: '#fff', borderColor: NAVY } : undefined} onClick={() => setSubj(toggleIn(subj, x))} aria-pressed={subj.includes(x)}>{x}</button>)}
+        </div>
+      ) : null}
+
       {builder ? (
         <div className="mdd-card" style={{ border: '1.5px solid #7c3aed' }}>
           <div className="mdd-ph"><h4>{builder.id ? 'Edit group' : 'New group from manual choice'}</h4><span style={{ fontSize: 12, color: '#5d6b82' }}>Tick the students you want in this group, name it, and choose who is on duty.</span></div>
@@ -255,7 +267,9 @@ export default function MockDutyDesk({
         </div>
       ) : null}
 
-      {!duties.length ? (
+      {allDuties.length && !duties.length ? (
+        <div className="mdd-card"><div className="mdd-empty"><b>Nobody is on duty for {subj.join(', ')}</b><div style={{ fontSize: 13, marginTop: 4 }}>Choose another subject above, or <button className="mdd-ghost" onClick={() => setSubj([])}>show all subjects</button>.</div></div></div>
+      ) : !allDuties.length ? (
         <div className="mdd-card"><div className="mdd-empty"><div style={{ fontSize: 32 }}>🧑‍🏫</div><b>Nobody is on duty yet</b><div style={{ fontSize: 13, marginTop: 4 }}>Assign a House Master or teacher to a group (“Assigned for duty” on each group card), or build a group from a manual choice above.</div></div></div>
       ) : (
         <div className="mdd-grid">

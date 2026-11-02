@@ -104,3 +104,19 @@ export function removedList(removed, rows) {
 // The user is matched to the duty person by name, or by their Staff Record id when both are known.
 export const mayAct = ({ canEdit, userName, dutyName, userStaffId = null, dutyStaffId = null }) =>
   !!canEdit || sameName(userName, dutyName) || (userStaffId !== null && userStaffId !== undefined && dutyStaffId !== null && dutyStaffId !== undefined && String(userStaffId) === String(dutyStaffId));
+
+// Keep only the duties for the chosen subjects ("Overall marks" or a subject name); [] keeps everything.
+// People left with no duty are dropped and every person's counts are recomputed.
+export function filterDutiesBySubjects(duties, subjects = []) {
+  if (!subjects.length) return duties;
+  return duties
+    .map((p) => {
+      const sections = p.sections.filter((x) => subjects.includes(x.subject));
+      return { ...p, sections, groups: sections.length, students: new Set(sections.flatMap((x) => x.students.map((y) => y.sid))).size };
+    })
+    .filter((p) => p.sections.length);
+}
+
+// The subjects that appear in the duties — "Overall marks" first, then alphabetical.
+export const dutySubjects = (duties) => [...new Set(duties.flatMap((p) => p.sections.map((x) => x.subject)))]
+  .sort((a, b) => (b === 'Overall marks') - (a === 'Overall marks') || a.localeCompare(b));
