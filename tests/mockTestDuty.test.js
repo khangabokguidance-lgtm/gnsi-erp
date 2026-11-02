@@ -1,0 +1,53 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { collectDuties, removedList, mayAct, sameName, initials } from '../src/lib/mockTestDuty.js'
+
+const row = (sid, batch, p1, p2, name = sid) => [1, 2].map((t, i) => ({ sid, student_name: name.toUpperCase(), gcc_no: sid.charCodeAt(0), batch, test_no: t, marks: { Maths: (i ? p2 : p1) / 4, EVS: 20 }, max_marks: { Maths: 25, EVS: 25 }, total: 0, max_total: 50 })).map((r) => ({ ...r, total: r.marks.Maths + r.marks.EVS }))
+const rows = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].flatMap((s, i) => row(s, 'X', 20 + i * 12, 22 + i * 12)).concat(row('p', 'Y', 50, 50))
+const optsFor = (basis) => ({ basis })
+const mentorFor = (basis, c, g) => (basis === '' && g.no <= 2 ? { name: 'Meera Singh', title: 'Teacher' } : basis === 'Maths' && g.no === 7 ? { name: 'Rohit Sharma', title: 'House Master' } : null)
+
+test('names and initials', () => {
+  assert.equal(sameName(' Meera  ', 'meera'), true); assert.equal(sameName('Meera', 'Meera Singh'), false); assert.equal(sameName('Meera', ' meera '), true); assert.equal(sameName('', ''), false)
+  assert.equal(initials('Meera Singh Rao'), 'MS'); assert.equal(initials(''), '?')
+})
+test('duties are gathered per person across every subject', () => {
+  const d = collectDuties({ rows, bases: ['', 'Maths'], optsFor, mentorFor, removedFor: () => ({}) })
+  assert.deepEqual(d.map((p) => p.name), ['Meera Singh', 'Rohit Sharma'])
+  const meera = d.find((p) => p.name === 'Meera Singh')
+  assert.ok(meera.sections.every((s) => s.group <= 2 && s.subject === 'Overall marks'))
+  assert.ok(meera.students >= 2)
+  const rohit = d.find((p) => p.name === 'Rohit Sharma')
+  assert.equal(rohit.sections[0].subject, 'Maths'); assert.equal(rohit.sections[0].group, 7)
+  assert.ok(rohit.sections[0].students[0].score !== null)
+})
+test('removed students leave the duty lists (per subject)', () => {
+  const base = collectDuties({ rows, bases: ['', 'Maths'], optsFor, mentorFor, removedFor: () => ({}) })
+  const all = base.find((p) => p.name === 'Meera Singh').sections.flatMap((s) => s.students.map((x) => x.sid))
+  const victim = all[0]
+  const d = collectDuties({ rows, bases: ['', 'Maths'], optsFor, mentorFor, removedFor: (b) => (b === '' ? { [victim]: {} } : {}) })
+  const left = d.find((p) => p.name === 'Meera Singh').sections.flatMap((s) => s.students.map((x) => x.sid))
+  assert.ok(!left.includes(victim))
+})
+test('a manually built group appears under its duty person with the chosen students', () => {
+  const custom = [{ id: 'cg-1', name: 'Maths booster', basis: 'Maths', dutyName: 'Meera Singh', dutyTitle: 'Teacher', students: ['a', 'p', 'zzz'], note: 'Tue 5pm' }]
+  const d = collectDuties({ rows, bases: [''], optsFor, mentorFor, removedFor: () => ({}), custom })
+  const sec = d.find((p) => p.name === 'Meera Singh').sections.find((s) => s.kind === 'custom')
+  assert.equal(sec.label, 'Maths booster'); assert.equal(sec.note, 'Tue 5pm')
+  assert.deepEqual(sec.students.map((s) => s.sid).sort(), ['a', 'p'])     // unknown student key ignored
+  assert.equal(collectDuties({ rows, bases: [''], optsFor, mentorFor, removedFor: () => ({}), custom: [{ ...custom[0], dutyName: '' }] }).some((p) => p.sections.some((s) => s.kind === 'custom')), false)
+})
+test('removed list and who may act', () => {
+  const l = removedList({ overall: { a: { reason: 'Left', by: 'Meera', at: '2026-11-02' } }, Maths: { p: { reason: '' } } }, rows)
+  assert.deepEqual(l.map((x) => [x.name, x.basis, x.reason]), [['A', '', 'Left'], ['P', 'Maths', '']])
+  assert.equal(mayAct({ canEdit: true, userName: 'x', dutyName: 'y' }), true)
+  assert.equal(mayAct({ canEdit: false, userName: 'Meera Singh', dutyName: 'meera singh' }), true)
+  assert.equal(mayAct({ canEdit: false, userName: 'Meera Singh', dutyName: 'Rohit Sharma' }), false)
+  assert.equal(mayAct({ canEdit: false, userName: '', dutyName: '' }), false)
+})
+
+test('a teacher is also recognised by their Staff Record id when the login name differs', () => {
+  assert.equal(mayAct({ canEdit: false, userName: 'meera.s', dutyName: 'Meera Singh', userStaffId: 20, dutyStaffId: '20' }), true)
+  assert.equal(mayAct({ canEdit: false, userName: 'meera.s', dutyName: 'Meera Singh', userStaffId: 20, dutyStaffId: 21 }), false)
+  assert.equal(mayAct({ canEdit: false, userName: 'x', dutyName: 'y', userStaffId: null, dutyStaffId: null }), false)
+})

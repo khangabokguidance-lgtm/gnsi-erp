@@ -33,7 +33,7 @@ export function buildHouseDirectory({ students = [], housemasters = [], staff = 
     const name = String(sp?.name || h.name || '').trim();
     if (!name) return;
     const list = byHouse.get(k) || [];
-    list.push({ name, title: hmTitle(sp?.designation), phone: sp?.phone || h.phone || '', fromStaffRecord: !!sp });
+    list.push({ name, title: hmTitle(sp?.designation), phone: sp?.phone || h.phone || '', fromStaffRecord: !!sp, staffId: sp?.id ?? h.staff_profile_id ?? null });
     byHouse.set(k, list);
   });
   const houseOf = new Map();
@@ -52,12 +52,12 @@ export function buildHouseDirectory({ students = [], housemasters = [], staff = 
   // Everyone who can be chosen as a House Master / Mistress (one entry per person), for assigning to a group.
   const seen = new Set();
   const masters = [];
-  [...byHouse.values()].flat().forEach((m) => { const k = m.name.toLowerCase(); if (!seen.has(k)) { seen.add(k); masters.push({ key: k, name: m.name, title: m.title }); } });
+  [...byHouse.values()].flat().forEach((m) => { const k = m.name.toLowerCase(); if (!seen.has(k)) { seen.add(k); masters.push({ key: k, name: m.name, title: m.title, staffId: m.staffId ?? null }); } });
   masters.sort((a, b) => a.name.localeCompare(b.name));
   // Active teaching staff who can be put on duty for a group (a House Master who also teaches is listed once, as a House Master).
   const teachers = staff
     .filter((x) => (!x.status || /^active$/i.test(String(x.status))) && isTeachingStaff(x) && String(x.name || '').trim() && !seen.has(String(x.name).trim().toLowerCase()))
-    .map((x) => ({ key: `t:${String(x.name).trim().toLowerCase()}`, name: String(x.name).trim(), title: String(x.designation || '').trim() || 'Teaching staff', kind: 'teacher' }))
+    .map((x) => ({ key: `t:${String(x.name).trim().toLowerCase()}`, name: String(x.name).trim(), title: String(x.designation || '').trim() || 'Teaching staff', kind: 'teacher', staffId: x.id ?? null }))
     .filter((t, i, a) => a.findIndex((y) => y.key === t.key) === i)
     .sort((a, b) => a.name.localeCompare(b.name));
   return { lookup, houses, masters, teachers };

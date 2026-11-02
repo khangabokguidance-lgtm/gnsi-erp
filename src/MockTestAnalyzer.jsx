@@ -15,11 +15,13 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
 import MockGroupReport from './MockGroupReport';
+import MockDutyDesk from './MockDutyDesk';
+import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
@@ -217,7 +219,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
-      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
@@ -925,7 +927,7 @@ function hmSummary(group, hmOf) {
   return `House Master/Mistress: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} unassigned` : ''}`;
 }
 
-function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '', passPct = 40 }) {
+function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '', passPct = 40, currentUser = null }) {
   const [language, setLanguage] = useState('');
   const [batch, setBatch] = useState('');
   const [mode, setMode] = useState('equal');
@@ -958,10 +960,11 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const basisKey = basis || GROUP_BASIS_ALL;
   const overrides = choices[basisKey] || EMPTY_OBJ;
   const manualTotal = Object.keys(overrides).length;
-  const move = async (sid, grp) => {
+  const move = async (sid, grp, b = basis) => {
     setSaveMsg('');
-    setChoices((cur) => { const b = { ...(cur[basisKey] || {}) }; if (grp === null) delete b[sid]; else b[sid] = grp; return { ...cur, [basisKey]: b }; });
-    try { await saveGroupChoice(seriesName, basis, sid, grp, choiceMode, who); }
+    const bk = b || GROUP_BASIS_ALL;
+    setChoices((cur) => { const m = { ...(cur[bk] || {}) }; if (grp === null) delete m[sid]; else m[sid] = grp; return { ...cur, [bk]: m }; });
+    try { await saveGroupChoice(seriesName, b, sid, grp, choiceMode, who); }
     catch (e) { setSaveMsg(`Could not save the change: ${e.message || e}`); }
   };
   const resetManual = async () => {
@@ -1006,10 +1009,48 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
     catch (e) { setSaveMsg(`Could not save who is on duty: ${e.message || e}`); }
   };
+  // Duty desk: students a teacher/admin removed from the groups, and groups built by hand.
+  const userName = loggedInName(currentUser);
+  const userStaffId = currentUser?.staff_profile_id ?? null;
+  const [removed, setRemoved] = useState({});
+  const [removedMode, setRemovedMode] = useState('local');
+  const [custom, setCustom] = useState([]);
+  const [customMode, setCustomMode] = useState('local');
+  const [showDesk, setShowDesk] = useState(false);
+  useEffect(() => {
+    let live = true;
+    loadRemoved(seriesName).then((r) => { if (live) { setRemoved(r.removed); setRemovedMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Removed students could not be loaded: ${e.message || e}`); });
+    loadCustomGroups(seriesName).then((r) => { if (live) { setCustom(r.groups); setCustomMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Manual groups could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const removedFor = useCallback((b) => removed[b || GROUP_BASIS_ALL] || EMPTY_OBJ, [removed]);
+  const removeIn = async (b, sid, reason) => {
+    const bk = b || GROUP_BASIS_ALL;
+    setRemoved((cur) => ({ ...cur, [bk]: { ...(cur[bk] || {}), [sid]: { reason, by: userName || who, at: new Date().toISOString() } } }));
+    try { await saveRemoved(seriesName, b, sid, { reason }, removedMode, userName || who); } catch (e) { setSaveMsg(`Could not save the removal: ${e.message || e}`); }
+  };
+  const restoreIn = async (b, sid) => {
+    const bk = b || GROUP_BASIS_ALL;
+    setRemoved((cur) => { const m = { ...(cur[bk] || {}) }; delete m[sid]; return { ...cur, [bk]: m }; });
+    try { await saveRemoved(seriesName, b, sid, null, removedMode, userName || who); } catch (e) { setSaveMsg(`Could not restore: ${e.message || e}`); }
+  };
+  const saveCustom = async (g) => {
+    const group = { ...g, id: g.id || newGroupId() };
+    setCustom((cur) => [...cur.filter((x) => x.id !== group.id), group]);
+    try { await saveCustomGroup(seriesName, group, customMode, userName || who); } catch (e) { setSaveMsg(`Could not save the group: ${e.message || e}`); }
+  };
+  const deleteCustom = async (id) => {
+    setCustom((cur) => cur.filter((x) => x.id !== id));
+    try { await deleteCustomGroup(seriesName, id, customMode); } catch (e) { setSaveMsg(`Could not delete the group: ${e.message || e}`); }
+  };
+  const removedHere = removedFor(basis);
+  const viewRows = useMemo(() => (Object.keys(removedHere).length ? scoped.filter((r) => !removedHere[r.sid]) : scoped), [scoped, removedHere]);
+  const optsFor = useCallback((b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [language, layout, batch, mode, choices, mixPick, topN, languages]);
+  const mentorFor = useCallback((b, c, g) => mentors[mentorKey(b, c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`, g.no)] || null, [mentors, language]);
   const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
-  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
+  const classes = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
   // The same groups without any manual moves — to show where manually moved students started.
-  const autoClasses = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, layout, mixPick, topN, languages]);
+  const autoClasses = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, layout, mixPick, topN, languages]);
   const [showReport, setShowReport] = useState(false);
   const layoutLabel = layout === 'mix' ? `Mixed classes${language ? ` · ${language}` : ''}` : `Class-wise${language ? ` · ${language}` : ''}`;
   const langCount = (l) => everything.filter((c) => c.language === l).length;
@@ -1120,6 +1161,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
         <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
         <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
         <button style={showReport ? { ...ui.btn, background: '#be185d' } : ui.ghost} disabled={!classes.length} onClick={() => setShowReport((v) => !v)}>📑 Smart report</button>
+        <button style={showDesk ? { ...ui.btn, background: '#b8923a', color: '#1b1303' } : ui.ghost} disabled={!classes.length && !custom.length} onClick={() => setShowDesk((v) => !v)}>🧑‍🏫 Duty desk</button>
         {canEdit ? (
           <div style={{ flex: '1 1 100%', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', paddingTop: 10 }}>
             <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done editing' : '✏️ Move students by hand'}</button>
@@ -1132,6 +1174,14 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
         ) : null}
       </div>
       {saveMsg ? <div style={{ fontSize: 12, color: '#991B1B', margin: '0 2px 10px' }}>{saveMsg}</div> : null}
+      {showDesk ? (
+        <MockDutyDesk rows={scoped} series={series} institute={institute} subjects={subjects} optsFor={optsFor} mentorFor={mentorFor}
+          removed={removed} removedFor={removedFor} custom={custom} hmOf={hmOf} dir={dir} canEdit={canEdit} userName={userName} userStaffId={userStaffId}
+          onRemove={removeIn} onRestore={restoreIn} onTransfer={(b, sid, grp) => move(sid, grp, b)} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom}
+          storageNote={removedMode === 'local' || customMode === 'local' ? 'Removals and manual groups are saved in this browser only until the database tables are added (migration 20261052).' : ''}
+          onClose={() => setShowDesk(false)} />
+      ) : null}
+      {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — open the Duty desk to restore them.</div> : null}
       {showReport && classes.length ? (
         <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct}
           hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setShowReport(false)} />
