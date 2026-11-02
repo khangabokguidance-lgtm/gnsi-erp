@@ -546,10 +546,10 @@ const GRADE_PRESETS = [
 function usePerm(currentUser, perms) {
   if (perms) {
     return {
-      canEdit:   perms.edit   !== false,
-      canDelete: perms.delete !== false,
-      canImport: perms.add    !== false,
-      canPrint:  perms.read   !== false,
+      canEdit:   perms.edit   === true,
+      canDelete: perms.delete === true,
+      canImport: perms.add    === true,
+      canPrint:  perms.read   === true,
     }
   }
   const role = currentUser?.role

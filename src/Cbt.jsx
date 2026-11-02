@@ -23,7 +23,7 @@ const fileSafe = s => String(s || 'test').replace(/[^\w.-]+/g, '-')
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 
 function CbtInner({ perms, currentUser }) {
-  const canEdit = perms ? !!(perms.add && perms.edit) : true
+  const canEdit = !!(perms && perms.add && perms.edit)
   const [tab, setTab] = useState('tests')
   const [tests, setTests] = useState(null)
   const [builder, setBuilder] = useState(null)     // null | 'new' | test

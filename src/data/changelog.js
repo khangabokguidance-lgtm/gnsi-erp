@@ -3,6 +3,13 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Permission loopholes closed (Salary, Awards, Construction, Exams, Entrance, CBT)',
+    items: [
+      { type: 'security', module: 'admin', text: 'Salary, Awards and Construction never checked the add / edit / delete rights in Admin → Permissions, so anyone who could open them could change everything. A non-admin without those rights now gets a “View only” screen where saving, adding, editing, approving and deleting are blocked.' },
+      { type: 'security', module: 'admin', text: 'Exams, Entrance Exam and CBT treated a missing permission as “allowed”. They now default to no access unless the right is explicitly granted.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Exams: printing is admin-only',
     items: [
       { type: 'security', module: 'exams', text: 'Printing inside the Exams module (report cards, admit cards, certificates, merit lists, Mock Analyzer reports, duty sheets and the Revision Plan) is now switched off for everyone except admins. Other staff get a notice instead of a print window, Ctrl+P is blocked, and the browser’s own page print comes out blank. Fees, Accounts and the other modules still print normally.' },
