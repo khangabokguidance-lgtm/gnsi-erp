@@ -51,3 +51,15 @@ test('a teacher is also recognised by their Staff Record id when the login name 
   assert.equal(mayAct({ canEdit: false, userName: 'meera.s', dutyName: 'Meera Singh', userStaffId: 20, dutyStaffId: 21 }), false)
   assert.equal(mayAct({ canEdit: false, userName: 'x', dutyName: 'y', userStaffId: null, dutyStaffId: null }), false)
 })
+
+test('every duty section carries the instruction of its assignment (where / why / when / what)', () => {
+  const inst = { venue: 'Room 4', reason: 'Maths revision', days: ['Tue'], from: '17:00', to: '18:00', instruction: 'Take attendance' }
+  const mf = (basis, c, g) => (basis === '' && g.no === 1 ? { name: 'Meera Singh', title: 'Teacher', ...inst } : null)
+  const d = collectDuties({ rows, bases: [''], optsFor, mentorFor: mf, removedFor: () => ({}) })
+  assert.deepEqual(d[0].sections[0].instruction, inst)
+  const custom = [{ id: 'c1', name: 'Booster', basis: '', dutyName: 'Meera Singh', students: ['a'], venue: 'Hall', days: 'Mon,Wed', time_from: '16:00', time_to: '17:00' }, { id: 'c2', name: 'Old', basis: '', dutyName: 'Meera Singh', students: ['b'], note: 'Tue 5pm, Room 4' }]
+  const dd = collectDuties({ rows, bases: [''], optsFor, mentorFor: () => null, removedFor: () => ({}), custom })
+  const secs = dd[0].sections
+  assert.deepEqual([secs[0].instruction.venue, secs[0].instruction.days, secs[0].instruction.from], ['Hall', ['Mon', 'Wed'], '16:00'])
+  assert.equal(secs[1].instruction.instruction, 'Tue 5pm, Room 4')     // an older free-text note becomes the instruction
+})

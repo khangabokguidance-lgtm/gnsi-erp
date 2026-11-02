@@ -21,6 +21,8 @@ import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_COUNT, GROUP
 import { loadHouseDirectory } from './houseDirectory';
 import MockGroupReport from './MockGroupReport';
 import MockDutyDesk from './MockDutyDesk';
+import { InstructionForm, InstructionSummary } from './DutyInstruction';
+import { pickInstruction, hasInstruction } from './lib/dutyInstruction';
 import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -1003,7 +1005,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const assign = async (c, g, key) => {
     setSaveMsg('');
     const person = key ? [...(dir?.masters || []), ...(dir?.teachers || [])].find((m) => m.key === key) : null;
-    const value = person ? { name: person.name, title: person.title } : null;
+    const value = person ? { ...pickInstruction(mentorOf(c, basis, g)), name: person.name, title: person.title } : null;   // a new person keeps the instruction of the slot
     const k = mentorKey(basis, setKeyOf(c), g.no);
     setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
     try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
@@ -1047,6 +1049,27 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const viewRows = useMemo(() => (Object.keys(removedHere).length ? scoped.filter((r) => !removedHere[r.sid]) : scoped), [scoped, removedHere]);
   const optsFor = useCallback((b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [language, layout, batch, mode, choices, mixPick, topN, languages]);
   const mentorFor = useCallback((b, c, g) => mentors[mentorKey(b, c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`, g.no)] || null, [mentors, language]);
+  // Instruction (where / why / when / what to do) for the person on duty of a group.
+  const [instEditKey, setInstEditKey] = useState(null);   // `${setKey}|${group}` of the card being edited
+  const [instDraft, setInstDraft] = useState(null);
+  const [instAll, setInstAll] = useState(false);
+  const saveDutyDetails = async (b, setKey, grp, details) => {
+    const k = mentorKey(b, setKey, grp);
+    const cur = mentors[k];
+    if (!cur?.name) return;
+    const value = { ...cur, ...pickInstruction(details) };
+    setMentors((m) => ({ ...m, [k]: value }));
+    try { await saveGroupMentor(seriesName, b, setKey, grp, value, mentorMode, who); }
+    catch (e) { setSaveMsg(`Could not save the instruction: ${e.message || e}`); }
+  };
+  const saveInstructionFor = async (sec, details) => {
+    if (sec.kind === 'custom') {
+      const cg = custom.find((x) => x.id === sec.id);
+      if (cg) await saveCustom({ ...cg, ...pickInstruction(details) });
+      return;
+    }
+    await saveDutyDetails(sec.basis, sec.mixed ? `mix:${language || 'all'}` : `class:${sec.set}`, sec.group, details);
+  };
   const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
   const classes = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
   // The same groups without any manual moves — to show where manually moved students started.
@@ -1177,7 +1200,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
       {showDesk ? (
         <MockDutyDesk rows={scoped} series={series} institute={institute} subjects={subjects} optsFor={optsFor} mentorFor={mentorFor}
           removed={removed} removedFor={removedFor} custom={custom} hmOf={hmOf} dir={dir} canEdit={canEdit} userName={userName} userStaffId={userStaffId}
-          onRemove={removeIn} onRestore={restoreIn} onTransfer={(b, sid, grp) => move(sid, grp, b)} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom}
+          onRemove={removeIn} onRestore={restoreIn} onTransfer={(b, sid, grp) => move(sid, grp, b)} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom} onSaveInstruction={saveInstructionFor}
           storageNote={removedMode === 'local' || customMode === 'local' ? 'Removals and manual groups are saved in this browser only until the database tables are added (migration 20261052).' : ''}
           onClose={() => setShowDesk(false)} />
       ) : null}
@@ -1223,6 +1246,31 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                       </select>
                     </label>
                   ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}
+                  {mentorOf(c, basis, g) ? (
+                    <div style={{ marginTop: 5 }}>
+                      <InstructionSummary value={mentorOf(c, basis, g)} compact />
+                      {canEdit && dir ? (
+                        <button style={{ ...ui.ghost, padding: '2px 8px', fontSize: 11.5, marginTop: 2 }} onClick={() => {
+                          const key = `${setKeyOf(c)}|${g.no}`;
+                          if (instEditKey === key) { setInstEditKey(null); return; }
+                          setInstEditKey(key); setInstDraft(pickInstruction(mentorOf(c, basis, g))); setInstAll(false);
+                        }} aria-label={`Instructions for ${g.name}`}>{hasInstruction(mentorOf(c, basis, g)) ? '📋 Edit instruction' : '📋 Add instruction'}</button>
+                      ) : null}
+                      {instEditKey === `${setKeyOf(c)}|${g.no}` && instDraft ? (
+                        <div style={{ marginTop: 6, background: '#fffdf5', border: '1px solid #f1deaa', borderRadius: 10, padding: 8 }}>
+                          <InstructionForm value={instDraft} onChange={setInstDraft} who={mentorOf(c, basis, g).name} />
+                          <label style={{ display: 'block', fontSize: 11.5, margin: '6px 0' }}><input type="checkbox" checked={instAll} onChange={(e) => setInstAll(e.target.checked)} /> Same for all of {mentorOf(c, basis, g).name}'s groups in {basis || 'overall marks'}</label>
+                          <button style={{ ...ui.btn, padding: '5px 12px', fontSize: 12 }} disabled={!!(instDraft.from && instDraft.to && instDraft.to <= instDraft.from)} onClick={async () => {
+                            const who2 = mentorOf(c, basis, g).name;
+                            const targets = instAll ? classes.flatMap((c2) => c2.groups.filter((g2) => mentorOf(c2, basis, g2)?.name === who2).map((g2) => [c2, g2])) : [[c, g]];
+                            for (const [c2, g2] of targets) await saveDutyDetails(basis, setKeyOf(c2), g2.no, instDraft);
+                            setInstEditKey(null);
+                          }}>Save</button>
+                          <button style={{ ...ui.ghost, padding: '4px 10px', fontSize: 12, marginLeft: 6 }} onClick={() => setInstEditKey(null)}>Cancel</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                   {g.students.map((s) => (

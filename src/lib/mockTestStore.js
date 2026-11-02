@@ -5,6 +5,7 @@
 // localStorage instead so nothing is lost, and the screen tells the user to
 // run the migration.
 import { supabase } from '../supabase';
+import { pickInstruction, daysToText } from './dutyInstruction.js';
 
 const TABLE = 'mock_test_results';
 const LS_KEY = 'gnsi_mock_test_results_v1';
@@ -247,13 +248,18 @@ export const mentorKey = (basis, set, grp) => `${basis || GROUP_BASIS_ALL}|${set
 // → { mentors: { [mentorKey]: { name, title } }, mode: 'cloud' | 'local' }
 export async function loadGroupMentors(series) {
   const local = menRead()[series] || {};
-  const { data, error } = await supabase.from(MEN_TABLE).select('basis, scope, grp, mentor_name, mentor_title').eq('series', series);
+  const { data, error } = await supabase.from(MEN_TABLE).select('*').eq('series', series);
   if (error) {
     if (missingTable(error)) return { mentors: local, mode: 'local' };
     throw error;
   }
   const mentors = {};
-  data.forEach((r) => { mentors[mentorKey(r.basis, r.scope, r.grp)] = { name: r.mentor_name, title: r.mentor_title || '' }; });
+  data.forEach((r) => {
+    const k = mentorKey(r.basis, r.scope, r.grp);
+    const det = pickInstruction(r);
+    const mine = local[k] && local[k].name === r.mentor_name ? pickInstruction(local[k]) : null;   // details kept in this browser while the columns are missing
+    mentors[k] = { name: r.mentor_name, title: r.mentor_title || '', ...(Object.values(det).some((v) => (Array.isArray(v) ? v.length : v)) || !mine ? det : mine) };
+  });
   return { mentors, mode: 'cloud' };
 }
 
@@ -271,10 +277,12 @@ export async function saveGroupMentor(series, basis, set, grp, mentor, mode, who
     if (error) throw error;
     return;
   }
-  const { error } = await supabase.from(MEN_TABLE).upsert(
-    { series, basis: b, scope: set, grp, mentor_name: mentor.name, mentor_title: mentor.title || null, updated_by: who || null, updated_at: new Date().toISOString() },
-    { onConflict: 'series,basis,scope,grp' },
-  );
+  const base = { series, basis: b, scope: set, grp, mentor_name: mentor.name, mentor_title: mentor.title || null, updated_by: who || null, updated_at: new Date().toISOString() };
+  const d = pickInstruction(mentor);
+  const full = { ...base, venue: d.venue || null, reason: d.reason || null, days: daysToText(d.days) || null, time_from: d.from || null, time_to: d.to || null, instruction: d.instruction || null };
+  let { error } = await supabase.from(MEN_TABLE).upsert(full, { onConflict: 'series,basis,scope,grp' });
+  // the instruction columns come with migration 20261053: until then the name is saved and the instruction stays in this browser
+  if (error && /column|schema cache/i.test(error.message || '')) ({ error } = await supabase.from(MEN_TABLE).upsert(base, { onConflict: 'series,basis,scope,grp' }));
   if (error) throw error;
 }
 
@@ -371,7 +379,12 @@ export async function loadCustomGroups(series) {
     if (missingTable(error)) return { groups: local, mode: 'local' };
     throw error;
   }
-  return { groups: data.map((r) => ({ id: r.id, name: r.name, basis: r.basis || '', dutyName: r.duty_name || '', dutyTitle: r.duty_title || '', students: Array.isArray(r.student_keys) ? r.student_keys : [], note: r.note || '' })), mode: 'cloud' };
+  const localById = new Map(local.map((g) => [g.id, g]));
+  return { groups: data.map((r) => {
+    const det = pickInstruction(r), mine = localById.get(r.id);
+    const has = Object.values(det).some((v) => (Array.isArray(v) ? v.length : v));
+    return { id: r.id, name: r.name, basis: r.basis || '', dutyName: r.duty_name || '', dutyTitle: r.duty_title || '', students: Array.isArray(r.student_keys) ? r.student_keys : [], note: r.note || '', ...(has || !mine ? det : pickInstruction(mine)) };
+  }), mode: 'cloud' };
 }
 
 export const newGroupId = () => `cg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -381,10 +394,10 @@ export async function saveCustomGroup(series, group, mode, who = '') {
   const list = [...(all[series] || []).filter((g) => g.id !== group.id), group];
   jwrite(CUS_LS, { ...all, [series]: list });
   if (mode === 'local') return;
-  const { error } = await supabase.from(CUS_TABLE).upsert(
-    { id: group.id, series, name: group.name, basis: group.basis || null, duty_name: group.dutyName || null, duty_title: group.dutyTitle || null, student_keys: group.students, note: group.note || null, updated_by: who || null, updated_at: new Date().toISOString() },
-    { onConflict: 'id' },
-  );
+  const base = { id: group.id, series, name: group.name, basis: group.basis || null, duty_name: group.dutyName || null, duty_title: group.dutyTitle || null, student_keys: group.students, note: group.note || null, updated_by: who || null, updated_at: new Date().toISOString() };
+  const d = pickInstruction(group);
+  let { error } = await supabase.from(CUS_TABLE).upsert({ ...base, venue: d.venue || null, reason: d.reason || null, days: daysToText(d.days) || null, time_from: d.from || null, time_to: d.to || null, instruction: d.instruction || null }, { onConflict: 'id' });
+  if (error && /column|schema cache/i.test(error.message || '')) ({ error } = await supabase.from(CUS_TABLE).upsert(base, { onConflict: 'id' }));
   if (error) throw error;
 }
 

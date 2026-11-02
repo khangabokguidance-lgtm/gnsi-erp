@@ -4,6 +4,7 @@
 // collectDuties walks every basis, drops the students a teacher has removed, and gathers — per person — every
 // group they are on duty for, plus the manually built groups they look after. That is what a duty sheet prints.
 import { classGroups, studentAverages } from './mockTestGroups.js';
+import { pickInstruction } from './dutyInstruction.js';
 
 const norm = (s) => String(s ?? '').trim().toLowerCase();
 export const sameName = (a, b) => !!norm(a) && norm(a) === norm(b);
@@ -40,7 +41,7 @@ export function collectDuties({ rows, bases, optsFor, mentorFor, removedFor, cus
       person(m.name, m.title).sections.push({
         kind: 'group', id: `${basis}|${c.batch}|${g.no}`, basis, subject: basis || 'Overall marks', set: c.batch, mixed: !!c.mixed,
         group: g.no, tag: g.tag, color: g.color, label: `${c.batch} · Group ${g.no} · ${g.tag}`,
-        students: g.students.map((s) => studentRow(s, basis, hmOf)),
+        students: g.students.map((s) => studentRow(s, basis, hmOf)), instruction: pickInstruction(m),
       });
     }));
   });
@@ -51,6 +52,8 @@ export function collectDuties({ rows, bases, optsFor, mentorFor, removedFor, cus
     person(cg.dutyName, cg.dutyTitle).sections.push({
       kind: 'custom', id: cg.id, basis: cg.basis || '', subject: cg.basis || 'Overall marks', set: 'Manual group', mixed: false,
       group: 0, tag: 'Manual', color: '#7c3aed', label: cg.name, note: cg.note || '', students,
+      // an older group may only have a free-text note: that note is its instruction
+      instruction: (() => { const d = pickInstruction(cg); return d.instruction || !cg.note ? d : { ...d, instruction: String(cg.note).trim() }; })(),
     });
   });
   return [...people.values()].map((p) => ({
