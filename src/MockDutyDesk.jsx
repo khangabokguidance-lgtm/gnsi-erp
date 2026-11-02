@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { printDocument, letterhead } from './lib/mockTestReports';
 import { studentAverages, GROUP_META } from './lib/mockTestGroups';
-import { removedList, mayAct, sameName, initials, filterDutiesBySubjects, dutySubjects } from './lib/mockTestDuty';
+import { removedList, mayAct, sameName, initials, filterDutiesBySubjects, dutySubjects, dutyRoomClashes } from './lib/mockTestDuty';
 import { pickInstruction, slotText, slotClashes, instructionMessage, hasInstruction, emptyInstruction } from './lib/dutyInstruction';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 
@@ -87,6 +87,7 @@ export default function MockDutyDesk({
   const [subj, setSubj] = useState([]);   // [] = every subject
   const allSubjects = useMemo(() => dutySubjects(allDuties), [allDuties]);
   const duties = useMemo(() => filterDutiesBySubjects(allDuties, subj), [allDuties, subj]);
+  const roomClash = useMemo(() => dutyRoomClashes(allDuties), [allDuties]);
   const everyone = useMemo(() => [...(dir?.masters || []), ...(dir?.teachers || [])], [dir]);
   const staffIdOf = (name) => everyone.find((p) => sameName(p.name, name))?.staffId ?? null;
   const canAct = (dutyName) => mayAct({ canEdit, userName, dutyName, userStaffId, dutyStaffId: staffIdOf(dutyName) });
@@ -202,6 +203,11 @@ export default function MockDutyDesk({
 
       {msg ? <div role="status" style={{ background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: 12, padding: '8px 14px', fontSize: 13, marginBottom: 12 }}>{msg}</div> : null}
       {storageNote ? <div style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>{storageNote}</div> : null}
+      {roomClash.length ? (
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fbd5d5', borderRadius: 12, padding: '8px 14px', fontSize: 13, color: '#b42318', marginBottom: 12 }}>
+          <b>⚠ {roomClash.length} room clash{roomClash.length === 1 ? '' : 'es'}</b> — two groups are in the same room at the same time: {roomClash.slice(0, 3).map((x) => `${x.venue} (${x.a} · ${x.b})`).join('; ')}{roomClash.length > 3 ? '…' : ''}. Change a room in the study schedule (Groups → 🗓 Time slots &amp; rooms) or on the instruction.
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <button className="mdd-btn gold" disabled={!canCreate} onClick={() => openBuilder(null)}>➕ New group from manual choice</button>

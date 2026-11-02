@@ -37,16 +37,33 @@ export function slotText(d) {
 }
 
 const mins = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+// A slot with no days listed means "every day".
+const daysOrAll = (p) => (p.days.length ? p.days : DAYS);
+const slotOverlap = (a, b) => {
+  const a0 = mins(a.from), a1 = mins(a.to), b0 = mins(b.from), b1 = mins(b.to);
+  if ([a0, a1, b0, b1].some((v) => v === null) || a1 <= a0 || b1 <= b0 || !(a0 < b1 && b0 < a1)) return [];
+  return DAYS.filter((d) => daysOrAll(a).includes(d) && daysOrAll(b).includes(d));
+};
 // Duties of one person whose slots overlap on the same day.
 // sections: [{ label, instruction: {days, from, to} }] → [{ a, b, day }]
 export function slotClashes(sections) {
   const out = [];
   for (let i = 0; i < sections.length; i++) for (let j = i + 1; j < sections.length; j++) {
     const a = pickInstruction(sections[i].instruction), b = pickInstruction(sections[j].instruction);
-    const a0 = mins(a.from), a1 = mins(a.to), b0 = mins(b.from), b1 = mins(b.to);
-    if ([a0, a1, b0, b1].some((v) => v === null) || a1 <= a0 || b1 <= b0) continue;
-    if (!(a0 < b1 && b0 < a1)) continue;
-    DAYS.filter((d) => a.days.includes(d) && b.days.includes(d)).forEach((day) => out.push({ a: sections[i].label, b: sections[j].label, day }));
+    slotOverlap(a, b).forEach((day) => out.push({ a: sections[i].label, b: sections[j].label, day }));
+  }
+  return out;
+}
+
+// Two groups sent to the same room at the same time (on any common day).
+// items: [{ label, venue, instruction: {days, from, to} }] → [{ venue, a, b, days }]
+export function roomClashes(items) {
+  const out = [];
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    if (!norm(items[i].venue) || norm(items[i].venue) !== norm(items[j].venue)) continue;
+    const days = slotOverlap(pickInstruction(items[i].instruction), pickInstruction(items[j].instruction));
+    if (days.length) out.push({ venue: String(items[i].venue).trim(), a: items[i].label, b: items[j].label, days });
   }
   return out;
 }
