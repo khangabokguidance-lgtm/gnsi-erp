@@ -99,8 +99,10 @@ export default function StudentCourseCheck({ students, onQuickSave, onBulkFix, c
     })
   }, [rows, filter, q, showDrop])
 
-  // Everyone who is clearly a Combined Course student but filed under the wrong course/batch.
-  const fixable = useMemo(() => rows.filter(r => !/dropout/i.test(r.status) && (r.issues.includes('combined_wrong_batch') || r.issues.includes('combined_wrong_course'))), [rows])
+  // Every Combined student (by course, batch, Exams tag or the Exam Combined list) who is not yet filed as
+  // course "Combined Course" with batch "—" — so the whole Combined group can be moved in one go.
+  const fixable = useMemo(() => rows.filter(r => !/dropout/i.test(r.status) && r.isCombined
+    && (r.rawCourse !== COMBINED || !(!r.rawBatch || String(r.rawBatch).trim() === '—'))), [rows])
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const downloadPreview = () => {
@@ -112,7 +114,7 @@ export default function StudentCourseCheck({ students, onQuickSave, onBulkFix, c
     a.click()
   }
   const runBulk = async () => {
-    const yes = await askConfirm(`Set course to “Combined Course” and batch to “—” for ${fixable.length} student${fixable.length > 1 ? 's' : ''}? Their previous values are saved in the audit log.`, { confirmLabel: `Fix ${fixable.length} students`, danger: true })
+    const yes = await askConfirm(`Set course to “Combined Course” and batch to “—” for ${fixable.length} student${fixable.length > 1 ? 's' : ''}? Their previous course and batch are saved in the audit log.\n\nNote: fees follow the course, so from now on these students are charged the Combined Course rates set in Fee Setup (plus the Combined add-on) instead of their current course/batch rates, and they leave their old batch lists. Download the before-list first if you may need to undo.`, { confirmLabel: `Move ${fixable.length} students`, danger: true })
     if (!yes) return
     setBulkBusy(true)
     const n = await onBulkFix(fixable.map(r => ({ id: r.id, gcc: r.gcc, before: { course: r.rawCourse, batch: r.rawBatch } })), { course: COMBINED, batch: '—' })
@@ -155,11 +157,11 @@ export default function StudentCourseCheck({ students, onQuickSave, onBulkFix, c
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '14px 18px' }}>
             <span style={{ fontSize: 22 }}>🛠️</span>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <b style={{ color: V.t1, fontSize: 14 }}>{fixable.length} Combined Course student{fixable.length > 1 ? 's are' : ' is'} filed under the wrong course or batch</b>
-              <div style={{ fontSize: 12, color: V.t3, marginTop: 2 }}>Fix them all at once: course → Combined Course, batch → “—”. Dropouts are left alone.</div>
+              <b style={{ color: V.t1, fontSize: 14 }}>{fixable.length} Combined Course student{fixable.length > 1 ? 's are' : ' is'} not yet in the Combined Course group</b>
+              <div style={{ fontSize: 12, color: V.t3, marginTop: 2 }}>Move them all at once: course → Combined Course, batch → “—”. Fees then follow the Combined Course rates in Fee Setup. Dropouts are left alone.</div>
             </div>
             <button onClick={() => setBulkOpen(o => !o)} style={{ height: 36, padding: '0 16px', borderRadius: 10, border: `1px solid ${V.border2}`, background: V.surface, color: V.t1, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{bulkOpen ? 'Hide list' : 'Review list'}</button>
-            <button onClick={runBulk} disabled={bulkBusy} style={{ height: 36, padding: '0 18px', borderRadius: 10, border: 'none', background: `linear-gradient(180deg,${V.navy2},${V.navy})`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: bulkBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{bulkBusy ? 'Fixing…' : `Fix all ${fixable.length}`}</button>
+            <button onClick={runBulk} disabled={bulkBusy} style={{ height: 36, padding: '0 18px', borderRadius: 10, border: 'none', background: `linear-gradient(180deg,${V.navy2},${V.navy})`, color: '#fff', fontWeight: 700, fontSize: 13, cursor: bulkBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>{bulkBusy ? 'Fixing…' : `Move all ${fixable.length} to Combined`}</button>
           </div>
           {bulkOpen && (
             <div style={{ borderTop: `1px solid ${V.border}`, maxHeight: 280, overflowY: 'auto' }}>
