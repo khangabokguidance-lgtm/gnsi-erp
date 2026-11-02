@@ -29,7 +29,10 @@ export const GROUP_META = [
 ];
 
 // Medium of a class, read from its name ('' when the class name does not say).
-export function languageOfBatch(batch) {
+// languages: the admin's own setting { [class]: 'English' | 'Meitei Mayek' }, which wins over the class name.
+export function languageOfBatch(batch, languages = null) {
+  const set = languages?.[batch];
+  if (LANGUAGES.includes(set)) return set;
   const s = String(batch || '');
   if (/manipuri|meitei|mayek|\bmm\b/i.test(s)) return 'Meitei Mayek';
   if (/english|\beng\b/i.test(s)) return 'English';
@@ -42,7 +45,7 @@ const subjPct = (row, s) => {
 };
 
 // One summary per student (row.sid, from resolveIdentities): average %, per-subject average %, weakest subject.
-export function studentAverages(rows) {
+export function studentAverages(rows, languages = null) {
   const by = new Map();
   rows.forEach((r) => {
     const k = r.sid || `n:${r.student_name}`;
@@ -61,7 +64,7 @@ export function studentAverages(rows) {
     const batch = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
     const named = rs.find((r) => r.student_name) || rs[0];
     return {
-      sid, name: named.student_name, gcc: rs.find((r) => r.gcc_no)?.gcc_no || '', batch, language: languageOfBatch(batch),
+      sid, name: named.student_name, gcc: rs.find((r) => r.gcc_no)?.gcc_no || '', batch, language: languageOfBatch(batch, languages),
       tests: rs.length, avg: mean(pcts), subj, weakest: ranked[0]?.[0] || '', strongest: ranked[ranked.length - 1]?.[0] || '',
     };
   }).filter((s) => s.avg !== null);
@@ -112,10 +115,10 @@ export function selfStudyGroups(students, { mode = 'equal', basis = '', override
 // not state a medium only appear under "all". batch: '' for every class, or one class.
 // mix: true → ONE set of 7 groups across the chosen classes together (classes: [] = every class that passes the
 // language filter); each student keeps their own class on the row.
-export function classGroups(rows, { language = '', mode = 'equal', batch = '', basis = '', overrides = {}, mix = false, classes = [], topN = 0 } = {}) {
-  const all = studentAverages(rows);
+export function classGroups(rows, { language = '', mode = 'equal', batch = '', basis = '', overrides = {}, mix = false, classes = [], topN = 0, languages = null } = {}) {
+  const all = studentAverages(rows, languages);
   const batches = [...new Set(all.map((s) => s.batch))].sort()
-    .filter((b) => (!batch || b === batch) && (!language || languageOfBatch(b) === language));
+    .filter((b) => (!batch || b === batch) && (!language || languageOfBatch(b, languages) === language));
   const opt = { mode, basis, overrides, topN };
   if (mix) {
     const picked = classes.length ? batches.filter((b) => classes.includes(b)) : batches;
@@ -127,7 +130,7 @@ export function classGroups(rows, { language = '', mode = 'equal', batch = '', b
   return batches.map((b) => {
     const students = all.filter((s) => s.batch === b);
     const groups = selfStudyGroups(students, opt);
-    return { batch: b, language: languageOfBatch(b), count: groups.reduce((t, g) => t + g.n, 0), avg: mean(groups.flatMap((g) => g.students.map((x) => x.avg))), groups };
+    return { batch: b, language: languageOfBatch(b, languages), count: groups.reduce((t, g) => t + g.n, 0), avg: mean(groups.flatMap((g) => g.students.map((x) => x.avg))), groups };
   });
 }
 

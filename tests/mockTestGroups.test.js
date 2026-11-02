@@ -130,3 +130,19 @@ test('a manual choice still wins over the top group', () => {
   assert.ok(g[6].students.some((s) => s.name === 's0' && s.manual))
   assert.equal(g.reduce((t, x) => t + x.n, 0), 10)
 })
+
+test('an admin-set class language wins over the class name, and puts the class in that language group', () => {
+  assert.equal(languageOfBatch('Lakshya A'), '')
+  assert.equal(languageOfBatch('Lakshya A', { 'Lakshya A': 'English' }), 'English')
+  assert.equal(languageOfBatch('Combined Manipuri', { 'Combined Manipuri': 'English' }), 'English')   // setting wins over the name
+  assert.equal(languageOfBatch('Lakshya A', { 'Lakshya A': 'Klingon' }), '')                          // only the two real languages count
+  const rows = [...cls('Combined English', 8), ...cls('Lakshya A', 6).map((r) => ({ ...r, sid: 'l' + r.sid })), ...cls('Combined Manipuri', 5).map((r) => ({ ...r, sid: 'm' + r.sid }))]
+  assert.deepEqual(classGroups(rows, { language: 'English' }).map((c) => c.batch), ['Combined English'])
+  const languages = { 'Lakshya A': 'English' }
+  assert.deepEqual(classGroups(rows, { language: 'English', languages }).map((c) => c.batch), ['Combined English', 'Lakshya A'])
+  const [mix] = classGroups(rows, { language: 'English', languages, mix: true, topN: 4 })
+  assert.deepEqual(mix.classes, ['Combined English', 'Lakshya A'])
+  assert.equal(mix.count, 14)
+  assert.equal(mix.groups[6].n, 4)
+  assert.equal(classGroups(rows, { languages })[2].language, 'English')   // Lakshya A (sorted third)
+})

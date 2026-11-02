@@ -15,9 +15,9 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
-import { classGroups, subjectsOf, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
+import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_COUNT, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -975,6 +975,21 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     loadGroupMentors(seriesName).then((r) => { if (live) { setMentors(r.mentors); setMentorMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Assigned House Masters could not be loaded: ${e.message || e}`); });
     return () => { live = false; };
   }, [seriesName]);
+  // Language of each class, set by the admin (wins over the language guessed from the class name).
+  const [languages, setLanguages] = useState({});
+  const [langMode, setLangMode] = useState('local');
+  useEffect(() => {
+    let live = true;
+    loadClassLanguages().then((r) => { if (live) { setLanguages(r.languages); setLangMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Class languages could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, []);
+  const setClassLanguage = async (name, value) => {
+    setSaveMsg('');
+    setLanguages((cur) => { const n = { ...cur }; if (value) n[name] = value; else delete n[name]; return n; });
+    if (language && value !== language) setBatch('');
+    try { await saveClassLanguage(name, value || null, langMode, who); }
+    catch (e) { setSaveMsg(`Could not save the class language: ${e.message || e}`); }
+  };
   const setKeyOf = (c) => (c.mixed ? `mix:${language || 'all'}` : `class:${c.batch}`);
   const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
   const assign = async (c, g, key) => {
@@ -986,8 +1001,8 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); }
     catch (e) { setSaveMsg(`Could not save the House Master: ${e.message || e}`); }
   };
-  const everything = useMemo(() => classGroups(rows, { mode }), [rows, mode]);
-  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN]);
+  const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
+  const classes = useMemo(() => classGroups(scoped, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [scoped, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
   const pickable = everything.filter((c) => !language || c.language === language);
@@ -999,7 +1014,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     [`${b || 'Average'} %`]: Math.round(s.avg * 10) / 10, 'Overall %': Math.round(s.overall * 10) / 10,
     'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
   }))));
-  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN });
+  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages });
   const exportXlsx = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
@@ -1032,6 +1047,22 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
             {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
           </div>
         </Field>
+        {canEdit ? (
+          <details style={{ flex: '1 1 100%' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#2e3b52' }}>⚙️ Set each class's language (English / Meitei Mayek)</summary>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '8px 0 2px' }}>
+              {everything.map((c) => (
+                <label key={c.batch} style={{ fontSize: 12, color: '#5d6b82' }}>{c.batch}
+                  <select aria-label={`Language of ${c.batch}`} style={{ ...ui.input, display: 'block', padding: '3px 6px', fontSize: 12.5, marginTop: 2 }} value={LANGUAGES.includes(languages[c.batch]) ? languages[c.batch] : ''} onChange={(e) => setClassLanguage(c.batch, e.target.value)}>
+                    <option value="">{`Automatic (${languageOfBatch(c.batch) || 'none — from the name'})`}</option>
+                    {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#5d6b82' }}>Used by the Language filter above. Saved for every series · <b style={{ color: langMode === 'cloud' ? '#047857' : '#b45309' }}>{langMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></div>
+          </details>
+        ) : null}
         <Field label="Groups">
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button style={chip(layout === 'class')} onClick={() => setLayout('class')}>Class-wise</button>
