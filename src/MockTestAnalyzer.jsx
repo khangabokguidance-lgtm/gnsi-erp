@@ -23,6 +23,7 @@ import MockGroupReport from './MockGroupReport';
 import MockDutyDesk from './MockDutyDesk';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
 import { pickInstruction, hasInstruction } from './lib/dutyInstruction';
+import { collectDuties } from './lib/mockTestDuty';
 import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -1075,6 +1076,8 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   // The same groups without any manual moves — to show where manually moved students started.
   const autoClasses = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, layout, mixPick, topN, languages]);
   const [showReport, setShowReport] = useState(false);
+  // Everyone on duty with the subjects they supervise (all subjects), for the report generator.
+  const reportDuties = useMemo(() => (showReport ? collectDuties({ rows: scoped, bases: ['', ...subjects], optsFor, mentorFor, removedFor, custom, hmOf }) : null), [showReport, scoped, subjects, optsFor, mentorFor, removedFor, custom, hmOf]);
   const layoutLabel = layout === 'mix' ? `Mixed classes${language ? ` · ${language}` : ''}` : `Class-wise${language ? ` · ${language}` : ''}`;
   const langCount = (l) => everything.filter((c) => c.language === l).length;
   const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
@@ -1206,7 +1209,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
       ) : null}
       {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — open the Duty desk to restore them.</div> : null}
       {showReport && classes.length ? (
-        <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct}
+        <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct} duties={reportDuties} allSubjects={subjects}
           hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setShowReport(false)} />
       ) : null}
       {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}

@@ -30,7 +30,7 @@ const S = {
 const F = ({ label, children, grow }) => <label className="mta-field" style={{ flex: grow ? '1 1 200px' : '0 1 auto', display: 'block' }}><span style={S.label}>{label}</span>{children}</label>;
 const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
-export default function MockGroupReport({ classes, autoClasses, basis, series, institute, passPct, hmOf, mentorOf, layoutLabel, onClose }) {
+export default function MockGroupReport({ classes, autoClasses, basis, series, institute, passPct, hmOf, mentorOf, layoutLabel, duties = null, allSubjects = [], onClose }) {
   const [type, setType] = useState('roster');
   const [f, setF] = useState(emptyReportFilter);
   const [presets, setPresets] = useState(readPresets);
@@ -41,8 +41,9 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
   const autoMap = useMemo(() => { const m = new Map(); autoClasses.forEach((c) => c.groups.forEach((g) => g.students.forEach((s) => m.set(`${c.batch}|${s.sid}`, g.no)))); return m; }, [autoClasses]);
   const all = useMemo(() => recordsFrom(classes, { hmOf, mentorOf, autoGroupOf: (sid, c) => autoMap.get(`${c.batch}|${sid}`) ?? null, basis, passPct }), [classes, hmOf, mentorOf, autoMap, basis, passPct]);
   const filtered = useMemo(() => sortRecords(applyReportFilter(all, f), f.sort), [all, f]);
-  const report = useMemo(() => buildReport(type, filtered, { basis }), [type, filtered, basis]);
-  const insights = useMemo(() => smartInsights(filtered, { passPct, basis }), [filtered, passPct, basis]);
+  const report = useMemo(() => buildReport(type, filtered, { basis, duties, filter: f, passPct }), [type, filtered, basis, duties, f, passPct]);
+  const insights = useMemo(() => smartInsights(filtered, { passPct, basis, duties, allSubjects }), [filtered, passPct, basis, duties, allSubjects]);
+  const dutySubjects = useMemo(() => [...new Set((duties || []).flatMap((p) => p.sections.map((x) => x.subject)))].sort((a, b) => (b === 'Overall marks') - (a === 'Overall marks') || a.localeCompare(b)), [duties]);
   const desc = describeReportFilter(f);
   const opt = (key) => [...new Set(all.map((r) => r[key]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
   const classNames = opt('class'), houses = opt('house'), hms = opt('hm'), mentors = opt('mentor'), weakSubs = opt('weakest');
@@ -75,7 +76,19 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
     const head = (cs) => `<thead><tr>${cs.map((c, i) => `<th class="${i < 4 ? 'l' : ''}">${esc(c.label)}</th>`).join('')}</tr></thead>`;
     const rowHtml = (cs, r) => `<tr>${cs.map((c, i) => `<td class="${i < 4 ? 'l' : ''}"${report.heat && report.heat.includes(c.key) ? ` style="background:${heat(r[c.key])};font-weight:700"` : ''}>${esc(r[c.key] ?? '')}</td>`).join('')}</tr>`;
     let body;
-    if (type === 'cards') {
+    if (report.dutyView) {
+      const people = [...new Set(report.rows.map((r) => r['Person on duty']))];
+      body = people.map((person) => {
+        const rs = report.rows.filter((r) => r['Person on duty'] === person);
+        const subs = [...new Set(rs.map((r) => r['Supervises study duty for']))];
+        return `<div class="avoid" style="border:1.5px solid #0f2d5e;border-radius:8px;padding:9px 11px;margin:0 0 10px">
+          <div style="font-size:13px;font-weight:800;color:#0f2d5e">${esc(person)}</div>
+          <div style="margin:3px 0 6px"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:#475569;font-weight:700">Supervises study duty for:</span> ${subs.map((x) => `<span class="pill" style="background:#0f2d5e;margin-left:4px">${esc(x)}</span>`).join('')}</div>
+          <table><thead><tr><th class="l">Subject</th><th class="l">Group</th><th class="l">Class / set</th><th>Students</th><th>Avg %</th><th class="l">Where</th><th class="l">Days &amp; time</th><th class="l">Why (reason)</th></tr></thead>
+          <tbody>${rs.map((r) => `<tr><td class="l"><b>${esc(r['Supervises study duty for'])}</b></td><td class="l">${esc(r.Group)}</td><td class="l">${esc(r['Class / set'])}</td><td>${esc(r.Students)}</td><td>${fx(r['Average %'])}</td><td class="l">${esc(r.Where)}</td><td class="l">${esc(r['Days & time'])}</td><td class="l">${esc(r.Why)}</td></tr>`).join('')}</tbody></table>
+          ${rs.filter((r) => r.Instruction && r.Instruction !== '—').map((r) => `<div style="font-size:10px;margin-top:3px"><b>📋 ${esc(r['Supervises study duty for'])} · ${esc(r.Group)}:</b> ${esc(r.Instruction)}</div>`).join('')}</div>`;
+      }).join('') || '<p>Nobody is on duty yet.</p>';
+    } else if (type === 'cards') {
       body = `<div class="grid2">${report.cards.map((r) => `<div class="box avoid"><b style="font-size:12.5px">${esc(r.name)}</b> <span style="color:#475569">· ${esc(r.class)} · GCC ${esc(r.gcc)}</span><br><span class="pill" style="background:${r.group <= 2 ? '#dc2626' : r.group >= 6 ? '#047857' : '#ca8a04'}">Group ${r.group} · ${esc(r.tag)}</span> <b>${fx(r.score)}%</b>${r.trendText ? ` · ${esc(r.trendText)}` : ''}
         <div style="margin-top:5px">${subs.map((s) => `<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:92px;font-size:10px">${esc(s)}</span><span style="flex:1;background:#e2e8f0;border-radius:4px;height:8px"><span style="display:block;height:8px;width:${Math.min(100, Math.max(0, r.subj[s] ?? 0))}%;background:${barColor(r.subj[s] ?? 0, passPct)};border-radius:4px"></span></span><span style="width:34px;text-align:right;font-size:10px">${fx(r.subj[s])}%</span></div>`).join('')}</div>
         <div style="margin-top:4px;font-size:10px"><b>Focus:</b> ${esc(report.rows.find((x) => x.Name === r.name && x.GCC === r.gcc)?.['Study focus'] || '—')}<br><b>House:</b> ${esc(r.house || '—')} · <b>House Master/Mistress:</b> ${esc(r.hm || '—')}<br><b>On duty:</b> ${esc(r.mentor || '—')}</div></div>`).join('')}</div>`;
@@ -133,6 +146,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
           <F label="House Master / Mistress"><select style={S.input} value={f.hm} onChange={(e) => set({ hm: e.target.value })} aria-label="House Master or Mistress"><option value="">Anyone</option>{hms.map((h) => <option key={h}>{h}</option>)}</select></F>
           <F label="On duty"><select style={S.input} value={f.mentor} onChange={(e) => set({ mentor: e.target.value })} aria-label="Person on duty"><option value="">Anyone</option><option value={NOT_ASSIGNED}>Nobody assigned</option>{mentors.map((h) => <option key={h}>{h}</option>)}</select></F>
           <F label="Weakest subject"><select style={S.input} value={f.weakest} onChange={(e) => set({ weakest: e.target.value })} aria-label="Weakest subject"><option value="">Any</option>{weakSubs.map((h) => <option key={h}>{h}</option>)}</select></F>
+          {type === 'mentors' && duties ? <F label="Supervised subject"><select style={S.input} value={f.dutySubject} onChange={(e) => set({ dutySubject: e.target.value })} aria-label="Supervised subject"><option value="">Every subject</option>{dutySubjects.map((h) => <option key={h}>{h}</option>)}</select></F> : null}
           <F label="Trend"><select style={S.input} value={f.trend} onChange={(e) => set({ trend: e.target.value })} aria-label="Trend"><option value="">Any</option><option>Improving</option><option>Steady</option><option>Declining</option></select></F>
           <F label="Marks from %"><input type="number" min={0} max={100} style={{ ...S.input, width: 80 }} value={f.scoreMin} onChange={(e) => set({ scoreMin: e.target.value })} aria-label="Marks from" /></F>
           <F label="to %"><input type="number" min={0} max={100} style={{ ...S.input, width: 80 }} value={f.scoreMax} onChange={(e) => set({ scoreMax: e.target.value })} aria-label="Marks to" /></F>
@@ -177,7 +191,7 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
         <table style={{ borderCollapse: 'collapse', width: '100%' }} aria-label="Report preview">
           <thead><tr>{report.columns.map((c) => <th key={c.key} style={S.th}>{c.label}</th>)}</tr></thead>
           <tbody>
-            {rowsShown.map((r, i) => <tr key={i}>{report.columns.map((c) => <td key={c.key} style={{ ...S.td, ...(report.heat && report.heat.includes(c.key) ? { background: heat(r[c.key]), fontWeight: 700 } : null) }}>{r[c.key] ?? ''}</td>)}</tr>)}
+            {rowsShown.map((r, i) => <tr key={i}>{report.columns.map((c) => <td key={c.key} style={{ ...S.td, ...(report.heat && report.heat.includes(c.key) ? { background: heat(r[c.key]), fontWeight: 700 } : null) }}>{c.key === 'Supervises study duty for' || c.key === 'Supervises (subject)' ? <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: '#132a4f', color: '#fff', fontWeight: 700, fontSize: 12 }}>{r[c.key] ?? ''}</span> : (r[c.key] ?? '')}</td>)}</tr>)}
             {!rowsShown.length ? <tr><td style={{ ...S.td, color: '#5d6b82' }} colSpan={report.columns.length}>No students match these filters.</td></tr> : null}
           </tbody>
         </table>

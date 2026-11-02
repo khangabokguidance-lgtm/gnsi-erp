@@ -13,7 +13,7 @@ export const REPORT_TYPES = [
   { id: 'cards', label: 'Student study cards', hint: 'One card per student: marks by subject, study focus and the person on duty' },
   { id: 'summary', label: 'Group summary', hint: 'Per group: students, average, range, focus subject, below pass mark, who is on duty' },
   { id: 'subjects', label: 'Subject-wise matrix', hint: 'Average % in every subject, group by group' },
-  { id: 'mentors', label: 'Duty roster (House Masters & teaching staff)', hint: 'Who is on duty for which group, and how many students each person looks after' },
+  { id: 'mentors', label: 'Duty roster — who supervises which subject', hint: 'Every person on duty with the SUBJECT they supervise study duty for, the group, where, when and why' },
   { id: 'moves', label: 'Manual moves', hint: 'Students an admin moved away from their automatic group' },
 ];
 
@@ -27,7 +27,7 @@ export { NONE as NOT_ASSIGNED };
 
 export const emptyReportFilter = () => ({
   groupFrom: 1, groupTo: 7, classes: [], house: '', hm: '', mentor: '', weakest: '', trend: '',
-  scoreMin: '', scoreMax: '', minTests: '', belowPass: false, manualOnly: false, q: '', sort: 'group',
+  scoreMin: '', scoreMax: '', minTests: '', belowPass: false, manualOnly: false, q: '', sort: 'group', dutySubject: '',
 });
 const numOrNull = (v) => (v === '' || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
 export function isReportFilterActive(f) {
@@ -95,6 +95,7 @@ export const QUICK_REPORTS = [
   { id: 'declining', label: 'Declining students', type: 'roster', filter: { trend: 'Declining', sort: 'trendAsc' } },
   { id: 'improving', label: 'Most improved', type: 'roster', filter: { trend: 'Improving', sort: 'trendDesc' } },
   { id: 'moved', label: 'Moved by admin', type: 'moves', filter: { manualOnly: true } },
+  { id: 'dutyroster', label: 'Who supervises which subject', type: 'mentors', filter: {} },
   { id: 'nomentor', label: 'Nobody on duty', type: 'summary', filter: { mentor: NONE } },
 ];
 
@@ -115,23 +116,49 @@ const buckets = (records) => {
   return [...m.values()].sort((a, b) => a.set.localeCompare(b.set) || a.group - b.group);
 };
 
+const SUBJECT_FIRST = (a, b) => (b === 'Overall marks') - (a === 'Overall marks') || String(a).localeCompare(String(b));
+
+// One row per (person on duty, subject, group) across EVERY subject — what each person supervises.
+// duties: collectDuties(...) result. Filters used: person (mentor), supervised subject (dutySubject), group range, classes.
+export function dutyRows(duties, f = emptyReportFilter(), passPct = 40) {
+  const out = [];
+  (duties || []).forEach((p) => {
+    if (f.mentor && f.mentor !== NONE && p.name !== f.mentor) return;
+    p.sections.forEach((sec) => {
+      if (f.dutySubject && sec.subject !== f.dutySubject) return;
+      if (sec.kind === 'group' && (sec.group < f.groupFrom || sec.group > f.groupTo)) return;
+      if (f.classes.length && sec.kind === 'group' && !sec.mixed && !f.classes.includes(sec.set)) return;
+      const scores = sec.students.map((x) => x.score).filter((v) => v !== null && v !== undefined);
+      const d = pickInstruction(sec.instruction);
+      out.push({
+        person: p.name, title: p.title || '', subject: sec.subject, label: sec.label, set: sec.set, kind: sec.kind, group: sec.group,
+        students: sec.students.length, avg: scores.length ? mean(scores) : null, below: scores.filter((v) => v < passPct).length,
+        venue: d.venue, slot: slotText(d), reason: d.reason, instruction: d.instruction,
+      });
+    });
+  });
+  return out.sort((a, b) => a.person.localeCompare(b.person) || SUBJECT_FIRST(a.subject, b.subject) || a.group - b.group || a.label.localeCompare(b.label));
+}
+
 export function buildReport(type, records, ctx = {}) {
   const basisName = ctx.basis || 'Average';
+  const dutySubject = ctx.basis || 'Overall marks';
+  const dutyText = (r) => (r.mentor ? `${r.mentor} — ${dutySubject}` : 'not assigned');
   const recs = records;
   if (type === 'cards') {
     const subs = subjectsIn(recs);
     return {
       type, title: 'Student study cards', groupBy: 'Group',
-      columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], [basisName + ' %', `${basisName} %`], ...subs.map((s) => [s + ' %', `${s} %`]), ['Study focus', 'Study focus'], ['Trend', 'Trend'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty', 'On duty']),
-      rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, [basisName + ' %']: r1(r.score), ...Object.fromEntries(subs.map((s) => [s + ' %', r1(r.subj[s] ?? null)])), 'Study focus': focusText(r) || '—', Trend: r.trendText || '—', House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty': r.mentor || '—' })),
+      columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], [basisName + ' %', `${basisName} %`], ...subs.map((s) => [s + ' %', `${s} %`]), ['Study focus', 'Study focus'], ['Trend', 'Trend'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty (subject)', 'On duty (subject)']),
+      rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, [basisName + ' %']: r1(r.score), ...Object.fromEntries(subs.map((s) => [s + ' %', r1(r.subj[s] ?? null)])), 'Study focus': focusText(r) || '—', Trend: r.trendText || '—', House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty (subject)': dutyText(r) })),
       cards: recs, subjects: subs,
     };
   }
   if (type === 'summary') {
     return {
       type, title: 'Group summary',
-      columns: cols(['Class / set', 'Class / set'], ['Group', 'Group'], ['Students', 'Students'], [`Average %`, 'Average %'], ['Lowest %', 'Lowest %'], ['Highest %', 'Highest %'], ['Below pass', 'Below pass mark'], ['Declining', 'Declining'], ['Focus subject', 'Focus subject'], ['Moved by admin', 'Moved by admin'], ['On duty', 'On duty']),
-      rows: buckets(recs).map(({ set, group, tag, rs }) => { const low = lowestSubject(rs); return { 'Class / set': set, Group: `Group ${group} · ${tag}`, Students: rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Lowest %': r1(Math.min(...rs.map((r) => r.score))), 'Highest %': r1(Math.max(...rs.map((r) => r.score))), 'Below pass': rs.filter((r) => r.below).length, Declining: rs.filter((r) => r.trendText === 'Declining').length, 'Focus subject': low ? `${low.subject} (${Math.round(low.pct)}%)` : '—', 'Moved by admin': rs.filter((r) => r.manual).length, 'On duty': rs[0].mentor || 'not assigned' }; }),
+      columns: cols(['Class / set', 'Class / set'], ['Group', 'Group'], ['Students', 'Students'], [`Average %`, 'Average %'], ['Lowest %', 'Lowest %'], ['Highest %', 'Highest %'], ['Below pass', 'Below pass mark'], ['Declining', 'Declining'], ['Focus subject', 'Focus subject'], ['Moved by admin', 'Moved by admin'], ['On duty (subject)', 'On duty (subject)']),
+      rows: buckets(recs).map(({ set, group, tag, rs }) => { const low = lowestSubject(rs); return { 'Class / set': set, Group: `Group ${group} · ${tag}`, Students: rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Lowest %': r1(Math.min(...rs.map((r) => r.score))), 'Highest %': r1(Math.max(...rs.map((r) => r.score))), 'Below pass': rs.filter((r) => r.below).length, Declining: rs.filter((r) => r.trendText === 'Declining').length, 'Focus subject': low ? `${low.subject} (${Math.round(low.pct)}%)` : '—', 'Moved by admin': rs.filter((r) => r.manual).length, 'On duty (subject)': rs[0].mentor ? `${rs[0].mentor} — ${dutySubject}` : 'not assigned' }; }),
     };
   }
   if (type === 'subjects') {
@@ -140,6 +167,16 @@ export function buildReport(type, records, ctx = {}) {
       type, title: 'Subject-wise matrix', heat: subs,
       columns: cols(['Class / set', 'Class / set'], ['Group', 'Group'], ['Students', 'Students'], ...subs.map((s) => [s, `${s} %`]), ['Weakest', 'Weakest subject']),
       rows: buckets(recs).map(({ set, group, tag, rs }) => { const low = lowestSubject(rs); return { 'Class / set': set, Group: `Group ${group} · ${tag}`, Students: rs.length, ...Object.fromEntries(subs.map((s) => [s, r1(avgOf(rs, (r) => r.subj[s] ?? null))])), Weakest: low ? low.subject : '—' }; }),
+    };
+  }
+  if (type === 'mentors' && ctx.duties) {
+    const rows = dutyRows(ctx.duties, ctx.filter || emptyReportFilter(), ctx.passPct).map((r) => ({
+      'Person on duty': `${r.person}${r.title ? ` (${r.title})` : ''}`, 'Supervises study duty for': r.subject, Group: r.label, 'Class / set': r.set, Students: r.students,
+      'Average %': r1(r.avg), 'Below pass': r.below, Where: r.venue || '—', 'Days & time': r.slot || '—', Why: r.reason || '—', Instruction: r.instruction || '—',
+    }));
+    return {
+      type, title: 'Duty roster — who supervises which subject', groupBy: 'Person on duty', dutyView: true, rows,
+      columns: cols(['Person on duty', 'Person on duty'], ['Supervises study duty for', 'Supervises study duty for (subject)'], ['Group', 'Group'], ['Class / set', 'Class / set'], ['Students', 'Students'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Where', 'Where'], ['Days & time', 'Days & time'], ['Why', 'Why (reason)'], ['Instruction', 'Instruction']),
     };
   }
   if (type === 'mentors') {
@@ -151,27 +188,27 @@ export function buildReport(type, records, ctx = {}) {
       const title = bs[0].rs[0].mentorTitle || '';
       const isHouse = /^house/i.test(title);
       const details = bs.map((b) => { const d = b.rs[0].instruction; return [d.venue && `Where: ${d.venue}`, slotText(d) && `When: ${slotText(d)}`, d.reason && `Why: ${d.reason}`].filter(Boolean).length ? `${b.set} · G${b.group} — ${[d.venue && `Where: ${d.venue}`, slotText(d) && `When: ${slotText(d)}`, d.reason && `Why: ${d.reason}`].filter(Boolean).join(' · ')}` : ''; }).filter(Boolean).join(' | ');
-      return { Person: name ? `${name}${title ? ` (${title})` : ''}` : 'Nobody on duty', 'Groups on duty': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Where / when / why': details || (name ? 'No instruction yet' : '—'), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name && isHouse ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
+      return { Person: name ? `${name}${title ? ` (${title})` : ''}` : 'Nobody on duty', 'Supervises (subject)': name ? (ctx.basis || 'Overall marks') : '—', 'Groups on duty': bs.map((b) => `${b.set} · G${b.group}`).join(', '), 'Where / when / why': details || (name ? 'No instruction yet' : '—'), 'Students in those groups': rs.length, 'Average %': r1(avgOf(rs, (r) => r.score)), 'Below pass': rs.filter((r) => r.below).length, 'Students from their house': name && isHouse ? recs.filter((r) => r.hm.split(' / ').includes(name)).length : '—' };
     });
-    return { type, title: 'Duty roster', columns: cols(['Person', 'On duty'], ['Groups on duty', 'Groups on duty'], ['Where / when / why', 'Where / when / why'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house (House Masters)']), rows };
+    return { type, title: 'Duty roster', columns: cols(['Person', 'On duty'], ['Supervises (subject)', 'Supervises (subject)'], ['Groups on duty', 'Groups on duty'], ['Where / when / why', 'Where / when / why'], ['Students in those groups', 'Students in those groups'], ['Average %', 'Average %'], ['Below pass', 'Below pass mark'], ['Students from their house', 'Students from their house (House Masters)']), rows };
   }
   if (type === 'moves') {
     return {
       type, title: 'Manual moves',
-      columns: cols(['Name', 'Student'], ['GCC', 'GCC'], ['Class', 'Class'], ['From', 'Automatic group'], ['To', 'Group now'], [`${basisName} %`, `${basisName} %`], ['On duty', 'On duty']),
-      rows: recs.filter((r) => r.manual).map((r) => ({ Name: r.name, GCC: r.gcc, Class: r.class, From: r.autoGroup ? `Group ${r.autoGroup}` : '—', To: `Group ${r.group} · ${r.tag}`, [`${basisName} %`]: r1(r.score), 'On duty': r.mentor || '—' })),
+      columns: cols(['Name', 'Student'], ['GCC', 'GCC'], ['Class', 'Class'], ['From', 'Automatic group'], ['To', 'Group now'], [`${basisName} %`, `${basisName} %`], ['On duty (subject)', 'On duty (subject)']),
+      rows: recs.filter((r) => r.manual).map((r) => ({ Name: r.name, GCC: r.gcc, Class: r.class, From: r.autoGroup ? `Group ${r.autoGroup}` : '—', To: `Group ${r.group} · ${r.tag}`, [`${basisName} %`]: r1(r.score), 'On duty (subject)': dutyText(r) })),
     };
   }
   // roster (default)
   return {
     type: 'roster', title: 'Group roster', groupBy: 'Group',
-    columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty', 'On duty'], [`${basisName} %`, `${basisName} %`], ['Weakest subject', 'Weakest subject'], ['Trend', 'Trend'], ['Moved', 'Moved by admin']),
-    rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty': r.mentor || '—', [`${basisName} %`]: r1(r.score), 'Weakest subject': r.weakest || '—', Trend: r.trendText || '—', Moved: r.manual ? 'Yes' : '' })),
+    columns: cols(['Group', 'Group'], ['Class', 'Class'], ['GCC', 'GCC'], ['Name', 'Name'], ['House', 'House'], ['House Master / Mistress', 'House Master / Mistress'], ['On duty (subject)', 'On duty (subject)'], [`${basisName} %`, `${basisName} %`], ['Weakest subject', 'Weakest subject'], ['Trend', 'Trend'], ['Moved', 'Moved by admin']),
+    rows: recs.map((r) => ({ Group: gLabel(r), Class: r.class, GCC: r.gcc, Name: r.name, House: r.house || '—', 'House Master / Mistress': r.hm || '—', 'On duty (subject)': dutyText(r), [`${basisName} %`]: r1(r.score), 'Weakest subject': r.weakest || '—', Trend: r.trendText || '—', Moved: r.manual ? 'Yes' : '' })),
   };
 }
 
 // Plain-language findings about the (filtered) students.
-export function smartInsights(records, { passPct = 40, basis = '' } = {}) {
+export function smartInsights(records, { passPct = 40, basis = '', duties = null, allSubjects = [] } = {}) {
   const out = [];
   const n = records.length;
   if (!n) return ['No students match the filters.'];
@@ -189,6 +226,14 @@ export function smartInsights(records, { passPct = 40, basis = '' } = {}) {
   const sets = buckets(records);
   const unassigned = sets.filter((b) => !b.rs[0].mentor).length;
   if (unassigned) out.push(`${unassigned} of ${sets.length} group${sets.length === 1 ? '' : 's'} ha${unassigned === 1 ? 's' : 've'} nobody assigned for duty yet.`);
+  if (duties && duties.length) {
+    const by = new Map();
+    duties.forEach((p) => p.sections.forEach((sec) => { if (!by.has(sec.subject)) by.set(sec.subject, new Set()); by.get(sec.subject).add(p.name); }));
+    const subjects = [...by.keys()].sort(SUBJECT_FIRST);
+    out.push(`${duties.length} ${duties.length === 1 ? 'person supervises' : 'people supervise'} study duty across ${subjects.length} subject${subjects.length === 1 ? '' : 's'}: ${subjects.map((sub) => `${sub} (${[...by.get(sub)].join(', ')})`).join('; ')}.`);
+    const uncovered = ['Overall marks', ...allSubjects].filter((sub) => !by.has(sub));
+    if (uncovered.length) out.push(`Nobody is assigned to supervise: ${uncovered.join(', ')}.`);
+  }
   const moved = records.filter((r) => r.manual).length;
   if (moved) out.push(`${moved} student${moved === 1 ? ' was' : 's were'} moved by an admin from the automatic group.`);
   return out;
@@ -207,6 +252,7 @@ export function describeReportFilter(f) {
   const lo = numOrNull(f.scoreMin), hi = numOrNull(f.scoreMax);
   if (lo !== null || hi !== null) bits.push(`Marks ${lo !== null ? lo : 0}%–${hi !== null ? hi : 100}%`);
   if (numOrNull(f.minTests) !== null) bits.push(`≥ ${f.minTests} tests`);
+  if (f.dutySubject) bits.push(`Supervising: ${f.dutySubject}`);
   if (f.belowPass) bits.push('Below pass mark');
   if (f.manualOnly) bits.push('Moved by admin');
   if (String(f.q || '').trim()) bits.push(`Search “${String(f.q).trim()}”`);
