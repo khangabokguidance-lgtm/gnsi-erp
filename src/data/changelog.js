@@ -3,6 +3,13 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Checklist → Today: daily teacher tool',
+    items: [
+      { type: 'new', module: 'checklist', text: 'Checklist now opens on a new “Today” tab for every teacher: your tasks for the day for Navodaya, Sainik and Foundation (with batch and subject), a tick-off progress bar, and day-by-day navigation.' },
+      { type: 'new', module: 'checklist', text: 'Store the material you prepared for today’s classes — notes, links (Drive, YouTube, websites) or uploaded files — under the right course, batch and subject. “Bring pending from yesterday” carries unfinished tasks forward; “Print” makes a premium task sheet. Admins and in-charges can view all teachers.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Pre Mock & Mega Mock analysers, self-study groups',
     items: [
       { type: 'new', module: 'exams', text: 'Results → Pre Mock Analyser and Mega Mock Analyser are now two separate tabs, each with its own results. Mega results are saved into a series with “Mega” in its name.' },
