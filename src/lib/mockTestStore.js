@@ -277,3 +277,41 @@ export async function saveGroupMentor(series, basis, set, grp, mentor, mode, who
   );
   if (error) throw error;
 }
+
+// ─── Language of each class (English / Meitei Mayek) ─────────────────────────
+// The admin's own setting, used by the Self-Study Groups language filter. It wins over the language guessed from
+// the class name, and applies to every series (a class keeps its language). Table `mock_test_class_languages`
+// (20261051_mock_test_class_languages.sql); browser copy kept as the fallback.
+const LANG_TABLE = 'mock_test_class_languages';
+const LANG_LS = 'gnsi_mock_class_languages_v1';
+const langRead = () => { try { return JSON.parse(localStorage.getItem(LANG_LS) || '{}') || {}; } catch { return {}; } };
+const langWrite = (all) => { try { localStorage.setItem(LANG_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+
+// → { languages: { [class]: 'English' | 'Meitei Mayek' }, mode: 'cloud' | 'local' }
+export async function loadClassLanguages() {
+  const local = langRead();
+  const { data, error } = await supabase.from(LANG_TABLE).select('batch, language');
+  if (error) {
+    if (missingTable(error)) return { languages: local, mode: 'local' };
+    throw error;
+  }
+  return { languages: Object.fromEntries(data.map((r) => [r.batch, r.language])), mode: 'cloud' };
+}
+
+// language: 'English' | 'Meitei Mayek', or null to go back to the language guessed from the class name.
+export async function saveClassLanguage(batch, language, mode, who = '') {
+  const all = { ...langRead() };
+  if (language) all[batch] = language; else delete all[batch];
+  langWrite(all);
+  if (mode === 'local') return;
+  if (!language) {
+    const { error } = await supabase.from(LANG_TABLE).delete().eq('batch', batch);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(LANG_TABLE).upsert(
+    { batch, language, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'batch' },
+  );
+  if (error) throw error;
+}
