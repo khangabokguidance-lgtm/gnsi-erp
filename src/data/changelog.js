@@ -3,6 +3,21 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Learning Hub → Class Material (view-only study material & test series)',
+    items: [
+      { type: 'new', module: 'classmaterial', text: 'New Learning Hub section “Class Material”: the admin uploads study material and test-series papers (PDF or images) by course (Navodaya / Sainik / Foundation), class and subject; staff browse subject by subject and open them for class use.' },
+      { type: 'new', module: 'classmaterial', text: 'Test series are grouped by series name with tests in order (Test 1, 2, 3…). Admin can hide a file from staff or delete it; search finds any title, subject or series.' },
+      { type: 'security', module: 'classmaterial', text: 'Files open in a view-only viewer — no download or print button, no file link, right-click / copy / save / print blocked, and the viewer’s name and date is tiled across every page. Files are kept in a private bucket. Give staff access under Admin → Permissions → “Class Material (view-only)”.' },
+    ],
+  },
+  {
+    date: '2026-11-02', title: 'Mock Analyzer → Revision Plan & time table',
+    items: [
+      { type: 'new', module: 'exams', text: 'Pre Mock and Mega Mock Analyser have a new “Revision Plan” tab built on the Academic Time Table valid from 2 Nov 2026: for each class, every subject’s average, students below the pass mark, how many revision periods (and minutes) a day it gets, the teacher, and whether the time given matches how weak the class is — with plain advice such as moving a period from a strong subject to a weak one.' },
+      { type: 'new', module: 'exams', text: 'Revision Plan: a period-by-period day sheet for each class (weakest subject starred), the full colour time table for all 8 classes, a time table check (no teacher in two classes at once, one subject per period, teacher load) and print / PDF for the class plan and the time table.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Checklist → Today: daily teacher tool',
     items: [
       { type: 'new', module: 'checklist', text: 'Checklist now opens on a new “Today” tab for every teacher: your tasks for the day for Navodaya, Sainik and Foundation (with batch and subject), a tick-off progress bar, and day-by-day navigation.' },

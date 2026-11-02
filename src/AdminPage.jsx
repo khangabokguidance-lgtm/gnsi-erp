@@ -39,6 +39,7 @@ const ALL_MODULES = [
   { key: 'modelsets',        label: 'Model Sets',         icon: '🗂️' },
   { key: 'setmaker',         label: 'Model Set Maker',    icon: '🖨️' },
   { key: 'studymaterial',    label: 'Study Materials',    icon: '📖'  },
+  { key: 'classmaterial',    label: 'Class Material (view-only)', icon: '👁️' },
   { key: 'studylockers',     label: 'Study Lockers',      icon: '🗃️' },
   { key: 'kitchen',          label: 'Kitchen',            icon: '🍽️' },
   { key: 'store',            label: 'Store',              icon: '🏬'  },
