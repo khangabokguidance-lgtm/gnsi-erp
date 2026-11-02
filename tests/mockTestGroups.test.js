@@ -58,3 +58,45 @@ test('a group names the subject its members are weakest in', () => {
   // weakest overall is 'c' (80% Maths, 16% EVS) -> EVS; next is 'a' (20% Maths, 80% EVS) -> Maths
   assert.deepEqual(withStudents.slice(0, 2).map((x) => x.focus), ['EVS', 'Maths'])
 })
+
+import { subjectsOf } from '../src/lib/mockTestGroups.js'
+// a (strong Maths, weak EVS) .. d (weak Maths, strong EVS) — overall averages are equal-ish
+const sub = [row('a', 'X', 1, 25, 5), row('b', 'X', 1, 20, 10), row('c', 'X', 1, 10, 20), row('d', 'X', 1, 5, 25)]
+
+test('subject-wise groups order students by that subject only', () => {
+  const m = selfStudyGroups(studentAverages(sub), { basis: 'Maths' })
+  const e = selfStudyGroups(studentAverages(sub), { basis: 'EVS' })
+  const names = (g) => g.filter((x) => x.n).map((x) => x.students.map((s) => s.name).join())
+  assert.deepEqual(names(m), ['d', 'c', 'b', 'a'])   // weakest Maths first
+  assert.deepEqual(names(e), ['a', 'b', 'c', 'd'])   // weakest EVS first
+  assert.equal(m.find((g) => g.n).focus, 'Maths')
+  assert.deepEqual(subjectsOf(sub), ['Maths', 'EVS'])
+})
+test('a student with no marks in the chosen subject is left out of that subject’s groups', () => {
+  const rows = [row('a', 'X', 1, 25, 5), { ...row('b', 'X', 1, 20, 10), marks: { EVS: 10 }, max_marks: { EVS: 25 } }]
+  const g = selfStudyGroups(studentAverages(rows), { basis: 'Maths' })
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 1)
+})
+test('manual choice moves a student to the chosen group, per basis, and is flagged', () => {
+  const st = studentAverages(sub)
+  const g = selfStudyGroups(st, { basis: 'Maths', overrides: { a: 1 } })   // best in Maths forced into the weakest group
+  assert.ok(g[0].students.some((s) => s.name === 'a' && s.manual))
+  assert.equal(g[0].manualCount, 1)
+  assert.equal(g.reduce((t, x) => t + x.n, 0), 4)                 // nobody lost or duplicated
+  const other = selfStudyGroups(st, { basis: 'EVS', overrides: { a: 1 } })  // override applies by sid for any basis it is passed to
+  assert.ok(other[0].students.some((s) => s.name === 'a'))
+  const none = selfStudyGroups(st, { basis: 'Maths', overrides: { a: 99, b: 'x' } })   // invalid choices are ignored
+  assert.equal(none.reduce((t, x) => t + x.manualCount, 0), 0)
+})
+test('mixed classes: one set of 7 groups across the classes, students keep their class', () => {
+  const rows = [...cls('Combined English', 7), ...cls('Combined Manipuri', 7).map((r) => ({ ...r, sid: 'm' + r.sid }))]
+  const [m] = classGroups(rows, { mix: true })
+  assert.equal(m.mixed, true)
+  assert.deepEqual(m.classes, ['Combined English', 'Combined Manipuri'])
+  assert.equal(m.count, 14)
+  assert.deepEqual(m.groups.map((g) => g.n), [2, 2, 2, 2, 2, 2, 2])
+  assert.ok(m.groups.some((g) => new Set(g.students.map((s) => s.batch)).size === 2))   // a group holds both classes
+  assert.deepEqual(classGroups(rows, { mix: true, classes: ['Combined English'] })[0].count, 7)
+  assert.deepEqual(classGroups(rows, { mix: true, language: 'Meitei Mayek' })[0].classes, ['Combined Manipuri'])
+  assert.deepEqual(classGroups(rows, { mix: true, classes: ['Nope'] }), [])
+})

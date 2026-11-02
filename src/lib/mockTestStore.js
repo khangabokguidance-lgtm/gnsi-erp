@@ -177,3 +177,59 @@ export async function saveSettings(series, cfg, mode, who = '') {
   );
   if (error) throw error;
 }
+
+// ─── Manual self-study groups ────────────────────────────────────────────────
+// The admin's own choice of group (1 = weakest … 7 = strongest) for a student, kept per series and per basis
+// ('overall' or a subject name). Table `mock_test_study_groups` (20261049_mock_test_study_groups.sql); a copy
+// is always kept in this browser too, so choices survive while the migration is pending.
+const GRP_TABLE = 'mock_test_study_groups';
+const GRP_LS = 'gnsi_mock_study_groups_v1';
+export const GROUP_BASIS_ALL = 'overall';
+const grpRead = () => { try { return JSON.parse(localStorage.getItem(GRP_LS) || '{}') || {}; } catch { return {}; } };
+const grpWrite = (all) => { try { localStorage.setItem(GRP_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+const basisKey = (b) => b || GROUP_BASIS_ALL;
+
+// → { choices: { [basis]: { [sid]: 1..7 } }, mode: 'cloud' | 'local' }
+export async function loadGroupChoices(series) {
+  const local = grpRead()[series] || {};
+  const { data, error } = await supabase.from(GRP_TABLE).select('basis, student_key, grp').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { choices: local, mode: 'local' };
+    throw error;
+  }
+  const choices = {};
+  data.forEach((r) => { (choices[r.basis] ||= {})[r.student_key] = Number(r.grp); });
+  return { choices, mode: 'cloud' };
+}
+
+// grp: 1..7, or null to remove the manual choice (back to the automatic group).
+export async function saveGroupChoice(series, basis, sid, grp, mode, who = '') {
+  const b = basisKey(basis);
+  const all = grpRead();
+  const cur = { ...(all[series] || {}) };
+  const forBasis = { ...(cur[b] || {}) };
+  if (grp === null) delete forBasis[sid]; else forBasis[sid] = grp;
+  cur[b] = forBasis;
+  grpWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (grp === null) {
+    const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b).eq('student_key', sid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(GRP_TABLE).upsert(
+    { series, basis: b, student_key: sid, grp, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series,basis,student_key' },
+  );
+  if (error) throw error;
+}
+
+// Remove every manual choice for one basis of a series.
+export async function clearGroupChoices(series, basis, mode) {
+  const b = basisKey(basis);
+  const all = grpRead();
+  if (all[series]) { const cur = { ...all[series] }; delete cur[b]; grpWrite({ ...all, [series]: cur }); }
+  if (mode === 'local') return;
+  const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b);
+  if (error) throw error;
+}
