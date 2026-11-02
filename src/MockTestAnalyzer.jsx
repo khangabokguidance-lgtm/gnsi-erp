@@ -15,15 +15,16 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
 import MockGroupReport from './MockGroupReport';
 import MockDutyDesk from './MockDutyDesk';
 import { InstructionForm, InstructionSummary } from './DutyInstruction';
-import { pickInstruction, hasInstruction } from './lib/dutyInstruction';
-import { collectDuties, assignmentsFrom, parseScope, mixScope } from './lib/mockTestDuty';
+import { pickInstruction, hasInstruction, slotText, DAYS } from './lib/dutyInstruction';
+import { mergeSchedule, withSchedule, stripScheduleDefaults } from './lib/studySchedule';
+import { collectDuties, assignmentsFrom, parseScope, mixScope, dutyRoomClashes } from './lib/mockTestDuty';
 import { sheetName } from './lib/mockTestReport';
 import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
@@ -1058,12 +1059,37 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const viewRows = useMemo(() => (Object.keys(removedHere).length ? scoped.filter((r) => !removedHere[r.sid]) : scoped), [scoped, removedHere]);
   // Duties are built from the saved assignments themselves (not from the layout / filters on screen), so the
   // Duty desk, the duty sheets and the report always show everyone who is on duty.
+  // Study schedule: a time slot for each subject and a room for each group number (defaults: Passage 6-7 am, Maths 3:15-4:45 pm,
+  // EVS 5:30-7 pm; Group 1-7 -> Room 1-7). It fills in whatever a duty assignment leaves empty.
+  const [savedSchedule, setSavedSchedule] = useState({ subjects: {}, rooms: {} });
+  const [scheduleMode, setScheduleMode] = useState('local');
+  const [schedOpen, setSchedOpen] = useState(false);
+  useEffect(() => {
+    let live = true;
+    loadSchedule(seriesName).then((r) => { if (live) { setSavedSchedule(r.saved); setScheduleMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`The study schedule could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const schedule = useMemo(() => mergeSchedule(savedSchedule), [savedSchedule]);
+  const setSubjectSlot = async (subject, value) => {
+    setSavedSchedule((cur) => ({ ...cur, subjects: { ...cur.subjects, [subject]: value } }));
+    try { await saveScheduleEntry(seriesName, 'subject', subject, value, scheduleMode, who); } catch (e) { setSaveMsg(`Could not save the time slot: ${e.message || e}`); }
+  };
+  const setRoomName = (group, value) => setSavedSchedule((cur) => ({ ...cur, rooms: { ...cur.rooms, [group]: value } }));
+  const saveRoomName = async (group) => {
+    try { await saveScheduleEntry(seriesName, 'room', group, String(schedule.rooms[group] ?? ''), scheduleMode, who); flash('Room saved ✓'); } catch (e) { setSaveMsg(`Could not save the room: ${e.message || e}`); }
+  };
+  const resetSched = async () => {
+    if (!window.confirm('Go back to the standard schedule (Passage 6:00–7:00 am, Mathematics 3:15–4:45 pm, EVS 5:30–7:00 pm; Group 1–7 in Room 1–7)?')) return;
+    setSavedSchedule({ subjects: {}, rooms: {} });
+    try { await resetSchedule(seriesName, scheduleMode); flash('Standard schedule restored ✓'); } catch (e) { setSaveMsg(`Could not reset the schedule: ${e.message || e}`); }
+  };
   const assignments = useMemo(() => assignmentsFrom(mentors), [mentors]);
   const dutyOpts = useCallback((b, scope) => {
     const sc = parseScope(scope);
     return { mode, basis: b, topN, languages, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, ...(sc.mix ? { mix: true, language: sc.language, classes: sc.classes } : { batch: sc.batch }) };
   }, [mode, topN, languages, choices]);
-  const duties = useMemo(() => collectDuties({ rows, assignments, optsFor: dutyOpts, removedFor, custom, hmOf }), [rows, assignments, dutyOpts, removedFor, custom, hmOf]);
+  const duties = useMemo(() => collectDuties({ rows, assignments, optsFor: dutyOpts, removedFor, custom, hmOf, schedule }), [rows, assignments, dutyOpts, removedFor, custom, hmOf, schedule]);
+  const roomClash = useMemo(() => dutyRoomClashes(duties), [duties]);
   // Instruction (where / why / when / what to do) for the person on duty of a group.
   const [instEditKey, setInstEditKey] = useState(null);   // `${setKey}|${group}` of the card being edited
   const [instDraft, setInstDraft] = useState(null);
@@ -1072,7 +1098,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
     const k = mentorKey(b, setKey, grp);
     const cur = mentors[k];
     if (!cur?.name) return;
-    const value = { ...cur, ...pickInstruction(details) };
+    const value = { ...cur, ...stripScheduleDefaults(details, schedule, b || 'Overall marks', grp) };
     setMentors((m) => ({ ...m, [k]: value }));
     try { await saveGroupMentor(seriesName, b, setKey, grp, value, mentorMode, who); flash('Instruction saved ✓'); }
     catch (e) { setSaveMsg(`Could not save the instruction: ${e.message || e}`); }
@@ -1080,7 +1106,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const saveInstructionFor = async (sec, details) => {
     if (sec.kind === 'custom') {
       const cg = custom.find((x) => x.id === sec.id);
-      if (cg) await saveCustom({ ...cg, ...pickInstruction(details) });
+      if (cg) await saveCustom({ ...cg, ...stripScheduleDefaults(details, schedule, cg.basis || 'Overall marks', 0) });
       return;
     }
     await saveDutyDetails(sec.basis, sec.scope, sec.group, details);
@@ -1121,7 +1147,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const [printPick, setPrintPick] = useState([]);
   const groupsFor = (b) => (b === basis ? classes : classGroups(scoped.filter((r) => !removedFor(b)[r.sid]), opts(b)));
   const groupsHtml = (cls, b) => cls.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${(() => { const sc = withSchedule(mentorOf(c, b, g), schedule, b || 'Overall marks', g.no); return [sc.venue && `📍 ${escH(sc.venue)}`, slotText(sc) && `🕔 ${escH(slotText(sc))}`].filter(Boolean).join(' · ') + (sc.venue || slotText(sc) ? ' · ' : ''); })()}${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
       ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(b || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
   const print = (bases = [basis]) => {
     const list = (bases.length ? bases : [basis]);
@@ -1278,7 +1304,63 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
               </div>
               <span style={{ fontSize: 12.5 }}><b>{prog.assigned}</b> of {prog.total} groups have someone on duty{prog.assigned ? <> · <b>{prog.instr}</b> with an instruction</> : null}</span>
               {canEdit && prog.assigned < prog.total ? <span style={{ fontSize: 12, color: '#92400E' }}>Use “Assigned for duty” on each group below.</span> : null}
-              <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5, marginLeft: 'auto' }} onClick={() => setView('duty')}>Open Duty desk →</button>
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={schedOpen ? { ...ui.btn, padding: '4px 12px', fontSize: 12.5 } : { ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={() => setSchedOpen((v) => !v)} aria-expanded={schedOpen}>🗓 Time slots &amp; rooms</button>
+                <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={() => setView('duty')}>Open Duty desk →</button>
+              </span>
+            </div>
+          ) : null}
+          {schedOpen ? (
+            <div style={{ ...ui.card, border: '1.5px solid #b8923a' }} role="region" aria-label="Study schedule">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <b style={{ fontSize: 14 }}>🗓 Study schedule — time slot for each subject, room for each group</b>
+                <span style={{ fontSize: 12, color: '#5d6b82' }}>Applies to every duty card, the Duty desk, duty sheets and reports · <b style={{ color: scheduleMode === 'cloud' ? '#047857' : '#b45309' }}>{scheduleMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></span>
+              </div>
+              <div style={{ fontSize: 12, color: '#5d6b82', margin: '4px 0 10px' }}>A person's own “where / when” (set on their instruction) still wins; the schedule fills in the rest. Leave a time empty for no fixed slot.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Time slot for each subject</div>
+                  {[...new Set([...subjects, ...Object.keys(schedule.subjects)])].map((sub) => {
+                    const v = schedule.subjects[sub] || { from: '', to: '', days: [] };
+                    const bad = v.from && v.to && v.to <= v.from;
+                    return (
+                      <div key={sub} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid #f4f0e6' }}>
+                        <b style={{ width: 110, fontSize: 13 }}>{sub}</b>
+                        {canEdit ? (
+                          <>
+                            <input type="time" style={ui.input} value={v.from} onChange={(e) => setSubjectSlot(sub, { ...v, from: e.target.value })} aria-label={`${sub} from`} />
+                            <span style={{ color: '#5d6b82' }}>to</span>
+                            <input type="time" style={ui.input} value={v.to} onChange={(e) => setSubjectSlot(sub, { ...v, to: e.target.value })} aria-label={`${sub} to`} />
+                            <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
+                              {DAYS.map((d) => <button key={d} type="button" style={{ ...chip((v.days || []).includes(d)), padding: '2px 7px', fontSize: 11 }} onClick={() => setSubjectSlot(sub, { ...v, days: (v.days || []).includes(d) ? v.days.filter((x) => x !== d) : [...(v.days || []), d] })} aria-pressed={(v.days || []).includes(d)} aria-label={`${sub} ${d}`}>{d}</button>)}
+                            </span>
+                            {bad ? <span role="alert" style={{ fontSize: 11.5, color: '#b42318' }}>end must be after start</span> : null}
+                          </>
+                        ) : <span style={{ fontSize: 13 }}>{slotText(v) || 'no fixed slot'}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Room for each group</div>
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                    <div key={n} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', borderTop: '1px solid #f4f0e6' }}>
+                      <b style={{ width: 70, fontSize: 13, color: GROUP_META[n - 1].color }}>Group {n}</b>
+                      {canEdit ? <input style={{ ...ui.input, width: 160 }} value={schedule.rooms[n] ?? ''} onChange={(e) => setRoomName(n, e.target.value)} onBlur={() => saveRoomName(n)} aria-label={`Room for Group ${n}`} /> : <span style={{ fontSize: 13 }}>{schedule.rooms[n] || '—'}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {layout === 'class' && classes.length > 1 ? <div style={{ fontSize: 12, color: '#92400E', marginTop: 8 }}>With <b>Within each class</b>, every class has its own Group 1…7, so several Group 1s are sent to the same room at the same time. <b>Mixed across classes</b> gives one set of 7 groups for 7 rooms.</div> : null}
+              {roomClash.length ? (
+                <div role="alert" style={{ marginTop: 8, background: '#fef2f2', border: '1px solid #fbd5d5', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, color: '#b42318' }}>
+                  <b>⚠ {roomClash.length} room clash{roomClash.length === 1 ? '' : 'es'}:</b> two groups in the same room at the same time — e.g. {roomClash.slice(0, 2).map((x) => `${x.venue}: ${x.a} and ${x.b}`).join('; ')}{roomClash.length > 2 ? '…' : ''}
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {canEdit ? <button style={ui.ghost} onClick={resetSched}>↺ Back to the standard schedule</button> : null}
+                <button style={ui.ghost} onClick={() => setSchedOpen(false)}>Close</button>
+              </div>
             </div>
           ) : null}
           {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — restore them in the Duty desk.</div> : null}
@@ -1329,6 +1411,7 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                   {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
                   {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
                   {g.n && !mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#b45309', fontWeight: 700 }}>⚠ Nobody on duty yet</div> : null}
+                  {g.n && !mentorOf(c, basis, g) ? (() => { const sc = withSchedule({}, schedule, basis || 'Overall marks', g.no); const t = [sc.venue && `📍 ${sc.venue}`, slotText(sc) && `🕔 ${slotText(sc)}`].filter(Boolean).join(' · '); return t ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{t}</div> : null; })() : null}
                   {canEdit && dir ? (
                     <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned for duty
                       <select aria-label={`Assigned for duty for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
@@ -1341,12 +1424,12 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
                   ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}
                   {mentorOf(c, basis, g) ? (
                     <div style={{ marginTop: 5 }}>
-                      <InstructionSummary value={mentorOf(c, basis, g)} compact />
+                      <InstructionSummary value={withSchedule(mentorOf(c, basis, g), schedule, basis || 'Overall marks', g.no)} compact />
                       {canEdit && dir ? (
                         <button style={{ ...ui.ghost, padding: '2px 8px', fontSize: 11.5, marginTop: 2 }} onClick={() => {
                           const key = `${setKeyOf(c)}|${g.no}`;
                           if (instEditKey === key) { setInstEditKey(null); return; }
-                          setInstEditKey(key); setInstDraft(pickInstruction(mentorOf(c, basis, g))); setInstAll(false);
+                          setInstEditKey(key); setInstDraft(withSchedule(mentorOf(c, basis, g), schedule, basis || 'Overall marks', g.no)); setInstAll(false);
                         }} aria-label={`Instructions for ${g.name}`}>{hasInstruction(mentorOf(c, basis, g)) ? '📋 Edit instruction' : '📋 Add instruction'}</button>
                       ) : null}
                       {instEditKey === `${setKeyOf(c)}|${g.no}` && instDraft ? (

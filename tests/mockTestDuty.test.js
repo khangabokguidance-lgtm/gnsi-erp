@@ -103,3 +103,19 @@ test('choosing subjects keeps only those duties and recounts each person', () =>
   assert.deepEqual(filterDutiesBySubjects(duties, ['Passage']), [])
   assert.equal(duties[0].groups, 2)                                                   // the original is not changed
 })
+
+import { dutyRoomClashes } from '../src/lib/mockTestDuty.js'
+import { DEFAULT_SCHEDULE } from '../src/lib/studySchedule.js'
+test('the study schedule fills in room and time on every duty section, and room clashes are found', () => {
+  const as = assignmentsFrom({ 'Mathematics|class:X|1': { name: 'Meera Singh', title: 'Teacher' }, 'Mathematics|class:Y|1': { name: 'Rohit Sharma', title: 'House Master' }, 'EVS|class:X|1': { name: 'Meera Singh', title: 'Teacher', venue: 'Lab' } })
+  const rowsM = rows.map((r) => ({ ...r, marks: { Mathematics: r.marks.Maths, EVS: r.marks.EVS }, max_marks: { Mathematics: 25, EVS: 25 } }))   // the real subject names
+  const d = collectDuties({ rows: rowsM, assignments: as, optsFor, removedFor: () => ({}), schedule: DEFAULT_SCHEDULE })
+  const meera = d.find((p) => p.name === 'Meera Singh')
+  const maths = meera.sections.find((x) => x.subject === 'Mathematics'), evs = meera.sections.find((x) => x.subject === 'EVS')
+  assert.deepEqual([maths.instruction.venue, maths.instruction.from, maths.instruction.to], ['Room 1', '15:15', '16:45'])
+  assert.deepEqual([evs.instruction.venue, evs.instruction.from, evs.instruction.to], ['Lab', '17:30', '19:00'])   // own room wins, schedule time fills in
+  const c = dutyRoomClashes(d)                          // class X and class Y Maths Group 1 are both in Room 1 at 3:15 pm
+  assert.equal(c.length, 1); assert.equal(c[0].venue, 'Room 1'); assert.match(c[0].a + c[0].b, /Meera Singh.*Rohit Sharma|Rohit Sharma.*Meera Singh/)
+  const none = collectDuties({ rows: rowsM, assignments: as, optsFor, removedFor: () => ({}) })      // without a schedule nothing is filled in
+  assert.equal(none[0].sections[0].instruction.venue, '')
+})

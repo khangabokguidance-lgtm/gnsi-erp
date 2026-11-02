@@ -4,7 +4,8 @@
 // collectDuties walks every basis, drops the students a teacher has removed, and gathers — per person — every
 // group they are on duty for, plus the manually built groups they look after. That is what a duty sheet prints.
 import { classGroups, studentAverages } from './mockTestGroups.js';
-import { pickInstruction } from './dutyInstruction.js';
+import { pickInstruction, roomClashes } from './dutyInstruction.js';
+import { withSchedule } from './studySchedule.js';
 
 const norm = (s) => String(s ?? '').trim().toLowerCase();
 export const sameName = (a, b) => !!norm(a) && norm(a) === norm(b);
@@ -46,7 +47,7 @@ const scopeLabel = (c, scope) => {
 // optsFor(basis, scope) → classGroups options for that assignment's view (mode, top-N, manual moves, language, classes…)
 // removedFor(basis)     → { [sid]: … } students taken out of that basis' groups
 // custom                → [{ id, name, basis, dutyName, dutyTitle, students: [sid], … }]
-export function collectDuties({ rows, assignments, optsFor, removedFor, custom = [], hmOf }) {
+export function collectDuties({ rows, assignments, optsFor, removedFor, custom = [], hmOf, schedule = null }) {
   const people = new Map();
   const person = (name, title) => {
     const k = norm(name);
@@ -68,7 +69,9 @@ export function collectDuties({ rows, assignments, optsFor, removedFor, custom =
       person(a.mentor.name, a.mentor.title).sections.push({
         kind: 'group', id: `${a.basis}|${a.scope}|${g.no}`, scope: a.scope, basis: a.basis, subject: a.basis || 'Overall marks',
         set: c.batch, mixed: !!c.mixed, group: g.no, tag: g.tag, color: g.color, label: `${scopeLabel(c, a.scope)} · Group ${g.no} · ${g.tag}`,
-        students: g.students.map((s) => studentRow(s, a.basis, hmOf)), instruction: pickInstruction(a.mentor),
+        students: g.students.map((s) => studentRow(s, a.basis, hmOf)),
+        // the person's own instruction, with the study schedule (room for the group, time for the subject) filling the gaps
+        instruction: schedule ? withSchedule(a.mentor, schedule, a.basis || 'Overall marks', g.no) : pickInstruction(a.mentor),
       });
     });
   });
@@ -80,7 +83,7 @@ export function collectDuties({ rows, assignments, optsFor, removedFor, custom =
       kind: 'custom', id: cg.id, scope: '', basis: cg.basis || '', subject: cg.basis || 'Overall marks', set: 'Manual group', mixed: false,
       group: 0, tag: 'Manual', color: '#7c3aed', label: cg.name, note: cg.note || '', students,
       // an older group may only have a free-text note: that note is its instruction
-      instruction: (() => { const d = pickInstruction(cg); return d.instruction || !cg.note ? d : { ...d, instruction: String(cg.note).trim() }; })(),
+      instruction: (() => { const d = pickInstruction(cg); const own = d.instruction || !cg.note ? d : { ...d, instruction: String(cg.note).trim() }; return schedule ? withSchedule(own, schedule, cg.basis || 'Overall marks', 0) : own; })(),
     });
   });
   return [...people.values()].map((p) => ({
@@ -120,3 +123,9 @@ export function filterDutiesBySubjects(duties, subjects = []) {
 // The subjects that appear in the duties — "Overall marks" first, then alphabetical.
 export const dutySubjects = (duties) => [...new Set(duties.flatMap((p) => p.sections.map((x) => x.subject)))]
   .sort((a, b) => (b === 'Overall marks') - (a === 'Overall marks') || a.localeCompare(b));
+
+// Groups sent to the same room at the same time, across everybody on duty.
+export function dutyRoomClashes(duties) {
+  const items = duties.flatMap((p) => p.sections.filter((x) => x.students.length).map((x) => ({ label: `${p.name} · ${x.label}${x.basis ? ` (${x.subject})` : ''}`, venue: x.instruction?.venue || '', instruction: x.instruction })));
+  return roomClashes(items);
+}

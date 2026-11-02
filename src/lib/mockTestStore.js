@@ -5,7 +5,7 @@
 // localStorage instead so nothing is lost, and the screen tells the user to
 // run the migration.
 import { supabase } from '../supabase';
-import { pickInstruction, daysToText } from './dutyInstruction.js';
+import { pickInstruction, daysToText, daysFromText } from './dutyInstruction.js';
 
 const TABLE = 'mock_test_results';
 const LS_KEY = 'gnsi_mock_test_results_v1';
@@ -406,5 +406,56 @@ export async function deleteCustomGroup(series, id, mode) {
   jwrite(CUS_LS, { ...all, [series]: (all[series] || []).filter((g) => g.id !== id) });
   if (mode === 'local') return;
   const { error } = await supabase.from(CUS_TABLE).delete().eq('series', series).eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Study schedule: time slot per subject, room per group number ────────────
+// Saved per series. Anything not saved falls back to DEFAULT_SCHEDULE (lib/studySchedule.js). Table
+// `mock_test_study_schedule` (20261054_mock_test_study_schedule.sql); browser copy kept as the fallback.
+const SCH_TABLE = 'mock_test_study_schedule';
+const SCH_LS = 'gnsi_mock_study_schedule_v1';
+
+// → { saved: { subjects: { [subject]: { from, to, days } }, rooms: { [group]: 'Room 1' } }, mode }
+export async function loadSchedule(series) {
+  const local = (jread(SCH_LS, {}) || {})[series] || { subjects: {}, rooms: {} };
+  const { data, error } = await supabase.from(SCH_TABLE).select('*').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { saved: local, mode: 'local' };
+    throw error;
+  }
+  const saved = { subjects: {}, rooms: {} };
+  data.forEach((r) => {
+    if (r.kind === 'subject') saved.subjects[r.key] = { from: r.time_from || '', to: r.time_to || '', days: daysFromText(r.days) };
+    else if (r.kind === 'room') saved.rooms[r.key] = r.room || '';
+  });
+  return { saved, mode: 'cloud' };
+}
+
+// kind 'subject': value { from, to, days }   ·   kind 'room': value 'Room 1'   ·   value null = back to the default
+export async function saveScheduleEntry(series, kind, key, value, mode, who = '') {
+  const all = jread(SCH_LS, {}) || {};
+  const cur = { subjects: { ...(all[series]?.subjects || {}) }, rooms: { ...(all[series]?.rooms || {}) } };
+  const bucket = kind === 'subject' ? cur.subjects : cur.rooms;
+  if (value === null) delete bucket[key]; else bucket[key] = value;
+  jwrite(SCH_LS, { ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (value === null) {
+    const { error } = await supabase.from(SCH_TABLE).delete().eq('series', series).eq('kind', kind).eq('key', String(key));
+    if (error) throw error;
+    return;
+  }
+  const row = kind === 'subject'
+    ? { series, kind, key: String(key), time_from: value.from || null, time_to: value.to || null, days: daysToText(value.days) || null, room: null }
+    : { series, kind, key: String(key), time_from: null, time_to: null, days: null, room: String(value) };
+  const { error } = await supabase.from(SCH_TABLE).upsert({ ...row, updated_by: who || null, updated_at: new Date().toISOString() }, { onConflict: 'series,kind,key' });
+  if (error) throw error;
+}
+
+// Remove every saved entry of a series: back to the defaults.
+export async function resetSchedule(series, mode) {
+  const all = jread(SCH_LS, {}) || {};
+  const next = { ...all }; delete next[series]; jwrite(SCH_LS, next);
+  if (mode === 'local') return;
+  const { error } = await supabase.from(SCH_TABLE).delete().eq('series', series);
   if (error) throw error;
 }

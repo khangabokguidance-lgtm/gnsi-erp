@@ -19,6 +19,7 @@ export const CHANGELOG = [
       { type: 'improved', module: 'exams', text: 'Self-Study Groups is easier to use: three clear views (Groups, Duty desk, Reports), simple filters first with “More options” for the rest, a “How it works” guide, a duty-setup progress bar, hidden empty groups, plain-language labels and a “saved ✓” confirmation after each change.' },
       { type: 'fixed', module: 'exams', text: 'Self-Study Groups: the Duty desk, duty sheets and duty roster now always show everyone on duty — previously people disappeared when you switched between class-wise and mixed groups or set a class filter. Mixed-class duties remember which classes were mixed. Excel sheets with “/” or “:” in a subject name no longer fail.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups: choose which subject(s) to print — “Print…” on the Groups view lets you tick the subjects (each prints as its own section), and the Duty desk has a “Show & print only” subject filter that applies to duty sheets, Excel and the copied instruction message.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: study schedule — a time slot for each subject (Passage 6:00–7:00 am, Mathematics 3:15–4:45 pm, EVS 5:30–7:00 pm) and a room for each group (Group 1–7 → Room 1–7), editable and applied to every group card, the Duty desk, duty sheets and reports; room clashes are flagged.' },
       { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
     ],
   },
