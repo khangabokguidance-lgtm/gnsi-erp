@@ -15,6 +15,7 @@ export const CHANGELOG = [
       { type: 'new', module: 'exams', text: 'Self-Study Groups: teaching staff from the Staff Records can now be put on duty for a group, alongside House Masters / Mistresses (“Assigned for duty”); the report type is now a Duty roster.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups → Duty desk: every duty teacher / House Master with their groups and student lists, premium printable duty sheets (with attendance boxes), remove or transfer a student (teachers on their own groups, admins on any, restorable), and groups built from a hand-picked list of students.' },
       { type: 'new', module: 'exams', text: 'Self-Study Groups: every person on duty gets an instruction — where, why (reason), when (days and time slot) and what to do — shown on the group card and Duty desk, with overlap warnings, a copyable message, and a clear “Your duty — please read” notice at the top of the printed duty sheet.' },
+      { type: 'new', module: 'exams', text: 'Smart report: the Duty roster now shows clearly WHICH SUBJECT each person supervises study duty for (all subjects at once), with group, where, when and why; filter by supervised subject; subjects with nobody on duty are flagged; the other reports name the subject next to the person on duty.' },
       { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
     ],
   },
