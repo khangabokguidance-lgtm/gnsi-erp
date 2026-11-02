@@ -28,6 +28,7 @@ const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
 const ModelSets = lazy(() => import('./ModelSets'));
 const SetMaker = lazy(() => import('./SetMaker'));
+const ClassMaterial = lazy(() => import('./ClassMaterial'));
 
 const MODULES = {
   studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
@@ -38,10 +39,11 @@ const MODULES = {
   entrance:           { label: 'Entrance Exam',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
   modelsets:          { label: 'Model Sets',           short: 'Model Sets', metric: 'modelsets', unit: 'sets' },
   setmaker:           { label: 'Model Set Maker',      short: 'Set Maker',  metric: 'setmaker',  unit: 'added' },
+  classmaterial:      { label: 'Class Material',       short: 'Class Material', metric: 'classmaterial', unit: 'files' },
 };
 
 const FLOW = [
-  { stage: 'Learn', ids: ['studymaterial', 'teachingaids', 'studylockers'] },
+  { stage: 'Learn', ids: ['studymaterial', 'classmaterial', 'teachingaids', 'studylockers'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
   { stage: 'Assess', ids: ['entrance', 'modelsets', 'setmaker'] },
 ];
@@ -92,7 +94,7 @@ const RELATED = {
 };
 
 // ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets', setmaker: 'set_maker_items' };
+const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets', setmaker: 'set_maker_items', classmaterial: 'class_materials' };
 let cache = { at: 0, data: {}, pending: null };
 async function countOf(table) {
   try {
@@ -412,6 +414,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
       case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
       case 'setmaker': return <SetMaker {...common} perms={perms('setmaker')} />;
+      case 'classmaterial': return <ClassMaterial {...common} perms={perms('classmaterial')} />;
       default: return null;
     }
   };

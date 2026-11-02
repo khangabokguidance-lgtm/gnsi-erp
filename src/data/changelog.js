@@ -3,6 +3,14 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Learning Hub → Class Material (view-only study material & test series)',
+    items: [
+      { type: 'new', module: 'classmaterial', text: 'New Learning Hub section “Class Material”: the admin uploads study material and test-series papers (PDF or images) by course (Navodaya / Sainik / Foundation), class and subject; staff browse subject by subject and open them for class use.' },
+      { type: 'new', module: 'classmaterial', text: 'Test series are grouped by series name with tests in order (Test 1, 2, 3…). Admin can hide a file from staff or delete it; search finds any title, subject or series.' },
+      { type: 'security', module: 'classmaterial', text: 'Files open in a view-only viewer — no download or print button, no file link, right-click / copy / save / print blocked, and the viewer’s name and date is tiled across every page. Files are kept in a private bucket. Give staff access under Admin → Permissions → “Class Material (view-only)”.' },
+    ],
+  },
+  {
     date: '2026-11-02', title: 'Mock Analyzer → Revision Plan & time table',
     items: [
       { type: 'new', module: 'exams', text: 'Pre Mock and Mega Mock Analyser have a new “Revision Plan” tab built on the Academic Time Table valid from 2 Nov 2026: for each class, every subject’s average, students below the pass mark, how many revision periods (and minutes) a day it gets, the teacher, and whether the time given matches how weak the class is — with plain advice such as moving a period from a strong subject to a weak one.' },

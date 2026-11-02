@@ -112,7 +112,7 @@ const C = {
   teachersday: ['#fbbf24', '#b45309'], designstudio: ['#f472b6', '#7c3aed'], admin: ['#64748b', '#1e293b'], student360: ['#38bdf8', '#0369a1'],
   system: ['#94a3b8', '#334155'], adminlink: ['#a78bfa', '#6d28d9'], help: ['#38bdf8', '#0284c7'], questionbank: ['#c084fc', '#7e22ce'],
   studymaterial: ['#fbbf24', '#b45309'], teachingaids: ['#60a5fa', '#1d4ed8'], entrance: ['#fcd34d', '#b45309'],
-  modelsets: ['#5eead4', '#0f766e'], setmaker: ['#67e8f9', '#0f5f66'],
+  modelsets: ['#5eead4', '#0f766e'], setmaker: ['#67e8f9', '#0f5f66'], classmaterial: ['#fbbf24', '#b45309'],
   studentshub: ['#fbbf24', '#d97706'], feeshub: ['#4ade80', '#15803d'], examshub: ['#f87171', '#b91c1c'], commshub: ['#e879f9', '#a21caf'], adminhub: ['#64748b', '#1e293b'],
 }
 const FALLBACK = [['#60a5fa', '#2563eb'], ['#34d399', '#059669'], ['#f472b6', '#db2777'], ['#fbbf24', '#d97706'], ['#a78bfa', '#7c3aed'], ['#fb923c', '#ea580c']]
