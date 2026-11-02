@@ -1,6 +1,7 @@
 // FeeCollectionModal.jsx
 
 import { logHostelOverride } from './hostelFeeCheck'
+import { loggedInName } from './lib/collector'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
@@ -308,7 +309,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // Now auto-fills from the authenticated session's username. Still
   // editable (not locked) in case session data is ever missing or a
   // different staff member genuinely collected the payment in person.
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const collectedBy = loggedInName(currentUser)
   // ✦ Stable staff identifier for audit trail attribution, separate from
   // `collectedBy` (which stays a free-text, editable display name field —
   // see the comment above). staffId is the logged-in session's own
@@ -737,7 +739,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   //    or cheque with no number can't be reconciled in Accounts.
   //  • A month closed in Accounts blocks collections dated in it.
   const preflight = async ({ hostelCheck = true } = {}) => {
-    if (!collectedBy.trim()) { alert('Collected By is required — enter the name of the staff collecting this payment.'); return false }
+    if (!collectedBy.trim()) { alert('Collected By is required and is filled in from your login — sign out and in again.'); return false }
     if (payMode !== 'Cash' && !txnRef.trim()) { alert(`${payMode === 'UPI' ? 'UPI Txn / UTR No.' : 'Transaction / cheque reference'} is required for ${payMode} payments.`); return false }
     // Wrong hostel-type fee: charging at a type other than the student's record
     // (the bed auto-correction to Boarder excepted), or a Boarder with no bed.
@@ -1691,12 +1693,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
-                  Collected by
-                  {(currentUser?.userName || currentUser?.name) && collectedBy === (currentUser?.userName || currentUser?.name) && (
-                    <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>
-                  )}
+                  Collected by * <span style={{ fontWeight:500, opacity:.7 }}>(automatic — you)</span>
+                  {collectedBy && <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>}
                 </label>
-                <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={inp} />
+                <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" style={{ ...inp, background:'#f4f1e8', cursor:'not-allowed' }} />
               </div>
             </div>
           </div>

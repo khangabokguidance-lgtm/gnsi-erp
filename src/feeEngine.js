@@ -1197,7 +1197,7 @@ async function upsertDroppingMissingNote(table, row, noteKey) {
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
-  txnRef = null, collectedBy = 'Admin', staffId = null,
+  txnRef = null, collectedBy = '', staffId = null,
   studentId = null, receiptNo, items = [], skipClashCheck = false,
   isRepeater = false, // repeaters pay no admission fee or admission items — those lines are left out
   skipHold = false,   // true for money already received (online) or an admin-approved request being collected
@@ -1205,6 +1205,8 @@ export const collectFee = async ({
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
   if (!receiptNo) throw new Error('collectFee: receiptNo is required')
+  // Every collection names who collected it (the signed-in user) — there is no default name.
+  if (!String(collectedBy || '').trim()) throw new Error('collectFee: Collected By is required — sign in again so your name is on the receipt')
   if (!items.length) throw new Error('collectFee: at least one item is required')
   const repeater = excludeRepeaterFees(isRepeater, items)
   items = repeater.items
