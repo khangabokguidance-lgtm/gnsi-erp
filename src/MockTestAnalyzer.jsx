@@ -703,14 +703,15 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   };
 
   const loadSeed = async () => {
-    if (!window.confirm('Load the built-in Pre Mock Test 2026 data (24 sheets, 1,046 results)? Sheets already saved for the same test and batch will be replaced.')) return;
+    const seed = (await import('./data/preMockTest2026.json')).default;
+    const sheets = new Set(seed.map((r) => `${r[0]}|${r[1]}`)).size, tests = new Set(seed.map((r) => r[0])).size, batches = new Set(seed.map((r) => r[1])).size;
+    if (!window.confirm(`Load the built-in Pre Mock Test 2026 data (${sheets} sheets, ${seed.length.toLocaleString('en-IN')} results — ${tests} tests · ${batches} batches)? Sheets already saved for the same test and batch will be replaced.`)) return;
     setBusy('Loading built-in data…'); setMsg('');
     try {
-      const seed = (await import('./data/preMockTest2026.json')).default;
       const rows = rowsFromSeed(seed, DEFAULT_SERIES, SEED_SUBJECTS, 25);
       await saveRows(rows, mode, who || 'seed');
       setSeries(DEFAULT_SERIES);
-      setMsg(`✅ Loaded ${rows.length} results (8 tests · 5 batches).`);
+      setMsg(`✅ Loaded ${rows.length} results (${tests} tests · ${batches} batches).`);
       await reload();
     } catch (e) { setMsg(`❌ ${e.message || e}`); }
     setBusy('');
@@ -819,7 +820,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
 
       {canUpload ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>59 result sheets · 13 tests (1, 2, 5–8 and 10–16) · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>

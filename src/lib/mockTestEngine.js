@@ -59,7 +59,8 @@ const COMMON = new Set(['SINGH', 'DEVI', 'KUMAR', 'KUMARI', 'CHANU', 'MD', 'MOHD
 export const normName = (s) =>
   String(s ?? '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 export const cleanName = (s) => String(s ?? '').replace(/\*/g, ' ').replace(/\s+/g, ' ').trim();
-export const gccDigits = (v) => String(v ?? '').replace(/\D/g, '');
+// GCC numbers have no leading zeros: some sheets store them as text ("0764" is GCC 764).
+export const gccDigits = (v) => String(v ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
 
 function lev(a, b) {
   const m = a.length, n = b.length;
@@ -579,7 +580,9 @@ export function batchComparison(allRows, passPct = 40, passByBatch = {}) {
 const SKIP_HEAD = /^(SL|SLNO|SNO|SRNO|S\.?NO|SERIAL|SR|#)$/;
 const isTotalHead = (h) => /^(SCORE|TOTAL|GRANDTOTAL|TOTALMARKS|MARKS|OBTAINED|TOTALSCORE)$/.test(h);
 const isRankHead = (h) => /^(RANK|RNK|POSITION|POS)$/.test(h);
-const isSkipHead = (h) => /^(PERCENT|PERCENTAGE|PCT|GRADE|RESULT|REMARK|REMARKS|STATUS|CLASS|BATCH|SECTION|ROLL|ROLLNO|ADMNO|ADMISSIONNO|DIVISION)$/.test(h);
+// Not subjects: labels, and the scanner/OMR columns some sheets carry (Side 1 Colored, Correct Questions…).
+const isSkipHead = (h) => /^(PERCENT|PERCENTAGE|PCT|GRADE|RESULT|REMARK|REMARKS|STATUS|CLASS|BATCH|SECTION|ROLL|ROLLNO|ADMNO|ADMISSIONNO|DIVISION)$/.test(h)
+  || /^SIDE\d/.test(h) || /^(CORRECT|INCORRECT|WRONG|BLANK|ATTEMPTED|UNATTEMPTED)(QUESTIONS?|ANSWERS?)?$/.test(h);
 const compact = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const pretty = (s) =>
   String(s).trim().replace(/\s+/g, ' ').toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
@@ -627,7 +630,7 @@ export function parseResultSheet(aoa) {
     // GCC: keep digits only ("111*" -> "111"); anything non-numeric ("N/A") becomes blank
     const gccRaw = gccCol >= 0 ? String(line[gccCol] ?? '').trim() : '';
     const gccClean = gccDigits(gccRaw);
-    if (gccRaw && gccRaw !== gccClean) warnings.push(`Row ${r + 1} (${nm}): GCC "${gccRaw}" ${gccClean ? `cleaned to "${gccClean}"` : 'is not a number — left blank'}.`);
+    if (gccRaw && gccRaw !== gccClean && gccRaw.replace(/^0+(?=\d)/, '') !== gccClean) warnings.push(`Row ${r + 1} (${nm}): GCC "${gccRaw}" ${gccClean ? `cleaned to "${gccClean}"` : 'is not a number — left blank'}.`);
     rows.push({
       gcc_no: gccClean,
       student_name: nm, marks, total: sum, rank: rankCol >= 0 ? num(line[rankCol]) : null,
@@ -661,13 +664,14 @@ export function inferMax(rows, subjects) {
 export function guessFromFilename(fileName) {
   const f = String(fileName || '').replace(/\.[a-z]+$/i, '');
   const u = f.toUpperCase();
-  const t = u.match(/(\d{1,2})\s*(ST|ND|RD|TH)\b/) || u.match(/TEST\s*(?:NO\.?)?\s*(\d{1,2})/);
+  // "8TH PRE MOCK TEST…", "TEST 8…", or a bare leading number ("11 RESULT CE", "10 LAKSHYA -A RESULT")
+  const t = u.match(/(\d{1,2})\s*(ST|ND|RD|TH)\b/) || u.match(/TEST\s*(?:NO\.?)?\s*(\d{1,2})/) || u.match(/^\s*(\d{1,2})\b/);
   let batch = '';
-  if (/COMBINED\s+ENGLISH/.test(u)) batch = 'Combined English';
-  else if (/MANIPURI/.test(u)) batch = 'Combined Manipuri';
-  else if (/LAKSHYA\s*-?\s*A\b/.test(u)) batch = 'Lakshya A';
-  else if (/LAKSHYA\s*-?\s*B\b/.test(u)) batch = 'Lakshya B';
-  else if (/UMEED/.test(u)) batch = 'Umeed';
+  if (/COMBINED\s+ENG(LISH)?\b/.test(u) || /\bCE\b/.test(u)) batch = 'Combined English';
+  else if (/MANIPURI|COMBINED\s+MAN\b/.test(u) || /\bCM\b/.test(u)) batch = 'Combined Manipuri';
+  else if (/LAKSHYA\s*-?\s*A\b/.test(u) || /\bL\s*-?\s*A\b/.test(u)) batch = 'Lakshya A';
+  else if (/LAKSHYA\s*-?\s*B\b/.test(u) || /\bL\s*-?\s*B\b/.test(u)) batch = 'Lakshya B';
+  else if (/UMEED|\bUMED\b/.test(u) || /\bU\b/.test(u)) batch = 'Umeed';
   else {
     const m = u.match(/\bFOR\s+(.+)$/);
     if (m) batch = pretty(m[1].replace(/NAVODAYA|NAVODAUA|COMBINED/g, '').replace(/[-–]/g, ' ')).trim();
