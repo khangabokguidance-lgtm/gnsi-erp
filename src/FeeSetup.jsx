@@ -455,6 +455,8 @@ export default function FeeSetup({ userRole }) {
   }, [])
   const [activeTab,    setActiveTab]    = useState('structures')   // 'structures' | 'overrides'
   const [sessionYear,  setSessionYear]  = useState(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`)
+  // Declared before the effects below that read it (reading it earlier crashes with a TDZ error)
+  const [activeCourse, setActiveCourse] = useState('Sainik')
   // Combined Course monthly add-on (students appearing for both Navodaya and Sainik)
   const [addonAmt,    setAddonAmt]    = useState('')
   const [addonSaved,  setAddonSaved]  = useState(0)
@@ -487,7 +489,6 @@ export default function FeeSetup({ userRole }) {
     setAddonSaved(Math.round(n)); setAddonAmt(n ? String(Math.round(n)) : '')
     setAddonMsg({ ok: true, t: n ? `Saved — Combined students are charged ₹${Math.round(n).toLocaleString('en-IN')} extra every month in ${sessionYear}.` : 'Add-on removed for this session.' })
   }
-  const [activeCourse, setActiveCourse] = useState('Sainik')
   const [structures,   setStructures]   = useState({})
   const [loading,      setLoading]      = useState(false)
   const [saving,       setSaving]       = useState(false)
