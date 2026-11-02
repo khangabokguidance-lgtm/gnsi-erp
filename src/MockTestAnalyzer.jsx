@@ -9,7 +9,7 @@
 //   store    lib/mockTestStore.js    Supabase table + browser fallback
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  DEFAULT_SERIES, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
+  DEFAULT_SERIES, MEGA_SERIES, inScope, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
@@ -17,6 +17,7 @@ import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } 
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
+import { classGroups, LANGUAGES, GROUP_COUNT } from './lib/mockTestGroups';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
@@ -37,6 +38,7 @@ const SUBTABS = [
   { id: 'student', color: '#0e7490', icon: 'student', label: 'Student Analyser' },
   { id: 'subject', color: '#b45309', icon: 'subject', label: 'Subject Analysis' },
   { id: 'batch', color: '#047857', icon: 'batch', label: 'Batch / Test Report' },
+  { id: 'groups', color: '#be185d', icon: 'groups', label: 'Self-Study Groups' },
   { id: 'data', color: '#6d28d9', icon: 'data', label: 'Upload & Data' },
 ];
 
@@ -80,14 +82,17 @@ const MOBILE_CSS = `
   .mta .mta-svg > div { min-width: var(--mw, 0); }
 }`;
 
-export default function MockTestAnalyzer({ institute, currentUser, canUpload = true, canDelete = false }) {
+// scope: 'pre' = the Pre Mock Test tab, 'mega' = the Mega Mock Test tab. Each keeps its own series.
+export default function MockTestAnalyzer({ institute, currentUser, canUpload = true, canDelete = false, scope = 'pre' }) {
+  const mega = scope === 'mega';
+  const homeSeries = mega ? MEGA_SERIES : DEFAULT_SERIES;
   const [tab, setTab] = useState('overview');
   const [allRows, setAllRows] = useState([]);
   const [mode, setMode] = useState('cloud');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [series, setSeries] = useState(DEFAULT_SERIES);
+  const [series, setSeries] = useState(homeSeries);
   // Pass marks live per series in Supabase (mock_test_settings) so they follow the user across devices.
   const [cfg, setCfg] = useState({});
   const cfgRef = useRef({});
@@ -117,9 +122,9 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
 
   const apply = useCallback((r) => {
     setAllRows(r.rows); setMode(r.mode); setNote(r.note); setErr('');
-    const names = [...new Set(r.rows.map((x) => x.series))];
+    const names = [...new Set(r.rows.map((x) => x.series))].filter((n) => inScope(n, scope));
     setSeries((cur) => (names.length && !names.includes(cur) ? names[0] : cur));
-  }, []);
+  }, [scope]);
   const applyFix = useCallback((f) => { setFixes(f.fixes); setFixMode(f.mode); }, []);
   const reload = useCallback(async () => {
     try { apply(await loadAll()); applyFix(await loadFixes()); } catch (e) { setErr(e.message || String(e)); }
@@ -133,7 +138,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
     return () => { live = false; };
   }, [apply, applyFix]);
 
-  const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].sort(), [allRows]);
+  const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].filter((n) => inScope(n, scope)).sort(), [allRows, scope]);
   // uploaded rows -> saved Student Data Fix Engine rules -> identity matching
   const seriesRaw = useMemo(() => allRows.filter((r) => r.series === series), [allRows, series]);
   const resolved = useMemo(() => resolveIdentities(applyFixes(seriesRaw, fixes.filter((f) => !f.series || f.series === series))), [seriesRaw, fixes, series]);
@@ -197,7 +202,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
           <div style={{ fontSize: 34 }}>📊</div>
           <div style={{ fontWeight: 700, margin: '6px 0' }}>No mock-test results for “{series}” yet</div>
-          <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.</div>
+          <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{mega ? 'Upload the Mega Mock Test Excel result sheets to start analysing.' : 'Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.'}</div>
           <button style={ui.btn} onClick={() => setTab('data')}>Go to Upload &amp; Data</button>
         </div>
         )
@@ -206,8 +211,9 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={viewKey} rows={rows} institute={institute} series={seriesLabel} /> : null}
       {tab === 'data' ? (
-        <DataView allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
+        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
@@ -640,7 +646,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
 // ─── Upload & data ────────────────────────────────────────────────────────────
 const SEED_SUBJECTS = ['Mental Ability', 'EVS', 'Mathematics', 'Passage'];
 
-function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
+function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
   const [files, setFiles] = useState([]);
   const [seriesEdit, setNewSeries] = useState(null);
   const newSeries = seriesEdit ?? series;
@@ -690,6 +696,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   const saveAll = async () => {
     const ok = files.filter(valid);
     if (!ok.length) return;
+    if (!inScope(newSeries.trim(), scope)) { setMsg(scope === 'mega' ? '❌ Mega Mock Test results must be saved into a series with “Mega” in its name (for example “Mega Mock Test 2026”).' : '❌ This tab is for Pre Mock Tests — a series with “Mega” in its name belongs in the Mega Mock Test tab.'); return; }
     setBusy('Saving…'); setMsg('');
     try {
       const rows = ok.flatMap(buildRows);
@@ -703,14 +710,15 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   };
 
   const loadSeed = async () => {
-    if (!window.confirm('Load the built-in Pre Mock Test 2026 data (24 sheets, 1,046 results)? Sheets already saved for the same test and batch will be replaced.')) return;
+    const seed = (await import('./data/preMockTest2026.json')).default;
+    const sheets = new Set(seed.map((r) => `${r[0]}|${r[1]}`)).size, tests = new Set(seed.map((r) => r[0])).size, batches = new Set(seed.map((r) => r[1])).size;
+    if (!window.confirm(`Load the built-in Pre Mock Test 2026 data (${sheets} sheets, ${seed.length.toLocaleString('en-IN')} results — ${tests} tests · ${batches} batches)? Sheets already saved for the same test and batch will be replaced.`)) return;
     setBusy('Loading built-in data…'); setMsg('');
     try {
-      const seed = (await import('./data/preMockTest2026.json')).default;
       const rows = rowsFromSeed(seed, DEFAULT_SERIES, SEED_SUBJECTS, 25);
       await saveRows(rows, mode, who || 'seed');
       setSeries(DEFAULT_SERIES);
-      setMsg(`✅ Loaded ${rows.length} results (8 tests · 5 batches).`);
+      setMsg(`✅ Loaded ${rows.length} results (${tests} tests · ${batches} batches).`);
       await reload();
     } catch (e) { setMsg(`❌ ${e.message || e}`); }
     setBusy('');
@@ -776,7 +784,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
             One sheet per batch per test with columns <b>GCC No · Name · subject columns · Score · Rank</b> (any column order). Several files can be uploaded at once; test number and batch are read from the file name and can be corrected below. Re-uploading the same test + batch replaces the earlier copy.
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <Field label="Save into series" grow><input style={{ ...ui.input, width: '100%' }} list="mta-series" value={newSeries} onChange={(e) => setNewSeries(e.target.value)} /><datalist id="mta-series">{[...new Set(allRows.map((r) => r.series))].map((s) => <option key={s} value={s} />)}</datalist></Field>
+            <Field label="Save into series" grow><input style={{ ...ui.input, width: '100%' }} list="mta-series" value={newSeries} onChange={(e) => setNewSeries(e.target.value)} /><datalist id="mta-series">{[...new Set(allRows.map((r) => r.series))].filter((n) => inScope(n, scope)).map((s) => <option key={s} value={s} />)}</datalist></Field>
             <Field label="Excel / CSV files"><input ref={fileRef} type="file" multiple accept=".xls,.xlsx,.csv" onChange={(e) => e.target.files?.length && onFiles(e.target.files)} /></Field>
           </div>
           {files.map((f) => (
@@ -817,9 +825,9 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
         </div>
       ) : <div style={{ ...ui.card, fontSize: 13, color: '#5d6b82' }}>You do not have permission to upload results.</div>}
 
-      {canUpload ? (
+      {canUpload && scope !== 'mega' ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>59 result sheets · 13 tests (1, 2, 5–8 and 10–16) · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>
@@ -891,6 +899,106 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
           </Table>
         ) : <div style={{ color: '#5d6b82', fontSize: 13 }}>Nothing saved yet.</div>}
       </div>
+    </>
+  );
+}
+
+// ─── Self-study groups ────────────────────────────────────────────────────────
+// Every class is split into 7 self-study groups from Group 1 (weakest marks) to Group 7 (strongest),
+// by each student's average % over the tests in view. See lib/mockTestGroups.js.
+const escH = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function GroupsView({ rows, institute, series }) {
+  const [language, setLanguage] = useState('');
+  const [batch, setBatch] = useState('');
+  const [mode, setMode] = useState('equal');
+  const everything = useMemo(() => classGroups(rows, { mode }), [rows, mode]);
+  const classes = useMemo(() => classGroups(rows, { language, batch, mode }), [rows, language, batch, mode]);
+  const langCount = (l) => everything.filter((c) => c.language === l).length;
+  const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
+  const pickable = everything.filter((c) => !language || c.language === language);
+
+  const flat = () => classes.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
+    Class: c.batch, Language: c.language || '—', Group: `${g.name} — ${g.tag}`, GCC: s.gcc, Name: s.name, 'Average %': Math.round(s.avg * 10) / 10,
+    'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
+  }))));
+  const exportXlsx = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat()), 'Self-study groups');
+    XLSX.writeFile(wb, `${series} - self-study groups${language ? ` - ${language}` : ''}.xlsx`);
+  };
+  const print = () => {
+    const body = classes.map((c) => `<h2>${escH(c.batch)}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>Avg %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${fx(s.avg)}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
+    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
+  };
+
+  return (
+    <>
+      <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 100%', fontSize: 12.5, color: '#5d6b82' }}>
+          Each class is split into <b>{GROUP_COUNT} self-study groups</b>, from <b style={{ color: '#b91c1c' }}>Group 1 (weakest marks)</b> to <b style={{ color: '#047857' }}>Group 7 (strongest marks)</b>, by every student's average % over the tests in view. Each group gets a focus subject — the one its members score lowest in.
+        </div>
+        <Field label="Language">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button style={chip(!language)} onClick={() => { setLanguage(''); setBatch(''); }}>All</button>
+            {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
+          </div>
+        </Field>
+        <Field label="Class">
+          <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}>
+            <option value="">All classes</option>
+            {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
+          </select>
+        </Field>
+        <Field label="Split by">
+          <select style={ui.input} value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="equal">7 equal groups (by rank)</option>
+            <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
+          </select>
+        </Field>
+        <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
+        <button style={ui.ghost} disabled={!classes.length} onClick={print}>🖨️ Print</button>
+      </div>
+      {language && !classes.length ? (
+        <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
+          No class is marked <b>{language}</b>. A class is English when its name contains “English”, and Meitei Mayek when it contains “Manipuri” or “MM”.
+        </div>
+      ) : null}
+      {!language && unlabelled.length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>No language in the class name for {unlabelled.join(', ')} — shown under “All” only.</div> : null}
+      {classes.map((c) => (
+        <div key={c.batch} style={ui.card}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>{c.batch}</h3>
+            {c.language ? <Pill text={c.language} color={c.language === 'English' ? '#1e3a6e' : '#7c3aed'} /> : null}
+            <span style={{ fontSize: 12.5, color: '#5d6b82' }}>{c.count} students · class average {fx(c.avg)}%</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+            {c.groups.map((g) => (
+              <div key={g.no} style={{ border: '1px solid #e8e3d8', borderTop: `4px solid ${g.color}`, borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 10px', background: `${g.color}12` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
+                    <b style={{ color: g.color }}>{g.name} · {g.tag}</b>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>{g.n}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
+                  {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>Focus: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
+                </div>
+                <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {g.students.map((s) => (
+                    <div key={s.sid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 10px', borderTop: '1px solid #f1ede3', fontSize: 12.5 }}>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span></span>
+                      <b style={{ color: g.color, flexShrink: 0 }}>{fx(s.avg)}%</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </>
   );
 }

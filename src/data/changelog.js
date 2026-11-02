@@ -3,6 +3,14 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-11-02', title: 'Pre Mock & Mega Mock analysers, self-study groups',
+    items: [
+      { type: 'new', module: 'exams', text: 'Results → Pre Mock Analyser and Mega Mock Analyser are now two separate tabs, each with its own results. Mega results are saved into a series with “Mega” in its name.' },
+      { type: 'new', module: 'exams', text: 'Self-Study Groups: every class is split into 7 groups from weakest to strongest marks, with a focus subject for each group, an English / Meitei Mayek filter, and Excel / Print.' },
+      { type: 'new', module: 'exams', text: 'Pre Mock Tests 10–16 added to the built-in data (59 sheets, 2,525 results).' },
+    ],
+  },
+  {
     date: '2026-10-03', title: 'Complete guide to the whole ERP',
     items: [
       { type: 'new', module: 'help', text: 'Help & Training → Complete guide: getting started, glossary, rules, daily/weekly/yearly routines, every module and troubleshooting in one book. Print or save as PDF, download as Word or Markdown.' },

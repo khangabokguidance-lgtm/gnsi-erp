@@ -14,7 +14,8 @@ const TASKS = [
   { id: 'rankings',     title: 'See rankings',         hint: 'Toppers and positions, instantly',        color: '#b8923a', key: 'R' },
   { id: 'admitcard',    title: 'Print admit cards',    hint: 'One card or a whole batch',               color: '#0f7a4c', key: 'A' },
   { id: 'reportcard',   title: 'Print report cards',   hint: 'Individual or bulk, ready to hand out',   color: '#0f7a4c', key: 'P' },
-  { id: 'mockanalyzer', title: 'Analyse a mock test',  hint: 'Subject, student and batch insights',     color: '#c026d3', key: 'N' },
+  { id: 'mockanalyzer', title: 'Pre Mock Test analyser',  hint: 'Subject, student, batch and study groups', color: '#c026d3', key: 'N' },
+  { id: 'megamockanalyzer', title: 'Mega Mock Test analyser', hint: 'Subject, student, batch and study groups', color: '#a21caf', key: 'G' },
   { id: 'schedule',     title: 'Plan the timetable',   hint: 'Dates, subjects and marks per paper',     color: '#9a5b00', key: 'T' },
   { id: 'seatplan',     title: 'Arrange seating',      hint: 'Rooms and seats in a click',              color: '#9a5b00', key: 'S' },
 ]
