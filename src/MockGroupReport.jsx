@@ -2,7 +2,7 @@
 // Works on the groups currently in view (see GroupsView), adds advanced filters, six report types, automatic
 // insights, saved presets, and print / Excel output. Logic lives in lib/mockTestReport.js.
 import { useMemo, useState } from 'react';
-import { printDocument, letterhead } from './lib/mockTestReports';
+import { printPremium } from './lib/printPremium';
 import {
   REPORT_TYPES, QUICK_REPORTS, SORT_OPTIONS, NOT_ASSIGNED, emptyReportFilter, isReportFilterActive, recordsFrom,
   applyReportFilter, sortRecords, buildReport, smartInsights, describeReportFilter, sheetName,
@@ -98,11 +98,11 @@ export default function MockGroupReport({ classes, autoClasses, basis, series, i
     } else {
       body = `<table>${head(report.columns)}<tbody>${report.rows.map((r) => rowHtml(report.columns, r)).join('') || `<tr><td colspan="${report.columns.length}">Nothing to show.</td></tr>`}</tbody></table>`;
     }
-    printDocument(`<div class="page">${letterhead(institute)}<div class="title">${esc(report.title)}</div>
+    printPremium(`<div class="title">${esc(report.title)}</div>
       <div class="sub">${esc(series)}${basis ? ` · ${esc(basis)}` : ''} · ${esc(layoutLabel)}<br>${esc(desc)}</div>${kpis}
       <h3>Smart summary</h3><ul class="ins">${insights.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${body}
       <div class="sig"><span>Prepared by</span><span>Person on duty</span><span>Principal</span></div>
-      <div class="foot">Generated ${esc(new Date().toLocaleString('en-IN'))}</div></div>`, `${report.title} - ${series}`);
+      <div class="foot">Generated ${esc(new Date().toLocaleString('en-IN'))}</div>`, { title: `${report.title} - ${series}`, institute, docLabel: `${report.title} · ${series}` });
   };
 
   const rowsShown = report.rows.slice(0, 150);

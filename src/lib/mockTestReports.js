@@ -4,6 +4,7 @@
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
+import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : (Math.round(n * 10 ** d) / 10 ** d).toString());
@@ -15,14 +16,19 @@ const pctColor = (p, pm) => strengthLabel(p, pm).color;
 const CSS = `
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--ink:#0f172a;--mut:#475569;--line:#cbd5e1;--soft:#f1f5f9;--navy:#0f2d5e;--gold:#b8860b}
-body{font-family:Inter,'Segoe UI',Arial,sans-serif;color:var(--ink);background:#e2e8f0;font-size:11.5px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:${FONT_STACK};color:var(--ink);background:#e2e8f0;font-size:11.5px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .bar{position:sticky;top:0;z-index:5;background:#0f2d5e;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:center}
 .bar button{padding:8px 20px;border:0;border-radius:6px;background:#fff;color:#0f2d5e;font-weight:700;cursor:pointer;font-size:13px}
 .page{width:210mm;min-height:297mm;margin:14px auto;background:#fff;padding:12mm 12mm 14mm;box-shadow:0 2px 14px rgba(0,0,0,.18);position:relative}
 .lh{display:flex;align-items:center;gap:14px;border-bottom:3px double var(--navy);padding-bottom:10px;margin-bottom:10px}
-.lh img{height:58px;width:58px;object-fit:contain}
+.lgx{flex:0 0 auto;width:62px;height:86px;border-radius:10px;background:linear-gradient(160deg,#0a1d42,#173a6d);border:1px solid #c7a24a;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 12px -4px rgba(15,45,94,.55)}
+.lgx img{width:50px;height:auto;max-height:78px;object-fit:contain}
+.dcredit{margin-top:14px;padding-top:6px;border-top:1px solid #d6dde8;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:8.5px;color:#5b6678}
+.dcredit .mini{display:inline-flex;width:14px;height:20px;border-radius:3px;background:linear-gradient(160deg,#0b1f45,#163768);align-items:center;justify-content:center;margin-right:6px;vertical-align:middle}
+.dcredit .mini img{width:11px;height:auto;max-height:17px}
+.dcredit i{font-family:${SERIF_STACK};font-weight:600;color:#b8860b;font-size:9.2px}
 .lh .t{flex:1;text-align:center}
-.lh .n{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;color:var(--navy);letter-spacing:.3px}
+.lh .n{font-family:${SERIF_STACK};font-size:19px;font-weight:700;color:var(--navy);letter-spacing:.3px}
 .lh .a{font-size:10.5px;color:var(--mut)}
 .lh .g{font-size:10px;color:var(--gold);font-style:italic}
 .title{background:var(--navy);color:#fff;text-align:center;padding:7px;border-radius:4px;font-weight:700;letter-spacing:2px;font-size:12.5px;text-transform:uppercase}
@@ -56,18 +62,25 @@ tr.tot td{background:#e0e7ff;font-weight:700}
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:auto;padding:0}@page{size:A4;margin:11mm}.page+.page{break-before:page}}
 `;
 
-export function printDocument(bodyHTML, title = 'Report') {
+export function printDocument(bodyHTML, title = 'Report', institute = null) {
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>
-  <div class="bar"><button onclick="window.print()">🖨️ Print / Save as PDF</button><span>${esc(title)}</span></div>${bodyHTML}</body></html>`);
+  // the web fonts are loaded in the print window too (it is a blank page), and printing waits for them
+  // the institute logo as a faint watermark, and the credit line at the foot of every page
+  const logo = logoSrc(institute || {});
+  const credit = `<div class="dcredit"><span><span class="mini"><img src="${esc(logo)}" alt=""></span><b>${esc((institute && institute.name) || 'Guidance Navodaya & Sainik Institute')}</b></span><i>${esc(DESIGN_CREDIT)}</i></div>`;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}
+body::before{content:"";position:fixed;inset:0;background:url("${esc(logo)}") center/92mm no-repeat;opacity:.06;pointer-events:none;z-index:0}
+.page{z-index:1}@media print{.page{background:transparent}}</style></head><body>
+  <div class="bar"><button onclick="${PRINT_NOW}">🖨️ Print / Save as PDF</button><span>${esc(title)}</span></div>${bodyHTML}
+  <script>document.querySelectorAll('.page').forEach(function(p){p.insertAdjacentHTML('beforeend',${JSON.stringify(credit).replace(/</g, '\\u003c')})})</script></body></html>`);
   w.document.close();
 }
 
 export function letterhead(inst = {}) {
-  const logo = inst.logoUrl ? `<img src="${esc(inst.logoUrl)}" alt="" onerror="this.style.display='none'"/>` : '';
+  const logo = `<div class="lgx"><img src="${esc(logoSrc(inst))}" alt="Logo" onerror="this.parentNode.style.display='none'"/></div>`;
   return `<div class="lh">${logo}<div class="t"><div class="n">${esc(inst.name || 'Guidance Navodaya & Sainik Institute')}</div>
-  <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div>${logo ? '<div style="width:58px"></div>' : ''}</div>`;
+  <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div><div style="width:62px"></div></div>`;
 }
 const stamp = (inst) => `<div class="foot">Generated on ${new Date().toLocaleString('en-IN')} · ${esc(inst?.name || 'GNSI')} · This analysis is computer generated from recorded mock-test results.</div>`;
 const sigs = (inst) => `<div class="sig"><div>${esc(inst?.teacher || 'Class Teacher')}</div><div>Parent / Guardian</div><div>${esc(inst?.principal || 'Principal')}</div></div>`;

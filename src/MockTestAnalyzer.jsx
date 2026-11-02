@@ -26,6 +26,7 @@ import { pickInstruction, hasInstruction, slotText, DAYS } from './lib/dutyInstr
 import { mergeSchedule, withSchedule, stripScheduleDefaults } from './lib/studySchedule';
 import { collectDuties, assignmentsFrom, parseScope, mixScope, dutyRoomClashes } from './lib/mockTestDuty';
 import { sheetName } from './lib/mockTestReport';
+import { printPremium, ICON } from './lib/printPremium';
 import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
@@ -390,7 +391,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
         <h4 style={{ margin: '0 0 8px' }}>Subject difficulty — all batches</h4>
         <Svg minW={440} html={hBars({ items: [...all.perSubject].sort((a, b) => a.avgPct - b.avgPct).map((s) => ({ label: s.subject, value: s.avgPct, color: subjColor(subs, s.subject) })), width: 640 })} />
         <div style={{ marginTop: 10 }}>
-          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series }), `${series} — Institute report`)}>🖨️ Print institute report</button>
+          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series }), `${series} — Institute report`, institute)}>🖨️ Print institute report</button>
         </div>
       </div>
     </>
@@ -420,7 +421,7 @@ function StudentView({ rows, meta, passPct, passBy, institute, series }) {
 
   const printAll = () => {
     const html = list.map((s) => studentReportHTML(studentAnalysis(rows, s.sid, { passPct, passByBatch: passBy }), ctx)).join('');
-    printDocument(html, `${series} — Student reports${batch ? ' · ' + batch : ''}`);
+    printDocument(html, `${series} — Student reports${batch ? ' · ' + batch : ''}`, institute);
   };
 
   return (
@@ -438,7 +439,7 @@ function StudentView({ rows, meta, passPct, passBy, institute, series }) {
         <button className="mta-half" style={ui.ghost} disabled={idx <= 0} onClick={() => setSid(list[idx - 1].sid)}>◀ Prev</button>
         <button className="mta-half" style={ui.ghost} disabled={idx < 0 || idx >= list.length - 1} onClick={() => setSid(list[idx + 1].sid)}>Next ▶</button>
       </div>
-      {!a ? <div style={ui.card}>No student matches the filter.</div> : <StudentCard a={a} onPrint={() => printDocument(studentReportHTML(a, ctx), `${a.name} — Performance report`)} onPrintAll={printAll} count={list.length} batch={batch} />}
+      {!a ? <div style={ui.card}>No student matches the filter.</div> : <StudentCard a={a} onPrint={() => printDocument(studentReportHTML(a, ctx), `${a.name} — Performance report`, institute)} onPrintAll={printAll} count={list.length} batch={batch} />}
     </>
   );
 }
@@ -552,8 +553,8 @@ function SubjectView({ rows, meta, passPct, passBy, institute, series }) {
         <Field label="Subject"><select style={ui.input} value={ps.subject} onChange={(e) => setSubject(e.target.value)}>{meta.subjects.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Batch"><select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}><option value="">All batches</option>{meta.batches.map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Test"><select style={ui.input} value={test} onChange={(e) => setTest(e.target.value)}><option value="">All tests</option>{meta.tests.map((t) => <option key={t} value={t}>Test {t}</option>)}</select></Field>
-        <button style={ui.btn} onClick={() => printDocument(subjectReportHTML(b, ps.subject, { institute, series }), `${ps.subject} — Subject analysis`)}>🖨️ Print subject report</button>
-        <button style={ui.ghost} onClick={() => printDocument(b.meta.subjects.map((s) => subjectReportHTML(b, s, { institute, series })).join(''), 'All subjects — analysis')}>🖨️ Print all subjects</button>
+        <button style={ui.btn} onClick={() => printDocument(subjectReportHTML(b, ps.subject, { institute, series }), `${ps.subject} — Subject analysis`, institute)}>🖨️ Print subject report</button>
+        <button style={ui.ghost} onClick={() => printDocument(b.meta.subjects.map((s) => subjectReportHTML(b, s, { institute, series })).join(''), 'All subjects — analysis', institute)}>🖨️ Print all subjects</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Average" value={`${fx(ps.avg, 2)}/${ps.max}`} sub={`${fx(ps.avgPct)}%`} color={ps.label.color} />
@@ -612,7 +613,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12 }}>
         <Field label="Batch"><select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}><option value="">All batches</option>{meta.batches.map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Test"><select style={ui.input} value={test} onChange={(e) => setTest(e.target.value)}><option value="">All tests</option>{meta.tests.map((t) => <option key={t} value={t}>Test {t}</option>)}</select></Field>
-        <button style={ui.btn} onClick={() => printDocument(batchReportHTML(b, { institute, series }), `${series} — ${batch || 'All batches'} report`)}>🖨️ Print report</button>
+        <button style={ui.btn} onClick={() => printDocument(batchReportHTML(b, { institute, series }), `${series} — ${batch || 'All batches'} report`, institute)}>🖨️ Print report</button>
         <button style={ui.ghost} onClick={exportXlsx}>⬇️ Export ranking (Excel)</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -1147,12 +1148,12 @@ function GroupsView({ rows, institute, series, seriesName, canEdit = false, who 
   const [printPick, setPrintPick] = useState([]);
   const groupsFor = (b) => (b === basis ? classes : classGroups(scoped.filter((r) => !removedFor(b)[r.sid]), opts(b)));
   const groupsHtml = (cls, b) => cls.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
-      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${(() => { const sc = withSchedule(mentorOf(c, b, g), schedule, b || 'Overall marks', g.no); return [sc.venue && `📍 ${escH(sc.venue)}`, slotText(sc) && `🕔 ${escH(slotText(sc))}`].filter(Boolean).join(' · ') + (sc.venue || slotText(sc) ? ' · ' : ''); })()}${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${(() => { const sc = withSchedule(mentorOf(c, b, g), schedule, b || 'Overall marks', g.no); return [sc.venue && `${ICON.pin}${escH(sc.venue)}`, slotText(sc) && `${ICON.clock}${escH(slotText(sc))}`].filter(Boolean).join(' · ') + (sc.venue || slotText(sc) ? ' · ' : ''); })()}${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
       ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(b || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
   const print = (bases = [basis]) => {
     const list = (bases.length ? bases : [basis]);
     const body = list.map((b, i) => `<div style="${i ? 'break-before:page;page-break-before:always' : ''}"><h2 style="background:#0f2d5e;color:#fff;padding:5px 10px;border-radius:4px">Subject: ${escH(b || 'Overall marks')}</h2>${groupsHtml(groupsFor(b), b)}</div>`).join('');
-    printDocument(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${list.length === 1 ? `subject: ${escH(list[0] || 'overall marks')}` : `subjects: ${escH(list.map((b) => b || 'Overall marks').join(', '))}`} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, `Self-study groups - ${series}`);
+    printPremium(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${list.length === 1 ? `subject: ${escH(list[0] || 'overall marks')}` : `subjects: ${escH(list.map((b) => b || 'Overall marks').join(', '))}`} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, { title: `Self-study groups - ${series}`, institute, docLabel: `Self-study groups · ${series}` });
   };
 
   const prog = (() => { let total = 0, assigned = 0, instr = 0; classes.forEach((c) => c.groups.forEach((g) => { if (!g.n) return; total++; const m = mentorOf(c, basis, g); if (m?.name) { assigned++; if (hasInstruction(m)) instr++; } })); return { total, assigned, instr }; })();
