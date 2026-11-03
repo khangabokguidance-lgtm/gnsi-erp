@@ -1252,7 +1252,9 @@ export const collectFee = async ({
   // not depend on parsing a display name out of a note field.
   const resolvedStaffId = staffId || collectedBy || 'Unknown'
   const collectedAt = new Date().toISOString()
-  const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+  // collected_by is compulsory on every fee row (DB trigger fee_collected_by_required),
+  // so it travels with staffFields into the flat and course-fee inserts too.
+  const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt, collected_by: collectedBy }
 
   // ✦ Low fee = wait for an admin BEFORE anything is recorded. A flat/course line
   // below its standard rate that no admin has authorised at the counter is not
