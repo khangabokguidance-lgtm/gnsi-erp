@@ -19,6 +19,7 @@ import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 import { canonicalBatch, courseOf, COURSE_ORDER } from './courseMap'
+import ReceptionDonations from './ReceptionDonations'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -49,7 +50,7 @@ const fmt     = n => Number(n || 0).toLocaleString('en-IN')
 const fmtDate = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
-const TABS    = ['Front Desk', 'Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
+const TABS    = ['Front Desk', 'Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Donations', 'Monitors']
 
 const RIcon = {
   home:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4Z"/></svg>,
@@ -63,6 +64,7 @@ const RIcon = {
   monitor: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></svg>,
   s360:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 18c1-2 2.6-3 4.5-3s3.5 1 4.5 3"/></svg>,
   print:   p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></svg>,
+  donation:p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg>,
   more:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>,
   bell:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M6 10a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>,
 }
@@ -74,6 +76,7 @@ const TAB_META = {
   'Visitor Book':      { tabLabel:'Visitors', short:'Visitors', icon:RIcon.visitor,   group:'Front office', desc:'Sign visitors in and out, print badges, flag follow-ups.' },
   'Enquiry':           { short:'Enquiry',  icon:RIcon.enquiry,   group:'Front office', desc:'Admission enquiries, sources and follow-up dates.' },
   'Complaint':         { tabLabel:'Complaints', short:'Complaint',icon:RIcon.complaint, group:'Front office', desc:'Parent complaints — assign, track and close with a full timeline.' },
+  'Donations':         { short:'Donations',icon:RIcon.donation,  group:'Front office', desc:'Donation records with uploaded documents and the amount paid on each.' },
   'Leave Application': { tabLabel:'Leave', short:'Leave',    icon:RIcon.leave,     group:'Student movement', desc:'Parents apply for a student\'s leave; approval issues a gate pass.' },
   'Gate Pass':         { short:'Gate Pass',icon:RIcon.gate,      group:'Student movement', desc:'Issue passes, mark exit and return, catch late returns.' },
   'Parent Items':      { short:'Items',    icon:RIcon.items,     group:'Student movement', desc:'Parcels and items left by parents, house by house.' },
@@ -3088,6 +3091,8 @@ export default function ReceptionPage({ currentUser }) {
         )}
 
         {/* ── COMPLAINT ── */}
+        {activeTab === 'Donations' && <ReceptionDonations currentUser={currentUser} />}
+
         {activeTab === 'Complaint' && (
           <>
             {coDetailId ? (
