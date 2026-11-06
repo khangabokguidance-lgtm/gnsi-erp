@@ -110,9 +110,8 @@ export default {
   ],
   tips: [
     'Sections keep what you typed when you collapse them, so a half-written question is not lost.',
-    'The number on each section is the live count of materials, aids, questions or exams.',
-    'The "Recent" chips at the top jump back to the sections you used last. The page opens on your last one.',
-    '"Expand all" and "Collapse all" are at the top right of the page.',
+    'The page opens on the section you used last.',
+    'Each section has a "How to use this" box with a short explanation. Open it any time.',
   ],
   mistakes: [
     'Saving a question with no correct option marked → always choose the correct option, because the form needs it.',
