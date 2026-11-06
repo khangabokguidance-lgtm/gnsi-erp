@@ -5648,6 +5648,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
   // The page opens on an icon grid of its sections; any switch to a tab
   // (a tile, a deep link from another module) leaves the grid.
   const [onGrid,        setOnGrid]        = useState(!initialFilterProp)
+  const [showMore,      setShowMore]      = useState(false)
   const setTab = useCallback(key => { setTabState(key); setOnGrid(false) }, [])
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -5811,7 +5812,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     { id:'tools', label:'Language tools', color:'#7c3aed' },
     { id:'deliver', label:'Papers & tests', color:'#a7771f' },
     { id:'reports', label:'Reports', color:'#0f766e' },
-  ].map(g => ({ ...g, tabs: TABS.filter(t => t.group === g.id).map(t => ({ id:t.key, label:t.label, icon:t.icon, hint:t.hint, count:t.count })) }))
+  ].filter(g => g.id === 'bank' || showMore || g.id === TABS.find(t => t.key === tab)?.group).map(g => ({ ...g, tabs: TABS.filter(t => t.group === g.id).map(t => ({ id:t.key, label:t.label, icon:t.icon, hint:t.hint, count:t.count })) }))
   const fmt = n => n.toLocaleString('en-IN')
 
   return (
@@ -5849,6 +5850,12 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       </>)}
 
       {/* ── Sections: icon grid, or a bar with the open section ── */}
+      {onGrid && TABS.some(t => t.group !== 'bank') && (
+        <button type="button" onClick={() => setShowMore(v => !v)} aria-expanded={showMore}
+          style={{ margin:'0 0 10px', height:34, padding:'0 14px', border:`1px solid ${C.border || '#e5e7eb'}`, borderRadius:10, background:'#fff', color:C.navy, font:'700 12.5px system-ui', cursor:'pointer' }}>
+          {showMore ? '▾ Hide more tools' : '▸ More tools (language, papers, tests, reports)'}
+        </button>
+      )}
       <IconTabs groups={TAB_GROUPS} active={tab} open={!onGrid} onOpen={setTab} onHome={() => setOnGrid(true)}
         homeLabel="All Question Bank sections" sticky ariaLabel="Question Bank sections" />
 
