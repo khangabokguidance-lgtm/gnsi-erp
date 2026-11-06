@@ -12,7 +12,6 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import { NavIcon } from './navIcons';
 import { PX } from './premiumUI';
-import { EventBus, GNSI_EVENTS } from './EventBus';
 import { HUB_TABS } from './learningHubTabs';
 
 const StudyMaterial = lazy(() => import('./StudyMaterial'));
@@ -26,15 +25,15 @@ const SetMaker = lazy(() => import('./SetMaker'));
 const ClassMaterial = lazy(() => import('./ClassMaterial'));
 
 const MODULES = {
-  studymaterial:      { label: 'Study Materials', desc: 'Read notes and chapters',      short: 'Materials',  metric: 'materials', unit: 'materials' },
-  teachingaids:       { label: 'Teaching Aids', desc: 'Books and aids to teach from',        short: 'Aids',       metric: 'aids',      unit: 'aids' },
-  studylockers:       { label: 'Study Lockers', desc: 'Your saved study items',        short: 'Lockers',    metric: 'lockers',   unit: 'lockers' },
-  questionbank:       { label: 'Question Bank', desc: 'Add, edit and read questions',        short: 'Bank',       metric: 'questions', unit: 'questions' },
-  questionbankviewer: { label: 'Question Bank Viewer', desc: 'Browse questions to revise', short: 'Viewer',     metric: 'questions', unit: 'questions' },
-  entrance:           { label: 'Entrance Exam', desc: 'Run entrance exams',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
-  modelsets:          { label: 'Model Sets', desc: 'Take a practice paper',           short: 'Model Sets', metric: 'modelsets', unit: 'sets' },
-  setmaker:           { label: 'Model Set Maker', desc: 'Print papers and answer sheets',      short: 'Set Maker',  metric: 'setmaker',  unit: 'added' },
-  classmaterial:      { label: 'Class Material', desc: 'Class files from your teachers',       short: 'Class Material', metric: 'classmaterial', unit: 'files' },
+  studymaterial:      { label: 'Study Materials', desc: 'Read notes and chapters',      short: 'Materials' },
+  teachingaids:       { label: 'Teaching Aids', desc: 'Books and aids to teach from',        short: 'Aids' },
+  studylockers:       { label: 'Study Lockers', desc: 'Your saved study items',        short: 'Lockers' },
+  questionbank:       { label: 'Question Bank', desc: 'Add, edit and read questions',        short: 'Bank' },
+  questionbankviewer: { label: 'Question Bank Viewer', desc: 'Browse questions to revise', short: 'Viewer' },
+  entrance:           { label: 'Entrance Exam', desc: 'Run entrance exams',        short: 'Entrance' },
+  modelsets:          { label: 'Model Sets', desc: 'Take a practice paper',           short: 'Model Sets' },
+  setmaker:           { label: 'Model Set Maker', desc: 'Print papers and answer sheets',      short: 'Set Maker' },
+  classmaterial:      { label: 'Class Material', desc: 'Class files from your teachers',       short: 'Class Material' },
 };
 
 const FLOW = [
@@ -43,36 +42,32 @@ const FLOW = [
   { stage: 'Test', ids: ['entrance', 'modelsets', 'setmaker'] },
 ];
 
-// ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets', setmaker: 'set_maker_items', classmaterial: 'class_materials' };
-let cache = { at: 0, data: {}, pending: null };
-async function countOf(table) {
-  try {
-    const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true });
-    return error ? null : count ?? null;
-  } catch { return null; }
+
+// ── plain-language help shown at the top of every section ───────────────────
+const HELP = {
+  studymaterial: { what: 'Notes, formula sheets, practice sets, videos and solved papers, arranged by course, subject and chapter.', steps: ['Pick a course button.', 'Choose a subject, then open a chapter.', 'Tap a material to read or watch it. Use the search box to find one by name.'] },
+  classmaterial: { what: 'Files your teachers share for each class.', steps: ['Choose your class.', 'Tap a file to open it.', 'Teachers can add new files with the Add button.'] },
+  teachingaids: { what: 'A bookshelf of teaching books you read page by page.', steps: ['Pick a batch such as Lakshya or Umeed.', 'Narrow by subject if you like.', 'Tap a book cover to read. Your last page is remembered.'] },
+  studylockers: { what: 'Lockers that group study items together for easy revision.', steps: ['Open a locker.', 'Read or practise what is inside.', 'Teachers can create lockers and add items.'] },
+  questionbank: { what: 'All questions, organised by course, subject and chapter. Add new ones or switch to Read-only to just study.', steps: ['Open "Question Bank" to browse and search.', 'Use "Manual Add" or "Bulk Paste" to add questions.', 'Use "More tools" for papers, tests and reports (Admin).'] },
+  questionbankviewer: { what: 'A read-only view of the questions for revision.', steps: ['Pick a course, subject and chapter.', 'Read the questions and answers.', 'Print a chapter with or without answers.'] },
+  entrance: { what: 'Runs a whole entrance exam from applications to results.', steps: ['Click "New exam" and fill the name and date.', 'Follow the steps in order: Applications, Question Paper, Hall Tickets, Exam Day, Results.', 'The Overview shows the next thing to do.'] },
+  modelsets: { what: 'Full practice papers you take on screen with a timer and OMR sheet.', steps: ['Open a set.', 'Answer the questions before the timer ends.', 'See your section-wise score at the end.'] },
+  setmaker: { what: 'Builds a fresh printed booklet with answer key and OMR sheet.', steps: ['Choose the questions or topics.', 'Generate the paper.', 'Download or print it.'] },
+};
+const helpKey = (id) => `gnsi_lh_help_${id}`;
+function SectionHelp({ id }) {
+  const h = HELP[id];
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(helpKey(id)) === 'open'; } catch { return false; } });
+  if (!h) return null;
+  return (
+    <details className="lh-help" open={open} onToggle={(e) => { const o = e.currentTarget.open; setOpen(o); try { localStorage.setItem(helpKey(id), o ? 'open' : 'closed'); } catch { /* storage blocked */ } }}>
+      <summary>How to use this</summary>
+      <p>{h.what}</p>
+      <ol>{h.steps.map((t, i) => <li key={i}>{t}</li>)}</ol>
+    </details>
+  );
 }
-function loadCounts(force = false) {
-  if (!force && cache.pending) return cache.pending;
-  if (!force && Date.now() - cache.at < 60000 && Object.keys(cache.data).length) return Promise.resolve(cache.data);
-  cache.pending = Promise.all(Object.entries(TABLES).map(async ([k, t]) => [k, await countOf(t)])).then((pairs) => {
-    cache = { at: Date.now(), data: Object.fromEntries(pairs), pending: null };
-    return cache.data;
-  });
-  return cache.pending;
-}
-function useLearningCounts() {
-  const [counts, setCounts] = useState(cache.data);
-  useEffect(() => {
-    let live = true;
-    const refresh = (force) => loadCounts(force).then((d) => { if (live) setCounts({ ...d }); });
-    refresh(false);
-    const offs = [GNSI_EVENTS.QUESTION_SAVED, GNSI_EVENTS.MATERIAL_SAVED].map((ev) => EventBus.on(ev, () => refresh(true)));
-    return () => { live = false; offs.forEach((o) => o && o()); };
-  }, []);
-  return counts;
-}
-const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('en-IN'));
 
 // ── recently opened sections (per browser) ──────────────────────────────────
 const RECENT_KEY = 'gnsi_lh_recent';
@@ -102,23 +97,74 @@ async function searchAll(term, visible) {
   return out;
 }
 
+// ── "Today" panel: what is new and what is next, so the page is useful before you open anything ──
+const NEW_SOURCES = [
+  { section: 'studymaterial', table: 'study_materials', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'teachingaids', table: 'teaching_aids', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'modelsets', table: 'model_sets', sel: 'id,title:data->>title,created_at', pick: (r) => r.title },
+];
+const daysUntil = (iso) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return null; const t = new Date(); t.setHours(0, 0, 0, 0); d.setHours(0, 0, 0, 0); return Math.round((d - t) / 86400000); };
+const ago = (iso) => { const n = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
+function TodayPanel({ visible, onOpen }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const fresh = [];
+      await Promise.all(NEW_SOURCES.filter((d) => visible.includes(d.section)).map(async (d) => {
+        try {
+          const { data: rows, error } = await supabase.from(d.table).select(d.sel).order('created_at', { ascending: false }).limit(4);
+          if (!error) (rows || []).forEach((r) => r.created_at && r.title && fresh.push({ key: `${d.table}-${r.id}`, section: d.section, text: String(d.pick(r)).slice(0, 80), at: r.created_at }));
+        } catch { /* source unavailable — skip */ }
+      }));
+      fresh.sort((a, b) => new Date(b.at) - new Date(a.at));
+      let exam = null;
+      if (visible.includes('entrance')) {
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: ex, error } = await supabase.from('entrance_exams').select('id,exam_name,exam_date').gte('exam_date', today).order('exam_date', { ascending: true }).limit(1);
+          if (!error && ex && ex[0]) exam = ex[0];
+        } catch { /* skip */ }
+      }
+      if (live) setData({ fresh: fresh.slice(0, 5), exam });
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!data || (!data.fresh.length && !data.exam)) return null;
+  const left = data.exam ? daysUntil(data.exam.exam_date) : null;
+  return (
+    <div className="lh-today">
+      {data.exam ? (
+        <button type="button" className="lh-exam" onClick={() => onOpen('entrance')}>
+          <b>{left === 0 ? 'Today' : left === 1 ? 'Tomorrow' : `${left} days`}</b>
+          <span>Next entrance exam<br /><strong>{data.exam.exam_name}</strong></span>
+        </button>
+      ) : null}
+      {data.fresh.length ? (
+        <div className="lh-new">
+          <div className="lh-new-h">New in the Learning Hub</div>
+          {data.fresh.map((f) => (
+            <button key={f.key} type="button" className="lh-new-i" onClick={() => onOpen(f.section)}>
+              <span>{f.text}</span><em>{MODULES[f.section].short} · {ago(f.at)}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const CSS = `
 .lh-root{font-family:${PX.sans};max-width:1100px;margin:0 auto;padding:16px 16px 40px}
 .lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 14px;flex-wrap:wrap}
 .lh-title-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:${PX.goldLt}}
 .lh-title-t{font-family:${PX.serif};font-size:22px;font-weight:600;color:${PX.ink};line-height:1.1}
 .lh-title-s{font-size:12.5px;color:${PX.sub}}
-.lh-tools{margin-left:auto;display:flex;gap:8px}
-.lh-tool{height:34px;padding:0 12px;border:1px solid ${PX.line};border-radius:10px;background:#fff;color:${PX.ink2};font:700 12px/1 ${PX.sans};cursor:pointer}
-.lh-tool:hover{border-color:${PX.goldLine}}
 .lh-find{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:0 14px;height:46px;margin:0 0 10px;color:${PX.sub}}
 .lh-find:focus-within{border-color:${PX.gold}}
 .lh-find input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px ${PX.sans};color:${PX.ink}}
 .lh-find button{border:0;background:none;color:${PX.faint};cursor:pointer;font-size:14px}
-.lh-recent{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px}
-.lh-recent b{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:${PX.sub}}
-.lh-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid ${PX.line};border-radius:99px;background:#fff;color:${PX.ink2};font:700 12px/1 ${PX.sans};cursor:pointer}
-.lh-chip:hover{border-color:${PX.goldLine}}
 .lh-res{background:#fff;border:1px solid ${PX.line};border-radius:14px;margin-bottom:10px;overflow:hidden}
 .lh-res-i{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid ${PX.line};background:none;text-align:left;cursor:pointer;font:500 13px ${PX.sans};color:${PX.ink}}
 .lh-res-i:last-child{border-bottom:0}
@@ -129,6 +175,22 @@ const CSS = `
 .lh-sub{display:flex;gap:6px;margin:10px 14px;padding:4px;background:${PX.tint};border-radius:12px;width:fit-content}
 .lh-subb{height:32px;padding:0 14px;border:0;border-radius:9px;background:none;color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer}
 .lh-subb.on{background:#fff;color:${PX.navy};box-shadow:0 1px 3px rgba(19,42,79,.18)}
+.lh-help{margin:10px 14px;padding:10px 14px;border:1px solid ${PX.goldLine};border-radius:12px;background:${PX.goldBg};font-size:12.5px;color:${PX.ink};line-height:1.5}
+.lh-help summary{cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.04em;color:#7a5a12}
+.lh-help p{margin:6px 0 4px}
+.lh-help ol{margin:0;padding-left:20px}
+.lh-today{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:10px;margin:0 0 6px}
+.lh-today:has(.lh-new):not(:has(.lh-exam)){grid-template-columns:1fr}
+.lh-exam{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:0;border-radius:14px;cursor:pointer;color:#fff;font:500 12px/1.3 ${PX.sans};background:linear-gradient(135deg,${PX.navyDeep},${PX.navy2})}
+.lh-exam b{font-size:22px;font-weight:800;color:${PX.goldLt};white-space:nowrap}
+.lh-exam strong{font-size:13px}
+.lh-new{background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:8px 6px}
+.lh-new-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:${PX.gold};padding:2px 10px 6px}
+.lh-new-i{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:9px;background:none;cursor:pointer;text-align:left;font:600 13px ${PX.sans};color:${PX.ink}}
+.lh-new-i:hover{background:${PX.tint}}
+.lh-new-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-new-i em{font-style:normal;font-size:11px;color:${PX.sub};white-space:nowrap}
+@media (max-width:640px){.lh-today{grid-template-columns:1fr!important}}
 .lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
 .lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
 .lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
@@ -138,8 +200,7 @@ const CSS = `
 .lh-sec-ico{width:40px;height:40px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .lh-sec-t{font-weight:800;font-size:14.5px;line-height:1.2}
 .lh-sec-d{font-size:12px;color:${PX.sub};margin-top:2px}
-.lh-sec-n{margin-left:auto;font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;background:${PX.goldBg};color:#7a5a12;font-variant-numeric:tabular-nums;white-space:nowrap}
-.lh-chev{flex-shrink:0;color:${PX.gold};transition:transform .15s ease;display:flex}
+.lh-chev{margin-left:auto;flex-shrink:0;color:${PX.gold};transition:transform .15s ease;display:flex}
 .lh-sec.open .lh-chev{transform:rotate(90deg)}
 .lh-sec-b{border-top:1px solid ${PX.line};padding:6px 0 4px;overflow-x:auto}
 @media (max-width:640px){.lh-root{padding:10px 10px 40px}.lh-sec-d{display:none}.lh-title-s{display:none}.lh-title-t{font-size:19px}}
@@ -154,13 +215,11 @@ const Loading = () => (
 // tab: section id App wants open (links from other modules); onNavigate(id): App's router.
 // perms(key) / canAccess(key): the signed-in user's rights per section module.
 export default function LearningHub({ currentUser, tab, onNavigate, perms, canAccess }) {
-  const counts = useLearningCounts();
   const allowed = HUB_TABS.filter((id) => !canAccess || canAccess(id));
   // Question Bank Viewer is the read-only mode of the Question Bank block when the user may open both
   const visible = allowed.includes('questionbank') ? allowed.filter((id) => id !== 'questionbankviewer') : allowed;
   const [qbMode, setQbMode] = useState('edit');
   const canonical = (id) => (id === 'questionbankviewer' && visible.includes('questionbank') ? 'questionbank' : id);
-  const [recent, setRecent] = useState(readRecent);
   const [open, setOpen] = useState(() => {
     const last = readRecent().map(canonical).find((x) => visible.includes(x));
     const role = String(currentUser?.role || '').toLowerCase();
@@ -189,7 +248,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
     if (rawId === 'questionbankviewer' && id === 'questionbank') setQbMode('view');
     setOpen((o) => new Set(o).add(id));
     setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
-    pushRecent(id); setRecent(readRecent());
+    pushRecent(id);
     setTimeout(() => { const el = document.getElementById(`lh-sec-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
   };
   const [mounted, setMounted] = useState(() => new Set(open));
@@ -197,9 +256,8 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
     const next = new Set(open);
     if (next.has(id)) next.delete(id); else next.add(id);
     setOpen(next);
-    if (next.has(id)) { setMounted((m) => (m.has(id) ? m : new Set(m).add(id))); pushRecent(id); setRecent(readRecent()); }
+    if (next.has(id)) { setMounted((m) => (m.has(id) ? m : new Set(m).add(id))); pushRecent(id); }
   };
-  const openOnly = (ids) => { setOpen(new Set(ids)); setMounted((m) => new Set([...m, ...ids])); };
 
   // App asks for a specific section (e.g. a link from inside another section) → open it and scroll to it
   useEffect(() => {
@@ -251,10 +309,6 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
           <div className="lh-title-t">Learning Hub</div>
           <div className="lh-title-s">Learn · Practice · Test — everything on one page</div>
         </div>
-        <div className="lh-tools">
-          <button type="button" className="lh-tool" onClick={() => openOnly(visible)}>Expand all</button>
-          <button type="button" className="lh-tool" onClick={() => setOpen(new Set())}>Collapse all</button>
-        </div>
       </div>
       <label className="lh-find">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
@@ -269,11 +323,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
             </button>
           )) : <div className="lh-res-e">Nothing found. Try a shorter word.</div>}
         </div>
-      ) : (recent.filter((id) => visible.includes(id)).length ? (
-        <div className="lh-recent"><b>Recent</b>
-          {recent.filter((id) => visible.includes(id)).map((id) => <button key={id} type="button" className="lh-chip" onClick={() => goTo(id)}><NavIcon id={id} size={15} />{MODULES[id].short}</button>)}
-        </div>
-      ) : null)}
+      ) : <TodayPanel visible={visible} onOpen={goTo} />}
       {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
         <section key={st.stage}>
           <div className="lh-stage-h"><i style={{ background: STAGE_COLOR[st.stage] }} />{st.stage}</div>
@@ -288,11 +338,11 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
                     <div className="lh-sec-t">{id === 'questionbank' && allowed.includes('questionbankviewer') ? 'Question Bank' : m.label}</div>
                     <div className="lh-sec-d">{m.desc}</div>
                   </span>
-                  <span className="lh-sec-n">{fmt(counts[m.metric])} {m.unit}</span>
                   <span className="lh-chev"><NavIcon id="chevron" size={18} /></span>
                 </button>
                 {mounted.has(id) ? (
                   <div id={`lh-body-${id}`} className="lh-sec-b" style={{ display: isOpen ? 'block' : 'none' }}>
+                    <SectionHelp id={id} />
                     <Suspense fallback={<Loading />}>{view(id)}</Suspense>
                   </div>
                 ) : null}
