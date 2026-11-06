@@ -29,7 +29,7 @@ const MODULES = {
   studymaterial:      { label: 'Study Materials', desc: 'Read notes and chapters',      short: 'Materials',  metric: 'materials', unit: 'materials' },
   teachingaids:       { label: 'Teaching Aids', desc: 'Books and aids to teach from',        short: 'Aids',       metric: 'aids',      unit: 'aids' },
   studylockers:       { label: 'Study Lockers', desc: 'Your saved study items',        short: 'Lockers',    metric: 'lockers',   unit: 'lockers' },
-  questionbank:       { label: 'Question Bank', desc: 'Add and manage questions',        short: 'Bank',       metric: 'questions', unit: 'questions' },
+  questionbank:       { label: 'Question Bank', desc: 'Add, edit and read questions',        short: 'Bank',       metric: 'questions', unit: 'questions' },
   questionbankviewer: { label: 'Question Bank Viewer', desc: 'Browse questions to revise', short: 'Viewer',     metric: 'questions', unit: 'questions' },
   entrance:           { label: 'Entrance Exam', desc: 'Run entrance exams',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
   modelsets:          { label: 'Model Sets', desc: 'Take a practice paper',           short: 'Model Sets', metric: 'modelsets', unit: 'sets' },
@@ -85,6 +85,7 @@ const SEARCHES = [
   { id: 'teachingaids', table: 'teaching_aids', col: 'title', pick: (r) => r.title },
   { id: 'questionbankviewer', table: 'qbank_questions', col: 'question', pick: (r) => r.question },
   { id: 'entrance', table: 'entrance_exams', col: 'exam_name', pick: (r) => r.exam_name },
+  { id: 'modelsets', table: 'model_sets', col: 'data->>title', sel: 'id,title:data->>title', pick: (r) => r.title },
 ];
 async function searchAll(term, visible) {
   const t = term.replace(/[%,()]/g, ' ').trim();
@@ -94,7 +95,7 @@ async function searchAll(term, visible) {
     const sec = d.id === 'questionbankviewer' ? ['questionbankviewer', 'questionbank'].find((x) => visible.includes(x)) : d.id;
     if (!sec || !visible.includes(sec)) return;
     try {
-      const { data, error } = await supabase.from(d.table).select(`id,${d.col}`).ilike(d.col, `%${t}%`).limit(6);
+      const { data, error } = await supabase.from(d.table).select(d.sel || `id,${d.col}`).ilike(d.col, `%${t}%`).limit(6);
       if (!error) (data || []).forEach((r) => out.push({ key: `${d.table}-${r.id}`, section: sec, text: String(d.pick(r) || '').slice(0, 140) }));
     } catch { /* table missing or blocked — skip this source */ }
   }));
@@ -125,6 +126,9 @@ const CSS = `
 .lh-res-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lh-res-i em{font-style:normal;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;background:${PX.goldBg};color:#7a5a12;white-space:nowrap}
 .lh-res-e{padding:14px;text-align:center;color:${PX.sub};font-size:13px}
+.lh-sub{display:flex;gap:6px;margin:10px 14px;padding:4px;background:${PX.tint};border-radius:12px;width:fit-content}
+.lh-subb{height:32px;padding:0 14px;border:0;border-radius:9px;background:none;color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer}
+.lh-subb.on{background:#fff;color:${PX.navy};box-shadow:0 1px 3px rgba(19,42,79,.18)}
 .lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
 .lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
 .lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
@@ -151,13 +155,22 @@ const Loading = () => (
 // perms(key) / canAccess(key): the signed-in user's rights per section module.
 export default function LearningHub({ currentUser, tab, onNavigate, perms, canAccess }) {
   const counts = useLearningCounts();
-  const visible = HUB_TABS.filter((id) => !canAccess || canAccess(id));
+  const allowed = HUB_TABS.filter((id) => !canAccess || canAccess(id));
+  // Question Bank Viewer is the read-only mode of the Question Bank block when the user may open both
+  const visible = allowed.includes('questionbank') ? allowed.filter((id) => id !== 'questionbankviewer') : allowed;
+  const [qbMode, setQbMode] = useState('edit');
+  const canonical = (id) => (id === 'questionbankviewer' && visible.includes('questionbank') ? 'questionbank' : id);
   const [recent, setRecent] = useState(readRecent);
   const [open, setOpen] = useState(() => {
-    const last = readRecent().find((x) => visible.includes(x));
-    return new Set(visible.includes(tab) ? [tab] : [last || visible[0]].filter(Boolean));
+    const last = readRecent().map(canonical).find((x) => visible.includes(x));
+    const role = String(currentUser?.role || '').toLowerCase();
+    const byRole = role.includes('student') || role.includes('parent') ? ['studymaterial', 'classmaterial', 'modelsets'] : role.includes('teacher') ? ['studymaterial', 'teachingaids', 'questionbank'] : [];
+    const start = canonical(tab) && visible.includes(canonical(tab)) ? canonical(tab) : last || byRole.find((x) => visible.includes(x)) || visible[0];
+    return new Set([start].filter(Boolean));
   });
   const [q, setQ] = useState('');
+  const [qbSeen, setQbSeen] = useState(false);
+  if (qbMode === 'view' && !qbSeen) setQbSeen(true);
   const [hits, setHits] = useState(null);
   useEffect(() => {
     const term = q.trim();
@@ -171,7 +184,9 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
-  const goTo = (id) => {
+  const goTo = (rawId) => {
+    const id = canonical(rawId);
+    if (rawId === 'questionbankviewer' && id === 'questionbank') setQbMode('view');
     setOpen((o) => new Set(o).add(id));
     setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
     pushRecent(id); setRecent(readRecent());
@@ -188,10 +203,13 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
 
   // App asks for a specific section (e.g. a link from inside another section) → open it and scroll to it
   useEffect(() => {
-    if (!tab || !visible.includes(tab)) return;
-    setOpen((o) => (o.has(tab) ? o : new Set(o).add(tab)));
-    setMounted((m) => (m.has(tab) ? m : new Set(m).add(tab)));
-    const t = setTimeout(() => { const el = document.getElementById(`lh-sec-${tab}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+    if (!tab) return undefined;
+    const id = canonical(tab);
+    if (!visible.includes(id)) return undefined;
+    if (tab === 'questionbankviewer' && id === 'questionbank') setQbMode('view');
+    setOpen((o) => (o.has(id) ? o : new Set(o).add(id)));
+    setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
+    const t = setTimeout(() => { const el = document.getElementById(`lh-sec-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -199,12 +217,22 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
   if (!visible.length) return <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>You do not have access to any Learning Hub section.</div>;
 
   const view = (id) => {
-    const common = { currentUser, onNavigate: (to) => { if (to && visible.includes(to)) goTo(to); else if (onNavigate) onNavigate(to); } };
+    const common = { currentUser, onNavigate: (to) => { if (to && visible.includes(canonical(to))) goTo(to); else if (onNavigate) onNavigate(to); } };
     switch (id) {
       case 'studymaterial': return <StudyMaterial {...common} perms={perms('studymaterial')} />;
       case 'teachingaids': return <TeachingAids {...common} perms={perms('teachingaids')} />;
       case 'studylockers': return <StudyLockers {...common} perms={perms('studylockers')} />;
-      case 'questionbank': return <QuestionBank {...common} perms={perms('questionbank')} />;
+      case 'questionbank': return allowed.includes('questionbankviewer') ? (
+        <>
+          <div className="lh-sub" role="tablist" aria-label="Question Bank mode">
+            {[['edit', 'Add & edit'], ['view', 'Read-only']].map(([k, l]) => (
+              <button key={k} type="button" role="tab" aria-selected={qbMode === k} className={`lh-subb${qbMode === k ? ' on' : ''}`} onClick={() => setQbMode(k)}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: qbMode === 'edit' ? 'block' : 'none' }}><QuestionBank {...common} perms={perms('questionbank')} /></div>
+          {qbSeen ? <div style={{ display: qbMode === 'view' ? 'block' : 'none' }}><Suspense fallback={<Loading />}><QuestionBankViewer {...common} /></Suspense></div> : null}
+        </>
+      ) : <QuestionBank {...common} perms={perms('questionbank')} />;
       case 'questionbankviewer': return <QuestionBankViewer {...common} />;
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
       case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
@@ -257,7 +285,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
                 <button type="button" className="lh-sec-h" onClick={() => toggle(id)} aria-expanded={isOpen} aria-controls={`lh-body-${id}`}>
                   <span className="lh-sec-ico" style={{ background: tint(STAGE_COLOR[st.stage]), color: STAGE_COLOR[st.stage] }}><NavIcon id={id} size={22} /></span>
                   <span style={{ minWidth: 0 }}>
-                    <div className="lh-sec-t">{m.label}</div>
+                    <div className="lh-sec-t">{id === 'questionbank' && allowed.includes('questionbankviewer') ? 'Question Bank' : m.label}</div>
                     <div className="lh-sec-d">{m.desc}</div>
                   </span>
                   <span className="lh-sec-n">{fmt(counts[m.metric])} {m.unit}</span>
