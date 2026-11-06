@@ -74,6 +74,33 @@ function useLearningCounts() {
 }
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('en-IN'));
 
+// ── recently opened sections (per browser) ──────────────────────────────────
+const RECENT_KEY = 'gnsi_lh_recent';
+const readRecent = () => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => HUB_TABS.includes(x)) : []; } catch { return []; } };
+const pushRecent = (id) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 4))); } catch { /* storage blocked */ } };
+
+// ── search across the content of every section the user may open ────────────
+const SEARCHES = [
+  { id: 'studymaterial', table: 'study_materials', col: 'title', pick: (r) => r.title },
+  { id: 'teachingaids', table: 'teaching_aids', col: 'title', pick: (r) => r.title },
+  { id: 'questionbankviewer', table: 'qbank_questions', col: 'question', pick: (r) => r.question },
+  { id: 'entrance', table: 'entrance_exams', col: 'exam_name', pick: (r) => r.exam_name },
+];
+async function searchAll(term, visible) {
+  const t = term.replace(/[%,()]/g, ' ').trim();
+  const out = [];
+  await Promise.all(SEARCHES.map(async (d) => {
+    // questions are searched from the viewer (read-only) or the bank, whichever the user may open
+    const sec = d.id === 'questionbankviewer' ? ['questionbankviewer', 'questionbank'].find((x) => visible.includes(x)) : d.id;
+    if (!sec || !visible.includes(sec)) return;
+    try {
+      const { data, error } = await supabase.from(d.table).select(`id,${d.col}`).ilike(d.col, `%${t}%`).limit(6);
+      if (!error) (data || []).forEach((r) => out.push({ key: `${d.table}-${r.id}`, section: sec, text: String(d.pick(r) || '').slice(0, 140) }));
+    } catch { /* table missing or blocked — skip this source */ }
+  }));
+  return out;
+}
+
 const CSS = `
 .lh-root{font-family:${PX.sans};max-width:1100px;margin:0 auto;padding:16px 16px 40px}
 .lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 14px;flex-wrap:wrap}
@@ -83,6 +110,21 @@ const CSS = `
 .lh-tools{margin-left:auto;display:flex;gap:8px}
 .lh-tool{height:34px;padding:0 12px;border:1px solid ${PX.line};border-radius:10px;background:#fff;color:${PX.ink2};font:700 12px/1 ${PX.sans};cursor:pointer}
 .lh-tool:hover{border-color:${PX.goldLine}}
+.lh-find{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:0 14px;height:46px;margin:0 0 10px;color:${PX.sub}}
+.lh-find:focus-within{border-color:${PX.gold}}
+.lh-find input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px ${PX.sans};color:${PX.ink}}
+.lh-find button{border:0;background:none;color:${PX.faint};cursor:pointer;font-size:14px}
+.lh-recent{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px}
+.lh-recent b{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:${PX.sub}}
+.lh-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid ${PX.line};border-radius:99px;background:#fff;color:${PX.ink2};font:700 12px/1 ${PX.sans};cursor:pointer}
+.lh-chip:hover{border-color:${PX.goldLine}}
+.lh-res{background:#fff;border:1px solid ${PX.line};border-radius:14px;margin-bottom:10px;overflow:hidden}
+.lh-res-i{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid ${PX.line};background:none;text-align:left;cursor:pointer;font:500 13px ${PX.sans};color:${PX.ink}}
+.lh-res-i:last-child{border-bottom:0}
+.lh-res-i:hover{background:${PX.tint}}
+.lh-res-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-res-i em{font-style:normal;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;background:${PX.goldBg};color:#7a5a12;white-space:nowrap}
+.lh-res-e{padding:14px;text-align:center;color:${PX.sub};font-size:13px}
 .lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
 .lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
 .lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
@@ -110,13 +152,37 @@ const Loading = () => (
 export default function LearningHub({ currentUser, tab, onNavigate, perms, canAccess }) {
   const counts = useLearningCounts();
   const visible = HUB_TABS.filter((id) => !canAccess || canAccess(id));
-  const [open, setOpen] = useState(() => new Set(visible.includes(tab) ? [tab] : visible.slice(0, 1)));
+  const [recent, setRecent] = useState(readRecent);
+  const [open, setOpen] = useState(() => {
+    const last = readRecent().find((x) => visible.includes(x));
+    return new Set(visible.includes(tab) ? [tab] : [last || visible[0]].filter(Boolean));
+  });
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState(null);
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits(null); return undefined; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const found = await searchAll(term, visible);
+      const names = visible.filter((id) => `${MODULES[id].label} ${MODULES[id].desc}`.toLowerCase().includes(term.toLowerCase())).map((id) => ({ key: `sec-${id}`, section: id, text: MODULES[id].label, isSection: true }));
+      if (live) setHits([...names, ...found]);
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+  const goTo = (id) => {
+    setOpen((o) => new Set(o).add(id));
+    setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
+    pushRecent(id); setRecent(readRecent());
+    setTimeout(() => { const el = document.getElementById(`lh-sec-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+  };
   const [mounted, setMounted] = useState(() => new Set(open));
   const toggle = (id) => {
     const next = new Set(open);
     if (next.has(id)) next.delete(id); else next.add(id);
     setOpen(next);
-    if (next.has(id)) setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
+    if (next.has(id)) { setMounted((m) => (m.has(id) ? m : new Set(m).add(id))); pushRecent(id); setRecent(readRecent()); }
   };
   const openOnly = (ids) => { setOpen(new Set(ids)); setMounted((m) => new Set([...m, ...ids])); };
 
@@ -133,7 +199,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
   if (!visible.length) return <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>You do not have access to any Learning Hub section.</div>;
 
   const view = (id) => {
-    const common = { currentUser, onNavigate: (to) => { if (to && visible.includes(to)) { setOpen((o) => new Set(o).add(to)); setMounted((m) => new Set(m).add(to)); setTimeout(() => { const el = document.getElementById(`lh-sec-${to}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); } else if (onNavigate) onNavigate(to); } };
+    const common = { currentUser, onNavigate: (to) => { if (to && visible.includes(to)) goTo(to); else if (onNavigate) onNavigate(to); } };
     switch (id) {
       case 'studymaterial': return <StudyMaterial {...common} perms={perms('studymaterial')} />;
       case 'teachingaids': return <TeachingAids {...common} perms={perms('teachingaids')} />;
@@ -162,6 +228,24 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
           <button type="button" className="lh-tool" onClick={() => setOpen(new Set())}>Collapse all</button>
         </div>
       </div>
+      <label className="lh-find">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search notes, aids, questions, exams…" aria-label="Search the Learning Hub" />
+        {q ? <button type="button" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
+      </label>
+      {hits ? (
+        <div className="lh-res">
+          {hits.length ? hits.map((h) => (
+            <button key={h.key} type="button" className="lh-res-i" onClick={() => { goTo(h.section); setQ(''); }}>
+              <span>{h.text}</span><em>{MODULES[h.section].label}</em>
+            </button>
+          )) : <div className="lh-res-e">Nothing found. Try a shorter word.</div>}
+        </div>
+      ) : (recent.filter((id) => visible.includes(id)).length ? (
+        <div className="lh-recent"><b>Recent</b>
+          {recent.filter((id) => visible.includes(id)).map((id) => <button key={id} type="button" className="lh-chip" onClick={() => goTo(id)}><NavIcon id={id} size={15} />{MODULES[id].short}</button>)}
+        </div>
+      ) : null)}
       {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
         <section key={st.stage}>
           <div className="lh-stage-h"><i style={{ background: STAGE_COLOR[st.stage] }} />{st.stage}</div>
