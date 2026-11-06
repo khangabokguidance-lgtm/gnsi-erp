@@ -3,12 +3,17 @@ export default {
   title: 'Learning Hub',
   group: 'ACADEMIC',
   roles: ['Admin', 'Teacher'],
-  summary: 'One place for all academic content: study materials, teaching aids, the question bank and the entrance exam. The flow is Learn, then Practice, then Assess.',
+  summary: 'One page for all academic content: study materials, class files, teaching aids, lockers, the question bank, entrance exams and model sets. Sections are grouped Learn, Practice, Test. Use the search box or tap a section to open it.',
   before: [
-    'You only see a tab if your role has permission for it (Admin sets this in Permissions).',
+    'You only see a section if your role has permission for it (Admin sets this in Permissions).',
+    'Type in the search box at the top to find a note, book, question or exam. Tap a result to open its section.',
     'Add Subject, Delete, Create Paper, Online Test, Smart PPT and Stats are for Admin only.',
   ],
   tabs: [
+    { name: 'Class Material', what: 'Class files shared by teachers for each class.' },
+    { name: 'Study Lockers', what: 'Saved study items grouped into lockers.' },
+    { name: 'Model Sets', what: 'Take a practice paper on screen with a timer and OMR sheet.' },
+    { name: 'Model Set Maker', what: 'Print a fresh booklet, answer key and OMR sheet.' },
     { name: 'Study Materials', what: 'Notes, formula sheets, practice sets, solved papers, mind maps, videos and current affairs, arranged by course, subject and chapter.' },
     { name: 'Teaching Aids', what: 'A bookshelf of teaching books (batches like Lakshya and Umeed). Students read them page by page in a view-only reader.' },
     { name: 'Question Bank', what: 'Add, edit and organise questions. Admin can also make papers, online tests, slides and see stats.' },
@@ -19,7 +24,7 @@ export default {
     {
       title: 'Find a chapter in Study Materials',
       body: [
-        'Open Learning Hub and click the "Study Materials" tab.',
+        'Open Learning Hub and tap the "Study Materials" section to expand it.',
         'Choose a course button: Sainik School, Navodaya Vidyalaya, Foundation Course or Rashtriya Military School.',
         'Stay on the "Library" view and pick a subject on the left.',
         'Open the chapter. Its materials are listed with a type badge (Notes PDF, Formula Sheet, Practice Set, Solved Paper, Mind Map, Video Link, Current Affairs).',
@@ -59,7 +64,7 @@ export default {
     {
       title: 'Read a Teaching Aid',
       body: [
-        'Open the "Teaching Aids" tab.',
+        'Tap the "Teaching Aids" section to expand it.',
         'Click a batch button (for example Lakshya, Umeed or Combined Course).',
         'Use the subject chips such as "All Subjects" to narrow the shelf.',
         'Click a book cover to open it. Your last page is remembered.',
@@ -71,7 +76,7 @@ export default {
     {
       title: 'Upload a Teaching Aid (Admin only)',
       body: [
-        'In "Teaching Aids" click "➕ Add Teaching Aid".',
+        'In the "Teaching Aids" section click "➕ Add Teaching Aid".',
         'Choose the Batch and type the Title (both required).',
         'Fill Subject, Subtopic and Description if you want.',
         'Choose the files: one PDF, or images in page order.',
@@ -83,7 +88,7 @@ export default {
     {
       title: 'Add questions to the Question Bank',
       body: [
-        'Open the "Question Bank" tab and then the "✏️ Manual Add" sub-tab.',
+        'Tap the "Question Bank" section and then the "✏️ Manual Add" sub-tab.',
         'Fill course, subject, chapter, the question, options A and B (at least) and the correct option.',
         'Click "+ Add Another Row" if you have more questions.',
         'Click "✅ Save". If a question looks like one already in the bank, you are asked "Save anyway?".',
@@ -94,7 +99,7 @@ export default {
     {
       title: 'Run an entrance exam',
       body: [
-        'Open the "Entrance Exam" tab and click "New exam".',
+        'Tap the "Entrance Exam" section and click "New exam".',
         'Fill the exam name and exam date (required), pattern, seats and rooms, then click "Create exam".',
         'Go through the tabs in order: Applications, Question Paper, Hall Tickets, Exam Day, Evaluation, Results, Admission.',
         'In Question Paper click "✦ Generate paper". In Hall Tickets click "① Allot seats" then "② Issue hall tickets".',
@@ -104,20 +109,20 @@ export default {
     },
   ],
   tips: [
-    'Tabs keep what you typed when you switch between them, so a half-written question is not lost.',
-    'The number on each tab is the live count of materials, aids, questions or exams.',
-    'The "Connected to this page" cards jump to related tabs, for example from a chapter to its questions.',
-    'On a phone, the sections are at the bottom of the screen.',
+    'Sections keep what you typed when you collapse them, so a half-written question is not lost.',
+    'The number on each section is the live count of materials, aids, questions or exams.',
+    'The "Recent" chips at the top jump back to the sections you used last. The page opens on your last one.',
+    '"Expand all" and "Collapse all" are at the top right of the page.',
   ],
   mistakes: [
     'Saving a question with no correct option marked → always choose the correct option, because the form needs it.',
     'Deleting a material or teaching aid by mistake → Delete cannot be undone. Check the title before you confirm.',
-    'Looking for Create Paper or Stats as a non-Admin → these are Admin-only tabs and are hidden for others.',
+    'Looking for Create Paper or Stats as a non-Admin → these are Admin-only and are hidden for others.',
     'Pasting a link on the same line without a title → write a title first, then the link.',
   ],
   faq: [
     { q: 'Why can I not download a PDF?', a: 'Only Admin can download. Other staff get "View Only" for files. Links and videos open normally.' },
-    { q: 'Why is a tab missing?', a: 'Each tab has its own permission. Ask Admin to give you access in Permissions.' },
+    { q: 'Why is a section missing?', a: 'Each section has its own permission. Ask Admin to give you access in Permissions.' },
     { q: 'What is the difference between Question Bank and the Viewer?', a: 'Question Bank is where you add and edit. The Viewer is read-only and good for revision and printing.' },
     { q: 'Who can delete a question?', a: 'Only Admin. Any staff with access can browse, add and edit questions.' },
   ],
