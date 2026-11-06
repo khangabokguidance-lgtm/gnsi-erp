@@ -74,6 +74,32 @@ function useLearningCounts() {
 }
 const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('en-IN'));
 
+// ── plain-language help shown at the top of every section ───────────────────
+const HELP = {
+  studymaterial: { what: 'Notes, formula sheets, practice sets, videos and solved papers, arranged by course, subject and chapter.', steps: ['Pick a course button.', 'Choose a subject, then open a chapter.', 'Tap a material to read or watch it. Use the search box to find one by name.'] },
+  classmaterial: { what: 'Files your teachers share for each class.', steps: ['Choose your class.', 'Tap a file to open it.', 'Teachers can add new files with the Add button.'] },
+  teachingaids: { what: 'A bookshelf of teaching books you read page by page.', steps: ['Pick a batch such as Lakshya or Umeed.', 'Narrow by subject if you like.', 'Tap a book cover to read. Your last page is remembered.'] },
+  studylockers: { what: 'Lockers that group study items together for easy revision.', steps: ['Open a locker.', 'Read or practise what is inside.', 'Teachers can create lockers and add items.'] },
+  questionbank: { what: 'All questions, organised by course, subject and chapter. Add new ones or switch to Read-only to just study.', steps: ['Open "Question Bank" to browse and search.', 'Use "Manual Add" or "Bulk Paste" to add questions.', 'Use "More tools" for papers, tests and reports (Admin).'] },
+  questionbankviewer: { what: 'A read-only view of the questions for revision.', steps: ['Pick a course, subject and chapter.', 'Read the questions and answers.', 'Print a chapter with or without answers.'] },
+  entrance: { what: 'Runs a whole entrance exam from applications to results.', steps: ['Click "New exam" and fill the name and date.', 'Follow the steps in order: Applications, Question Paper, Hall Tickets, Exam Day, Results.', 'The Overview shows the next thing to do.'] },
+  modelsets: { what: 'Full practice papers you take on screen with a timer and OMR sheet.', steps: ['Open a set.', 'Answer the questions before the timer ends.', 'See your section-wise score at the end.'] },
+  setmaker: { what: 'Builds a fresh printed booklet with answer key and OMR sheet.', steps: ['Choose the questions or topics.', 'Generate the paper.', 'Download or print it.'] },
+};
+const helpKey = (id) => `gnsi_lh_help_${id}`;
+function SectionHelp({ id }) {
+  const h = HELP[id];
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(helpKey(id)) !== 'closed'; } catch { return true; } });
+  if (!h) return null;
+  return (
+    <details className="lh-help" open={open} onToggle={(e) => { const o = e.currentTarget.open; setOpen(o); try { localStorage.setItem(helpKey(id), o ? 'open' : 'closed'); } catch { /* storage blocked */ } }}>
+      <summary>How to use this</summary>
+      <p>{h.what}</p>
+      <ol>{h.steps.map((t, i) => <li key={i}>{t}</li>)}</ol>
+    </details>
+  );
+}
+
 // ── recently opened sections (per browser) ──────────────────────────────────
 const RECENT_KEY = 'gnsi_lh_recent';
 const readRecent = () => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => HUB_TABS.includes(x)) : []; } catch { return []; } };
@@ -129,6 +155,10 @@ const CSS = `
 .lh-sub{display:flex;gap:6px;margin:10px 14px;padding:4px;background:${PX.tint};border-radius:12px;width:fit-content}
 .lh-subb{height:32px;padding:0 14px;border:0;border-radius:9px;background:none;color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer}
 .lh-subb.on{background:#fff;color:${PX.navy};box-shadow:0 1px 3px rgba(19,42,79,.18)}
+.lh-help{margin:10px 14px;padding:10px 14px;border:1px solid ${PX.goldLine};border-radius:12px;background:${PX.goldBg};font-size:12.5px;color:${PX.ink};line-height:1.5}
+.lh-help summary{cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.04em;color:#7a5a12}
+.lh-help p{margin:6px 0 4px}
+.lh-help ol{margin:0;padding-left:20px}
 .lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
 .lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
 .lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
@@ -293,6 +323,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
                 </button>
                 {mounted.has(id) ? (
                   <div id={`lh-body-${id}`} className="lh-sec-b" style={{ display: isOpen ? 'block' : 'none' }}>
+                    <SectionHelp id={id} />
                     <Suspense fallback={<Loading />}>{view(id)}</Suspense>
                   </div>
                 ) : null}
