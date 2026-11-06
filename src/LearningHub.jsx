@@ -97,6 +97,64 @@ async function searchAll(term, visible) {
   return out;
 }
 
+// ── "Today" panel: what is new and what is next, so the page is useful before you open anything ──
+const NEW_SOURCES = [
+  { section: 'studymaterial', table: 'study_materials', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'teachingaids', table: 'teaching_aids', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'modelsets', table: 'model_sets', sel: 'id,title:data->>title,created_at', pick: (r) => r.title },
+];
+const daysUntil = (iso) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return null; const t = new Date(); t.setHours(0, 0, 0, 0); d.setHours(0, 0, 0, 0); return Math.round((d - t) / 86400000); };
+const ago = (iso) => { const n = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
+function TodayPanel({ visible, onOpen }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const fresh = [];
+      await Promise.all(NEW_SOURCES.filter((d) => visible.includes(d.section)).map(async (d) => {
+        try {
+          const { data: rows, error } = await supabase.from(d.table).select(d.sel).order('created_at', { ascending: false }).limit(4);
+          if (!error) (rows || []).forEach((r) => r.created_at && r.title && fresh.push({ key: `${d.table}-${r.id}`, section: d.section, text: String(d.pick(r)).slice(0, 80), at: r.created_at }));
+        } catch { /* source unavailable — skip */ }
+      }));
+      fresh.sort((a, b) => new Date(b.at) - new Date(a.at));
+      let exam = null;
+      if (visible.includes('entrance')) {
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: ex, error } = await supabase.from('entrance_exams').select('id,exam_name,exam_date').gte('exam_date', today).order('exam_date', { ascending: true }).limit(1);
+          if (!error && ex && ex[0]) exam = ex[0];
+        } catch { /* skip */ }
+      }
+      if (live) setData({ fresh: fresh.slice(0, 5), exam });
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!data || (!data.fresh.length && !data.exam)) return null;
+  const left = data.exam ? daysUntil(data.exam.exam_date) : null;
+  return (
+    <div className="lh-today">
+      {data.exam ? (
+        <button type="button" className="lh-exam" onClick={() => onOpen('entrance')}>
+          <b>{left === 0 ? 'Today' : left === 1 ? 'Tomorrow' : `${left} days`}</b>
+          <span>Next entrance exam<br /><strong>{data.exam.exam_name}</strong></span>
+        </button>
+      ) : null}
+      {data.fresh.length ? (
+        <div className="lh-new">
+          <div className="lh-new-h">New in the Learning Hub</div>
+          {data.fresh.map((f) => (
+            <button key={f.key} type="button" className="lh-new-i" onClick={() => onOpen(f.section)}>
+              <span>{f.text}</span><em>{MODULES[f.section].short} · {ago(f.at)}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const CSS = `
 .lh-root{font-family:${PX.sans};max-width:1100px;margin:0 auto;padding:16px 16px 40px}
 .lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 14px;flex-wrap:wrap}
@@ -121,6 +179,18 @@ const CSS = `
 .lh-help summary{cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.04em;color:#7a5a12}
 .lh-help p{margin:6px 0 4px}
 .lh-help ol{margin:0;padding-left:20px}
+.lh-today{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:10px;margin:0 0 6px}
+.lh-today:has(.lh-new):not(:has(.lh-exam)){grid-template-columns:1fr}
+.lh-exam{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:0;border-radius:14px;cursor:pointer;color:#fff;font:500 12px/1.3 ${PX.sans};background:linear-gradient(135deg,${PX.navyDeep},${PX.navy2})}
+.lh-exam b{font-size:22px;font-weight:800;color:${PX.goldLt};white-space:nowrap}
+.lh-exam strong{font-size:13px}
+.lh-new{background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:8px 6px}
+.lh-new-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:${PX.gold};padding:2px 10px 6px}
+.lh-new-i{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:9px;background:none;cursor:pointer;text-align:left;font:600 13px ${PX.sans};color:${PX.ink}}
+.lh-new-i:hover{background:${PX.tint}}
+.lh-new-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-new-i em{font-style:normal;font-size:11px;color:${PX.sub};white-space:nowrap}
+@media (max-width:640px){.lh-today{grid-template-columns:1fr!important}}
 .lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
 .lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
 .lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
@@ -253,7 +323,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
             </button>
           )) : <div className="lh-res-e">Nothing found. Try a shorter word.</div>}
         </div>
-      ) : null}
+      ) : <TodayPanel visible={visible} onOpen={goTo} />}
       {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
         <section key={st.stage}>
           <div className="lh-stage-h"><i style={{ background: STAGE_COLOR[st.stage] }} />{st.stage}</div>
