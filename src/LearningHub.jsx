@@ -1,7 +1,8 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
 // ONE module for everything academic-content: Study Materials, Teaching Aids, Study Lockers,
 // Question Bank, Question Bank Viewer, Entrance Exam, Model Sets and Model Set Maker are tabs of this page
-// (sidebar id 'learninghub'), laid out as a flow:
+// (sidebar id 'learninghub'); Study Materials, Class Material, Teaching Aids and Study Lockers are presented as ONE
+// "Study Library" entry with a Notes · Class · Aids · Lockers switcher. Laid out as a flow:
 //   Learn (Study Materials · Teaching Aids · Study Lockers) → Practice (Question Bank · Viewer) → Test (Entrance Exam · Model Sets · Model Set Maker)
 // • it opens on an icon page of the sections (phones and computers); inside a
 //   section, "‹ All sections" (computers) or the back arrow (phones) returns there;
@@ -47,6 +48,33 @@ const FLOW = [
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
   { stage: 'Test', ids: ['entrance', 'modelsets', 'setmaker'] },
 ];
+
+// The four "Learn" sections are shown to users as ONE module (Study Library) with a simple switcher inside.
+// Their ids / permission keys / routes are unchanged — only the presentation is merged.
+const GROUPS = {
+  library: { label: 'Study Library', short: 'Study', desc: 'Notes, class files, aids and lockers', icon: 'studymaterial', ids: ['studymaterial', 'classmaterial', 'teachingaids', 'studylockers'] },
+};
+const SUB_LABEL = { studymaterial: 'Notes', classmaterial: 'Class', teachingaids: 'Aids', studylockers: 'Lockers' };
+const groupOf = (id) => Object.keys(GROUPS).find((g) => GROUPS[g].ids.includes(id));
+// one entry per thing the user sees on the home page / tab bar / bottom bar
+function buildStages(visible) {
+  return FLOW.map((st) => {
+    const items = [];
+    st.ids.forEach((id) => {
+      const g = groupOf(id);
+      if (g) {
+        if (items.some((i) => i.key === g)) return;
+        const kids = GROUPS[g].ids.filter((k) => visible.includes(k));
+        if (!kids.length) return;
+        items.push({ key: g, ...GROUPS[g], kids, go: kids[0], isOn: (a) => kids.includes(a), count: (c) => kids.reduce((n, k) => n + (Number(c[MODULES[k].metric]) || 0), 0) });
+      } else if (visible.includes(id)) {
+        const m = MODULES[id];
+        items.push({ key: id, label: m.label, short: m.short, desc: m.desc, icon: id, kids: [id], go: id, isOn: (a) => a === id, count: (c) => c[m.metric] });
+      }
+    });
+    return { stage: st.stage, items };
+  }).filter((st) => st.items.length);
+}
 
 // ── live counts (shared + cached, so five screens do not each re-query) ──────
 const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', lockers: 'study_lockers', exams: 'entrance_exams', modelsets: 'model_sets', setmaker: 'set_maker_items', classmaterial: 'class_materials' };
@@ -108,6 +136,11 @@ const CSS = `
 .lh-pill.on{color:#fff;border-color:#0e203f;background:linear-gradient(180deg,${PX.navy2},${PX.navy});box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 0 ${PX.navyDeep},0 10px 18px -8px rgba(19,42,79,.6)}
 .lh-pill.on svg{color:${PX.goldLt}}
 .lh-pill.on .lh-n{background:rgba(233,217,176,.2);color:${PX.goldLt}}
+.lh-sub{display:flex;gap:6px;margin:12px 24px 0;padding:4px;background:${PX.tint};border-radius:14px;width:fit-content;max-width:calc(100% - 48px);overflow-x:auto;scrollbar-width:none}
+.lh-subb{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border:0;border-radius:11px;background:none;color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
+.lh-subb.on{background:#fff;color:${PX.navy};box-shadow:0 1px 3px rgba(19,42,79,.18)}
+.lh-subb:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
+@media (max-width:640px){.lh-sub{margin:10px 12px 0;max-width:calc(100% - 24px)}}
 @media (min-width:641px){.lh-ribbon{flex-wrap:wrap;overflow-x:visible;row-gap:10px}.lh-stage + .lh-stage{border-left:0}.lh-stage + .lh-stage::before{display:none}.lh-stage{padding:2px 12px 4px 4px}}
 @media (max-width:640px){
   .lh-wrap{padding:10px 12px 0}
@@ -167,13 +200,12 @@ const HOME_CSS = `
 const STAGE_COLOR = { Learn: '#185FA5', Practice: '#a7771f', Test: '#0f766e' };
 const tint = (hex, a = '1F') => `${hex}${a}`;
 
-function HubTile({ id, color, counts, onNavigate }) {
-  const m = MODULES[id];
+function HubTile({ item, color, counts, onNavigate }) {
   return (
-    <button className="lhp-tile" onClick={() => onNavigate(id)}>
-      <span className="lhp-ico" style={{ background: tint(color), color }}><NavIcon id={id} size={24} /></span>
-      <span className="lhp-lbl">{m.label}</span>
-      <span className="lhp-cnt">{m.desc}</span>
+    <button className="lhp-tile" onClick={() => onNavigate(item.go)}>
+      <span className="lhp-ico" style={{ background: tint(color), color }}><NavIcon id={item.icon} size={24} /></span>
+      <span className="lhp-lbl">{item.label}</span>
+      <span className="lhp-cnt">{item.desc}</span>
     </button>
   );
 }
@@ -181,9 +213,9 @@ function HubTile({ id, color, counts, onNavigate }) {
 function HubHome({ visible, counts, onNavigate }) {
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
-  const stages = FLOW.map((st) => ({ ...st, color: STAGE_COLOR[st.stage], ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length);
-  const flat = stages.flatMap((st) => st.ids.map((id) => ({ id, color: st.color, stage: st.stage })));
-  const hits = needle ? flat.filter(({ id, stage }) => `${MODULES[id].label} ${MODULES[id].desc} ${MODULES[id].unit} ${stage}`.toLowerCase().includes(needle)) : null;
+  const stages = buildStages(visible).map((st) => ({ ...st, color: STAGE_COLOR[st.stage] }));
+  const flat = stages.flatMap((st) => st.items.map((item) => ({ item, color: st.color, stage: st.stage })));
+  const hits = needle ? flat.filter(({ item, stage }) => `${item.label} ${item.desc} ${stage} ${item.kids.map((k) => MODULES[k].label).join(' ')}`.toLowerCase().includes(needle)) : null;
   return (
     <div className="lhp">
       <div className="lhp-hero">
@@ -204,18 +236,16 @@ function HubHome({ visible, counts, onNavigate }) {
         <div className="lhp-card">
           <div className="lhp-card-h">{hits.length ? `${hits.length} result${hits.length > 1 ? 's' : ''}` : 'Nothing found'}</div>
           {hits.length
-            ? <div className="lhp-grid">{hits.map((t) => <HubTile key={t.id} id={t.id} color={t.color} counts={counts} onNavigate={onNavigate} />)}</div>
+            ? <div className="lhp-grid">{hits.map((t) => <HubTile key={t.item.key} item={t.item} color={t.color} counts={counts} onNavigate={onNavigate} />)}</div>
             : <div className="lhp-empty">Try “questions”, “exam” or “notes”.</div>}
         </div>
       ) : (
-        <>
-          {stages.map((st) => (
-            <div key={st.stage} className="lhp-card">
-              <div className="lhp-card-h"><i style={{ background: st.color }} />{st.stage}</div>
-              <div className="lhp-grid">{st.ids.map((id) => <HubTile key={id} id={id} color={st.color} counts={counts} onNavigate={onNavigate} />)}</div>
-            </div>
-          ))}
-        </>
+        stages.map((st) => (
+          <div key={st.stage} className="lhp-card">
+            <div className="lhp-card-h"><i style={{ background: st.color }} />{st.stage}</div>
+            <div className="lhp-grid">{st.items.map((item) => <HubTile key={item.key} item={item} color={st.color} counts={counts} onNavigate={onNavigate} />)}</div>
+          </div>
+        ))
       )}
     </div>
   );
@@ -232,14 +262,18 @@ function HubBar({ active, onHome }) {
 }
 
 function HubBottom({ visible, active, onNavigate }) {
+  const items = buildStages(visible).flatMap((st) => st.items);
   return (
-    <nav className="lhp-bottom" style={{ '--n': visible.length }} aria-label="Learning Hub sections">
-      {visible.map((id) => (
-        <button key={id} className={`lhp-nb${active === id ? ' on' : ''}`} onClick={() => onNavigate(id)} aria-current={active === id ? 'page' : undefined}>
-          <span className="lhp-bi"><NavIcon id={id} size={20} /></span>
-          <span>{MODULES[id].short}</span>
-        </button>
-      ))}
+    <nav className="lhp-bottom" style={{ '--n': items.length }} aria-label="Learning Hub sections">
+      {items.map((it) => {
+        const on = it.isOn(active);
+        return (
+          <button key={it.key} className={`lhp-nb${on ? ' on' : ''}`} onClick={() => !on && onNavigate(it.go)} aria-current={on ? 'page' : undefined}>
+            <span className="lhp-bi"><NavIcon id={it.icon} size={20} /></span>
+            <span>{it.short}</span>
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -247,17 +281,17 @@ function HubBottom({ visible, active, onNavigate }) {
 export function LearningRibbon({ active, onNavigate, counts, visible }) {
   return (
     <nav className="lh-ribbon" aria-label="Learning flow">
-      {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => !visible || visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
+      {buildStages(visible || HUB_TABS).map((st) => (
         <div key={st.stage} className="lh-stage">
           <div className="lh-stage-h">{st.stage}</div>
           <div className="lh-pills">
-            {st.ids.map((id) => {
-              const m = MODULES[id];
+            {st.items.map((it) => {
+              const on = it.isOn(active);
               return (
-                <button key={id} className={`lh-pill${active === id ? ' on' : ''}`} onClick={() => active !== id && onNavigate && onNavigate(id)} aria-current={active === id ? 'page' : undefined} title={m.label}>
-                  <NavIcon id={id} size={17} />
-                  <span><span className="lh-label-long">{m.label}</span></span>
-                  <span className="lh-n" title={`${fmt(counts[m.metric])} ${m.unit}`}>{fmt(counts[m.metric])}</span>
+                <button key={it.key} className={`lh-pill${on ? ' on' : ''}`} onClick={() => !on && onNavigate && onNavigate(it.go)} aria-current={on ? 'page' : undefined} title={it.label}>
+                  <NavIcon id={it.icon} size={17} />
+                  <span><span className="lh-label-long">{it.label}</span></span>
+                  <span className="lh-n">{fmt(it.count(counts))}</span>
                 </button>
               );
             })}
@@ -265,6 +299,22 @@ export function LearningRibbon({ active, onNavigate, counts, visible }) {
         </div>
       ))}
     </nav>
+  );
+}
+
+// switcher shown inside the merged Study Library (Notes · Class · Aids · Lockers)
+function SubTabs({ active, visible, onNavigate }) {
+  const g = groupOf(active);
+  const kids = g ? GROUPS[g].ids.filter((k) => visible.includes(k)) : [];
+  if (kids.length < 2) return null;
+  return (
+    <div className="lh-sub" role="tablist" aria-label={GROUPS[g].label}>
+      {kids.map((k) => (
+        <button key={k} role="tab" aria-selected={k === active} className={`lh-subb${k === active ? ' on' : ''}`} onClick={() => k !== active && onNavigate(k)}>
+          <NavIcon id={k} size={16} />{SUB_LABEL[k]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -318,6 +368,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
         </div>
         <div className="lh-desk"><LearningRibbon active={active} onNavigate={onNavigate} counts={counts} visible={visible} /></div>
       </div>
+      {!showHome ? <SubTabs active={active} visible={visible} onNavigate={onNavigate} /> : null}
       {visible.filter((id) => opened.has(id)).map((id) => (
         <div key={id} className="lhp-tabs-pad" style={{ display: !showHome && id === active ? 'block' : 'none' }}>
           <Suspense fallback={<Loading />}>{view(id)}</Suspense>
