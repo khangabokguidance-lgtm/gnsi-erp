@@ -3,6 +3,7 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
+import { qualifyBand } from './mockTestExam';
 import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
 import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
@@ -214,7 +215,8 @@ export function batchReportHTML(b, ctx = {}) {
 
   // leaderboard by average total marks, split into 6 equal groups (leftovers go to the top groups)
   const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
-  const lb = [...b.students].sort((x, y) => y.avgTotal - x.avgTotal || y.avgPct - x.avgPct || x.name.localeCompare(y.name));
+  const sameMax = new Set(b.students.map((s) => s.max)).size <= 1;
+  const lb = [...b.students].sort((x, y) => (sameMax ? y.avgTotal - x.avgTotal : 0) || y.avgPct - x.avgPct || y.avgTotal - x.avgTotal || x.name.localeCompare(y.name));
   const gBase = Math.floor(lb.length / GROUPS), gExtra = lb.length % GROUPS;
   let gPos = 0;
   const groupRows = Array.from({ length: GROUPS }, (_, g) => {
@@ -252,7 +254,7 @@ export function batchReportHTML(b, ctx = {}) {
   ${stamp(inst)}</div>
 
   <div class="page">${letterhead(inst)}
-  <h3 style="margin-top:0">5 · Toppers → lowest by total marks of all subjects (${GROUPS} groups)</h3>
+  <h3 style="margin-top:0">5 · Toppers → lowest by ${sameMax ? 'total marks of all subjects' : 'average % (batches have different maximum totals)'} (${GROUPS} groups)</h3>
   <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg total</th><th>Avg %</th><th>Best total</th></tr></thead><tbody>${groupRows}</tbody></table>
   ${stamp(inst)}</div>
 
@@ -281,6 +283,16 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     series: [{ name: subject, color: col, values: ps.byTest.map((x) => x.avgPct), thick: true }],
   }) : '';
   const dist = hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 });
+  // 6 equal rank groups (students ÷ 6, leftovers to the top groups)
+  const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
+  const gBase = Math.floor(ranked.length / GROUPS), gExtra = ranked.length % GROUPS;
+  const gHead = {};
+  let gPos = 0;
+  for (let g = 0; g < GROUPS; g++) {
+    const size = gBase + (g < gExtra ? 1 : 0);
+    if (size) gHead[gPos] = `<tr><td colspan="${tests.length + 6}" class="l" style="background:${GBG[g]};font-weight:800">Group ${g + 1} of ${GROUPS} · ${size} students · ${g === 0 ? 'top' : g === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>`;
+    gPos += size;
+  }
   const rows = ranked.map((s, i) => {
     const pm = b.passOf ? b.passOf(s.batch) : b.passPct;
     const cell = (t) => {
@@ -290,7 +302,7 @@ export function subjectReportHTML(b, subject, ctx = {}) {
       return `<td${low ? ' style="color:#b91c1c;font-weight:700"' : ''}>${fx(v, 2)}</td>`;
     };
     const ok = s.sub[subject] >= pm;
-    return `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
+    return `${gHead[i] || ''}<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
     ${tests.map(cell).join('')}
     <td style="font-weight:700;color:${pctColor(s.sub[subject], pm)}">${fx(s.sub[subject])}%</td><td>${pill(ok ? 'Pass' : 'Fail', ok ? '#047857' : '#b91c1c')}</td><td>${pill(strengthLabel(s.sub[subject], pm).label, strengthLabel(s.sub[subject], pm).color)}</td></tr>`;
   }).join('');
@@ -306,9 +318,51 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     ${kpi('Full marks', ps.full, 'scores')}
   </div>
   <div class="grid2 avoid"><div class="box">${trendChart || '<i>Only one test — no trend yet.</i>'}</div><div class="box"><b>Score distribution</b> (no. of results)${dist}</div></div>
-  <h3>Student-wise marks in ${esc(subject)}</h3>
+  <h3>Student-wise marks in ${esc(subject)} — toppers → lowest (${GROUPS} groups)</h3>
   <div style="font-size:11px;color:#5d6b82;margin:-4px 0 6px">Result = subject average against the ${b.passMixed ? 'pass mark of the student\'s batch' : `${b.passPct}% pass mark`}; marks in red are below it.</div>
   <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Result</th><th>Band</th></tr></thead><tbody>${rows}</tbody></table>
   ${stamp(inst)}</div>`;
 }
 
+
+
+// Navodaya / Sainik insights: qualify chance, seat prediction, sections, Pre vs Mega.
+export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp, secs, probOf, cmp, preLabel, megaLabel }) {
+  const selIds = new Set(sp.selected.map((s) => s.sid));
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
+  const stuRows = sp.sorted.map((s, i) => {
+    const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+    const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
+    return `<tr${sp.bubble.includes(s) ? ' style="background:#fffbeb"' : ''}><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
+      <td>${fx(s.avgPct)}%</td><td><b>${fx(s.projected)}%</b></td><td style="color:${tone(s.trend, 1)}">${s.tests >= 2 ? sgn(s.trend) : '—'}</td>
+      <td style="font-weight:700;color:${band.color}">${fx(p * 100, 0)}%</td><td>${pill(band.label, band.color)}</td><td>${pill(seat[0], seat[1])}</td></tr>`;
+  }).join('');
+  const secRows = secs.map((x) => `<tr><td class="l"><b>${esc(x.subject)}</b></td><td>${esc(x.section || '—')}</td><td>${fx(x.avg)}%</td><td>${fx(x.selAvg)}%</td><td>${fx(x.restAvg)}%</td>
+    <td style="font-weight:700">${x.gap === null ? '—' : sgn(x.gap)}</td><td>${x.weakFor}</td>${cfg.sectionMin ? `<td class="l" style="color:${x.belowMin.length ? '#b91c1c' : '#047857'}">${x.belowMin.length ? esc(x.belowMin.join(', ')) : 'None'}</td>` : ''}</tr>`).join('');
+  const cmpRows = cmp ? cmp.pairs.map((x) => `<tr><td class="l">${esc(x.name)}</td><td class="l">${esc(x.batch)}</td><td>${fx(x.pre)}%</td><td>${fx(x.mega)}%</td>
+    <td style="font-weight:700;color:${tone(x.delta, 1)}">${sgn(x.delta)}</td><td>${x.rankPre}</td><td>${x.rankMega}</td><td style="color:${tone(x.move)}">${x.move > 0 ? '▲ ' + x.move : x.move < 0 ? '▼ ' + -x.move : '='}</td></tr>`).join('') : '';
+  return `<div class="page">${letterhead(inst)}
+  <div class="title">${esc(exam.label)} — Mock Test Insights</div>
+  <div class="sub">${esc(series || '')} · cut-off ${Number(cfg.cutoff) || 0}% · ${Number(cfg.seats) || 0} target selections${Number(cfg.sectionMin) ? ` · sectional minimum ${Number(cfg.sectionMin)}%` : ''}</div>
+  <div class="kpis">
+    ${kpi('Students', pool.length)}
+    ${kpi('Above cut-off', pool.length - sp.below.length, `${sp.below.length} below`, '#047857')}
+    ${kpi('Projected selections', `${sp.selected.length}/${Number(cfg.seats) || 0}`, sp.waiting.length ? `${sp.waiting.length} waiting` : '')}
+    ${kpi('Safe', safe, '', '#047857')}
+    ${kpi('At risk', risk, '', '#b91c1c')}
+    ${kpi('Seat-line margin', sp.margin === null ? '—' : fx(sp.margin) + ' pts', sp.lastIn ? esc(sp.lastIn.name) : '')}
+  </div>
+  <h3>1 · Qualify probability &amp; seat prediction</h3>
+  <div style="font-size:10px;color:#5d6b82;margin:-4px 0 5px">Projection = recent 3-test average plus half the trend. Shaded rows are within 5 points of the seat line.</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg</th><th>Projected</th><th>Trend</th><th>Chance</th><th>Status</th><th>Seat</th></tr></thead><tbody>${stuRows}</tbody></table>
+  ${stamp(inst)}</div>
+
+  <div class="page">${letterhead(inst)}
+  <h3 style="margin-top:0">2 · Section-wise analysis</h3>
+  <table><thead><tr><th class="l">Subject</th><th>Section</th><th>Avg</th><th>Selected group</th><th>Rest</th><th>Gap</th><th>Weakest for</th>${cfg.sectionMin ? `<th class="l">Below ${cfg.sectionMin}%</th>` : ''}</tr></thead><tbody>${secRows}</tbody></table>
+  ${cmp ? `<h3>3 · Pre Mock vs Mega Mock</h3>
+  <div style="font-size:10px;color:#5d6b82;margin-bottom:5px">${esc(preLabel)} → ${esc(megaLabel)} · ${cmp.matched} matched · average change ${sgn(cmp.avgDelta)} pts · ${cmp.improved} improved · ${cmp.declined} declined</div>
+  <table><thead><tr><th class="l">Student</th><th class="l">Batch</th><th>Pre</th><th>Mega</th><th>Change</th><th>Pre rank</th><th>Mega rank</th><th>Move</th></tr></thead><tbody>${cmpRows}</tbody></table>` : ''}
+  ${stamp(inst)}</div>`;
+}

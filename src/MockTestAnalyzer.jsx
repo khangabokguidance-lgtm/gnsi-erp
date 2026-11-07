@@ -13,9 +13,11 @@ import {
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
-import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
+import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML } from './lib/mockTestReports';
+import { COURSES, OTHER_COURSE, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
+import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule, loadExamConfig, saveExamConfig } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
@@ -50,6 +52,7 @@ const SUBTABS = [
   { id: 'subject', color: '#b45309', icon: 'subject', label: 'Subject Analysis' },
   { id: 'batch', color: '#047857', icon: 'batch', label: 'Batch / Test Report' },
   { id: 'groups', color: '#be185d', icon: 'groups', label: 'Self-Study Groups' },
+  { id: 'exam', color: '#9a3412', icon: 'batch', label: 'Navodaya / Sainik Insights' },
   { id: 'revision', color: '#0369a1', icon: 'subject', label: 'Revision Plan' },
   { id: 'data', color: '#6d28d9', icon: 'data', label: 'Upload & Data' },
 ];
@@ -162,10 +165,16 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   // Upload & Data tab keeps working on the full records.
   const [filter, setFilter] = useState(emptyFilter);
   const filterOn = isFilterActive(filter);
-  const rows = useMemo(() => applyDataFilter(resolved, filter), [resolved, filter]);
-  const metaAll = useMemo(() => seriesMeta(resolved), [resolved]);
+  // Course switcher (Sainik / Navodaya / Foundation): scopes every analysis tab.
+  const [course, setCourse] = useState('');
+  const counts = useMemo(() => courseCounts(resolved), [resolved]);
+  const scoped = useMemo(() => filterByCourse(resolved, course), [resolved, course]);
+  const rows = useMemo(() => applyDataFilter(scoped, filter), [scoped, filter]);
+  const metaAll = useMemo(() => seriesMeta(scoped), [scoped]);
+  const metaFull = useMemo(() => seriesMeta(resolved), [resolved]);
   const meta = useMemo(() => seriesMeta(rows), [rows]);
   const changeSeries = useCallback((s) => { setSeries(s); setFilter(emptyFilter()); }, []);
+  const changeCourse = useCallback((c) => { setCourse(c); setFilter(emptyFilter()); }, []);
   // Remount the analysis views when the available batches / tests / subjects change,
   // so a stale dropdown selection can never point at data the filter removed.
   const viewKey = `${meta.batches.join('|')}#${meta.tests.join('|')}#${meta.subjects.join('|')}`;
@@ -186,7 +195,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         </Field>
       ))}
       <div style={{ fontSize: 12, color: '#5d6b82', paddingBottom: 8 }}>
-        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${resolved.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
+        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${scoped.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
         {' · '}<b style={{ color: mode === 'cloud' ? '#047857' : '#b45309' }}>{mode === 'cloud' ? 'Saved to database' : 'Saved in this browser only'}</b>
       </div>
     </div>
@@ -200,7 +209,20 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
-      {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
+      {resolved.length ? (
+        <div className="mta-courses" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+          {[{ id: '', label: 'All courses', icon: '📚', color: NAVY, hint: 'Sainik + Navodaya + Foundation' }, ...COURSES, ...(counts.other ? [OTHER_COURSE] : [])].map((c) => {
+            const on = course === c.id;
+            return (
+              <button key={c.id || 'all'} onClick={() => changeCourse(c.id)} style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', borderRadius: 14, border: `2px solid ${on ? c.color : '#e8e3d8'}`, background: on ? c.color : '#fff', color: on ? '#fff' : '#0f1b2e', boxShadow: on ? `0 4px 12px ${c.color}44` : '0 2px 8px rgba(19,42,79,.05)' }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{c.icon} {c.label}</div>
+                <div style={{ fontSize: 11.5, opacity: .85 }}>{counts[c.id] ?? 0} students · {c.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {scoped.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={scoped} shown={rows.length} total={scoped.length} /> : null}
       <div className="mta-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 12px', padding: '2px 0 6px' }}>
         {SUBTABS.map((t) => (
           <button key={t.id} className="mta-tab" onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 1 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
@@ -211,8 +233,8 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
           <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
             <div style={{ fontSize: 34 }}>🔎</div>
             <div style={{ fontWeight: 700, margin: '6px 0' }}>No results match the current filter</div>
-            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{describeFilter(filter)}</div>
-            <button style={ui.btn} onClick={() => setFilter(emptyFilter())}>Clear filter</button>
+            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{[course ? `Course: ${[...COURSES, OTHER_COURSE].find((c) => c.id === course)?.label}` : '', filterOn ? describeFilter(filter) : ''].filter(Boolean).join(' · ')}</div>
+            <button style={ui.btn} onClick={() => { setFilter(emptyFilter()); setCourse(''); }}>Clear filter &amp; course</button>
           </div>
         ) : (
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
@@ -228,14 +250,185 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'groups' ? <GroupsView key={`${series}|${viewKey}`} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
+      {rows.length && tab === 'exam' ? <ExamInsights key={`${series}|${viewKey}`} rows={rows} series={series} seriesLabel={seriesLabel} scope={scope} institute={institute} who={who} canEdit={canUpload} otherNames={[...new Set(allRows.map((r) => r.series))].filter((n) => !inScope(n, scope)).sort()} loadOther={(n) => resolveIdentities(applyFixes(allRows.filter((r) => r.series === n), fixes.filter((f) => !f.series || f.series === n)))} /> : null}
       {tab === 'revision' ? <MockRevisionPlan key={`${series}|${viewKey}`} rows={rows} series={seriesLabel} passPct={passPct} institute={institute} /> : null}
       {tab === 'data' ? (
-        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
+        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaFull} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
   );
 }
+
+
+// ─── Navodaya / Sainik insights ───────────────────────────────────────────────
+function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames, loadOther, who, canEdit }) {
+  // Cut-offs, seats and batch→exam choices are stored per series in the database
+  // (mock_test_settings.exam_config) so every teacher and device sees the same targets.
+  const [conf, setConf] = useState({});
+  const [ready, setReady] = useState(false);
+  const [saveMode, setSaveMode] = useState('cloud');
+  const [saveErr, setSaveErr] = useState('');
+  const timer = useRef(null);
+  const confRef = useRef({});
+  useEffect(() => {
+    let live = true;
+    loadExamConfig(series).then((r) => { if (live) { confRef.current = r.config; setConf(r.config); setSaveMode(r.mode); } })
+      .catch((e) => { if (live) setSaveErr(`Could not load saved targets: ${e.message || e}`); })
+      .finally(() => { if (live) setReady(true); });
+    return () => { live = false; clearTimeout(timer.current); };
+  }, [series]);
+  const persist = (next) => {
+    confRef.current = next; setConf(next); setSaveErr('');
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      saveExamConfig(series, confRef.current, saveMode, who || '').catch((e) => setSaveErr(`Could not save targets: ${e.message || e}`));
+    }, 500);
+  };
+  const getCfg = (ex) => {
+    const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(conf[ex] || {}) };
+    return { cutoff: Math.min(100, Math.max(0, Number(raw.cutoff) || 0)), seats: Math.max(0, Math.floor(Number(raw.seats) || 0)), sectionMin: Math.min(100, Math.max(0, Number(raw.sectionMin) || 0)) };
+  };
+  const setCfg = (ex, patch) => persist({ ...conf, [ex]: { ...getCfg(ex), ...patch } });
+  const override = conf.override || EMPTY_OBJ;
+  const setOv = (batch, v) => {
+    const n = { ...override, [batch]: v };
+    if (!v) delete n[batch];
+    persist({ ...conf, override: n });
+  };
+  const batches = useMemo(() => [...new Set(rows.map((r) => r.batch))].sort(), [rows]);
+  const students = useMemo(() => examStudents(rows, override), [rows, override]);
+  const present = EXAM_IDS.filter((ex) => students.some((s) => s.exam === ex));
+  const [exam, setExam] = useState('');
+  const active = present.includes(exam) ? exam : present[0] || '';
+  const [otherSeries, setOtherSeries] = useState('');
+  const otherStudents = useMemo(() => (otherSeries ? examStudents(loadOther(otherSeries), override) : []), [otherSeries, override]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mapper = (
+    <div style={ui.card}>
+      <h4 style={{ margin: '0 0 6px' }}>Which batch prepares for which exam?</h4>
+      <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Detected from the batch name (“Navodaya…” / “Sainik…”). Change any batch below if it was detected wrongly.</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {batches.map((b) => (
+          <Field key={b} label={b}>
+            <select style={ui.input} disabled={!canEdit} value={override[b] || ''} onChange={(e) => setOv(b, e.target.value)}>
+              <option value="">Auto ({EXAMS[examOfBatch(b)]?.short || 'none'})</option>
+              {EXAM_IDS.map((ex) => <option key={ex} value={ex}>{EXAMS[ex].short}</option>)}
+              <option value="none">Not applicable</option>
+            </select>
+          </Field>
+        ))}
+      </div>
+    </div>
+  );
+  if (!ready) return <div style={{ padding: 30, textAlign: 'center', color: '#8a93a6' }}>⏳ Loading saved targets…</div>;
+  if (!active) return <>{mapper}<div style={{ ...ui.card, textAlign: 'center', padding: 30, color: '#5d6b82' }}>No batch is mapped to Navodaya or Sainik yet. Pick the exam for a batch above.</div></>;
+
+  const ex = active, E = EXAMS[ex], cfg = getCfg(ex);
+  const pool = students.filter((s) => s.exam === ex);
+  const sp = seatPrediction(pool, { seats: cfg.seats, cutoff: cfg.cutoff });
+  const secs = sectionAnalysis(pool, ex, sp.selected.map((s) => s.sid), cfg.sectionMin);
+  const probOf = new Map(pool.map((s) => [s.sid, qualifyProbability(s, cfg.cutoff)]));
+  const selIds = new Set(sp.selected.map((s) => s.sid));
+  const cmp = otherSeries ? compareSeries(
+    (mega_(scope) ? otherStudents : pool).filter((x) => x.exam === ex),
+    (mega_(scope) ? pool : otherStudents).filter((x) => x.exam === ex),
+  ) : null;
+  const num = (k) => (e) => setCfg(ex, { [k]: Math.max(0, Number(e.target.value) || 0) });
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
+
+  const print = () => printDocument(examInsightsHTML({
+    exam: E, cfg, series: seriesLabel, institute, pool, sp, secs, probOf, cmp, preLabel: mega_(scope) ? otherSeries : series, megaLabel: mega_(scope) ? series : otherSeries,
+  }), `${seriesLabel} — ${E.short} insights`, institute);
+
+  return (
+    <>
+      {saveErr ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {saveErr}</div> : null}
+      {mapper}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {present.map((id) => <button key={id} style={chip(id === ex)} onClick={() => setExam(id)}>{EXAMS[id].label} · {students.filter((s) => s.exam === id).length}</button>)}
+      </div>
+      <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <Field label="Cut-off (projected %)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.cutoff} onChange={num('cutoff')} /></Field>
+        <Field label="Seats / target selections"><input type="number" min={0} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.seats} onChange={num('seats')} /></Field>
+        <Field label="Sectional minimum (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.sectionMin} onChange={num('sectionMin')} /></Field>
+        <div style={{ fontSize: 12, color: '#5d6b82', flex: '1 1 240px' }}>{canEdit ? 'Set these to the targets for this year.' : 'Only users who can upload results can change these targets.'} Projection = recent 3-test average plus half the trend; probability uses the student&apos;s score consistency. Saved to the database for this series{saveMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'}.</div>
+        <button style={ui.btn} onClick={print}>🖨️ Print {E.short} insights</button>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Stat label="Students" value={pool.length} sub={E.label} color={E.color} />
+        <Stat label="Above cut-off" value={pool.length - sp.below.length} sub={`${sp.below.length} below`} color="#047857" />
+        <Stat label="Projected selections" value={`${sp.selected.length}/${cfg.seats}`} sub={sp.waiting.length ? `${sp.waiting.length} waiting list` : 'no waiting list'} color={NAVY} />
+        <Stat label="Safe / At risk" value={`${safe} / ${risk}`} sub="by qualify chance" color="#b45309" />
+        <Stat label="Seat-line margin" value={sp.margin === null ? '—' : `${fx(sp.margin)} pts`} sub={sp.lastIn ? `last in: ${sp.lastIn.name}` : ''} color="#be123c" />
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🎯 Qualify probability &amp; seat prediction</h4>
+        <Table maxH={520} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg %', 'Projected %', 'Trend', 'Qualify chance', 'Status', 'Seat']}>
+          {sp.sorted.map((s, i) => {
+            const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+            const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
+            return (
+              <tr key={s.sid} style={sp.bubble.includes(s) ? { background: '#fffbeb' } : undefined}>
+                <td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
+                <td style={ui.td}>{fx(s.avgPct)}%</td><td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.projected)}%</td><td style={{ ...ui.td, color: tone(s.trend, 1) }}>{s.tests >= 2 ? sgn(s.trend) : '—'}</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: band.color }}>{fx(p * 100, 0)}%{s.tests < MIN_TESTS_SAFE ? <span title={`Fewer than ${MIN_TESTS_SAFE} tests — low confidence, cannot be marked Safe`}> ⚠</span> : null}</td>
+                <td style={ui.td}><Pill text={band.label} color={band.color} /></td><td style={ui.td}><Pill text={seat[0]} color={seat[1]} /></td>
+              </tr>
+            );
+          })}
+        </Table>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Shaded rows are within 5 points of the seat line — the students where extra coaching changes the result.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🧩 Section-wise analysis</h4>
+        <Table head={['Subject', 'Section', 'Avg %', 'Selected group', 'Rest', 'Gap', 'Weakest for', ...(cfg.sectionMin ? [`Below ${cfg.sectionMin}%`] : [])]}>
+          {secs.map((x) => (
+            <tr key={x.subject}>
+              <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>{x.subject}</td><td style={ui.td}>{x.section || '—'}</td>
+              <td style={{ ...ui.td, background: heatBg(x.avg) }}>{fx(x.avg)}%</td><td style={ui.td}>{fx(x.selAvg)}%</td><td style={ui.td}>{fx(x.restAvg)}%</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: tone(-(x.gap || 0), 5) }}>{x.gap === null ? '—' : sgn(x.gap)}</td><td style={ui.td}>{x.weakFor} students</td>
+              {cfg.sectionMin ? <td style={{ ...ui.td, color: x.belowMin.length ? '#b91c1c' : '#047857', fontWeight: 700, whiteSpace: 'normal' }}>{x.belowMin.length ? `${x.belowMin.length}: ${x.belowMin.slice(0, 4).join(', ')}${x.belowMin.length > 4 ? '…' : ''}` : 'None'}</td> : null}
+            </tr>
+          ))}
+        </Table>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>“Gap” = how far the projected-selected group leads the rest; the biggest gaps are the subjects that decide selection. Sectional minimum flags students who could be rejected despite a good total.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🔁 {mega_(scope) ? 'Pre Mock vs Mega Mock' : 'Pre Mock vs Mega Mock'} comparison</h4>
+        <Field label={mega_(scope) ? 'Compare with Pre Mock series' : 'Compare with Mega Mock series'}>
+          <select style={ui.input} value={otherSeries} onChange={(e) => setOtherSeries(e.target.value)}>
+            <option value="">— choose —</option>
+            {otherNames.map((n) => <option key={n}>{n}</option>)}
+          </select>
+        </Field>
+        {!otherNames.length ? <div style={{ fontSize: 13, color: '#5d6b82', marginTop: 8 }}>No {mega_(scope) ? 'Pre Mock' : 'Mega Mock'} results uploaded yet.</div> : null}
+        {cmp ? (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <Stat label="Matched students" value={cmp.matched} sub={cmp.preOnly ? `${cmp.preOnly} only in Pre` : ''} color={NAVY} />
+              <Stat label="Avg change" value={`${sgn(cmp.avgDelta)} pts`} sub="Mega − Pre" color={tone(cmp.avgDelta) === '#4b5870' ? NAVY : tone(cmp.avgDelta)} />
+              <Stat label="Improved" value={cmp.improved} color="#047857" />
+              <Stat label="Declined" value={cmp.declined} color="#b91c1c" />
+            </div>
+            <Table maxH={420} head={['Student', 'Batch', 'Pre %', 'Mega %', 'Change', 'Pre rank', 'Mega rank', 'Rank move']}>
+              {cmp.pairs.map((x, i) => (
+                <tr key={i}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{x.name}</td><td style={ui.td}>{x.batch}</td><td style={ui.td}>{fx(x.pre)}%</td><td style={ui.td}>{fx(x.mega)}%</td>
+                  <td style={{ ...ui.td, fontWeight: 700, color: tone(x.delta, 1) }}>{sgn(x.delta)}</td><td style={ui.td}>{x.rankPre}</td><td style={ui.td}>{x.rankMega}</td>
+                  <td style={{ ...ui.td, fontWeight: 700, color: tone(x.move) }}>{x.move > 0 ? `▲ ${x.move}` : x.move < 0 ? `▼ ${-x.move}` : '='}</td></tr>
+              ))}
+            </Table>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+const mega_ = (scope) => scope === 'mega';
 
 // ─── Data filter ──────────────────────────────────────────────────────────────
 const chip = (on) => ({ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? NAVY : '#d9d2c2'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : '#2e3b52' });
@@ -356,7 +549,9 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
-  const leaderboard = useMemo(() => [...all.students].sort((a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)), [all]);
+  // Raw totals are only comparable when every student's paper has the same maximum; otherwise rank by average %.
+  const sameMax = useMemo(() => new Set(all.students.map((s) => s.max)).size <= 1, [all]);
+  const leaderboard = useMemo(() => [...all.students].sort((a, b) => (sameMax ? b.avgTotal - a.avgTotal : 0) || b.avgPct - a.avgPct || b.avgTotal - a.avgTotal || a.name.localeCompare(b.name)), [all, sameMax]);
   // split the ranked list into 6 groups of (total students ÷ 6); leftovers go to the top groups
   const GROUPS = 6;
   const { groupOf, groupStart, groupSize } = useMemo(() => {
@@ -395,7 +590,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
-        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Ranked by average total marks across all tests ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>{sameMax ? 'Ranked by average total marks across all tests' : 'Batches have different maximum totals, so students are ranked by average % (total marks shown alongside)'} ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
         <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
           {leaderboard.map((s, i) => (
             <Fragment key={s.sid}>
