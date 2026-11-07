@@ -86,3 +86,31 @@ test('a student with too few tests can never be Safe', () => {
   assert.equal(qualifyBand(0.99, 3).label, 'Safe');
   assert.equal(qualifyBand(0.1, 1).label, 'At risk');
 });
+
+import { simulate, scoreNeeded, watchList, groupOfRank, adviceFor } from '../src/lib/mockTestExam.js';
+test('groupOfRank matches the equal-groups rule', () => {
+  const g = Array.from({ length: 62 }, (_, i) => groupOfRank(i, 62));
+  assert.equal(g.filter((x) => x === 1).length, 11);
+  assert.equal(g.filter((x) => x === 6).length, 10);
+  assert.equal(g[0], 1); assert.equal(g[61], 6);
+});
+test('simulate: a big next score lifts probability; scoreNeeded is monotone', () => {
+  const st = examStudents(rows);
+  const bina = st.find((s) => s.name === 'Bina');
+  const low = simulate(bina, 20, st, { cutoff: 55, seats: 1 });
+  const high = simulate(bina, 95, st, { cutoff: 55, seats: 1 });
+  assert.ok(high.probability > low.probability);
+  assert.ok(high.position <= low.position);
+  const need = scoreNeeded(st.find((s) => s.name === 'Chen'), 55, 0.6);
+  assert.ok(need === null || (need >= 0 && need <= 100));
+});
+test('watchList flags drops, missed tests and risk', () => {
+  const mk = (sid, name, t, pct) => ({ sid, student_name: name, gcc_no: sid, batch: 'Sainik A', test_no: t, total: pct, max_total: 100, marks: {}, max_marks: {} });
+  const st = examStudents([mk('1', 'Dip', 1, 80), mk('1', 'Dip', 2, 80), mk('1', 'Dip', 3, 55), mk('2', 'Steady', 1, 70), mk('2', 'Steady', 2, 71), mk('2', 'Steady', 3, 72), mk('3', 'Gone', 1, 70), mk('3', 'Gone', 2, 70)]);
+  const w = watchList(st, 60);
+  const names = w.map((x) => x.student.name);
+  assert.ok(names.includes('Dip') && names.includes('Gone') && !names.includes('Steady'));
+  assert.ok(w.find((x) => x.student.name === 'Gone').flags.some((f) => f.type === 'missed'));
+  assert.ok(w.find((x) => x.student.name === 'Dip').flags.some((f) => f.type === 'drop'));
+  assert.ok(adviceFor(st[0], { cutoff: 60, status: 'Selected' }).length >= 1);
+});

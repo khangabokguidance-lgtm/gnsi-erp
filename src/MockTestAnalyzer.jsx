@@ -13,9 +13,9 @@ import {
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
-import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML } from './lib/mockTestReports';
+import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML, parentReportsHTML, watchListHTML } from './lib/mockTestReports';
 import { COURSES, OTHER_COURSE, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
-import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
+import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, simulate, scoreNeeded, watchList, groupOfRank, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule, loadExamConfig, saveExamConfig } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
@@ -302,6 +302,9 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
   const [exam, setExam] = useState('');
   const active = present.includes(exam) ? exam : present[0] || '';
   const [otherSeries, setOtherSeries] = useState('');
+  const [simSid, setSimSid] = useState('');
+  const [simPct, setSimPct] = useState(70);
+  const [parentSid, setParentSid] = useState('');
   const otherStudents = useMemo(() => (otherSeries ? examStudents(loadOther(otherSeries), override) : []), [otherSeries, override]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mapper = (
@@ -334,6 +337,25 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
     (mega_(scope) ? otherStudents : pool).filter((x) => x.exam === ex),
     (mega_(scope) ? pool : otherStudents).filter((x) => x.exam === ex),
   ) : null;
+  const watch = watchList(pool, cfg.cutoff);
+  const simStudent = pool.find((x) => x.sid === simSid) || pool[0];
+  const sim = simStudent ? simulate(simStudent, simPct, pool, { cutoff: cfg.cutoff, seats: cfg.seats }) : null;
+  const simBefore = simStudent ? { probability: probOf.get(simStudent.sid), position: sp.sorted.findIndex((x) => x.sid === simStudent.sid) + 1, status: selIds.has(simStudent.sid) ? 'Selected' : sp.waiting.includes(simStudent) ? 'Waiting' : 'Below cut-off' } : null;
+  const need = simStudent ? scoreNeeded(simStudent, cfg.cutoff) : null;
+  const printParents = (list) => printDocument(parentReportsHTML({ exam: E, cfg, series: seriesLabel, institute, sp, probOf, students: list }), `${seriesLabel} — ${E.short} parent reports`, institute);
+  const printWatch = () => printDocument(watchListHTML({ exam: E, series: seriesLabel, institute, items: watch }), `${seriesLabel} — ${E.short} watch-list`, institute);
+  const exportXlsx = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const add = (name, data) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No data' }]), name);
+    const lb = [...pool].sort((a, b) => b.avgTotal - a.avgTotal);
+    add('Qualify & seats', sp.sorted.map((x, i) => ({ '#': i + 1, Group: groupOfRank(i, sp.sorted.length), Student: x.name, GCC: x.gcc, Batch: x.batch, Tests: x.tests, 'Avg %': r1(x.avgPct), 'Projected %': r1(x.projected), 'Trend / test': r1(x.trend), 'Qualify chance %': r1(probOf.get(x.sid) * 100), Band: qualifyBand(probOf.get(x.sid), x.tests).label, Seat: selIds.has(x.sid) ? 'Selected' : sp.waiting.includes(x) ? 'Waiting' : 'Below cut-off' })));
+    add('Leaderboard (6 groups)', lb.map((x, i) => ({ '#': i + 1, Group: groupOfRank(i, lb.length), Student: x.name, GCC: x.gcc, Batch: x.batch, 'Avg %': r1(x.avgPct), 'Avg total': r1(x.avgTotal) })));
+    add('Sections', secs.map((x) => ({ Subject: x.subject, Section: x.section, 'Avg %': r1(x.avg), 'Selected group %': r1(x.selAvg), 'Rest %': r1(x.restAvg), Gap: r1(x.gap), 'Weakest for': x.weakFor, [`Below ${cfg.sectionMin}%`]: x.belowMin.join(', ') })));
+    add('Watch-list', watch.map((w, i) => ({ '#': i + 1, Student: w.student.name, GCC: w.student.gcc, Batch: w.student.batch, 'Avg %': r1(w.student.avgPct), Why: w.flags.map((f) => f.text).join(' | ') })));
+    if (cmp) add('Pre vs Mega', cmp.pairs.map((x) => ({ Student: x.name, Batch: x.batch, 'Pre %': r1(x.pre), 'Mega %': r1(x.mega), Change: r1(x.delta), 'Pre rank': x.rankPre, 'Mega rank': x.rankMega, 'Rank move': x.move })));
+    XLSX.writeFile(wb, `${seriesLabel} - ${E.short} insights.xlsx`.replace(/[\\/:*?"<>|]/g, '-'));
+  };
   const num = (k) => (e) => setCfg(ex, { [k]: Math.max(0, Number(e.target.value) || 0) });
   const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
   const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
@@ -355,6 +377,7 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
         <Field label="Sectional minimum (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.sectionMin} onChange={num('sectionMin')} /></Field>
         <div style={{ fontSize: 12, color: '#5d6b82', flex: '1 1 240px' }}>{canEdit ? 'Set these to the targets for this year.' : 'Only users who can upload results can change these targets.'} Projection = recent 3-test average plus half the trend; probability uses the student&apos;s score consistency. Saved to the database for this series{saveMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'}.</div>
         <button style={ui.btn} onClick={print}>🖨️ Print {E.short} insights</button>
+        <button style={ui.ghost} onClick={exportXlsx}>⬇️ Excel (all sheets)</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Students" value={pool.length} sub={E.label} color={E.color} />
@@ -396,6 +419,51 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
           ))}
         </Table>
         <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>“Gap” = how far the projected-selected group leads the rest; the biggest gaps are the subjects that decide selection. Sectional minimum flags students who could be rejected despite a good total.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🧪 What-if simulator</h4>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+          <Field label="Student"><select style={ui.input} value={simStudent?.sid || ''} onChange={(e) => setSimSid(e.target.value)}>{sp.sorted.map((x) => <option key={x.sid} value={x.sid}>{x.name} · {x.batch}</option>)}</select></Field>
+          <Field label={`Next test score: ${simPct}%`}><input type="range" min={0} max={100} value={simPct} onChange={(e) => setSimPct(Number(e.target.value))} style={{ width: 220 }} /></Field>
+        </div>
+        {sim && simBefore ? (
+          <>
+            <Table head={['', 'Qualify chance', 'Projected %', 'Position', 'Seat']}>
+              <tr><td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>Now</td><td style={ui.td}>{fx(simBefore.probability * 100, 0)}%</td><td style={ui.td}>{fx(simStudent.projected)}%</td><td style={ui.td}>{simBefore.position}</td><td style={ui.td}>{simBefore.status}</td></tr>
+              <tr><td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>If next test = {simPct}%</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: tone(sim.probability - simBefore.probability, 0.005) }}>{fx(sim.probability * 100, 0)}%</td><td style={ui.td}>{fx(sim.projected)}%</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: tone(simBefore.position - sim.position) }}>{sim.position}</td><td style={ui.td}>{sim.status}</td></tr>
+            </Table>
+            <div style={{ fontSize: 13, marginTop: 8 }}>🎯 {need === null ? (simStudent.tests + 1 < MIN_TESTS_SAFE ? 'Needs at least 3 tests in total before a “Safe” rating is possible.' : 'Even a perfect next test will not make this student “Safe” — several strong tests are needed.') : <>Score at least <b>{need}%</b> in the next test to reach a “Safe” qualify chance.</>}</div>
+          </>
+        ) : null}
+      </div>
+
+      <div style={ui.card}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, flex: 1 }}>🚨 Watch-list — {watch.length} students need attention</h4>
+          <button style={ui.ghost} disabled={!watch.length} onClick={printWatch}>🖨️ Print watch-list</button>
+        </div>
+        {watch.length ? (
+          <Table maxH={380} head={['Student', 'Batch', 'Avg %', 'Why']}>
+            {watch.map((w) => (
+              <tr key={w.student.sid}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{w.student.name}</td><td style={ui.td}>{w.student.batch}</td><td style={ui.td}>{fx(w.student.avgPct)}%</td>
+                <td style={{ ...ui.td, textAlign: 'left', whiteSpace: 'normal' }}>{w.flags.map((f, k) => <div key={k} style={{ color: f.severity >= 3 ? '#b91c1c' : f.severity === 2 ? '#b45309' : '#64748b' }}>• {f.text}</div>)}</td></tr>
+            ))}
+          </Table>
+        ) : <i style={{ color: '#5d6b82' }}>No student is flagged right now.</i>}
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Flags: sharp drop in the latest test, falling trend, missed tests, “At risk” qualify chance, too few tests.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>👨‍👩‍👧 Parent / student progress reports</h4>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Field label="One student"><select style={ui.input} value={parentSid} onChange={(e) => setParentSid(e.target.value)}><option value="">— choose —</option>{sp.sorted.map((x) => <option key={x.sid} value={x.sid}>{x.name} · {x.batch}</option>)}</select></Field>
+          <button style={ui.btn} disabled={!parentSid} onClick={() => printParents(pool.filter((x) => x.sid === parentSid))}>🖨️ Print this report</button>
+          <button style={ui.ghost} onClick={() => printParents(sp.sorted)}>🖨️ Print all {pool.length} (one page each)</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>One A4 page per student: score by test, subject strengths, class position and group, chance of selection and the mentor&apos;s advice, with signature lines.</div>
       </div>
 
       <div style={ui.card}>

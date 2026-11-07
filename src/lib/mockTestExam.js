@@ -38,6 +38,13 @@ export function normCdf(z) {
   return 0.5 * (1 + (z < 0 ? -y : y));
 }
 
+// Score statistics from a student's per-test percentages (shared by real data and the what-if simulator).
+export function statsFromPcts(pcts, testNos) {
+  const recent = mean(pcts.slice(-3));
+  const trend = pcts.length >= 2 ? slope(pcts, testNos) : 0;
+  return { avgPct: mean(pcts), recent, trend, spread: sd(pcts), projected: pcts.length ? clamp(recent + 0.5 * trend) : null };
+}
+
 // One record per student: score history, projection and subject averages.
 export function examStudents(rows, override = {}) {
   const by = new Map();
@@ -53,14 +60,12 @@ export function examStudents(rows, override = {}) {
       const v = rs.map((r) => { const m = num(r.max_marks?.[s]), x = num(r.marks?.[s]); return m && x !== null ? (x / m) * 100 : null; }).filter((x) => x !== null);
       if (v.length) sub[s] = mean(v);
     });
-    const recent = mean(pcts.slice(-3));
-    const trend = pcts.length >= 2 ? slope(pcts, withPct.map((r) => r.test_no)) : 0;
+    const testNos = withPct.map((r) => r.test_no);
+    const st = statsFromPcts(pcts, testNos);
     return {
       sid, name: cleanName([...rs].map((r) => r.student_name).sort((a, b) => b.length - a.length)[0]),
       gcc: gccDigits(last.gcc_no) || '', batch: last.batch, exam: examOfBatch(last.batch, override),
-      tests: pcts.length, pcts, avgPct: mean(pcts), recent, trend,
-      spread: sd(pcts), sub,
-      projected: pcts.length ? clamp(recent + 0.5 * trend) : null,
+      tests: pcts.length, pcts, testNos, sub, ...st,
     };
   }).filter((s) => s.tests);
 }
@@ -139,4 +144,79 @@ export function compareSeries(preStudents, megaStudents) {
   pairs.forEach((x, i) => { x.delta = x.mega - x.pre; x.rankPre = ra[i]; x.rankMega = rb[i]; x.move = ra[i] - rb[i]; });
   pairs.sort((a, b) => b.delta - a.delta);
   return { pairs, matched: pairs.length, preOnly: preStudents.length - pairs.length, avgDelta: mean(pairs.map((x) => x.delta)), improved: pairs.filter((x) => x.delta > 1).length, declined: pairs.filter((x) => x.delta < -1).length };
+}
+
+
+// ─── Groups, what-if, watch-list ──────────────────────────────────────────────
+// Which of `groups` equal rank groups (1 = top) position `index` of `total` falls in
+// (students ÷ groups each, leftovers go to the top groups — same rule as the leaderboard).
+export function groupOfRank(index, total, groups = 6) {
+  const base = Math.floor(total / groups), extra = total % groups;
+  let start = 0;
+  for (let g = 0; g < groups; g++) {
+    const size = base + (g < extra ? 1 : 0);
+    if (index < start + size) return g + 1;
+    start += size;
+  }
+  return groups;
+}
+
+// What if `student` scores `nextPct` in their next test (and/or the cut-off moves)?
+export function simulate(student, nextPct, pool, { cutoff, seats }) {
+  const nextNo = Math.max(0, ...(student.testNos || [0])) + 1;
+  const pcts = [...student.pcts, clamp(Number(nextPct) || 0)];
+  const moved = { ...student, tests: pcts.length, pcts, testNos: [...(student.testNos || []), nextNo], ...statsFromPcts(pcts, [...(student.testNos || []), nextNo]) };
+  const sp = seatPrediction(pool.map((p) => (p.sid === student.sid ? moved : p)), { cutoff, seats });
+  const idx = sp.sorted.findIndex((p) => p.sid === student.sid);
+  const status = sp.selected.some((p) => p.sid === student.sid) ? 'Selected' : sp.waiting.some((p) => p.sid === student.sid) ? 'Waiting' : 'Below cut-off';
+  return { student: moved, projected: moved.projected, probability: qualifyProbability(moved, cutoff), position: idx + 1, status };
+}
+// Lowest next-test % that lifts the student to `target` qualify chance (null = even 100% is not enough).
+export function scoreNeeded(student, cutoff, target = 0.75) {
+  const nextNo = Math.max(0, ...(student.testNos || [0])) + 1;
+  for (let x = 0; x <= 100; x += 1) {
+    const pcts = [...student.pcts, x];
+    const m = { ...student, tests: pcts.length, pcts, ...statsFromPcts(pcts, [...(student.testNos || []), nextNo]) };
+    if (qualifyProbability(m, cutoff) >= target && pcts.length >= MIN_TESTS_SAFE) return x;
+  }
+  return null;
+}
+
+// Students a mentor should look at first, each with the reasons why.
+export function watchList(pool, cutoff) {
+  const allTests = [...new Set(pool.flatMap((s) => s.testNos || []))].sort((a, b) => a - b);
+  const lastTest = allTests[allTests.length - 1];
+  const out = [];
+  pool.forEach((s) => {
+    const flags = [];
+    const n = s.pcts.length;
+    if (n >= 2) {
+      const prev = mean(s.pcts.slice(0, -1)), drop = prev - s.pcts[n - 1];
+      if (drop >= 10) flags.push({ type: 'drop', severity: 3, text: `Latest test ${Math.round(s.pcts[n - 1])}% — ${Math.round(drop)} points below their earlier average` });
+    }
+    if (n >= 3 && s.trend <= -3) flags.push({ type: 'trend', severity: 2, text: `Falling ${Math.abs(Math.round(s.trend * 10) / 10)} points per test` });
+    const missed = allTests.filter((t) => !(s.testNos || []).includes(t));
+    if (missed.length >= 2 || (missed.length === 1 && missed[0] === lastTest)) flags.push({ type: 'missed', severity: missed.includes(lastTest) ? 3 : 2, text: `Missed ${missed.length} test${missed.length > 1 ? 's' : ''} (${missed.map((t) => 'T' + t).join(', ')})` });
+    const p = qualifyProbability(s, cutoff);
+    if (qualifyBand(p, s.tests).label === 'At risk') flags.push({ type: 'risk', severity: 3, text: `Only ${Math.round(p * 100)}% chance to reach the ${cutoff}% cut-off` });
+    if (s.tests < MIN_TESTS_SAFE) flags.push({ type: 'few', severity: 1, text: `Only ${s.tests} test${s.tests > 1 ? 's' : ''} so far — prediction is low confidence` });
+    if (flags.length) out.push({ student: s, flags, score: flags.reduce((t, f) => t + f.severity, 0) });
+  });
+  return out.sort((a, b) => b.score - a.score || a.student.name.localeCompare(b.student.name));
+}
+
+// Plain-language advice for the parent report.
+export function adviceFor(s, { cutoff, status }) {
+  const lines = [];
+  const subs = Object.entries(s.sub).sort((a, b) => a[1] - b[1]);
+  if (subs.length > 1) {
+    lines.push(`Needs most work: ${subs.slice(0, 2).map(([k, v]) => `${k} (${Math.round(v)}%)`).join(', ')}.`);
+    lines.push(`Strongest: ${subs[subs.length - 1][0]} (${Math.round(subs[subs.length - 1][1])}%).`);
+  }
+  if (s.tests >= 3 && s.trend >= 1.5) lines.push('Marks are improving test after test — keep the same routine.');
+  else if (s.tests >= 3 && s.trend <= -1.5) lines.push('Marks have been falling recently — please talk to the mentor and check revision time at home.');
+  if (status === 'Below cut-off') lines.push(`Projected score is below the ${cutoff}% target; daily practice on the weakest subjects is needed.`);
+  else if (status === 'Waiting') lines.push('Close to the selection line — every extra mark can move the rank.');
+  else lines.push('On track for selection — maintain consistency and avoid careless mistakes.');
+  return lines;
 }
