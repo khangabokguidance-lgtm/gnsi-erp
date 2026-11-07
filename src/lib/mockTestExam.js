@@ -1,5 +1,6 @@
 // Navodaya / Sainik exam insights for the Pre- and Mega-Mock analyzers.
 // Pure functions only (no React) so they can be unit tested.
+import { courseOfBatch } from './mockTestCourse.js';
 import { mean, sd, slope, normName, cleanName, gccDigits, num, denseRanks } from './mockTestEngine.js';
 
 export const EXAMS = {
@@ -13,9 +14,9 @@ export function examOfBatch(batch, override = {}) {
   const o = override?.[batch];
   if (o && (EXAMS[o] || o === 'none')) return o === 'none' ? '' : o;
   const t = String(batch || '');
-  if (/sainik|aissee|\bss\b/i.test(t)) return 'sainik';
-  if (/navodaya|jnv|jnvst/i.test(t)) return 'navodaya';
-  return '';
+  if (/\bss\b/i.test(t)) return 'sainik';
+  const c = courseOfBatch(t);
+  return EXAMS[c] ? c : '';
 }
 
 const SECTION_RULES = {

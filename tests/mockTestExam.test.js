@@ -56,3 +56,17 @@ test('compareSeries matches by GCC and by name', () => {
   assert.equal(c.matched, 2);
   assert.ok(c.pairs.find((x) => x.name === 'Asha').delta > 0);
 });
+
+import { courseOfBatch, filterByCourse, courseCounts } from '../src/lib/mockTestCourse.js';
+test('courseOfBatch maps batches to the three courses', () => {
+  assert.equal(courseOfBatch('Achiever'), 'sainik');
+  assert.equal(courseOfBatch('Lakshya A'), 'navodaya');
+  assert.equal(courseOfBatch('Combined English'), 'navodaya');
+  assert.equal(courseOfBatch('Pragati'), 'foundation');
+  assert.equal(courseOfBatch('Mystery'), '');
+  const rs = [{ sid: 1, batch: 'Umeed' }, { sid: 2, batch: 'Udaan' }, { sid: 2, batch: 'Udaan' }];
+  assert.equal(filterByCourse(rs, 'foundation').length, 2);
+  assert.deepEqual(courseCounts(rs), { '': 2, sainik: 0, navodaya: 1, foundation: 1 });
+  assert.equal(examOfBatch('Achiever'), 'sainik');
+  assert.equal(examOfBatch('Pragati'), '');
+});

@@ -14,6 +14,7 @@ import {
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML } from './lib/mockTestReports';
+import { COURSES, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
 import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule } from './lib/mockTestStore';
@@ -164,10 +165,16 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   // Upload & Data tab keeps working on the full records.
   const [filter, setFilter] = useState(emptyFilter);
   const filterOn = isFilterActive(filter);
-  const rows = useMemo(() => applyDataFilter(resolved, filter), [resolved, filter]);
-  const metaAll = useMemo(() => seriesMeta(resolved), [resolved]);
+  // Course switcher (Sainik / Navodaya / Foundation): scopes every analysis tab.
+  const [course, setCourse] = useState('');
+  const counts = useMemo(() => courseCounts(resolved), [resolved]);
+  const scoped = useMemo(() => filterByCourse(resolved, course), [resolved, course]);
+  const rows = useMemo(() => applyDataFilter(scoped, filter), [scoped, filter]);
+  const metaAll = useMemo(() => seriesMeta(scoped), [scoped]);
+  const metaFull = useMemo(() => seriesMeta(resolved), [resolved]);
   const meta = useMemo(() => seriesMeta(rows), [rows]);
   const changeSeries = useCallback((s) => { setSeries(s); setFilter(emptyFilter()); }, []);
+  const changeCourse = useCallback((c) => { setCourse(c); setFilter(emptyFilter()); }, []);
   // Remount the analysis views when the available batches / tests / subjects change,
   // so a stale dropdown selection can never point at data the filter removed.
   const viewKey = `${meta.batches.join('|')}#${meta.tests.join('|')}#${meta.subjects.join('|')}`;
@@ -188,7 +195,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         </Field>
       ))}
       <div style={{ fontSize: 12, color: '#5d6b82', paddingBottom: 8 }}>
-        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${resolved.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
+        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${scoped.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
         {' · '}<b style={{ color: mode === 'cloud' ? '#047857' : '#b45309' }}>{mode === 'cloud' ? 'Saved to database' : 'Saved in this browser only'}</b>
       </div>
     </div>
@@ -202,7 +209,20 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
-      {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
+      {resolved.length ? (
+        <div className="mta-courses" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+          {[{ id: '', label: 'All courses', icon: '📚', color: NAVY, hint: 'Sainik + Navodaya + Foundation' }, ...COURSES].map((c) => {
+            const on = course === c.id;
+            return (
+              <button key={c.id || 'all'} onClick={() => changeCourse(c.id)} style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', borderRadius: 14, border: `2px solid ${on ? c.color : '#e8e3d8'}`, background: on ? c.color : '#fff', color: on ? '#fff' : '#0f1b2e', boxShadow: on ? `0 4px 12px ${c.color}44` : '0 2px 8px rgba(19,42,79,.05)' }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{c.icon} {c.label}</div>
+                <div style={{ fontSize: 11.5, opacity: .85 }}>{counts[c.id] ?? 0} students · {c.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {scoped.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={scoped} shown={rows.length} total={scoped.length} /> : null}
       <div className="mta-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 12px', padding: '2px 0 6px' }}>
         {SUBTABS.map((t) => (
           <button key={t.id} className="mta-tab" onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 1 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
@@ -213,8 +233,8 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
           <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
             <div style={{ fontSize: 34 }}>🔎</div>
             <div style={{ fontWeight: 700, margin: '6px 0' }}>No results match the current filter</div>
-            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{describeFilter(filter)}</div>
-            <button style={ui.btn} onClick={() => setFilter(emptyFilter())}>Clear filter</button>
+            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{[course ? `Course: ${COURSES.find((c) => c.id === course)?.label}` : '', filterOn ? describeFilter(filter) : ''].filter(Boolean).join(' · ')}</div>
+            <button style={ui.btn} onClick={() => { setFilter(emptyFilter()); setCourse(''); }}>Clear filter &amp; course</button>
           </div>
         ) : (
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
@@ -233,7 +253,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'exam' ? <ExamInsights key={`${series}|${viewKey}`} rows={rows} series={series} seriesLabel={seriesLabel} scope={scope} institute={institute} otherNames={[...new Set(allRows.map((r) => r.series))].filter((n) => !inScope(n, scope)).sort()} loadOther={(n) => resolveIdentities(applyFixes(allRows.filter((r) => r.series === n), fixes.filter((f) => !f.series || f.series === n)))} /> : null}
       {tab === 'revision' ? <MockRevisionPlan key={`${series}|${viewKey}`} rows={rows} series={seriesLabel} passPct={passPct} institute={institute} /> : null}
       {tab === 'data' ? (
-        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
+        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaFull} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
