@@ -7,7 +7,7 @@
 //   charts   lib/mockTestCharts.js   SVG charts (screen + print)
 //   reports  lib/mockTestReports.js  A4 print documents
 //   store    lib/mockTestStore.js    Supabase table + browser fallback
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react';
 import {
   DEFAULT_SERIES, MEGA_SERIES, inScope, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
@@ -349,12 +349,27 @@ function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
+const GROUP_BG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
 const passLabel = (b) => (b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`);
 
 function Overview({ rows, meta, passPct, passBy, institute, series }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
+  const leaderboard = useMemo(() => [...all.students].sort((a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)), [all]);
+  // split the ranked list into 6 groups of (total students ÷ 6); leftovers go to the top groups
+  const GROUPS = 6;
+  const { groupOf, groupStart, groupSize } = useMemo(() => {
+    const n = leaderboard.length, base = Math.floor(n / GROUPS), extra = n % GROUPS;
+    const groupOf = [], groupStart = [], groupSize = [];
+    let i = 0;
+    for (let g = 0; g < GROUPS; g++) {
+      const size = base + (g < extra ? 1 : 0);
+      groupSize.push(size);
+      for (let k = 0; k < size; k++, i++) { groupOf[i] = g; groupStart[i] = i - k; }
+    }
+    return { groupOf, groupStart, groupSize };
+  }, [leaderboard]);
   const trend = lineChart({
     labels: all.perTest.map((t) => `T${t.test_no}`), yMax: 100, unit: '%', title: 'Institute average % by test',
     series: [{ name: 'Overall', color: NAVY, values: all.perTest.map((t) => t.avgPct), thick: true },
@@ -377,6 +392,22 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={trend} /></div>
         <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={batchBars} /></div>
+      </div>
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Ranked by average total marks across all tests ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
+        <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
+          {leaderboard.map((s, i) => (
+            <Fragment key={s.sid}>
+            {i === groupStart[i] && groupOf[i] !== undefined ? (
+              <tr><td colSpan={9} style={{ ...ui.td, textAlign: 'left', fontWeight: 800, background: GROUP_BG[groupOf[i]], color: NAVY }}>Group {groupOf[i] + 1} of {GROUPS} · {groupSize[groupOf[i]]} students · {groupOf[i] === 0 ? 'top' : groupOf[i] === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>
+            ) : null}
+            <tr><td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
+              <td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.avgTotal, 2)}</td><td style={ui.td}>{s.max ?? '—'}</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(s.avgPct, passPct).color }}>{fx(s.avgPct)}%</td><td style={ui.td}>{fx(s.best, 2)}</td></tr>
+            </Fragment>
+          ))}
+        </Table>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Batch comparison</h4>
