@@ -15,6 +15,7 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML, parentReportsHTML, watchListHTML } from './lib/mockTestReports';
 import { COURSES, OTHER_COURSE, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
+import { normalizeCuts, groupByCuts, defaultCuts, cutLabel } from './lib/mockTestExam';
 import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, simulate, scoreNeeded, watchList, groupOfRank, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule, loadExamConfig, saveExamConfig } from './lib/mockTestStore';
@@ -245,7 +246,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         </div>
         )
       ) : null}
-      {rows.length && tab === 'overview' ? <Overview key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'overview' ? <Overview key={`${series}|${viewKey}`} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} seriesName={series} who={who} canEdit={canUpload} /> : null}
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
@@ -271,19 +272,19 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
   const [saveErr, setSaveErr] = useState('');
   const timer = useRef(null);
   const confRef = useRef({});
+  const pending = useRef(null);
   useEffect(() => {
     let live = true;
     loadExamConfig(series).then((r) => { if (live) { confRef.current = r.config; setConf(r.config); setSaveMode(r.mode); } })
       .catch((e) => { if (live) setSaveErr(`Could not load saved targets: ${e.message || e}`); })
       .finally(() => { if (live) setReady(true); });
-    return () => { live = false; clearTimeout(timer.current); };
+    return () => { live = false; clearTimeout(timer.current); if (pending.current) pending.current(); };   // flush a pending save on tab change
   }, [series]);
   const persist = (next) => {
     confRef.current = next; setConf(next); setSaveErr('');
+    pending.current = () => { pending.current = null; saveExamConfig(series, confRef.current, saveMode, who || '').catch((e) => setSaveErr(`Could not save targets: ${e.message || e}`)); };
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      saveExamConfig(series, confRef.current, saveMode, who || '').catch((e) => setSaveErr(`Could not save targets: ${e.message || e}`));
-    }, 500);
+    timer.current = setTimeout(() => pending.current && pending.current(), 500);
   };
   const getCfg = (ex) => {
     const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(conf[ex] || {}) };
@@ -613,26 +614,54 @@ function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
 const GROUP_BG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
 const passLabel = (b) => (b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`);
 
-function Overview({ rows, meta, passPct, passBy, institute, series }) {
+function Overview({ rows, meta, passPct, passBy, institute, series, seriesName, who, canEdit }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
   // Raw totals are only comparable when every student's paper has the same maximum; otherwise rank by average %.
   const sameMax = useMemo(() => new Set(all.students.map((s) => s.max)).size <= 1, [all]);
-  const leaderboard = useMemo(() => [...all.students].sort((a, b) => (sameMax ? b.avgTotal - a.avgTotal : 0) || b.avgPct - a.avgPct || b.avgTotal - a.avgTotal || a.name.localeCompare(b.name)), [all, sameMax]);
-  // split the ranked list into 6 groups of (total students ÷ 6); leftovers go to the top groups
+  // Group mode: 'equal' = students ÷ 6, or 'manual' = mark ranges the admin sets (saved per series).
+  const [cutsRaw, setCutsRaw] = useState(null);    // null = equal split
+  const [draft, setDraft] = useState(null);        // raw input strings while editing
+  const [cfgMode, setCfgMode] = useState('cloud');
+  const [cfgErr, setCfgErr] = useState('');
+  const cfgRef = useRef({});
+  const saveT = useRef(null);
+  const dirty = useRef(false);
+  const flush = useRef(() => {});
+  useEffect(() => {
+    let live = true;
+    loadExamConfig(seriesName).then((r) => { if (live) { cfgRef.current = r.config || {}; setCutsRaw(normalizeCuts(r.config?.groupCuts)); setCfgMode(r.mode); } }).catch(() => {});
+    return () => { live = false; clearTimeout(saveT.current); if (dirty.current) flush.current(); };   // don't lose a pending save when the tab changes
+  }, [seriesName]);
+  const cuts = normalizeCuts(cutsRaw);
+  const saveCuts = (next) => {
+    setCutsRaw(next); setCfgErr('');
+    cfgRef.current = { ...cfgRef.current, groupCuts: next || undefined };
+    if (!next) delete cfgRef.current.groupCuts;
+    dirty.current = true;
+    flush.current = () => { dirty.current = false; saveExamConfig(seriesName, cfgRef.current, cfgMode, who || '').catch((e) => setCfgErr(`Could not save the groups: ${e.message || e}`)); };
+    clearTimeout(saveT.current);
+    saveT.current = setTimeout(() => flush.current(), 400);
+  };
+  const maxTotal = Math.max(0, ...all.students.map((s) => s.max || 0));
+  const leaderboard = useMemo(() => [...all.students].sort(cuts
+    ? (a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)
+    : (a, b) => (sameMax ? b.avgTotal - a.avgTotal : 0) || b.avgPct - a.avgPct || b.avgTotal - a.avgTotal || a.name.localeCompare(b.name)), [all, sameMax, cutsRaw]); // eslint-disable-line react-hooks/exhaustive-deps
   const GROUPS = 6;
   const { groupOf, groupStart, groupSize } = useMemo(() => {
-    const n = leaderboard.length, base = Math.floor(n / GROUPS), extra = n % GROUPS;
-    const groupOf = [], groupStart = [], groupSize = [];
+    const n = leaderboard.length;
+    const groupOf = [], groupStart = [];
+    const sizes = cuts
+      ? Array.from({ length: GROUPS }, (_, g) => leaderboard.filter((s) => groupByCuts(s.avgTotal, cuts) === g).length)
+      : Array.from({ length: GROUPS }, (_, g) => Math.floor(n / GROUPS) + (g < n % GROUPS ? 1 : 0));
     let i = 0;
-    for (let g = 0; g < GROUPS; g++) {
-      const size = base + (g < extra ? 1 : 0);
-      groupSize.push(size);
-      for (let k = 0; k < size; k++, i++) { groupOf[i] = g; groupStart[i] = i - k; }
-    }
-    return { groupOf, groupStart, groupSize };
-  }, [leaderboard]);
+    sizes.forEach((size, g) => { for (let k = 0; k < size; k++, i++) { groupOf[i] = g; groupStart[i] = i - k; } });
+    return { groupOf, groupStart, groupSize: sizes };
+  }, [leaderboard, cutsRaw]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startManual = () => saveCuts(cuts || defaultCuts(maxTotal));
+  const editCut = (i, v) => setDraft((d) => { const n = [...(d || cuts)]; n[i] = v; return n; });
+  const applyDraft = () => { const n = normalizeCuts(draft); if (n) { saveCuts(n); setDraft(null); } else setCfgErr('Enter a mark (0 or more) for all 5 boundaries.'); };
   const trend = lineChart({
     labels: all.perTest.map((t) => `T${t.test_no}`), yMax: 100, unit: '%', title: 'Institute average % by test',
     series: [{ name: 'Overall', color: NAVY, values: all.perTest.map((t) => t.avgPct), thick: true },
@@ -658,12 +687,37 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
-        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>{sameMax ? 'Ranked by average total marks across all tests' : 'Batches have different maximum totals, so students are ranked by average % (total marks shown alongside)'} ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
+          <button style={chip(!cuts)} disabled={!canEdit && !!cuts} onClick={() => { setDraft(null); saveCuts(null); }}>Equal 6 groups</button>
+          <button style={chip(!!cuts)} disabled={!canEdit && !cuts} onClick={startManual}>Manual groups by total marks</button>
+          {!canEdit ? <span style={{ fontSize: 12, color: '#8a93a6' }}>Only users who can upload results can change the groups.</span> : null}
+        </div>
+        {cuts ? (
+          <div style={{ background: '#faf7ef', border: '1px solid #eee7d6', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 6 }}>Set the <b>minimum average total</b> for each group{maxTotal ? ` (maximum total is ${maxTotal})` : ''}. Group 6 is everyone below Group 5&apos;s mark.</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {(draft || cuts).map((c, i) => (
+                <Field key={i} label={`Group ${i + 1} from`}><input type="number" min={0} disabled={!canEdit} style={{ ...ui.input, width: 90, background: GROUP_BG[i] }} value={c} onChange={(e) => editCut(i, e.target.value)} /></Field>
+              ))}
+              {canEdit ? <>
+                <button style={ui.btn} disabled={!draft} onClick={applyDraft}>Apply</button>
+                <button style={ui.ghost} onClick={() => { setDraft(null); saveCuts(defaultCuts(maxTotal)); }}>Fill from max (80/65/50/40/30%)</button>
+              </> : null}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {groupSize.map((n, g) => <span key={g} style={{ background: GROUP_BG[g], borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>G{g + 1} ({cutLabel(g, cuts)}): {n}</span>)}
+            </div>
+            {!sameMax ? <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>⚠ Batches have different maximum totals — marks ranges compare raw totals.</div> : null}
+            {cfgErr ? <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 6 }}>{cfgErr}</div> : null}
+            <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Saved for this series{cfgMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'} · used in the printed institute report too.</div>
+          </div>
+        ) : null}
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>{sameMax ? 'Ranked by average total marks across all tests' : 'Batches have different maximum totals, so students are ranked by average % (total marks shown alongside)'} ({all.students.length} students, all batches), split into {GROUPS} {cuts ? 'manual mark-range' : 'equal'} groups.</div>
         <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
           {leaderboard.map((s, i) => (
             <Fragment key={s.sid}>
             {i === groupStart[i] && groupOf[i] !== undefined ? (
-              <tr><td colSpan={9} style={{ ...ui.td, textAlign: 'left', fontWeight: 800, background: GROUP_BG[groupOf[i]], color: NAVY }}>Group {groupOf[i] + 1} of {GROUPS} · {groupSize[groupOf[i]]} students · {groupOf[i] === 0 ? 'top' : groupOf[i] === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>
+              <tr><td colSpan={9} style={{ ...ui.td, textAlign: 'left', fontWeight: 800, background: GROUP_BG[groupOf[i]], color: NAVY }}>Group {groupOf[i] + 1} of {GROUPS}{cuts ? ` · ${cutLabel(groupOf[i], cuts)} marks` : ''} · {groupSize[groupOf[i]]} students · {groupOf[i] === 0 ? 'top' : groupOf[i] === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>
             ) : null}
             <tr><td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
               <td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.avgTotal, 2)}</td><td style={ui.td}>{s.max ?? '—'}</td>
@@ -688,7 +742,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
         <h4 style={{ margin: '0 0 8px' }}>Subject difficulty — all batches</h4>
         <Svg minW={440} html={hBars({ items: [...all.perSubject].sort((a, b) => a.avgPct - b.avgPct).map((s) => ({ label: s.subject, value: s.avgPct, color: subjColor(subs, s.subject) })), width: 640 })} />
         <div style={{ marginTop: 10 }}>
-          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series }), `${series} — Institute report`, institute)}>🖨️ Print institute report</button>
+          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series, groupCuts: cuts }), `${series} — Institute report`, institute)}>🖨️ Print institute report</button>
         </div>
       </div>
     </>

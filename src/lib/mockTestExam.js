@@ -220,3 +220,29 @@ export function adviceFor(s, { cutoff, status }) {
   else lines.push('On track for selection — maintain consistency and avoid careless mistakes.');
   return lines;
 }
+
+
+// ─── Manual groups from total marks ───────────────────────────────────────────
+// `cuts` = the minimum average total for groups 1..5, highest first (group 6 = everyone below the last cut).
+export const MANUAL_GROUPS = 6;
+export function normalizeCuts(arr) {
+  if (!Array.isArray(arr)) return null;
+  const v = arr.slice(0, MANUAL_GROUPS - 1).map((x) => Number(x));
+  if (v.length < MANUAL_GROUPS - 1 || v.some((x) => !Number.isFinite(x) || x < 0)) return null;
+  return v.sort((a, b) => b - a);
+}
+// 0-based group index for a total; a total equal to a cut belongs to the higher group.
+export function groupByCuts(total, cuts) {
+  const i = cuts.findIndex((c) => total >= c);
+  return i === -1 ? cuts.length : i;
+}
+// Suggested starting cuts as fractions of the maximum total (80 / 65 / 50 / 40 / 30 %).
+export function defaultCuts(maxTotal) {
+  return [0.8, 0.65, 0.5, 0.4, 0.3].map((f) => Math.round((Number(maxTotal) || 100) * f));
+}
+// Human label for a group's mark range, e.g. "≥ 400" / "300 – 399.99" / "below 120".
+export function cutLabel(g, cuts) {
+  if (g === 0) return `≥ ${cuts[0]}`;
+  if (g === cuts.length) return `below ${cuts[cuts.length - 1]}`;
+  return `${cuts[g]} – below ${cuts[g - 1]}`;
+}
