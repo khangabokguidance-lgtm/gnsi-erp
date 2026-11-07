@@ -3,7 +3,7 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
-import { qualifyBand } from './mockTestExam';
+import { qualifyBand, groupOfRank, adviceFor } from './mockTestExam';
 import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
 import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
@@ -364,5 +364,51 @@ export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp,
   ${cmp ? `<h3>3 · Pre Mock vs Mega Mock</h3>
   <div style="font-size:10px;color:#5d6b82;margin-bottom:5px">${esc(preLabel)} → ${esc(megaLabel)} · ${cmp.matched} matched · average change ${sgn(cmp.avgDelta)} pts · ${cmp.improved} improved · ${cmp.declined} declined</div>
   <table><thead><tr><th class="l">Student</th><th class="l">Batch</th><th>Pre</th><th>Mega</th><th>Change</th><th>Pre rank</th><th>Mega rank</th><th>Move</th></tr></thead><tbody>${cmpRows}</tbody></table>` : ''}
+  ${stamp(inst)}</div>`;
+}
+
+
+// One-page personal report per student, written for parents.
+export function parentReportsHTML({ exam, cfg, series, institute: inst, sp, probOf, students }) {
+  const total = sp.sorted.length;
+  const selIds = new Set(sp.selected.map((x) => x.sid));
+  return students.map((s) => {
+    const i = sp.sorted.findIndex((x) => x.sid === s.sid);
+    const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+    const status = selIds.has(s.sid) ? 'Selected' : sp.waiting.some((x) => x.sid === s.sid) ? 'Waiting' : 'Below cut-off';
+    const g = groupOfRank(i, total, 6);
+    const subs = Object.entries(s.sub).sort((a, b) => b[1] - a[1]);
+    const advice = adviceFor(s, { cutoff: Number(cfg.cutoff) || 0, status });
+    return `<div class="page">${letterhead(inst)}
+    <div class="title">Mock Test Progress Report — ${esc(exam.short)}</div>
+    <div class="sub">${esc(series || '')} · ${esc(s.name)}${s.gcc ? ` · GCC ${esc(s.gcc)}` : ''} · ${esc(s.batch)}</div>
+    <div class="kpis">
+      ${kpi('Average', fx(s.avgPct) + '%', `${s.tests} tests`)}
+      ${kpi('Projected', fx(s.projected) + '%', `target ${Number(cfg.cutoff) || 0}%`)}
+      ${kpi('Class position', `${i + 1}/${total}`, `Group ${g} of 6`)}
+      ${kpi('Chance of selection', fx(p * 100, 0) + '%', esc(band.label), band.color)}
+      ${kpi('Status', `<span style="font-size:12px">${esc(status)}</span>`, '', status === 'Selected' ? '#047857' : status === 'Waiting' ? '#b45309' : '#b91c1c')}
+      ${kpi('Trend', s.tests >= 2 ? sgn(s.trend) + ' /test' : '—', '', tone(s.trend, 1))}
+    </div>
+    <h3>Test-wise score (%)</h3>
+    <table><thead><tr>${s.testNos.map((t) => `<th>T${t}</th>`).join('')}</tr></thead><tbody><tr>${s.pcts.map((v) => `<td style="font-weight:700">${fx(v)}%</td>`).join('')}</tr></tbody></table>
+    <h3>Subject-wise average</h3>
+    <table><thead><tr><th class="l">Subject</th><th>Average</th><th class="l" style="width:55%"></th></tr></thead><tbody>${subs.map(([k, v]) => `<tr><td class="l">${esc(k)}</td><td><b>${fx(v)}%</b></td><td class="l"><div style="background:#e5e7eb;border-radius:4px;height:9px"><div style="width:${Math.max(0, Math.min(100, v))}%;background:${pctColor(v, 40)};height:9px;border-radius:4px"></div></div></td></tr>`).join('')}</tbody></table>
+    <h3>Mentor's advice</h3>
+    <ul class="ins">${advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+    <div class="sig"><div>Parent / Guardian</div><div>Class Mentor</div><div>Principal</div></div>
+    ${stamp(inst)}</div>`;
+  }).join('');
+}
+
+// Printable watch-list for mentors.
+export function watchListHTML({ exam, series, institute: inst, items }) {
+  const sevColor = (n) => (n >= 3 ? '#b91c1c' : n === 2 ? '#b45309' : '#64748b');
+  const rows = items.map((w, i) => `<tr><td><b>${i + 1}</b></td><td class="l"><b>${esc(w.student.name)}</b></td><td>${esc(w.student.gcc || '—')}</td><td class="l">${esc(w.student.batch)}</td><td>${fx(w.student.avgPct)}%</td>
+    <td class="l">${w.flags.map((f) => `<div style="color:${sevColor(f.severity)}">• ${esc(f.text)}</div>`).join('')}</td></tr>`).join('');
+  return `<div class="page">${letterhead(inst)}
+  <div class="title">${esc(exam.label)} — Mentor Watch-list</div>
+  <div class="sub">${esc(series || '')} · ${items.length} students need attention</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Avg</th><th class="l">Why</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No students flagged.</td></tr>'}</tbody></table>
   ${stamp(inst)}</div>`;
 }
