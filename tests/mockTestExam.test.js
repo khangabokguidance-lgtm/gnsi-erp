@@ -114,3 +114,18 @@ test('watchList flags drops, missed tests and risk', () => {
   assert.ok(w.find((x) => x.student.name === 'Dip').flags.some((f) => f.type === 'drop'));
   assert.ok(adviceFor(st[0], { cutoff: 60, status: 'Selected' }).length >= 1);
 });
+
+import { normalizeCuts, groupByCuts, defaultCuts, cutLabel } from '../src/lib/mockTestExam.js';
+test('manual groups from total marks', () => {
+  assert.deepEqual(defaultCuts(500), [400, 325, 250, 200, 150]);
+  const cuts = normalizeCuts([150, 400, 250, 325, 200]);
+  assert.deepEqual(cuts, [400, 325, 250, 200, 150]);
+  assert.equal(groupByCuts(450, cuts), 0);
+  assert.equal(groupByCuts(400, cuts), 0);   // equal to a cut = higher group
+  assert.equal(groupByCuts(399.9, cuts), 1);
+  assert.equal(groupByCuts(10, cuts), 5);
+  assert.equal(normalizeCuts([1, 2, 3]), null);
+  assert.equal(normalizeCuts([1, 2, 3, 4, 'x']), null);
+  assert.equal(normalizeCuts([1, 2, 3, 4, -5]), null);
+  assert.equal(cutLabel(0, cuts), '≥ 400'); assert.equal(cutLabel(5, cuts), 'below 150'); assert.equal(cutLabel(2, cuts), '250 – below 325');
+});

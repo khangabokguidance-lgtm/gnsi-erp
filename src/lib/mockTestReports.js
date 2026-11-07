@@ -3,7 +3,7 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
-import { qualifyBand, groupOfRank, adviceFor } from './mockTestExam';
+import { qualifyBand, groupOfRank, adviceFor, normalizeCuts, groupByCuts, cutLabel } from './mockTestExam';
 import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
 import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
@@ -213,20 +213,22 @@ export function batchReportHTML(b, ctx = {}) {
   const subjTop = b.perSubject.map((s) => `<div class="box avoid"><b style="color:${subjColor(subs, s.subject)}">${esc(s.subject)}</b> — toppers
     ${miniList(s.toppers.slice(0, 3), (x) => fx(x.pct) + '%')}<b style="color:#b91c1c">Needs support</b>${miniList(s.weakest.slice(0, 3), (x) => fx(x.pct) + '%')}</div>`).join('');
 
-  // leaderboard by average total marks, split into 6 equal groups (leftovers go to the top groups)
-  const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
   const sameMax = new Set(b.students.map((s) => s.max)).size <= 1;
-  const lb = [...b.students].sort((x, y) => (sameMax ? y.avgTotal - x.avgTotal : 0) || y.avgPct - x.avgPct || y.avgTotal - x.avgTotal || x.name.localeCompare(y.name));
+  const cuts = normalizeCuts(ctx.groupCuts);   // manual groups from total marks (null = equal split)
+  const lb = [...b.students].sort(cuts
+    ? (x, y) => y.avgTotal - x.avgTotal || y.avgPct - x.avgPct || x.name.localeCompare(y.name)
+    : (x, y) => (sameMax ? y.avgTotal - x.avgTotal : 0) || y.avgPct - x.avgPct || y.avgTotal - x.avgTotal || x.name.localeCompare(y.name));
+  const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
   const gBase = Math.floor(lb.length / GROUPS), gExtra = lb.length % GROUPS;
+  const sizes = cuts ? Array.from({ length: GROUPS }, (_, g) => lb.filter((s) => groupByCuts(s.avgTotal, cuts) === g).length) : Array.from({ length: GROUPS }, (_, g) => gBase + (g < gExtra ? 1 : 0));
   let gPos = 0;
-  const groupRows = Array.from({ length: GROUPS }, (_, g) => {
-    const size = gBase + (g < gExtra ? 1 : 0);
+  const groupRows = sizes.map((size, g) => {
     const part = lb.slice(gPos, gPos + size);
-    const head = `<tr><td colspan="8" class="l" style="background:${GBG[g]};font-weight:800">Group ${g + 1} of ${GROUPS} · ${size} students · ${g === 0 ? 'top' : g === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>`;
+    const head = `<tr><td colspan="8" class="l" style="background:${GBG[g]};font-weight:800">Group ${g + 1} of ${GROUPS}${cuts ? ` · ${cutLabel(g, cuts)} marks` : ''} · ${size} students · ${g === 0 ? 'top' : g === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>`;
     const body = part.map((s, k) => `<tr><td><b>${gPos + k + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
       <td style="font-weight:700">${fx(s.avgTotal, 2)}${s.max ? `/${s.max}` : ''}</td><td style="font-weight:700;color:${pctColor(s.avgPct, b.passOf ? b.passOf(s.batch) : b.passPct)}">${fx(s.avgPct)}%</td><td>${fx(s.best, 2)}</td></tr>`).join('');
     gPos += size;
-    return size ? head + body : '';
+    return (size || cuts) ? head + body : '';
   }).join('');
 
   return `<div class="page">${letterhead(inst)}
@@ -254,7 +256,7 @@ export function batchReportHTML(b, ctx = {}) {
   ${stamp(inst)}</div>
 
   <div class="page">${letterhead(inst)}
-  <h3 style="margin-top:0">5 · Toppers → lowest by ${sameMax ? 'total marks of all subjects' : 'average % (batches have different maximum totals)'} (${GROUPS} groups)</h3>
+  <h3 style="margin-top:0">5 · Toppers → lowest by ${cuts || sameMax ? 'total marks of all subjects' : 'average % (batches have different maximum totals)'} (${GROUPS} ${cuts ? 'manual mark-range' : 'equal'} groups)</h3>
   <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg total</th><th>Avg %</th><th>Best total</th></tr></thead><tbody>${groupRows}</tbody></table>
   ${stamp(inst)}</div>
 
