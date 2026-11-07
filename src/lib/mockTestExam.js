@@ -44,7 +44,8 @@ export function examStudents(rows, override = {}) {
   rows.forEach((r) => { (by.get(r.sid) || by.set(r.sid, []).get(r.sid)).push(r); });
   return [...by.entries()].map(([sid, rs]) => {
     rs.sort((a, b) => a.test_no - b.test_no);
-    const pcts = rs.map((r) => (r.max_total ? (r.total / r.max_total) * 100 : null)).filter((x) => x !== null);
+    const withPct = rs.filter((r) => r.max_total && Number.isFinite(Number(r.total)));
+    const pcts = withPct.map((r) => (Number(r.total) / r.max_total) * 100);
     const last = rs[rs.length - 1];
     const sub = {};
     const subs = new Set(rs.flatMap((r) => Object.keys(r.marks || {})));
@@ -53,7 +54,7 @@ export function examStudents(rows, override = {}) {
       if (v.length) sub[s] = mean(v);
     });
     const recent = mean(pcts.slice(-3));
-    const trend = pcts.length >= 2 ? slope(pcts, rs.filter((r) => r.max_total).map((r) => r.test_no)) : 0;
+    const trend = pcts.length >= 2 ? slope(pcts, withPct.map((r) => r.test_no)) : 0;
     return {
       sid, name: cleanName([...rs].map((r) => r.student_name).sort((a, b) => b.length - a.length)[0]),
       gcc: gccDigits(last.gcc_no) || '', batch: last.batch, exam: examOfBatch(last.batch, override),

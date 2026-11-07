@@ -275,12 +275,12 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
     return n;
   });
   const [override, setOverride] = useState(() => saved[`${series}|override`] || {});
-  const setOv = (batch, v) => setOverride((o) => {
-    const n = { ...o, [batch]: v };
+  const setOv = (batch, v) => {
+    const n = { ...override, [batch]: v };
     if (!v) delete n[batch];
+    setOverride(n);
     setSaved((all) => { const m = { ...all, [`${series}|override`]: n }; try { localStorage.setItem(EXAM_LS, JSON.stringify(m)); } catch { /* ignore */ } return m; });
-    return n;
-  });
+  };
   const batches = useMemo(() => [...new Set(rows.map((r) => r.batch))].sort(), [rows]);
   const students = useMemo(() => examStudents(rows, override), [rows, override]);
   const present = EXAM_IDS.filter((ex) => students.some((s) => s.exam === ex));
