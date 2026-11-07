@@ -355,6 +355,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
+  const leaderboard = useMemo(() => [...all.students].sort((a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)), [all]);
   const trend = lineChart({
     labels: all.perTest.map((t) => `T${t.test_no}`), yMax: 100, unit: '%', title: 'Institute average % by test',
     series: [{ name: 'Overall', color: NAVY, values: all.perTest.map((t) => t.avgPct), thick: true },
@@ -377,6 +378,17 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={trend} /></div>
         <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={batchBars} /></div>
+      </div>
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Ranked by average total marks across all tests ({all.students.length} students, all batches).</div>
+        <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
+          {leaderboard.map((s, i) => (
+            <tr key={s.sid}><td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
+              <td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.avgTotal, 2)}</td><td style={ui.td}>{s.max ?? '—'}</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(s.avgPct, passPct).color }}>{fx(s.avgPct)}%</td><td style={ui.td}>{fx(s.best, 2)}</td></tr>
+          ))}
+        </Table>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Batch comparison</h4>
