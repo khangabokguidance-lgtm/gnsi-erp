@@ -215,7 +215,8 @@ export function batchReportHTML(b, ctx = {}) {
 
   // leaderboard by average total marks, split into 6 equal groups (leftovers go to the top groups)
   const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
-  const lb = [...b.students].sort((x, y) => y.avgTotal - x.avgTotal || y.avgPct - x.avgPct || x.name.localeCompare(y.name));
+  const sameMax = new Set(b.students.map((s) => s.max)).size <= 1;
+  const lb = [...b.students].sort((x, y) => (sameMax ? y.avgTotal - x.avgTotal : 0) || y.avgPct - x.avgPct || y.avgTotal - x.avgTotal || x.name.localeCompare(y.name));
   const gBase = Math.floor(lb.length / GROUPS), gExtra = lb.length % GROUPS;
   let gPos = 0;
   const groupRows = Array.from({ length: GROUPS }, (_, g) => {
@@ -253,7 +254,7 @@ export function batchReportHTML(b, ctx = {}) {
   ${stamp(inst)}</div>
 
   <div class="page">${letterhead(inst)}
-  <h3 style="margin-top:0">5 · Toppers → lowest by total marks of all subjects (${GROUPS} groups)</h3>
+  <h3 style="margin-top:0">5 · Toppers → lowest by ${sameMax ? 'total marks of all subjects' : 'average % (batches have different maximum totals)'} (${GROUPS} groups)</h3>
   <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg total</th><th>Avg %</th><th>Best total</th></tr></thead><tbody>${groupRows}</tbody></table>
   ${stamp(inst)}</div>
 
@@ -328,10 +329,10 @@ export function subjectReportHTML(b, subject, ctx = {}) {
 // Navodaya / Sainik insights: qualify chance, seat prediction, sections, Pre vs Mega.
 export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp, secs, probOf, cmp, preLabel, megaLabel }) {
   const selIds = new Set(sp.selected.map((s) => s.sid));
-  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'Safe').length;
-  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'At risk').length;
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
   const stuRows = sp.sorted.map((s, i) => {
-    const p = probOf.get(s.sid), band = qualifyBand(p);
+    const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
     const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
     return `<tr${sp.bubble.includes(s) ? ' style="background:#fffbeb"' : ''}><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
       <td>${fx(s.avgPct)}%</td><td><b>${fx(s.projected)}%</b></td><td style="color:${tone(s.trend, 1)}">${s.tests >= 2 ? sgn(s.trend) : '—'}</td>

@@ -179,6 +179,35 @@ export async function saveSettings(series, cfg, mode, who = '') {
   if (error) throw error;
 }
 
+// ─── Navodaya / Sainik targets (cut-off, seats, sectional minimum, batch→exam) ─
+// Stored in mock_test_settings.exam_config (20261060_mock_test_exam_config.sql); a copy is kept in this
+// browser so the values survive while the migration is pending.
+const EXAM_LS = 'gnsi_mock_exam_config_v1';
+const examRead = () => { try { return JSON.parse(localStorage.getItem(EXAM_LS) || '{}') || {}; } catch { return {}; } };
+const examWrite = (all) => { try { localStorage.setItem(EXAM_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+const missingColumn = (e) => !!e && (e.code === '42703' || /exam_config/i.test(e.message || ''));
+
+// → { config: { navodaya?, sainik?, override? }, mode: 'cloud' | 'local' }
+export async function loadExamConfig(series) {
+  const local = examRead()[series] || {};
+  const { data, error } = await supabase.from(SET_TABLE).select('exam_config').eq('series', series).maybeSingle();
+  if (error) {
+    if (missingTable(error) || missingColumn(error)) return { config: local, mode: 'local' };
+    throw error;
+  }
+  return { config: data?.exam_config && Object.keys(data.exam_config).length ? data.exam_config : local, mode: 'cloud' };
+}
+
+export async function saveExamConfig(series, config, mode, who = '') {
+  examWrite({ ...examRead(), [series]: config });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(SET_TABLE).upsert(
+    { series, exam_config: config, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series' },
+  );
+  if (error) throw error;
+}
+
 // ─── Manual self-study groups ────────────────────────────────────────────────
 // The admin's own choice of group (1 = weakest … 7 = strongest) for a student, kept per series and per basis
 // ('overall' or a subject name). Table `mock_test_study_groups` (20261049_mock_test_study_groups.sql); a copy

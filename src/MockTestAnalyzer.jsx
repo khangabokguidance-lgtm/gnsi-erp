@@ -14,10 +14,10 @@ import {
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML } from './lib/mockTestReports';
-import { COURSES, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
-import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
+import { COURSES, OTHER_COURSE, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
+import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule, loadExamConfig, saveExamConfig } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from './lib/mockTestGroups';
 import { loadHouseDirectory } from './houseDirectory';
@@ -211,7 +211,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {header}
       {resolved.length ? (
         <div className="mta-courses" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
-          {[{ id: '', label: 'All courses', icon: '📚', color: NAVY, hint: 'Sainik + Navodaya + Foundation' }, ...COURSES].map((c) => {
+          {[{ id: '', label: 'All courses', icon: '📚', color: NAVY, hint: 'Sainik + Navodaya + Foundation' }, ...COURSES, ...(counts.other ? [OTHER_COURSE] : [])].map((c) => {
             const on = course === c.id;
             return (
               <button key={c.id || 'all'} onClick={() => changeCourse(c.id)} style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', borderRadius: 14, border: `2px solid ${on ? c.color : '#e8e3d8'}`, background: on ? c.color : '#fff', color: on ? '#fff' : '#0f1b2e', boxShadow: on ? `0 4px 12px ${c.color}44` : '0 2px 8px rgba(19,42,79,.05)' }}>
@@ -233,7 +233,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
           <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
             <div style={{ fontSize: 34 }}>🔎</div>
             <div style={{ fontWeight: 700, margin: '6px 0' }}>No results match the current filter</div>
-            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{[course ? `Course: ${COURSES.find((c) => c.id === course)?.label}` : '', filterOn ? describeFilter(filter) : ''].filter(Boolean).join(' · ')}</div>
+            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{[course ? `Course: ${[...COURSES, OTHER_COURSE].find((c) => c.id === course)?.label}` : '', filterOn ? describeFilter(filter) : ''].filter(Boolean).join(' · ')}</div>
             <button style={ui.btn} onClick={() => { setFilter(emptyFilter()); setCourse(''); }}>Clear filter &amp; course</button>
           </div>
         ) : (
@@ -250,7 +250,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'groups' ? <GroupsView key={`${series}|${viewKey}`} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
-      {rows.length && tab === 'exam' ? <ExamInsights key={`${series}|${viewKey}`} rows={rows} series={series} seriesLabel={seriesLabel} scope={scope} institute={institute} otherNames={[...new Set(allRows.map((r) => r.series))].filter((n) => !inScope(n, scope)).sort()} loadOther={(n) => resolveIdentities(applyFixes(allRows.filter((r) => r.series === n), fixes.filter((f) => !f.series || f.series === n)))} /> : null}
+      {rows.length && tab === 'exam' ? <ExamInsights key={`${series}|${viewKey}`} rows={rows} series={series} seriesLabel={seriesLabel} scope={scope} institute={institute} who={who} canEdit={canUpload} otherNames={[...new Set(allRows.map((r) => r.series))].filter((n) => !inScope(n, scope)).sort()} loadOther={(n) => resolveIdentities(applyFixes(allRows.filter((r) => r.series === n), fixes.filter((f) => !f.series || f.series === n)))} /> : null}
       {tab === 'revision' ? <MockRevisionPlan key={`${series}|${viewKey}`} rows={rows} series={seriesLabel} passPct={passPct} institute={institute} /> : null}
       {tab === 'data' ? (
         <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaFull} who={who}
@@ -262,27 +262,39 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
 
 
 // ─── Navodaya / Sainik insights ───────────────────────────────────────────────
-const EXAM_LS = 'gnsi_mta_exam_cfg_v1';
-const readExamCfg = () => { try { return JSON.parse(localStorage.getItem(EXAM_LS) || '{}'); } catch { return {}; } };
-
-function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames, loadOther }) {
-  const [saved, setSaved] = useState(readExamCfg);
-  const cfgKey = (ex) => `${series}|${ex}`;
+function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames, loadOther, who, canEdit }) {
+  // Cut-offs, seats and batch→exam choices are stored per series in the database
+  // (mock_test_settings.exam_config) so every teacher and device sees the same targets.
+  const [conf, setConf] = useState({});
+  const [ready, setReady] = useState(false);
+  const [saveMode, setSaveMode] = useState('cloud');
+  const [saveErr, setSaveErr] = useState('');
+  const timer = useRef(null);
+  const confRef = useRef({});
+  useEffect(() => {
+    let live = true;
+    loadExamConfig(series).then((r) => { if (live) { confRef.current = r.config; setConf(r.config); setSaveMode(r.mode); } })
+      .catch((e) => { if (live) setSaveErr(`Could not load saved targets: ${e.message || e}`); })
+      .finally(() => { if (live) setReady(true); });
+    return () => { live = false; clearTimeout(timer.current); };
+  }, [series]);
+  const persist = (next) => {
+    confRef.current = next; setConf(next); setSaveErr('');
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      saveExamConfig(series, confRef.current, saveMode, who || '').catch((e) => setSaveErr(`Could not save targets: ${e.message || e}`));
+    }, 500);
+  };
   const getCfg = (ex) => {
-    const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(saved[cfgKey(ex)] || {}) };
+    const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(conf[ex] || {}) };
     return { cutoff: Math.min(100, Math.max(0, Number(raw.cutoff) || 0)), seats: Math.max(0, Math.floor(Number(raw.seats) || 0)), sectionMin: Math.min(100, Math.max(0, Number(raw.sectionMin) || 0)) };
   };
-  const setCfg = (ex, patch) => setSaved((o) => {
-    const n = { ...o, [cfgKey(ex)]: { ...getCfg(ex), ...patch } };
-    try { localStorage.setItem(EXAM_LS, JSON.stringify(n)); } catch { /* private mode */ }
-    return n;
-  });
-  const [override, setOverride] = useState(() => saved[`${series}|override`] || {});
+  const setCfg = (ex, patch) => persist({ ...conf, [ex]: { ...getCfg(ex), ...patch } });
+  const override = conf.override || EMPTY_OBJ;
   const setOv = (batch, v) => {
     const n = { ...override, [batch]: v };
     if (!v) delete n[batch];
-    setOverride(n);
-    setSaved((all) => { const m = { ...all, [`${series}|override`]: n }; try { localStorage.setItem(EXAM_LS, JSON.stringify(m)); } catch { /* ignore */ } return m; });
+    persist({ ...conf, override: n });
   };
   const batches = useMemo(() => [...new Set(rows.map((r) => r.batch))].sort(), [rows]);
   const students = useMemo(() => examStudents(rows, override), [rows, override]);
@@ -299,7 +311,7 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {batches.map((b) => (
           <Field key={b} label={b}>
-            <select style={ui.input} value={override[b] || ''} onChange={(e) => setOv(b, e.target.value)}>
+            <select style={ui.input} disabled={!canEdit} value={override[b] || ''} onChange={(e) => setOv(b, e.target.value)}>
               <option value="">Auto ({EXAMS[examOfBatch(b)]?.short || 'none'})</option>
               {EXAM_IDS.map((ex) => <option key={ex} value={ex}>{EXAMS[ex].short}</option>)}
               <option value="none">Not applicable</option>
@@ -309,6 +321,7 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
       </div>
     </div>
   );
+  if (!ready) return <div style={{ padding: 30, textAlign: 'center', color: '#8a93a6' }}>⏳ Loading saved targets…</div>;
   if (!active) return <>{mapper}<div style={{ ...ui.card, textAlign: 'center', padding: 30, color: '#5d6b82' }}>No batch is mapped to Navodaya or Sainik yet. Pick the exam for a batch above.</div></>;
 
   const ex = active, E = EXAMS[ex], cfg = getCfg(ex);
@@ -322,8 +335,8 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
     (mega_(scope) ? pool : otherStudents).filter((x) => x.exam === ex),
   ) : null;
   const num = (k) => (e) => setCfg(ex, { [k]: Math.max(0, Number(e.target.value) || 0) });
-  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'Safe').length;
-  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'At risk').length;
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
 
   const print = () => printDocument(examInsightsHTML({
     exam: E, cfg, series: seriesLabel, institute, pool, sp, secs, probOf, cmp, preLabel: mega_(scope) ? otherSeries : series, megaLabel: mega_(scope) ? series : otherSeries,
@@ -331,15 +344,16 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
 
   return (
     <>
+      {saveErr ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {saveErr}</div> : null}
       {mapper}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {present.map((id) => <button key={id} style={chip(id === ex)} onClick={() => setExam(id)}>{EXAMS[id].label} · {students.filter((s) => s.exam === id).length}</button>)}
       </div>
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <Field label="Cut-off (projected %)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} value={cfg.cutoff} onChange={num('cutoff')} /></Field>
-        <Field label="Seats / target selections"><input type="number" min={0} style={{ ...ui.input, width: 90 }} value={cfg.seats} onChange={num('seats')} /></Field>
-        <Field label="Sectional minimum (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} value={cfg.sectionMin} onChange={num('sectionMin')} /></Field>
-        <div style={{ fontSize: 12, color: '#5d6b82', flex: '1 1 240px' }}>Set these to the targets for this year. Projection = recent 3-test average plus half the trend; probability uses the student&apos;s score consistency. Saved in this browser.</div>
+        <Field label="Cut-off (projected %)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.cutoff} onChange={num('cutoff')} /></Field>
+        <Field label="Seats / target selections"><input type="number" min={0} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.seats} onChange={num('seats')} /></Field>
+        <Field label="Sectional minimum (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.sectionMin} onChange={num('sectionMin')} /></Field>
+        <div style={{ fontSize: 12, color: '#5d6b82', flex: '1 1 240px' }}>{canEdit ? 'Set these to the targets for this year.' : 'Only users who can upload results can change these targets.'} Projection = recent 3-test average plus half the trend; probability uses the student&apos;s score consistency. Saved to the database for this series{saveMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'}.</div>
         <button style={ui.btn} onClick={print}>🖨️ Print {E.short} insights</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -354,13 +368,13 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
         <h4 style={{ margin: '0 0 8px' }}>🎯 Qualify probability &amp; seat prediction</h4>
         <Table maxH={520} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg %', 'Projected %', 'Trend', 'Qualify chance', 'Status', 'Seat']}>
           {sp.sorted.map((s, i) => {
-            const p = probOf.get(s.sid), band = qualifyBand(p);
+            const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
             const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
             return (
               <tr key={s.sid} style={sp.bubble.includes(s) ? { background: '#fffbeb' } : undefined}>
                 <td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
                 <td style={ui.td}>{fx(s.avgPct)}%</td><td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.projected)}%</td><td style={{ ...ui.td, color: tone(s.trend, 1) }}>{s.tests >= 2 ? sgn(s.trend) : '—'}</td>
-                <td style={{ ...ui.td, fontWeight: 700, color: band.color }}>{fx(p * 100, 0)}%{s.tests < 3 ? <span title="Fewer than 3 tests — low confidence"> ⚠</span> : null}</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: band.color }}>{fx(p * 100, 0)}%{s.tests < MIN_TESTS_SAFE ? <span title={`Fewer than ${MIN_TESTS_SAFE} tests — low confidence, cannot be marked Safe`}> ⚠</span> : null}</td>
                 <td style={ui.td}><Pill text={band.label} color={band.color} /></td><td style={ui.td}><Pill text={seat[0]} color={seat[1]} /></td>
               </tr>
             );
@@ -535,7 +549,9 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
-  const leaderboard = useMemo(() => [...all.students].sort((a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)), [all]);
+  // Raw totals are only comparable when every student's paper has the same maximum; otherwise rank by average %.
+  const sameMax = useMemo(() => new Set(all.students.map((s) => s.max)).size <= 1, [all]);
+  const leaderboard = useMemo(() => [...all.students].sort((a, b) => (sameMax ? b.avgTotal - a.avgTotal : 0) || b.avgPct - a.avgPct || b.avgTotal - a.avgTotal || a.name.localeCompare(b.name)), [all, sameMax]);
   // split the ranked list into 6 groups of (total students ÷ 6); leftovers go to the top groups
   const GROUPS = 6;
   const { groupOf, groupStart, groupSize } = useMemo(() => {
@@ -574,7 +590,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
-        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Ranked by average total marks across all tests ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>{sameMax ? 'Ranked by average total marks across all tests' : 'Batches have different maximum totals, so students are ranked by average % (total marks shown alongside)'} ({all.students.length} students, all batches), split into {GROUPS} equal groups by rank.</div>
         <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
           {leaderboard.map((s, i) => (
             <Fragment key={s.sid}>

@@ -72,9 +72,11 @@ export function qualifyProbability(s, cutoff) {
   const predSd = Math.max(s.spread, 4) * Math.sqrt(1 + 1 / n);
   return clamp(1 - normCdf((cutoff - s.projected) / predSd), 0, 1);
 }
-export function qualifyBand(p) {
+// A student needs MIN_TESTS_SAFE tests of history before the tool will call them Safe.
+export const MIN_TESTS_SAFE = 3;
+export function qualifyBand(p, tests = MIN_TESTS_SAFE) {
   if (p === null) return { label: '—', color: '#8a93a6' };
-  return p >= 0.75 ? { label: 'Safe', color: '#047857' } : p >= 0.4 ? { label: 'Borderline', color: '#b45309' } : { label: 'At risk', color: '#b91c1c' };
+  return p >= 0.75 && tests >= MIN_TESTS_SAFE ? { label: 'Safe', color: '#047857' } : p >= 0.4 ? { label: 'Borderline', color: '#b45309' } : { label: 'At risk', color: '#b91c1c' };
 }
 
 // Rank by projected score; the top `seats` students who clear the cut-off are selected.

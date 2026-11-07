@@ -8,16 +8,18 @@ export const COURSES = [
 
 export function courseOfBatch(batch) {
   const t = String(batch || '');
+  if (/combined/i.test(t) && /navodaya/i.test(t)) return 'navodaya'; // "Combined Navodaya Course (Sainik Appearing Group)"
   if (/sainik|aissee|achiever|leader|champion/i.test(t)) return 'sainik';
   if (/foundation|pragati|udaan/i.test(t)) return 'foundation';
   if (/navodaya|jnv|lakshya|umeed|umed|combined/i.test(t)) return 'navodaya';
   return '';
 }
 
-export const filterByCourse = (rows, course) => (course ? rows.filter((r) => courseOfBatch(r.batch) === course) : rows);
+export const OTHER_COURSE = { id: 'other', label: 'Other batches', icon: '🗂️', color: '#6b7280', hint: 'Not matched to a course' };
+export const filterByCourse = (rows, course) => (course ? rows.filter((r) => (courseOfBatch(r.batch) || 'other') === course) : rows);
 export const courseCounts = (rows) => {
-  const sets = { '': new Set() };
+  const sets = { '': new Set(), other: new Set() };
   COURSES.forEach((c) => { sets[c.id] = new Set(); });
-  rows.forEach((r) => { sets[''].add(r.sid); const c = courseOfBatch(r.batch); if (c) sets[c].add(r.sid); });
+  rows.forEach((r) => { sets[''].add(r.sid); const c = courseOfBatch(r.batch); sets[c || 'other'].add(r.sid); });
   return Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, v.size]));
 };

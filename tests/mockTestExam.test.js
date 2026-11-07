@@ -66,7 +66,9 @@ test('courseOfBatch maps batches to the three courses', () => {
   assert.equal(courseOfBatch('Mystery'), '');
   const rs = [{ sid: 1, batch: 'Umeed' }, { sid: 2, batch: 'Udaan' }, { sid: 2, batch: 'Udaan' }];
   assert.equal(filterByCourse(rs, 'foundation').length, 2);
-  assert.deepEqual(courseCounts(rs), { '': 2, sainik: 0, navodaya: 1, foundation: 1 });
+  assert.deepEqual(courseCounts(rs), { '': 2, other: 0, sainik: 0, navodaya: 1, foundation: 1 });
+  assert.equal(courseOfBatch('Combined Navodaya Course (Sainik Appearing Group)'), 'navodaya');
+  assert.equal(filterByCourse([{ sid: 9, batch: 'Mystery' }], 'other').length, 1);
   assert.equal(examOfBatch('Achiever'), 'sainik');
   assert.equal(examOfBatch('Pragati'), '');
 });
@@ -77,4 +79,10 @@ test('compareSeries never pairs students with contradicting GCCs or duplicate na
   assert.equal(c1.matched, 0);
   const dup = [...mk('', 'Twin', 60), ...mk('', 'Twin ', 70).map((s) => ({ ...s, sid: 'x' }))];
   assert.equal(compareSeries(mk('', 'Twin', 50), dup).matched, 0);
+});
+
+test('a student with too few tests can never be Safe', () => {
+  assert.equal(qualifyBand(0.99, 1).label, 'Borderline');
+  assert.equal(qualifyBand(0.99, 3).label, 'Safe');
+  assert.equal(qualifyBand(0.1, 1).label, 'At risk');
 });
