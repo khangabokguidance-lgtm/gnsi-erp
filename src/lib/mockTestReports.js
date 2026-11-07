@@ -3,6 +3,7 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
+import { qualifyBand } from './mockTestExam';
 import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
 import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
@@ -322,3 +323,45 @@ export function subjectReportHTML(b, subject, ctx = {}) {
   ${stamp(inst)}</div>`;
 }
 
+
+
+// Navodaya / Sainik insights: qualify chance, seat prediction, sections, Pre vs Mega.
+export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp, secs, probOf, cmp, preLabel, megaLabel }) {
+  const selIds = new Set(sp.selected.map((s) => s.sid));
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid)).label === 'At risk').length;
+  const stuRows = sp.sorted.map((s, i) => {
+    const p = probOf.get(s.sid), band = qualifyBand(p);
+    const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
+    return `<tr${sp.bubble.includes(s) ? ' style="background:#fffbeb"' : ''}><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
+      <td>${fx(s.avgPct)}%</td><td><b>${fx(s.projected)}%</b></td><td style="color:${tone(s.trend, 1)}">${s.tests >= 2 ? sgn(s.trend) : '—'}</td>
+      <td style="font-weight:700;color:${band.color}">${fx(p * 100, 0)}%</td><td>${pill(band.label, band.color)}</td><td>${pill(seat[0], seat[1])}</td></tr>`;
+  }).join('');
+  const secRows = secs.map((x) => `<tr><td class="l"><b>${esc(x.subject)}</b></td><td>${esc(x.section || '—')}</td><td>${fx(x.avg)}%</td><td>${fx(x.selAvg)}%</td><td>${fx(x.restAvg)}%</td>
+    <td style="font-weight:700">${x.gap === null ? '—' : sgn(x.gap)}</td><td>${x.weakFor}</td>${cfg.sectionMin ? `<td class="l" style="color:${x.belowMin.length ? '#b91c1c' : '#047857'}">${x.belowMin.length ? esc(x.belowMin.join(', ')) : 'None'}</td>` : ''}</tr>`).join('');
+  const cmpRows = cmp ? cmp.pairs.map((x) => `<tr><td class="l">${esc(x.name)}</td><td class="l">${esc(x.batch)}</td><td>${fx(x.pre)}%</td><td>${fx(x.mega)}%</td>
+    <td style="font-weight:700;color:${tone(x.delta, 1)}">${sgn(x.delta)}</td><td>${x.rankPre}</td><td>${x.rankMega}</td><td style="color:${tone(x.move)}">${x.move > 0 ? '▲ ' + x.move : x.move < 0 ? '▼ ' + -x.move : '='}</td></tr>`).join('') : '';
+  return `<div class="page">${letterhead(inst)}
+  <div class="title">${esc(exam.label)} — Mock Test Insights</div>
+  <div class="sub">${esc(series || '')} · cut-off ${cfg.cutoff}% · ${cfg.seats} target selections${cfg.sectionMin ? ` · sectional minimum ${cfg.sectionMin}%` : ''}</div>
+  <div class="kpis">
+    ${kpi('Students', pool.length)}
+    ${kpi('Above cut-off', pool.length - sp.below.length, `${sp.below.length} below`, '#047857')}
+    ${kpi('Projected selections', `${sp.selected.length}/${cfg.seats}`, sp.waiting.length ? `${sp.waiting.length} waiting` : '')}
+    ${kpi('Safe', safe, '', '#047857')}
+    ${kpi('At risk', risk, '', '#b91c1c')}
+    ${kpi('Seat-line margin', sp.margin === null ? '—' : fx(sp.margin) + ' pts', sp.lastIn ? esc(sp.lastIn.name) : '')}
+  </div>
+  <h3>1 · Qualify probability &amp; seat prediction</h3>
+  <div style="font-size:10px;color:#5d6b82;margin:-4px 0 5px">Projection = recent 3-test average plus half the trend. Shaded rows are within 5 points of the seat line.</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg</th><th>Projected</th><th>Trend</th><th>Chance</th><th>Status</th><th>Seat</th></tr></thead><tbody>${stuRows}</tbody></table>
+  ${stamp(inst)}</div>
+
+  <div class="page">${letterhead(inst)}
+  <h3 style="margin-top:0">2 · Section-wise analysis</h3>
+  <table><thead><tr><th class="l">Subject</th><th>Section</th><th>Avg</th><th>Selected group</th><th>Rest</th><th>Gap</th><th>Weakest for</th>${cfg.sectionMin ? `<th class="l">Below ${cfg.sectionMin}%</th>` : ''}</tr></thead><tbody>${secRows}</tbody></table>
+  ${cmp ? `<h3>3 · Pre Mock vs Mega Mock</h3>
+  <div style="font-size:10px;color:#5d6b82;margin-bottom:5px">${esc(preLabel)} → ${esc(megaLabel)} · ${cmp.matched} matched · average change ${sgn(cmp.avgDelta)} pts · ${cmp.improved} improved · ${cmp.declined} declined</div>
+  <table><thead><tr><th class="l">Student</th><th class="l">Batch</th><th>Pre</th><th>Mega</th><th>Change</th><th>Pre rank</th><th>Mega rank</th><th>Move</th></tr></thead><tbody>${cmpRows}</tbody></table>` : ''}
+  ${stamp(inst)}</div>`;
+}
