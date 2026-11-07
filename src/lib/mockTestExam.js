@@ -114,12 +114,24 @@ export function sectionAnalysis(students, exam, selectedIds, sectionMin = 0) {
 // Pre vs Mega: match students across two series by GCC number, else by name.
 export function compareSeries(preStudents, megaStudents) {
   const key = (s) => (s.gcc ? `g${s.gcc}` : `n${normName(s.name)}`);
-  const megaBy = new Map(megaStudents.map((s) => [key(s), s]));
-  const byName = new Map(megaStudents.map((s) => [`n${normName(s.name)}`, s]));
+  const megaBy = new Map(), byName = new Map();
+  megaStudents.forEach((s) => {
+    if (s.gcc && !megaBy.has(key(s))) megaBy.set(key(s), s);
+    const n = `n${normName(s.name)}`;
+    byName.set(n, byName.has(n) ? null : s); // null = ambiguous (two students share the name)
+  });
+  const used = new Set();
   const pairs = [];
   preStudents.forEach((p) => {
-    const m = megaBy.get(key(p)) || byName.get(`n${normName(p.name)}`);
-    if (m) pairs.push({ name: p.name, gcc: p.gcc || m.gcc, batch: m.batch || p.batch, exam: m.exam || p.exam, pre: p.avgPct, mega: m.avgPct, preProj: p.projected, megaProj: m.projected });
+    let m = p.gcc ? megaBy.get(key(p)) : null;
+    if (!m) {
+      const c = byName.get(`n${normName(p.name)}`);
+      // name fallback only when it is unambiguous and the GCC numbers don't contradict each other
+      if (c && !(p.gcc && c.gcc)) m = c;
+    }
+    if (!m || used.has(m.sid)) return;
+    used.add(m.sid);
+    pairs.push({ name: p.name, gcc: p.gcc || m.gcc, batch: m.batch || p.batch, exam: m.exam || p.exam, pre: p.avgPct, mega: m.avgPct, preProj: p.projected, megaProj: m.projected });
   });
   const ra = denseRanks(pairs.map((x) => Math.round(x.pre * 100) / 100)), rb = denseRanks(pairs.map((x) => Math.round(x.mega * 100) / 100));
   pairs.forEach((x, i) => { x.delta = x.mega - x.pre; x.rankPre = ra[i]; x.rankMega = rb[i]; x.move = ra[i] - rb[i]; });

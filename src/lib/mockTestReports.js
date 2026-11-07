@@ -343,11 +343,11 @@ export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp,
     <td style="font-weight:700;color:${tone(x.delta, 1)}">${sgn(x.delta)}</td><td>${x.rankPre}</td><td>${x.rankMega}</td><td style="color:${tone(x.move)}">${x.move > 0 ? '▲ ' + x.move : x.move < 0 ? '▼ ' + -x.move : '='}</td></tr>`).join('') : '';
   return `<div class="page">${letterhead(inst)}
   <div class="title">${esc(exam.label)} — Mock Test Insights</div>
-  <div class="sub">${esc(series || '')} · cut-off ${cfg.cutoff}% · ${cfg.seats} target selections${cfg.sectionMin ? ` · sectional minimum ${cfg.sectionMin}%` : ''}</div>
+  <div class="sub">${esc(series || '')} · cut-off ${Number(cfg.cutoff) || 0}% · ${Number(cfg.seats) || 0} target selections${Number(cfg.sectionMin) ? ` · sectional minimum ${Number(cfg.sectionMin)}%` : ''}</div>
   <div class="kpis">
     ${kpi('Students', pool.length)}
     ${kpi('Above cut-off', pool.length - sp.below.length, `${sp.below.length} below`, '#047857')}
-    ${kpi('Projected selections', `${sp.selected.length}/${cfg.seats}`, sp.waiting.length ? `${sp.waiting.length} waiting` : '')}
+    ${kpi('Projected selections', `${sp.selected.length}/${Number(cfg.seats) || 0}`, sp.waiting.length ? `${sp.waiting.length} waiting` : '')}
     ${kpi('Safe', safe, '', '#047857')}
     ${kpi('At risk', risk, '', '#b91c1c')}
     ${kpi('Seat-line margin', sp.margin === null ? '—' : fx(sp.margin) + ' pts', sp.lastIn ? esc(sp.lastIn.name) : '')}

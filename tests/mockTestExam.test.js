@@ -70,3 +70,11 @@ test('courseOfBatch maps batches to the three courses', () => {
   assert.equal(examOfBatch('Achiever'), 'sainik');
   assert.equal(examOfBatch('Pragati'), '');
 });
+
+test('compareSeries never pairs students with contradicting GCCs or duplicate names', () => {
+  const mk = (gcc, name, pct) => examStudents([{ sid: gcc || name, student_name: name, gcc_no: gcc, batch: 'Sainik A', test_no: 1, total: pct, max_total: 100, marks: {}, max_marks: {} }]);
+  const c1 = compareSeries(mk('11', 'Same Name', 50), mk('22', 'Same Name', 60));
+  assert.equal(c1.matched, 0);
+  const dup = [...mk('', 'Twin', 60), ...mk('', 'Twin ', 70).map((s) => ({ ...s, sid: 'x' }))];
+  assert.equal(compareSeries(mk('', 'Twin', 50), dup).matched, 0);
+});

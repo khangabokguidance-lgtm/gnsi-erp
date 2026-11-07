@@ -268,7 +268,10 @@ const readExamCfg = () => { try { return JSON.parse(localStorage.getItem(EXAM_LS
 function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames, loadOther }) {
   const [saved, setSaved] = useState(readExamCfg);
   const cfgKey = (ex) => `${series}|${ex}`;
-  const getCfg = (ex) => ({ cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(saved[cfgKey(ex)] || {}) });
+  const getCfg = (ex) => {
+    const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(saved[cfgKey(ex)] || {}) };
+    return { cutoff: Math.min(100, Math.max(0, Number(raw.cutoff) || 0)), seats: Math.max(0, Math.floor(Number(raw.seats) || 0)), sectionMin: Math.min(100, Math.max(0, Number(raw.sectionMin) || 0)) };
+  };
   const setCfg = (ex, patch) => setSaved((o) => {
     const n = { ...o, [cfgKey(ex)]: { ...getCfg(ex), ...patch } };
     try { localStorage.setItem(EXAM_LS, JSON.stringify(n)); } catch { /* private mode */ }
