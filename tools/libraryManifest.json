@@ -1,0 +1,658 @@
+{
+  "_note": "Maps Library files (Project: Library/<folder>/<file>) to ERP Sainik chapter names. chapters:[] = Library-only topic. Update this file whenever you add or rename a chapter on either side.",
+  "excludedErpSubjects": [
+    "Social Studies"
+  ],
+  "subjects": {
+    "Mathematics": {
+      "libraryFolder": "Maths",
+      "erpStudyMaterial": "Mathematics",
+      "erpQBank": "Mathematics",
+      "files": [
+        {
+          "file": "Maths_01_Natural_Numbers.md",
+          "chapters": [
+            "Natural Numbers"
+          ]
+        },
+        {
+          "file": "Maths_02_LCM_and_HCF.md",
+          "chapters": [
+            "LCM and HCF"
+          ]
+        },
+        {
+          "file": "Maths_03_Unitary_Method.md",
+          "chapters": [
+            "Unitary Method"
+          ]
+        },
+        {
+          "file": "Maths_04_Fractions.md",
+          "chapters": [
+            "Fractions"
+          ]
+        },
+        {
+          "file": "Maths_05_Ratio_and_Proportion.md",
+          "chapters": [
+            "Ratio and Proportion"
+          ]
+        },
+        {
+          "file": "Maths_06_Profit_and_Loss.md",
+          "chapters": [
+            "Profit and Loss"
+          ]
+        },
+        {
+          "file": "Maths_07_Simplification.md",
+          "chapters": [
+            "Simplification"
+          ]
+        },
+        {
+          "file": "Maths_08_Average.md",
+          "chapters": [
+            "Average"
+          ]
+        },
+        {
+          "file": "Maths_09_Percentage.md",
+          "chapters": [
+            "Percentage"
+          ]
+        },
+        {
+          "file": "Maths_10_Area_and_Perimeter.md",
+          "chapters": [
+            "Area and Perimeter"
+          ]
+        },
+        {
+          "file": "Maths_11_Simple_Interest.md",
+          "chapters": [
+            "Simple Interest"
+          ]
+        },
+        {
+          "file": "Maths_12_Lines_and_Angles.md",
+          "chapters": [
+            "Lines and Angles"
+          ]
+        },
+        {
+          "file": "Maths_13_Complementary_and_Supplementary_Angles.md",
+          "chapters": [
+            "Complementary and Supplementary Angles"
+          ]
+        },
+        {
+          "file": "Maths_14_Conversion_of_Units.md",
+          "chapters": [
+            "Conversion of Units"
+          ]
+        },
+        {
+          "file": "Maths_15_Roman_Numerals.md",
+          "chapters": [
+            "Roman Numerals"
+          ]
+        },
+        {
+          "file": "Maths_16_Types_of_Angles.md",
+          "chapters": [
+            "Types of Angles"
+          ]
+        },
+        {
+          "file": "Maths_17_Circle.md",
+          "chapters": [
+            "Circle"
+          ]
+        },
+        {
+          "file": "Maths_18_Volume_of_Cube_and_Cuboids.md",
+          "chapters": [
+            "Volume of Cube and Cuboids"
+          ]
+        },
+        {
+          "file": "Maths_19_Prime_and_Composite_Numbers.md",
+          "chapters": [
+            "Prime and Composite Numbers"
+          ]
+        },
+        {
+          "file": "Maths_20_Plane_Figures.md",
+          "chapters": [
+            "Plane Figures"
+          ]
+        },
+        {
+          "file": "Maths_21_Decimal_Numbers.md",
+          "chapters": [
+            "Decimal Numbers"
+          ]
+        },
+        {
+          "file": "Maths_22_Speed_and_Time.md",
+          "chapters": [
+            "Speed and Time"
+          ]
+        },
+        {
+          "file": "Maths_23_Operation_on_Numbers.md",
+          "chapters": [
+            "Operation on Numbers"
+          ]
+        },
+        {
+          "file": "Maths_24_Temperature.md",
+          "chapters": [
+            "Temperature"
+          ]
+        },
+        {
+          "file": "Maths_25_Arranging_of_Fractions.md",
+          "chapters": [
+            "Arranging of Fractions"
+          ]
+        },
+        {
+          "file": "Maths_26_Rounding_Off_Numbers.md",
+          "chapters": [
+            "Rounding Off Numbers"
+          ]
+        },
+        {
+          "file": "Maths_27_Measurement.md",
+          "chapters": [
+            "Measurement"
+          ]
+        },
+        {
+          "file": "Maths_28_Squares_Cubes_and_Roots.md",
+          "chapters": [
+            "Squares, Cubes and Roots"
+          ]
+        },
+        {
+          "file": "Maths_29_Data_Handling.md",
+          "chapters": [
+            "Data Handling"
+          ]
+        },
+        {
+          "file": "Maths_30_Time_and_Work.md",
+          "chapters": [
+            "Time and Work"
+          ]
+        }
+      ]
+    },
+    "Intelligence": {
+      "libraryFolder": "Intelligence",
+      "erpStudyMaterial": "Intelligence",
+      "erpQBank": "Intelligence",
+      "files": [
+        {
+          "file": "Intelligence_01_Analogies_Mathematical_and_Verbal.md",
+          "chapters": [
+            "Analogies"
+          ]
+        },
+        {
+          "file": "Intelligence_02_Pattern_Spatial_and_Mathematical.md",
+          "chapters": [
+            "Pattern Completion"
+          ]
+        },
+        {
+          "file": "Intelligence_03_Classification.md",
+          "chapters": [
+            "Classification"
+          ]
+        },
+        {
+          "file": "Intelligence_04_Visual_and_Logical_Reasoning.md",
+          "chapters": []
+        },
+        {
+          "file": "Intelligence_05_Series_and_Sequences.md",
+          "chapters": [
+            "Series Completion"
+          ]
+        },
+        {
+          "file": "Intelligence_06_Critical_Thinking_and_Problem_Solving.md",
+          "chapters": []
+        },
+        {
+          "file": "Intelligence_07_Familial_Relations.md",
+          "chapters": [
+            "Blood Relations"
+          ]
+        },
+        {
+          "file": "Intelligence_08_Venn_Diagram.md",
+          "chapters": [
+            "Venn Diagram"
+          ]
+        },
+        {
+          "file": "Intelligence_09_Paper_Folding.md",
+          "chapters": [
+            "Paper Folding"
+          ]
+        },
+        {
+          "file": "Intelligence_10_Embedded_Figure.md",
+          "chapters": [
+            "Embedded Figure"
+          ]
+        },
+        {
+          "file": "Intelligence_11_Geometrical_Figure_Completion.md",
+          "chapters": [
+            "Geometrical Figure Completion"
+          ]
+        },
+        {
+          "file": "Intelligence_12_Space_Visualisation.md",
+          "chapters": [
+            "Space Visualisation"
+          ]
+        },
+        {
+          "file": "Intelligence_13_Order_and_Ranking.md",
+          "chapters": [
+            "Order and Ranking"
+          ]
+        },
+        {
+          "file": "Intelligence_14_Coding_Decoding.md",
+          "chapters": [
+            "Coding Decoding"
+          ]
+        },
+        {
+          "file": "Intelligence_15_Mathematical_Operations.md",
+          "chapters": [
+            "Mathematical Operations"
+          ]
+        },
+        {
+          "file": "Intelligence_16_Sitting_Arrangement.md",
+          "chapters": [
+            "Sitting Arrangement"
+          ]
+        },
+        {
+          "file": "Intelligence_17_Mirror_Image.md",
+          "chapters": [
+            "Mirror Image"
+          ]
+        },
+        {
+          "file": "Intelligence_18_Figure_Matching.md",
+          "chapters": [
+            "Figure Matching"
+          ]
+        },
+        {
+          "file": "Intelligence_19_Figure_Series.md",
+          "chapters": [
+            "Figure Series"
+          ]
+        },
+        {
+          "file": "Intelligence_20_Odd_Man_Out.md",
+          "chapters": [
+            "Odd Man Out"
+          ]
+        },
+        {
+          "file": "Intelligence_21_Word_Formation.md",
+          "chapters": [
+            "Word Formation"
+          ]
+        },
+        {
+          "file": "Intelligence_22_Dictionary_Word_Order.md",
+          "chapters": [
+            "Dictionary Word Order"
+          ]
+        },
+        {
+          "file": "Intelligence_23_Direction_Test.md",
+          "chapters": [
+            "Direction Test"
+          ]
+        },
+        {
+          "file": "Intelligence_24_Clock_and_Calendar.md",
+          "chapters": [
+            "Clock and Calendar"
+          ]
+        }
+      ]
+    },
+    "Language": {
+      "libraryFolder": "Language",
+      "erpStudyMaterial": "English Language",
+      "erpQBank": "Language",
+      "files": [
+        {
+          "file": "Language_01_Comprehension_Passage.md",
+          "chapters": [
+            "Comprehension Passage"
+          ]
+        },
+        {
+          "file": "Language_02_Preposition.md",
+          "chapters": [
+            "Preposition"
+          ]
+        },
+        {
+          "file": "Language_03_Article.md",
+          "chapters": [
+            "Article"
+          ]
+        },
+        {
+          "file": "Language_04_Vocabulary.md",
+          "chapters": [
+            "Vocabulary"
+          ]
+        },
+        {
+          "file": "Language_05_Verbs_and_Type.md",
+          "chapters": [
+            "Verbs and Type"
+          ]
+        },
+        {
+          "file": "Language_06_Confusing_Words.md",
+          "chapters": [
+            "Confusing Words"
+          ]
+        },
+        {
+          "file": "Language_07_Question_Tags.md",
+          "chapters": [
+            "Question Tags"
+          ]
+        },
+        {
+          "file": "Language_08_Types_of_Sentence.md",
+          "chapters": [
+            "Types of Sentences"
+          ]
+        },
+        {
+          "file": "Language_09_Tense_Forms.md",
+          "chapters": [
+            "Tense Forms"
+          ]
+        },
+        {
+          "file": "Language_10_Kinds_of_Nouns.md",
+          "chapters": [
+            "Kinds of Nouns"
+          ]
+        },
+        {
+          "file": "Language_11_Kinds_of_Pronouns.md",
+          "chapters": [
+            "Kinds of Pronouns"
+          ]
+        },
+        {
+          "file": "Language_12_Correct_Spelling.md",
+          "chapters": [
+            "Correct Spelling"
+          ]
+        },
+        {
+          "file": "Language_13_Ordering_of_Words_in_Sentence.md",
+          "chapters": [
+            "Ordering of Words in Sentence"
+          ]
+        },
+        {
+          "file": "Language_14_Sentence_Formation.md",
+          "chapters": [
+            "Sentence Formation"
+          ]
+        },
+        {
+          "file": "Language_15_Antonyms.md",
+          "chapters": [
+            "Antonyms"
+          ]
+        },
+        {
+          "file": "Language_16_Synonyms.md",
+          "chapters": [
+            "Synonyms"
+          ]
+        },
+        {
+          "file": "Language_17_Adjectives.md",
+          "chapters": [
+            "Adjectives"
+          ]
+        },
+        {
+          "file": "Language_18_Interjection.md",
+          "chapters": [
+            "Interjection"
+          ]
+        },
+        {
+          "file": "Language_19_Idioms_and_Phrases.md",
+          "chapters": [
+            "Idioms and Phrases"
+          ]
+        },
+        {
+          "file": "Language_20_Collective_Nouns.md",
+          "chapters": [
+            "Collective Nouns"
+          ]
+        },
+        {
+          "file": "Language_21_Number.md",
+          "chapters": [
+            "Number"
+          ]
+        },
+        {
+          "file": "Language_22_Gender.md",
+          "chapters": [
+            "Gender"
+          ]
+        },
+        {
+          "file": "Language_23_Adverbs.md",
+          "chapters": [
+            "Adverbs"
+          ]
+        },
+        {
+          "file": "Language_24_Rhyming_Words.md",
+          "chapters": [
+            "Rhyming Words"
+          ]
+        },
+        {
+          "file": "Language_25_Singular_and_Plural.md",
+          "chapters": []
+        },
+        {
+          "file": "Language_26_Conjunction.md",
+          "chapters": [
+            "Conjunction"
+          ]
+        }
+      ]
+    },
+    "General Knowledge": {
+      "libraryFolder": "GK",
+      "erpStudyMaterial": "General Knowledge",
+      "erpQBank": "General Knowledge",
+      "files": [
+        {
+          "file": "GK_01_National_Symbols_of_India.md",
+          "chapters": [
+            "Icons and Symbols of India"
+          ]
+        },
+        {
+          "file": "GK_02_India_at_a_Glance.md",
+          "chapters": []
+        },
+        {
+          "file": "GK_03_Art_and_Culture_of_India.md",
+          "chapters": [
+            "Art and Culture"
+          ]
+        },
+        {
+          "file": "GK_04_Indian_Literary_and_Cultural_Awards_curr.md",
+          "chapters": [
+            "Indian Literary Awards"
+          ]
+        },
+        {
+          "file": "GK_05_National_and_International_Personalities.md",
+          "chapters": []
+        },
+        {
+          "file": "GK_06_Indian_Defence_System.md",
+          "chapters": [
+            "Defence Awareness"
+          ]
+        },
+        {
+          "file": "GK_07_Sports.md",
+          "chapters": [
+            "Sports and Games"
+          ]
+        },
+        {
+          "file": "GK_08_National_and_International_Organisations.md",
+          "chapters": [
+            "International Organizations"
+          ]
+        },
+        {
+          "file": "GK_09_Solar_System_and_Our_Earth.md",
+          "chapters": [
+            "Shape of Earth"
+          ]
+        },
+        {
+          "file": "GK_10_Mountain_Terrain_and_Lifestyle.md",
+          "chapters": [
+            "Mountain Terrain"
+          ]
+        },
+        {
+          "file": "GK_11_Water_Cycle_Evaporation_and_Condensation.md",
+          "chapters": [
+            "Evaporation and Water Cycle"
+          ]
+        },
+        {
+          "file": "GK_12_Energy_Renewable_and_Non_renewable.md",
+          "chapters": [
+            "Non-Renewable Energy"
+          ]
+        },
+        {
+          "file": "GK_13_Climate_Earthquake_Flood_and_Natural_Cal.md",
+          "chapters": [
+            "Natural Calamities"
+          ]
+        },
+        {
+          "file": "GK_14_Use_of_Water_in_Daily_Life.md",
+          "chapters": [
+            "Traditional Water Harvesting"
+          ]
+        },
+        {
+          "file": "GK_15_Tasting_Digestion_and_Food_Preservation.md",
+          "chapters": [
+            "Taste and Digestion",
+            "Cooking and Preserving"
+          ]
+        },
+        {
+          "file": "GK_16_Life_of_Farmers_Farming_Techniques_Seed_.md",
+          "chapters": [
+            "Life of Farmers",
+            "Germination and Seed Dispersal"
+          ]
+        },
+        {
+          "file": "GK_17_Tribal_Community_and_Forest.md",
+          "chapters": [
+            "Tribal Communities"
+          ]
+        },
+        {
+          "file": "GK_18_Scientific_Devices_Used_in_Daily_Life.md",
+          "chapters": [
+            "Scientific Devices"
+          ]
+        },
+        {
+          "file": "GK_19_Water_Pollution_and_Microbial_Diseases.md",
+          "chapters": [
+            "Water Pollution"
+          ]
+        },
+        {
+          "file": "GK_20_Relationship_Between_Humans_and_Animals.md",
+          "chapters": [
+            "Relationship Animals and Humans"
+          ]
+        },
+        {
+          "file": "GK_21_Function_of_Plant_Animal_and_Human.md",
+          "chapters": [
+            "Functions of Body Parts"
+          ]
+        },
+        {
+          "file": "GK_22_Super_Senses_and_Young_Ones_of_Animals.md",
+          "chapters": [
+            "Young Ones of Animals"
+          ]
+        },
+        {
+          "file": "GK_23_Major_Religions_of_India.md",
+          "chapters": [
+            "Major Religions of India"
+          ]
+        },
+        {
+          "file": "GK_24_Historical_Monuments.md",
+          "chapters": [
+            "Historical Monuments"
+          ]
+        },
+        {
+          "file": "GK_25_Food_Culture_and_Habitat.md",
+          "chapters": [
+            "Food Culture and Habitat"
+          ]
+        }
+      ]
+    }
+  }
+}
