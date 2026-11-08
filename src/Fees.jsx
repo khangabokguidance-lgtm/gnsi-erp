@@ -57,6 +57,7 @@ import FeeTabShell from './FeeTabShell'
 import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
+import FeeWaivers from './FeeWaivers'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
 import FeeMonthlyCheck from './FeeMonthlyCheck'
@@ -4881,6 +4882,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
     // Day closing is for every cashier: it lists the day's collections of all users.
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
@@ -5425,6 +5427,7 @@ export default function Fees() {
       {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
       {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
