@@ -1,7 +1,7 @@
 // CbtAnalysis.jsx — Results → deeper analysis (staff): how hard each question was, which options were chosen, how each
 // section went, rank / percentile, a printable report per student, and re-evaluation after the answer key is corrected.
 import { useMemo, useState } from 'react'
-import { questionStats, sectionStats, standings, summary } from './lib/cbtAnalytics'
+import { questionStats, sectionStats, standings, summary, groupStats } from './lib/cbtAnalytics'
 import { rescorePlan } from './lib/cbtRescore'
 import { fetchOnlineTest, applyRescore } from './cbtRemote'
 import { cbtStore } from './cbtStore'
@@ -13,11 +13,13 @@ export default function CbtAnalysis({ test, rows, attempts, canEdit, flash, onCh
   const [open, setOpen] = useState(false)
   const [plan, setPlan] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [groupBy, setGroupBy] = useState('district')
   const done = rows.filter(r => r.submitted)
   const qs = useMemo(() => (open ? questionStats(test, rows) : []), [open, test, rows])
   const secs = useMemo(() => sectionStats(test, rows), [test, rows])
   const stand = useMemo(() => standings(rows), [rows])
   const sum = summary(rows)
+  const groups = useMemo(() => (open ? groupStats(rows, groupBy) : []), [open, rows, groupBy])
   const hasOnline = attempts.some(a => a.state === 'submitted')
 
   const preview = async () => {
@@ -58,7 +60,18 @@ export default function CbtAnalysis({ test, rows, attempts, canEdit, flash, onCh
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
           {[['Average', `${sum.avg} / ${sum.max}`], ['Median', sum.median], ['Highest', sum.high], ['Lowest', sum.low]].map(([l, v]) => <span key={l} className="tag" style={{ background: '#eef2f9', color: '#1e3a6e', fontSize: 13, padding: '5px 12px' }}>{l}: <b>{v}</b></span>)}
         </div>
-        <h4 style={{ margin: '8px 0' }}>Sections (topic-wise)</h4>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
+          <h4 style={{ margin: 0 }}>Results by</h4>
+          {[['district', 'District'], ['gender', 'Gender'], ['caste', 'Category']].map(([k, l]) => <button key={k} className={'btn' + (groupBy === k ? ' navy' : '')} onClick={() => setGroupBy(k)}>{l}</button>)}
+        </div>
+        <div className="tbl"><table>
+          <thead><tr><th>{{ district: 'District', gender: 'Gender', caste: 'Category' }[groupBy]}</th><th className="num">Candidates</th><th className="num">Share %</th><th className="num">Average</th><th>Average score</th><th className="num">Highest</th><th className="num">Lowest</th></tr></thead>
+          <tbody>{groups.map(x => <tr key={x.group}><td><b>{x.group}</b></td><td className="num">{x.count}</td><td className="num">{x.share}</td><td className="num">{x.avg}</td>
+            <td style={{ minWidth: 120 }}><div style={{ background: '#e8edf5', borderRadius: 6, height: 10 }}><div style={{ width: `${Math.min(100, x.avgPct)}%`, height: 10, borderRadius: 6, background: x.avgPct < 40 ? '#b42318' : x.avgPct < 60 ? '#d9a21c' : '#2f7d4f' }} /></div></td>
+            <td className="num">{x.high}</td><td className="num">{x.low}</td></tr>)}</tbody>
+        </table></div>
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>District, gender and category come from the student's ERP record (or the guest form). Candidates with no value are listed as “Not given” — fill them in Students to improve this table.</p>
+        <h4 style={{ margin: '16px 0 8px' }}>Sections (topic-wise)</h4>
         <div className="tbl"><table>
           <thead><tr><th>Section</th><th className="num">Average</th><th className="num">Out of</th><th>Class average</th><th className="num">Accuracy %</th></tr></thead>
           <tbody>{secs.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td className="num">{s.avg}</td><td className="num">{s.max}</td>

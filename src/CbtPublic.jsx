@@ -4,6 +4,7 @@
 // to the server as they go and the server marks it. Reopening the link on the same device resumes the attempt.
 import { useEffect, useMemo, useState } from 'react'
 import { DEMO_TEST } from './lib/cbtDemo'
+import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
@@ -22,7 +23,7 @@ function makeRemote({ testId, code, candidate, gcc, parent, dob = '', guest = nu
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
   const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, sec: a.sec || null, changes: a.changes || null })
   r.begin = async () => {
-    const res = guest ? await startGuest(testId, code, guest.name, guest.phone) : await startExam(testId, code, gcc, parent, null, dob)
+    const res = guest ? await startGuest(testId, code, guest.name, guest.phone, guest.district, guest.gender, guest.caste) : await startExam(testId, code, gcc, parent, null, dob)
     r.attemptId = res.attempt.id; r.token = res.token; r.session = res.session; sync(res.attempt)
     write(savedKey(testId), { attemptId: r.attemptId, token: r.token, session: r.session, name: candidate.name, roll: candidate.roll })
     return { test: res.test, attempt: localAttempt(res.attempt, res.test, candidate) }
@@ -37,7 +38,7 @@ function CbtPublicInner() {
   const testId = params.get('t') || ''
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
-  const [form, setForm] = useState({ gcc: '', parent: '', dob: '', code: params.get('c') || '', gname: '', gphone: '' })
+  const [form, setForm] = useState({ gcc: '', parent: '', dob: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
   const [saved] = useState(() => read(savedKey(testId)))
   const [phase, setPhase] = useState('landing')     // landing | gate | exam | result | done
   const [run, setRun] = useState(null)              // { test, remote, candidate, resume }
@@ -104,8 +105,9 @@ function CbtPublicInner() {
     if (form.gname.trim().length < 2) return setErr('Enter your full name.')
     const ph = form.gphone.replace(/\D/g, '')
     if (ph.length < 10) return setErr('Enter your 10-digit mobile number.')
+    if (!form.gdistrict || !form.ggender || !form.gcaste) return setErr('Choose your district, gender and category.')
     const candidate = { name: form.gname.trim(), roll: 'G' + ph.slice(-10) }
-    setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, guest: { name: form.gname.trim(), phone: ph } }), resume: null })
+    setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, guest: { name: form.gname.trim(), phone: ph, district: form.gdistrict, gender: form.ggender, caste: form.gcaste } }), resume: null })
     setPhase('gate')
   }
 
@@ -173,6 +175,9 @@ function CbtPublicInner() {
             <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
             <label><span className="lbl">Full name *</span><input className="in" autoComplete="off" value={form.gname} onChange={type('gname')} /></label>
             <label><span className="lbl">Mobile number *</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.gphone} onChange={type('gphone')} /></label>
+            <label><span className="lbl">District *</span><select className="in" value={form.gdistrict} onChange={type('gdistrict')}><option value="">Choose district…</option>{DISTRICT_OPTIONS.map(d => <option key={d}>{d}</option>)}</select></label>
+            <label><span className="lbl">Gender *</span><select className="in" value={form.ggender} onChange={type('ggender')}><option value="">Choose…</option>{GENDERS.map(g => <option key={g}>{g}</option>)}</select></label>
+            <label><span className="lbl">Category (caste) *</span><select className="in" value={form.gcaste} onChange={type('gcaste')}><option value="">Choose…</option>{CASTES.map(c => <option key={c}>{c}</option>)}</select></label>
           </div>
           {err && <p role="alert" style={{ margin: '10px 0 0', color: '#b42318', fontWeight: 700 }}>{err}</p>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}><button className="btn" onClick={() => { setErr(''); setGuestMode(false) }}>‹ I am a student</button><button className="btn gold" onClick={startAsGuest}>Continue ›</button></div>

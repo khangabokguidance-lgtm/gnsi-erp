@@ -556,6 +556,10 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                     studentContext={selected} onSaved={v => onProfileFieldSaved('status', v)} />
                   <EditableRow label="Gender" value={rawStudent.gender} tableKey="students" rowId={selected.id} field="gender"
                     studentContext={selected} onSaved={v => onProfileFieldSaved('gender', v)} />
+                  <EditableRow label="District (Manipur)" value={rawStudent.district} tableKey="students" rowId={selected.id} field="district"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('district', v)} />
+                  <EditableRow label="Caste / Category" value={rawStudent.caste} tableKey="students" rowId={selected.id} field="caste"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('caste', v)} />
                   <EditableRow label="Date of Birth" value={rawStudent.dob} tableKey="students" rowId={selected.id} field="dob"
                     studentContext={selected} onSaved={v => onProfileFieldSaved('dob', v)} />
                   <EditableRow label="Admission Date" value={rawStudent.admission_date} tableKey="students" rowId={selected.id} field="admission_date"

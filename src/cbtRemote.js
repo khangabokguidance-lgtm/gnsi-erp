@@ -63,7 +63,7 @@ const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn,
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const startExam = (id, code, gcc, parent, phone, dob) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null, ...(dob ? { p_dob: dob } : {}) })
 // A guest (not in the ERP) — only when the test allows guests. One attempt per mobile number.
-export const startGuest = (id, code, name, phone) => rpc('cbt_start_guest', { p_test: id, p_code: code || '', p_name: name, p_phone: phone })
+export const startGuest = (id, code, name, phone, district, gender, caste) => rpc('cbt_start_guest', { p_test: id, p_code: code || '', p_name: name, p_phone: phone, ...(district ? { p_district: district } : {}), ...(gender ? { p_gender: gender } : {}), ...(caste ? { p_caste: caste } : {}) })
 // A GCC no. is matched exactly (no name search). With `parent` it also checks that number against the ERP record: verified true / false / null (none on file).
 export const lookupStudent = (id, code, gcc, parent, dob) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: gcc, ...(parent ? { p_parent: parent } : {}), ...(dob ? { p_dob: dob } : {}) })
 export const resumeExam = (attempt, token, session) => rpc('cbt_resume', { p_attempt: attempt, p_token: token, p_session: session || null })
