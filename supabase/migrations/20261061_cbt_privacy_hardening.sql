@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Online exam: privacy + identity hardening (run after 20261034 – 20261040).
---   1. The GCC lookup no longer hands out the student's name, class, father's name or phone hint before the
+--   1. The GCC lookup no longer hands out the student's name, class or father's name before the
 --      parent number is verified. Without a number it only says whether the GCC no. exists and whether a number is
 --      on file. Details come back ONLY when the number matches.
 --   2. A student with no parent number on file can no longer start by access code + GCC alone (anyone holding the
@@ -52,9 +52,10 @@ begin
   if cardinality(phones) = 0 then
     return jsonb_build_array(jsonb_build_object('gcc', st.gcc_no::text, 'hasPhone', false, 'verified', false));
   end if;
-  -- step 1 (no number typed yet): only "this GCC no. exists" — no name, class, father or phone hint
+  -- step 1 (no number typed yet): "this GCC no. exists" plus the last 4 digits of the number on file (the phone hint) — no name, class or father
   if p_parent is null then
-    return jsonb_build_array(jsonb_build_object('gcc', st.gcc_no::text, 'hasPhone', true, 'verified', null));
+    return jsonb_build_array(jsonb_build_object('gcc', st.gcc_no::text, 'hasPhone', true, 'verified', null,
+      'phoneHint', '••••••' || right(phones[1], 4)));
   end if;
   if (select count(*) from public.cbt_hits h where h.kind = 'phone:' || g and h.at > now() - interval '10 minutes') >= 20 then
     return jsonb_build_object('error', 'EXAM-LIMIT: Too many wrong numbers for this GCC no. Wait ten minutes and try again, or ask the office.');
