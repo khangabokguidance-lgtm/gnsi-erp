@@ -13,18 +13,21 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
   const [id, setId] = useState(initialId || online?.find(o => o.status === 'live')?.id || online?.[0]?.id || '')
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(() => Date.now())
   const [busy, setBusy] = useState('')
   const [q, setQ] = useState('')
   const [full, setFull] = useState(null)               // the test's sections (for the question total)
   const test = online?.find(o => o.id === id)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- a new exam clears the previous exam's question total before loading its own
   useEffect(() => { let on = true; setFull(null); if (id) fetchOnlineTest(id).then(t => { if (on) setFull(t) }).catch(() => {}); return () => { on = false } }, [id])
   const shape = { durationMin: Number(test?.duration_min) || 0, sections: full?.sections || [] }
 
+  const testName = test?.name || ''
   const load = useCallback(async () => {
     if (!id) return
-    try { setRows(await onlineAttempts(id, test?.name || '')); setErr(''); setNow(Date.now()) } catch (e) { setErr(e.message) }
-  }, [id, test?.name])
+    try { setRows(await onlineAttempts(id, testName)); setErr(''); setNow(Date.now()) } catch (e) { setErr(e.message) }
+  }, [id, testName])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- switching exam clears the old list, then loads the new one
   useEffect(() => { setRows(null); load() }, [load])
   useEffect(() => { const t = setInterval(load, 15000); return () => clearInterval(t) }, [load])
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])

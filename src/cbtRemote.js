@@ -19,6 +19,25 @@ export async function publishOnline(test, { code = '', opensAt = null, closesAt 
   if (k.error) throw new Error(friendly(k.error))
 }
 
+// Readiness probes (staff): is each migration in this database? A column / key that is missing means it was not run.
+export async function probeSchema(testId) {
+  const col = async (table, c) => !(await supabase.from(table).select(c).limit(1)).error
+  const info = await supabase.rpc('cbt_exam_info', { p_test: testId })
+  return {
+    extra: await col('cbt_attempts', 'extra_seconds'),
+    district: await col('cbt_attempts', 'district,gender,caste'),
+    dobEntered: await col('cbt_attempts', 'dob_entered'),
+    studentDistrict: await col('students', 'district,caste'),
+    guestsInfo: !!info.data && Object.prototype.hasOwnProperty.call(info.data, 'guests'),
+  }
+}
+// The students the readiness check looks at (only the columns it needs).
+export async function loadStudentsForReadiness() {
+  const { data, error } = await supabase.from('students').select('id,status,deleted_at,parent_phone,father_phone,mother_phone,guardian_phone,guardian_mobile,dob').limit(5000)
+  if (error) return null
+  return data || []
+}
+
 export async function listOnline() {
   const { data, error } = await supabase.from('cbt_tests').select('id, name, status, access_code, opens_at, closes_at, duration_min, updated_at, created_at').order('created_at', { ascending: false })
   if (error) throw new Error(friendly(error))
