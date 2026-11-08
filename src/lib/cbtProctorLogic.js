@@ -4,12 +4,14 @@
 // A test's setting lives in test.marking.proctor = { camera: 'off' | 'warn' | 'strict', shield: boolean }. It sits
 // inside `marking` because that object already travels with the paper (local and online) without a database change.
 
-export const PROCTOR_OFF = { camera: 'off', shield: false, maxStrikes: 5 }
+export const PROCTOR_OFF = { camera: 'off', shield: false, maxStrikes: 5, fullscreen: 'off', maxFsExits: 3 }
 
 export function proctorOf(test) {
   const p = test?.marking?.proctor || {}
   const camera = p.camera === 'warn' || p.camera === 'strict' ? p.camera : 'off'
-  return { camera, shield: !!p.shield, maxStrikes: Math.max(1, Number(p.maxStrikes) || 5) }
+  // fullscreen: 'off' | 'warn' (log + ask to return) | 'strict' (the paper is hidden until they return; too many exits submit)
+  const fullscreen = p.fullscreen === 'warn' || p.fullscreen === 'strict' ? p.fullscreen : 'off'
+  return { camera, shield: !!p.shield, maxStrikes: Math.max(1, Number(p.maxStrikes) || 5), fullscreen, maxFsExits: Math.max(1, Number(p.maxFsExits) || 3) }
 }
 
 // ── what the camera sees ─────────────────────────────────────────────────────
@@ -75,7 +77,7 @@ export function isBlockedKey(e) {
 // ── the log kept on the attempt ──────────────────────────────────────────────
 export const EVENT_LABEL = {
   none: 'Face not visible', multi: 'More than one person', away: 'Looking away', nocam: 'Camera stopped',
-  shot: 'Screenshot attempt', blocked: 'Copy / print / inspect attempt', hidden: 'Exam window hidden',
+  shot: 'Screenshot attempt', blocked: 'Copy / print / inspect attempt', hidden: 'Exam window hidden', fsexit: 'Left full screen',
 }
 const FACE_EVENTS = ['none', 'multi', 'away', 'nocam']
 
@@ -83,6 +85,7 @@ export function addEvent(p, kind, t = Date.now()) {
   const cur = p && typeof p === 'object' ? p : {}
   return { ...cur, [kind]: (cur[kind] || 0) + 1, log: [...(cur.log || []), { t, k: kind }].slice(-40) }
 }
+export const fsExits = p => (p && p.fsexit) || 0
 export const faceStrikes = p => FACE_EVENTS.reduce((s, k) => s + ((p && p[k]) || 0), 0)
 export const flagTotal = p => (p ? Object.keys(EVENT_LABEL).reduce((s, k) => s + (p[k] || 0), 0) : 0)
 export const flagText = p => (p ? Object.keys(EVENT_LABEL).filter(k => p[k]).map(k => `${EVENT_LABEL[k]} ×${p[k]}`).join(', ') : '')
