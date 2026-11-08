@@ -68,7 +68,7 @@ export function neighbour(test, no, dir = 1) {
 }
 
 // ── Clock ────────────────────────────────────────────────────────────────────
-export const secondsLeft = (a, test, now = Date.now()) => Math.max(0, Math.round((a.startedAt + test.durationMin * 60000 - now) / 1000))
+export const secondsLeft = (a, test, now = Date.now()) => Math.max(0, Math.round((a.startedAt + test.durationMin * 60000 + (a.extraSeconds || 0) * 1000 - now) / 1000))
 export function clock(sec) {
   const s = Math.max(0, Math.floor(sec)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`

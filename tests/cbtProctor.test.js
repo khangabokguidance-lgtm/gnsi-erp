@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { proctorOf, classify, yawRatio, createTracker, isShotKey, isBlockedKey, addEvent, faceStrikes, flagTotal, flagText } from '../src/lib/cbtProctorLogic.js'
 
 test('the setting is read from marking.proctor, defaults to off', () => {
-  assert.deepEqual(proctorOf({ marking: { correct: 1 } }), { camera: 'off', shield: false, maxStrikes: 5 })
-  assert.deepEqual(proctorOf({ marking: { proctor: { camera: 'strict', shield: true, maxStrikes: 3 } } }), { camera: 'strict', shield: true, maxStrikes: 3 })
+  assert.deepEqual(proctorOf({ marking: { correct: 1 } }), { camera: 'off', shield: false, maxStrikes: 5, fullscreen: 'off', maxFsExits: 3 })
+  assert.deepEqual(proctorOf({ marking: { proctor: { camera: 'strict', shield: true, maxStrikes: 3 } } }), { camera: 'strict', shield: true, maxStrikes: 3, fullscreen: 'off', maxFsExits: 3 })
   assert.equal(proctorOf({ marking: { proctor: { camera: 'bogus' } } }).camera, 'off')
 })
 

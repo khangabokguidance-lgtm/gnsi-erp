@@ -9,6 +9,10 @@ import {
 } from './lib/cbtEngine'
 import { proctorOf, addEvent, faceStrikes, flagText, isShotKey, isBlockedKey, EVENT_LABEL } from './lib/cbtProctorLogic'
 import { useCbtProctor } from './useCbtProctor'
+import { presentTest, isShuffled } from './lib/cbtShuffle'
+import { fsExits } from './lib/cbtProctorLogic'
+import { sectionTimed, settleSection, nextSection } from './lib/cbtSections'
+import { Calculator, RoughPad } from './CbtTools'
 
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
@@ -19,17 +23,20 @@ const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
 // remote (online exam): { offset, begin(), save(a), submit(a) } — see CbtPublic.jsx. The paper then arrives from the
 // server when the candidate starts, the clock follows the server, answers are saved to the server as they go, and
 // the server marks the attempt. Without it everything stays on this computer.
-export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit, onClose, remote = null }) {
+export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit, onClose, remote = null, demo = false }) {
   const [liveTest, setLiveTest] = useState(null)
-  const test = liveTest || testProp
-  const mm = useMemo(() => hasMm(test), [test])
-  const qs = useMemo(() => flatQuestions(test), [test])
-  const cfg = proctorOf(test)
-  const lock = answersLocked(test)
+  const baseTest = liveTest || testProp
+  const cfg = proctorOf(baseTest)
+  const lock = answersLocked(baseTest)
   const camOn = cfg.camera !== 'off'
   // a candidate who reopens an exam in progress goes through the camera check again before the paper is shown
   const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'instructions')
   const [a, setA] = useState(resume || null)
+  // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
+  const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
+  const mm = useMemo(() => hasMm(test), [test])
+  const qs = useMemo(() => flatQuestions(test), [test])
+  const dn = x => x.pos ?? x.no                      // the number shown on screen
   const [now, setNow] = useState(() => Date.now())
   const [modal, setModal] = useState(null)       // 'summary' | 'confirm' | 'instructions'
   const [fs, setFs] = useState(15)
@@ -42,7 +49,14 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [submitErr, setSubmitErr] = useState('')
   const [beginErr, setBeginErr] = useState('')
   const [kicked, setKicked] = useState('')            // online: the attempt was taken over by another device
-  const minMin = Number(test.marking?.minMinutes) || 0   // earliest submit (minutes after the start); 0 = none
+  const [fsOut, setFsOut] = useState(false)          // full screen was left — the paper is covered until they return
+  const [saveInfo, setSaveInfo] = useState({ state: 'idle', at: 0 })   // 'saving' | 'saved' | 'offline'
+  const [hc, setHc] = useState(false)                // high-contrast display
+  const [tool, setTool] = useState(null)             // 'calc' | 'rough'
+  const [rough, setRough] = useState('')
+  const tools = baseTest.marking?.tools || {}
+  const fsOn = cfg.fullscreen !== 'off' && typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
+  const minMin = Number(baseTest.marking?.minMinutes) || 0   // earliest submit (minutes after the start); 0 = none
   const submitted = useRef(false)
   const started = useRef(false)
   const lastSwitch = useRef(0)
@@ -54,10 +68,16 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [cover, setCover] = useState('')           // shield: the exam is hidden (window left, screenshot key pressed)
   const proctorEvent = useCallback(kind => {
     setA(x => (x ? { ...x, proctor: addEvent(x.proctor, kind) } : x))
-    const msg = { none: 'Your face is not visible. Sit in front of the camera.', multi: 'More than one person is in front of the camera. Only the candidate may be there.', away: 'Look at the screen. Looking away is recorded.', nocam: 'The camera stopped. Turn it back on.' }[kind]
+    const msg = { fsexit: 'You left full screen. This has been recorded — return to full screen to continue.', none: 'Your face is not visible. Sit in front of the camera.', multi: 'More than one person is in front of the camera. Only the candidate may be there.', away: 'Look at the screen. Looking away is recorded.', nocam: 'The camera stopped. Turn it back on.' }[kind]
     if (msg) { setToast(msg); setTimeout(() => setToast(''), 4500) }
   }, [])
   const cam = useCbtProctor({ enabled: camOn, running: stage === 'exam', onEvent: proctorEvent })
+  // a brand new attempt starts on the first question the candidate will SEE (their own order may differ)
+  const startAt = (t, att) => {
+    if (!isShuffled(t) || Object.keys(att.answers || {}).length || Object.keys(att.marked || {}).length) return att
+    const no = flatQuestions(presentTest(t, att.id))[0]?.no
+    return no == null ? att : { ...att, current: no, visited: { [no]: true } }
+  }
   const begin = async () => {
     if (started.current) return   // a double click must not start two attempts
     started.current = true
@@ -65,7 +85,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       setBusy('Starting the exam…'); setBeginErr('')
       try {
         const r = await remote.begin()
-        setLiveTest(r.test); setA({ ...r.attempt, lastAt: Date.now() }); setStage('exam')
+        setLiveTest(r.test); setA({ ...startAt(r.test, r.attempt), lastAt: Date.now() }); setStage('exam')
         try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
       } catch (e) { started.current = false; setBeginErr(e.message) }
       setBusy('')
@@ -73,8 +93,8 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
     const att = newAttempt(test, candidate)
     att.lang = 'en'
-    const first = go(att, att.current)
-    setA(first); cbtStore.saveAttempt(first); setStage('exam')
+    const first = go(startAt(test, att), startAt(test, att).current)
+    setA(first); !demo && cbtStore.saveAttempt(first); setStage('exam')
     try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
   }
 
@@ -104,7 +124,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
     const done = { ...cur, state: 'submitted', submittedAt: Date.now(), autoSubmitted: auto }
     done.score = grade(test, done.answers)
-    await cbtStore.saveAttempt(done)
+    if (!demo) await cbtStore.saveAttempt(done)
     try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
     onSubmit(done)
   }, [test, onSubmit, remote, minMin])
@@ -123,21 +143,36 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     // never overwrite the submitted copy with a late autosave
     const t = setTimeout(async () => {
       if (submitted.current || kicked) return
-      if (!remote) { cbtStore.saveAttempt(a); return }
+      if (!remote) { if (!demo) cbtStore.saveAttempt(a); setSaveInfo({ state: 'saved', at: Date.now() }); return }
+      setSaveInfo(x => ({ ...x, state: 'saving' }))
       try {
         const r = await remote.save(a)
-        setNetErr('')
+        setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))   // staff gave extra time
         if (r?.submitted) finish(true)          // the server's clock ran out first
-      } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else setNetErr(e.message) }
+      } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
     }, remote ? 1200 : 500)
     return () => clearTimeout(t)
   }, [a, stage, remote, finish, kicked])
+  // heartbeat: save every 30 s even when nothing changed, so staff can tell "thinking" from "dropped off" (Live tab)
+  useEffect(() => {
+    if (!remote || stage !== 'exam') return
+    const t = setInterval(async () => {
+      if (submitted.current || !aRef.current || kicked) return
+      try {
+        const r = await remote.save(aRef.current); setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))
+        if (r?.submitted) finish(true)
+      } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
+    }, 30000 + Math.floor(Math.random() * 5000))   // a little jitter so a whole batch does not save in the same second
+    return () => clearInterval(t)
+  }, [remote, stage, kicked, finish])
   // while an online save keeps failing, try again every few seconds (answers are also kept on this device)
   useEffect(() => {
     if (!remote || !netErr || stage !== 'exam') return
     const t = setInterval(async () => {
       if (submitted.current || !aRef.current || kicked) return
-      try { const r = await remote.save(aRef.current); setNetErr(''); if (r?.submitted) finish(true) } catch (e) { if (e.code === 'SESSION') setKicked(e.message) /* else still offline */ }
+      try { const r = await remote.save(aRef.current); setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() }); if (r?.submitted) finish(true) } catch (e) { if (e.code === 'SESSION') setKicked(e.message) /* else still offline */ }
     }, 6000)
     return () => clearInterval(t)
   }, [remote, netErr, stage, finish, kicked])
@@ -154,10 +189,26 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     const vis = () => { if (document.hidden) away() }
     const stop = e => { e.preventDefault(); e.returnValue = '' }
     // pressing Esc to leave full screen is recorded too
-    const fsx = () => { if (!document.fullscreenElement && !submitted.current && fullscreenWas.current) away(); fullscreenWas.current = !!document.fullscreenElement }
+    const fsx = () => {
+      const inFs = !!document.fullscreenElement
+      if (!inFs && !submitted.current && fullscreenWas.current) { away(); if (fsOn) { proctorEvent('fsexit'); setFsOut(true) } }
+      if (inFs) setFsOut(false)
+      fullscreenWas.current = inFs
+    }
     document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop); document.addEventListener('fullscreenchange', fsx)
     return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop); document.removeEventListener('fullscreenchange', fsx) }
-  }, [stage])
+  }, [stage, fsOn, proctorEvent])
+
+  // full screen asked for: if the exam opened without it (a reload, or the browser said no), cover the paper until they enter
+  useEffect(() => {
+    if (stage !== 'exam' || !fsOn) return
+    const t = setTimeout(() => { if (!document.fullscreenElement && !submitted.current) setFsOut(true); else fullscreenWas.current = !!document.fullscreenElement }, 600)
+    return () => clearTimeout(t)
+  }, [stage, fsOn])
+  const backToFs = () => { try { document.documentElement.requestFullscreen?.().then(() => setFsOut(false)).catch(() => flash('Your browser did not allow full screen. Try again.')) } catch { flash('Your browser did not allow full screen.') } }
+  // strict mode: too many exits end the exam (what is answered so far is submitted)
+  const fsCount = fsExits(a?.proctor)
+  useEffect(() => { if (stage === 'exam' && cfg.fullscreen === 'strict' && fsCount >= cfg.maxFsExits && !submitted.current) { flash('Too many full-screen exits — your exam is being submitted.'); finish(true) } }, [stage, cfg.fullscreen, cfg.maxFsExits, fsCount, finish])
 
   // reopening an exam in progress: start the camera straight away
   const startCam = cam.start, camPhase = cam.phase
@@ -199,18 +250,47 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
   }, [stage, cfg.shield])
 
+  // ── per-section time limits: sections open in order; an earlier one cannot be reopened ──
+  const secOn = sectionTimed(baseTest)
+  const nowS = now + (remote?.offset || 0)
+  const secNow = secOn && a ? settleSection(a.sec || { i: 0, at: a.startedAt }, test, nowS) : null
+  const firstOf = i => qs.find(x => x.sectionIndex === i)?.no
+  useEffect(() => {
+    if (stage !== 'exam' || !secOn || !a) return
+    if (!a.sec) { setA(x => (x && !x.sec ? { ...x, sec: { i: 0, at: x.startedAt } } : x)); return }
+    const st = settleSection(a.sec, test, nowS)
+    if (st.over && !submitted.current) { flash('Time for the last section is over — submitting.'); finish(true); return }
+    if (st.i !== a.sec.i) {
+      flash('Time for that section is over. The next section is now open.')
+      setA(x => go({ ...x, sec: { i: st.i, at: st.at } }, firstOf(st.i) ?? x.current))
+    }
+  }) // checked every second (the clock re-renders)
+  const curSec = secOn ? (secNow?.i ?? 0) : null
+  const inCur = x => curSec === null || x.sectionIndex === curSec
+  const moveOn = () => { setModal(null); setA(x => go({ ...x, sec: nextSection(x.sec || { i: 0, at: x.startedAt }, test, nowS + 0) }, firstOf(Math.min((x.sec?.i ?? 0) + 1, test.sections.length - 1)) ?? x.current)) }
   const q = a ? qs.find(x => x.no === a.current) : null
   const sec = q ? test.sections[q.sectionIndex] : null
   const lang = a?.lang || 'en'
-  const open = no => { setA(x => go(x, no)); setDrawer(false) }
-  const next = () => setA(x => go(x, neighbour(test, x.current, 1)))
-  const prev = () => setA(x => go(x, neighbour(test, x.current, -1)))
+  const noSec = no => qs.find(x => x.no === no)?.sectionIndex
+  const open = no => { if (curSec !== null && noSec(no) !== curSec) return; setA(x => go(x, no)); setDrawer(false) }
+  // a step that would cross into another section: forward asks first (and cannot be undone), backward is refused
+  const step = (dir, after = x => x) => {
+    const cur = aRef.current; if (!cur) return
+    const to = neighbour(test, cur.current, dir)
+    if (curSec !== null && noSec(to) !== curSec) {
+      if (dir > 0 && to !== cur.current) { setA(after); setModal('nextsec') } else if (dir < 0) flash('You cannot go back to an earlier section.')
+      return
+    }
+    setA(x => go(after(x), to))
+  }
+  const next = () => step(1)
+  const prev = () => step(-1)
   const choose = key => {
     if (lock && aRef.current?.answers[aRef.current.current]) { flash('Your answer for this question is locked. It cannot be changed.'); return }
     setA(x => select(go(x, x.current), x.current, key, lock))
   }
-  const saveNext = () => { setA(x => go(mark(x, x.current, false), neighbour(test, x.current, 1))) }
-  const markNext = () => { setA(x => go(mark(x, x.current, true), neighbour(test, x.current, 1))) }
+  const saveNext = () => step(1, x => mark(x, x.current, false))
+  const markNext = () => step(1, x => mark(x, x.current, true))
   const clearIt = () => { if (lock && aRef.current?.answers[aRef.current.current]) { flash('A locked answer cannot be cleared.'); return } setA(x => clear(x, x.current, lock)) }
 
   useEffect(() => {
@@ -219,7 +299,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'radio') return
       if (e.ctrlKey || e.metaKey || e.altKey) return   // Ctrl+C must not pick option C
       const k = e.key.toLowerCase()
-      if (/^[a-d1-4]$/.test(k)) choose('ABCD'['abcd'.includes(k) ? 'abcd'.indexOf(k) : Number(k) - 1])
+      if (/^[a-d1-4]$/.test(k)) { const lab = 'ABCD'['abcd'.includes(k) ? 'abcd'.indexOf(k) : Number(k) - 1]; const o = q?.options.find(x => (x.label || x.key) === lab); if (o) choose(o.key) }
       else if (e.key === 'ArrowRight') next()
       else if (e.key === 'ArrowLeft') prev()
     }
@@ -228,7 +308,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   }) // re-bound each render so it always sees the current question
 
   const shell = body => (
-    <div className={`cbt cbt-exam${cfg.shield ? ' cbt-shield' : ''}`} onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
+    <div className={`cbt cbt-exam${cfg.shield ? ' cbt-shield' : ''}${hc ? ' cbt-hc' : ''}`} onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
       <style>{CBT_CSS}</style>{body}
       {camOn && (stage === 'camera' || stage === 'exam') && (
         <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
@@ -315,15 +395,24 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   return shell(<>
     {toast && <div className="cbt-toast" role="alert">{toast}</div>}
     {remote && netErr && !submitErr && <div className="cbt-net" role="status">⚠ No connection — your answers are kept on this device and will be sent when it returns. Keep this page open.</div>}
+    {fsOut && fsOn && <div className="cbt-modal" style={{ zIndex: 3700, background: '#0b1b3a' }}><div className="box" style={{ maxWidth: 440, textAlign: 'center' }}><h3>Return to full screen</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>This exam must be taken in full screen. {fsCount > 0 ? `You have left it ${fsCount} time${fsCount === 1 ? '' : 's'}.` : ''}{cfg.fullscreen === 'strict' ? ` After ${cfg.maxFsExits} exits the exam is submitted automatically.` : ''} The clock keeps running.</p><button className="cbt-b sub" style={{ width: 'auto' }} onClick={backToFs}>Return to full screen</button></div></div>}
+    {modal === 'nextsec' && <div className="cbt-modal"><div className="box" style={{ maxWidth: 440 }}><h3>Go to the next section?</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>You will not be able to come back to this section. Anything you have answered here is saved.</p><div className="cbt-row"><button className="cbt-b" onClick={() => setModal(null)}>Stay here</button><button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={moveOn}>Go to next section ›</button></div></div></div>}
+    {tool === 'calc' && <Calculator onClose={() => setTool(null)} />}
+    {tool === 'rough' && <RoughPad value={rough} onChange={setRough} onClose={() => setTool(null)} />}
     {kicked && <div className="cbt-modal" style={{ zIndex: 3600 }}><div className="box" style={{ maxWidth: 420 }}><h3>This exam is open somewhere else</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{kicked}</p><p className="muted">If this was you, continue on the other screen. Your answers are safe on the server.</p></div></div>}
     {busy && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 360, textAlign: 'center' }}><h3>{busy}</h3><p className="muted">Please wait. Do not close this page.</p></div></div>}
     {submitErr && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 420 }}><h3>Could not submit yet</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{submitErr}</p><p className="muted">Your answers are safe. Trying again automatically — keep this page open.</p><div className="cbt-row"><button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => finish(left <= 0)}>Try now</button></div></div></div>}
     <div className="cbt-top">
       <div className="title">{test.name}</div>
       <span className={`cbt-timer${low ? ' low' : ''}`} aria-label="Time left">⏱ {clock(left)}</span>
+      {secNow?.left != null && <span className={`cbt-timer cbt-sectimer${secNow.left <= 60 ? ' low' : ''}`} aria-label="Time left in this section" title="Time left in this section">Section ⏱ {clock(secNow.left)}</span>}
+      <span className={`cbt-saved s-${saveInfo.state}`} role="status" aria-live="polite">{saveInfo.state === 'saving' ? '⟳ Saving…' : saveInfo.state === 'offline' ? '⚠ Not saved — retrying' : saveInfo.state === 'saved' ? `✓ Saved ${new Date(saveInfo.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}</span>
       <div className="cbt-tools">
         <div className="cand"><span className="avatar">{(a.candidate.name || '?')[0].toUpperCase()}</span><span>{a.candidate.name}{a.candidate.roll ? <><br /><small>Roll: {a.candidate.roll}</small></> : null}</span></div>
         {mm && <select value={lang} onChange={e => setA(x => ({ ...x, lang: e.target.value }))} aria-label="Language"><option value="en">English</option><option value="mm">ꯃꯤꯇꯩꯂꯣꯟ (Meitei Mayek)</option></select>}
+        {tools.calc && <button className="sm" onClick={() => setTool(t => (t === 'calc' ? null : 'calc'))} aria-label="Calculator" aria-pressed={tool === 'calc'}>🖩</button>}
+        {tools.rough && <button className="sm" onClick={() => setTool(t => (t === 'rough' ? null : 'rough'))} aria-label="Rough work" aria-pressed={tool === 'rough'}>✎</button>}
+        <button className="sm" onClick={() => setHc(v => !v)} aria-label="High contrast" aria-pressed={hc} title="High contrast">◐</button>
         <button className="sm" onClick={() => setFs(f => Math.max(12, f - 1))} aria-label="Smaller text">A−</button>
         <button className="sm" onClick={() => setFs(f => Math.min(24, f + 1))} aria-label="Larger text">A+</button>
         <button className="sm" onClick={() => setModal('instructions')} aria-label="Instructions"><span className="not-sm">Instructions</span><span className="only-sm">ⓘ Info</span></button>
@@ -332,13 +421,13 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     <div className="cbt-secbar" role="tablist" aria-label="Sections">
       {test.sections.map((s, i) => {
         const c = secCounts(s)
-        return <button key={s.id} role="tab" aria-selected={q.sectionIndex === i} className={`cbt-sec${q.sectionIndex === i ? ' on' : ''}`} onClick={() => open(s.questions[0].no)}>{s.label ? `${s.label}: ` : ''}{pick(s.title, s.titleMm, lang) || `Section ${i + 1}`}<small>{c.answered + c.answeredMarked}/{s.questions.length}</small></button>
+        return <button key={s.id} role="tab" aria-selected={q.sectionIndex === i} className={`cbt-sec${q.sectionIndex === i ? ' on' : ''}`} disabled={curSec !== null && i !== curSec} title={curSec !== null && i !== curSec ? (i < curSec ? 'This section is closed' : 'Opens after the current section') : undefined} onClick={() => open(s.questions[0].no)}>{s.label ? `${s.label}: ` : ''}{pick(s.title, s.titleMm, lang) || `Section ${i + 1}`}<small>{c.answered + c.answeredMarked}/{s.questions.length}</small></button>
       })}
     </div>
     <div className="cbt-body">
       <div className="cbt-main">
         <div className="cbt-qhead">
-          <span className="cbt-qno">Question No. <i>{q.no}</i><small>of {qs.length}</small></span>
+          <span className="cbt-qno">Question No. <i>{dn(q)}</i><small>of {qs.length}</small></span>
           <span className="cbt-marks">Marks: <span className="p">+{marksOf.correct}</span> · <span className="n">{marksOf.wrong ? `−${marksOf.wrong}` : '0'}</span></span>
           <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ Palette · {all.answered + all.answeredMarked}/{qs.length}</button>
         </div>
@@ -349,13 +438,13 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           </div>}
           <div className="cbt-q">
             {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
-            {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${q.no} figure ${i + 1}`} draggable={false} />)}
+            {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${dn(q)} figure ${i + 1}`} draggable={false} />)}
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
               <label key={o.key} className={`cbt-opt${sel === o.key ? ' on' : ''}`}>
                 <input type="radio" name={`q${q.no}`} checked={sel === o.key} disabled={lock && !!sel && sel !== o.key} onChange={() => choose(o.key)} />
-                <b>{o.key}.</b>
-                <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.key}` : pick(o.text, o.textMm, lang)}</span>
+                <b>{o.label || o.key}.</b>
+                <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.label || o.key}` : pick(o.text, o.textMm, lang)}</span>
               </label>
             ))}
             {lock && <p className="cbt-lockmsg">{sel ? '🔒 Answer locked — it cannot be changed.' : '🔒 Answers are final: the first option you choose is locked.'}</p>}
@@ -378,7 +467,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <div className="cbt-pal">
           <h5>{sec.label ? `Section ${sec.label}: ` : ''}{pick(sec.title, sec.titleMm, lang)}</h5>
           <div className="cbt-grid">
-            {inSec.map(x => <button key={x.no} className={`cbt-n ${statusOf(a, x.no)}${x.no === q.no ? ' cur' : ''}`} onClick={() => open(x.no)} aria-label={`Question ${x.no}, ${STATUS_LABEL[statusOf(a, x.no)]}`}>{x.no}</button>)}
+            {inSec.map(x => <button key={x.no} className={`cbt-n ${statusOf(a, x.no)}${x.no === q.no ? ' cur' : ''}`} onClick={() => open(x.no)} aria-label={`Question ${dn(x)}, ${STATUS_LABEL[statusOf(a, x.no)]}`}>{dn(x)}</button>)}
           </div>
         </div>
         <div className="foot"><button className="cbt-b sub" style={{ marginTop: 0 }} onClick={() => setModal('summary')}>Submit Test</button></div>
