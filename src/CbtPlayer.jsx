@@ -414,7 +414,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         {mm && <select value={lang} onChange={e => setA(x => ({ ...x, lang: e.target.value }))} aria-label="Language"><option value="en">English</option><option value="mm">ꯃꯤꯇꯩꯂꯣꯟ (Meitei Mayek)</option></select>}
         {tools.calc && <button className="sm" onClick={() => setTool(t => (t === 'calc' ? null : 'calc'))} aria-label="Calculator" aria-pressed={tool === 'calc'}>🖩</button>}
         {tools.rough && <button className="sm" onClick={() => setTool(t => (t === 'rough' ? null : 'rough'))} aria-label="Rough work" aria-pressed={tool === 'rough'}>✎</button>}
-        <button className="sm" onClick={() => setHc(v => !v)} aria-label="High contrast" aria-pressed={hc} title="High contrast">◐</button>
+        <button className="sm" onClick={() => setHc(v => !v)} aria-label="High contrast" aria-pressed={hc} title="High contrast"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" /></svg></button>
         <button className="sm" onClick={() => setFs(f => Math.max(12, f - 1))} aria-label="Smaller text">A−</button>
         <button className="sm" onClick={() => setFs(f => Math.min(24, f + 1))} aria-label="Larger text">A+</button>
         <button className="sm" onClick={() => setModal('instructions')} aria-label="Instructions"><span className="not-sm">Instructions</span><span className="only-sm">ⓘ Info</span></button>

@@ -191,6 +191,8 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-top{display:grid;grid-template-columns:1fr auto;gap:8px 10px;padding:8px 12px;border-bottom-width:2px}
  .cbt-top .title{grid-column:1;flex:none;font-size:13.5px}
  .cbt-timer{grid-column:2;grid-row:1;font-size:15px;padding:5px 11px}
+ .cbt-sectimer{grid-column:2;grid-row:3;margin:0;justify-self:end;align-self:center;font-size:12px;padding:3px 10px}
+ .cbt-saved{grid-column:1;grid-row:3;margin:0;font-size:11px}
  .cbt-tools{grid-column:1/-1;grid-row:2;overflow-x:auto;scrollbar-width:none;gap:8px}
  .cbt-tools::-webkit-scrollbar{display:none}
  .cbt-top .cand span:last-child{display:none}.cbt-top .cand{flex:none}
@@ -253,4 +255,9 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-hc .cbt-n{border:2px solid #fff!important}
 .cbt-hc .cbt-top{background:#000!important;border-bottom:2px solid #fff}
 .cbt-hc a{color:#ffd400}
+.cbt-hc .cbt-qhead,.cbt-hc .cbt-legend,.cbt-hc .cbt-act,.cbt-hc .cbt-secbar,.cbt-hc .foot,.cbt-hc .cbt-pal{background:#000!important;color:#fff!important;border-color:#fff!important}
+.cbt-hc .cbt-qhead *,.cbt-hc .cbt-legend *,.cbt-hc .cbt-pal h5{color:#fff!important}
+.cbt-hc .cbt-sec{background:#000!important;color:#fff!important;border:1px solid #fff}.cbt-hc .cbt-sec.on{background:#ffd400!important;color:#000!important}
+.cbt-hc .cbt-n.notVisited{color:#000!important}
+.cbt-hc .cbt-qno i{background:#fff!important;color:#000!important}
 `
