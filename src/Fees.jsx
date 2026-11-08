@@ -4860,66 +4860,58 @@ export default function Fees() {
     if (hit) goCollect(hit)
   }, [students]) // eslint-disable-line react-hooks/exhaustive-deps
   const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
-  const TABS = [
-    // Non-admin staff only get what they need at the counter: Fee Payment,
-    // Student Ledger and Verify Receipt. Everything else is admin-only.
-    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'adminFee' }] : []),
-    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'adminFee' }] : []),
-    // ✦ Security fix: this tab exposes every student's full fee/payment
-    // history (GCC, amounts, payment mode, Collected By) with a one-click
-    // export, but had no role gate at all — any logged-in staff account,
-    // not just admin/accounts, could open and export it. Restricted the
-    // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'adminFee', badge: pendingApprovalCount }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'adminFee', badge: lowFeePending }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'adminFee', badge: hostelIssueCount }] : []),
-    ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'detector', label: 'Repeater & Low-fee Detector', short: 'Detector', icon: 'radar', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'adminFee' }] : []),
-    // Day closing is for every cashier: it lists the day's collections of all users.
-    { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
-    { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
-    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'adminFee' }] : []),
+  // ── Tab registry ────────────────────────────────────────────────────────────
+  // ONE place that defines every Fees tab. Counter tabs are for all staff; the Admin Fee
+  // Panel is admin-only and is described section → tile → optional sub-tabs. The nav, the
+  // sub-tab bar, merged-tab aliases and the access check are all derived from this.
+  // A tile with `subs` opens its first sub-tab; every sub-tab id still works as a deep link.
+  // Security: Reports & Export exposes every student's payment history, so it is admin-only.
+  const COUNTER_TABS = [
+    { id: 'payment',  label: 'Fee Payment',    icon: 'card',             group: 'collect' },
+    { id: 'ledger',   label: 'Student Ledger', icon: 'studentfeeledger', group: 'collect' },
   ]
-  // Overlapping admin tabs are shown as ONE tile with sub-tabs. Old tab ids still work
-  // (deep links, What's New), they just open inside their merged tile.
-  const MERGES = [
-    { id: 'monthlyCheck', label: 'Fee Health Checks', short: 'Checks', members: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
-    { id: 'activity', label: 'Activity & Audit', short: 'Activity', members: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
-    { id: 'reminders', label: 'Dues Follow-up', short: 'Follow-up', members: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
-    { id: 'waivers', label: 'Discounts & Waivers', short: 'Discounts', members: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
+  // Day closing is for every cashier: it lists the day's collections of all users.
+  const COUNTER_TOOLS = [
+    { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
+    { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
   ]
+  const ADMIN_PANEL = !isAdmin ? [] : [
+    { title: 'Overview', tiles: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ] },
+    { title: 'Needs your approval', tiles: [
+      { id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', badge: pendingApprovalCount },
+      { id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', badge: lowFeePending },
+      { id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', badge: hostelIssueCount },
+    ] },
+    { title: 'Discounts, refunds & follow-up', tiles: [
+      { label: 'Discounts & Waivers', short: 'Discounts', icon: 'scholar', subs: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
+      { id: 'refunds', label: 'Refunds & Transfers', short: 'Refunds', icon: 'refund' },
+      { label: 'Dues Follow-up', short: 'Follow-up', icon: 'remind', subs: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
+    ] },
+    { title: 'Records & reports', tiles: [
+      { id: 'admin', label: 'Admin View', icon: 'shield' },
+      { id: 'reports', label: 'Reports & Export', short: 'Reports', icon: 'export' },
+      { label: 'Activity & Audit', short: 'Activity', icon: 'history', subs: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
+    ] },
+    { title: 'Checks & setup', tiles: [
+      { label: 'Fee Health Checks', short: 'Checks', icon: 'rupeeSearch', subs: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
+      { id: 'rollover', label: 'Session Rollover', short: 'Rollover', icon: 'rollover' },
+    ] },
+  ].map(sec => ({ ...sec, tiles: sec.tiles.map(t => ({ ...t, id: t.id || t.subs[0][0], group: 'adminFee' })) }))
+  const ADMIN_TILES = ADMIN_PANEL.flatMap(sec => sec.tiles)
+  // Merged tiles (tiles with sub-tabs); old tab ids still resolve to their tile.
+  const MERGES = ADMIN_TILES.filter(t => t.subs).map(t => ({ id: t.id, label: t.label, short: t.short, members: t.subs }))
   const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
-  const NAV_TABS = TABS.map(t => { const m = MERGES.find(x => x.id === t.id); return m ? { ...t, label: m.label, short: m.short } : t })
-    .filter(t => { const m = mergeOf(t.id); return !m || m.id === t.id })
+  const NAV_TABS = [...ADMIN_TILES.filter(t => t.id === 'dashboard'), ...COUNTER_TABS, ...ADMIN_TILES.filter(t => t.id !== 'dashboard'), ...COUNTER_TOOLS]
+  const TABS = [...NAV_TABS, ...MERGES.flatMap(m => m.members.map(([id, label]) => ({ id, label })))]
   // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
   useEffect(() => {
     if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
   }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
     .map(([id, title]) => ({ id, title, items: NAV_TABS.filter(t => t.group === id) })).filter(g => g.items.length)
-
-  // Admin Fee Panel sections, ordered by what an admin reaches for first.
-  const ADMIN_SUBS = [
-    ['Overview', ['dashboard']],
-    ['Needs your approval', ['pendingApprovals', 'lowFee', 'hostelIssues']],
-    ['Discounts, refunds & follow-up', ['waivers', 'refunds', 'reminders']],
-    ['Records & reports', ['admin', 'reports', 'activity']],
-    ['Checks & setup', ['monthlyCheck', 'rollover']],
-  ]
+  const ADMIN_SUBS = ADMIN_PANEL.map(sec => [sec.title, sec.tiles.map(t => t.id)])
 
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
