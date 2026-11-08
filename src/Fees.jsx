@@ -58,6 +58,7 @@ import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
 import FeeWaivers from './FeeWaivers'
+import FeeDetector from './FeeDetector'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
 import FeeMonthlyCheck from './FeeMonthlyCheck'
@@ -4883,6 +4884,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'detector', label: 'Repeater & Low-fee Detector', short: 'Detector', icon: 'radar', group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'adminFee' }] : []),
     // Day closing is for every cashier: it lists the day's collections of all users.
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
@@ -4898,7 +4900,7 @@ export default function Fees() {
     { id: 'monthlyCheck', label: 'Fee Health Checks', short: 'Checks', members: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
     { id: 'activity', label: 'Activity & Audit', short: 'Activity', members: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
     { id: 'reminders', label: 'Dues Follow-up', short: 'Follow-up', members: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
-    { id: 'waivers', label: 'Discounts & Waivers', short: 'Discounts', members: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register']] },
+    { id: 'waivers', label: 'Discounts & Waivers', short: 'Discounts', members: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
   ]
   const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
   const NAV_TABS = TABS.map(t => { const m = MERGES.find(x => x.id === t.id); return m ? { ...t, label: m.label, short: m.short } : t })
@@ -5467,6 +5469,7 @@ export default function Fees() {
       {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
+      {tab === 'detector' && isAdmin && <FeeTabShell><FeeDetector students={students} /></FeeTabShell>}
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
