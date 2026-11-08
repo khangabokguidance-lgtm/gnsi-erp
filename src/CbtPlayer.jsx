@@ -9,6 +9,7 @@ import {
 } from './lib/cbtEngine'
 import { proctorOf, addEvent, faceStrikes, flagText, isShotKey, isBlockedKey, EVENT_LABEL } from './lib/cbtProctorLogic'
 import { useCbtProctor } from './useCbtProctor'
+import { presentTest, isShuffled } from './lib/cbtShuffle'
 
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
@@ -21,15 +22,18 @@ const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
 // the server marks the attempt. Without it everything stays on this computer.
 export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit, onClose, remote = null }) {
   const [liveTest, setLiveTest] = useState(null)
-  const test = liveTest || testProp
-  const mm = useMemo(() => hasMm(test), [test])
-  const qs = useMemo(() => flatQuestions(test), [test])
-  const cfg = proctorOf(test)
-  const lock = answersLocked(test)
+  const baseTest = liveTest || testProp
+  const cfg = proctorOf(baseTest)
+  const lock = answersLocked(baseTest)
   const camOn = cfg.camera !== 'off'
   // a candidate who reopens an exam in progress goes through the camera check again before the paper is shown
   const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'instructions')
   const [a, setA] = useState(resume || null)
+  // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
+  const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
+  const mm = useMemo(() => hasMm(test), [test])
+  const qs = useMemo(() => flatQuestions(test), [test])
+  const dn = x => x.pos ?? x.no                      // the number shown on screen
   const [now, setNow] = useState(() => Date.now())
   const [modal, setModal] = useState(null)       // 'summary' | 'confirm' | 'instructions'
   const [fs, setFs] = useState(15)
@@ -42,7 +46,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [submitErr, setSubmitErr] = useState('')
   const [beginErr, setBeginErr] = useState('')
   const [kicked, setKicked] = useState('')            // online: the attempt was taken over by another device
-  const minMin = Number(test.marking?.minMinutes) || 0   // earliest submit (minutes after the start); 0 = none
+  const minMin = Number(baseTest.marking?.minMinutes) || 0   // earliest submit (minutes after the start); 0 = none
   const submitted = useRef(false)
   const started = useRef(false)
   const lastSwitch = useRef(0)
@@ -58,6 +62,12 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     if (msg) { setToast(msg); setTimeout(() => setToast(''), 4500) }
   }, [])
   const cam = useCbtProctor({ enabled: camOn, running: stage === 'exam', onEvent: proctorEvent })
+  // a brand new attempt starts on the first question the candidate will SEE (their own order may differ)
+  const startAt = (t, att) => {
+    if (!isShuffled(t) || Object.keys(att.answers || {}).length || Object.keys(att.marked || {}).length) return att
+    const no = flatQuestions(presentTest(t, att.id))[0]?.no
+    return no == null ? att : { ...att, current: no, visited: { [no]: true } }
+  }
   const begin = async () => {
     if (started.current) return   // a double click must not start two attempts
     started.current = true
@@ -65,7 +75,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       setBusy('Starting the exam…'); setBeginErr('')
       try {
         const r = await remote.begin()
-        setLiveTest(r.test); setA({ ...r.attempt, lastAt: Date.now() }); setStage('exam')
+        setLiveTest(r.test); setA({ ...startAt(r.test, r.attempt), lastAt: Date.now() }); setStage('exam')
         try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
       } catch (e) { started.current = false; setBeginErr(e.message) }
       setBusy('')
@@ -73,7 +83,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
     const att = newAttempt(test, candidate)
     att.lang = 'en'
-    const first = go(att, att.current)
+    const first = go(startAt(test, att), startAt(test, att).current)
     setA(first); cbtStore.saveAttempt(first); setStage('exam')
     try { document.documentElement.requestFullscreen?.() } catch { /* not allowed — fine */ }
   }
@@ -219,7 +229,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'radio') return
       if (e.ctrlKey || e.metaKey || e.altKey) return   // Ctrl+C must not pick option C
       const k = e.key.toLowerCase()
-      if (/^[a-d1-4]$/.test(k)) choose('ABCD'['abcd'.includes(k) ? 'abcd'.indexOf(k) : Number(k) - 1])
+      if (/^[a-d1-4]$/.test(k)) { const lab = 'ABCD'['abcd'.includes(k) ? 'abcd'.indexOf(k) : Number(k) - 1]; const o = q?.options.find(x => (x.label || x.key) === lab); if (o) choose(o.key) }
       else if (e.key === 'ArrowRight') next()
       else if (e.key === 'ArrowLeft') prev()
     }
@@ -338,7 +348,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     <div className="cbt-body">
       <div className="cbt-main">
         <div className="cbt-qhead">
-          <span className="cbt-qno">Question No. <i>{q.no}</i><small>of {qs.length}</small></span>
+          <span className="cbt-qno">Question No. <i>{dn(q)}</i><small>of {qs.length}</small></span>
           <span className="cbt-marks">Marks: <span className="p">+{marksOf.correct}</span> · <span className="n">{marksOf.wrong ? `−${marksOf.wrong}` : '0'}</span></span>
           <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ Palette · {all.answered + all.answeredMarked}/{qs.length}</button>
         </div>
@@ -349,13 +359,13 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           </div>}
           <div className="cbt-q">
             {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
-            {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${q.no} figure ${i + 1}`} draggable={false} />)}
+            {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${dn(q)} figure ${i + 1}`} draggable={false} />)}
             {q.text && <div className={`cbt-qtext${lang === 'mm' && q.textMm ? ' mm' : ''}`}>{pick(q.text, q.textMm, lang)}</div>}
             {q.options.map(o => (
               <label key={o.key} className={`cbt-opt${sel === o.key ? ' on' : ''}`}>
                 <input type="radio" name={`q${q.no}`} checked={sel === o.key} disabled={lock && !!sel && sel !== o.key} onChange={() => choose(o.key)} />
-                <b>{o.key}.</b>
-                <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.key}` : pick(o.text, o.textMm, lang)}</span>
+                <b>{o.label || o.key}.</b>
+                <span className={lang === 'mm' && o.textMm ? 'mm' : ''}>{q.figure ? `Option ${o.label || o.key}` : pick(o.text, o.textMm, lang)}</span>
               </label>
             ))}
             {lock && <p className="cbt-lockmsg">{sel ? '🔒 Answer locked — it cannot be changed.' : '🔒 Answers are final: the first option you choose is locked.'}</p>}
@@ -378,7 +388,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <div className="cbt-pal">
           <h5>{sec.label ? `Section ${sec.label}: ` : ''}{pick(sec.title, sec.titleMm, lang)}</h5>
           <div className="cbt-grid">
-            {inSec.map(x => <button key={x.no} className={`cbt-n ${statusOf(a, x.no)}${x.no === q.no ? ' cur' : ''}`} onClick={() => open(x.no)} aria-label={`Question ${x.no}, ${STATUS_LABEL[statusOf(a, x.no)]}`}>{x.no}</button>)}
+            {inSec.map(x => <button key={x.no} className={`cbt-n ${statusOf(a, x.no)}${x.no === q.no ? ' cur' : ''}`} onClick={() => open(x.no)} aria-label={`Question ${dn(x)}, ${STATUS_LABEL[statusOf(a, x.no)]}`}>{dn(x)}</button>)}
           </div>
         </div>
         <div className="foot"><button className="cbt-b sub" style={{ marginTop: 0 }} onClick={() => setModal('summary')}>Submit Test</button></div>
