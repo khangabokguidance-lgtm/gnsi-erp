@@ -4881,8 +4881,8 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
     // Day closing is for every cashier: it lists the day's collections of all users.
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
@@ -4896,7 +4896,7 @@ export default function Fees() {
   useEffect(() => {
     if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
   }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
