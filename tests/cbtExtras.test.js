@@ -80,3 +80,20 @@ test('re-evaluation finds who changed after a key correction', () => {
   assert.equal(plan.unchanged, 0)
   assert.equal(rescorePlan(old, attempts).changes.length, 0)
 })
+
+import { liveState, liveCounts, DROP_AFTER_SEC } from '../src/lib/cbtLive.js'
+import { secondsLeft } from '../src/lib/cbtEngine.js'
+
+test('live view: in exam, dropped off, time up, done; extra time counts', () => {
+  const t = T()                      // 60 min
+  const now = 10 * 60000
+  const base = { startedAt: 0, state: 'inprogress', answers: { 1: 'A', 2: null, 3: 'B' } }
+  assert.deepEqual([liveState({ ...base, savedAt: now - 20000 }, t, now).kind, liveState({ ...base, savedAt: now - 20000 }, t, now).answered], ['live', 2])
+  assert.equal(liveState({ ...base, savedAt: now - (DROP_AFTER_SEC + 5) * 1000 }, t, now).kind, 'dropped')
+  assert.equal(liveState({ ...base, savedAt: null }, t, now).kind, 'dropped')        // never saved, 10 min after start
+  assert.equal(liveState({ ...base, savedAt: now }, t, 61 * 60000).kind, 'timeup')
+  assert.equal(liveState({ ...base, savedAt: 61 * 60000, extraSeconds: 300 }, t, 61 * 60000).kind, 'live')   // +5 min saved the attempt
+  assert.equal(liveState({ ...base, state: 'submitted' }, t, now).kind, 'done')
+  assert.equal(liveCounts([{ ...base, savedAt: now }, { ...base, savedAt: 0 }, { ...base, state: 'submitted' }], t, now).dropped, 1)
+  assert.equal(secondsLeft({ startedAt: 0, extraSeconds: 120 }, t, 59 * 60000), 180)
+})

@@ -13,6 +13,8 @@ import { CbtCertificateTool } from './CbtCertificate'
 import CbtIntegrity, { RiskTag } from './CbtIntegrity'
 import { integrityReport } from './lib/cbtIntegrity'
 import ResponsiveTables from './ResponsiveTables'
+import CbtLive from './CbtLive'
+import CbtAnalysis from './CbtAnalysis'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -107,7 +109,7 @@ function CbtInner({ perms, currentUser }) {
             <p>Computer based tests in the SSC / TCS style: colour-coded palette, review marking, countdown timer, English and Meitei Mayek. Works on desktop, tablet and phone.</p>
           </div>
           <div className="cbt-tabs" role="tablist">
-            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['live', '🔴 Live'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
           </div>
         </div>
       </div>
@@ -154,6 +156,8 @@ function CbtInner({ perms, currentUser }) {
 
       {pub && <PublishModal test={pub} row={online?.find(o => o.id === pub.id) || null} by={currentUser?.name || currentUser?.username || ''} onClose={() => setPub(null)} onChanged={loadOnline} flash={flash} />}
 
+      {tab === 'live' && <CbtLive online={online} canEdit={canEdit} flash={flash} />}
+
       {tab === 'results' && <>
         <div className="card">
           <label><span className="lbl">Test</span>
@@ -164,6 +168,7 @@ function CbtInner({ perms, currentUser }) {
             </select></label>
         </div>
         {test && report && <CbtIntegrity report={report} />}
+        {test && <CbtAnalysis key={`an-${test.id}`} test={test} rows={rows} attempts={attempts} canEdit={canEdit} flash={flash} onChanged={() => { setResTest(''); setTimeout(() => setResTest(test.id), 0) }} />}
         {test && <CbtCertificateTool key={test.id} test={test} rows={rows} flash={flash} />}
         {test && (
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>

@@ -37,6 +37,15 @@ export async function setOnline(id, patch) {
   if (error) throw new Error(friendly(error))
 }
 export async function deleteOnline(id) { const { error } = await supabase.from('cbt_tests').delete().eq('id', id); if (error) throw new Error(friendly(error)) }
+// Give one attempt extra time (staff). Adds to what it already has; capped at 2 hours by the database.
+export async function extendOnlineAttempt(id, seconds) {
+  const cur = await supabase.from('cbt_attempts').select('extra_seconds').eq('id', id).maybeSingle()
+  if (cur.error) throw new Error(friendly(cur.error))
+  const next = Math.min(7200, Math.max(0, (cur.data?.extra_seconds || 0) + seconds))
+  const { error } = await supabase.from('cbt_attempts').update({ extra_seconds: next }).eq('id', id)
+  if (error) throw new Error(friendly(error))
+  return next
+}
 export async function deleteOnlineAttempt(id) { const { error } = await supabase.from('cbt_attempts').delete().eq('id', id); if (error) throw new Error(friendly(error)) }
 // A published test with its key, as a test this computer can show results for.
 export async function fetchOnlineTest(id) {
@@ -59,3 +68,17 @@ export const resumeExam = (attempt, token, session) => rpc('cbt_resume', { p_att
 export const saveExam = (attempt, token, a, session) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0, p_session: session || null })
 export const submitExam = (attempt, token, a, session) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_switches: a.switches || 0, p_session: session || null })
 
+
+// Re-evaluation (staff): write the new score of each changed attempt. The old marks are kept inside the score so the
+// change can always be traced. plan = rescorePlan(...).changes
+export async function applyRescore(changes) {
+  const at = new Date().toISOString()
+  let done = 0
+  for (const c of changes) {
+    const score = { ...c.now, rescored: { at, wasMarks: c.was?.marks ?? null, wasCorrect: c.was?.correct ?? null } }
+    const { error } = await supabase.from('cbt_attempts').update({ score }).eq('id', c.attempt.id)
+    if (error) throw new Error(`${done} of ${changes.length} updated, then: ${friendly(error)}`)
+    done++
+  }
+  return done
+}

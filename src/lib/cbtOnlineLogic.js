@@ -37,7 +37,7 @@ export function toAttempt(row, testName = '') {
   return {
     id: row.id, testId: row.test_id, testName, candidate: { name: row.candidate_name, roll: row.roll }, phone: row.phone || '', gcc: row.gcc_no || '', parentPhone: row.parent_phone || '', erpMatch: !!row.erp_match, phoneVerified: row.phone_verified,
     startedAt: Date.parse(row.started_at), submittedAt: row.submitted_at ? Date.parse(row.submitted_at) : null,
-    state: row.state, answers: row.answers || {}, marked: m, visited: packed.v || {}, current: row.current_no, lang: row.lang || 'en',
+    state: row.state, savedAt: row.saved_at ? Date.parse(row.saved_at) : null, extraSeconds: row.extra_seconds || 0, answers: row.answers || {}, marked: m, visited: packed.v || {}, current: row.current_no, lang: row.lang || 'en',
     switches: row.switches || 0, proctor: packed.x || null, timing: packed.t || null, changes: packed.c || null, sec: packed.s || null, ip: row.ip_start || '', ipLast: row.ip_last || '', takeovers: row.takeovers || 0, autoSubmitted: !!row.auto_submitted, score: row.score || null, source: 'online',
   }
 }
@@ -65,7 +65,7 @@ export function localAttempt(att, test, candidate, backup = null) {
   for (const n of Object.keys(answers)) visited[n] = true
   for (const n of Object.keys(marked)) visited[n] = true
   return {
-    id: att.id, testId: test.id, testName: test.name, candidate, startedAt: Date.parse(att.startedAt), submittedAt: null, state: 'inprogress',
+    id: att.id, testId: test.id, testName: test.name, candidate, extraSeconds: att.extraSeconds || 0, startedAt: Date.parse(att.startedAt), submittedAt: null, state: 'inprogress',
     answers, marked, visited, current, lang: (use ? use.lang : att.lang) || 'en', switches: Math.max(att.switches || 0, use?.switches || 0), proctor: (use && use.proctor) || packed.x || null,
     timing: (use && use.timing) || packed.t || null, changes: (use && use.changes) || packed.c || null, sec: (use && use.sec) || packed.s || null,
   }

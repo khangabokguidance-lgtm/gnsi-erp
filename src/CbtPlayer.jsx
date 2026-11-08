@@ -148,11 +148,25 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       try {
         const r = await remote.save(a)
         setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))   // staff gave extra time
         if (r?.submitted) finish(true)          // the server's clock ran out first
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
     }, remote ? 1200 : 500)
     return () => clearTimeout(t)
   }, [a, stage, remote, finish, kicked])
+  // heartbeat: save every 30 s even when nothing changed, so staff can tell "thinking" from "dropped off" (Live tab)
+  useEffect(() => {
+    if (!remote || stage !== 'exam') return
+    const t = setInterval(async () => {
+      if (submitted.current || !aRef.current || kicked) return
+      try {
+        const r = await remote.save(aRef.current); setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))
+        if (r?.submitted) finish(true)
+      } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
+    }, 30000 + Math.floor(Math.random() * 5000))   // a little jitter so a whole batch does not save in the same second
+    return () => clearInterval(t)
+  }, [remote, stage, kicked, finish])
   // while an online save keeps failing, try again every few seconds (answers are also kept on this device)
   useEffect(() => {
     if (!remote || !netErr || stage !== 'exam') return
