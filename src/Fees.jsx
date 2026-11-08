@@ -4862,35 +4862,35 @@ export default function Fees() {
   const TABS = [
     // Non-admin staff only get what they need at the counter: Fee Payment,
     // Student Ledger and Verify Receipt. Everything else is admin-only.
-    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
+    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'adminFee' }] : []),
     { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
     { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'adminFee' }] : []),
     // ✦ Security fix: this tab exposes every student's full fee/payment
     // history (GCC, amounts, payment mode, Collected By) with a one-click
     // export, but had no role gate at all — any logged-in staff account,
     // not just admin/accounts, could open and export it. Restricted the
     // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
-    ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'adminFee', badge: pendingApprovalCount }] : []),
+    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'adminFee', badge: lowFeePending }] : []),
+    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'adminFee', badge: hostelIssueCount }] : []),
+    ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'waivers', label: 'Discount / Waiver / Repeater', short: 'Waivers', icon: 'scholar', group: 'adminFee' }] : []),
-    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'adminFee' }] : []),
     // Day closing is for every cashier: it lists the day's collections of all users.
     { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
-    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'adminFee' }] : []),
+    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'adminFee' }] : []),
   ]
   // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
   useEffect(() => {
