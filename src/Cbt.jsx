@@ -182,7 +182,7 @@ function CbtInner({ perms, currentUser }) {
                 {rows.length === 0 && <tr><td colSpan={19} className="muted">No attempts yet.</td></tr>}
                 {rows.map(({ attempt: a, g, submitted, took, rank }) => (
                   <tr key={a.id}>
-                    <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b></td><td>{a.candidate.roll || '—'}</td><td>{a.gcc || '—'}{a.gcc && !a.erpMatch ? ' ⚠' : ''}</td><td>{a.district || '—'}</td><td>{a.gender || '—'}</td><td>{a.caste || '—'}</td><td>{a.parentPhone || a.phone || '—'}</td>
+                    <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b>{a.dobEntered ? <span className="tag" title={`Date of birth was missing in the ERP — the candidate entered ${a.dobEntered} (saved to the student record). Check it in Students.`} style={{ background: '#fff4dc', color: '#9a5b00', marginLeft: 6 }}>DOB added</span> : null}</td><td>{a.candidate.roll || '—'}</td><td>{a.gcc || '—'}{a.gcc && !a.erpMatch ? ' ⚠' : ''}</td><td>{a.district || '—'}</td><td>{a.gender || '—'}</td><td>{a.caste || '—'}</td><td>{a.parentPhone || a.phone || '—'}</td>
                     <td><span className="tag" style={{ background: a.source === 'online' ? '#eef2f9' : '#f1f5f9', color: a.source === 'online' ? '#1e3a6e' : '#64748b' }}>{a.source === 'online' ? '🌐 Online' : 'This computer'}</span></td>
                     <td><span className="tag" style={{ background: submitted ? '#e7f6ec' : '#fff4dc', color: submitted ? '#146c3a' : '#9a5b00' }}>{submitted ? 'Submitted' : 'In progress'}</span></td>
                     <td>{when(a.startedAt)}</td><td className="num">{took ?? '—'}</td>

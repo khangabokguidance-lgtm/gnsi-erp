@@ -31,7 +31,7 @@ async function student(i) {
   const gcc = String(i + 1), phone = '9' + String(100000000 + i + 1).padStart(9, '0')
   await sleep(Math.random() * 60000 * Math.min(1, N / 300))                     // starts spread over the first minute
   const l1 = await rpc(i, 'lookup (GCC)', 'cbt_lookup($1,$2,$3)', [TEST, '246810', gcc]); if (!l1 || l1.error) return
-  const dob = l1[0]?.hasDob ? (process.env.DOB || '01022010') : null          // second check when the student has a date of birth on file
+  const dob = l1[0]?.hasDob ? (process.env.DOB || '01022010') : '06052012'   // students with no date of birth on file must type one
   const l2 = await rpc(i, 'lookup (verify)', 'cbt_lookup($1,$2,$3,$4,$5)', [TEST, '246810', gcc, phone, dob]); if (!l2 || l2.error || l2[0]?.verified !== true) return
   const st = await rpc(i, 'start', 'cbt_start($1,$2,$3,$4,null,$5)', [TEST, '246810', gcc, phone, dob]); if (!st || st.error) return
   const { attempt: { id }, token, session } = st; const answers = {}
