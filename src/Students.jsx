@@ -4,6 +4,7 @@
 // Only the visual layer is replaced.
 
 import { printFeeReceipt } from './premiumReceipt'
+import { DISTRICT_OPTIONS, CASTES } from './lib/studentFields'
 import { CertificateDialog } from './certificateKit'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
@@ -2827,6 +2828,8 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
                 {[
   ['Gender',    student.gender],
+  ['District',  student.district],
+  ['Caste',     student.caste],
   ['DOB',       fmtD(student.dob)],
   ...(can.viewPII ? [
     ['Phone',     student.phone],
@@ -3010,7 +3013,7 @@ function PhotoField({ currentUrl, value, onChange }) {
 }
 
 function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
-  const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
+  const blank={name:'',gcc_no:'',dob:'',gender:'Male',district:'',caste:'',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
   // Batch in its standard name ("UDAAN" / old "Elite" → Udaan) and a blank
@@ -3128,6 +3131,8 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
           </FieldRow>
           <FieldRow label="Date of Birth"><input type="date" style={INP} value={form.dob} onChange={e=>set('dob',e.target.value)}/></FieldRow>
           <FieldRow label="Gender"><select style={SEL} value={form.gender} onChange={e=>set('gender',e.target.value)}><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></FieldRow>
+          <FieldRow label="District (Manipur)"><select style={SEL} value={form.district||''} onChange={e=>set('district',e.target.value)}><option value="">—</option>{DISTRICT_OPTIONS.map(d=><option key={d}>{d}</option>)}{form.district&&!DISTRICT_OPTIONS.includes(form.district)&&<option>{form.district}</option>}</select></FieldRow>
+          <FieldRow label="Caste / Category"><select style={SEL} value={form.caste||''} onChange={e=>set('caste',e.target.value)}><option value="">—</option>{CASTES.map(c=><option key={c}>{c}</option>)}{form.caste&&!CASTES.includes(form.caste)&&<option>{form.caste}</option>}</select></FieldRow>
           <FieldRow label="Status"><select style={SEL} value={form.status} onChange={e=>set('status',e.target.value)}>{STATUSES.filter(s=>s!=='All').map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="Admission Date"><input type="date" style={INP} value={form.admission_date} onChange={e=>set('admission_date',e.target.value)}/></FieldRow>
           {form.status&&form.status!=='Active'&&<FieldRow label="Left Date"><input type="date" style={INP} value={form.left_date} onChange={e=>set('left_date',e.target.value)}/></FieldRow>}
@@ -5392,7 +5397,7 @@ const effectiveCols = visibleCols.filter(col => {
     // exclusively by allocateStudent/vacateStudent below (which also
     // mirrors it onto students.house), so it can't race against or
     // overwrite what those helpers just wrote.
-    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
+    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null,...(obj.district?{district:obj.district}:{}),...(obj.caste?{caste:obj.caste}:{})}
     const houseChosen=obj.house||null
     // FLOW FIX: Students is edit-only. A student created here had no
     // admissions row, so Fees refused payment ("No admission record") and

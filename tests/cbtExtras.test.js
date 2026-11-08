@@ -97,3 +97,21 @@ test('live view: in exam, dropped off, time up, done; extra time counts', () => 
   assert.equal(liveCounts([{ ...base, savedAt: now }, { ...base, savedAt: 0 }, { ...base, state: 'submitted' }], t, now).dropped, 1)
   assert.equal(secondsLeft({ startedAt: 0, extraSeconds: 120 }, t, 59 * 60000), 180)
 })
+
+import { groupStats } from '../src/lib/cbtAnalytics.js'
+test('group-wise results by district / gender / category', () => {
+  const mk = (id, answers, extra) => ({ ...att(id, answers), ...extra })
+  const r = resultRows(T(), [
+    mk('a', { 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'A' }, { district: 'Thoubal', gender: 'Female', caste: 'ST' }),   // 5
+    mk('b', { 1: 'A', 2: 'C', 3: 'C', 4: 'D' }, { district: 'Thoubal', gender: 'Male', caste: 'OBC' }),            // 3
+    mk('c', { 1: 'B' }, { district: 'Imphal West', gender: 'Male', caste: '' }),                                    // 0
+    mk('d', { 1: 'A' }, { district: 'Imphal West', state: 'inprogress' }),
+  ])
+  const d = groupStats(r, 'district')
+  assert.deepEqual(d.map(x => [x.group, x.count, x.avg]), [['Imphal West', 1, 0], ['Thoubal', 2, 4]].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])))
+  assert.equal(d.find(x => x.group === 'Thoubal').high, 5)
+  const c = groupStats(r, 'caste')
+  assert.equal(c.at(-1).group, 'Not given')                     // always last
+  assert.equal(groupStats(r, 'gender').find(x => x.group === 'Male').count, 2)
+  assert.equal(d.reduce((n, x) => n + x.count, 0), 3)             // the in-progress attempt is not counted
+})

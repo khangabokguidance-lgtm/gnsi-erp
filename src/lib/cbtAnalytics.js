@@ -58,3 +58,20 @@ export function summary(rows) {
 export function weakSections(row) {
   return row.g.sections.map(s => ({ title: s.title || s.label, pct: pct(s.marks, s.max), marks: s.marks, max: s.max })).sort((a, b) => a.pct - b.pct)
 }
+
+// Group-wise results: by district, gender or category (caste). `key` is an attempt field: 'district' | 'gender' | 'caste'.
+// Only submitted attempts count; candidates with no value are listed as "Not given" so the totals still add up.
+export function groupStats(rows, key) {
+  const done = rows.filter(r => r.submitted)
+  const by = new Map()
+  for (const r of done) {
+    const k = (r.attempt[key] || '').trim() || 'Not given'
+    if (!by.has(k)) by.set(k, [])
+    by.get(k).push(r)
+  }
+  return [...by.entries()].map(([group, rs]) => {
+    const marks = rs.map(r => r.g.marks), max = rs[0].g.max
+    const avg = r2(marks.reduce((a, b) => a + b, 0) / rs.length)
+    return { group, count: rs.length, avg, avgPct: pct(avg, max), high: Math.max(...marks), low: Math.min(...marks), share: pct(rs.length, done.length) }
+  }).sort((a, b) => (a.group === 'Not given') - (b.group === 'Not given') || b.count - a.count || a.group.localeCompare(b.group))
+}

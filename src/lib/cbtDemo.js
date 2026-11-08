@@ -11,7 +11,7 @@ Try these on the screen:
 1. Choose an option, then press “Save & Next”.
 2. Press “Mark for Review & Next” to flag a question you want to revisit.
 3. Use the question palette on the right (☰ Palette on a phone) to jump to any question.
-4. Use A− / A+ for text size, ◐ for high contrast, 🖩 for the calculator and ✎ for rough work.
+4. Use the A− / A+ buttons for text size, the half-filled circle for high contrast, the calculator button and the pencil button for rough work.
 5. Press “Submit Test” when you are done to see how the result screen looks.`,
   showResult: true, showAnswers: true,
   sections: [{

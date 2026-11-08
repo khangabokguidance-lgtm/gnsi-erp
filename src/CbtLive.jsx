@@ -1,7 +1,7 @@
 // CbtLive.jsx — staff Live view of an online exam: who is inside, who dropped off, who finished, with a one-click
 // +5 / +10 minutes or reset for one candidate. Refreshes every 15 s. Extra time needs 20261062_cbt_time_extension.sql.
 import { useCallback, useEffect, useState } from 'react'
-import { onlineAttempts, extendOnlineAttempt, deleteOnlineAttempt } from './cbtRemote'
+import { onlineAttempts, extendOnlineAttempt, deleteOnlineAttempt, fetchOnlineTest } from './cbtRemote'
 import { liveState, liveCounts } from './lib/cbtLive'
 import { flagTotal, flagText } from './lib/cbtProctorLogic'
 import { clock } from './lib/cbtEngine'
@@ -16,9 +16,10 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
   const [now, setNow] = useState(Date.now())
   const [busy, setBusy] = useState('')
   const [q, setQ] = useState('')
+  const [full, setFull] = useState(null)               // the test's sections (for the question total)
   const test = online?.find(o => o.id === id)
-  // enough of a test for the clock and the answered count: duration and the question total live on the row's sections
-  const shape = { durationMin: Number(test?.duration_min) || 0, sections: [{ questions: { length: 0 } }] }
+  useEffect(() => { let on = true; setFull(null); if (id) fetchOnlineTest(id).then(t => { if (on) setFull(t) }).catch(() => {}); return () => { on = false } }, [id])
+  const shape = { durationMin: Number(test?.duration_min) || 0, sections: full?.sections || [] }
 
   const load = useCallback(async () => {
     if (!id) return
@@ -29,8 +30,8 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
 
   if (!online?.length) return <div className="card"><h3>Nothing online yet</h3><p className="muted">Publish a test from the Tests tab first.</p></div>
-  const states = (rows || []).map(a => ({ a, s: liveState(a, { ...shape, sections: [] }, now) }))
-  const c = liveCounts(rows || [], { ...shape, sections: [] }, now)
+  const states = (rows || []).map(a => ({ a, s: liveState(a, shape, now) }))
+  const c = liveCounts(rows || [], shape, now)
   const t = q.trim().toLowerCase()
   const order = { dropped: 0, live: 1, timeup: 2, done: 3 }
   const list = states.filter(({ a }) => !t || [a.candidate.name, a.gcc, a.candidate.roll].some(v => String(v || '').toLowerCase().includes(t))).sort((x, y) => order[x.s.kind] - order[y.s.kind] || x.s.left - y.s.left)
@@ -68,7 +69,7 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
                   <td><span className="tag" style={{ background: bg, color: fg }}>{label}</span>{a.extraSeconds ? <span className="tag" style={{ background: '#fff4dc', color: '#9a5b00', marginLeft: 4 }}>+{Math.round(a.extraSeconds / 60)} min</span> : null}</td>
                   <td>{s.kind === 'done' ? '—' : ago(s.quietSec)}</td>
                   <td className="num">{s.kind === 'done' ? '—' : clock(s.left)}</td>
-                  <td className="num">{s.answered}</td>
+                  <td className="num">{s.answered}{s.total ? ` / ${s.total}` : ''}</td>
                   <td style={{ color: flagTotal(a.proctor) || a.takeovers || a.switches ? '#b42318' : undefined, fontSize: 12 }}>{flags || '—'}</td>
                   <td style={{ fontSize: 12 }}>{a.ip || '—'}</td>
                   {canEdit && <td style={{ whiteSpace: 'nowrap' }}>
@@ -84,7 +85,7 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
           </tbody>
         </table></div>
       </div>
-      <p className="muted" style={{ fontSize: 12 }}>“Dropped off” = no save for over 100 seconds (the exam screen saves every 30 s). They may just have lost signal — their answers are kept and they continue when it returns. “+5 / +10 min” gives that one candidate extra time (needs migration 20261062). The “Answered” column counts answers saved so far.</p>
+      <p className="muted" style={{ fontSize: 12 }}>“Dropped off” = no save for over 100 seconds (the exam screen saves every 30 s). They may just have lost signal — their answers are kept and they continue when it returns. “+5 / +10 min” gives that one candidate extra time (needs migration 20261062). The “Answered” column counts answers saved so far, out of the total questions.</p>
     </>
   )
 }

@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
+import { DISTRICT_OPTIONS, CASTES } from './lib/studentFields'
 
 // Never editable from Table Browser, no matter what — these are identity/
 // bookkeeping columns, not business data. Editing them doesn't skip some
@@ -62,6 +63,8 @@ export const EDITABLE_FIELDS = {
     // Core Identity
     name: { label: 'Name', type: 'text' },
     gender: { label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'] },
+    district: { label: 'District (Manipur)', type: 'select', options: DISTRICT_OPTIONS },
+    caste: { label: 'Caste / Category', type: 'select', options: CASTES },
     dob: { label: 'Date of Birth', type: 'date' },
     
     // Academic & Status
