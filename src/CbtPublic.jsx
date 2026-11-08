@@ -3,6 +3,7 @@
 // exactly as in the office — but the paper comes from the server, the clock is the server's, answers are saved
 // to the server as they go and the server marks it. Reopening the link on the same device resumes the attempt.
 import { useEffect, useMemo, useState } from 'react'
+import { DEMO_TEST } from './lib/cbtDemo'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { examInfo, startExam, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
@@ -19,7 +20,7 @@ const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', mon
 function makeRemote({ testId, code, candidate, gcc, parent, attemptId = null, token = null, session = null }) {
   const r = { offset: 0, attemptId, token, session }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
-  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, changes: a.changes || null })
+  const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, sec: a.sec || null, changes: a.changes || null })
   r.begin = async () => {
     const res = await startExam(testId, code, gcc, parent)
     r.attemptId = res.attempt.id; r.token = res.token; r.session = res.session; sync(res.attempt)
@@ -111,12 +112,15 @@ function CbtPublicInner() {
   }
 
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
+  // practice test: runs in this browser only; its result is the local attempt itself
+  const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
+  const demoDone = done => { setView({ test: DEMO_TEST, attempt: done }); setPhase('result') }
 
   if (phase === 'gate' || phase === 'exam') {
-    return <CbtPlayer test={run.test} candidate={run.candidate} resume={run.resume} remote={run.remote} onSubmit={submitted} onClose={() => { setPhase('landing'); setRun(null) }} />
+    return <CbtPlayer test={run.test} candidate={run.candidate} resume={run.resume} remote={run.remote} demo={!!run.demo} onSubmit={run.demo ? demoDone : submitted} onClose={() => { setPhase('landing'); setRun(null) }} />
   }
   if (phase === 'result' && view) {
-    return <CbtResult test={view.test} attempt={view.attempt} closeLabel="Finish" onClose={() => setPhase('done')} />
+    return <CbtResult test={view.test} attempt={view.attempt} closeLabel={run?.demo ? 'Back to the exam page' : 'Finish'} onClose={() => { if (run?.demo) { setRun(null); setView(null); setPhase('landing') } else setPhase('done') }} />
   }
   if (phase === 'done') {
     return (
@@ -136,6 +140,7 @@ function CbtPublicInner() {
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}
       </div>
       {!info && !err && <div className="card muted">Loading…</div>}
+      {info && open && !saved && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try a 4-minute practice test first — it is not counted and nothing is saved.</span> <button className="btn" style={{ marginLeft: 6 }} onClick={startDemo}>Try the practice test</button></div>}
       {err && !(info && open && !saved) && <div className="card" role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</div>}
       {info && info.state === 'closed' && <div className="card" style={{ color: '#b42318', fontWeight: 700 }}>This exam is closed.</div>}
       {info && info.state === 'not_open' && <div className="card" style={{ color: '#9a5b00', fontWeight: 700 }}>This exam opens on {when(info.opensAt)}.</div>}
