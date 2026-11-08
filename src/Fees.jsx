@@ -4892,20 +4892,31 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'adminFee' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'adminFee' }] : []),
   ]
+  // Overlapping admin tabs are shown as ONE tile with sub-tabs. Old tab ids still work
+  // (deep links, What's New), they just open inside their merged tile.
+  const MERGES = [
+    { id: 'monthlyCheck', label: 'Fee Health Checks', short: 'Checks', members: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
+    { id: 'activity', label: 'Activity & Audit', short: 'Activity', members: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
+    { id: 'reminders', label: 'Dues Follow-up', short: 'Follow-up', members: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
+    { id: 'waivers', label: 'Discounts & Waivers', short: 'Discounts', members: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register']] },
+  ]
+  const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
+  const NAV_TABS = TABS.map(t => { const m = MERGES.find(x => x.id === t.id); return m ? { ...t, label: m.label, short: m.short } : t })
+    .filter(t => { const m = mergeOf(t.id); return !m || m.id === t.id })
   // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
   useEffect(() => {
     if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
   }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
-    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+    .map(([id, title]) => ({ id, title, items: NAV_TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
   // Admin Fee Panel sections, ordered by what an admin reaches for first.
   const ADMIN_SUBS = [
     ['Overview', ['dashboard']],
-    ['Needs your approval', ['pendingApprovals', 'lowFee', 'hostelIssues', 'anomaly']],
-    ['Discounts, waivers & refunds', ['waivers', 'concessionRegister', 'installments', 'refunds']],
-    ['Records & reports', ['admin', 'reports', 'activity', 'lateEntries', 'digest']],
-    ['Checks & setup', ['monthlyCheck', 'dataHealth', 'feeControls', 'reminders', 'rollover']],
+    ['Needs your approval', ['pendingApprovals', 'lowFee', 'hostelIssues']],
+    ['Discounts, refunds & follow-up', ['waivers', 'refunds', 'reminders']],
+    ['Records & reports', ['admin', 'reports', 'activity']],
+    ['Checks & setup', ['monthlyCheck', 'rollover']],
   ]
 
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
@@ -5042,8 +5053,8 @@ export default function Fees() {
           const full = tab === 'dashboard' || hubOpen
           const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
           const tile = t => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
-              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+            <button key={t.id} type="button" role="tab" aria-selected={(mergeOf(tab)?.id || tab) === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + ((mergeOf(tab)?.id || tab) === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
               <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
               <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
@@ -5068,7 +5079,7 @@ export default function Fees() {
             </nav>
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
-              {TABS.map(tile)}
+              {NAV_TABS.map(tile)}
               {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
               </button>}
@@ -5079,6 +5090,16 @@ export default function Fees() {
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
       </div>
+
+      {isAdmin && mergeOf(tab) && (
+        <div role="tablist" aria-label={mergeOf(tab).label} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 14px' }}>
+          <span style={{ alignSelf: 'center', fontSize: 12, fontWeight: 800, color: '#1e3a6e', marginRight: 4 }}>{mergeOf(tab).label}</span>
+          {mergeOf(tab).members.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+              style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid ' + (tab === id ? '#1e3a6e' : '#e8e3d8'), background: tab === id ? '#1e3a6e' : '#fff', color: tab === id ? '#fff' : '#1e3a6e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <FeeDashboardTab
