@@ -68,3 +68,12 @@ test('section titles lose the "Q. 1–20" range, in several spellings', () => {
     assert.equal(sections[0].title, 'Mental Ability Test', h)
   }
 })
+
+test('a "Read the passage and answer questions…" heading is not glued onto the last option before it', () => {
+  const lines = [L('SECTION II'), L('EVS Q. 1–3'), L('1. Who heads a State?'), L('(A) President'), L('(B) Governor'), L('(C) Chief Minister'), L('(D) District Collector'),
+    L('Passage 2 · Read the passage and answer questions 2 to 3.'), L('Every winter birds fly from Siberia to India in huge flocks because the cold makes food hard to find in the north, and they stay until spring returns.'),
+    L('2. Why do birds migrate?'), L('(A) Cold'), L('(B) Heat'), L('(C) Fun'), L('(D) Fear'), L('3. When do they leave?'), L('(A) Spring'), L('(B) Winter'), L('(C) Summer'), L('(D) Never')]
+  const q = buildTest(lines).sections[0].questions
+  assert.deepEqual(q[0].options.map(o => o.text), ['President', 'Governor', 'Chief Minister', 'District Collector'])
+  assert.match(q[1].passage, /^Every winter birds fly/)
+})

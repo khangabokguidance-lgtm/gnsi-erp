@@ -25,6 +25,8 @@ const DIRECTIONS = /^Directions?\s*:/i
 const PAGE_MARK = /^(page|pesej)\s*[-–—.:]?\s*\d{1,3}$/i
 const MM_DIRECTIONS = /^mwoZ\s*taKp\s*:/
 // "Part I: In questions 1 to 4, …" — instructions shared by a group of questions (they are NOT part of the previous question)
+// "Read the passage and answer questions 36 to 40." / "Passage 2 · Read the passage …" — a heading for the passage that follows, never a continuation of the option before it
+const PASSAGE_HEAD = /^(?:passage\s*\d*\s*[·.:\-–—]?\s*)?(?:read|study|go through)\b[^.]{0,60}\bquestions?\b|^passage\s*\d+\b/i
 const PART = /^Part\s+(?:[IVXLC]+|\d+)\s*[:.\-–—]\s*\S/i
 // "General Instructions" / "Instructions to candidates" — a numbered list that must not be read as questions; it lasts until the next SECTION
 const INSTRUCTIONS = /^(?:general\s+)?instructions?(?:\s+(?:to|for)\s+(?:the\s+)?candidates?)?\s*:?$/i
@@ -110,6 +112,9 @@ export function parseLines(lines, { mm = false, loose = false } = {}) {
       }
       return
     }
+    if (!mm && PASSAGE_HEAD.test(text) && text.length < 140) { if (q) q.done = true; return }
+    // any language: a short line right after the 4th option that names a question range ("… 36 … 40") is a passage heading, not more of option (D)
+    if (q && q.options.length >= 4 && !q.done && text.length < 140 && /\b\d{1,3}\b\D{1,40}\b\d{1,3}\b/.test(text) && !OPTION.test(text)) { q.done = true; return }
     // a text line after a picture-only question (label + picture, no options) is a note for the group that follows — not that question's text
     if (q && !q.text && !q.options.length && q.figures.length) { q = null; passage = text; return }
     if (q && !q.options.length) {
