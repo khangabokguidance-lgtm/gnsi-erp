@@ -68,8 +68,11 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   )
 }
 
+import CbtReadiness from './CbtReadiness'
+
 export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, onDownload, flash }) {
   const [busy, setBusy] = useState('')
+  const [ready, setReady] = useState(null)   // the exam whose readiness check is open
   const act = async (id, fn, okMsg) => { setBusy(id); try { await fn(); await onReload(); okMsg && flash(okMsg) } catch (e) { flash(e.message) } setBusy('') }
   const copy = async text => { try { await navigator.clipboard.writeText(text); flash('Copied.') } catch { flash('Could not copy.') } }
   if (err) return <div className="card" role="alert" style={{ color: '#9a3412' }}>{err}</div>
@@ -93,6 +96,7 @@ export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, o
             <div className="cbt-actions">
               <button className="btn navy" onClick={() => copy(inviteText(r.name, r, r.duration_min))}>📋 Copy invitation</button>
               <button className="btn" onClick={() => onResults(r.id)}>📊 Results</button>
+              {canEdit && <button className="btn" onClick={() => setReady(r)}>✅ Readiness</button>}
               {canEdit && (r.status === 'live'
                 ? <button className="btn" disabled={busy === r.id} onClick={() => act(r.id, () => setOnline(r.id, { status: 'closed' }), 'Exam closed.')}>⏹ Close</button>
                 : <button className="btn" disabled={busy === r.id} onClick={() => act(r.id, () => setOnline(r.id, { status: 'live' }), 'Exam is live again.')}>▶ Reopen</button>)}
@@ -102,6 +106,7 @@ export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, o
           </div>
         )
       })}
+      {ready && <CbtReadiness row={ready} onClose={() => setReady(null)} />}
     </div>
   )
 }

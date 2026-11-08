@@ -127,7 +127,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     if (!demo) await cbtStore.saveAttempt(done)
     try { if (document.fullscreenElement) await document.exitFullscreen() } catch { /* ignore */ }
     onSubmit(done)
-  }, [test, onSubmit, remote, minMin])
+  }, [test, onSubmit, remote, minMin, demo])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- submits when the clock reaches zero
   useEffect(() => { if (stage === 'exam' && a && left <= 0) finish(true) }, [stage, a, left, finish])
   // a failed online submit is retried every few seconds
@@ -153,7 +153,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
     }, remote ? 1200 : 500)
     return () => clearTimeout(t)
-  }, [a, stage, remote, finish, kicked])
+  }, [a, stage, remote, finish, kicked, demo])
   // heartbeat: save every 30 s even when nothing changed, so staff can tell "thinking" from "dropped off" (Live tab)
   useEffect(() => {
     if (!remote || stage !== 'exam') return
@@ -257,8 +257,10 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const nowS = now + (remote?.offset || 0)
   const secNow = secOn && a ? settleSection(a.sec || { i: 0, at: a.startedAt }, test, nowS) : null
   const firstOf = i => qs.find(x => x.sectionIndex === i)?.no
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs every tick on purpose: opens the next section / ends the exam when a section's time is up
   useEffect(() => {
     if (stage !== 'exam' || !secOn || !a) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- first tick of a timed exam: record when section 1 opened
     if (!a.sec) { setA(x => (x && !x.sec ? { ...x, sec: { i: 0, at: x.startedAt } } : x)); return }
     const st = settleSection(a.sec, test, nowS)
     if (st.over && !submitted.current) { flash('Time for the last section is over — submitting.'); finish(true); return }
@@ -268,7 +270,6 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
   }) // checked every second (the clock re-renders)
   const curSec = secOn ? (secNow?.i ?? 0) : null
-  const inCur = x => curSec === null || x.sectionIndex === curSec
   const moveOn = () => { setModal(null); setA(x => go({ ...x, sec: nextSection(x.sec || { i: 0, at: x.startedAt }, test, nowS + 0) }, firstOf(Math.min((x.sec?.i ?? 0) + 1, test.sections.length - 1)) ?? x.current)) }
   const q = a ? qs.find(x => x.no === a.current) : null
   const sec = q ? test.sections[q.sectionIndex] : null
