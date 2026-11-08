@@ -57,6 +57,8 @@ import FeeTabShell from './FeeTabShell'
 import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
+import FeeWaivers from './FeeWaivers'
+import FeeDetector from './FeeDetector'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
 import FeeMonthlyCheck from './FeeMonthlyCheck'
@@ -4858,44 +4860,58 @@ export default function Fees() {
     if (hit) goCollect(hit)
   }, [students]) // eslint-disable-line react-hooks/exhaustive-deps
   const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
-  const TABS = [
-    // Non-admin staff only get what they need at the counter: Fee Payment,
-    // Student Ledger and Verify Receipt. Everything else is admin-only.
-    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
-    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
-    // ✦ Security fix: this tab exposes every student's full fee/payment
-    // history (GCC, amounts, payment mode, Collected By) with a one-click
-    // export, but had no role gate at all — any logged-in staff account,
-    // not just admin/accounts, could open and export it. Restricted the
-    // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
-    ...(isAdmin ? [{ id: 'monthlyCheck', label: 'Monthly Fee Check', short: 'Monthly Check', icon: 'rupeeSearch', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
-    // Day closing is for every cashier: it lists the day's collections of all users.
-    { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
-    { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
-    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
+  // ── Tab registry ────────────────────────────────────────────────────────────
+  // ONE place that defines every Fees tab. Counter tabs are for all staff; the Admin Fee
+  // Panel is admin-only and is described section → tile → optional sub-tabs. The nav, the
+  // sub-tab bar, merged-tab aliases and the access check are all derived from this.
+  // A tile with `subs` opens its first sub-tab; every sub-tab id still works as a deep link.
+  // Security: Reports & Export exposes every student's payment history, so it is admin-only.
+  const COUNTER_TABS = [
+    { id: 'payment',  label: 'Fee Payment',    icon: 'card',             group: 'collect' },
+    { id: 'ledger',   label: 'Student Ledger', icon: 'studentfeeledger', group: 'collect' },
   ]
+  // Day closing is for every cashier: it lists the day's collections of all users.
+  const COUNTER_TOOLS = [
+    { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
+    { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
+  ]
+  const ADMIN_PANEL = !isAdmin ? [] : [
+    { title: 'Overview', tiles: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ] },
+    { title: 'Needs your approval', tiles: [
+      { id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', badge: pendingApprovalCount },
+      { id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', badge: lowFeePending },
+      { id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', badge: hostelIssueCount },
+    ] },
+    { title: 'Discounts, refunds & follow-up', tiles: [
+      { label: 'Discounts & Waivers', short: 'Discounts', icon: 'scholar', subs: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
+      { id: 'refunds', label: 'Refunds & Transfers', short: 'Refunds', icon: 'refund' },
+      { label: 'Dues Follow-up', short: 'Follow-up', icon: 'remind', subs: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
+    ] },
+    { title: 'Records & reports', tiles: [
+      { id: 'admin', label: 'Admin View', icon: 'shield' },
+      { id: 'reports', label: 'Reports & Export', short: 'Reports', icon: 'export' },
+      { label: 'Activity & Audit', short: 'Activity', icon: 'history', subs: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
+    ] },
+    { title: 'Checks & setup', tiles: [
+      { label: 'Fee Health Checks', short: 'Checks', icon: 'rupeeSearch', subs: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
+      { id: 'rollover', label: 'Session Rollover', short: 'Rollover', icon: 'rollover' },
+    ] },
+  ].map(sec => ({ ...sec, tiles: sec.tiles.map(t => ({ ...t, id: t.id || t.subs[0][0], group: 'adminFee' })) }))
+  const ADMIN_TILES = ADMIN_PANEL.flatMap(sec => sec.tiles)
+  // Merged tiles (tiles with sub-tabs); old tab ids still resolve to their tile.
+  const MERGES = ADMIN_TILES.filter(t => t.subs).map(t => ({ id: t.id, label: t.label, short: t.short, members: t.subs }))
+  const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
+  const NAV_TABS = [...ADMIN_TILES.filter(t => t.id === 'dashboard'), ...COUNTER_TABS, ...ADMIN_TILES.filter(t => t.id !== 'dashboard'), ...COUNTER_TOOLS]
+  const TABS = [...NAV_TABS, ...MERGES.flatMap(m => m.members.map(([id, label]) => ({ id, label })))]
   // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
   useEffect(() => {
     if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
   }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
-    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
+    .map(([id, title]) => ({ id, title, items: NAV_TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  const ADMIN_SUBS = ADMIN_PANEL.map(sec => [sec.title, sec.tiles.map(t => t.id)])
 
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
@@ -5031,8 +5047,8 @@ export default function Fees() {
           const full = tab === 'dashboard' || hubOpen
           const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
           const tile = t => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
-              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+            <button key={t.id} type="button" role="tab" aria-selected={(mergeOf(tab)?.id || tab) === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + ((mergeOf(tab)?.id || tab) === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
               <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
               <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
@@ -5042,13 +5058,22 @@ export default function Fees() {
               {TAB_GROUPS.map(g => (
                 <section key={g.id} className="fh-g">
                   <h2>{g.title}</h2>
-                  <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>
+                  {g.id === 'adminFee' ? ADMIN_SUBS.map(([title, ids]) => {
+                    const items = ids.map(id => g.items.find(t => t.id === id)).filter(Boolean)
+                    const due = items.reduce((n, t) => n + (t.badge || 0), 0)
+                    return items.length > 0 && (
+                      <div key={title} style={{ marginTop: 10 }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#5d6b82' }}>{title}{due > 0 && <span style={{ marginLeft: 6, background: '#dc2626', color: '#fff', borderRadius: 99, padding: '1px 7px', fontSize: 10 }}>{due} to review</span>}</h3>
+                        <div className="fh-grid" style={{ '--fh-n': 5 }}>{items.map(tile)}</div>
+                      </div>
+                    )
+                  }) : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
                 </section>
               ))}
             </nav>
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
-              {TABS.map(tile)}
+              {NAV_TABS.map(tile)}
               {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
               </button>}
@@ -5059,6 +5084,16 @@ export default function Fees() {
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
       </div>
+
+      {isAdmin && mergeOf(tab) && (
+        <div role="tablist" aria-label={mergeOf(tab).label} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 14px' }}>
+          <span style={{ alignSelf: 'center', fontSize: 12, fontWeight: 800, color: '#1e3a6e', marginRight: 4 }}>{mergeOf(tab).label}</span>
+          {mergeOf(tab).members.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+              style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid ' + (tab === id ? '#1e3a6e' : '#e8e3d8'), background: tab === id ? '#1e3a6e' : '#fff', color: tab === id ? '#fff' : '#1e3a6e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <FeeDashboardTab
@@ -5425,6 +5460,8 @@ export default function Fees() {
       {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
       {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
+      {tab === 'detector' && isAdmin && <FeeTabShell><FeeDetector students={students} /></FeeTabShell>}
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
