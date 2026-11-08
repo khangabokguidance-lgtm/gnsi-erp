@@ -88,12 +88,12 @@ function CbtPublicInner() {
     setBusy(true)
     try {
       const dobD = form.dob.replace(/\D/g, '')
-      if (stu.hasDob && dobD.length < 8) { setBusy(false); return setErr('Enter your date of birth as DD/MM/YYYY.') }
-      const r = await lookupStudent(testId, form.code, form.gcc, par, stu.hasDob ? dobD : '')
+      if (dobD.length < 8) { setBusy(false); return setErr('Enter your date of birth as DD/MM/YYYY.') }
+      const r = await lookupStudent(testId, form.code, form.gcc, par, dobD)
       if (!r.length || r[0].verified !== true) { setBusy(false); return setErr('The number or date of birth does not match the institute records.') }
       const v = r[0]
       const candidate = { name: v.name, roll: String(Number(v.gcc) || v.gcc) }
-      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par, dob: stu.hasDob ? dobD : '' }), resume: null })
+      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par, dob: dobD }), resume: null })
       setPhase('gate')
     } catch (e) { setErr(friendly(e)) }
     setBusy(false)
@@ -208,7 +208,8 @@ function CbtPublicInner() {
             <h3 style={{ marginBottom: 2 }}>Verify your contact number</h3>
             <p className="muted" style={{ margin: '0 0 10px' }}>Step 2 of 2 — confirm it is really you</p>
             <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" autoFocus placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>
-            {stu.hasDob && <label style={{ display: 'block', marginTop: 8 }}><span className="lbl">Your date of birth * (DD/MM/YYYY)</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="DD/MM/YYYY" value={form.dob} onChange={type('dob')} /></label>}
+            <label style={{ display: 'block', marginTop: 8 }}><span className="lbl">{stu.hasDob ? 'Your date of birth *' : 'Your date of birth * — not in our records yet, please enter it'} (DD/MM/YYYY)</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="DD/MM/YYYY" value={form.dob} onChange={type('dob')} /></label>
+            {!stu.hasDob && <p className="muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>Your date of birth is missing from the institute records. What you enter is saved to your record, so please type it correctly.</p>}
             <p className="muted" style={{ margin: '6px 0 12px' }}>Type the parent / guardian number given at admission (GCC {stu.gcc}).{stu.phoneHint ? <> Hint: it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</> : null}</p>
             {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
