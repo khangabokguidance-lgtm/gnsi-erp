@@ -201,8 +201,9 @@ grant execute on function public.cbt_save(text, text, jsonb, jsonb, int, text, i
 -- Online exam: request limits that work for a whole class on ONE network (run after 20261061).
 -- A load test of 300 candidates on one school Wi-Fi address (one shared public IP) found that the per-address limits
 -- (60 lookups / 15 wrong numbers / 30 wrong codes per 10 minutes) locked out all but ~30 of them. The limits are there to
--- stop guessing, but a lab full of students looks like one very busy person. New ceilings per address per 10 minutes:
---     find  (GCC lookups, found or not) 600      phone (wrong parent numbers) 100      code (wrong access codes) 150
+-- stop guessing, but a lab full of students looks like one very busy person (a full run of 300 students used about 600
+-- lookups and just hit the first ceiling of 600; 2400 leaves room for typos and retries — keep it at roughly 8 x your biggest batch). New ceilings per address per 10 minutes:
+--     find  (GCC lookups, found or not) 2400      phone (wrong parent numbers) 100      code (wrong access codes) 150
 -- Guessing is still held back by other limits that do NOT depend on the address: each GCC no. allows only 20 wrong
 -- numbers per 10 minutes (cbt_start / cbt_lookup), and a 6-digit access code at 150 tries per 10 minutes per address
 -- would take weeks. Change the numbers in cbt_limit() below to suit your institute. Safe to run more than once.
@@ -210,7 +211,7 @@ grant execute on function public.cbt_save(text, text, jsonb, jsonb, int, text, i
 
 create or replace function public.cbt_limit(p_kind text) returns int
 language sql immutable as $$
-  select case p_kind when 'find' then 600 when 'phone' then 100 when 'code' then 150 else 30 end
+  select case p_kind when 'find' then 2400 when 'phone' then 100 when 'code' then 150 else 30 end
 $$;
 
 -- the callers still pass their old numbers; they now act as a floor under cbt_limit()
