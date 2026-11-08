@@ -5,6 +5,7 @@
 //   imagesFromDocx: the pictures, in the order they appear on the page (figure questions).
 import JSZip from 'jszip'
 import { bmeiToUnicode } from './mayekSegments.js'
+import { makeNumbering } from './lib/docxNumbering.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -75,11 +76,17 @@ export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei =
   }
   const body = doc.getElementsByTagNameNS(W_NS, 'body')[0]
   if (!body) return []
+  // Word's automatic numbering (1. 2. / (a) (b) …) is not in the text — work the labels out from numbering.xml
+  const numXml = await zip.file('word/numbering.xml')?.async('string')
+  const stylesXml = await zip.file('word/styles.xml')?.async('string')
+  const parse = x => (x ? new DOMParser().parseFromString(x, 'application/xml') : null)
+  const labelFor = makeNumbering(parse(numXml), parse(stylesXml))
   const out = []
   for (const p of Array.from(body.getElementsByTagNameNS(W_NS, 'p'))) {
     let skip = false
     for (let n = p.parentNode; n && n !== body; n = n.parentNode) if (n.localName === 'Fallback') { skip = true; break }
     if (skip) continue
+    const autoLabel = labelFor(p)
     const pieces = []
     const push = (text, bmei) => {
       if (!text) return
@@ -98,7 +105,9 @@ export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei =
           for (const k of Array.from(c.childNodes)) {
             if (k.nodeType !== 1) continue
             if (k.localName === 't') t += k.textContent
-            else if (k.localName === 'tab' || k.localName === 'br' || k.localName === 'cr') t += ' '
+            else if (k.localName === 'br') { const ty = k.getAttributeNS(W_NS, 'type') || k.getAttribute('w:type'); t += (ty === 'page' || ty === 'column') ? ' ' : '\n' }   // Shift+Enter ends the line
+            else if (k.localName === 'cr') t += '\n'
+            else if (k.localName === 'tab') t += ' '
           }
           push(t, bmei)
         } else walk(c)
@@ -111,7 +120,10 @@ export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei =
     const text = pieces.map(x => (x.bmei && convertBmei ? bmeiToUnicode(x.text) : x.text)).join('')
     // A row of dots typed as a blank (…………) comes out of BMEI04 as a row of Lum Iyek marks; show it as a blank line.
     const tidy = t => t.replace(/\s+/g, ' ').trim()
-    out.push({ text: tidy(text.replace(/\uABEC{3,}/g, '________')), raw: tidy(raw), images })
+    const pre = autoLabel ? autoLabel + ' ' : ''
+    // one entry per line of the paragraph (a Word line break starts a new line); the picture and the list label go with the first
+    const tl = (pre + text.replace(/\uABEC{3,}/g, '________')).split('\n'), rl = (pre + raw).split('\n')
+    tl.forEach((t, i) => out.push({ text: tidy(t), raw: tidy(rl[i] ?? t), images: i === 0 ? images : [] }))
   }
   return out
 }

@@ -68,7 +68,12 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
       const sampleRaw = rep && (forced ? rep.suspects[0] : (await paragraphsFromDocx(gData, { convertBmei: false })).map(x => x.raw).find(x => x.length > 12 && /[^ -~]|[@#$%^&*[\]{}|\\`~<>=+_]/.test(x)))
       setFonts(rep ? { rep, forced, sample: sampleRaw ? { raw: sampleRaw.slice(0, 70), uni: bmeiToUnicode(sampleRaw.slice(0, 70)) } : null } : null)
       const t = buildTest(enL, mmL)
-      if (!t.sections.length) throw new Error('No questions were found. Questions should start like "Q1." with options (A) (B) (C) (D).')
+      if (!t.sections.length) {
+        // say what was actually read, so the cause is visible (no text at all = a scanned / picture-only file or text boxes)
+        const seen = enL.map(x => x.text).filter(Boolean)
+        const sample = seen.slice(0, 6).map(x => `  • ${x.slice(0, 80)}`).join('\n')
+        throw new Error(`No questions were found.\n${seen.length ? `I read ${seen.length} line${seen.length === 1 ? '' : 's'} of text. The first ones were:\n${sample}\n` : 'I could not read any text from this file — it may be scanned pages or pictures of text. Type or paste the questions into Word as real text, then save as .docx.\n'}Questions should start like "Q1." / "1." / "1)" / "Question 1:" and have four options such as (A) (B) (C) (D), A) B) C) D) or (1) (2) (3) (4). Word's automatic numbering is supported too.`)
+      }
       const w = attachImages(t.sections, imgs)
       if (!imgs.length && !t.sections.some(s => s.questions.some(q => q.figure))) w.length = 0
       // keep the answers already entered for questions with the same number
@@ -169,7 +174,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
         </div>
         <p className="muted">The English paper sets the questions, sections and figure pictures. The Meitei Mayek paper (typed in BMEI04 or Unicode) is matched to it by question number, so both languages are in one test. Figure questions (a picture with the options inside it) take the pictures in order.</p>
         <button className="btn gold" onClick={read} disabled={!!busy}>{busy || 'Read the papers'}</button>
-        {error && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{error}</p>}
+        {error && <p role="alert" style={{ color: '#b42318', fontWeight: 700, whiteSpace: 'pre-line' }}>{error}</p>}
       </div>
 
       {sections.length > 0 && (

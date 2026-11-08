@@ -12,21 +12,45 @@ const PASSAGE_MIN = 140
 
 const SECTION = /^SECTION\s*[-–—:]?\s*([A-Za-z0-9]+)\s*[-–—:]?\s*(.*)$/i
 const MM_SECTION = /^seKsN\b\s*[-–—:]?\s*(\S+)?\s*(.*)$/
-const QLABEL = /^(Q\s*)?(\d{1,3})\s*[.)]\s*(.*)$/i
+// A question label: "Q12." "Q12:" "Q.12" "Q 12)" "Question 12." "Q12 text" (with a Q word) or a bare "12." / "12)" (number must follow the last one).
+const QWORD = /^(Q(?:uestion|ue|n)?)\.?\s*(\d{1,3})(?:\s*[.):\-–—]\s*|\s+)(.*)$/i
+const QBARE = /^(\d{1,3})\s*[.)]\s*(.*)$/
+const QLABEL = { test: t => QWORD.test(t) || QBARE.test(t) }
+const labelOf = t => { const w = t.match(QWORD); if (w) return [t, w[1], w[2], w[3]]; const b = t.match(QBARE); return b ? [t, '', b[1], b[2]] : null }
 const OPTION = /^\(?\s*([A-Da-d])\s*\)\s*/
+// numeric options "(1) … (2) …" (or "1) …") — read as A B C D when they come in order under a question
+const NUMOPT = /^(?:\(\s*([1-4])\s*\)|([1-4])\s*\))\s*/
 const DIRECTIONS = /^Directions?\s*:/i
 // "Page - 3" (or the BMEI04 spelling) left behind by a footer — never part of a question or option.
 const PAGE_MARK = /^(page|pesej)\s*[-–—.:]?\s*\d{1,3}$/i
 const MM_DIRECTIONS = /^mwoZ\s*taKp\s*:/
+// "Part I: In questions 1 to 4, …" — instructions shared by a group of questions (they are NOT part of the previous question)
+const PART = /^Part\s+(?:[IVXLC]+|\d+)\s*[:.\-–—]\s*\S/i
+// "General Instructions" / "Instructions to candidates" — a numbered list that must not be read as questions; it lasts until the next SECTION
+const INSTRUCTIONS = /^(?:general\s+)?instructions?(?:\s+(?:to|for)\s+(?:the\s+)?candidates?)?\s*:?$/i
+// the question range a heading carries: "Mental Ability Test Q. 1–20" → "Mental Ability Test"
+// the first question number a heading announces: "… Q. 21–40" → 21 (so a cover-page list cannot throw the numbering off)
+const rangeStart = t => { const m = String(t || '').match(/\bQ(?:uestions?|s)?\.?\s*(\d+)\s*[–—-]\s*\d+/i); return m ? Number(m[1]) : 0 }
+const cleanTitle = t => String(t || '').replace(/\s*\(?\bQ(?:uestions?|s)?\.?\s*\d+\s*[–—\-to]+\s*\d+\)?\s*$/i, '').trim()
 
-function splitOptions(line) {
+function splitOptions(line, numeric = false) {
   const parts = []
-  const re = /\(\s*([A-Da-d])\s*\)/g
+  // "(A)" anywhere, or a bare "A)" at the start of the line / after a space (so "see (a) above" inside text is left alone only for the bare form)
+  const re = numeric ? /\(\s*([1-4])\s*\)|(?:^|\s)([1-4])\s*\)/g : /\(\s*([A-Da-d])\s*\)|(?:^|\s)([A-Da-d])\s*\)/g
   const hits = []
   let m
-  while ((m = re.exec(line))) hits.push({ key: m[1].toUpperCase(), at: m.index, end: re.lastIndex })
+  while ((m = re.exec(line))) { const k = m[1] || m[2]; hits.push({ key: numeric ? 'ABCD'[Number(k) - 1] : k.toUpperCase(), at: m.index, end: re.lastIndex }) }
   hits.forEach((h, i) => parts.push({ key: h.key, text: line.slice(h.end, i + 1 < hits.length ? hits[i + 1].at : undefined).trim() }))
   return parts
+}
+
+// "What is 2+2? (A) 3 (B) 4 (C) 5 (D) 6" typed on ONE line → { stem, options } (needs all four markers, in order).
+function inlineOptions(text) {
+  const find = (k, from) => { const re = new RegExp(`\\(\\s*${k}\\s*\\)|(?:^|\\s)${k}\\s*\\)`, 'i'); const m = re.exec(text.slice(from)); return m ? { at: from + m.index, end: from + m.index + m[0].length } : null }
+  const hits = []
+  let from = 0
+  for (const k of OPTION_KEYS) { const h = find(k, from); if (!h) return null; hits.push(h); from = h.end }
+  return { stem: text.slice(0, hits[0].at).trim(), options: hits.map((h, i) => ({ key: OPTION_KEYS[i], text: text.slice(h.end, i + 1 < hits.length ? hits[i + 1].at : undefined).trim() })) }
 }
 
 // lines: [{ text, raw, images }] (or plain strings). mm: parsing the Meitei Mayek paper (its section words are BMEI04).
@@ -35,7 +59,7 @@ export function parseLines(lines, { mm = false, loose = false } = {}) {
   const sections = []
   const warnings = []
   let orphans = 0
-  let sec = null, q = null, passage = '', lastNo = 0, titleNext = false
+  let sec = null, q = null, passage = '', lastNo = 0, titleNext = false, skipping = false, announced = false   // announced: a heading said which question numbers follow
   const need = () => { if (!sec) { sec = { label: '', title: '', directions: '', questions: [] }; sections.push(sec) } return sec }
   const step = (text, raw) => {
     if (PAGE_MARK.test(text) || PAGE_MARK.test(raw)) return
@@ -43,22 +67,36 @@ export function parseLines(lines, { mm = false, loose = false } = {}) {
     const sm = mm ? raw.match(MM_SECTION) : text.match(SECTION)
     if (sm && !QLABEL.test(text)) {
       q = null; passage = ''
-      sec = { label: mm ? '' : sm[1], title: mm ? '' : (sm[2] || '').trim(), directions: '', questions: [] }
+      skipping = false
+      { const r0 = rangeStart(text); if (r0) { lastNo = r0 - 1; announced = true } }
+      sec = { label: mm ? '' : sm[1], title: mm ? '' : cleanTitle(sm[2]), directions: '', questions: [] }
       if (mm) { const t = text.replace(/^\S+\s*[-–—:]?\s*\S*\s*/, ''); sec.title = t.trim() }
       sections.push(sec); titleNext = !sec.title
       return
     }
-    if (titleNext && !QLABEL.test(text) && !OPTION.test(text) && !(mm ? MM_DIRECTIONS.test(raw) : DIRECTIONS.test(text))) { sec.title = text; titleNext = false; return }
+    if (titleNext && !QLABEL.test(text) && !OPTION.test(text) && !(mm ? MM_DIRECTIONS.test(raw) : DIRECTIONS.test(text))) { sec.title = mm ? text : cleanTitle(text); titleNext = false; { const r0 = rangeStart(text); if (r0) { lastNo = r0 - 1; announced = true } } return }
     titleNext = false
+    if (!mm && INSTRUCTIONS.test(text) && !q) { skipping = true; return }
+    if (skipping) return
+    if (!mm && PART.test(text)) { q = null; passage = text; return }
     if (mm ? MM_DIRECTIONS.test(raw) : DIRECTIONS.test(text)) { need().directions = text.replace(mm ? /^\S+\s*\S*\s*:\s*/ : /^Directions?\s*:\s*/i, '').trim() || text; q = null; return }
-    const ql = text.match(QLABEL)
+    const ql = labelOf(text)
     // A number without "Q" starts a question only when it follows the last one AND the last question is finished
     // (its four options are in, or a blank line / passage came between) — so "2." inside a question's numbered
     // statements is not mistaken for question 2. `loose` (used when no "Q12." labels exist at all) also takes "1.".
-    const finished = !q || q.options.length >= 4 || q.done
-    if (ql && (ql[1] || (ql[2] && Number(ql[2]) === lastNo + 1 && finished && (lastNo > 0 || loose)))) {
+    const finished = !q || q.options.length >= 4 || q.done || (!q.text && !q.options.length)   // a figure question (label + picture only) is complete
+    // numeric options: "(1) x" always, or "1) x" when it is the next option in order and not the next question
+    const nm = q && text.match(NUMOPT)
+    const nmNo = nm ? Number(nm[1] || nm[2]) : 0
+    if (nm && nmNo === q.options.length + 1 && (nm[1] || !(ql && ql[1]) && !(nmNo === lastNo + 1 && finished))) {
+      for (const o of splitOptions(text, true)) q.options.push(o)
+      return
+    }
+    if (ql && (ql[1] || (ql[2] && Number(ql[2]) === lastNo + 1 && finished && (lastNo > 0 || loose || announced)))) {
       const no = Number(ql[2])
       q = { no, text: ql[3].trim(), options: [], passage, done: false, figures: [] }
+      const inl = inlineOptions(q.text)
+      if (inl) { q.text = inl.stem; q.options = inl.options; q.done = true }
       need().questions.push(q); lastNo = no
       return
     }
@@ -72,7 +110,13 @@ export function parseLines(lines, { mm = false, loose = false } = {}) {
       }
       return
     }
-    if (q && !q.options.length) { q.text = q.text ? `${q.text}\n${text}` : text; return }
+    // a text line after a picture-only question (label + picture, no options) is a note for the group that follows — not that question's text
+    if (q && !q.text && !q.options.length && q.figures.length) { q = null; passage = text; return }
+    if (q && !q.options.length) {
+      const inl = inlineOptions(text)
+      if (inl) { if (inl.stem) q.text = q.text ? `${q.text}\n${inl.stem}` : inl.stem; q.options = inl.options; q.done = true; return }
+      q.text = q.text ? `${q.text}\n${text}` : text; return
+    }
     if (text.length >= PASSAGE_MIN || (!q && text.length > 60)) { passage = text; q = null; return }
     // Right after an option (no blank line yet) a short line continues that option; after a blank line it is a
     // label such as "PASSAGE" or "Passage - 2" and is skipped.
@@ -89,12 +133,26 @@ export function parseLines(lines, { mm = false, loose = false } = {}) {
   return { sections, warnings }
 }
 
+// A numbered list on the cover ("1. This booklet has 80 questions…") can look like questions 1, 2 …. When a number
+// appears twice, the occurrence in the SMALLER block is the cover list and is dropped (ties: the earlier one).
+function dropRepeated(sections) {
+  const where = new Map()   // no -> [{ s, q }]
+  sections.forEach(s => s.questions.forEach(q => { if (!where.has(q.no)) where.set(q.no, []); where.get(q.no).push({ s, q }) }))
+  for (const list of where.values()) {
+    if (list.length < 2) continue
+    const keep = list.reduce((a, b) => (b.s.questions.length >= a.s.questions.length ? b : a))
+    for (const x of list) if (x !== keep) x.s.questions = x.s.questions.filter(y => y !== x.q)
+  }
+  return sections
+}
+
 // English paper (+ optional Meitei Mayek paper) → test sections.
 export function buildTest(enLines, mmLines = null) {
   // A paper numbered "1." "2." with no "Q" is read in loose mode when no "Q12." labels are found at all.
   const parse = (lines, o = {}) => { const r = parseLines(lines, o); return r.sections.some(x => x.questions.length) ? r : parseLines(lines, { ...o, loose: true }) }
   const en = parse(enLines)
   const mm = mmLines ? parse(mmLines, { mm: true }) : null
+  dropRepeated(en.sections); if (mm) dropRepeated(mm.sections)
   const warnings = [...en.warnings]
   const mmByNo = new Map()
   if (mm) {

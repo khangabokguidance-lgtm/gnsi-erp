@@ -437,7 +437,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <div className="cbt-qarea">
           {q.passage && <div className={`cbt-pass${passOpen ? ' open' : ''}`}>
             <button className="cbt-passbar" onClick={() => setPassOpen(o => !o)} aria-expanded={passOpen}><span>📖 PASSAGE</span><span>{passOpen ? 'Hide ▴' : 'Read ▾'}</span></button>
-            <h5>PASSAGE</h5><div className={lang === 'mm' && q.passageMm ? 'mm' : ''}>{pick(q.passage, q.passageMm, lang)}</div>
+            <h5>{/^Part\b/i.test(q.passage) ? 'DIRECTIONS' : 'PASSAGE'}</h5><div className={lang === 'mm' && q.passageMm ? 'mm' : ''}>{pick(q.passage, q.passageMm, lang)}</div>
           </div>}
           <div className="cbt-q">
             {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
