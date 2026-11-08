@@ -7,6 +7,7 @@
 //
 // Safe rules — a question is left alone when shuffling it would make it wrong:
 //   • questions that share one reading passage stay together, in their original order (the block moves as a whole);
+//   • a section that has Directions text keeps its question order (the directions may name question numbers);
 //   • a figure question keeps its options (the picture holds A–D);
 //   • options that refer to each other ("all of the above", "both A and B", "option C") are not shuffled.
 
@@ -32,7 +33,7 @@ export function presentTest(test, seed) {
   let pos = 0
   const sections = test.sections.map(s => {
     let qs = s.questions
-    if (cfg.questions) {
+    if (cfg.questions && !s.directions && !s.directionsMm) {   // Directions may refer to question numbers: leave that section's order alone
       const blocks = []
       for (const q of qs) {
         const last = blocks[blocks.length - 1]

@@ -21,6 +21,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const [secMins, setSecMins] = useState(() => (initial?.marking?.sectionMinutes || []).join(', '))
   const [toolCalc, setToolCalc] = useState(!!initial?.marking?.tools?.calc)
   const [toolRough, setToolRough] = useState(!!initial?.marking?.tools?.rough)
+  const [guests, setGuests] = useState(!!initial?.marking?.guests)
   const [shufQ, setShufQ] = useState(!!initial?.marking?.shuffle?.questions)
   const [shufO, setShufO] = useState(!!initial?.marking?.shuffle?.options)
   const [minMinutes, setMinMinutes] = useState(initial?.marking?.minMinutes ?? 0)
@@ -109,7 +110,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
-      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(shufQ || shufO ? { shuffle: { questions: shufQ, options: shufO } } : {}), ...(sectionMinutesList.some(m => m > 0) ? { sectionMinutes: sectionMinutesList } : {}), ...(toolCalc || toolRough ? { tools: { calc: toolCalc, rough: toolRough } } : {}), ...(Number(minMinutes) > 0 ? { minMinutes: Number(minMinutes) } : {}), ...(camera !== 'off' || shield || fullscreen !== 'off' ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5), ...(fullscreen !== 'off' ? { fullscreen, maxFsExits: Math.max(1, Number(maxFsExits) || 3) } : {}) } } : {}) },
+      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(shufQ || shufO ? { shuffle: { questions: shufQ, options: shufO } } : {}), ...(sectionMinutesList.some(m => m > 0) ? { sectionMinutes: sectionMinutesList } : {}), ...(toolCalc || toolRough ? { tools: { calc: toolCalc, rough: toolRough } } : {}), ...(guests ? { guests: true } : {}), ...(Number(minMinutes) > 0 ? { minMinutes: Number(minMinutes) } : {}), ...(camera !== 'off' || shield || fullscreen !== 'off' ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5), ...(fullscreen !== 'off' ? { fullscreen, maxFsExits: Math.max(1, Number(maxFsExits) || 3) } : {}) } } : {}) },
       instructions, showResult, showAnswers, sections, createdAt: initial?.createdAt || Date.now(), updatedAt: Date.now(),
     })
     setBusy('')
@@ -150,6 +151,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
             {fullscreen === 'strict' && <label><span className="lbl">Exits allowed before auto-submit</span><input className="in" type="number" min="1" max="20" value={maxFsExits} onChange={e => setMaxFsExits(e.target.value)} /></label>}
             <label><span className="lbl">Minutes per section (in order, e.g. 20, 30, 25; 0 = no limit)</span><input className="in" value={secMins} onChange={e => setSecMins(e.target.value)} placeholder={`${sections.length} section${sections.length === 1 ? '' : 's'}`} /></label>
           </div>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={guests} onChange={e => setGuests(e.target.checked)} /> Also allow guests who are not in the ERP (name + mobile number, one attempt per number; marked ⚠ in the results)</label>
           <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={toolCalc} onChange={e => setToolCalc(e.target.checked)} /> Allow the on-screen calculator</label>
           <label style={{ display: 'block', marginTop: 4, fontSize: 13 }}><input type="checkbox" checked={toolRough} onChange={e => setToolRough(e.target.checked)} /> Allow a rough-work pad (kept on the candidate's screen only — never saved)</label>
           <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={shufQ} onChange={e => setShufQ(e.target.checked)} /> Shuffle question order for each candidate (questions sharing a reading passage stay together)</label>

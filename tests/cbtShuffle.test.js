@@ -68,6 +68,18 @@ test('figure questions and "all of the above" questions keep their options', () 
   }
 })
 
+test('a section with Directions keeps its question order (options may still shuffle)', () => {
+  const t = base({ questions: true, options: true })
+  t.sections[0].directions = 'Questions 1 to 12 are based on the passage above.'
+  for (const seed of ['a', 'b', 'c']) {
+    const qs = presentTest(t, seed).sections[0].questions
+    assert.deepEqual(qs.map(z => z.no), Array.from({ length: 12 }, (_, i) => i + 1))
+    assert.deepEqual(qs.map(z => z.pos), Array.from({ length: 12 }, (_, i) => i + 1))
+  }
+  const orders = new Set(['a', 'b', 'c', 'd', 'e'].map(s => presentTest(t, s).sections[0].questions[0].options.map(o => o.key).join('')))
+  assert.ok(orders.size > 1)
+})
+
 test('the original test is never modified', () => {
   const t = base({ questions: true, options: true })
   const before = JSON.stringify(t)

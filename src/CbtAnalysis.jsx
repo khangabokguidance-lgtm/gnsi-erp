@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { questionStats, sectionStats, standings, summary } from './lib/cbtAnalytics'
 import { rescorePlan } from './lib/cbtRescore'
 import { fetchOnlineTest, applyRescore } from './cbtRemote'
+import { cbtStore } from './cbtStore'
 import { printReport } from './cbtReportPrint'
 
 const LEVEL = { easy: ['Easy', '#e7f6ec', '#146c3a'], medium: ['Medium', '#fff4dc', '#9a5b00'], hard: ['Hard', '#fde8e6', '#b42318'], nokey: ['No key', '#f1f5f9', '#64748b'] }
@@ -17,21 +18,30 @@ export default function CbtAnalysis({ test, rows, attempts, canEdit, flash, onCh
   const secs = useMemo(() => sectionStats(test, rows), [test, rows])
   const stand = useMemo(() => standings(rows), [rows])
   const sum = summary(rows)
-  const hasOnline = attempts.some(a => a.source === 'online' && a.state === 'submitted')
+  const hasOnline = attempts.some(a => a.state === 'submitted')
 
   const preview = async () => {
     setBusy(true)
     try {
-      const t = await fetchOnlineTest(test.id)
-      if (!t) throw new Error('This test is not online, so there is no server key to re-score against.')
-      const p = rescorePlan(t, attempts.filter(a => a.source === 'online'))
-      setPlan(p)
+      // online attempts are re-scored against the key saved online; attempts taken on this computer against this computer's key
+      const online = attempts.filter(a => a.source === 'online'), local = attempts.filter(a => a.source !== 'online')
+      const t = online.length ? await fetchOnlineTest(test.id) : null
+      if (online.length && !t) throw new Error('This test is not online, so there is no server key to re-score the online attempts against.')
+      const po = t ? rescorePlan(t, online) : { changes: [], unchanged: 0 }
+      const pl = rescorePlan(test, local)
+      setPlan({ changes: [...po.changes, ...pl.changes].sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta)), unchanged: po.unchanged + pl.unchanged })
     } catch (e) { flash(e.message) }
     setBusy(false)
   }
   const apply = async () => {
     setBusy(true)
-    try { const n = await applyRescore(plan.changes); flash(`${n} score${n === 1 ? '' : 's'} updated.`); setPlan(null); onChanged?.() } catch (e) { flash(e.message) }
+    try {
+      const at = new Date().toISOString()
+      const onl = plan.changes.filter(c => c.attempt.source === 'online'), loc = plan.changes.filter(c => c.attempt.source !== 'online')
+      let n = onl.length ? await applyRescore(onl) : 0
+      for (const c of loc) { await cbtStore.saveAttempt({ ...c.attempt, score: { ...c.now, rescored: { at, wasMarks: c.was?.marks ?? null, wasCorrect: c.was?.correct ?? null } } }); n++ }
+      flash(`${n} score${n === 1 ? '' : 's'} updated.`); setPlan(null); onChanged?.()
+    } catch (e) { flash(e.message) }
     setBusy(false)
   }
 
@@ -40,7 +50,7 @@ export default function CbtAnalysis({ test, rows, attempts, canEdit, flash, onCh
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <b>📈 Analysis &amp; reports <span className="muted" style={{ fontWeight: 400 }}>— {done.length} submitted</span></b>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {canEdit && hasOnline && <button className="btn" disabled={busy} onClick={preview} title="After correcting the answer key, work out every online score again">🔄 Re-evaluate online scores</button>}
+          {canEdit && hasOnline && <button className="btn" disabled={busy} onClick={preview} title="After correcting the answer key, work out every online score again">🔄 Re-evaluate scores</button>}
           <button className="btn navy" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Show'} analysis</button>
         </span>
       </div>
@@ -76,8 +86,8 @@ export default function CbtAnalysis({ test, rows, attempts, canEdit, flash, onCh
       {plan && (
         <div className="cbt-modal" style={{ zIndex: 60 }} onClick={() => setPlan(null)}>
           <div className="box" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
-            <h3>Re-evaluate online scores</h3>
-            <p className="muted" style={{ fontSize: 13 }}>Scores are worked out again from the answer key now saved online. {plan.changes.length ? `${plan.changes.length} score${plan.changes.length === 1 ? '' : 's'} would change; ${plan.unchanged} stay the same.` : `Nothing changes (${plan.unchanged} checked).`} The old marks are kept inside each score. If you corrected the key in the builder, publish the test again first.</p>
+            <h3>Re-evaluate scores</h3>
+            <p className="muted" style={{ fontSize: 13 }}>Scores are worked out again from the current answer key (online attempts: the key saved online; attempts on this computer: the key on this computer). {plan.changes.length ? `${plan.changes.length} score${plan.changes.length === 1 ? '' : 's'} would change; ${plan.unchanged} stay the same.` : `Nothing changes (${plan.unchanged} checked).`} The old marks are kept inside each score. If you corrected the key in the builder, publish the test again first.</p>
             {plan.changes.length > 0 && <div className="tbl" style={{ maxHeight: 280, overflow: 'auto' }}><table>
               <thead><tr><th>Candidate</th><th className="num">Was</th><th className="num">Now</th><th className="num">Change</th></tr></thead>
               <tbody>{plan.changes.map(c => <tr key={c.attempt.id}><td>{c.attempt.candidate.name}</td><td className="num">{c.was?.marks ?? '—'}</td><td className="num">{c.now.marks}</td><td className="num" style={{ color: c.delta >= 0 ? '#146c3a' : '#b42318', fontWeight: 700 }}>{c.delta > 0 ? '+' : ''}{c.delta}</td></tr>)}</tbody>

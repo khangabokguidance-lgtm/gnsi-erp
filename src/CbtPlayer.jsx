@@ -148,7 +148,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       try {
         const r = await remote.save(a)
         setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
-        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))   // staff gave extra time
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds, ...(x.sec ? { sec: { ...x.sec, at: x.sec.at + (r.extraSeconds - (x.extraSeconds || 0)) * 1000 } } : {}) } : x))   // staff gave extra time
         if (r?.submitted) finish(true)          // the server's clock ran out first
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
     }, remote ? 1200 : 500)
@@ -161,7 +161,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       if (submitted.current || !aRef.current || kicked) return
       try {
         const r = await remote.save(aRef.current); setNetErr(''); setSaveInfo({ state: 'saved', at: Date.now() })
-        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds } : x))
+        if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds, ...(x.sec ? { sec: { ...x.sec, at: x.sec.at + (r.extraSeconds - (x.extraSeconds || 0)) * 1000 } } : {}) } : x))
         if (r?.submitted) finish(true)
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
     }, 30000 + Math.floor(Math.random() * 5000))   // a little jitter so a whole batch does not save in the same second
@@ -185,6 +185,8 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       lastSwitch.current = Date.now()
       setA(x => (x ? { ...x, switches: (x.switches || 0) + 1 } : x))
       flash('You left the exam screen. This has been recorded.')
+      // browsers with no full-screen support (iPhone / iPad) cannot be held in full screen, so leaving the page counts as the exit
+      if (cfg.fullscreen !== 'off' && !document.documentElement.requestFullscreen) proctorEvent('fsexit')
     }
     const vis = () => { if (document.hidden) away() }
     const stop = e => { e.preventDefault(); e.returnValue = '' }
@@ -197,7 +199,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
     document.addEventListener('visibilitychange', vis); window.addEventListener('blur', away); window.addEventListener('beforeunload', stop); document.addEventListener('fullscreenchange', fsx)
     return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', away); window.removeEventListener('beforeunload', stop); document.removeEventListener('fullscreenchange', fsx) }
-  }, [stage, fsOn, proctorEvent])
+  }, [stage, fsOn, proctorEvent, cfg.fullscreen])
 
   // full screen asked for: if the exam opened without it (a reload, or the browser said no), cover the paper until they enter
   useEffect(() => {

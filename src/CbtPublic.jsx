@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DEMO_TEST } from './lib/cbtDemo'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { examInfo, startExam, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 
@@ -17,12 +17,12 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } cat
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 
 // The adapter CbtPlayer talks to. `offset` = server time minus this device's time, so the countdown follows the server.
-function makeRemote({ testId, code, candidate, gcc, parent, attemptId = null, token = null, session = null }) {
+function makeRemote({ testId, code, candidate, gcc, parent, dob = '', guest = null, attemptId = null, token = null, session = null }) {
   const r = { offset: 0, attemptId, token, session }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
   const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, sec: a.sec || null, changes: a.changes || null })
   r.begin = async () => {
-    const res = await startExam(testId, code, gcc, parent)
+    const res = guest ? await startGuest(testId, code, guest.name, guest.phone) : await startExam(testId, code, gcc, parent, null, dob)
     r.attemptId = res.attempt.id; r.token = res.token; r.session = res.session; sync(res.attempt)
     write(savedKey(testId), { attemptId: r.attemptId, token: r.token, session: r.session, name: candidate.name, roll: candidate.roll })
     return { test: res.test, attempt: localAttempt(res.attempt, res.test, candidate) }
@@ -37,13 +37,14 @@ function CbtPublicInner() {
   const testId = params.get('t') || ''
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
-  const [form, setForm] = useState({ gcc: '', parent: '', code: params.get('c') || '' })
+  const [form, setForm] = useState({ gcc: '', parent: '', dob: '', code: params.get('c') || '', gname: '', gphone: '' })
   const [saved] = useState(() => read(savedKey(testId)))
   const [phase, setPhase] = useState('landing')     // landing | gate | exam | result | done
   const [run, setRun] = useState(null)              // { test, remote, candidate, resume }
   const [view, setView] = useState(null)
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('find')     // find (access code + GCC no.) | verify (contact number)
+  const [guestMode, setGuestMode] = useState(false)   // a candidate who is not in the institute records (only when the test allows guests)
   const [stu, setStu] = useState(null)             // the ERP student found for the GCC no.: { gcc, hasPhone } | { none: true } | null
   const inst = getInstitute()
 
@@ -65,7 +66,7 @@ function CbtPublicInner() {
     return () => { live = false; clearTimeout(t) }
   }, [form.gcc, form.code, testId])
   const type = k => e => {
-    const v = k === 'gcc' ? e.target.value.replace(/\D/g, '') : k === 'parent' ? e.target.value.replace(/[^\d+\s-]/g, '') : e.target.value
+    const v = k === 'gcc' ? e.target.value.replace(/\D/g, '') : k === 'parent' || k === 'gphone' ? e.target.value.replace(/[^\d+\s-]/g, '') : k === 'dob' ? e.target.value.replace(/[^\d/.-]/g, '') : e.target.value
     setForm(f => ({ ...f, [k]: v }))
     if (k === 'gcc' || k === 'code') setStu(null)
   }
@@ -85,14 +86,27 @@ function CbtPublicInner() {
     if (par.length < 10) return setErr('Enter the 10-digit parent / guardian contact number.')
     setBusy(true)
     try {
-      const r = await lookupStudent(testId, form.code, form.gcc, par)
-      if (!r.length || r[0].verified !== true) { setBusy(false); return setErr('This number does not match the parent / guardian number in the institute records.') }
+      const dobD = form.dob.replace(/\D/g, '')
+      if (stu.hasDob && dobD.length < 8) { setBusy(false); return setErr('Enter your date of birth as DD/MM/YYYY.') }
+      const r = await lookupStudent(testId, form.code, form.gcc, par, stu.hasDob ? dobD : '')
+      if (!r.length || r[0].verified !== true) { setBusy(false); return setErr('The number or date of birth does not match the institute records.') }
       const v = r[0]
       const candidate = { name: v.name, roll: String(Number(v.gcc) || v.gcc) }
-      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par }), resume: null })
+      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par, dob: stu.hasDob ? dobD : '' }), resume: null })
       setPhase('gate')
     } catch (e) { setErr(friendly(e)) }
     setBusy(false)
+  }
+
+  const startAsGuest = () => {
+    setErr('')
+    if (!form.code.trim()) return setErr('Enter the access code you were given.')
+    if (form.gname.trim().length < 2) return setErr('Enter your full name.')
+    const ph = form.gphone.replace(/\D/g, '')
+    if (ph.length < 10) return setErr('Enter your 10-digit mobile number.')
+    const candidate = { name: form.gname.trim(), roll: 'G' + ph.slice(-10) }
+    setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, guest: { name: form.gname.trim(), phone: ph } }), resume: null })
+    setPhase('gate')
   }
 
   const resume = async () => {
@@ -151,7 +165,20 @@ function CbtPublicInner() {
           <button className="btn gold" onClick={resume} disabled={busy}>{busy ? 'Opening…' : 'Continue / see my result'}</button>
         </div>
       )}
-      {info && open && !saved && (
+      {info && open && !saved && info.guests && guestMode && (
+        <div className="card">
+          <h3 style={{ marginBottom: 2 }}>Guest candidate</h3>
+          <p className="muted" style={{ margin: '0 0 10px' }}>For candidates who are not students of the institute. You get one attempt per mobile number.</p>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
+            <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
+            <label><span className="lbl">Full name *</span><input className="in" autoComplete="off" value={form.gname} onChange={type('gname')} /></label>
+            <label><span className="lbl">Mobile number *</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.gphone} onChange={type('gphone')} /></label>
+          </div>
+          {err && <p role="alert" style={{ margin: '10px 0 0', color: '#b42318', fontWeight: 700 }}>{err}</p>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}><button className="btn" onClick={() => { setErr(''); setGuestMode(false) }}>‹ I am a student</button><button className="btn gold" onClick={startAsGuest}>Continue ›</button></div>
+        </div>
+      )}
+      {info && open && !saved && !guestMode && (
         <div className="card">
           {step === 'find' ? <>
             <h3 style={{ marginBottom: 2 }}>Your details</h3>
@@ -171,10 +198,12 @@ function CbtPublicInner() {
             </ul>
             {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
             <button className="btn gold" onClick={toVerify} disabled={!stu || !!stu.none || !stu.hasPhone}>Next: verify contact number ›</button>
+            {info.guests && <p className="muted" style={{ margin: '12px 0 0' }}>Not a student of this institute? <button className="btn" onClick={() => { setErr(''); setGuestMode(true) }}>Take the exam as a guest</button></p>}
           </> : <>
             <h3 style={{ marginBottom: 2 }}>Verify your contact number</h3>
             <p className="muted" style={{ margin: '0 0 10px' }}>Step 2 of 2 — confirm it is really you</p>
             <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" autoFocus placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>
+            {stu.hasDob && <label style={{ display: 'block', marginTop: 8 }}><span className="lbl">Your date of birth * (DD/MM/YYYY)</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="DD/MM/YYYY" value={form.dob} onChange={type('dob')} /></label>}
             <p className="muted" style={{ margin: '6px 0 12px' }}>Type the parent / guardian number given at admission (GCC {stu.gcc}).{stu.phoneHint ? <> Hint: it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</> : null}</p>
             {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

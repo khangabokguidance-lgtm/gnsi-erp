@@ -1,5 +1,5 @@
 // cbtLoadTest.mjs — simulates a batch of candidates taking an online CBT exam against a REAL Postgres that has the CBT
-// migrations applied (20261034 … 20261062), calling the same functions the exam page calls, as the `anon` role.
+// migrations applied (20261034 … 20261064), calling the same functions the exam page calls, as the `anon` role.
 //   node tools/cbtLoadTest.mjs [--students 300] [--save-every 20] [--minutes 3] [--ip nat|spread] [--pool 40]
 // Needs:  npm i --no-save pg     and   PGURL=postgres://user@host:port/db   (a scratch database — it creates and deletes its own test).
 // It measures the database work only (no web / PostgREST layer in front), so treat the numbers as the floor.
@@ -31,8 +31,9 @@ async function student(i) {
   const gcc = String(i + 1), phone = '9' + String(100000000 + i + 1).padStart(9, '0')
   await sleep(Math.random() * 60000 * Math.min(1, N / 300))                     // starts spread over the first minute
   const l1 = await rpc(i, 'lookup (GCC)', 'cbt_lookup($1,$2,$3)', [TEST, '246810', gcc]); if (!l1 || l1.error) return
-  const l2 = await rpc(i, 'lookup (verify)', 'cbt_lookup($1,$2,$3,$4)', [TEST, '246810', gcc, phone]); if (!l2 || l2.error || l2[0]?.verified !== true) return
-  const st = await rpc(i, 'start', 'cbt_start($1,$2,$3,$4)', [TEST, '246810', gcc, phone]); if (!st || st.error) return
+  const dob = l1[0]?.hasDob ? (process.env.DOB || '01022010') : null          // second check when the student has a date of birth on file
+  const l2 = await rpc(i, 'lookup (verify)', 'cbt_lookup($1,$2,$3,$4,$5)', [TEST, '246810', gcc, phone, dob]); if (!l2 || l2.error || l2[0]?.verified !== true) return
+  const st = await rpc(i, 'start', 'cbt_start($1,$2,$3,$4,null,$5)', [TEST, '246810', gcc, phone, dob]); if (!st || st.error) return
   const { attempt: { id }, token, session } = st; const answers = {}
   const end = Date.now() + MIN * 60000
   while (Date.now() < end) {
