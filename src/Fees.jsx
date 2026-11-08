@@ -4899,6 +4899,15 @@ export default function Fees() {
   const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
+  // Admin Fee Panel sections, ordered by what an admin reaches for first.
+  const ADMIN_SUBS = [
+    ['Overview', ['dashboard']],
+    ['Needs your approval', ['pendingApprovals', 'lowFee', 'hostelIssues', 'anomaly']],
+    ['Discounts, waivers & refunds', ['waivers', 'concessionRegister', 'installments', 'refunds']],
+    ['Records & reports', ['admin', 'reports', 'activity', 'lateEntries', 'digest']],
+    ['Checks & setup', ['monthlyCheck', 'dataHealth', 'feeControls', 'reminders', 'rollover']],
+  ]
+
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
   const [afHostel,      setAfHostel]      = useState('All')
@@ -5044,7 +5053,16 @@ export default function Fees() {
               {TAB_GROUPS.map(g => (
                 <section key={g.id} className="fh-g">
                   <h2>{g.title}</h2>
-                  <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>
+                  {g.id === 'adminFee' ? ADMIN_SUBS.map(([title, ids]) => {
+                    const items = ids.map(id => g.items.find(t => t.id === id)).filter(Boolean)
+                    const due = items.reduce((n, t) => n + (t.badge || 0), 0)
+                    return items.length > 0 && (
+                      <div key={title} style={{ marginTop: 10 }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#5d6b82' }}>{title}{due > 0 && <span style={{ marginLeft: 6, background: '#dc2626', color: '#fff', borderRadius: 99, padding: '1px 7px', fontSize: 10 }}>{due} to review</span>}</h3>
+                        <div className="fh-grid" style={{ '--fh-n': 5 }}>{items.map(tile)}</div>
+                      </div>
+                    )
+                  }) : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
                 </section>
               ))}
             </nav>
