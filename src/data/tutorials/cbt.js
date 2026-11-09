@@ -43,7 +43,7 @@ export default {
       title: 'Run the exam for a candidate',
       body: [
         'On the test card press "▶ Start exam". Enter the candidate\'s name and roll number, then press Start.',
-        'The test opens full screen. The candidate reads the instructions, ticks the declaration and presses "I am ready to begin". The clock starts then.',
+        'The test opens full screen with a welcome screen, then the instructions one slide at a time (a message from the Founder, the test details, marking scheme, question palette, how to answer, and the exam rules). The candidate then ticks the declaration and presses "I am ready to begin". The clock starts then.',
         'On the exam screen: choose an option; "Save & Next" saves and moves on; "Mark for Review & Next" flags it; "Clear Response" removes the answer. Click a number in the palette to jump. Use the section names at the top to change section, and the language box (top right) to switch between English and Meitei Mayek.',
         'Palette colours: green = answered, red = not answered, grey = not visited, purple = marked for review, purple with a tick = answered and marked.',
         'Press "Submit Test" to see the summary table, then confirm. When the time ends the test is submitted automatically.',

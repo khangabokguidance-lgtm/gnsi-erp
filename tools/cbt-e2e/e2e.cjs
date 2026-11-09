@@ -15,14 +15,24 @@ async function fillIdentity(p, gcc, phone, dob) {
   if (dob !== null) await p.getByPlaceholder('DD/MM/YYYY').fill(dob)
   await p.getByRole('button', { name: /Verify and continue/ }).click()
 }
+// The exam opens on a welcome screen, then the instructions one slide at a time, then the declaration.
+async function passInstructions(p) {
+  await p.getByRole('button', { name: /Read the instructions/ }).click()
+  for (let i = 0; i < 12; i++) {
+    const done = p.getByRole('button', { name: /Continue to declaration/ })
+    if (await done.count()) { await done.click(); return }
+    await p.getByRole('button', { name: /^Next/ }).click()
+  }
+  throw new Error('never reached the declaration')
+}
 async function beginExam(p) {
-  await p.getByRole('button', { name: /^Next/ }).click()
+  await passInstructions(p)
   await p.locator('input[type=checkbox]').first().check()
   await p.getByText('I am ready to begin').click()
   await p.waitForSelector('label.cbt-opt', { timeout: 8000 })
 }
 async function takeExam(p, phone) {
-  await p.getByRole('button', { name: /^Next/ }).click()
+  await passInstructions(p)
   await p.locator('input[type=checkbox]').first().check()
   await p.getByText('I am ready to begin').click()
   await p.waitForSelector('label.cbt-opt', { timeout: 8000 })
@@ -76,8 +86,8 @@ async function takeExam(p, phone) {
   ok('C1 the page says the date of birth is missing and asks for it', /not in our records yet/i.test(label))
   await p.getByPlaceholder('10-digit mobile').fill('9600000002'); await p.getByPlaceholder('DD/MM/YYYY').fill('12/08/2012')
   await p.getByRole('button', { name: /Verify and continue/ }).click()
-  await p.getByRole('button', { name: /^Next/ }).waitFor({ timeout: 8000 })
-  ok('C2 verified and moved on to the instructions', true)
+  await p.getByRole('button', { name: /Read the instructions/ }).waitFor({ timeout: 8000 })   // the welcome screen
+  ok('C2 verified and moved on to the welcome screen', true)
   await beginExam(p)
   ok('C3 the exam started for the student whose date of birth was missing', true)
   await ctx.close()
@@ -90,8 +100,8 @@ async function takeExam(p, phone) {
   await p.getByLabel('Full name *').fill('Guest Person'); await p.getByPlaceholder('10-digit mobile').fill('9811122233')
   await p.getByLabel('District *').selectOption('Thoubal'); await p.getByLabel('Gender *').selectOption('Male'); await p.getByLabel('Category (caste) *').selectOption('OBC')
   await p.getByRole('button', { name: /^Continue/ }).click()
-  await p.getByRole('button', { name: /^Next/ }).waitFor({ timeout: 8000 })
-  ok('D1 a guest with district / gender / category gets to the instructions', true)
+  await p.getByRole('button', { name: /Read the instructions/ }).waitFor({ timeout: 8000 })   // the welcome screen
+  ok('D1 a guest with district / gender / category gets to the welcome screen', true)
   await beginExam(p)
   ok('D2 the guest exam started', true)
   await ctx.close()

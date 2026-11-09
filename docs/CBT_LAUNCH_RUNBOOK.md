@@ -18,6 +18,12 @@ What to do before, during and after an online exam. Written for the person runni
 5. **Rehearse.** Open the exam link yourself on a real phone and on a computer. Use "Try the practice test" first. Start the real exam with a test student if you have one, then delete that attempt from Results.
 6. Send the invitation (📋 Copy invitation / WhatsApp). Tell students to use their own GCC number and the parent / guardian number registered at admission, and to type their date of birth as DD/MM/YYYY.
 
+## What the candidate sees
+
+Welcome screen (institute, test, questions / minutes / marks) → the instructions **one slide at a time** (message from the Founder, about the test, general instructions, marking scheme, question palette, answering and moving around, and exam rules when camera / full screen / shield are on) → declaration → camera check (if on) → the exam. Each step slides in. A candidate who reopens an exam in progress goes straight back to it.
+
+The Founder's photo is taken from the website's Faculty photos (Website Manager → Faculty) by name, so keep a photo on that card.
+
 ## During the exam
 
 - Keep the **🔴 Live** tab open (it refreshes every 15 seconds).
