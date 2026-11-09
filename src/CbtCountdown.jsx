@@ -17,7 +17,8 @@ export default function CbtCountdown({ to, onDone, className = 'cbt-cd' }) {
   useEffect(() => { if (Number.isFinite(target) && left <= 0) onDone?.() }, [left, target, onDone])
   if (!Number.isFinite(target)) return null
   const { d, h, m, s } = countdownParts(left)
-  const cell = (n, l) => <span className={`${className}-c`}><b>{two(n)}</b><small>{l}</small></span>
+  const base = className.split(' ')[0]                 // extra classes (e.g. a size variant) must not leak into the cell class
+  const cell = (n, l) => <span className={`${base}-c`}><b>{two(n)}</b><small>{l}</small></span>
   return (
     <span className={className} role="timer" aria-label={`Starts in ${d} days ${h} hours ${m} minutes ${s} seconds`}>
       {d > 0 && cell(d, 'days')}{cell(h, 'hrs')}{cell(m, 'min')}{cell(s, 'sec')}

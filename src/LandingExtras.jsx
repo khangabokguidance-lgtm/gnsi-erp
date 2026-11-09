@@ -95,6 +95,45 @@ export function CbtFlashBar({ flash }) {
   );
 }
 
+// ── Public CBT note: a pop-up shown when the website opens, while the admin has the CBT flash ON ──
+// Once per browser session (it comes back if the admin changes the message or schedule). Same switch as the banner.
+export function CbtOpenNote({ flash }) {
+  const [open, setOpen] = useState(false);
+  const [, tick] = useState(0);
+  const sig = flash ? [flash.text, flash.at, flash.label].join('|') : '';
+  const live = !!(flash && flash.on) && flashPhase(flash).phase !== 'ended';
+  useEffect(() => {
+    if (!live) return undefined;
+    let seen = false;
+    try { seen = sessionStorage.getItem('gnsi_cbt_note') === sig; } catch { /* storage blocked: show once per page load */ }
+    if (seen) return undefined;
+    const t = setTimeout(() => setOpen(true), 900);
+    return () => clearTimeout(t);
+  }, [live, sig]);
+  const close = () => { setOpen(false); try { sessionStorage.setItem('gnsi_cbt_note', sig); } catch { /* ignore */ } };
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!open || !live) return null;
+  const soon = flashPhase(flash).phase === 'upcoming';
+  return (
+    <div className="lx-cbtnote-ov" onClick={close}>
+      <div className="lx-cbtnote" role="dialog" aria-modal="true" aria-label="CBT online exam notice" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="lx-cbtnote-x" aria-label="Close" onClick={close} autoFocus>×</button>
+        <span className="lx-cbtflash-badge"><i aria-hidden="true" />{soon ? 'COMING UP' : 'CBT LIVE'}</span>
+        <h3>{soon ? (flash.label || 'CBT online exam') : 'CBT online exam'}</h3>
+        <p>{soon ? 'Starts in' : flash.text}</p>
+        {soon && <CbtCountdown to={flash.at} onDone={() => tick((n) => n + 1)} className="lx-cd lx-cd-big" />}
+        <a href={flash.link} className="lx-cbtnote-go">{soon ? 'Get ready →' : 'Take the test →'}</a>
+        <button type="button" className="lx-cbtnote-no" onClick={close}>Not now</button>
+      </div>
+    </div>
+  );
+}
+
 export function AdmissionsBanner({ site }) {
   if (!site.admissionsOpen) return null;
   return (

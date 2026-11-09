@@ -18,7 +18,7 @@ import { receiptCheckParams } from './lib/receiptCheckParams';
 // read it. Place LandingPage.css next to this file.
 import './LandingPage.css';
 import { cbtFlashFrom } from './lib/cbtFlash';
-import { QuickServices, AdmissionsBanner, CbtFlashBar, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
+import { QuickServices, AdmissionsBanner, CbtFlashBar, CbtOpenNote, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
 import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
 import MegaMenu, { MenuButton } from './LandingMenu';
 import MajesticFooter from './LandingFooter';
@@ -2227,6 +2227,7 @@ window.submitGrievance = async () => {
   </nav>
   <StaffFlashCard onLogin={onLogin} />
   <CbtFlashBar flash={site.cbtFlash} />
+  <CbtOpenNote flash={site.cbtFlash} />
   <AdmissionsBanner site={site} />
   {/* TICKER */}
   <div className="ticker-wrap">

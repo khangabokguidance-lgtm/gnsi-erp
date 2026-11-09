@@ -169,3 +169,16 @@ html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   .sb-wa-lbl{display:none}
   .sticky-btns .sb-btn-wa{padding:.55rem .65rem}
 }
+
+/* public CBT note pop-up */
+.lx-cbtnote-ov{position:fixed;inset:0;z-index:4000;background:rgba(8,18,40,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:1rem;animation:lxNoteFade .25s ease}
+.lx-cbtnote{position:relative;width:min(100%,420px);text-align:center;background:linear-gradient(180deg,#fffdf7,#fbf3df);border:2px solid #c9a24b;border-radius:22px;padding:1.6rem 1.4rem 1.2rem;box-shadow:0 30px 70px -20px rgba(0,0,0,.6);animation:lxNotePop .35s cubic-bezier(.22,1,.36,1)}
+.lx-cbtnote h3{margin:.8rem 0 .3rem;font:700 1.45rem/1.2 'Source Serif 4',Georgia,serif;color:#0b1e3d}
+.lx-cbtnote p{margin:.2rem 0 .9rem;color:#334155;font-size:.95rem;line-height:1.5}
+.lx-cbtnote .lx-cbtflash-badge{background:#b42318;color:#fff}.lx-cbtnote .lx-cbtflash-badge i{background:#fff}
+.lx-cbtnote-x{position:absolute;top:.5rem;right:.6rem;width:34px;height:34px;border-radius:50%;border:none;background:rgba(11,30,61,.08);color:#0b1e3d;font-size:1.4rem;line-height:1;cursor:pointer}
+.lx-cbtnote-go{display:block;padding:.8rem 1rem;border-radius:12px;background:linear-gradient(135deg,#d9461f,#b42318);color:#fff;font-weight:800;text-decoration:none;border:1px solid #e2c57e;margin-top:.4rem}
+.lx-cbtnote-no{margin-top:.6rem;background:none;border:none;color:#64748b;font-weight:600;cursor:pointer;padding:.4rem}
+.lx-cd-big{justify-content:center;margin:.2rem 0 .9rem}.lx-cbtnote .lx-cd-c{background:#0f2a5c;min-width:3.3rem;padding:.4rem .5rem}.lx-cbtnote .lx-cd-c b{font-size:1.4rem}
+@keyframes lxNoteFade{from{opacity:0}}@keyframes lxNotePop{from{opacity:0;transform:translateY(18px) scale(.96)}}
+@media (prefers-reduced-motion:reduce){.lx-cbtnote-ov,.lx-cbtnote{animation:none}}
