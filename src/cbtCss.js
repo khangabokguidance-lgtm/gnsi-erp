@@ -86,13 +86,13 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt .in.mm{font-family:${MAYEK_STACK}}
 
 /* ── exam screen ── */
-.cbt-exam{position:fixed;inset:0;z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
+.cbt-exam{position:fixed;left:0;right:0;top:var(--cbt-top,0px);height:var(--cbt-h,100dvh);z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
 .cbt-exam .mm{font-family:${MAYEK_STACK};line-height:1.75}
 /* Smooth slide: the test slides in from the right when it opens, and each step after it
    (instructions → declaration → camera check → the paper) slides in the same way. */
 @keyframes cbtopen{from{transform:translate3d(100%,0,0)}to{transform:translate3d(0,0,0)}}
 @keyframes cbtstep{from{transform:translate3d(36px,0,0);opacity:0}to{transform:translate3d(0,0,0);opacity:1}}
-.cbt-exam{animation:cbtopen .45s cubic-bezier(.22,1,.36,1) backwards;will-change:transform}
+.cbt-exam{animation:cbtopen .45s cubic-bezier(.22,1,.36,1) backwards}
 .cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:cbtstep .4s cubic-bezier(.22,1,.36,1) .08s backwards}
 @media (prefers-reduced-motion:reduce){.cbt-exam,.cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:none}}
 
@@ -185,7 +185,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-pass{flex:1 1 46%;overflow:auto;padding:16px 20px;border-right:1px solid var(--line);background:#fbfcff;font-size:var(--fs,15px);line-height:1.7}
 .cbt-pass h5{margin:0 0 8px;color:var(--navy);font-size:11.5px;letter-spacing:.14em}
 .cbt-passbar{display:none}
-.cbt-q{flex:1 1 54%;overflow:auto;padding:16px 22px;font-size:var(--fs,15px)}
+.cbt-q{flex:1 1 54%;overflow:auto;overscroll-behavior:contain;padding:16px 22px;font-size:var(--fs,15px)}
 .cbt-dir{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--gold);padding:10px 14px;border-radius:8px;margin-bottom:14px;line-height:1.6;font-size:.93em}
 .cbt-qtext{white-space:pre-wrap;line-height:1.65;margin-bottom:16px;font-weight:600}
 .cbt-fig{max-width:100%;max-height:50vh;display:block;margin:0 auto 16px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
@@ -314,7 +314,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-stats{grid-template-columns:repeat(2,1fr)}
  .cbt-center th{white-space:normal;font-size:10px;padding:7px 5px;letter-spacing:.02em}.cbt-center td{padding:7px 5px;font-size:12px}
  .cbt-toast{top:96px}
- .cbt-cam{bottom:132px;right:8px;width:88px}.cbt-cam video{height:66px}.cbt-cam span{font-size:9.5px;padding:2px 4px}.cbt-cam.big{width:min(100%,300px)}
+ .cbt-cam{bottom:132px;right:8px;width:76px;opacity:.92;pointer-events:none}.cbt-cam video{height:57px}.cbt-cam span{font-size:9.5px;padding:2px 4px}.cbt-cam.big{width:min(100%,300px)}
 }
 @media(max-width:380px){.cbt-grid{grid-template-columns:repeat(5,1fr)}.cbt-top .title{font-size:12.5px}}
 

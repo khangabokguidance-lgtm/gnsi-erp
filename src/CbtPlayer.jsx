@@ -40,6 +40,26 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'intro')
   const [islide, setIslide] = useState(0)            // instructions: which slide is showing
   const [idir, setIdir] = useState('fwd')            // …and which way it slid in
+  // Phones: the page must follow the REAL visible area. When the keyboard or the browser bar opens, or the visible area
+  // pans, a fixed full-screen page can end up shifted up with an empty gap below ("the screen goes up"). The exam is
+  // sized and placed from the visual viewport, the page behind it cannot scroll, and the keyboard is closed on each step.
+  useEffect(() => {
+    const de = document.documentElement, body = document.body, vv = window.visualViewport
+    const prev = [de.style.overflow, body.style.overflow, de.style.overscrollBehavior, body.style.overscrollBehavior]
+    de.style.overflow = 'hidden'; body.style.overflow = 'hidden'; de.style.overscrollBehavior = 'none'; body.style.overscrollBehavior = 'none'
+    const fit = () => {
+      const h = vv ? vv.height : window.innerHeight, top = vv ? vv.offsetTop : 0
+      de.style.setProperty('--cbt-h', `${Math.round(h)}px`); de.style.setProperty('--cbt-top', `${Math.round(top)}px`)
+    }
+    fit()
+    vv?.addEventListener('resize', fit); vv?.addEventListener('scroll', fit); window.addEventListener('orientationchange', fit)
+    return () => {
+      vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit); window.removeEventListener('orientationchange', fit)
+      de.style.overflow = prev[0]; body.style.overflow = prev[1]; de.style.overscrollBehavior = prev[2]; body.style.overscrollBehavior = prev[3]
+      de.style.removeProperty('--cbt-h'); de.style.removeProperty('--cbt-top')
+    }
+  }, [])
+  useEffect(() => { if (stage !== 'exam' && stage !== 'intro') return; try { const el = document.activeElement; if (el && /^(TEXTAREA|INPUT)$/.test(el.tagName)) el.blur() } catch { /* ignore */ } }, [stage])
   useStaffPhotos()                                    // loads the photos (and re-renders when they arrive)
   const [a, setA] = useState(resume || null)
   // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
@@ -88,9 +108,12 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     const no = flatQuestions(presentTest(t, att.id))[0]?.no
     return no == null ? att : { ...att, current: no, visited: { [no]: true } }
   }
+  // Close the on-screen keyboard (a field from an earlier step can keep it open on a phone, which squeezes the exam).
+  const dropKeyboard = () => { try { const el = document.activeElement; if (el && el !== document.body) el.blur() } catch { /* ignore */ } }
   const begin = async () => {
     if (started.current) return   // a double click must not start two attempts
     started.current = true
+    dropKeyboard()
     if (remote) {
       setBusy('Starting the exam…'); setBeginErr('')
       try {
