@@ -2,7 +2,7 @@
 // rate: approve (waive the shortfall) or reject (it stays due), see who gives
 // low fees and why, and scan the ledgers for short payments with no reason
 // on file.
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
@@ -19,16 +19,42 @@ const chip = on => ({ padding: '6px 12px', borderRadius: 999, border: `1px solid
 const inp = { border: '1px solid #d8dfec', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit', minWidth: 0 }
 const btn = (bg, color = '#fff') => ({ padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color, fontWeight: 800, fontSize: 12, cursor: 'pointer' })
 
-function Breakdown({ title, rows, label }) {
+function Breakdown({ title, rows, label, onPick, isActive }) {
+  const [open, setOpen] = useState(true)      // whole card: collapse / expand
+  const [all, setAll] = useState(false)       // list: top 5 / every row
+  const LIMIT = 5
+  const shown = all ? rows : rows.slice(0, LIMIT)
+  const max = Math.max(1, ...rows.map(r => Number(r.total) || 0))   // for the share bar
   return (
     <div style={{ ...card, margin: 0, padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc' }}>{title}</div>
-      {rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : rows.slice(0, 8).map(r => (
-        <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5 }}>
-          <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
-          <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+        <span>{title}{rows.length ? ` (${rows.length})` : ''}</span>
+        <span aria-hidden="true" style={{ fontSize: 12, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+      {open && (rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : <>
+        <div style={all ? { maxHeight: 360, overflowY: 'auto' } : undefined}>
+          {shown.map(r => {
+            const on = !!isActive?.(r), pick = onPick && r.key
+            const pct = Math.round(((Number(r.total) || 0) / max) * 100)
+            return (
+              <div key={r.key} role={pick ? 'button' : undefined} tabIndex={pick ? 0 : undefined} title={pick ? (on ? 'Click to clear this filter' : 'Click to list these entries') : undefined}
+                onClick={pick ? () => onPick(r) : undefined} onKeyDown={pick ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r) } } : undefined}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, cursor: pick ? 'pointer' : 'default',
+                  background: on ? '#e8eefb' : `linear-gradient(90deg,#fdecea ${pct}%,transparent ${pct}%)`, boxShadow: on ? 'inset 3px 0 0 #1e3a6e' : 'none' }}>
+                <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
+                <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+              </div>
+            )
+          })}
         </div>
-      ))}
+        {rows.length > LIMIT && (
+          <button type="button" onClick={() => setAll(a => !a)}
+            style={{ width: '100%', padding: '8px 14px', border: 'none', borderTop: '1px solid #f1f5f9', background: '#fff', color: '#1e3a6e', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {all ? 'Show less' : `Show all ${rows.length}`}
+          </button>
+        )}
+      </>)}
     </div>
   )
 }
@@ -50,6 +76,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
+  const listRef = useRef(null)
 
   const reload = useCallback(() => { loadConcessions().then(setData); loadReqs(); onChanged?.() }, [onChanged, loadReqs])
   useEffect(() => { let live = true; loadConcessions().then(d => { if (live) setData(d) }); return () => { live = false } }, [])
@@ -63,6 +90,22 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       && (!from || String(r.pay_date || r.created_at).slice(0, 10) >= from) && (!to || String(r.pay_date || r.created_at).slice(0, 10) <= to)
       && (!t || [r.student_name, r.gcc, r.receipt_no, r.reason_note, r.collected_by].some(v => String(v || '').toLowerCase().includes(t))))
   }, [rows, status, reason, staff, q, from, to])
+
+  // Click a row in a breakdown card → list exactly those entries (click again to clear).
+  const drill = (patch, clear) => {
+    const same = Object.entries(patch).every(([k, v]) => ({ staff, reason, q })[k] === v)
+    const next = same ? clear : patch
+    setStatus('All'); setFrom(''); setTo('')
+    if ('staff' in next) setStaff(next.staff); if ('reason' in next) setReason(next.reason); if ('q' in next) setQ(next.q)
+    if (!same) setTimeout(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
+  const exportCsv = () => {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const head = ['Date', 'GCC', 'Student', 'Fee', 'Month', 'Year', 'Standard', 'Collected', 'Short', 'Reason', 'Note', 'Collected by', 'Receipt', 'Status', 'Decided by']
+    const lines = shown.map(c => [String(c.pay_date || c.created_at || '').slice(0, 10), c.gcc, c.student_name, c.fee_kind === 'flat' ? 'Flat' : 'Course', c.month, c.year, c.standard_amount, c.collected_amount, c.shortfall, c.reason, c.reason_note, c.collected_by, c.receipt_no, c.status, c.decided_by].map(esc).join(','))
+    const url = URL.createObjectURL(new Blob(['\ufeff' + [head.map(esc).join(','), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `low-fees-${todayStr}.csv`; a.click(); URL.revokeObjectURL(url)
+  }
 
   // Month-wise view: the same (filtered) entries grouped by fee month, newest first.
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -224,10 +267,12 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
           <input type="date" style={inp} value={from} onChange={e => setFrom(e.target.value)} aria-label="From" />
           <input type="date" style={inp} value={to} onChange={e => setTo(e.target.value)} aria-label="To" />
           <input style={{ ...inp, flex: '1 1 180px' }} placeholder="Student, GCC, receipt, staff, note…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search low fees" />
+          {(reason !== 'All' || staff !== 'All' || q || from || to) && <button style={chip(false)} onClick={() => { setReason('All'); setStaff('All'); setQ(''); setFrom(''); setTo('') }}>✕ Clear filters</button>}
+          <button style={chip(false)} disabled={!shown.length} onClick={exportCsv} title="Download the entries shown below as a spreadsheet (CSV)">⬇ Export CSV ({shown.length})</button>
         </div>
       </div>
 
-      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div ref={listRef} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: 12 }}>
         {!data && <div style={{ padding: 20, color: '#64748b' }}>Loading…</div>}
         {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{isTodayView ? 'No pending low-fee requests from staff today.' : status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
         {(viewMode === 'month' ? monthGroups : [{ key: 'all', rows: shown }]).map(g => (
@@ -263,9 +308,9 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 14 }}>
-        <Breakdown title="By staff who collected" rows={sum.byStaff} />
-        <Breakdown title="By reason" rows={sum.byReason} />
-        <Breakdown title="Students given low fees more than once" rows={sum.repeat} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />
+        <Breakdown title="By staff who collected" rows={sum.byStaff} onPick={r => drill({ staff: r.key }, { staff: 'All' })} isActive={r => staff === r.key} />
+        <Breakdown title="By reason" rows={sum.byReason} onPick={r => drill({ reason: r.key }, { reason: 'All' })} isActive={r => reason === r.key} />
+        <Breakdown title="Students given low fees more than once" rows={sum.repeat} onPick={r => drill({ q: r.key.split('|')[0] }, { q: '' })} isActive={r => q === r.key.split('|')[0]} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />
       </div>
 
       <div style={card}>
