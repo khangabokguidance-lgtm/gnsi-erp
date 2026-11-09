@@ -1,4 +1,4 @@
-import { drawPremiumCertificate, certificatePdf } from './premiumCertificate'
+import { drawPremiumCertificate, drawFormalCertificate, certificatePdf } from './premiumCertificate'
 
 // ══════════════════════════════════════════════════════════════
 //  AwardCertificate — shared A4-landscape "Certificate of
@@ -69,10 +69,11 @@ const CATEGORY_BADGE = {
  * @param {number} params.score        - the winning score (0-100)
  * @param {object} [params.nomineeMeta] - optional extra context (e.g. { house: 'Kombirei' } for house_master, { designation: 'Concern Teacher' } for staff)
  */
-export async function generateAwardCertificate({ categoryKey, name, monthLabel, score, nomineeMeta }) {
+export async function generateAwardCertificate({ categoryKey, name, monthLabel, score, nomineeMeta, design = 'premium' }) {
   const copy = CATEGORY_COPY[categoryKey] || CATEGORY_COPY.faculty
   const badge = CATEGORY_BADGE[categoryKey] || CATEGORY_BADGE.faculty
-  const canvas = await drawPremiumCertificate({
+  const draw = design === 'formal' ? drawFormalCertificate : drawPremiumCertificate
+  const canvas = await draw({
     kind: 'Appreciation',
     subtitle: badge.ribbon,
     name,

@@ -285,6 +285,103 @@ export async function drawPremiumCertificate(opts) {
   return c
 }
 
+
+/**
+ * The formal "official" design: cream security paper with a guilloche border,
+ * a tricolour band, centred serif wording, crest between two signatures.
+ * Same opts as drawPremiumCertificate. It is a GNSI certificate — it carries
+ * the institute's own crest and seal only (no national emblem, no claim that
+ * a government body issued it).
+ */
+export async function drawFormalCertificate(opts) {
+  await loadFonts()
+  const inst = getInstitute({ name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur — 795134' })
+  const W = 2000, H = 1414, cx = W / 2
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const logo = await loadImage(`data:image/png;base64,${LOGO_BASE64}`)
+  const issuedDate = opts.issued || new Date()
+  const NAVY = '#12306B'
+
+  // security paper
+  const bg = g.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0, '#FFFDF6'); bg.addColorStop(1, '#F6F0DF')
+  g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  // faint guilloche rosette behind the text
+  g.save(); g.translate(cx, H / 2 + 20); g.lineWidth = 1
+  for (let k = 0; k < 90; k++) {
+    g.strokeStyle = `rgba(18,48,107,${k % 2 ? .05 : .035})`
+    g.beginPath(); g.ellipse(0, 0, 640, 150 + (k % 45) * 9, (k / 90) * Math.PI, 0, Math.PI * 2); g.stroke()
+  }
+  g.restore()
+  // watermark crest
+  if (logo) { g.save(); g.globalAlpha = 0.035; g.drawImage(logo, cx - 260, H / 2 - 240, 520, 520); g.restore() }
+
+  // triple border with guilloche band
+  g.strokeStyle = NAVY; g.lineWidth = 10; g.strokeRect(40, 40, W - 80, H - 80)
+  g.strokeStyle = GOLD; g.lineWidth = 4; g.strokeRect(62, 62, W - 124, H - 124)
+  g.lineWidth = 1.2; g.strokeStyle = 'rgba(18,48,107,.5)'
+  for (let k = 0; k < 4; k++) g.strokeRect(78 + k * 4, 78 + k * 4, W - 156 - k * 8, H - 156 - k * 8)
+  // corner ornaments
+  ;[[78, 78, 1, 1], [W - 78, 78, -1, 1], [78, H - 78, 1, -1], [W - 78, H - 78, -1, -1]].forEach(([x, y, sx, sy]) => {
+    g.save(); g.translate(x, y); g.scale(sx, sy)
+    g.fillStyle = NAVY; g.fillRect(0, 0, 120, 14); g.fillRect(0, 0, 14, 120)
+    g.fillStyle = GOLD; g.fillRect(24, 24, 70, 5); g.fillRect(24, 24, 5, 70)
+    g.restore()
+  })
+
+  // tricolour band
+  const bandY = 112, bandX = cx - 300
+  ;[['#FF9933', 0], ['#FFFFFF', 200], ['#138808', 400]].forEach(([col, dx]) => {
+    g.fillStyle = col; g.fillRect(bandX + dx, bandY, 200, 12)
+  })
+  g.strokeStyle = 'rgba(18,48,107,.35)'; g.lineWidth = 1; g.strokeRect(bandX, bandY, 600, 12)
+
+  // letterhead
+  g.textAlign = 'center'
+  if (logo) { g.drawImage(logo, cx - 55, 150, 110, 110) }
+  g.fillStyle = NAVY; fit(g, inst.name.toUpperCase(), 1200, 46, CINZEL, '800'); spaced(g, inst.name.toUpperCase(), cx, 316, 4)
+  g.fillStyle = MUTED; g.font = `italic 600 28px ${CORMORANT}`; g.fillText(inst.address, cx, 356)
+
+  // title
+  g.fillStyle = goldGradient(g, cx - 500, cx + 500)
+  g.font = `800 112px ${CINZEL}`; spaced(g, 'CERTIFICATE', cx, 500, 10)
+  g.fillStyle = NAVY; g.font = `700 44px ${CINZEL}`
+  spaced(g, `OF ${(opts.kind || 'Appreciation').toUpperCase()}`, cx, 566, 12)
+  g.strokeStyle = GOLD; g.lineWidth = 3
+  g.beginPath(); g.moveTo(cx - 330, 596); g.lineTo(cx + 330, 596); g.stroke()
+  g.fillStyle = GOLD; g.beginPath(); g.moveTo(cx, 584); g.lineTo(cx + 12, 596); g.lineTo(cx, 608); g.lineTo(cx - 12, 596); g.closePath(); g.fill()
+
+  // wording
+  g.fillStyle = '#374151'; g.font = `italic 600 34px ${CORMORANT}`
+  g.fillText(opts.presented || 'This certificate is proudly presented to', cx, 668)
+  g.fillStyle = '#111827'; fit(g, opts.name || '', 1300, 120, SCRIPT, '400'); g.fillText(opts.name || '', cx, 800)
+  g.strokeStyle = '#374151'; g.lineWidth = 2
+  g.beginPath(); g.moveTo(cx - 520, 826); g.lineTo(cx + 520, 826); g.stroke()
+  let y = 888
+  if (opts.subtitle) { g.fillStyle = NAVY; fit(g, opts.subtitle.toUpperCase(), 1400, 36, CINZEL, '700'); spaced(g, opts.subtitle.toUpperCase(), cx, y, 3); y += 52 }
+  if (opts.detail) { g.fillStyle = GOLD_DEEP; fit(g, opts.detail, 1400, 34, CORMORANT, '700'); g.fillText(opts.detail, cx, y); y += 48 }
+  g.fillStyle = '#374151'
+  for (const line of opts.body || []) { fit(g, line, 1450, 32, CORMORANT, '600'); g.fillText(line, cx, y); y += 44 }
+
+  // signatures, crest and seal
+  const sigY = 1226, sigs = opts.signatures || [{ title: 'Principal' }, { title: 'Head of the Institution' }]
+  ;[[420, sigs[0]], [W - 420, sigs[1]]].forEach(([sx, sgn]) => {
+    if (!sgn) return
+    g.strokeStyle = '#4B5563'; g.lineWidth = 2
+    g.beginPath(); g.moveTo(sx - 190, sigY); g.lineTo(sx + 190, sigY); g.stroke()
+    g.fillStyle = '#1F2937'; fit(g, sgn.title.toUpperCase(), 370, 26, CINZEL, '700'); spaced(g, sgn.title.toUpperCase(), sx, sigY + 40, 2)
+    if (sgn.name) { g.fillStyle = MUTED; g.font = `italic 600 26px ${CORMORANT}`; g.fillText(sgn.name, sx, sigY + 74) }
+  })
+  waxSeal(g, cx, sigY - 40, 70, 'GNSI')
+
+  // footer: date and number
+  const issued = issuedDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+  g.fillStyle = MUTED; g.font = `600 20px ${CINZEL}`
+  spaced(g, `ISSUED ${issued.toUpperCase()}${opts.certNo ? `   ·   NO. ${opts.certNo}` : ''}`, cx, H - 100, 2)
+  return c
+}
+
 /** Downloads the certificate canvas as an A4-landscape PDF. */
 export function certificatePdf(canvas, fileName) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
