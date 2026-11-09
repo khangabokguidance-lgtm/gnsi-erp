@@ -18,6 +18,14 @@ What to do before, during and after an online exam. Written for the person runni
 5. **Rehearse.** Open the exam link yourself on a real phone and on a computer. Use "Try the practice test" first. Start the real exam with a test student if you have one, then delete that attempt from Results.
 6. Send the invitation (📋 Copy invitation / WhatsApp). Tell students to use their own GCC number and the parent / guardian number registered at admission.
 
+## Telling the public (website notice and countdown)
+
+- **CBT → 📣 Landing-page flash message** (the card above the tabs; the same switch is in Website → Settings → "CBT Flash Message"). **Switch ON** and every visitor sees a red banner at the top of the website and a pop-up when the site opens (once per browser session). It stays up **until you switch it OFF**.
+- **Countdown:** in *Countdown to* pick a published test that has an **Opens** time. The banner and pop-up then count down ("Coming up"), change to **CBT LIVE** when the exam opens, and hide themselves after the **Closes** time. If you change that test's Opens / Closes time later (Online tab → publish again) the countdown follows. The same countdown shows on the exam page before it opens.
+- The countdown uses each visitor's own clock; the exam itself always opens and closes on the **server's** time.
+- The website menu, the phone bottom bar and the header carry a **CBT Exam** link to `/exam`. With no test in the link, that page asks for the exam link or Test ID. A phone that already started an exam shows **Continue as …** and **Not me · start fresh** (clears that phone only; the attempt stays on the server — use **Reset** in Live to allow a new attempt).
+- Needs nothing in the database beyond the existing `website_settings` table. Whoever uses the switch needs permission to edit website settings.
+
 ## What the candidate sees
 
 Welcome screen (institute, test, questions / minutes / marks) → the instructions **one slide at a time** (message from the Founder, about the test, general instructions, marking scheme, question palette, answering and moving around, and exam rules when camera / full screen / shield are on) → declaration → camera check (if on) → the exam. Each step slides in. A candidate who reopens an exam in progress goes straight back to it.
@@ -50,6 +58,8 @@ The Founder's photo is taken from the website's Faculty photos (Website Manager 
 | "Too many tries from this network" | Wait ten minutes. The limits are in `cbt_limit()` (migration 20261063); raise them if a very large batch shares one address. |
 | Many students "dropped off" at once | Likely the venue's internet. Their answers are kept; they continue when it returns. Give extra time (+10 min) to those affected. |
 | Exam page will not load | Check Supabase status and the project's paused / over-quota state. Have a plan B: a printed paper. |
+| Flash message does not appear | Is it switched ON (CBT card)? Open the website in a private window (the pop-up shows once per session). If it says "Could not save", the account lacks permission to edit website settings. |
+| Countdown is wrong or missing | The test needs an **Opens** time (Online tab → publish). Re-pick it in *Countdown to* and press Save text. |
 | Result looks wrong | Answer key problem: fix → republish → Re-evaluate. |
 
 ## What this system does **not** do

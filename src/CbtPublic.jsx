@@ -40,7 +40,7 @@ function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemp
 function CbtFinder() {
   const [raw, setRaw] = useState('')
   const [msg, setMsg] = useState('')
-  const started = useMemo(() => {
+  const scan = () => {
     const out = []
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -49,7 +49,15 @@ function CbtFinder() {
       }
     } catch { /* storage blocked */ }
     return out
-  }, [])
+  }
+  const [started, setStarted] = useState(scan)
+  // "Not me / start fresh": forget the exam saved on this device (and its offline backup) so a new candidate can begin.
+  // The attempt itself stays on the server; the candidate can still look themselves up with the access code + GCC no.
+  const forget = x => {
+    if (!window.confirm(`Remove ${x.name || 'this exam'} from this device?\n\nUse this when a different candidate will take the exam on this phone. Answers already saved on the server are kept.`)) return
+    try { localStorage.removeItem(savedKey(x.id)); localStorage.removeItem(backupKey(x.id)) } catch { /* storage blocked */ }
+    setStarted(scan())
+  }
   const go = e => {
     e.preventDefault()
     const ref = parseExamRef(raw)
@@ -61,7 +69,12 @@ function CbtFinder() {
       {started.length > 0 && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <b>Continue your exam</b>
         <div className="muted" style={{ fontSize: 13, margin: '4px 0 8px' }}>An exam was started on this device. Open it to carry on — your answers are saved.</div>
-        {started.map(x => <a key={x.id} className="btn navy" style={{ display: 'inline-block', marginRight: 8 }} href={examHref({ id: x.id })}>Continue{x.name ? ` as ${x.name}` : ''} →</a>)}
+        {started.map(x => (
+          <div key={x.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            <a className="btn navy" style={{ display: 'inline-block' }} href={examHref({ id: x.id })}>Continue{x.name ? ` as ${x.name}` : ''} →</a>
+            <button type="button" className="btn" onClick={() => forget(x)} aria-label={`Not ${x.name || 'me'} — start fresh`}>Not me · start fresh</button>
+          </div>
+        ))}
       </div>}
       <form className="card" onSubmit={go}>
         <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
@@ -205,7 +218,14 @@ function CbtPublicInner() {
         <div className="card" style={{ borderColor: '#bfe3c7', background: '#f1faf3' }}>
           <h3>Continue your exam</h3>
           <p className="muted">You started this exam on this device as <b>{saved.name}</b> ({saved.roll}). Your answers were saved as you went.</p>
-          <button className="btn gold" onClick={resume} disabled={busy}>{busy ? 'Opening…' : 'Continue / see my result'}</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn gold" onClick={resume} disabled={busy}>{busy ? 'Opening…' : 'Continue / see my result'}</button>
+            <button className="btn" type="button" disabled={busy} onClick={() => {
+              if (!window.confirm(`Start fresh on this device?\n\nThis removes ${saved.name || 'the saved exam'} from this phone so someone else can begin. Answers already saved on the server are kept.`)) return
+              try { localStorage.removeItem(savedKey(testId)); localStorage.removeItem(backupKey(testId)) } catch { /* storage blocked */ }
+              window.location.reload()
+            }}>Not me · start fresh</button>
+          </div>
         </div>
       )}
       {info && open && !saved && info.guests && guestMode && (

@@ -97,11 +97,11 @@ export function CbtFlashBar({ flash }) {
 
 // ── Public CBT note: a pop-up shown when the website opens, while the admin has the CBT flash ON ──
 // Once per browser session (it comes back if the admin changes the message or schedule). Same switch as the banner.
-export function CbtOpenNote({ flash }) {
+export function CbtOpenNote({ flash, suppress = false }) {
   const [open, setOpen] = useState(false);
   const [, tick] = useState(0);
   const sig = flash ? [flash.text, flash.at, flash.label].join('|') : '';
-  const live = !!(flash && flash.on) && flashPhase(flash).phase !== 'ended';
+  const live = !!(flash && flash.on) && !suppress && flashPhase(flash).phase !== 'ended';
   useEffect(() => {
     if (!live) return undefined;
     let seen = false;
@@ -113,9 +113,20 @@ export function CbtOpenNote({ flash }) {
   const close = () => { setOpen(false); try { sessionStorage.setItem('gnsi_cbt_note', sig); } catch { /* ignore */ } };
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const opener = document.activeElement;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab') return;                       // keep Tab inside the dialog
+      const box = document.querySelector('.lx-cbtnote');
+      const items = box ? [...box.querySelectorAll('a[href], button:not([disabled])')] : [];
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (box && !box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); try { if (opener && opener.isConnected && opener.focus) opener.focus({ preventScroll: true }); } catch { /* ignore */ } };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!open || !live) return null;
   const soon = flashPhase(flash).phase === 'upcoming';
