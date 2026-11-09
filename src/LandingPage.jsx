@@ -2172,6 +2172,7 @@ window.submitGrievance = async () => {
         >
           View Results
         </button>
+        <a href="/exam" className="sb-btn sb-btn-cbt">💻 CBT Exam</a>
         <a
           href={site.wa + '?text=Hello%20GNSI%2C%20I%20would%20like%20to%20know%20more%20about%20your%20programs.'}
           className="sb-btn sb-btn-wa"
@@ -2179,7 +2180,7 @@ window.submitGrievance = async () => {
           rel="noopener noreferrer"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 3.5A11 11 0 0 0 3.2 17.1L2 22l5-1.2A11 11 0 1 0 20.5 3.5zM12 20a8 8 0 0 1-4.1-1.1l-.3-.2-3 .7.7-2.9-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.6 2.6 0 0 0-.8 1.9 4.5 4.5 0 0 0 1 2.4 10.2 10.2 0 0 0 3.9 3.5c1.5.6 2 .7 2.7.6a2.3 2.3 0 0 0 1.5-1 1.9 1.9 0 0 0 .1-1c0-.1-.2-.2-.4-.3z"/></svg>
-          WhatsApp
+          <span className="sb-wa-lbl">WhatsApp</span>
         </a>
         <button
           type="button"
