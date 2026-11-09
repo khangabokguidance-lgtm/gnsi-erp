@@ -3,6 +3,7 @@
 // exactly as in the office — but the paper comes from the server, the clock is the server's, answers are saved
 // to the server as they go and the server marks it. Reopening the link on the same device resumes the attempt.
 import { useEffect, useMemo, useState } from 'react'
+import CbtCountdown from './CbtCountdown'
 import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
@@ -157,7 +158,7 @@ function CbtPublicInner() {
       {info && open && !saved && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try a 4-minute practice test first — it is not counted and nothing is saved.</span> <button className="btn" style={{ marginLeft: 6 }} onClick={startDemo}>Try the practice test</button></div>}
       {err && !(info && open && !saved) && <div className="card" role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</div>}
       {info && info.state === 'closed' && <div className="card" style={{ color: '#b42318', fontWeight: 700 }}>This exam is closed.</div>}
-      {info && info.state === 'not_open' && <div className="card" style={{ color: '#9a5b00', fontWeight: 700 }}>This exam opens on {when(info.opensAt)}.</div>}
+      {info && info.state === 'not_open' && <div className="card" style={{ color: '#9a5b00', fontWeight: 700, textAlign: 'center' }}>This exam opens on {when(info.opensAt)}.{info.opensAt && <div style={{ marginTop: 10 }}><CbtCountdown to={info.opensAt} onDone={() => window.location.reload()} /></div>}</div>}
       {info && saved && (
         <div className="card" style={{ borderColor: '#bfe3c7', background: '#f1faf3' }}>
           <h3>Continue your exam</h3>

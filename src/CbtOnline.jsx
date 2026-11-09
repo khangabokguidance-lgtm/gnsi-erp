@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp } from './cbtRemote'
 import { flatQuestions } from './lib/cbtEngine'
+import { syncFlashSchedule } from './cbtFlashSync'
 
 const local = v => { if (!v) return ''; const d = new Date(v); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
 const newCode = () => String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000))
@@ -25,6 +26,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
     try {
       await publishOnline(test, { code, opensAt: opens, closesAt: closes, status: 'live', by })
       const next = { id: test.id, access_code: code.trim() || null, opens_at: opens ? new Date(opens).toISOString() : null, closes_at: closes ? new Date(closes).toISOString() : null, status: 'live' }
+      syncFlashSchedule({ id: test.id, name: test.name, opensAt: next.opens_at, closesAt: next.closes_at })
       setDone(next); onChanged(); flash(row ? 'Online exam updated.' : 'Published. Share the link with candidates.')
     } catch (e) { setErr(e.message) }
     setBusy(false)
