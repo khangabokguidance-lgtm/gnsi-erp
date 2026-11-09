@@ -14,6 +14,12 @@ import { fsExits } from './lib/cbtProctorLogic'
 import { sectionTimed, settleSection, nextSection } from './lib/cbtSections'
 import { Calculator, RoughPad } from './CbtTools'
 
+// The founder's welcome (same person, photo and message as the website's founder section).
+const FOUNDER = {
+  name: 'Moirangthem Himan Singh', role: 'Founder & Head of the Institute · GNSI',
+  photo: 'https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg',
+  quote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
+}
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
 const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
@@ -381,6 +387,17 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     const nQ = flatQuestions(test).length
     const maxM = Math.round(nQ * test.marking.correct * 100) / 100
     const slides = [
+      { key: 'founder', icon: '🎓', kicker: 'From our Founder', title: 'A message to every candidate', body: <div className="cbt-founder">
+        <div className="cbt-founder-pic">
+          <img src={FOUNDER.photo} alt={FOUNDER.name} onError={e => { e.currentTarget.parentNode.classList.add('nophoto') }} />
+          <span aria-hidden="true">{FOUNDER.name[0]}</span>
+        </div>
+        <div className="cbt-founder-txt">
+          <blockquote>&ldquo;{FOUNDER.quote}&rdquo;</blockquote>
+          <div className="cbt-founder-by"><b>{FOUNDER.name}</b><span>{FOUNDER.role}</span></div>
+          <p>Established 2016 · Khangabok, Manipur. We wish you the very best for this test.</p>
+        </div>
+      </div> },
       { key: 'about', icon: '📋', title: 'About this test', body: <>
         <div className="cbt-facts"><div><b>{test.durationMin} min</b><span>Duration</span></div><div><b>{nQ}</b><span>Questions</span></div><div><b>{maxM}</b><span>Maximum marks</span></div></div>
         <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
@@ -423,10 +440,10 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       <div className="cbt-center"><div className="panel">
         <div className="cbt-prog" role="progressbar" aria-valuemin={1} aria-valuemax={slides.length} aria-valuenow={i + 1}><i style={{ width: `${((i + 1) / slides.length) * 100}%` }} /></div>
         <div className="cbt-islide" key={sl.key} data-dir={idir}>
-          <div className="cbt-ihead"><span className="ic" aria-hidden="true">{sl.icon}</span><div><small>Instruction {i + 1} of {slides.length}</small><h3>{sl.title}</h3></div></div>
+          <div className="cbt-ihead"><span className="ic" aria-hidden="true">{sl.icon}</span><div><small>Step {i + 1} of {slides.length} · {sl.kicker || 'Instructions'}</small><h3>{sl.title}</h3></div></div>
           {sl.body}
         </div>
-        <div className="cbt-dots" role="tablist" aria-label="Instruction slides">{slides.map((s, n) => <button key={s.key} type="button" role="tab" aria-selected={n === i} aria-label={`Instruction ${n + 1}: ${s.title}`} className={n === i ? 'on' : ''} onClick={() => goTo(n)} />)}</div>
+        <div className="cbt-dots" role="tablist" aria-label="Instruction slides">{slides.map((s, n) => <button key={s.key} type="button" role="tab" aria-selected={n === i} aria-label={`Step ${n + 1}: ${s.title}`} className={n === i ? 'on' : ''} onClick={() => goTo(n)} />)}</div>
         <div className="cbt-row">
           <button className="cbt-b" onClick={() => (i === 0 ? setStage('intro') : goTo(i - 1))}>‹ Previous</button>
           <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => (i === last ? setStage('declaration') : goTo(i + 1))}>{i === last ? 'Continue to declaration ›' : 'Next ›'}</button>
