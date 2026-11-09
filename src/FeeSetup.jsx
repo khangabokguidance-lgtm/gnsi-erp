@@ -3,18 +3,20 @@
 //  Admin-only Fee Structure Setup
 //  • Per session year, course, batch, hostel type
 //  • Manages flat_fee, course_fee, admission_fee in fee_structures table
-//  • Tab 2: Per-student flat fee overrides (student_fee_overrides table)
+//  • Tab 2: Per-student custom fee setup — flat / course / admission, each optional,
+//    empty = the standard rate (student_fee_overrides table)
 //  • Role-gated: admin only
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
+import { shapeOverride, hasAnyOverride } from './lib/studentFeeSetup'
 import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero } from './premiumUI'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
-  getFeeRates, saveStudentFlatFeeOverride, TABLES, getCombinedAddonFee, saveCombinedAddonFee, listAddonStudents,
+  getFeeRates, saveStudentFeeOverride, TABLES, getCombinedAddonFee, saveCombinedAddonFee, listAddonStudents,
 } from './feeEngine'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -111,17 +113,21 @@ function AmtInput({ value, onChange, color }) {
 
 // ─── Student Overrides Tab ────────────────────────────────────────────────────
 
+// The three fees an admin can customise for one student (blank = the standard rate).
+const FEE_KINDS = [['flat', 'Flat fee', '/month'], ['course', 'Course fee', '/month'], ['admission', 'Admission fee', 'one-time']]
+
 function StudentOverridesTab({ sessionYear }) {
   const [search,    setSearch]    = useState('')
   const [results,   setResults]   = useState([])
   const [searching, setSearching] = useState(false)
   const [selected,  setSelected]  = useState(null)   // full student row
-  const [baseRate,  setBaseRate]  = useState(null)   // from fee_structures
-  const [override,  setOverride]  = useState(null)   // existing override row or null
-  const [newAmt,    setNewAmt]    = useState('')
+  const [baseRates, setBaseRates] = useState(null)   // standard { flat, course, admission } from fee_structures
+  const [override,  setOverride]  = useState(null)   // existing custom setup (shapeOverride) or null
+  const [newFees,   setNewFees]   = useState({ flat: '', course: '', admission: '' })   // '' = keep the standard rate
   const [reason,    setReason]    = useState('')
   const [saving,    setSaving]    = useState(false)
   const [feedback,  setFeedback]  = useState(null)   // { type: 'ok'|'err', msg }
+  const nothingEntered = FEE_KINDS.every(([k]) => String(newFees[k] ?? '').trim() === '')
 
   // ── Search students ────────────────────────────────────────────────────
   const searchStudents = useCallback(async () => {
@@ -152,38 +158,50 @@ function StudentOverridesTab({ sessionYear }) {
     setResults([])
     setSearch('')
     setFeedback(null)
-    setNewAmt('')
+    setNewFees({ flat: '', course: '', admission: '' })
     setReason('')
+    setBaseRates(null)
 
-    // Fetch base rate
+    // Standard rates (no gcc passed, so no custom setup is mixed in)
     const rates = await getFeeRates(sessionYear, student.course, student.batch, student.hostel_type)
-    setBaseRate(rates.flatFee)
+    setBaseRates({ flat: rates.flatFee, course: rates.courseFee, admission: rates.admissionFee })
 
-    // Fetch existing override
+    // Existing custom setup, if any
     const { data } = await supabase
       .from(TABLES.studentFeeOverrides)
       .select('*')
       .eq('gcc_no', student.gcc_no)
       .eq('session_year', sessionYear)
       .maybeSingle()
-    setOverride(data || null)
-    if (data) {
-      setNewAmt(String(data.flat_fee_override))
-      setReason(data.reason || '')
+    const ov = data ? shapeOverride(data) : null
+    setOverride(hasAnyOverride(ov) ? ov : null)
+    if (ov) {
+      const show = v => v === null ? '' : String(v)
+      setNewFees({ flat: show(ov.flat_fee_override), course: show(ov.course_fee_override), admission: show(ov.admission_fee_override) })
+      setReason(ov.reason || '')
     }
   }
 
   // ── Save override ─────────────────────────────────────────────────────
   const saveOverride = async () => {
     if (!selected) return
-    const amt = parseFloat(newAmt)
-    if (isNaN(amt) || amt < 0) { setFeedback({ type: 'err', msg: 'Enter a valid amount (0 or above).' }); return }
+    const parsed = {}
+    for (const k of ['flat', 'course', 'admission']) {
+      const raw = String(newFees[k] ?? '').trim()
+      if (raw === '') { parsed[k] = null; continue }
+      const n = Number(raw)
+      if (isNaN(n) || n < 0) { setFeedback({ type: 'err', msg: `Enter a valid ${k} fee (0 or above), or leave it empty for the standard rate.` }); return }
+      parsed[k] = n
+    }
+    if (parsed.flat === null && parsed.course === null && parsed.admission === null) { setFeedback({ type: 'err', msg: 'Enter at least one custom fee, or use Reset to default.' }); return }
     setSaving(true)
     try {
-      await saveStudentFlatFeeOverride(selected.gcc_no, sessionYear, amt, reason, 'admin')
+      await saveStudentFeeOverride(selected.gcc_no, sessionYear, parsed, reason, 'admin')
       clearFeeRateCache()
-      setOverride({ flat_fee_override: amt, reason, updated_by: 'admin', updated_at: new Date().toISOString() })
-      setFeedback({ type: 'ok', msg: `Override saved — GCC ${selected.gcc_no} will pay ₹${amt.toLocaleString('en-IN')} flat fee for ${sessionYear}.` })
+      setOverride({ flat_fee_override: parsed.flat, course_fee_override: parsed.course, admission_fee_override: parsed.admission, reason, updated_by: 'admin', updated_at: new Date().toISOString() })
+      const set = [['flat', 'flat'], ['course', 'course'], ['admission', 'admission']].filter(([k]) => parsed[k] !== null).map(([k, l]) => `${l} ₹${parsed[k].toLocaleString('en-IN')}`)
+      setFeedback({ type: 'ok', msg: `Custom fee setup saved — GCC ${selected.gcc_no} pays ${set.join(', ')} for ${sessionYear}; everything else stays at the standard rate.` })
+      loadAllOverrides()
     } catch (err) {
       setFeedback({ type: 'err', msg: err.message || 'Save failed.' })
     } finally { setSaving(false) }
@@ -192,15 +210,16 @@ function StudentOverridesTab({ sessionYear }) {
   // ── Remove override ───────────────────────────────────────────────────
   const removeOverride = async () => {
     if (!selected || !override) return
-    if (!window.confirm(`Remove flat fee override for ${selected.name}? They will revert to the standard rate.`)) return
+    if (!window.confirm(`Reset ${selected.name} to the default fee setup? Their custom fees will be removed and the standard rates apply.`)) return
     setSaving(true)
     try {
-      await saveStudentFlatFeeOverride(selected.gcc_no, sessionYear, null)
+      await saveStudentFeeOverride(selected.gcc_no, sessionYear, {})
       clearFeeRateCache()
       setOverride(null)
-      setNewAmt('')
+      setNewFees({ flat: '', course: '', admission: '' })
       setReason('')
-      setFeedback({ type: 'ok', msg: `Override removed. ${selected.name} now uses standard flat fee.` })
+      setFeedback({ type: 'ok', msg: `${selected.name} is back on the default fee setup.` })
+      loadAllOverrides()
     } catch (err) {
       setFeedback({ type: 'err', msg: err.message || 'Remove failed.' })
     } finally { setSaving(false) }
@@ -214,7 +233,7 @@ function StudentOverridesTab({ sessionYear }) {
     setLoadingOverrides(true)
     const { data } = await supabase
       .from(TABLES.studentFeeOverrides)
-      .select('gcc_no, flat_fee_override, reason, updated_by, updated_at')
+      .select('*')
       .eq('session_year', sessionYear)
       .order('updated_at', { ascending: false })
     // Join student names
@@ -226,7 +245,7 @@ function StudentOverridesTab({ sessionYear }) {
         .in('gcc_no', gccs)
       const sMap = {}
       ;(students || []).forEach(s => { sMap[s.gcc_no] = s })
-      setAllOverrides(data.map(r => ({ ...r, student: sMap[r.gcc_no] || null })))
+      setAllOverrides(data.filter(r => hasAnyOverride(shapeOverride(r))).map(r => ({ ...r, student: sMap[r.gcc_no] || null })))
     } else {
       setAllOverrides([])
     }
@@ -244,7 +263,7 @@ function StudentOverridesTab({ sessionYear }) {
       <div style={{ background: 'white', borderRadius: 14, border: `1px solid ${C.slate[200]}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.06)' }}>
         <div style={{ background: `${C.violet}10`, borderBottom: `2px solid ${C.violet}20`, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 4, height: 24, background: C.violet, borderRadius: 2 }} />
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.violet }}>Set Student Override</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.violet }}>Custom fee setup for a student</div>
         </div>
 
         <div style={{ padding: 20 }}>
@@ -302,41 +321,51 @@ function StudentOverridesTab({ sessionYear }) {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <HostelBadge type={selected.hostel_type || 'Day Scholar'} />
                   {override && (
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: '#ede9fe', color: C.violet, border: `1px solid #c4b5fd` }}>OVERRIDE ACTIVE</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: '#ede9fe', color: C.violet, border: `1px solid #c4b5fd` }}>CUSTOM FEES</span>
                   )}
                 </div>
               </div>
 
-              {/* Rate comparison */}
-              {baseRate !== null && (
-                <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1, background: 'white', borderRadius: 8, padding: '8px 12px', border: `1px solid ${C.slate[200]}` }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: C.slate[400], textTransform: 'uppercase', marginBottom: 2 }}>Standard Rate</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: C.emerald }}>₹{baseRate.toLocaleString('en-IN')}</div>
-                    <div style={{ fontSize: 10, color: C.slate[400] }}>from fee_structures</div>
-                  </div>
-                  {override && (
-                    <div style={{ flex: 1, background: '#ede9fe', borderRadius: 8, padding: '8px 12px', border: `1px solid #c4b5fd` }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: C.violet, textTransform: 'uppercase', marginBottom: 2 }}>Current Override</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: C.violet }}>₹{Number(override.flat_fee_override).toLocaleString('en-IN')}</div>
-                      <div style={{ fontSize: 10, color: C.violet, opacity: .7 }}>
-                        {override.reason || 'No reason given'}
+              {/* Standard vs custom, per fee */}
+              {baseRates !== null && (
+                <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                  {FEE_KINDS.map(([k, label]) => {
+                    const custom = override && override[`${k}_fee_override`] != null
+                    return (
+                      <div key={k} style={{ background: custom ? '#ede9fe' : 'white', borderRadius: 8, padding: '8px 10px', border: `1px solid ${custom ? '#c4b5fd' : C.slate[200]}` }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: custom ? C.violet : C.slate[400], textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: custom ? C.violet : C.emerald }}>₹{Number(custom ? override[`${k}_fee_override`] : baseRates[k]).toLocaleString('en-IN')}</div>
+                        <div style={{ fontSize: 10, color: custom ? C.violet : C.slate[400], opacity: .8 }}>{custom ? `custom (standard ₹${Number(baseRates[k]).toLocaleString('en-IN')})` : 'default'}</div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })}
                 </div>
               )}
+              {override?.reason && <div style={{ marginTop: 8, fontSize: 11, color: C.violet }}>Reason: {override.reason}</div>}
             </div>
           )}
 
           {/* Override form */}
           {selected && (
             <>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.slate[500], textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>
-                  New Flat Fee Override (₹/month)
-                </label>
-                <AmtInput value={newAmt} color={C.violet} onChange={v => setNewAmt(String(v))} />
+              <div style={{ fontSize: 12, color: C.slate[500], marginBottom: 10 }}>
+                Everyone is on the <b>default</b> fee setup. Fill in only the fees you want to change for this student — leave a box empty to keep the standard rate.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
+                {FEE_KINDS.map(([k, label, unit]) => (
+                  <div key={k}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.slate[500], textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 5 }}>
+                      {label} <span style={{ fontWeight: 400, textTransform: 'none' }}>{unit}</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: C.slate[400], pointerEvents: 'none' }}>₹</span>
+                      <input type="number" min="0" value={newFees[k]} aria-label={`Custom ${label.toLowerCase()}`}
+                        placeholder={baseRates ? `${Number(baseRates[k]).toLocaleString('en-IN')} (default)` : 'default'}
+                        onChange={e => setNewFees(f => ({ ...f, [k]: e.target.value }))}
+                        style={{ ...inp, paddingLeft: 22, color: C.violet, textAlign: 'left' }} />
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div style={{ marginBottom: 16 }}>
@@ -351,14 +380,14 @@ function StudentOverridesTab({ sessionYear }) {
               </div>
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={saveOverride} disabled={saving || newAmt === ''}
-                  style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: saving || newAmt === '' ? 'not-allowed' : 'pointer', background: saving || newAmt === '' ? C.slate[200] : `linear-gradient(135deg,${C.violet},${C.indigo})`, color: saving || newAmt === '' ? C.slate[400] : 'white' }}>
-                  {saving ? '⏳ Saving…' : override ? '✏️ Update Override' : '✅ Set Override'}
+                <button type="button" onClick={saveOverride} disabled={saving || nothingEntered}
+                  style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: saving || nothingEntered ? 'not-allowed' : 'pointer', background: saving || nothingEntered ? C.slate[200] : `linear-gradient(135deg,${C.violet},${C.indigo})`, color: saving || nothingEntered ? C.slate[400] : 'white' }}>
+                  {saving ? '⏳ Saving…' : override ? '✏️ Update custom fees' : '✅ Save custom fees'}
                 </button>
                 {override && (
                   <button type="button" onClick={removeOverride} disabled={saving}
                     style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid #fca5a5`, background: '#fef2f2', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: C.red }}>
-                    🗑 Remove
+                    ↩ Reset to default
                   </button>
                 )}
               </div>
@@ -373,7 +402,7 @@ function StudentOverridesTab({ sessionYear }) {
 
           {!selected && (
             <div style={{ textAlign: 'center', padding: '32px 0', color: C.slate[400], fontSize: 13 }}>
-              🔍 Search for a student above to set or edit their flat fee override.
+              🔍 Search for a student above to give them a custom fee setup. Students without one stay on the default.
             </div>
           )}
         </div>
@@ -384,7 +413,7 @@ function StudentOverridesTab({ sessionYear }) {
         <div style={{ background: `${C.violet}10`, borderBottom: `2px solid ${C.violet}20`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 4, height: 24, background: C.violet, borderRadius: 2 }} />
-            <div style={{ fontSize: 15, fontWeight: 800, color: C.violet }}>Active Overrides</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.violet }}>Students with custom fees</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11, color: C.slate[400] }}>{sessionYear}</span>
@@ -400,7 +429,7 @@ function StudentOverridesTab({ sessionYear }) {
             <div style={{ textAlign: 'center', padding: 32, color: C.slate[400], fontSize: 13 }}>⏳ Loading…</div>
           ) : allOverrides.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 32, color: C.slate[400], fontSize: 13 }}>
-              No overrides set for {sessionYear} yet.
+              No student has a custom fee setup for {sessionYear} — everyone is on the default.
             </div>
           ) : (
             allOverrides.map((ov, i) => (
@@ -418,8 +447,10 @@ function StudentOverridesTab({ sessionYear }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {ov.student && <HostelBadge type={ov.student.hostel_type || 'Day Scholar'} />}
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: C.violet }}>
-                      ₹{Number(ov.flat_fee_override).toLocaleString('en-IN')}
+                    <div style={{ fontSize: 12, fontWeight: 800, color: C.violet, lineHeight: 1.5 }}>
+                      {FEE_KINDS.filter(([k]) => shapeOverride(ov)[`${k}_fee_override`] !== null).map(([k, label]) => (
+                        <div key={k}>{label.replace(' fee', '')} ₹{Number(ov[`${k}_fee_override`]).toLocaleString('en-IN')}</div>
+                      ))}
                     </div>
                     <div style={{ fontSize: 10, color: C.slate[400] }}>
                       {ov.updated_at ? new Date(ov.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}

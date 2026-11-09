@@ -5,6 +5,7 @@
 import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { getFeeRates, gccStr, normalizeSessionYear, getAddonStatus } from './feeEngine'
+import { shapeOverride, hasAnyOverride, applyFeeOverride } from './lib/studentFeeSetup'
 import { applyAddon } from './feeAddon'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
 import { writtenOffFor } from './lib/refundLedger'
@@ -30,11 +31,12 @@ export async function loadAllFeeRows() {
   return { adm: groupByGcc(a.data), flat: groupByGcc(f.data), crs: groupByGcc(c.data) }
 }
 
-// Per-student flat-fee overrides for the session (one query instead of one per student).
+// Per-student custom fee setup (flat / course / admission) for the session (one query instead of one per student).
+// A fee the admin left empty is null = the standard rate.
 async function loadOverrides(session) {
-  const { data, error } = await fetchAllPages(() => supabase.from('student_fee_overrides').select('gcc_no, flat_fee_override').eq('session_year', session).order('gcc_no', { ascending: true }))
+  const { data, error } = await fetchAllPages(() => supabase.from('student_fee_overrides').select('*').eq('session_year', session).order('gcc_no', { ascending: true }))
   if (error) return new Map() // overrides are optional — fall back to structural rates
-  return new Map((data || []).map(r => [gccStr(r.gcc_no), Number(r.flat_fee_override)]))
+  return new Map((data || []).map(r => [gccStr(r.gcc_no), shapeOverride(r)]).filter(([, o]) => hasAnyOverride(o)))
 }
 
 // Earlier sessions' unpaid dues, each at that session's own rates (and hostel
@@ -79,7 +81,7 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
       // students the Exams module tags as Combined also carry the add-on (the shared cache is per course/batch, so add it per student)
       const ex = await getAddonStatus({ sessionYear: sess, course: s.course, batch: s.batch, gccNo: g })
       if (ex.byExam && ex.amount > 0) base = applyAddon(base, true, ex.amount, 'exam')
-      return ov.has(g) ? { ...base, flatFee: ov.get(g) } : base
+      return applyFeeOverride(base, ov.get(g))
     }
     const rateOf = rateOfFor(session)
     // A mid-session hostel type change keeps earlier months at the old type's rate.

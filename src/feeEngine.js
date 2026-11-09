@@ -9,6 +9,7 @@ import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeVa
 import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
 import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planPayments'
 import { getInstitute, sysOr } from './systemSettings'
+import { shapeOverride, hasAnyOverride, applyFeeOverride } from './lib/studentFeeSetup'
 import { supabase } from './supabase'
 import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
 import { batchKeysFor, pickFeeRow } from './feeRateLookup'
@@ -289,9 +290,13 @@ export const clearFeeRateCache = () => {
 
 // ─── 4a. Per-student flat fee override ───────────────────────────────────────
 
+// A student's custom fee setup: see lib/studentFeeSetup.js
+export { shapeOverride, hasAnyOverride, applyFeeOverride }
+const numOrNull = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v)
+
 /**
- * Fetch the flat_fee_override for one student in a session.
- * Returns null if no override exists.
+ * Fetch a student's custom fee setup (flat / course / admission) for a session.
+ * Returns null if the student has none (= everything at the standard rate).
  */
 export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
   sessionYear = normalizeSessionYear(sessionYear)
@@ -309,7 +314,7 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
       for (let from = 0; ; from += 1000) {
         const { data, error } = await supabase
           .from(TABLES.studentFeeOverrides)
-          .select('gcc_no, flat_fee_override, reason, updated_by, updated_at')
+          .select('*')   // all columns: course/admission overrides only exist once 20261110_student_fee_setup.sql has run
           .eq('session_year', sessionYear)
           .order('gcc_no')
           .range(from, from + 999)
@@ -317,7 +322,7 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
         rows.push(...(data || []))
         if (!data || data.length < 1000) break
       }
-      return new Map(rows.map(r => [String(r.gcc_no), { flat_fee_override: r.flat_fee_override, reason: r.reason, updated_by: r.updated_by, updated_at: r.updated_at }]))
+      return new Map(rows.map(r => [String(r.gcc_no), shapeOverride(r)]))
     })()
     _overrideSessions[sessionYear] = { at: Date.now(), promise }
   }
@@ -327,11 +332,11 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
     delete _overrideSessions[sessionYear]
     const { data } = await supabase
       .from(TABLES.studentFeeOverrides)
-      .select('flat_fee_override, reason, updated_by, updated_at')
+      .select('*')
       .eq('gcc_no', gccNo)
       .eq('session_year', sessionYear)
       .maybeSingle()
-    return data ?? null
+    return data ? shapeOverride(data) : null
   }
   const result = map.get(String(gccNo)) ?? null
   _overrideCache[key] = { value: result, _cachedAt: Date.now() }
@@ -339,30 +344,48 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
 }
 
 /**
- * Save (upsert) a per-student flat fee override.
- * Pass null / undefined flatFeeOverride to REMOVE the override.
+ * Set a student's custom fee setup for a session.
+ * fees = { flat, course, admission } — a number sets a custom amount, null / '' /
+ * undefined leaves that fee at the standard rate. If all three are empty the
+ * student's row is removed (back to the default).
  */
-export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOverride, reason = '', updatedBy = '') => {
+export const saveStudentFeeOverride = async (gccNo, sessionYear, fees = {}, reason = '', updatedBy = '') => {
   sessionYear = normalizeSessionYear(sessionYear)
-  // Remove override
-  if (flatFeeOverride === null || flatFeeOverride === undefined) {
-    await supabase
-      .from(TABLES.studentFeeOverrides)
-      .delete()
-      .eq('gcc_no', gccNo)
-      .eq('session_year', sessionYear)
+  const flat = numOrNull(fees.flat), course = numOrNull(fees.course), admission = numOrNull(fees.admission)
+  for (const v of [flat, course, admission]) if (v !== null && v < 0) throw new Error('A fee cannot be negative.')
+  if (flat === null && course === null && admission === null) {
+    const { error } = await supabase.from(TABLES.studentFeeOverrides).delete().eq('gcc_no', gccNo).eq('session_year', sessionYear)
+    if (error) throw error
   } else {
     const { error } = await supabase
       .from(TABLES.studentFeeOverrides)
       .upsert(
-        { gcc_no: gccNo, session_year: sessionYear, flat_fee_override: flatFeeOverride, reason, updated_by: updatedBy },
+        { gcc_no: gccNo, session_year: sessionYear, flat_fee_override: flat, course_fee_override: course, admission_fee_override: admission, reason, updated_by: updatedBy },
         { onConflict: 'gcc_no,session_year', ignoreDuplicates: false }
       )
-    if (error) throw error
+    if (error) {
+      const missing = /course_fee_override|admission_fee_override|null value|flat_fee_override/i.test(error.message || '')
+      throw new Error(missing ? 'Custom course/admission fees need the database update 20261110_student_fee_setup.sql — run it in Supabase (SQL editor) first.' : error.message)
+    }
   }
   // Bust the override caches for this student and this session's bulk copy
   delete _overrideCache[`${gccNo}__${sessionYear}`]
   delete _overrideSessions[sessionYear]
+}
+
+/**
+ * Save (upsert) a per-student flat fee override — keeps any course/admission
+ * override the student already has. Pass null / undefined to REMOVE only the
+ * flat override (the row goes away when nothing custom is left).
+ */
+export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOverride, reason = '', updatedBy = '') => {
+  sessionYear = normalizeSessionYear(sessionYear)
+  const { data } = await supabase.from(TABLES.studentFeeOverrides).select('*').eq('gcc_no', gccNo).eq('session_year', sessionYear).maybeSingle()
+  const cur = data ? shapeOverride(data) : { course_fee_override: null, admission_fee_override: null, reason: '' }
+  const removing = flatFeeOverride === null || flatFeeOverride === undefined
+  await saveStudentFeeOverride(gccNo, sessionYear,
+    { flat: removing ? null : flatFeeOverride, course: cur.course_fee_override, admission: cur.admission_fee_override },
+    removing ? (cur.reason || '') : reason, updatedBy)
 }
 
 // ─── 4b. Structural rates ─────────────────────────────────────────────────────
@@ -476,12 +499,14 @@ export const getFeeRates = async (
     if (a.eligible) Object.assign(rates, applyAddon(rates, true, a.amount, a.reason))
   }
 
-  // ✦ Apply per-student flat fee override if gcc supplied
+  // ✦ Apply the student's custom fee setup if gcc supplied. Only the fees the admin
+  //   actually set are replaced; anything left empty stays at the standard rate.
   if (gccNo) {
     const override = await getStudentFlatFeeOverride(gccNo, sessionYear)
-    if (override !== null) {
-      rates.flatFee         = Number(override.flat_fee_override)
-      rates.flatFeeOverride = override   // attach metadata so callers can show badge
+    if (hasAnyOverride(override)) {
+      Object.assign(rates, applyFeeOverride(rates, override))
+      if (override.flat_fee_override !== null) rates.flatFeeOverride = override   // attach metadata so callers can show badge
+      rates.feeOverride = override         // any custom fee set for this student
     }
   }
 
