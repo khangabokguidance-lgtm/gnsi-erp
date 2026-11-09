@@ -29,7 +29,7 @@ test('access code and the time window', () => {
   assert.equal(get(readiness({ row: row(), test: T(), probes: ALL }), 'window').status, 'warn')
 })
 
-test('students without a parent number block; without a date of birth only warn; inactive ones are ignored', () => {
+test('students without a parent number block; inactive ones are ignored (the date of birth is no longer needed)', () => {
   const students = [
     { id: 1, parent_phone: '9876543210', dob: '2010-01-01' },
     { id: 2, father_phone: '98765 43211', dob: '' },
@@ -39,9 +39,9 @@ test('students without a parent number block; without a date of birth only warn;
   ]
   const cs = readiness({ row: row(), test: T(), probes: ALL, students })
   assert.equal(get(cs, 'phones').status, 'bad'); assert.match(get(cs, 'phones').label, /^1 active student has no parent number/)
-  assert.equal(get(cs, 'dobs').status, 'warn'); assert.match(get(cs, 'dobs').label, /^1 active student has no date of birth/)
+  assert.equal(get(cs, 'dobs'), undefined)   // no date-of-birth check any more
   const good = readiness({ row: row(), test: T(), probes: ALL, students: students.slice(0, 1) })
-  assert.equal(get(good, 'phones').status, 'ok'); assert.equal(get(good, 'dobs').status, 'ok')
+  assert.equal(get(good, 'phones').status, 'ok')
 })
 
 test('guests are flagged, settings are summarised, and the summary counts problems', () => {

@@ -4,10 +4,10 @@ What to do before, during and after an online exam. Written for the person runni
 
 ## One-time setup (do once, before the first real exam)
 
-1. **Run the SQL.** In the Supabase SQL editor run `supabase/CBT_NEW_SQL_061_to_066.sql` (needs `20261034`–`20261040` already run). It is safe to run again.
+1. **Run the SQL.** In the Supabase SQL editor run `supabase/CBT_NEW_SQL_061_to_066.sql` (needs `20261034`–`20261040` already run), then `supabase/migrations/20261114_cbt_no_dob_check.sql` (removes the date-of-birth check). Both are safe to run again.
 2. **Close open sign-ups.** Supabase → Authentication → Providers/Settings: turn **off** "Allow new users to sign up", or turn **on** "Confirm email". Staff access to the answer key is decided by a login-name pattern; with open sign-ups and no email confirmation, a stranger could register a staff-looking address.
 3. **Backups.** Supabase → Settings → Database → Backups: confirm a daily backup exists (point-in-time recovery if your plan has it). Take a manual backup the day before an important exam.
-4. **Fill in student data.** In Students, every active student who will sit online needs a **parent / guardian number**. A **date of birth**, **district** and **caste / category** are strongly recommended (date of birth is a second check; district / caste feed the analysis). The **Readiness** button (below) counts the gaps.
+4. **Fill in student data.** In Students, every active student who will sit online needs a **parent / guardian number**. **District** and **caste / category** are strongly recommended (they feed the analysis). The date of birth is **not** asked for any more. The **Readiness** button (below) counts the gaps.
 
 ## Per exam
 
@@ -16,7 +16,7 @@ What to do before, during and after an online exam. Written for the person runni
 3. Publish (🌐 Online). Set an **access code** (6+ characters) and, ideally, an open / close time.
 4. Open **✅ Readiness** on the exam card. Fix every red ✕. Read every amber !.
 5. **Rehearse.** Open the exam link yourself on a real phone and on a computer. Use "Try the practice test" first. Start the real exam with a test student if you have one, then delete that attempt from Results.
-6. Send the invitation (📋 Copy invitation / WhatsApp). Tell students to use their own GCC number and the parent / guardian number registered at admission, and to type their date of birth as DD/MM/YYYY.
+6. Send the invitation (📋 Copy invitation / WhatsApp). Tell students to use their own GCC number and the parent / guardian number registered at admission.
 
 ## What the candidate sees
 
@@ -38,14 +38,14 @@ The Founder's photo is taken from the website's Faculty photos (Website Manager 
 2. **Results** → check the integrity report (a risk level is an *indicator*, never proof), then **Export CSV**.
 3. Wrong answer key? Correct it in the builder, **publish again**, then Results → **🔄 Re-evaluate scores**. The old marks are kept inside each score.
 4. Open **Analysis** for question difficulty, option picks, section and district / gender / category results, and print per-student reports. Print certificates from the Certificates tool.
-5. Check candidates tagged **DOB added** (their date of birth was missing and they typed it) and correct any wrong dates in Students.
+5. Older attempts may carry a **DOB added** tag (from before the date-of-birth check was removed); it is only a record and can be ignored.
 
 ## If something goes wrong
 
 | Problem | What to do |
 |---|---|
 | "No parent number on file" | Add the parent / guardian number in Students, then the student retries. |
-| "Number or date of birth does not match" | Check the student's record in Students (number and date of birth). Wrong tries are limited to 20 per GCC number per 10 minutes. |
+| "The number does not match" | Check the parent / guardian number in the student's record in Students. Wrong tries are limited to 20 per GCC number per 10 minutes. |
 | "Already started" on a new device | A student can continue on the same device. If the device is lost, **Reset** that candidate in Live. |
 | "Too many tries from this network" | Wait ten minutes. The limits are in `cbt_limit()` (migration 20261063); raise them if a very large batch shares one address. |
 | Many students "dropped off" at once | Likely the venue's internet. Their answers are kept; they continue when it returns. Give extra time (+10 min) to those affected. |

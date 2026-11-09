@@ -6,13 +6,12 @@ const URL = 'file://' + path.join(os.tmpdir(), 'cbt-e2e', 'e2e.html') + '?t=e2e1
 const results = []
 const ok = (name, cond, extra) => { results.push([cond ? 'PASS' : 'FAIL', name, extra || '']); console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? '  — ' + extra : '')) }
 
-async function fillIdentity(p, gcc, phone, dob) {
+async function fillIdentity(p, gcc, phone) {
   await p.getByLabel('Access code *').fill('246810')
   await p.getByPlaceholder('your GCC number').fill(gcc)
   await p.waitForSelector('text=GCC no. found', { timeout: 8000 })
   await p.getByRole('button', { name: /^Next/ }).click()
   await p.getByPlaceholder('10-digit mobile').fill(phone)
-  if (dob !== null) await p.getByPlaceholder('DD/MM/YYYY').fill(dob)
   await p.getByRole('button', { name: /Verify and continue/ }).click()
 }
 // The exam opens on a welcome screen, then the instructions one slide at a time, then the declaration.
@@ -58,7 +57,7 @@ async function takeExam(p, phone) {
   let [ctx, p] = await mk(true)
   await p.goto(URL); await p.waitForSelector('text=E2E Mock Test')
   ok('A1 landing page shows the exam', true)
-  await fillIdentity(p, '1', '9600000001', '04/03/2011')
+  await fillIdentity(p, '1', '9600000001')
   const seen = await takeExam(p, true)
   ok('A2 the three questions were all shown (shuffled order differs per attempt)', new Set(seen).size === 3, seen.join(' | '))
   await p.waitForSelector('text=Test submitted', { timeout: 8000 }).catch(() => {})
@@ -66,30 +65,30 @@ async function takeExam(p, phone) {
   ok('A3 result screen shows 3 / 3 from the server score', /3\s*\/\s*3/.test(body), (body.match(/Score[\s\S]{0,30}/) || [''])[0].replace(/\s+/g, ' '))
   await p.screenshot({ path: path.join(os.tmpdir(), 'cbt-e2e', 'phone-result.png'), fullPage: true }); await ctx.close()
 
-  // B. wrong date of birth is refused
+  // B. a wrong parent number is refused
   ;[ctx, p] = await mk(false)
   await p.goto(URL); await p.waitForSelector('text=E2E Mock Test')
   await p.getByLabel('Access code *').fill('246810'); await p.getByPlaceholder('your GCC number').fill('1')
   await p.waitForSelector('text=GCC no. found'); await p.getByRole('button', { name: /^Next/ }).click()
-  await p.getByPlaceholder('10-digit mobile').fill('9600000001'); await p.getByPlaceholder('DD/MM/YYYY').fill('01/01/2011')
+  await p.getByPlaceholder('10-digit mobile').fill('9600000099')
   await p.getByRole('button', { name: /Verify and continue/ }).click(); await p.waitForTimeout(800)
   const t = await p.locator('body').innerText()
-  ok('B1 wrong date of birth is refused and no exam starts', /does not match/i.test(t) && !(await p.locator('label.cbt-opt').count()))
+  ok('B1 a wrong parent number is refused and no exam starts', /does not match/i.test(t) && !(await p.locator('label.cbt-opt').count()))
   await ctx.close()
 
-  // C. a student with NO date of birth on file is asked for one, and it is saved
+  // C. no date of birth is asked for — even a student with none on file can start
   ;[ctx, p] = await mk(false)
   await p.goto(URL); await p.waitForSelector('text=E2E Mock Test')
   await p.getByLabel('Access code *').fill('246810'); await p.getByPlaceholder('your GCC number').fill('2')
   await p.waitForSelector('text=GCC no. found'); await p.getByRole('button', { name: /^Next/ }).click()
   const label = await p.locator('body').innerText()
-  ok('C1 the page says the date of birth is missing and asks for it', /not in our records yet/i.test(label))
-  await p.getByPlaceholder('10-digit mobile').fill('9600000002'); await p.getByPlaceholder('DD/MM/YYYY').fill('12/08/2012')
+  ok('C1 no date-of-birth field is shown', (await p.getByPlaceholder('DD/MM/YYYY').count()) === 0 && !/date of birth/i.test(label))
+  await p.getByPlaceholder('10-digit mobile').fill('9600000002')
   await p.getByRole('button', { name: /Verify and continue/ }).click()
   await p.getByRole('button', { name: /Read the instructions/ }).waitFor({ timeout: 8000 })   // the welcome screen
   ok('C2 verified and moved on to the welcome screen', true)
   await beginExam(p)
-  ok('C3 the exam started for the student whose date of birth was missing', true)
+  ok('C3 the exam started for a student with no date of birth on file', true)
   await ctx.close()
 
   // D. a guest
@@ -110,7 +109,7 @@ async function takeExam(p, phone) {
   for (const g of ['3', '4', '5', '6', '7', '8']) {
     ;[ctx, p] = await mk(false)
     await p.goto(URL); await p.waitForSelector('text=E2E Mock Test')
-    await fillIdentity(p, g, '96000000' + String(10 + Number(g)), '04/03/2011')
+    await fillIdentity(p, g, '96000000' + String(10 + Number(g)))
     await beginExam(p)
     const txt = await p.locator('.cbt-main').first().innerText()
     const q = ['2 + 2', '3 x 3', '10 - 4'].find(k => txt.includes(k)); const opts = (await p.locator('label.cbt-opt').allInnerTexts()).map(x => x.replace(/\s+/g, ' ').trim()).join('|')

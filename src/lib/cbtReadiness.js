@@ -42,13 +42,9 @@ export function readiness({ row, test, probes = {}, students = null, now = Date.
   if (students) {
     const act = students.filter(active)
     const noPhone = act.filter(s => !phoneOf(s)).length
-    const noDob = act.filter(s => !String(s.dob || '').trim()).length
     noPhone
       ? add('phones', 'bad', `${noPhone} active student${noPhone === 1 ? ' has' : 's have'} no parent number`, 'They cannot start the exam online until the number is added in Students.')
       : add('phones', 'ok', 'Every active student has a parent number', `${act.length} students checked.`)
-    noDob
-      ? add('dobs', 'warn', `${noDob} active student${noDob === 1 ? ' has' : 's have'} no date of birth`, 'They will be asked to type it, and it is saved to their record. Filling it in Students first avoids wrong entries.')
-      : add('dobs', 'ok', 'Every active student has a date of birth')
   } else add('phones', 'warn', 'Could not check the students list')
 
   const m = test?.marking || {}
