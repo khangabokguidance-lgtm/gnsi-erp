@@ -501,6 +501,8 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
 
   if (!a || !q) return null
   const low = left <= 300
+  const warn = !low && left <= 600                                   // amber in the last 10 minutes, red in the last 5
+  const pctLeft = Math.max(0, Math.min(100, (left / Math.max(1, test.durationMin * 60)) * 100))
   const inSec = qs.filter(x => x.sectionIndex === q.sectionIndex)
   const sel = a.answers[q.no]
   const marksOf = test.marking
@@ -509,7 +511,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
 
   const summaryTable = (
     <div className="tbl"><table>
-      <thead><tr><th>Section</th><th>Questions</th><th>Answered</th><th>Not Answered</th><th>Marked for Review</th><th>Answered &amp; Marked</th><th>Not Visited</th></tr></thead>
+      <thead><tr><th>Section</th><th><span className="not-sm">Questions</span><span className="only-sm">Total</span></th><th><span className="not-sm">Answered</span><span className="only-sm">Done</span></th><th><span className="not-sm">Not Answered</span><span className="only-sm">Not done</span></th><th><span className="not-sm">Marked for Review</span><span className="only-sm">Review</span></th><th><span className="not-sm">Answered &amp; Marked</span><span className="only-sm">Done + Review</span></th><th><span className="not-sm">Not Visited</span><span className="only-sm">Unseen</span></th></tr></thead>
       <tbody>{test.sections.map(s => { const c = secCounts(s); return <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length}</td><td>{c.answered}</td><td>{c.notAnswered}</td><td>{c.marked}</td><td>{c.answeredMarked}</td><td>{c.notVisited}</td></tr> })}</tbody>
     </table></div>
   )
@@ -525,8 +527,8 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     {busy && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 360, textAlign: 'center' }}><h3>{busy}</h3><p className="muted">Please wait. Do not close this page.</p></div></div>}
     {submitErr && <div className="cbt-modal" style={{ zIndex: 3300 }}><div className="box" style={{ maxWidth: 420 }}><h3>Could not submit yet</h3><p style={{ fontSize: 14, lineHeight: 1.6 }}>{submitErr}</p><p className="muted">Your answers are safe. Trying again automatically — keep this page open.</p><div className="cbt-row"><button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => finish(left <= 0)}>Try now</button></div></div></div>}
     <div className="cbt-top">
-      <div className="title">{test.name}</div>
-      <span className={`cbt-timer${low ? ' low' : ''}`} aria-label="Time left">⏱ {clock(left)}</span>
+      <div className="title"><img className="brand" src="/gnsi-mark.webp" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /><span className="tt"><small>Guidance Navodaya &amp; Sainik Institute</small>{test.name}</span></div>
+      <span className={`cbt-timer${low ? ' low' : warn ? ' warn' : ''}`} role="timer" aria-label={`Time left ${clock(left)}`}><small>Time left</small><b>{clock(left)}</b><i style={{ width: `${pctLeft}%` }} /></span>
       {secNow?.left != null && <span className={`cbt-timer cbt-sectimer${secNow.left <= 60 ? ' low' : ''}`} aria-label="Time left in this section" title="Time left in this section">Section ⏱ {clock(secNow.left)}</span>}
       <span className={`cbt-saved s-${saveInfo.state}`} role="status" aria-live="polite">{saveInfo.state === 'saving' ? '⟳ Saving…' : saveInfo.state === 'offline' ? '⚠ Not saved — retrying' : saveInfo.state === 'saved' ? `✓ Saved ${new Date(saveInfo.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}</span>
       <div className="cbt-tools">
@@ -549,7 +551,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     <div className="cbt-body">
       <div className="cbt-main">
         <div className="cbt-qhead">
-          <span className="cbt-qno">Question No. <i>{dn(q)}</i><small>of {qs.length}</small></span>
+          <span className="cbt-qno">Question No. <i>{dn(q)}</i><small>of {qs.length}</small>{sec.label ? <span className="cbt-qsec">Section {sec.label}</span> : null}</span>
           <span className="cbt-marks">Marks: <span className="p">+{marksOf.correct}</span> · <span className="n">{marksOf.wrong ? `−${marksOf.wrong}` : '0'}</span></span>
           <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ Palette · {all.answered + all.answeredMarked}/{qs.length}</button>
         </div>
@@ -583,6 +585,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       {drawer && <div className="cbt-backdrop open" onClick={() => setDrawer(false)} />}
       <aside className={`cbt-side${drawer ? ' open' : ''}`} aria-label="Question palette">
         <div className="cbt-sheet-h"><span>Question palette</span><button onClick={() => setDrawer(false)} aria-label="Close palette">✕</button></div>
+        <div className="cbt-pprog"><div><b>{all.answered + all.answeredMarked}</b> of {qs.length} answered</div><span className="bar"><i style={{ width: `${Math.round(((all.answered + all.answeredMarked) / Math.max(1, qs.length)) * 100)}%` }} /></span></div>
         <div className="cbt-legend">
           {LEGEND.map(s => <div key={s}><Swatch s={s} n={all[s]} />{STATUS_LABEL[s]}</div>)}
         </div>
