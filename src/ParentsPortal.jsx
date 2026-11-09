@@ -1,3 +1,5 @@
+import { authFetch } from './apiFetch'
+import { pickNextDue } from './lib/portalPay'
 import { printFeeReceipt as printPremiumFeeReceipt, receiptDocument, openReceiptWindow } from './premiumReceipt';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { useState, useCallback, useEffect } from 'react';
@@ -5,6 +7,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { parentSupabase as supabase } from './parentSupabase';
 import './privateFiles';
 import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razorpayEnabled } from './systemSettings';
+import { examKeyFor } from './examBatchKey'
+import { canonicalBatch } from './courseMap'
+import { notifyHousemasterByHouse } from './notifications'
 
 // Escapes text before it is placed inside HTML strings (receipts, report
 // cards, progress reports). Names/addresses/remarks come from the database
@@ -155,8 +160,8 @@ function getGrade(pct, scale = GRADE_PRESETS) {
 // selected exam type/date — see handlePrintReportCard.
 const COURSE_MAX_MARKS = {
   ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
-  ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
-  PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+  UDAAN:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
+  PRAGATI:   { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   LAKSHYA:   { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   "LAKSHYA - A": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   "LAKSHYA - B": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
@@ -516,7 +521,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const { data, error } = await Promise.race([
         supabase
           .from('students')
-          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, dob, blood_group, father_name, mother_name, address')
+          .select('id, name, course, class_name, batch, house, hostel_type, status, admission_no, gcc_no, photo_url, dob, blood_group, father_name, mother_name, address')
           .eq('gcc_no', gccNo)
           .single(),
         timeout(15000),
@@ -559,7 +564,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         if (col && data[col]) {
           const { data: sibs } = await supabase
             .from('students')
-            .select(`id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, ${col}`)
+            .select(`id, name, course, class_name, batch, house, hostel_type, status, admission_no, gcc_no, photo_url, ${col}`)
             .eq(col, data[col]);
           if (sibs && sibs.length > 1) setSiblings(sibs);
           else setSiblings([data]);
@@ -851,7 +856,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // Course (Sainik Appearing Group)" are mixed-case, so forcing
       // uppercase here would silently break scheduling/ranking lookups
       // for those batches).
-      const course = student.class_name || student.batch || '';
+      // The exam batch key, worked out exactly as Exams does (examKeyFor):
+      // from students.batch ("Udaan", "UDAAN — ENG", old "Elite" → UDAAN),
+      // not the free-text class_name ("9A", "ENG").
+      const course = examKeyFor(student);
+      const me = { ...student, class_name: course };
       const examTypeName = rcExamTypes.options.find(t => String(t.id) === String(examTypeId))?.name || 'Examination';
 
       // Live exam_schedule is the real source of truth for subjects/max
@@ -882,12 +891,22 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // (ENG/MM), since those students' class_name is a phantom secondary-
       // batch tag rather than the base course key. Pull a broad candidate
       // set once, then filter client-side with the real matcher.
-      const { data: candidatePool } = await supabase
-        .from('students')
-        .select('id, name, gcc_no, class_name, course, admission_no, batch')
-        .eq('status', 'Active');
-      const allStudents = (candidatePool || []).filter(s => matchesCourseBatch(s, course));
-      if (!allStudents.some(s => s.id === student.id)) allStudents.push(student);
+      // Paged, so the 1000-row cap can't drop classmates; each candidate gets
+      // its exam key the same way before matching.
+      const candidatePool = [];
+      for (let from = 0; ; from += 1000) {
+        const { data: page, error: poolErr } = await supabase
+          .from('students')
+          .select('id, name, gcc_no, class_name, course, admission_no, batch')
+          .eq('status', 'Active')
+          .order('id')
+          .range(from, from + 999);
+        if (poolErr) throw poolErr;
+        candidatePool.push(...(page || []));
+        if (!page || page.length < 1000) break;
+      }
+      const allStudents = candidatePool.map(s => ({ ...s, class_name: examKeyFor(s) })).filter(s => matchesCourseBatch(s, course));
+      if (!allStudents.some(s => s.id === student.id)) allStudents.push(me);
 
       const ids = allStudents.map(s => s.id);
       const [{ data: schedRows }, { data: markRows }] = await Promise.all([
@@ -915,7 +934,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       let institute = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur', academicYear: '2026-2027' };
       try { institute = { ...institute, ...JSON.parse(instSetting?.value || '{}') }; } catch (_) {}
 
-      const html = buildReportCardHTML(student, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
+      const html = buildReportCardHTML(me, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
 
       const title = `Report Card — ${student.name}`;
       fillWindow(receiptDocument(title, html, { extraCss: REPORT_CARD_CSS, printLabel: '🖨 Print / Save as PDF' }));
@@ -1074,11 +1093,20 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // fee_type) that the flattened `type`/`mode`/`amount` shape below
       // doesn't carry, and re-deriving them from the normalized string
       // (e.g. parsing "Flat Fee — June 2026" back apart) would be fragile.
-      const [{ data: admRows }, { data: flatRows }, { data: courseRows }] = await Promise.all([
+      let [{ data: admRows }, { data: flatRows }, { data: courseRows }] = await Promise.all([
         supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false),
         supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false),
         supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false),
       ]);
+
+      // A parent is not staff, so the private fee tables can answer with 0 rows (not an error). If the dues
+      // show money paid but nothing came back, read this student's rows through the secure function.
+      if (dues.totalPaid > 0 && !(admRows || []).length && !(flatRows || []).length && !(courseRows || []).length) {
+        try {
+          const { data: pub, error: pubErr } = await supabase.rpc('public_fee_rows', { p_gcc: gcc });
+          if (!pubErr && pub) { admRows = pub.adm || []; flatRows = pub.flat || []; courseRows = pub.course || []; }
+        } catch (_) { /* function not installed — history stays empty */ }
+      }
 
       const history = [
         ...(admRows || []).map(r => ({ date: r.pay_date, type: r.description || 'Admission/Item Fee', mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no, feeType: 'adm', raw: r })),
@@ -1100,23 +1128,6 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // so this can't just send the total: it has to target one concrete due.
   // Priority: admission fee (one-time, usually the first thing owed) →
   // earliest unpaid flat-fee month → earliest unpaid course-fee month.
-  const pickNextDue = (dues) => {
-    if (dues.admission && !dues.admission.paid && dues.admission.due > 0) {
-      return { kind: 'admission', amount: dues.admission.due };
-    }
-    const unpaidFlat = (dues.flatFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
-    if (unpaidFlat.length) {
-      const i = unpaidFlat[0];
-      return { kind: 'flat', amount: i.expected, for_month: i.month, year: i.year };
-    }
-    const unpaidCourse = (dues.courseFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
-    if (unpaidCourse.length) {
-      const i = unpaidCourse[0];
-      return { kind: 'course', amount: i.expected, for_month: i.month, year: i.year };
-    }
-    return null;
-  };
-
   const handlePayNow = async () => {
     if (!student || fees.status !== 'ready') return;
     // System Settings → Integrations → Razorpay switched off.
@@ -1130,7 +1141,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       return;
     }
     try {
-      const res = await fetch('/api/razorpay/create-payment-link', {
+      const res = await authFetch('/api/razorpay/create-payment-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1186,12 +1197,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      await supabase.from('push_subscriptions').insert({
-        student_id: student?.id || null,
-        endpoint: sub.endpoint,
-        subscription: JSON.stringify(sub),
-        role: 'parent',
+      const saved = await authFetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON(), student_id: student?.id || null, role: 'parent' }),
       });
+      if (!saved.ok) throw new Error('Could not save the notification subscription');
       setPushStatus('subscribed');
     } catch (e) {
       console.error('Push subscription failed:', e);
@@ -1745,7 +1756,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} student={student} />
             )}
             {activeTab === 'leave' && (
-              <LeaveTab state={leave} studentId={student.id} studentName={student.name} onSubmitted={() => loadLeave(student.id)} />
+              <LeaveTab state={leave} studentId={student.id} studentName={student.name} student={student} onSubmitted={() => loadLeave(student.id)} />
             )}
             {activeTab === 'items' && (
               <ParentItemsTab studentName={student.name} studentId={student.id} />
@@ -2114,6 +2125,96 @@ const HOME_TILES = [
   { id: 'alerts',     icon: '🔔', label: 'Alerts',        color: '#f59e0b' },
 ];
 
+// ── HOSTEL ROLL CALL CARD ────────────────────────────────────────────────────
+// Today's morning / night roll call for a hostel student, plus the last
+// 7 days. Reads the same attendance_records rows the housemaster marks in
+// Hostel → Roll Call (rows with session = morning | night).
+const RC_TONE = {
+  Present: { c: '#15803d', b: '#dcfce7', t: 'Present' },
+  Late: { c: '#b45309', b: '#fef3c7', t: 'Present (late)' },
+  Outing: { c: '#b45309', b: '#fef3c7', t: 'On outing' },
+  Outpass: { c: '#b45309', b: '#fef3c7', t: 'On outpass' },
+  'On Leave': { c: '#1d4ed8', b: '#dbeafe', t: 'On leave' },
+  Sick: { c: '#b91c1c', b: '#fee2e2', t: 'Sick' },
+  Absent: { c: '#b91c1c', b: '#fee2e2', t: 'Absent' },
+};
+function RollCallCard({ student, isMobile }) {
+  const [rows, setRows] = useState(null);
+  const [rowsFor, setRowsFor] = useState(null);
+  const isHostel = !!student?.house || (!!student?.hostel_type && !/day/i.test(student.hostel_type));
+  useEffect(() => {
+    if (!student?.id || !isHostel) return undefined;
+    let alive = true;
+    const from = new Date();
+    from.setDate(from.getDate() - 6);
+    supabase.from('attendance_records')
+      .select('date, session, status, marked_at')
+      .eq('student_id', student.id)
+      .in('session', ['morning', 'night'])
+      .gte('date', from.toLocaleDateString('en-CA'))
+      .order('date', { ascending: false })
+      .then(({ data, error }) => { if (alive) { setRows(error ? [] : (data || [])); setRowsFor(student.id); } });
+    return () => { alive = false; };
+  }, [student?.id, isHostel]);
+  if (!isHostel || rows === null || rowsFor !== student.id) return null;
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return { key: d.toLocaleDateString('en-CA'), label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2) };
+  });
+  const find = (date, sess) => rows.find(r => r.date === date && r.session === sess);
+  const todayKey = days[6].key;
+  const marked = rows.length;
+  const here = rows.filter(r => r.status === 'Present' || r.status === 'Late').length;
+  const house = String(student.house || '').replace(/\b\w/g, c => c.toUpperCase());
+  const timeOf = r => r?.marked_at ? new Date(r.marked_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '';
+
+  return (
+    <div style={{ borderRadius: 20, overflow: 'hidden', marginBottom: isMobile ? 12 : 16, border: '1px solid #ece6d6', backgroundColor: '#fff', boxShadow: '0 14px 34px -22px rgba(19,42,79,.45)' }}>
+      <div style={{ padding: '14px 16px', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>Hostel roll call</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginTop: 3, color: '#fff' }}>{student.name}{house ? ` · ${house} House` : ''}</div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[['morning', '🌅 Morning'], ['night', '🌙 Night']].map(([k, label]) => {
+            const r = find(todayKey, k);
+            const tone = r ? (RC_TONE[r.status] || { c: '#475569', b: '#f1f5f9', t: r.status }) : { c: '#64748b', b: '#f8fafc', t: 'Not marked yet' };
+            return (
+              <div key={k} style={{ borderRadius: 14, padding: '10px 12px', backgroundColor: tone.b, border: `1px solid ${tone.c}22` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{label} · today</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: tone.c, marginTop: 3 }}>{tone.t}</div>
+                {r && timeOf(r) && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>at {timeOf(r)}</div>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: '.06em', textTransform: 'uppercase' }}>Last 7 days</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginTop: 8 }}>
+          {days.map(d => (
+            <div key={d.key} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: d.key === todayKey ? '#0B1E3D' : '#94a3b8' }}>{d.label}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 5, alignItems: 'center' }}>
+                {['morning', 'night'].map(k => {
+                  const r = find(d.key, k);
+                  const tone = r ? (RC_TONE[r.status] || { c: '#64748b' }) : null;
+                  return <span key={k} title={`${k} · ${r ? (RC_TONE[r.status]?.t || r.status) : 'not marked'}`}
+                    style={{ width: 18, height: 18, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800,
+                      color: tone ? '#fff' : '#cbd5e1', backgroundColor: tone ? tone.c : '#f1f5f9' }}>{k === 'morning' ? 'M' : 'N'}</span>;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, fontSize: 12, color: '#64748b' }}>
+          {marked === 0 ? 'No roll call recorded in the last 7 days.' : `Present in ${here} of ${marked} roll calls this week.`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile, siblings, onSwitchChild }) {
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
@@ -2179,6 +2280,8 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
       </div>
 
       <SiblingOverview siblings={siblings} activeStudentId={student?.id} onSwitchChild={onSwitchChild} isMobile={isMobile} />
+
+      <RollCallCard student={student} isMobile={isMobile} />
 
       {dueSoon && !dueBannerDismissed && (
         <div style={{
@@ -2476,7 +2579,7 @@ function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile
           <ProfileField label="Admission No." value={student?.admission_no} />
           <ProfileField label="Course" value={student?.course} />
           <ProfileField label="Class" value={student?.class_name} />
-          <ProfileField label="Batch" value={student?.batch} />
+          <ProfileField label="Batch" value={canonicalBatch(student?.batch) || student?.batch} />
           <ProfileField label="Hostel Type" value={student?.hostel_type} />
           <ProfileField label="Status" value={student?.status} />
           <ProfileField label="Date of Birth" value={fmtDob} />
@@ -2942,7 +3045,7 @@ const LEAVE_TYPES = ['Home Visit', 'Medical', 'Family Emergency', 'Other'];
 // is included too since LeaveTab already reads it back for display, but if
 // that column turns out not to exist this insert will error — same
 // unconfirmed-column caveat the read side already carries.
-function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
+function LeaveRequestForm({ studentId, studentName, student, onSubmitted }) {
   const isMobile = useWindowWidth() < 640;
   const [leaveType, setLeaveType] = useState(LEAVE_TYPES[0]);
   const [fromDate, setFromDate] = useState('');
@@ -2966,13 +3069,23 @@ function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
       const { error: insertError } = await supabase.from('leave_records').insert({
         student_id: studentId,
         student_name: studentName || null,
+        gcc_no: student?.gcc_no || null,
+        class_name: canonicalBatch(student?.batch) || student?.class_name || '',
+        house: student?.house || '',
         leave_type: leaveType,
         from_date: fromDate,
         to_date: toDate,
-        reason: reason.trim() || null,
+        purpose: reason.trim() || null,
         status: 'Pending',
+        approval_level: 0,
+        requested_by: 'parent',
+        requested_at: new Date().toISOString(),
       });
       if (insertError) throw insertError;
+      if (student?.house) {
+        notifyHousemasterByHouse(student.house, `New leave request — ${studentName}`,
+          `${leaveType} · ${fromDate} → ${toDate} (requested by parent)`, '/hostel?tab=leave').catch(() => {});
+      }
       setJustSubmitted(true);
       setFromDate(''); setToDate(''); setReason('');
       onSubmitted?.();
@@ -3032,14 +3145,14 @@ function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
   );
 }
 
-function LeaveTab({ state, studentId, studentName, onSubmitted }) {
+function LeaveTab({ state, studentId, studentName, student, onSubmitted }) {
   const isMobile = useWindowWidth() < 640;
   // Hostel.jsx's real leave_records statuses are capitalized (Approved,
   // Pending, Rejected) — not the lowercase guesses this used to key off.
   const stTone = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
   return (
     <div>
-      <LeaveRequestForm studentId={studentId} studentName={studentName} onSubmitted={onSubmitted} />
+      <LeaveRequestForm studentId={studentId} studentName={studentName} student={student} onSubmitted={onSubmitted} />
       <Card
         title="Hostel Leave History"
         right={
@@ -3056,7 +3169,7 @@ function LeaveTab({ state, studentId, studentName, onSubmitted }) {
                   title: `Hostel Leave${r.leave_type ? ` — ${r.leave_type}` : ''}`,
                   date: r.from_date,
                   endDate: endStr,
-                  description: r.reason || '',
+                  description: r.purpose || r.reason || '',
                 };
               }))}
               style={{ borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: 'white', color: NAVY, fontWeight: 700, padding: '6px 10px', fontSize: 11, cursor: 'pointer' }}
@@ -3087,7 +3200,7 @@ function LeaveTab({ state, studentId, studentName, onSubmitted }) {
                   {r.leave_type && (
                     <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{r.leave_type}</div>
                   )}
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{r.purpose || r.reason || '—'}</div>
                 </div>
               ))}
             </div>

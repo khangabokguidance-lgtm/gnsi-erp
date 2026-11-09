@@ -984,7 +984,7 @@ export default function StudyLockers({ currentUser, perms, onNavigate, embedded 
   const activeLockerData = lockers.find(l => l.id === activeLocker)
 
   return (
-    <div style={embedded ? { fontFamily: 'inherit' } : { padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={embedded ? { fontFamily: 'inherit' } : { padding: isMobile ? '16px 12px' : 24, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", background: C.bg, minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
       {unlockTarget && (
         <UnlockModal

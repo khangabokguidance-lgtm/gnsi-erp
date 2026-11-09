@@ -10,12 +10,19 @@ import { fmt, shortSession } from './feeLedgerModel'
 import { monthTotals, printMonthlyLedger, exportMonthlyExcel } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
 import { LedgerLink } from './LedgerLinks'
+import { canonicalBatch, courseOf } from './courseMap'
+import { netRows } from './lib/monthwiseDues'
+
+// Course for the filters: the resolved course, or the saved one if unknown.
+const crs = s => { const c = courseOf(s); return c === 'Unassigned' ? (s.course || '') : c }
 
 const uniq = xs => [...new Set(xs.filter(Boolean))].sort()
 const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')
 const CELL_TITLE = { paid: 'Paid', advance: 'Paid in advance', short: 'Short-paid', due: 'Due', upcoming: 'Upcoming', before: 'Before admission' }
 
 function Cell({ r }) {
+  // A due month whose amount was written off (Refunds & Transfers) is settled.
+  if ((r.status === 'due' || r.status === 'short') && r.due <= 0) return <span className="fbk-cell paid" title={`${r.month} ${r.year} · dues written off`}>✓ w/o</span>
   const txt = r.status === 'due' ? fmt(r.due) : ['paid', 'advance', 'short'].includes(r.status) ? fmt(r.paidAmt) : r.status === 'upcoming' ? '·' : '—'
   const tip = `${r.month} ${r.year} · ${CELL_TITLE[r.status]}${r.expected ? ` · fee ₹${fmt(r.expected)}` : ''}${r.shortBy ? ` · short by ₹${fmt(r.shortBy)}` : ''}${r.paid.length ? ` · ${r.paid.map(p => p.receipt).filter(Boolean).join(', ')}` : ''}`
   return <span className={`fbk-cell ${r.status}`} title={tip}>{r.status === 'due' ? '⚠ ' : r.status === 'advance' ? '↑ ' : ''}{txt}</span>
@@ -60,15 +67,16 @@ export default function FeeMonthlyLedger({ students }) {
   }, [rows, pool, session, reload])
   const ready = built.key === key
 
-  const courses = useMemo(() => uniq(pool.map(s => s.course)), [pool])
-  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || s.course === course).map(s => s.batch)), [pool, course])
+  const courses = useMemo(() => uniq(pool.map(crs)), [pool])
+  // Resolved course and standard batch name (see PrintAllLedgers).
+  const batches = useMemo(() => uniq(pool.filter(s => course === 'All' || crs(s) === course).map(s => canonicalBatch(s.batch))), [pool, course])
   const hostels = useMemo(() => uniq(pool.map(s => s.hostel_type)), [pool])
 
   const items = useMemo(() => {
     const t = q.trim().toLowerCase()
     const xs = (ready ? built.items : []).filter(x => { const s = x.student; return (
       (who === 'all' || isActive(s)) &&
-      (course === 'All' || s.course === course) && (batch === 'All' || s.batch === batch) && (hostel === 'All' || s.hostel_type === hostel) &&
+      (course === 'All' || crs(s) === course) && (batch === 'All' || canonicalBatch(s.batch) === batch) && (hostel === 'All' || s.hostel_type === hostel) &&
       (show === 'all' || (show === 'dues' ? bal(x) > 0 : bal(x) === 0)) &&
       (!t || [s.name, s.gcc_no, s.admission_no, s.father_name].some(v => String(v || '').toLowerCase().includes(t)))) })
     const by = { name: (a, b) => String(a.student.name || '').localeCompare(String(b.student.name || '')), gcc: (a, b) => (Number(a.student.gcc_no) || 0) - (Number(b.student.gcc_no) || 0), due: (a, b) => bal(b) - bal(a), paid: (a, b) => b.reg.totalPaid - a.reg.totalPaid }
@@ -130,7 +138,7 @@ export default function FeeMonthlyLedger({ students }) {
                     <tr key={s.gcc_no}>
                       <td className="stk"><LedgerLink gcc={s.gcc_no} style={{ fontWeight: 700 }}>{s.name}</LedgerLink><div className="muted" style={{ fontSize: 11 }}>GCC-{s.gcc_no}{s.batch ? ` · ${s.batch}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}</div></td>
                       <td>{reg.admission ? <span className={`fbk-cell ${reg.admission.due ? 'due' : 'paid'}`} title={`Admission fee ₹${fmt(reg.admission.expected)}`}>{reg.admission.due ? `⚠ ${fmt(reg.admission.due)}` : fmt(reg.admission.paidAmt)}</span> : <span className="fbk-cell before">—</span>}</td>
-                      {reg.rows.map(r => <td key={r.month}><Cell r={r} /></td>)}
+                      {netRows(reg).map(r => <td key={r.month}><Cell r={r} /></td>)}
                       <td className="num" style={{ color: '#146c3a', fontWeight: 700 }}>{fmt(reg.totalPaid)}</td>
                       <td className="num" style={{ color: reg.totalDue + (arrears || 0) ? '#b42318' : '#146c3a', fontWeight: 800 }}>
                         {fmt(reg.totalDue + (arrears || 0))}

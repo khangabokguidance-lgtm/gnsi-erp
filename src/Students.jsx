@@ -4,6 +4,7 @@
 // Only the visual layer is replaced.
 
 import { printFeeReceipt } from './premiumReceipt'
+import { DISTRICT_OPTIONS, CASTES } from './lib/studentFields'
 import { CertificateDialog } from './certificateKit'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
@@ -18,7 +19,15 @@ import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
-import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
+import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff, handoffToAdmissions, handoffToFees } from './courseMap'
+import { openStudentLedger } from './ledgerLink'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
+import StudentCourseCheck from './StudentCourseCheck'
+import StudentsDesk from './StudentsDesk'
+import ExamDialogHost from './ExamDialogs'
+import { pushRecentStudent } from './studentsRecent'
+import { askConfirm, askInput } from './examShared'
+import { auditStudents, KEY_TRACK } from './examCourseAudit'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -227,7 +236,8 @@ const randomSuffix = () => Math.random().toString(36).slice(2,10)
 // Phone-camera originals are big, so the picker accepts large files and shrinks
 // them in the browser (lib/imageCompress.js) before anything is uploaded.
 const PHOTO_PICK_MAX_MB = 25
-const PHOTO_COMPRESS    = { maxDim: 1000, targetKB: 250 }
+const PHOTO_COMPRESS    = { maxDim: 1200, quality: 0.9, targetKB: 300 }
+const DOC_COMPRESS      = { maxDim: 1800, quality: 0.9, targetKB: 300 } // scanned documents: keep text readable
 const PHOTO_BUCKET      = 'gnsi'
 const PHOTO_URL_TTL     = 86400   // seconds; viewing links for private storage photos
 
@@ -323,7 +333,11 @@ async function syncStudentToAdmission(gccNo, studentsDbRow) {
     if (!existing) return // no original application on file — nothing to sync to
     const admUpdate = {}
     for (const [stuCol, admCol] of STUDENT_ADM_SYNC_FIELDS) {
-      if (studentsDbRow[stuCol] !== undefined) admUpdate[admCol] = studentsDbRow[stuCol]
+      if (studentsDbRow[stuCol] === undefined) continue
+      // A photo moved to private storage clears students.photo_url (the photo lives in photo_path). Copying that
+      // blank into the application wiped its photo, so a photo is only ever copied when there is one.
+      if (stuCol === 'photo_url' && !studentsDbRow[stuCol]) continue
+      admUpdate[admCol] = studentsDbRow[stuCol]
     }
     if (Object.keys(admUpdate).length === 0) return
     const { error } = await supabase.from('admissions').update(admUpdate).eq('gcc_no', gccNo)
@@ -391,9 +405,9 @@ async function saveStudentPhoto(student, rawFile, { alreadyCompressed=false }={}
   const isJpeg = info.file.type === 'image/jpeg'
   const path = `student_photos/${student.id}_${randomSuffix()}.${isJpeg ? 'jpg' : (info.file.name.split('.').pop() || 'jpg').toLowerCase()}`
   const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, info.file, { upsert: false, contentType: info.file.type })
-  if (upErr) throw new Error('Upload failed')
+  if (upErr) throw new Error('Upload failed: ' + (upErr.message || upErr.error || 'storage refused the file'))
   const { error: dbErr } = await updateStudentsRows({ match: { id: student.id }, patch: { photo_path: path, photo_url: null } })
-  if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed') }
+  if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed: ' + (dbErr.message || 'could not update the student record')) }
   // tidy up the previous stored photo so replaced photos don't pile up
   if (student.photo_path && student.photo_path !== path) supabase.storage.from(PHOTO_BUCKET).remove([student.photo_path]).catch(() => {})
   const { data } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(path, PHOTO_URL_TTL)
@@ -550,15 +564,15 @@ async function uploadPhotoToGoogleDriveStudents(file, identifier) {
 }
 
 
-const COURSE_STRUCTURE = {
-  Navodaya:         { subtypes:['Lakshya','Umeed'],             color:'#2563EB', bg:'#EFF6FF' },
-  Sainik:           { subtypes:['Achiever','Leader','Champion'], color:'#059669', bg:'#ECFDF5' },
-  Foundation:       { subtypes:['Elite','Prime'],                color:'#7C3AED', bg:'#F5F3FF' },
-  'Combined Course':{ subtypes:[],                               color:'#D97706', bg:'#FFFBEB' },
-}
+const COURSE_STRUCTURE = courseStructure({
+  Navodaya:         { color:'#2563EB', bg:'#EFF6FF' },
+  Sainik:           { color:'#059669', bg:'#ECFDF5' },
+  Foundation:       { color:'#7C3AED', bg:'#F5F3FF' },
+  'Combined Course':{ color:'#D97706', bg:'#FFFBEB' },
+}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'] })   // batches come from courseMap's one standard list
 
-const PROMOTION_MAP = { 'Lakshya':'Umeed','Achiever':'Leader','Leader':'Champion','Elite':'Prime' }
-const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime']
+const PROMOTION_MAP = { 'Lakshya':'Umeed','Lakshya A':'Umeed','Lakshya B':'Umeed','Achiever':'Leader','Leader':'Champion','Udaan':'Pragati' }
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
 
 // Houses will be loaded dynamically from DB
@@ -1517,9 +1531,11 @@ function DocumentsTab({ student, can, showToast }) {
 
   const handleUpload=async(e,docType)=>{
     if(!can.write){showToast('No permission',T.red);return}
-    const file=e.target.files[0];if(!file)return
-    const err=validateFile(file);if(err){showToast(err,T.red);return}
+    const picked=e.target.files[0];if(!picked)return
+    const err=validateFile(picked);if(err){showToast(err,T.red);return}
     setUploading(true)
+    // images are shrunk to ~300 KB first; PDFs and other files pass through untouched
+    const file=(await compressImage(picked,DOC_COMPRESS)).file
     const ext=file.name.split('.').pop().toLowerCase()
     const path=`student_docs/${student.id}/${docType}_${randomSuffix()}.${ext}`
     const{error:upErr}=await supabase.storage.from('gnsi').upload(path,file,{contentType:file.type})
@@ -1731,7 +1747,7 @@ function BulkOperationsModal({ students, selectedIds, can, onClose, onRefresh, s
     if(!selected.length){showToast('No students selected',T.red);return}
     if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk action`,T.red);return}
     try{RateLimiter.check('students_bulk_'+action,8,60000)}catch(e){showToast(e.message,T.red);return}
-    if(action==='delete'&&!window.confirm(`Archive ${selected.length} students?`))return
+    if(action==='delete'&&!(await askConfirm(`Archive ${selected.length} students?`,{confirmLabel:'Archive',danger:true})))return
     setProcessing(true)
     const ids=selected.map(s=>s.id)
     try{
@@ -1889,7 +1905,7 @@ function BulkFeeModal({ students, selectedIds, can, currentUser, isAdmin, onClos
     if(!monthFor){showToast('Enter month/description',T.red);return}
     if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk fee action`,T.red);return}
     try{RateLimiter.check('students_bulk_fee',5,60000)}catch(e){showToast(e.message,T.red);return}
-    if(!window.confirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`))return
+    if(!(await askConfirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`,{confirmLabel:'Collect'})))return
     const payDate=new Date().toISOString().slice(0,10)
     // FLOW FIX: a closed Accounts month must also stop fee collections dated in it.
     if(!(await confirmFeeMonthOpen(payDate,{isAdmin})))return
@@ -1916,6 +1932,7 @@ function BulkFeeModal({ students, selectedIds, can, currentUser, isAdmin, onClos
             payMode:method,
             collectedBy:collectorName,
             receiptNo:rcptNo('BULK'),
+            isRepeater:!!s.is_repeater,
             items:[{kind:'course',course:s.course||'',subtype:s.batch||'',month:monthName,year:yr,amount:Number(amount)}],
           })
         }catch(e){console.error('collectFee failed for',s.name,e);errors++}
@@ -1967,7 +1984,7 @@ function MergeDuplicatesModal({ students, can, onClose, onRefresh, showToast }) 
     if(!can.write){showToast('No permission',T.red);return}
     if(!primaryId||!mergeIds.length){showToast('Select records',T.red);return}
     try{RateLimiter.check('students_merge',5,60000)}catch(e){showToast(e.message,T.red);return}
-    if(!window.confirm(`Merge ${mergeIds.length} duplicate record(s) into the selected primary? Fee, attendance, exam, and document history will move to the primary; the duplicates will be archived.`))return
+    if(!(await askConfirm(`Merge ${mergeIds.length} duplicate record(s) into the selected primary? Fee, attendance, exam, and document history will move to the primary; the duplicates will be archived.`,{confirmLabel:'Merge',danger:true})))return
     setProcessing(true)
     try{
       for(const tbl of['attendance','fee_collections','exam_scores','student_documents'])
@@ -2353,7 +2370,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
   const [presets, setPresets]   = useState(() => { try { return JSON.parse(localStorage.getItem(REPORT_PRESETS_KEY)||'[]') } catch { return [] } })
   const [presetName, setPresetName] = useState('')
 
-  const allBatches = Array.from(new Set(students.map(s=>s.batch).filter(Boolean))).sort()
+  const allBatches = Array.from(new Set(students.map(s=>canonicalBatch(s.batch)).filter(Boolean))).sort()
   const availableFields = REPORT_FIELDS.filter(f => can.viewPII || !f.pii)
   const fieldGroups = Array.from(new Set(availableFields.map(f=>f.group)))
 
@@ -2369,8 +2386,8 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
   const setField = (k,v) => setRf(prev => ({ ...prev, [k]: v }))
 
   const matched = useMemo(() => students.filter(s => {
-    if (rf.course.length  && !rf.course.includes(s.course))      return false
-    if (rf.batch.length   && !rf.batch.includes(s.batch))        return false
+    if (rf.course.length  && !rf.course.includes(courseOf(s)))   return false
+    if (rf.batch.length   && !rf.batch.includes(canonicalBatch(s.batch))) return false
     if (rf.house.length   && !rf.house.includes(s.house))        return false
     if (rf.hostel.length  && !rf.hostel.includes(s.hostel_type)) return false
     if (rf.status.length  && !rf.status.includes(s.status))      return false
@@ -2625,7 +2642,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
 }
 
 // ─── Student Detail Drawer ────────────────────────────────────────────────────
-function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, onPhotoChange, showToast }) {
+function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, onPhotoChange, showToast, onNavigate }) {
   const [tab,setTab]=useState('profile')
   const [notes,setNotes]=useState(student.notes||'')
   const [saving,setSaving]=useState(false)
@@ -2768,6 +2785,11 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               )}
             </div>
             <div style={{display:'flex',gap:6,flexShrink:0,position:'relative'}}>
+              {onNavigate&&(<>
+                <button className="st-hbtn" title="Open this student's admission record" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>{handoffToAdmissions({gcc:student.gcc_no});onNavigate('admissions')}}>📝 Admission</button>
+                <button className="st-hbtn" title="Open this student's fee ledger" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>openStudentLedger(student.gcc_no)}>📒 Ledger</button>
+                {can.fees&&<button className="st-hbtn" title="Collect a fee for this student" style={{height:32,padding:'0 10px',fontSize:12.5}} onClick={()=>{handoffToFees({gcc:student.gcc_no});onNavigate('fees')}}>💳 Fee</button>}
+              </>)}
               <IfCan can={can.write}>
                 <button className="st-hbtn gold" style={{height:32,padding:'0 12px',fontSize:12.5}} onClick={()=>onEdit(student)}>✏ Edit</button>
               </IfCan>
@@ -2806,6 +2828,8 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
                 {[
   ['Gender',    student.gender],
+  ['District',  student.district],
+  ['Caste',     student.caste],
   ['DOB',       fmtD(student.dob)],
   ...(can.viewPII ? [
     ['Phone',     student.phone],
@@ -2989,15 +3013,34 @@ function PhotoField({ currentUrl, value, onChange }) {
 }
 
 function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
-  const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
+  const blank={name:'',gcc_no:'',dob:'',gender:'Male',district:'',caste:'',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
-  const [form,setForm]=useState(savedDraft||(editing?Object.fromEntries(Object.entries({...blank,...editing}).map(([k,v])=>[k,v??''])):blank))
+  // Batch in its standard name ("UDAAN" / old "Elite" → Udaan) and a blank
+  // course filled from it, so the Course / Batch boxes show the student's.
+  const stdStudent=st=>{const b=canonicalBatch(st.batch),c=courseOf(st);return{...st,batch:isStandardBatch(b)?b:st.batch,course:st.course||(c!=='Unassigned'?c:st.course)}}
+  const [form,setForm]=useState(savedDraft||(editing?Object.fromEntries(Object.entries({...blank,...stdStudent(editing)}).map(([k,v])=>[k,v??''])):blank))
   const [errors,setErrors]=useState({})
   const [saving,setSaving]=useState(false)
   const [draftSaved,setDraftSaved]=useState(false)
   const [photo,setPhoto]=useState(null)   // { file, note } — compressed, uploaded on save
   const set=(k,v)=>setForm(f=>({...f,[k]:v}))
+  // Changing the course also fixes the batch: a batch from another course would put the
+  // student in the wrong exam list, and Combined Course has no batch ("—").
+  const setCourse=v=>setForm(f=>({...f,course:v,batch:v==='Combined Course'?'—':((COURSE_STRUCTURE[v]?.subtypes||[]).includes(f.batch)?f.batch:'')}))
+  // Unsaved-changes guard
+  const [startJson]=useState(()=>JSON.stringify(form))
+  const dirty=!!photo||JSON.stringify(form)!==startJson
+  const requestClose=async()=>{
+    if(dirty&&!(await askConfirm('You have unsaved changes to this student. Close without saving?',{confirmLabel:'Discard changes',danger:true})))return
+    onCancel()
+  }
+  useEffect(()=>{
+    if(!dirty)return
+    const h=e=>{e.preventDefault();e.returnValue=''}
+    window.addEventListener('beforeunload',h)
+    return()=>window.removeEventListener('beforeunload',h)
+  },[dirty])
 
   useEffect(()=>{if(editing)return;const t=setTimeout(()=>{localStorage.setItem(DRAFT_KEY,JSON.stringify(sanitiseDraftForStorage(form)));setDraftSaved(true);setTimeout(()=>setDraftSaved(false),1500)},1000);return()=>clearTimeout(t)},[form,editing])
   // BUG FIX: this previously ran on every mount (including when opening an
@@ -3048,8 +3091,8 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const effectiveDue=Math.max(0,baseRate-Number(form.fee_waiver||0)-Number(form.scholarship||0))
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
-  const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
-  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
+  const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;if(form.status==='Active'||!form.status){if(!form.course)e.course='Choose a course';else if(form.course!=='Combined Course'&&!form.batch)e.batch='Choose a batch — a student with no batch is listed as Combined in Exams'};setErrors(e);return!Object.keys(e).length}
+  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,batch:form.course==='Combined Course'?'—':form.batch,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
 
   const INP={width:'100%',padding:'9px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:42,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
   const INP_ERR={...INP,borderColor:T.red}
@@ -3070,7 +3113,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           {!editing&&<Btn onClick={()=>{localStorage.removeItem(DRAFT_KEY);setForm(blank)}} size='sm'>Clear</Btn>}
-          <button onClick={onCancel} aria-label="Close form" style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
+          <button onClick={requestClose} aria-label="Close form" style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
         </div>
       </div>
 
@@ -3088,6 +3131,8 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
           </FieldRow>
           <FieldRow label="Date of Birth"><input type="date" style={INP} value={form.dob} onChange={e=>set('dob',e.target.value)}/></FieldRow>
           <FieldRow label="Gender"><select style={SEL} value={form.gender} onChange={e=>set('gender',e.target.value)}><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></FieldRow>
+          <FieldRow label="District (Manipur)"><select style={SEL} value={form.district||''} onChange={e=>set('district',e.target.value)}><option value="">—</option>{DISTRICT_OPTIONS.map(d=><option key={d}>{d}</option>)}{form.district&&!DISTRICT_OPTIONS.includes(form.district)&&<option>{form.district}</option>}</select></FieldRow>
+          <FieldRow label="Caste / Category"><select style={SEL} value={form.caste||''} onChange={e=>set('caste',e.target.value)}><option value="">—</option>{CASTES.map(c=><option key={c}>{c}</option>)}{form.caste&&!CASTES.includes(form.caste)&&<option>{form.caste}</option>}</select></FieldRow>
           <FieldRow label="Status"><select style={SEL} value={form.status} onChange={e=>set('status',e.target.value)}>{STATUSES.filter(s=>s!=='All').map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="Admission Date"><input type="date" style={INP} value={form.admission_date} onChange={e=>set('admission_date',e.target.value)}/></FieldRow>
           {form.status&&form.status!=='Active'&&<FieldRow label="Left Date"><input type="date" style={INP} value={form.left_date} onChange={e=>set('left_date',e.target.value)}/></FieldRow>}
@@ -3095,9 +3140,9 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 
         <Divider label="Course & Class"/>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12,marginBottom:4}}>
-          <FieldRow label="Course"><select style={SEL} value={form.course} onChange={e=>set('course',e.target.value)}><option value="">— Course —</option>{Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}</select></FieldRow>
-          <FieldRow label="Batch / Class">
-            {subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
+          <FieldRow label="Course" error={errors.course}><select style={errors.course?{...SEL,borderColor:T.red}:SEL} value={form.course} onChange={e=>{setCourse(e.target.value);setErrors(v=>({...v,course:'',batch:''}))}}><option value="">— Course —</option>{Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}</select></FieldRow>
+          <FieldRow label="Batch / Class" error={errors.batch}>
+            {form.course==='Combined Course'?<select style={{...SEL,opacity:.65}} value="—" disabled title="Combined Course students have no batch"><option value="—">— (none for Combined)</option></select>:subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>{set('batch',e.target.value);setErrors(v=>({...v,batch:''}))}}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}{form.batch&&!subtypes.includes(form.batch)&&<option>{form.batch}</option>}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
           </FieldRow>
           <FieldRow label="Session"><select style={SEL} value={form.session} onChange={e=>set('session',e.target.value)}><option value="">—</option>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{(houseOptions?.length?houseOptions:HOUSES_LIST).map(h=><option key={h}>{h}</option>)}</select></FieldRow>
@@ -3141,7 +3186,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 
         <div style={{display:'flex',gap:10,paddingTop:4}}>
           <Btn onClick={handleSave} disabled={saving} variant='primary' size='lg' style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':editing?'Update Student':'Add Student'}</Btn>
-          <Btn onClick={onCancel} size='lg'>Cancel</Btn>
+          <Btn onClick={requestClose} size='lg'>Cancel</Btn>
         </div>
       </div>
     </Card>
@@ -3183,18 +3228,20 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
 
   return (
     <div className="st-card" style={{
-      background:T.surface, borderRadius:T.r16,
-      border:`1px solid ${isSel?T.gold:T.border}`,
-      boxShadow:isSel?`0 0 0 3px ${T.goldLight}, ${T.shadow}`:T.shadow,
+      borderRadius:T.r16,
+      border:'1px solid transparent',
+      background:isSel?`linear-gradient(${T.surface},${T.surface}) padding-box,linear-gradient(145deg,${T.gold},${T.goldBorder}) border-box`:`linear-gradient(180deg,#fff 0%,${T.surface2} 100%) padding-box,linear-gradient(150deg,${T.goldBorder} 0%,${T.border} 45%,${T.gold} 100%) border-box`,
+      boxShadow:isSel?`0 0 0 3px ${T.goldLight}, 0 18px 34px -18px rgba(19,42,79,.55)`:'0 1px 2px rgba(19,42,79,.06),0 16px 30px -22px rgba(19,42,79,.55)',
       overflow:'hidden', position:'relative',
     }}>
       {/* Cover strip — navy band with the course colour glowing through */}
       <div style={{
-        height:60, position:'relative',
+        height:72, position:'relative',
         background:`radial-gradient(120% 140% at 100% 0%,${accent}bb 0%,transparent 55%),linear-gradient(135deg,${T.navy} 0%,${T.navy2} 100%)`,
       }}>
         <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(rgba(255,255,255,.08) 1px,transparent 1px)',backgroundSize:'10px 10px',opacity:.7}}/>
         <div style={{position:'absolute',left:0,right:0,bottom:0,height:2,background:`linear-gradient(90deg,transparent,${T.gold},transparent)`,opacity:.8}}/>
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(115deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,0) 38%)',pointerEvents:'none'}}/>
         <label onClick={e=>e.stopPropagation()} title="Select" style={{position:'absolute',top:9,left:9,width:24,height:24,borderRadius:7,background:isSel?T.gold:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.3)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
           <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
             style={{width:14,height:14,cursor:'pointer',accentColor:T.gold,margin:0}}/>
@@ -3205,10 +3252,10 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
       </div>
 
       {/* Avatar overlapping the cover, centered like a profile header */}
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 16px',marginTop:-32}}>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 16px',marginTop:-38}}>
         <div style={{position:'relative'}}>
-          <div style={{padding:3,background:T.surface,borderRadius:'50%',boxShadow:`0 0 0 1.5px ${T.goldBorder}, 0 6px 14px -6px rgba(19,42,79,.35)`}}>
-            <Avatar name={s.name} photoUrl={s.photo_url} size={64}/>
+          <div style={{padding:3,background:`linear-gradient(#fff,#fff) padding-box,linear-gradient(145deg,#e9d9b0,${T.gold},#8a6d2b) border-box`,border:'2.5px solid transparent',borderRadius:'50%',boxShadow:'0 10px 20px -8px rgba(19,42,79,.5)'}}>
+            <Avatar name={s.name} photoUrl={s.photo_url} size={68}/>
           </div>
           {birthday&&<span style={{position:'absolute',bottom:-2,right:-2,fontSize:16}}>🎂</span>}
         </div>
@@ -3219,7 +3266,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
             {recent&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.tealLight,color:T.teal,border:`1px solid ${T.tealBorder}`}}>NEW</span>}
           </div>
           <div style={{fontSize:11.5,color:T.text3,marginTop:3,fontVariantNumeric:'tabular-nums'}}>
-            {s.gcc_no&&<span style={{fontWeight:700,color:T.gold,letterSpacing:'.03em'}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}
+            {s.gcc_no&&<span style={{fontWeight:800,color:'#8a6d2b',letterSpacing:'.05em',background:'linear-gradient(180deg,#fbf3dc,#f3e5bb)',border:'1px solid #e0c986',borderRadius:999,padding:'2px 9px',fontSize:10.5}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?'  ':''}{s.batch}
           </div>
           <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginTop:6}}>
             {s.course&&<CoursePill course={s.course}/>}
@@ -3233,7 +3280,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
         </div>
 
         {/* Mini stat row — attendance + fee, like FB's friend-count/mutuals line */}
-        <div style={{display:'flex',gap:0,marginTop:12,alignItems:'stretch',width:'100%',background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r10,padding:'8px 0',justifyContent:'space-evenly'}}>
+        <div style={{display:'flex',gap:0,marginTop:12,alignItems:'stretch',width:'100%',background:`linear-gradient(180deg,#fff,${T.surface2})`,border:`1px solid ${T.border}`,borderTop:`2px solid ${T.gold}`,borderRadius:T.r10,padding:'9px 0',justifyContent:'space-evenly',boxShadow:'inset 0 1px 0 #fff'}}>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:9.5,color:T.text4,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Attendance</div>
             <div style={{marginTop:2}}>{att!=null?<span style={{fontSize:13,fontWeight:700,color:att>=75?T.green:T.red}}>{att.toFixed(0)}%</span>:<span style={{fontSize:12,color:T.text4}}>—</span>}</div>
@@ -3256,7 +3303,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
         ) : (
           ACTIONS.map((a,i)=>(
             <button key={a.l} onClick={a.fn} title={a.l} aria-label={a.l} style={{
-              flex:'1 1 0', minWidth:0, padding:'9px 2px 8px', border:'none',
+              flex:'1 1 0', minWidth:0, padding:'10px 2px 9px', border:'none',
               borderRight:i<ACTIONS.length-1?`1px solid ${T.border}`:'none',
               background:'none', cursor:'pointer', fontSize:11.5, fontWeight:600,
               color:a.danger?T.red:a.primary?T.brand:T.text2,
@@ -3266,7 +3313,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
             onMouseEnter={e=>{e.currentTarget.style.background=a.danger?T.redLight:T.surface2;if(!a.danger&&!a.primary)e.currentTarget.style.color=T.brand}}
             onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color=a.danger?T.red:a.primary?T.brand:T.text2}}
             >
-              <span style={{fontSize:14}}>{a.icon}</span>
+              <span style={{fontSize:13,width:26,height:26,borderRadius:9,display:'inline-flex',alignItems:'center',justifyContent:'center',background:a.danger?'linear-gradient(160deg,#c0392b,#7f1d1d)':'linear-gradient(160deg,#1f4e8c,#0b1e3d)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.22),0 0 0 1.5px #fff,0 0 0 2.5px #c9a24b'}}>{a.icon}</span>
               <span style={{fontSize:10.5,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.l==='Attendance'?'Attend':a.l}</span>
             </button>
           ))
@@ -4395,8 +4442,8 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, can, showToast,
             {isAdmin && r.status === 'pending' && (
               <>
                 <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
-                <button onClick={()=>{
-                  const reason = window.prompt('Reason for rejecting (optional):')
+                <button onClick={async()=>{
+                  const reason = await askInput('Reason for rejecting (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                   if (reason === null) return
                   setPinFor({record:r,approve:false,rejectionReason:reason})
                 }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
@@ -4537,8 +4584,8 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
                     {isAdmin && status === 'pending' && (
                       <>
                         <button onClick={()=>setPinFor({batchId,batchRecords,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve all</button>
-                        <button onClick={()=>{
-                          const reason = window.prompt('Reason for rejecting the whole batch (optional):')
+                        <button onClick={async()=>{
+                          const reason = await askInput('Reason for rejecting the whole batch (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                           if (reason === null) return
                           setPinFor({batchId,batchRecords,approve:false,rejectionReason:reason})
                         }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject all</button>
@@ -4581,8 +4628,8 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
                   {isAdmin && r.status === 'pending' && (
                     <>
                       <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
-                      <button onClick={()=>{
-                        const reason = window.prompt('Reason for rejecting (optional):')
+                      <button onClick={async()=>{
+                        const reason = await askInput('Reason for rejecting (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                         if (reason === null) return
                         setPinFor({record:r,approve:false,rejectionReason:reason})
                       }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
@@ -4635,13 +4682,13 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
 //
 //  Course comes from students.course. Many older rows have it blank, so it
 //  falls back to the batch name (Achiever/Leader/Champion → Sainik,
-//  Lakshya/Umeed → Navodaya, Elite/Prime → Foundation). Anything still
+//  Lakshya/Umeed → Navodaya, Udaan/Pragati → Foundation). Anything still
 //  unknown is listed under "Unassigned" so nobody silently disappears.
 // ═══════════════════════════════════════════════════════════════════════════
 const CDB_COURSES = [
   { key:'Sainik',          exam:'AISSEE', batches:['Achiever','Leader','Champion'],            accent:'#1F6F4A', tint:'#E8F5EE' },
   { key:'Navodaya',        exam:'JNVST',  batches:['Lakshya','Lakshya A','Lakshya B','Umeed'], accent:'#1E3A6E', tint:'#E9EEF8' },
-  { key:'Foundation',      exam:'School foundation', batches:['Elite','Prime'],                accent:'#6D28D9', tint:'#F3EEFF' },
+  { key:'Foundation',      exam:'School foundation', batches:['Udaan','Pragati'],                accent:'#6D28D9', tint:'#F3EEFF' },
   { key:'Combined Course', exam:'AISSEE + JNVST', batches:[],                                  accent:'#A7771F', tint:'#FBF3E0' },
   { key:'Unassigned',      exam:'Course not set',  batches:[],                                 accent:'#64748B', tint:'#F1F5F9' },
 ]
@@ -4649,6 +4696,13 @@ const CDB_COURSES = [
 // call uses, so a student is in the same class in both modules.
 const cdbCourseOf = courseOf
 const cdbBatchOf = batchOf
+// One spelling for gender, whatever was saved ('Male', 'MALE', 'boy', 'F' …).
+const cdbGender = s => {
+  const g = String(s?.gender || '').trim().toLowerCase()
+  if (['male', 'm', 'boy'].includes(g)) return 'Boy'
+  if (['female', 'f', 'girl'].includes(g)) return 'Girl'
+  return g ? s.gender : ''
+}
 const cdbEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
 const cdbInr = n => '₹' + Number(n || 0).toLocaleString('en-IN')
 
@@ -4834,6 +4888,8 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
   const sel = { boxSizing:'border-box', padding:'8px 10px', borderRadius:10, border:`1px solid ${T.border2}`, fontSize:12.5, height:36, fontFamily:'inherit', background:T.surface, color:T.text1 }
   const houseMix = houses.map((h, i) => ({ l:h, n: courseList.filter(s => s.house === h && (s.status || 'Active') === 'Active').length, c: ['#132a4f','#b8923a','#1F6F4A','#6D28D9','#0284C7','#E11D48','#0D9488','#EA580C','#64748B','#A7771F'][i % 10] }))
 
+  // Grouped by batch, every row's batch is the group heading: no column for it.
+  const showBatchCol = groupBy !== 'batch'
   const AttBar = ({ v }) => v == null ? <span style={{ color:T.text4 }}>—</span> : (
     <div style={{ display:'flex', alignItems:'center', gap:7, minWidth:92 }}>
       <div style={{ flex:1, height:6, borderRadius:99, background:T.surface2, overflow:'hidden' }}>
@@ -4862,7 +4918,12 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
         .cdb-pill.on .n{background:rgba(255,255,255,.16);color:${T.goldBorder}}
         .cdb-table{width:100%;border-collapse:separate;border-spacing:0}
         .cdb-table th{position:sticky;top:0;z-index:1;background:var(--surface2);text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
-        .cdb-table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);vertical-align:middle}
+        .cdb-table td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);vertical-align:middle}
+        .cdb-table th{padding:10px 10px}
+        .cdb-table th:first-child,.cdb-table td:first-child{padding-left:16px}
+        .cdb-table th:last-child,.cdb-table td:last-child{padding-right:16px}
+        .cdb-name{font-weight:700;color:var(--text1);font-size:13px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cdb-clip{max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .cdb-table tbody tr{cursor:pointer;transition:background .12s}
         .cdb-table tbody tr:hover td{background:var(--surface-hover)}
         .cdb-grp{display:flex;align-items:center;gap:10px;padding:12px 16px;background:${T.goldLight};border-top:1px solid ${T.goldBorder};border-bottom:1px solid ${T.goldBorder};font-family:${T.serif};font-weight:600;color:${T.navy};font-size:15px}
@@ -4902,7 +4963,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap', position:'relative' }}>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.18em', textTransform:'uppercase', color:T.goldBorder }}>{meta.exam} · Course database</div>
-            <h2 style={{ margin:'6px 0 0', fontFamily:T.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1 }}>{course}</h2>
+            <h2 style={{ margin:'6px 0 0', fontFamily:T.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1, color:'#fff' }}>{course}</h2>
             <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', marginTop:6 }}>
               {batchCounts.length} batch{batchCounts.length === 1 ? '' : 'es'}{houses.length ? ` · ${houses.length} house${houses.length === 1 ? '' : 's'}` : ''}{sessions.length ? ` · sessions ${sessions.slice(0, 3).join(', ')}` : ''}
             </div>
@@ -5010,21 +5071,21 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
           <div style={{ overflowX:'auto' }}>
             <table className="cdb-table">
               <thead><tr>
-                <th style={{ width:44 }}>#</th><th>Student</th><th>Batch</th><th>House</th><th>Residence</th>
+                <th style={{ width:40 }}>#</th><th>Student</th>{showBatchCol && <th>Batch</th>}<th>House</th>
                 {can?.viewPII && <th>Parent / phone</th>}
-                <th>Attendance</th><th style={{ textAlign:'right' }}>Score</th><th style={{ textAlign:'right' }}>Dues</th><th>Status</th><th style={{ textAlign:'right' }}></th>
+                <th style={{ width:150 }}>Attendance</th><th style={{ textAlign:'right' }} title="Total in the latest exam">Last exam</th><th style={{ textAlign:'right' }}>Dues</th><th>Status</th><th style={{ textAlign:'right' }}></th>
               </tr></thead>
               {groups.map(g => (
                 <tbody key={g.title || 'all'}>
                   {g.title && (
-                    <tr style={{ cursor:'default' }}><td colSpan={can?.viewPII ? 11 : 10} style={{ padding:0 }}>
+                    <tr style={{ cursor:'default' }}><td colSpan={(can?.viewPII ? 9 : 8) + (showBatchCol ? 1 : 0)} style={{ padding:0 }}>
                       <div className="cdb-grp">{g.title}
                         <span style={{ fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>{g.list.length} student{g.list.length > 1 ? 's' : ''}</span>
                         {groupBy === 'batch' && course !== 'Unassigned' && g.title !== 'No batch' && (
                           <button className="cdb-act" style={{ fontFamily:'inherit' }} onClick={() => openAttendance({ page:'mark', course, subtype: g.title })}>Mark attendance →</button>
                         )}
                         <span style={{ marginLeft:'auto', fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>
-                          ♂ {g.list.filter(s => s.gender === 'Male').length} · ♀ {g.list.filter(s => s.gender === 'Female').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
+                          ♂ {g.list.filter(s => cdbGender(s) === 'Boy').length} · ♀ {g.list.filter(s => cdbGender(s) === 'Girl').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
                         </span>
                       </div>
                     </td></tr>
@@ -5035,22 +5096,24 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
                       <tr key={s.id} onClick={() => onOpenDetail?.(s)}>
                         <td style={{ color:T.text4, fontVariantNumeric:'tabular-nums' }}>{i + 1}</td>
                         <td>
-                          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:200 }}>
-                            <Avatar name={s.name} photoUrl={s.photo_url} size={34} />
+                          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:180, maxWidth:300 }}>
+                            <Avatar name={s.name} photoUrl={s.photo_url} size={32} />
                             <div style={{ minWidth:0 }}>
-                              <div style={{ fontWeight:700, color:T.text1 }}>{s.name}</div>
-                              <div style={{ fontSize:11.5, color:T.text3 }}>GCC {s.gcc_no}{s.gender ? ` · ${s.gender === 'Male' ? 'Boy' : s.gender === 'Female' ? 'Girl' : s.gender}` : ''}{s.session ? ` · ${s.session}` : ''}</div>
+                              <div className="cdb-name" title={s.name}>{s.name}</div>
+                              <div style={{ fontSize:11.5, color:T.text3, whiteSpace:'nowrap' }}>GCC {s.gcc_no}{cdbGender(s) ? ` · ${cdbGender(s)}` : ''}{s.session ? ` · ${s.session}` : ''}</div>
                             </div>
                           </div>
                         </td>
-                        <td>{cdbBatchOf(s)}</td>
-                        <td>{s.house || <span style={{ color:T.text4 }}>—</span>}</td>
-                        <td><span style={{ fontSize:11.5, fontWeight:700, padding:'3px 9px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span></td>
-                        {can?.viewPII && <td><div style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3 }}>{s.phone || ''}</div></td>}
+                        {showBatchCol && <td style={{ whiteSpace:'nowrap' }}>{cdbBatchOf(s)}</td>}
+                        <td style={{ whiteSpace:'nowrap' }}>
+                          <div style={{ color:T.text1 }}>{s.house || <span style={{ color:T.text4 }}>—</span>}</div>
+                          <span style={{ display:'inline-block', marginTop:3, fontSize:10.5, fontWeight:700, padding:'1px 8px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span>
+                        </td>
+                        {can?.viewPII && <td><div className="cdb-clip" title={s.father_name || ''} style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3, fontVariantNumeric:'tabular-nums' }}>{s.phone || ''}</div></td>}
                         <td onClick={e => { e.stopPropagation(); openAttendance({ page:'student360', gcc: s.gcc_no }) }} title="Open in Attendance 360" style={{ cursor:'pointer' }}><AttBar v={attData?.[s.id]} /></td>
                         <td style={{ textAlign:'right', fontWeight:700, color:T.text1, fontVariantNumeric:'tabular-nums' }}>{score ?? <span style={{ color:T.text4, fontWeight:400 }}>—</span>}</td>
                         <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{dues > 0 ? <span style={{ fontWeight:800, color:T.red }}>{cdbInr(dues)}</span> : <span style={{ color:T.green, fontWeight:700 }}>✓</span>}</td>
-                        <td><StatusPill status={s.status || 'Active'} /></td>
+                        <td style={{ whiteSpace:'nowrap' }}><StatusPill status={s.status || 'Active'} /></td>
                         <td style={{ textAlign:'right', whiteSpace:'nowrap' }} onClick={e => e.stopPropagation()}>
                           {can?.fees && (s.status || 'Active') === 'Active' && <button className="cdb-act" onClick={() => onOpenFee?.(s)}>Fee</button>}{' '}
                           {can?.write && <button className="cdb-act" onClick={() => onEdit?.(s)}>Edit</button>}
@@ -5069,6 +5132,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
 }
 
 export default function Students({ onNavigate: goToModule } = {}) {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   const { role, can, user }=usePermissions()
   const isMobile=useIsMobile()
 
@@ -5096,8 +5160,7 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
-  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
+  const [pageTab,setPageTab]=useState('desk')   // always opens on the Students desk
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -5334,7 +5397,7 @@ const effectiveCols = visibleCols.filter(col => {
     // exclusively by allocateStudent/vacateStudent below (which also
     // mirrors it onto students.house), so it can't race against or
     // overwrite what those helpers just wrote.
-    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
+    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null,...(obj.district?{district:obj.district}:{}),...(obj.caste?{caste:obj.caste}:{})}
     const houseChosen=obj.house||null
     // FLOW FIX: Students is edit-only. A student created here had no
     // admissions row, so Fees refused payment ("No admission record") and
@@ -5410,6 +5473,26 @@ const effectiveCols = visibleCols.filter(col => {
     if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})
   }
 
+  // Moves many students to course + batch in one go (used by Course Check's "Fix all Combined").
+  // Chunked writes through the same wrapper as every other update (so the admissions mirror runs),
+  // ONE audit entry that records each student's previous course/batch so the change can be reversed.
+  const handleBulkCourseFix=async(items,patch)=>{
+    if(!can.write){showToast('No permission',T.red);return 0}
+    const doneIds=new Set()
+    for(let i=0;i<items.length;i+=50){
+      const chunk=items.slice(i,i+50)
+      const{error}=await updateStudentsRows({match:{id:{in:chunk.map(x=>x.id)}},patch})
+      if(error){showToast(`Stopped after ${doneIds.size} — update failed: ${error.message}`,T.red);break}
+      chunk.forEach(x=>doneIds.add(x.id))
+    }
+    if(doneIds.size){
+      setStudents(prev=>prev.map(s=>doneIds.has(s.id)?{...s,...patch}:s))
+      await auditLog('student_bulk_course_fix',{count:doneIds.size,patch,previous:items.filter(x=>doneIds.has(x.id)).map(x=>({id:x.id,gcc:x.gcc,course:x.before.course,batch:x.before.batch}))})
+      broadcastStudentsUpdate({type:'quick_update'})
+    }
+    return doneIds.size
+  }
+
   // FLOW FIX: cloning created a student with no admission record. Kept as
   // a redirect so any old caller still lands somewhere sensible.
   const goToAdmissions=()=>{
@@ -5469,18 +5552,18 @@ const effectiveCols = visibleCols.filter(col => {
   const clearSel=()=>setSelected(new Set())
   const applyPreset=f=>{setSearch(f.q||'');setFilterStatus(f.status||'All');setFilterCourse(f.course||'All');setFilterHostel(f.hostel||'All');setFilterHouse(f.house||'All');setFilterGender(f.gender||'All');setFilterSession(f.session||'All');setFilterBatch(f.batch||'All');setGccMin(f.gccMin||'');setGccMax(f.gccMax||'');setPage(1);setShowPresets(false)}
   const currentFilters={q:search,status:filterStatus,course:filterCourse,hostel:filterHostel,house:filterHouse,gender:filterGender,session:filterSession,batch:filterBatch,gccMin,gccMax}
-  const allBatches=['All',...Array.from(new Set(students.map(s=>s.batch).filter(Boolean))).sort()]
+  const allBatches=['All',...Array.from(new Set(students.map(s=>canonicalBatch(s.batch)).filter(Boolean))).sort()]
 
   const filtered=students.filter(s=>{
     const q=search.toLowerCase()
     if(q&&![s.name,s.gcc_no,s.batch,s.father_name,s.mother_name,s.phone,s.house].some(v=>v?.toString().toLowerCase().includes(q)))return false
     if(filterStatus!=='All'&&s.status!==filterStatus)return false
-    if(filterCourse!=='All'&&s.course!==filterCourse)return false
+    if(filterCourse!=='All'&&courseOf(s)!==filterCourse)return false
     if(filterHostel!=='All'&&s.hostel_type!==filterHostel)return false
     if(filterHouse!=='All'&&s.house!==filterHouse)return false
     if(filterGender!=='All'&&s.gender!==filterGender)return false
     if(filterSession!=='All'&&s.session!==filterSession)return false
-    if(filterBatch!=='All'&&s.batch!==filterBatch)return false
+    if(filterBatch!=='All'&&canonicalBatch(s.batch)!==filterBatch)return false
     if(gccMin&&Number(s.gcc_no)<Number(gccMin))return false
     if(gccMax&&Number(s.gcc_no)>Number(gccMax))return false
     if(ageMin){const a=getAge(s.dob);if(a==null||a<Number(ageMin))return false}
@@ -5494,6 +5577,16 @@ const effectiveCols = visibleCols.filter(col => {
   const clearAllFilters=()=>{setSearch('');setFilterStatus('All');setFilterCourse('All');setFilterHostel('All');setFilterHouse('All');setFilterGender('All');setFilterSession('All');setFilterBatch('All');setGccMin('');setGccMax('');setPage(1)}
   const feeDueCount=Object.values(feeData).filter(v=>v?.dues>0).length
   const longAbsentCount=students.filter(s=>attData[s.id]!=null&&attData[s.id]<50).length
+  // Course Check + desk counts
+  const courseIssueCount=useMemo(()=>auditStudents(students,Object.fromEntries(Object.keys(KEY_TRACK).map(k=>[k,[]])),{}).summary.problems,[students])
+  const deskCounts={
+    courseIssues:courseIssueCount,
+    incomplete:students.filter(s=>getMissingFieldKeys(s,can.viewPII).length>0).length,
+    highDues:students.filter(s=>(feeData[s.id]?.dues||0)>10000).length,
+    lowAtt:longAbsentCount,
+  }
+  // remember the profiles opened, for the desk's "Recently opened"
+  useEffect(()=>{if(detailPanel?.id!=null)pushRecentStudent(detailPanel.id)},[detailPanel])
 
   const KPI_ITEMS=[
     {label:'Total',value:students.length,color:T.text2,icon:'👥'},
@@ -5587,18 +5680,21 @@ const effectiveCols = visibleCols.filter(col => {
     .st-hbtn.gold{background:linear-gradient(180deg,#d4ae58,${T.gold});color:#1a1406;border:1px solid #a37f2e;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 18px -8px rgba(184,146,58,.8)}
     .st-hbtn.gold:hover{filter:brightness(1.06)}
     .st-hstat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 14px;min-width:0;backdrop-filter:blur(4px)}
-    .st-tabs{display:flex;gap:4px;padding:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .st-tabs{display:flex;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
     .st-tabs::-webkit-scrollbar{display:none}
-    .st-tab{display:flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text3);white-space:nowrap;transition:background .15s,color .15s}
+    .st-tab{display:flex;align-items:center;gap:9px;padding:7px 16px 7px 9px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text3);white-space:nowrap;transition:background .15s,color .15s}
     .st-tab:hover{color:var(--text1);background:var(--surface2)}
     .st-tab.on{background:linear-gradient(180deg,${T.navy2},${T.navy});color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
-    .st-tab.on svg{color:${T.goldBorder}}
+    .st-ti{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 1.5px #fff,0 0 0 2.5px #c9a24b;margin-right:2px;transition:transform .15s}
+    .st-tab:hover .st-ti{transform:translateY(-1px)}
+    .st-tab.on .st-ti{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 0 0 1.5px rgba(255,255,255,.35)}
+    .st-tab.on svg{color:#1a1406}
     .st-tool{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .st-kpis{display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:thin}
     .st-kpis>.st-kpi{flex:1 0 132px;scroll-snap-align:start}
     .st-filter{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);padding:10px 0;margin-bottom:14px;border-bottom:1px solid var(--border)}
     .st-card{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s;animation:fadeUp .3s ease both}
-    .st-card:hover{transform:translateY(-3px);box-shadow:var(--shadow2)!important}
+    .st-card:hover{transform:translateY(-4px);box-shadow:0 0 0 1px rgba(201,162,75,.45),0 24px 40px -20px rgba(19,42,79,.6)!important}
     .st-card:hover .st-name{color:${T.navy2}}
     .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
     .st-skel{border-radius:16px;height:268px;border:1px solid var(--border);background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 40%,var(--surface) 80%);background-size:800px 100%;animation:stShimmer 1.3s linear infinite}
@@ -5610,6 +5706,7 @@ const effectiveCols = visibleCols.filter(col => {
   return (
     <>
       <style>{globalCSS}</style>
+      <ExamDialogHost />
       {toast&&<Toast msg={toast.msg} color={toast.color}/>}
       {undoItem&&<UndoBanner student={undoItem} onUndo={handleUndo} onDismiss={()=>setUndoItem(null)}/>}
       {confirmModal&&<ConfirmModal title={confirmModal.title} message={confirmModal.message} confirmLabel={confirmModal.confirmLabel} danger={confirmModal.danger} onConfirm={confirmModal.onConfirm} onCancel={()=>setConfirmModal(null)}/>}
@@ -5630,7 +5727,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} onPhotoChange={(id,patch)=>{setStudents(prev=>prev.map(x=>x.id===id?{...x,...patch}:x));setDetailPanel(d=>d&&d.id===id?{...d,...patch}:d)}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} onPhotoChange={(id,patch)=>{setStudents(prev=>prev.map(x=>x.id===id?{...x,...patch}:x));setDetailPanel(d=>d&&d.id===id?{...d,...patch}:d)}} showToast={showToast} onNavigate={goToModule}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
@@ -5729,7 +5826,9 @@ const effectiveCols = visibleCols.filter(col => {
         {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
           {(()=>{
-            const PAGE_TABS=[{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Home',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            const ALL_PAGE_TABS=[{key:'desk',label:'Desk',short:'Desk',icon:SIcon.search},{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Stats',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'courseCheck',label:'Course Check',short:'Check',icon:SIcon.merge,badge:courseIssueCount},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            // Phone: five slots in the bottom bar; the rest are one tap away from the Desk tiles
+            const PAGE_TABS=isMobile?ALL_PAGE_TABS.filter(t=>['desk','courses','students','courseCheck','dataQuality'].includes(t.key)):ALL_PAGE_TABS
             // Phone: payments-app style bottom navigation instead of the scrolling tab strip
             if(isMobile) return createPortal(
               <nav className="st-bottom" role="tablist" aria-label="Students sections">
@@ -5742,7 +5841,7 @@ const effectiveCols = visibleCols.filter(col => {
 .st-pad{height:76px}`}</style>
                 {PAGE_TABS.map(t=>(
                   <button key={t.key} role="tab" aria-selected={pageTab===t.key} aria-label={t.label} className={'st-nb'+(pageTab===t.key?' on':'')} onClick={()=>{setPageTab(t.key);window.scrollTo({top:0})}}>
-                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}</span>
+                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}{t.badge>0?` ·${t.badge}`:''}</span>
                   </button>
                 ))}
               </nav>,
@@ -5754,8 +5853,8 @@ const effectiveCols = visibleCols.filter(col => {
                   const active=pageTab===t.key
                   return (
                     <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
-                      <t.icon size={15}/>
-                      {t.label}
+                      <span className="st-ti"><t.icon size={15}/></span>
+                      {t.label}{t.badge>0&&<span style={{marginLeft:2,minWidth:18,height:18,padding:'0 5px',borderRadius:99,background:T.red,color:'#fff',fontSize:10.5,fontWeight:800,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>{t.badge}</span>}
                     </button>
                   )
                 })}
@@ -5790,6 +5889,21 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
         )}
         </div>
+
+        {pageTab==='desk'&&(
+          <StudentsDesk
+            students={students} feeData={feeData} attData={attData}
+            userName={user?.name||user?.userName||user?.username}
+            isMobile={isMobile} counts={deskCounts} canEdit={can.write}
+            onOpenDetail={setDetailPanel} onOpenFee={setFeePanel}
+            onEdit={s=>{setEditing(s);setFormOpen(true);setPageTab('students')}}
+            goTab={setPageTab}
+          />
+        )}
+
+        {pageTab==='courseCheck'&&(
+          <StudentCourseCheck students={students} onQuickSave={handleQuickSave} onBulkFix={handleBulkCourseFix} can={can} isMobile={isMobile}/>
+        )}
 
         {pageTab==='courses'&&(
           <CourseDatabase

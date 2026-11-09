@@ -105,6 +105,80 @@ export function hallTicketHtml(c, exam, { photo, qr } = {}) {
     </div></div>`
 }
 
+// ── Admit card / registration slip (NTA-style layout) ─────────────────────────────────
+// slip = true → "Registration confirmation": same page without roll number, room and seat, which are only printed
+// once staff issue the hall ticket.
+export function admitCardHtml(c, exam, { photo, signature, qr, slip = false } = {}) {
+  const rd = c.reg_details || {}
+  const cell = (k, v, wide) => `<tr><td style="width:${wide ? '30%' : '42%'};color:#5d6b82;border:none;padding:3px 0;vertical-align:top">${k}</td><td style="border:none;padding:3px 0;font-weight:600">${esc(v || '—')}</td></tr>`
+  const defaults = [
+    'Bring a printed copy of this admit card and one original photo identity proof (school ID / Aadhaar). Entry is not allowed without them.',
+    `Report at the centre by ${exam.reporting_time || '30 minutes before the exam'}. No candidate is allowed after the exam has started.`,
+    'Carry only a blue/black ball-point pen. Calculators, mobile phones, smart watches and any electronic device are not permitted.',
+    'Occupy only the seat allotted to you. Do not leave the hall before the exam ends.',
+    'Any unfair means or impersonation will lead to disqualification. The decision of the Controller of Examinations is final.',
+    'Check that the photograph and details on this card are correct; report any mistake to the office before the exam.',
+  ]
+  const instructions = String(exam.instructions || '').split(/\n+/).filter(Boolean)
+  const list = instructions.length ? instructions : defaults
+  const half = Math.ceil(list.length / 2)
+  const ol = (items, start) => `<ol start="${start}" style="margin:0 0 0 16px;padding:0">${items.map(i => `<li style="margin-bottom:3px">${esc(i)}</li>`).join('')}</ol>`
+  const fee = Number(exam.application_fee) || 0
+  return `<div class="page" style="padding:4mm 0">
+    <div style="border:2px solid #132a4f">
+      <div style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:3px double #132a4f;background:#f4f7fb">
+        <div style="width:54px;height:54px;border-radius:50%;background:#132a4f;color:#fff;display:flex;align-items:center;justify-content:center;font:700 16px Georgia,serif">GNSI</div>
+        <div style="flex:1;text-align:center">
+          <div style="font:700 17px Georgia,serif;color:#132a4f;letter-spacing:.04em">${esc(inst().name)}</div>
+          <div style="font-size:10.5px;color:#5d6b82">${esc(inst().address)}</div>
+          <div style="margin-top:5px;display:inline-block;background:#132a4f;color:#fff;padding:3px 14px;font-weight:700;letter-spacing:.14em;font-size:12.5px">${slip ? 'REGISTRATION CONFIRMATION SLIP' : 'ADMIT CARD'}</div>
+          <div style="font-weight:700;font-size:13px;margin-top:4px">${esc(exam.exam_name)}</div>
+        </div>
+        <div style="width:80px;text-align:center">${qr ? `<img src="${esc(qr)}" style="width:78px;height:78px">` : ''}<div style="font-size:8.5px;color:#5d6b82">Scan to verify</div></div>
+      </div>
+      ${slip ? `<div style="margin:10px 14px 0;padding:7px 12px;background:#fff5e0;border:1px solid #eadbb2;font-size:11.5px"><b>Your admit card is not issued yet.</b> Seat, room and roll number are printed on the admit card, which you can download from the same page once the hall tickets are issued. Keep this slip safe.</div>` : ''}
+      <div style="display:flex;gap:14px;padding:12px 14px">
+        <table style="flex:1;border-collapse:collapse;font-size:12px">
+          ${cell('Application No.', c.application_no, true)}
+          ${slip ? '' : cell('Roll No.', hallTicketNo(exam.id, c.roll_number), true)}
+          ${cell("Candidate's Name", c.student_name, true)}
+          ${cell("Father's Name", c.father_name, true)}
+          ${cell("Mother's Name", c.mother_name, true)}
+          ${cell('Date of Birth', c.dob ? fmtDate(c.dob) : '', true)}
+          ${cell('Gender / Category', [c.gender, c.category].filter(Boolean).join(' / '), true)}
+          ${cell('Class applied for', c.class_studying || exam.class_target, true)}
+          ${cell('Medium / Nationality', [rd.medium, rd.nationality].filter(Boolean).join(' / '), true)}
+          ${cell('Contact', [c.phone, c.email].filter(Boolean).join(' · '), true)}
+          ${cell('Address', c.address, true)}
+        </table>
+        <div style="width:128px;text-align:center">
+          <div style="width:118px;height:146px;border:1.5px solid #132a4f;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#faf8f3;margin:0 auto">
+            ${photo ? `<img src="${esc(photo)}" style="width:100%;height:100%;object-fit:cover">` : '<span class="muted" style="font-size:9.5px;padding:6px">Paste recent passport photograph</span>'}
+          </div>
+          <div style="width:118px;height:42px;border:1.5px solid #132a4f;margin:8px auto 0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff">
+            ${signature ? `<img src="${esc(signature)}" style="max-width:100%;max-height:100%;object-fit:contain">` : '<span class="muted" style="font-size:9px">Candidate\'s signature</span>'}
+          </div>
+        </div>
+      </div>
+      <table class="grid" style="margin:0 14px 10px;width:calc(100% - 28px)">
+        <tr><th>Exam date</th><th>Reporting time</th><th>Exam time</th><th>Duration</th><th>Examination centre</th>${slip ? '' : '<th>Room / Seat</th>'}</tr>
+        <tr><td>${esc(fmtDate(exam.exam_date))}</td><td>${esc(exam.reporting_time || '—')}</td><td>${esc(exam.exam_time || '—')}</td>
+        <td>${exam.duration_mins ? esc(exam.duration_mins) + ' min' : '—'}</td><td>${esc(exam.venue || inst().address || 'GNSI')}</td>${slip ? '' : `<td>${esc(c.room || '—')}${c.seat_no ? ` / ${esc(c.seat_no)}` : ''}</td>`}</tr>
+      </table>
+      <div style="margin:0 14px 10px;font-size:11px"><b>Application fee:</b> ${fee > 0 ? `₹${fee.toLocaleString('en-IN')} — ${esc(c.fee_status || 'Unpaid')}${c.fee_ref ? ` (ref ${esc(c.fee_ref)}${c.fee_paid_on ? `, ${esc(fmtDate(c.fee_paid_on))}` : ''})` : ''}` : 'No fee'}</div>
+      <div style="margin:0 14px 10px;border:1px solid #c9d3e3;padding:8px 12px;font-size:10.5px;background:#fafcff">
+        <div style="font-weight:700;margin-bottom:4px;letter-spacing:.06em">IMPORTANT INSTRUCTIONS</div>
+        <div style="display:flex;gap:18px"><div style="flex:1">${ol(list.slice(0, half), 1)}</div><div style="flex:1">${ol(list.slice(half), half + 1)}</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:20px 14px 10px;font-size:10.5px">
+        <div>Signature of the candidate<br><br>______________</div>
+        <div style="text-align:center">Signature of the invigilator<br><br>______________</div>
+        <div style="text-align:right">Controller of Examinations<br><br>______________</div>
+      </div>
+      <div style="text-align:center;font-size:9px;color:#5d6b82;padding:0 14px 8px">Computer-generated ${slip ? 'confirmation slip' : 'admit card'} · ${esc(inst().name)}</div>
+    </div></div>`
+}
+
 // ── Attendance sheet (one page per room) ──────────────────────────────────────
 export function attendanceSheetHtml(exam, room, cands, photos = {}) {
   const rows = cands.map(c => `<tr style="height:46px">

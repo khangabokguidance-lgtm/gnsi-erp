@@ -1,387 +1,301 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
-// ONE module for everything academic-content: Study Materials, Teaching Aids,
-// Question Bank, Question Bank Viewer and Entrance Exam are tabs of this page
-// (sidebar id 'learninghub'), laid out as a flow:
-//   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam)
-// • a premium ribbon is the tab bar, with a live count on every tab (refreshes
-//   when a question/material is saved anywhere);
-// • "Connected to this page" cards link each tab to the ones it feeds / is fed by;
-// • tabs keep their state while you switch (a visited tab stays mounted, hidden),
+// ONE unified page for all academic content. Every section the user may open (Study Materials, Class Material,
+// Teaching Aids, Study Lockers, Question Bank, Question Bank Viewer, Entrance Exam, Model Sets, Model Set Maker)
+// is a collapsible block on the same page, grouped Learn → Practice → Test:
+// • no home screen and no tab bar — open a block to see its full content;
+// • a block mounts the first time it is opened and then stays mounted (hidden when collapsed),
 //   so a half-written question or an open filter is not lost;
-// • each tab keeps its own permission key (questionbank, entrance, …), so role
-//   settings still decide who sees which tab.
+// • links from inside a section (App's onNavigate) open + scroll to the target block;
+// • each section keeps its own permission key, so role settings still decide who sees which block.
 // Styled with the portal's premiumUI tokens (navy + antique gold).
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import { NavIcon } from './navIcons';
 import { PX } from './premiumUI';
-import { EventBus, GNSI_EVENTS } from './EventBus';
 import { HUB_TABS } from './learningHubTabs';
 
 const StudyMaterial = lazy(() => import('./StudyMaterial'));
 const TeachingAids = lazy(() => import('./TeachingAids'));
+const StudyLockers = lazy(() => import('./StudyLockers'));
 const QuestionBank = lazy(() => import('./QuestionBank'));
 const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
+const ModelSets = lazy(() => import('./ModelSets'));
+const SetMaker = lazy(() => import('./SetMaker'));
+const ClassMaterial = lazy(() => import('./ClassMaterial'));
 
 const MODULES = {
-  studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
-  teachingaids:       { label: 'Teaching Aids',        short: 'Aids',       metric: 'aids',      unit: 'aids' },
-  questionbank:       { label: 'Question Bank',        short: 'Bank',       metric: 'questions', unit: 'questions' },
-  questionbankviewer: { label: 'Question Bank Viewer', short: 'Viewer',     metric: 'questions', unit: 'questions' },
-  entrance:           { label: 'Entrance Exam',        short: 'Entrance',   metric: 'exams',     unit: 'exams' },
+  studymaterial:      { label: 'Study Materials', desc: 'Read notes and chapters',      short: 'Materials' },
+  teachingaids:       { label: 'Teaching Aids', desc: 'Books and aids to teach from',        short: 'Aids' },
+  studylockers:       { label: 'Study Lockers', desc: 'Your saved study items',        short: 'Lockers' },
+  questionbank:       { label: 'Question Bank', desc: 'Add, edit and read questions',        short: 'Bank' },
+  questionbankviewer: { label: 'Question Bank Viewer', desc: 'Browse questions to revise', short: 'Viewer' },
+  entrance:           { label: 'Entrance Exam', desc: 'Run entrance exams',        short: 'Entrance' },
+  modelsets:          { label: 'Model Sets', desc: 'Take a practice paper',           short: 'Model Sets' },
+  setmaker:           { label: 'Model Set Maker', desc: 'Print papers and answer sheets',      short: 'Set Maker' },
+  classmaterial:      { label: 'Class Material', desc: 'Class files from your teachers',       short: 'Class Material' },
 };
 
 const FLOW = [
-  { stage: 'Learn', ids: ['studymaterial', 'teachingaids'] },
+  { stage: 'Learn', ids: ['studymaterial', 'classmaterial', 'teachingaids', 'studylockers'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
-  { stage: 'Assess', ids: ['entrance'] },
+  { stage: 'Test', ids: ['entrance', 'modelsets', 'setmaker'] },
 ];
 
-// For each module: the other modules it connects to, and why.
-const RELATED = {
-  questionbank: [
-    { to: 'questionbankviewer', title: 'Student view', hint: 'See the bank exactly as students see it' },
-    { to: 'studymaterial', title: 'Chapter materials', hint: 'Notes and lessons behind these questions' },
-    { to: 'entrance', title: 'Entrance papers', hint: 'Entrance question papers are drawn from this bank' },
-  ],
-  questionbankviewer: [
-    { to: 'questionbank', title: 'Edit & add questions', hint: 'Open the full Question Bank to change or add' },
-    { to: 'studymaterial', title: 'Revise the chapter', hint: 'Jump to the study material for what you are viewing' },
-    { to: 'entrance', title: 'Entrance exams', hint: 'Use these questions in an entrance paper' },
-  ],
-  entrance: [
-    { to: 'questionbank', title: 'Question source', hint: 'Papers are generated from the Question Bank' },
-    { to: 'questionbankviewer', title: 'Preview questions', hint: 'Browse the questions a paper can draw on' },
-    { to: 'studymaterial', title: 'Prepare candidates', hint: 'Study materials for the entrance syllabus' },
-  ],
-  studymaterial: [
-    { to: 'questionbank', title: 'Practice questions', hint: 'Question Bank questions for the same chapters' },
-    { to: 'teachingaids', title: 'Teaching aids', hint: 'Books and aids to teach from' },
-    { to: 'questionbankviewer', title: 'Test yourself', hint: 'Read-only question view for revision' },
-  ],
-  teachingaids: [
-    { to: 'studymaterial', title: 'Study materials', hint: 'Chapter notes that go with these aids' },
-    { to: 'questionbank', title: 'Practice questions', hint: 'Question Bank for the same subjects' },
-    { to: 'entrance', title: 'Entrance exams', hint: 'Where the learning is assessed' },
-  ],
-};
 
-// ── live counts (shared + cached, so five screens do not each re-query) ──────
-const TABLES = { questions: 'qbank_questions', materials: 'study_materials', aids: 'teaching_aids', exams: 'entrance_exams' };
-let cache = { at: 0, data: {}, pending: null };
-async function countOf(table) {
-  try {
-    const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true });
-    return error ? null : count ?? null;
-  } catch { return null; }
+// ── plain-language help shown at the top of every section ───────────────────
+const HELP = {
+  studymaterial: { what: 'Notes, formula sheets, practice sets, videos and solved papers, arranged by course, subject and chapter.', steps: ['Pick a course button.', 'Choose a subject, then open a chapter.', 'Tap a material to read or watch it. Use the search box to find one by name.'] },
+  classmaterial: { what: 'Files your teachers share for each class.', steps: ['Choose your class.', 'Tap a file to open it.', 'Teachers can add new files with the Add button.'] },
+  teachingaids: { what: 'A bookshelf of teaching books you read page by page.', steps: ['Pick a batch such as Lakshya or Umeed.', 'Narrow by subject if you like.', 'Tap a book cover to read. Your last page is remembered.'] },
+  studylockers: { what: 'Lockers that group study items together for easy revision.', steps: ['Open a locker.', 'Read or practise what is inside.', 'Teachers can create lockers and add items.'] },
+  questionbank: { what: 'All questions, organised by course, subject and chapter. Add new ones or switch to Read-only to just study.', steps: ['Open "Question Bank" to browse and search.', 'Use "Manual Add" or "Bulk Paste" to add questions.', 'Use "More tools" for papers, tests and reports (Admin).'] },
+  questionbankviewer: { what: 'A read-only view of the questions for revision.', steps: ['Pick a course, subject and chapter.', 'Read the questions and answers.', 'Print a chapter with or without answers.'] },
+  entrance: { what: 'Runs a whole entrance exam from applications to results.', steps: ['Click "New exam" and fill the name and date.', 'Follow the steps in order: Applications, Question Paper, Hall Tickets, Exam Day, Results.', 'The Overview shows the next thing to do.'] },
+  modelsets: { what: 'Full practice papers you take on screen with a timer and OMR sheet.', steps: ['Open a set.', 'Answer the questions before the timer ends.', 'See your section-wise score at the end.'] },
+  setmaker: { what: 'Builds a fresh printed booklet with answer key and OMR sheet.', steps: ['Choose the questions or topics.', 'Generate the paper.', 'Download or print it.'] },
+};
+const helpKey = (id) => `gnsi_lh_help_${id}`;
+function SectionHelp({ id }) {
+  const h = HELP[id];
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(helpKey(id)) === 'open'; } catch { return false; } });
+  if (!h) return null;
+  return (
+    <details className="lh-help" open={open} onToggle={(e) => { const o = e.currentTarget.open; setOpen(o); try { localStorage.setItem(helpKey(id), o ? 'open' : 'closed'); } catch { /* storage blocked */ } }}>
+      <summary>How to use this</summary>
+      <p>{h.what}</p>
+      <ol>{h.steps.map((t, i) => <li key={i}>{t}</li>)}</ol>
+    </details>
+  );
 }
-function loadCounts(force = false) {
-  if (!force && cache.pending) return cache.pending;
-  if (!force && Date.now() - cache.at < 60000 && Object.keys(cache.data).length) return Promise.resolve(cache.data);
-  cache.pending = Promise.all(Object.entries(TABLES).map(async ([k, t]) => [k, await countOf(t)])).then((pairs) => {
-    cache = { at: Date.now(), data: Object.fromEntries(pairs), pending: null };
-    return cache.data;
-  });
-  return cache.pending;
+
+// ── recently opened sections (per browser) ──────────────────────────────────
+const RECENT_KEY = 'gnsi_lh_recent';
+const readRecent = () => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => HUB_TABS.includes(x)) : []; } catch { return []; } };
+const pushRecent = (id) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...readRecent().filter((x) => x !== id)].slice(0, 4))); } catch { /* storage blocked */ } };
+
+// ── search across the content of every section the user may open ────────────
+const SEARCHES = [
+  { id: 'studymaterial', table: 'study_materials', col: 'title', pick: (r) => r.title },
+  { id: 'teachingaids', table: 'teaching_aids', col: 'title', pick: (r) => r.title },
+  { id: 'questionbankviewer', table: 'qbank_questions', col: 'question', pick: (r) => r.question },
+  { id: 'entrance', table: 'entrance_exams', col: 'exam_name', pick: (r) => r.exam_name },
+  { id: 'modelsets', table: 'model_sets', col: 'data->>title', sel: 'id,title:data->>title', pick: (r) => r.title },
+];
+async function searchAll(term, visible) {
+  const t = term.replace(/[%,()]/g, ' ').trim();
+  const out = [];
+  await Promise.all(SEARCHES.map(async (d) => {
+    // questions are searched from the viewer (read-only) or the bank, whichever the user may open
+    const sec = d.id === 'questionbankviewer' ? ['questionbankviewer', 'questionbank'].find((x) => visible.includes(x)) : d.id;
+    if (!sec || !visible.includes(sec)) return;
+    try {
+      const { data, error } = await supabase.from(d.table).select(d.sel || `id,${d.col}`).ilike(d.col, `%${t}%`).limit(6);
+      if (!error) (data || []).forEach((r) => out.push({ key: `${d.table}-${r.id}`, section: sec, text: String(d.pick(r) || '').slice(0, 140) }));
+    } catch { /* table missing or blocked — skip this source */ }
+  }));
+  return out;
 }
-function useLearningCounts() {
-  const [counts, setCounts] = useState(cache.data);
+
+// ── "Today" panel: what is new and what is next, so the page is useful before you open anything ──
+const NEW_SOURCES = [
+  { section: 'studymaterial', table: 'study_materials', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'teachingaids', table: 'teaching_aids', sel: 'id,title,created_at', pick: (r) => r.title },
+  { section: 'modelsets', table: 'model_sets', sel: 'id,title:data->>title,created_at', pick: (r) => r.title },
+];
+const daysUntil = (iso) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return null; const t = new Date(); t.setHours(0, 0, 0, 0); d.setHours(0, 0, 0, 0); return Math.round((d - t) / 86400000); };
+const ago = (iso) => { const n = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
+function TodayPanel({ visible, onOpen }) {
+  const [data, setData] = useState(null);
   useEffect(() => {
     let live = true;
-    const refresh = (force) => loadCounts(force).then((d) => { if (live) setCounts({ ...d }); });
-    refresh(false);
-    const offs = [GNSI_EVENTS.QUESTION_SAVED, GNSI_EVENTS.MATERIAL_SAVED].map((ev) => EventBus.on(ev, () => refresh(true)));
-    return () => { live = false; offs.forEach((o) => o && o()); };
+    (async () => {
+      const fresh = [];
+      await Promise.all(NEW_SOURCES.filter((d) => visible.includes(d.section)).map(async (d) => {
+        try {
+          const { data: rows, error } = await supabase.from(d.table).select(d.sel).order('created_at', { ascending: false }).limit(4);
+          if (!error) (rows || []).forEach((r) => r.created_at && r.title && fresh.push({ key: `${d.table}-${r.id}`, section: d.section, text: String(d.pick(r)).slice(0, 80), at: r.created_at }));
+        } catch { /* source unavailable — skip */ }
+      }));
+      fresh.sort((a, b) => new Date(b.at) - new Date(a.at));
+      let exam = null;
+      if (visible.includes('entrance')) {
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: ex, error } = await supabase.from('entrance_exams').select('id,exam_name,exam_date').gte('exam_date', today).order('exam_date', { ascending: true }).limit(1);
+          if (!error && ex && ex[0]) exam = ex[0];
+        } catch { /* skip */ }
+      }
+      if (live) setData({ fresh: fresh.slice(0, 5), exam });
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return counts;
+  if (!data || (!data.fresh.length && !data.exam)) return null;
+  const left = data.exam ? daysUntil(data.exam.exam_date) : null;
+  return (
+    <div className="lh-today">
+      {data.exam ? (
+        <button type="button" className="lh-exam" onClick={() => onOpen('entrance')}>
+          <b>{left === 0 ? 'Today' : left === 1 ? 'Tomorrow' : `${left} days`}</b>
+          <span>Next entrance exam<br /><strong>{data.exam.exam_name}</strong></span>
+        </button>
+      ) : null}
+      {data.fresh.length ? (
+        <div className="lh-new">
+          <div className="lh-new-h">New in the Learning Hub</div>
+          {data.fresh.map((f) => (
+            <button key={f.key} type="button" className="lh-new-i" onClick={() => onOpen(f.section)}>
+              <span>{f.text}</span><em>{MODULES[f.section].short} · {ago(f.at)}</em>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
-const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('en-IN'));
 
 const CSS = `
-.lh-root{--lh-navy:${PX.navy};--lh-gold:${PX.gold};font-family:${PX.sans}}
-.lh-wrap{padding:16px 24px 0}
-.lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 12px;flex-wrap:wrap}
-.lh-title-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:${PX.goldLt};box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 8px 16px -8px rgba(19,42,79,.6)}
-.lh-title-e{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold}}
+.lh-root{font-family:${PX.sans};max-width:1100px;margin:0 auto;padding:16px 16px 40px}
+.lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 14px;flex-wrap:wrap}
+.lh-title-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:${PX.goldLt}}
 .lh-title-t{font-family:${PX.serif};font-size:22px;font-weight:600;color:${PX.ink};line-height:1.1}
-.lh-title-s{font-size:12.5px;color:${PX.sub};margin-left:auto}
-@media (max-width:640px){.lh-title-s{display:none}.lh-title-t{font-size:19px}}
-.lh-ribbon{display:flex;align-items:stretch;gap:0;background:#fff;border:1px solid ${PX.line};border-radius:18px;padding:8px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 14px 30px -22px rgba(19,42,79,.4);overflow-x:auto;scrollbar-width:none}
-.lh-ribbon::-webkit-scrollbar{display:none}
-.lh-stage{display:flex;flex-direction:column;gap:5px;padding:2px 10px 4px;flex:0 0 auto;position:relative}
-.lh-stage + .lh-stage{border-left:1px dashed ${PX.line2}}
-.lh-stage + .lh-stage::before{content:'';position:absolute;left:-6px;top:50%;width:11px;height:11px;margin-top:-1px;border-radius:50%;background:#fff;border:1px solid ${PX.line2};box-shadow:inset 0 0 0 3px ${PX.goldBg}}
-.lh-stage-h{font-size:9.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};padding-left:4px}
-.lh-pills{display:flex;gap:6px}
-.lh-pill{position:relative;display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 13px 0 11px;border:1px solid ${PX.line};border-radius:13px;background:linear-gradient(180deg,#fff,#faf8f3);color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap;transition:transform .09s ease,box-shadow .12s ease,border-color .12s ease,background .12s ease;box-shadow:0 2px 0 ${PX.line}}
-.lh-pill:hover{transform:translateY(-1px);border-color:${PX.goldLine};box-shadow:0 4px 0 ${PX.goldLine},0 10px 16px -10px rgba(19,42,79,.3)}
-.lh-pill:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(19,42,79,.18)}
-.lh-pill:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
-.lh-pill svg{color:${PX.gold}}
-.lh-pill .lh-n{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${PX.goldBg};color:#7a5a12;font-variant-numeric:tabular-nums}
-.lh-pill.on{color:#fff;border-color:#0e203f;background:linear-gradient(180deg,${PX.navy2},${PX.navy});box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 0 ${PX.navyDeep},0 10px 18px -8px rgba(19,42,79,.6)}
-.lh-pill.on svg{color:${PX.goldLt}}
-.lh-pill.on .lh-n{background:rgba(233,217,176,.2);color:${PX.goldLt}}
-.lh-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
-.lh-link{display:flex;align-items:center;gap:12px;text-align:left;padding:10px 12px;border-radius:14px;border:1px solid ${PX.line};background:#fff;cursor:pointer;font-family:${PX.sans};color:${PX.ink};transition:transform .1s ease,box-shadow .12s ease,border-color .12s ease;min-width:0}
-.lh-link:hover{transform:translateY(-2px);border-color:${PX.goldLine};box-shadow:0 12px 24px -16px rgba(19,42,79,.45)}
-.lh-link:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
-.lh-link-ico{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:${PX.goldLt};box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
-.lh-link-t{font-weight:800;font-size:13px;line-height:1.2;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.lh-link-t i{font-style:normal;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:99px;background:${PX.goldBg};color:#7a5a12}
-.lh-link-d{font-size:11.5px;color:${PX.sub};margin-top:2px;line-height:1.3}
-.lh-link-go{margin-left:auto;color:${PX.gold};flex-shrink:0}
-@media (max-width:900px){.lh-links{grid-template-columns:1fr}}
-@media (min-width:641px){.lh-ribbon{flex-wrap:wrap;overflow-x:visible;row-gap:10px}.lh-stage + .lh-stage{border-left:0}.lh-stage + .lh-stage::before{display:none}.lh-stage{padding:2px 12px 4px 4px}}
-@media (max-width:640px){
-  .lh-wrap{padding:10px 12px 0}
-  .lh-pill{height:40px;padding:0 11px 0 9px}
-  .lh-pill:not(.on) .lh-label-long{display:none}
-  .lh-links{display:flex;overflow-x:auto;gap:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;margin:8px -12px 0;padding:2px 12px 4px}
-  .lh-links::-webkit-scrollbar{display:none}
-  .lh-link{flex:0 0 auto;padding:8px 12px 8px 8px;gap:9px}
-  .lh-link-d,.lh-link-go{display:none}
-  .lh-link-ico{width:32px;height:32px;border-radius:10px}
-}
+.lh-title-s{font-size:12.5px;color:${PX.sub}}
+.lh-find{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:0 14px;height:46px;margin:0 0 10px;color:${PX.sub}}
+.lh-find:focus-within{border-color:${PX.gold}}
+.lh-find input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px ${PX.sans};color:${PX.ink}}
+.lh-find button{border:0;background:none;color:${PX.faint};cursor:pointer;font-size:14px}
+.lh-res{background:#fff;border:1px solid ${PX.line};border-radius:14px;margin-bottom:10px;overflow:hidden}
+.lh-res-i{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid ${PX.line};background:none;text-align:left;cursor:pointer;font:500 13px ${PX.sans};color:${PX.ink}}
+.lh-res-i:last-child{border-bottom:0}
+.lh-res-i:hover{background:${PX.tint}}
+.lh-res-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-res-i em{font-style:normal;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;background:${PX.goldBg};color:#7a5a12;white-space:nowrap}
+.lh-res-e{padding:14px;text-align:center;color:${PX.sub};font-size:13px}
+.lh-sub{display:flex;gap:6px;margin:10px 14px;padding:4px;background:${PX.tint};border-radius:12px;width:fit-content}
+.lh-subb{height:32px;padding:0 14px;border:0;border-radius:9px;background:none;color:${PX.ink2};font:700 12.5px/1 ${PX.sans};cursor:pointer}
+.lh-subb.on{background:#fff;color:${PX.navy};box-shadow:0 1px 3px rgba(19,42,79,.18)}
+.lh-help{margin:10px 14px;padding:10px 14px;border:1px solid ${PX.goldLine};border-radius:12px;background:${PX.goldBg};font-size:12.5px;color:${PX.ink};line-height:1.5}
+.lh-help summary{cursor:pointer;font-weight:800;font-size:12px;letter-spacing:.04em;color:#7a5a12}
+.lh-help p{margin:6px 0 4px}
+.lh-help ol{margin:0;padding-left:20px}
+.lh-today{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:10px;margin:0 0 6px}
+.lh-today:has(.lh-new):not(:has(.lh-exam)){grid-template-columns:1fr}
+.lh-exam{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border:0;border-radius:14px;cursor:pointer;color:#fff;font:500 12px/1.3 ${PX.sans};background:linear-gradient(135deg,${PX.navyDeep},${PX.navy2})}
+.lh-exam b{font-size:22px;font-weight:800;color:${PX.goldLt};white-space:nowrap}
+.lh-exam strong{font-size:13px}
+.lh-new{background:#fff;border:1px solid ${PX.line};border-radius:14px;padding:8px 6px}
+.lh-new-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:${PX.gold};padding:2px 10px 6px}
+.lh-new-i{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:9px;background:none;cursor:pointer;text-align:left;font:600 13px ${PX.sans};color:${PX.ink}}
+.lh-new-i:hover{background:${PX.tint}}
+.lh-new-i span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-new-i em{font-style:normal;font-size:11px;color:${PX.sub};white-space:nowrap}
+@media (max-width:640px){.lh-today{grid-template-columns:1fr!important}}
+.lh-stage-h{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold};margin:20px 4px 8px}
+.lh-stage-h i{width:4px;height:14px;border-radius:2px;display:inline-block}
+.lh-sec{background:#fff;border:1px solid ${PX.line};border-radius:16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(19,42,79,.05);scroll-margin-top:12px}
+.lh-sec.open{border-color:${PX.goldLine};box-shadow:0 10px 24px -18px rgba(19,42,79,.45)}
+.lh-sec-h{width:100%;display:flex;align-items:center;gap:12px;padding:12px 14px;border:0;background:none;cursor:pointer;text-align:left;font-family:${PX.sans};color:${PX.ink};border-radius:16px}
+.lh-sec-h:focus-visible{outline:2px solid ${PX.gold};outline-offset:-2px}
+.lh-sec-ico{width:40px;height:40px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.lh-sec-t{font-weight:800;font-size:14.5px;line-height:1.2}
+.lh-sec-d{font-size:12px;color:${PX.sub};margin-top:2px}
+.lh-chev{margin-left:auto;flex-shrink:0;color:${PX.gold};transition:transform .15s ease;display:flex}
+.lh-sec.open .lh-chev{transform:rotate(90deg)}
+.lh-sec-b{border-top:1px solid ${PX.line};padding:6px 0 4px;overflow-x:auto}
+@media (max-width:640px){.lh-root{padding:10px 10px 40px}.lh-sec-d{display:none}.lh-title-s{display:none}.lh-title-t{font-size:19px}}
 `;
 
-const HOME_CSS = `
-.lhp{max-width:980px;margin:0 auto;padding-bottom:28px}
-.lhp-hero{position:relative;overflow:hidden;background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.30) 0%,transparent 55%),linear-gradient(135deg,${PX.navyDeep} 0%,${PX.navy} 45%,${PX.navy2} 100%);padding:18px 18px 60px;border-radius:0 0 26px 26px;color:#fff}
-.lhp-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,${PX.gold},transparent)}
-.lhp-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
-.lhp-logo{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12);color:${PX.goldLt};box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
-.lhp-t{font-family:${PX.serif};font-size:27px;font-weight:600;line-height:1.1}
-.lhp-t span{color:${PX.goldLt}}
-.lhp-s{font-size:12px;opacity:.72;margin-top:3px;font-weight:500}
-.lhp-search{display:flex;align-items:center;gap:10px;background:#fff;color:${PX.sub};border-radius:14px;padding:0 14px;height:46px;box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
-.lhp-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px ${PX.sans};color:${PX.ink}}
-.lhp-clear{border:0;background:none;color:${PX.faint};font-size:14px;cursor:pointer;padding:4px}
-.lhp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:-42px 16px 14px;position:relative}
-.lhp-stat{background:#fff;border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 4px 16px rgba(19,42,79,.12)}
-.lhp-stat b{display:block;font-size:20px;font-weight:800;color:${PX.navy};line-height:1.1;font-variant-numeric:tabular-nums}
-.lhp-stat span{font-size:10px;font-weight:700;color:${PX.sub};text-transform:uppercase;letter-spacing:.05em}
-.lhp-card{background:#fff;border-radius:18px;margin:0 16px 14px;padding:14px 12px 8px;box-shadow:0 2px 12px rgba(19,42,79,.07);border:1px solid ${PX.line}}
-.lhp-card-h{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:${PX.ink};padding:0 4px 10px}
-.lhp-card-h i{width:4px;height:16px;border-radius:2px;display:inline-block}
-.lhp-card-h small{margin-left:auto;font-size:11px;font-weight:600;color:${PX.faint}}
-.lhp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:4px 2px}
-.lhp-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;color:${PX.ink};border-radius:12px;font-family:${PX.sans};text-align:center}
-.lhp-tile:active{background:${PX.tint}}
-.lhp-tile:focus-visible,.lhp-qb:focus-visible,.lhp-promo:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
-.lhp-ico{width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 7px 12px rgba(19,42,79,.10);transition:transform .09s ease,box-shadow .09s ease}
-.lhp-tile:hover .lhp-ico{transform:translateY(-2px)}
-.lhp-tile:active .lhp-ico{transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(19,42,79,.18)}
-.lhp-lbl{font-size:12px;font-weight:700;line-height:1.2}
-.lhp-cnt{font-size:10.5px;font-weight:700;color:${PX.faint};margin-top:-3px}
-.lhp-quick{display:flex;justify-content:space-around;gap:4px;padding:14px 8px 12px;overflow-x:auto;scrollbar-width:none}
-.lhp-quick::-webkit-scrollbar{display:none}
-.lhp-qb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font:700 11px/1.2 ${PX.sans};color:${PX.ink};text-align:center;min-width:62px}
-.lhp-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background-image:linear-gradient(180deg,rgba(255,255,255,.32),rgba(255,255,255,0) 55%,rgba(0,0,0,.12));box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 3px 0 rgba(0,0,0,.18),0 8px 14px -6px rgba(19,42,79,.5);transition:transform .09s ease}
-.lhp-qb:active .lhp-round{transform:translateY(2px)}
-.lhp-promo{width:calc(100% - 32px);margin:0 16px 14px;border:0;border-radius:18px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;color:#fff;font-family:${PX.sans};background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.45) 0%,transparent 60%),linear-gradient(135deg,${PX.navyDeep},${PX.navy2});box-shadow:0 10px 22px -12px rgba(19,42,79,.7)}
-.lhp-promo em{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.12em;background:linear-gradient(180deg,#d4ae58,${PX.gold});color:#1a1406;padding:2px 9px;border-radius:999px}
-.lhp-promo b{display:block;font-size:17px;margin:6px 0 3px}
-.lhp-promo span{font-size:12px;opacity:.9;line-height:1.35;display:block}
-.lhp-promo .lhp-promo-ico{display:flex;flex-shrink:0;color:${PX.goldLt}}
-.lhp-empty{text-align:center;color:${PX.sub};font-size:13px;padding:14px 0 18px}
-.lhp-bar{display:none}
-.lhp-bottom{display:none}
-@media (max-width:767px){
-  .lhp-bar{display:flex;align-items:center;gap:8px;padding:8px 12px 8px 6px;background:#fff;border-bottom:1px solid ${PX.line};box-shadow:0 2px 10px rgba(19,42,79,.06)}
-  .lhp-back{width:38px;height:38px;border:0;background:none;font-size:30px;line-height:1;color:${PX.navy};cursor:pointer;border-radius:50%}
-  .lhp-back:active{background:${PX.tint}}
-  .lhp-bar-t{min-width:0;display:flex;flex-direction:column}
-  .lhp-bar-t b{font-size:16px;font-weight:800;color:${PX.ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .lhp-bar-t small{font-size:11px;color:${PX.sub}}
-  .lhp-bar-ico{display:flex;color:${PX.navy}}
-  .lhp-bottom{display:grid;position:fixed;left:0;right:0;bottom:0;z-index:90;grid-template-columns:repeat(var(--n),1fr);background:${PX.navy};box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
-  .lhp-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px ${PX.sans};color:#b9c3d6;cursor:pointer}
-  .lhp-nb .lhp-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
-  .lhp-nb.on{color:#fff;font-weight:800}
-  .lhp-nb.on .lhp-bi{background:linear-gradient(180deg,#d4ae58,${PX.gold});color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
-  .lhp-tabs-pad{padding-bottom:78px}
-  .lh-desk{display:none!important}
-}
-@media (max-width:520px){.lhp-stats{gap:7px;margin-left:12px;margin-right:12px}.lhp-stat{padding:10px 2px}.lhp-stat b{font-size:17px}.lhp-stat span{font-size:9px;letter-spacing:.02em}.lhp-t{font-size:24px}}
-@media (min-width:768px){.lhp-hero{border-radius:22px;margin:16px 16px 0}}
-`;
-
-const STAGE_COLOR = { Learn: '#185FA5', Practice: '#a7771f', Assess: '#0f766e' };
+const STAGE_COLOR = { Learn: '#185FA5', Practice: '#a7771f', Test: '#0f766e' };
 const tint = (hex, a = '1F') => `${hex}${a}`;
-
-function HubTile({ id, color, counts, onNavigate }) {
-  const m = MODULES[id];
-  return (
-    <button className="lhp-tile" onClick={() => onNavigate(id)}>
-      <span className="lhp-ico" style={{ background: tint(color), color }}><NavIcon id={id} size={24} /></span>
-      <span className="lhp-lbl">{m.label}</span>
-      <span className="lhp-cnt">{fmt(counts[m.metric])} {m.unit}</span>
-    </button>
-  );
-}
-
-function HubHome({ visible, counts, onNavigate }) {
-  const [q, setQ] = useState('');
-  const needle = q.trim().toLowerCase();
-  const stages = FLOW.map((st) => ({ ...st, color: STAGE_COLOR[st.stage], ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length);
-  const flat = stages.flatMap((st) => st.ids.map((id) => ({ id, color: st.color, stage: st.stage })));
-  const hits = needle ? flat.filter(({ id, stage }) => `${MODULES[id].label} ${MODULES[id].unit} ${stage}`.toLowerCase().includes(needle)) : null;
-  const promoTo = ['entrance', 'questionbank'].find((id) => visible.includes(id));
-  const stats = [['Materials', counts.materials], ['Aids', counts.aids], ['Questions', counts.questions], ['Exams', counts.exams]];
-  return (
-    <div className="lhp">
-      <div className="lhp-hero">
-        <div className="lhp-top">
-          <span className="lhp-logo"><NavIcon id="learninghub" size={22} /></span>
-          <div>
-            <div className="lhp-t">Learning <span>Hub</span></div>
-            <div className="lhp-s">Study · Practise · Assess — one connected place</div>
-          </div>
-        </div>
-        <label className="lhp-search">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search materials, questions, exams…" />
-          {q ? <button type="button" className="lhp-clear" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
-        </label>
-      </div>
-      <div className="lhp-stats">
-        {stats.map(([l, v]) => <div key={l} className="lhp-stat"><b>{fmt(v)}</b><span>{l}</span></div>)}
-      </div>
-      {hits ? (
-        <div className="lhp-card">
-          <div className="lhp-card-h">{hits.length ? `${hits.length} result${hits.length > 1 ? 's' : ''}` : 'Nothing found'}</div>
-          {hits.length
-            ? <div className="lhp-grid">{hits.map((t) => <HubTile key={t.id} id={t.id} color={t.color} counts={counts} onNavigate={onNavigate} />)}</div>
-            : <div className="lhp-empty">Try “questions”, “exam” or “materials”.</div>}
-        </div>
-      ) : (
-        <>
-          <div className="lhp-card lhp-quick">
-            {flat.map(({ id, color }) => (
-              <button key={id} className="lhp-qb" onClick={() => onNavigate(id)}>
-                <span className="lhp-round" style={{ background: color }}><NavIcon id={id} size={24} /></span>
-                <span>{MODULES[id].short}</span>
-              </button>
-            ))}
-          </div>
-          {promoTo ? (
-            <button className="lhp-promo" onClick={() => onNavigate(promoTo)}>
-              <div>
-                <em>CONNECTED</em>
-                <b>Notes → Questions → Entrance papers</b>
-                <span>Every section links to the next, so a chapter flows from learning to assessment.</span>
-              </div>
-              <span className="lhp-promo-ico"><NavIcon id={promoTo} size={44} /></span>
-            </button>
-          ) : null}
-          {stages.map((st) => (
-            <div key={st.stage} className="lhp-card">
-              <div className="lhp-card-h"><i style={{ background: st.color }} />{st.stage}<small>{st.ids.length} section{st.ids.length > 1 ? 's' : ''}</small></div>
-              <div className="lhp-grid">{st.ids.map((id) => <HubTile key={id} id={id} color={st.color} counts={counts} onNavigate={onNavigate} />)}</div>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-function HubBar({ active, onHome }) {
-  return (
-    <div className="lhp-bar">
-      <button className="lhp-back" onClick={onHome} aria-label="Back to Learning Hub">‹</button>
-      <span className="lhp-bar-ico"><NavIcon id={active} size={20} /></span>
-      <div className="lhp-bar-t"><b>{MODULES[active].label}</b><small>Learning Hub</small></div>
-    </div>
-  );
-}
-
-function HubBottom({ visible, active, onNavigate }) {
-  return (
-    <nav className="lhp-bottom" style={{ '--n': visible.length }} aria-label="Learning Hub sections">
-      {visible.map((id) => (
-        <button key={id} className={`lhp-nb${active === id ? ' on' : ''}`} onClick={() => onNavigate(id)} aria-current={active === id ? 'page' : undefined}>
-          <span className="lhp-bi"><NavIcon id={id} size={20} /></span>
-          <span>{MODULES[id].short}</span>
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-export function LearningRibbon({ active, onNavigate, counts, visible }) {
-  return (
-    <nav className="lh-ribbon" aria-label="Learning flow">
-      {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => !visible || visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
-        <div key={st.stage} className="lh-stage">
-          <div className="lh-stage-h">{st.stage}</div>
-          <div className="lh-pills">
-            {st.ids.map((id) => {
-              const m = MODULES[id];
-              return (
-                <button key={id} className={`lh-pill${active === id ? ' on' : ''}`} onClick={() => active !== id && onNavigate && onNavigate(id)} aria-current={active === id ? 'page' : undefined} title={m.label}>
-                  <NavIcon id={id} size={17} />
-                  <span><span className="lh-label-long">{m.label}</span></span>
-                  <span className="lh-n" title={`${fmt(counts[m.metric])} ${m.unit}`}>{fmt(counts[m.metric])}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </nav>
-  );
-}
-
-export function LearningLinks({ active, onNavigate, counts, visible }) {
-  const rel = (RELATED[active] || []).filter((r) => !visible || visible.includes(r.to));
-  if (!rel.length || !onNavigate) return null;
-  return (
-    <div className="lh-links" aria-label="Connected to this page">
-      {rel.map((r) => {
-        const m = MODULES[r.to];
-        return (
-          <button key={r.to} className="lh-link" onClick={() => onNavigate(r.to)}>
-            <span className="lh-link-ico"><NavIcon id={r.to} size={19} /></span>
-            <span style={{ minWidth: 0 }}>
-              <span className="lh-link-t">{r.title}<i>{fmt(counts[m.metric])} {m.unit}</i></span>
-              <span className="lh-link-d" style={{ display: 'block' }}>{r.hint}</span>
-            </span>
-            <span className="lh-link-go"><NavIcon id="chevron" size={18} /></span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 const Loading = () => (
-  <div style={{ padding: '60px 20px', textAlign: 'center', color: PX.sub, fontFamily: PX.sans, fontSize: 13 }}>Loading…</div>
+  <div style={{ padding: '40px 20px', textAlign: 'center', color: PX.sub, fontFamily: PX.sans, fontSize: 13 }}>Loading…</div>
 );
 
-// tab: active tab id (controlled by App so links from other modules can open a
-// specific tab); onNavigate(id): App's router (tab ids stay inside the hub).
-// perms(key) / canAccess(key): the signed-in user's rights per tab module.
-export default function LearningHub({ currentUser, tab, home = false, onHome, onNavigate, perms, canAccess }) {
-  const counts = useLearningCounts();
-  const visible = HUB_TABS.filter((id) => !canAccess || canAccess(id));
-  const active = visible.includes(tab) ? tab : visible[0];
-  // tabs stay mounted once opened (hidden when inactive) so their state survives switching
-  const [opened, setOpened] = useState(() => new Set(active ? [active] : []));
-  if (active && !opened.has(active)) setOpened(new Set(opened).add(active)); // derived state: adjust during render
-  const showHome = home && !!onHome;
-  if (!active) return <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>You do not have access to any Learning Hub section.</div>;
+// tab: section id App wants open (links from other modules); onNavigate(id): App's router.
+// perms(key) / canAccess(key): the signed-in user's rights per section module.
+export default function LearningHub({ currentUser, tab, onNavigate, perms, canAccess }) {
+  const allowed = HUB_TABS.filter((id) => !canAccess || canAccess(id));
+  // Question Bank Viewer is the read-only mode of the Question Bank block when the user may open both
+  const visible = allowed.includes('questionbank') ? allowed.filter((id) => id !== 'questionbankviewer') : allowed;
+  const [qbMode, setQbMode] = useState('edit');
+  const canonical = (id) => (id === 'questionbankviewer' && visible.includes('questionbank') ? 'questionbank' : id);
+  const [open, setOpen] = useState(() => {
+    const last = readRecent().map(canonical).find((x) => visible.includes(x));
+    const role = String(currentUser?.role || '').toLowerCase();
+    const byRole = role.includes('student') || role.includes('parent') ? ['studymaterial', 'classmaterial', 'modelsets'] : role.includes('teacher') ? ['studymaterial', 'teachingaids', 'questionbank'] : [];
+    const start = canonical(tab) && visible.includes(canonical(tab)) ? canonical(tab) : last || byRole.find((x) => visible.includes(x)) || visible[0];
+    return new Set([start].filter(Boolean));
+  });
+  const [q, setQ] = useState('');
+  const [qbSeen, setQbSeen] = useState(false);
+  if (qbMode === 'view' && !qbSeen) setQbSeen(true);
+  const [hits, setHits] = useState(null);
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits(null); return undefined; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const found = await searchAll(term, visible);
+      const names = visible.filter((id) => `${MODULES[id].label} ${MODULES[id].desc}`.toLowerCase().includes(term.toLowerCase())).map((id) => ({ key: `sec-${id}`, section: id, text: MODULES[id].label, isSection: true }));
+      if (live) setHits([...names, ...found]);
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+  const goTo = (rawId) => {
+    const id = canonical(rawId);
+    if (rawId === 'questionbankviewer' && id === 'questionbank') setQbMode('view');
+    setOpen((o) => new Set(o).add(id));
+    setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
+    pushRecent(id);
+    setTimeout(() => { const el = document.getElementById(`lh-sec-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+  };
+  const [mounted, setMounted] = useState(() => new Set(open));
+  const toggle = (id) => {
+    const next = new Set(open);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setOpen(next);
+    if (next.has(id)) { setMounted((m) => (m.has(id) ? m : new Set(m).add(id))); pushRecent(id); }
+  };
+
+  // App asks for a specific section (e.g. a link from inside another section) → open it and scroll to it
+  useEffect(() => {
+    if (!tab) return undefined;
+    const id = canonical(tab);
+    if (!visible.includes(id)) return undefined;
+    if (tab === 'questionbankviewer' && id === 'questionbank') setQbMode('view');
+    setOpen((o) => (o.has(id) ? o : new Set(o).add(id)));
+    setMounted((m) => (m.has(id) ? m : new Set(m).add(id)));
+    const t = setTimeout(() => { const el = document.getElementById(`lh-sec-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  if (!visible.length) return <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>You do not have access to any Learning Hub section.</div>;
 
   const view = (id) => {
-    const common = { currentUser, onNavigate };
+    const common = { currentUser, onNavigate: (to) => { if (to && visible.includes(canonical(to))) goTo(to); else if (onNavigate) onNavigate(to); } };
     switch (id) {
       case 'studymaterial': return <StudyMaterial {...common} perms={perms('studymaterial')} />;
       case 'teachingaids': return <TeachingAids {...common} perms={perms('teachingaids')} />;
-      case 'questionbank': return <QuestionBank {...common} perms={perms('questionbank')} />;
+      case 'studylockers': return <StudyLockers {...common} perms={perms('studylockers')} />;
+      case 'questionbank': return allowed.includes('questionbankviewer') ? (
+        <>
+          <div className="lh-sub" role="tablist" aria-label="Question Bank mode">
+            {[['edit', 'Add & edit'], ['view', 'Read-only']].map(([k, l]) => (
+              <button key={k} type="button" role="tab" aria-selected={qbMode === k} className={`lh-subb${qbMode === k ? ' on' : ''}`} onClick={() => setQbMode(k)}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: qbMode === 'edit' ? 'block' : 'none' }}><QuestionBank {...common} perms={perms('questionbank')} /></div>
+          {qbSeen ? <div style={{ display: qbMode === 'view' ? 'block' : 'none' }}><Suspense fallback={<Loading />}><QuestionBankViewer {...common} /></Suspense></div> : null}
+        </>
+      ) : <QuestionBank {...common} perms={perms('questionbank')} />;
       case 'questionbankviewer': return <QuestionBankViewer {...common} />;
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
+      case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
+      case 'setmaker': return <SetMaker {...common} perms={perms('setmaker')} />;
+      case 'classmaterial': return <ClassMaterial {...common} perms={perms('classmaterial')} />;
       default: return null;
     }
   };
@@ -389,26 +303,54 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
   return (
     <div className="lh-root">
       <style>{CSS}</style>
-      <style>{HOME_CSS}</style>
-      {showHome ? <HubHome visible={visible} counts={counts} onNavigate={onNavigate} /> : <HubBar active={active} onHome={onHome || (() => {})} />}
-      <div className="lh-wrap" style={showHome ? { display: 'none' } : undefined}>
-        <div className="lh-title lh-desk">
-          <span className="lh-title-ico"><NavIcon id="learninghub" size={18} /></span>
-          <div>
-            <div className="lh-title-e">GNSI · Academics</div>
-            <div className="lh-title-t">Learning Hub</div>
-          </div>
-          <div className="lh-title-s">Study · Practise · Assess — one connected place</div>
+      <div className="lh-title">
+        <span className="lh-title-ico"><NavIcon id="learninghub" size={18} /></span>
+        <div>
+          <div className="lh-title-t">Learning Hub</div>
+          <div className="lh-title-s">Learn · Practice · Test — everything on one page</div>
         </div>
-        <div className="lh-desk"><LearningRibbon active={active} onNavigate={onNavigate} counts={counts} visible={visible} /></div>
-        <LearningLinks active={active} onNavigate={onNavigate} counts={counts} visible={visible} />
       </div>
-      {visible.filter((id) => opened.has(id)).map((id) => (
-        <div key={id} className="lhp-tabs-pad" style={{ display: !showHome && id === active ? 'block' : 'none' }}>
-          <Suspense fallback={<Loading />}>{view(id)}</Suspense>
+      <label className="lh-find">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search notes, aids, questions, exams…" aria-label="Search the Learning Hub" />
+        {q ? <button type="button" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
+      </label>
+      {hits ? (
+        <div className="lh-res">
+          {hits.length ? hits.map((h) => (
+            <button key={h.key} type="button" className="lh-res-i" onClick={() => { goTo(h.section); setQ(''); }}>
+              <span>{h.text}</span><em>{MODULES[h.section].label}</em>
+            </button>
+          )) : <div className="lh-res-e">Nothing found. Try a shorter word.</div>}
         </div>
+      ) : <TodayPanel visible={visible} onOpen={goTo} />}
+      {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
+        <section key={st.stage}>
+          <div className="lh-stage-h"><i style={{ background: STAGE_COLOR[st.stage] }} />{st.stage}</div>
+          {st.ids.map((id) => {
+            const m = MODULES[id];
+            const isOpen = open.has(id);
+            return (
+              <div key={id} id={`lh-sec-${id}`} className={`lh-sec${isOpen ? ' open' : ''}`}>
+                <button type="button" className="lh-sec-h" onClick={() => toggle(id)} aria-expanded={isOpen} aria-controls={`lh-body-${id}`}>
+                  <span className="lh-sec-ico" style={{ background: tint(STAGE_COLOR[st.stage]), color: STAGE_COLOR[st.stage] }}><NavIcon id={id} size={22} /></span>
+                  <span style={{ minWidth: 0 }}>
+                    <div className="lh-sec-t">{id === 'questionbank' && allowed.includes('questionbankviewer') ? 'Question Bank' : m.label}</div>
+                    <div className="lh-sec-d">{m.desc}</div>
+                  </span>
+                  <span className="lh-chev"><NavIcon id="chevron" size={18} /></span>
+                </button>
+                {mounted.has(id) ? (
+                  <div id={`lh-body-${id}`} className="lh-sec-b" style={{ display: isOpen ? 'block' : 'none' }}>
+                    <SectionHelp id={id} />
+                    <Suspense fallback={<Loading />}>{view(id)}</Suspense>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
       ))}
-      {!showHome ? <HubBottom visible={visible} active={active} onNavigate={onNavigate} /> : null}
     </div>
   );
 }

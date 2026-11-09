@@ -5,7 +5,10 @@ export default {
   roles: ['Admin', 'Reception', 'Any staff'],
   summary: 'Write and manage circulars and announcements. A notice can be kept internal for staff, or shown on the public website.',
   before: [],
-  tabs: [],
+  tabs: [
+    { name: '📋 Notice Board', what: 'The list of notices: add, edit, pin, publish and show on the website.' },
+    { name: '✍️ Notice Maker', what: 'Build a formal notice on the institute letterhead and print it, save it as PDF or Word, share it, or post it to the Notice Board.' },
+  ],
   steps: [
     {
       title: 'Add a new notice',
@@ -20,6 +23,48 @@ export default {
         'Press "Save Notice".',
       ],
       tip: 'Use Status "Draft" while you are still writing. Change it to Published when it is ready.',
+    },
+    {
+      title: 'Make a formal notice on the letterhead (Notice Maker)',
+      body: [
+        'Open Notice → "✍️ Notice Maker".',
+        'In "Start from" choose a ready-made notice (Fee Collection Drive, General Circular, Holiday Notice, Staff Meeting) or "Blank notice". The preview on the right updates as you type.',
+        'Fill the heading, Ref. No. (press "🔢 Number it" for the next number in that series), date, "To" and Subject. Tick "Mark as URGENT" for the red tag.',
+        'Edit the body. Each block can be a numbered paragraph, a paragraph with (a) (b) points, step boxes, a schedule table or a highlighted box. Use ↑ ↓ to reorder and 🗑 to remove. Type **text** for bold and [[text]] for red bold.',
+        'Set the closing line, who signs, the "Copy to" list, and tick "Add a tear-off acknowledgement slip" if staff must sign and return it.',
+        'Press "🖨️ Print / Save as PDF" for paper or a PDF, "📄 Download Word" to edit it in Word, "📋 Copy text" or "📲 WhatsApp" to send the text.',
+        'Press "💾 Save draft" to keep it on this computer and open it later from "Saved drafts".',
+        'To put it on the Notice Board, choose Category, Audience, Status and an optional Expiry, then press "📌 Post to Notice Board". It is posted as internal, not public.',
+      ],
+      tip: 'The letterhead (name, tagline, address, registration line, logo link) can be changed under "Letterhead" in the editor. Drafts and templates are saved in this browser only.',
+    },
+    {
+      title: 'Keep and reuse notices in the Notice Maker',
+      body: [
+        'Your work is saved automatically and reopens where you left off.',
+        '"⭐ Save as my template" keeps the layout and wording (the reference number is cleared). It then appears under "My templates" in Start from.',
+        '"💾 Save draft" keeps a named copy to finish later.',
+        '"⬇️ Export file" downloads the notice as a file you can send to another computer; "⬆️ Open file" loads such a file.',
+      ],
+    },
+    {
+      title: 'Change many notices at once (bulk actions)',
+      body: [
+        'Tick the box on each notice (cards or table), or press "☑ Select all shown" to pick everything the filters show.',
+        'A dark bar appears with how many are selected. Press Publish, Draft, Pin, Unpin, "⏳ Extend expiry +7d", "🔒 Make internal" or "🗑 Delete".',
+        'Extend expiry adds 7 days to each notice\'s expiry (or 7 days from today if it has none or has passed) and brings an Expired notice back to Published.',
+        'Press Clear to deselect without changing anything.',
+      ],
+      tip: 'Delete and "Make internal" ask you to confirm first. Deleting cannot be undone.',
+    },
+    {
+      title: 'Print, share or export notices from the board',
+      body: [
+        'Press 🖨 on a notice to print it on the institute letterhead (or save it as PDF). The title becomes the subject and the description becomes numbered paragraphs.',
+        'Press 📲 to open WhatsApp with the notice text ready to send.',
+        'Press "📊 Export CSV" to download the notices the filters show, for a meeting or record.',
+        'A notice that is Published but has a future Publish Date shows "⏳ Scheduled for …" on its card.',
+      ],
     },
     {
       title: 'Show a notice on the public website',

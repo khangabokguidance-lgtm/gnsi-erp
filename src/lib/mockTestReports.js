@@ -3,7 +3,10 @@
 // batch/test report and subject report.  Opened in a new window with a
 // "Print / Save as PDF" button.
 import { strengthLabel } from './mockTestEngine';
+import { qualifyBand, groupOfRank, adviceFor, normalizeCuts, groupByCuts, cutLabel } from './mockTestExam';
+import { denyPrint } from './printGuard.js';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './mockTestCharts';
+import { FONT_LINKS, FONT_STACK, SERIF_STACK, PRINT_NOW, DESIGN_CREDIT, logoSrc } from './printPremium';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : (Math.round(n * 10 ** d) / 10 ** d).toString());
@@ -15,14 +18,19 @@ const pctColor = (p, pm) => strengthLabel(p, pm).color;
 const CSS = `
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--ink:#0f172a;--mut:#475569;--line:#cbd5e1;--soft:#f1f5f9;--navy:#0f2d5e;--gold:#b8860b}
-body{font-family:Inter,'Segoe UI',Arial,sans-serif;color:var(--ink);background:#e2e8f0;font-size:11.5px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:${FONT_STACK};color:var(--ink);background:#e2e8f0;font-size:11.5px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .bar{position:sticky;top:0;z-index:5;background:#0f2d5e;color:#fff;padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:center}
 .bar button{padding:8px 20px;border:0;border-radius:6px;background:#fff;color:#0f2d5e;font-weight:700;cursor:pointer;font-size:13px}
 .page{width:210mm;min-height:297mm;margin:14px auto;background:#fff;padding:12mm 12mm 14mm;box-shadow:0 2px 14px rgba(0,0,0,.18);position:relative}
 .lh{display:flex;align-items:center;gap:14px;border-bottom:3px double var(--navy);padding-bottom:10px;margin-bottom:10px}
-.lh img{height:58px;width:58px;object-fit:contain}
+.lgx{flex:0 0 auto;width:62px;height:86px;border-radius:10px;background:linear-gradient(160deg,#0a1d42,#173a6d);border:1px solid #c7a24a;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 12px -4px rgba(15,45,94,.55)}
+.lgx img{width:50px;height:auto;max-height:78px;object-fit:contain}
+.dcredit{margin-top:14px;padding-top:6px;border-top:1px solid #d6dde8;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:8.5px;color:#5b6678}
+.dcredit .mini{display:inline-flex;width:14px;height:20px;border-radius:3px;background:linear-gradient(160deg,#0b1f45,#163768);align-items:center;justify-content:center;margin-right:6px;vertical-align:middle}
+.dcredit .mini img{width:11px;height:auto;max-height:17px}
+.dcredit i{font-family:${SERIF_STACK};font-weight:600;color:#b8860b;font-size:9.2px}
 .lh .t{flex:1;text-align:center}
-.lh .n{font-family:Georgia,'Times New Roman',serif;font-size:19px;font-weight:700;color:var(--navy);letter-spacing:.3px}
+.lh .n{font-family:${SERIF_STACK};font-size:19px;font-weight:700;color:var(--navy);letter-spacing:.3px}
 .lh .a{font-size:10.5px;color:var(--mut)}
 .lh .g{font-size:10px;color:var(--gold);font-style:italic}
 .title{background:var(--navy);color:#fff;text-align:center;padding:7px;border-radius:4px;font-weight:700;letter-spacing:2px;font-size:12.5px;text-transform:uppercase}
@@ -56,18 +64,26 @@ tr.tot td{background:#e0e7ff;font-weight:700}
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;width:auto;min-height:auto;padding:0}@page{size:A4;margin:11mm}.page+.page{break-before:page}}
 `;
 
-export function printDocument(bodyHTML, title = 'Report') {
+export function printDocument(bodyHTML, title = 'Report', institute = null) {
+  if (denyPrint()) return;
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>
-  <div class="bar"><button onclick="window.print()">🖨️ Print / Save as PDF</button><span>${esc(title)}</span></div>${bodyHTML}</body></html>`);
+  // the web fonts are loaded in the print window too (it is a blank page), and printing waits for them
+  // the institute logo as a faint watermark, and the credit line at the foot of every page
+  const logo = logoSrc(institute || {});
+  const credit = `<div class="dcredit"><span><span class="mini"><img src="${esc(logo)}" alt=""></span><b>${esc((institute && institute.name) || 'Guidance Navodaya & Sainik Institute')}</b></span><i>${esc(DESIGN_CREDIT)}</i></div>`;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}
+body::before{content:"";position:fixed;inset:0;background:url("${esc(logo)}") center/92mm no-repeat;opacity:.06;pointer-events:none;z-index:0}
+.page{z-index:1}@media print{.page{background:transparent}}</style></head><body>
+  <div class="bar"><button onclick="${PRINT_NOW}">🖨️ Print / Save as PDF</button><span>${esc(title)}</span></div>${bodyHTML}
+  <script>document.querySelectorAll('.page').forEach(function(p){p.insertAdjacentHTML('beforeend',${JSON.stringify(credit).replace(/</g, '\\u003c')})})</script></body></html>`);
   w.document.close();
 }
 
-function letterhead(inst = {}) {
-  const logo = inst.logoUrl ? `<img src="${esc(inst.logoUrl)}" alt="" onerror="this.style.display='none'"/>` : '';
+export function letterhead(inst = {}) {
+  const logo = `<div class="lgx"><img src="${esc(logoSrc(inst))}" alt="Logo" onerror="this.parentNode.style.display='none'"/></div>`;
   return `<div class="lh">${logo}<div class="t"><div class="n">${esc(inst.name || 'Guidance Navodaya & Sainik Institute')}</div>
-  <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div>${logo ? '<div style="width:58px"></div>' : ''}</div>`;
+  <div class="a">${esc(inst.address || '')}</div>${inst.tagline ? `<div class="g">${esc(inst.tagline)}</div>` : ''}</div><div style="width:62px"></div></div>`;
 }
 const stamp = (inst) => `<div class="foot">Generated on ${new Date().toLocaleString('en-IN')} · ${esc(inst?.name || 'GNSI')} · This analysis is computer generated from recorded mock-test results.</div>`;
 const sigs = (inst) => `<div class="sig"><div>${esc(inst?.teacher || 'Class Teacher')}</div><div>Parent / Guardian</div><div>${esc(inst?.principal || 'Principal')}</div></div>`;
@@ -197,6 +213,24 @@ export function batchReportHTML(b, ctx = {}) {
   const subjTop = b.perSubject.map((s) => `<div class="box avoid"><b style="color:${subjColor(subs, s.subject)}">${esc(s.subject)}</b> — toppers
     ${miniList(s.toppers.slice(0, 3), (x) => fx(x.pct) + '%')}<b style="color:#b91c1c">Needs support</b>${miniList(s.weakest.slice(0, 3), (x) => fx(x.pct) + '%')}</div>`).join('');
 
+  const sameMax = new Set(b.students.map((s) => s.max)).size <= 1;
+  const cuts = normalizeCuts(ctx.groupCuts);   // manual groups from total marks (null = equal split)
+  const lb = [...b.students].sort(cuts
+    ? (x, y) => y.avgTotal - x.avgTotal || y.avgPct - x.avgPct || x.name.localeCompare(y.name)
+    : (x, y) => (sameMax ? y.avgTotal - x.avgTotal : 0) || y.avgPct - x.avgPct || y.avgTotal - x.avgTotal || x.name.localeCompare(y.name));
+  const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
+  const gBase = Math.floor(lb.length / GROUPS), gExtra = lb.length % GROUPS;
+  const sizes = cuts ? Array.from({ length: GROUPS }, (_, g) => lb.filter((s) => groupByCuts(s.avgTotal, cuts) === g).length) : Array.from({ length: GROUPS }, (_, g) => gBase + (g < gExtra ? 1 : 0));
+  let gPos = 0;
+  const groupRows = sizes.map((size, g) => {
+    const part = lb.slice(gPos, gPos + size);
+    const head = `<tr><td colspan="8" class="l" style="background:${GBG[g]};font-weight:800">Group ${g + 1} of ${GROUPS}${cuts ? ` · ${cutLabel(g, cuts)} marks` : ''} · ${size} students · ${g === 0 ? 'top' : g === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>`;
+    const body = part.map((s, k) => `<tr><td><b>${gPos + k + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
+      <td style="font-weight:700">${fx(s.avgTotal, 2)}${s.max ? `/${s.max}` : ''}</td><td style="font-weight:700;color:${pctColor(s.avgPct, b.passOf ? b.passOf(s.batch) : b.passPct)}">${fx(s.avgPct)}%</td><td>${fx(s.best, 2)}</td></tr>`).join('');
+    gPos += size;
+    return (size || cuts) ? head + body : '';
+  }).join('');
+
   return `<div class="page">${letterhead(inst)}
   <div class="title">${b.testNo ? 'Test Result Analysis' : 'Batch Performance Analysis'}</div>
   <div class="sub">${esc(series || '')} · ${esc(scope)}</div>
@@ -222,7 +256,12 @@ export function batchReportHTML(b, ctx = {}) {
   ${stamp(inst)}</div>
 
   <div class="page">${letterhead(inst)}
-  <h3 style="margin-top:0">5 · Subject toppers &amp; students needing support</h3><div class="grid2">${subjTop}</div>
+  <h3 style="margin-top:0">5 · Toppers → lowest by ${cuts || sameMax ? 'total marks of all subjects' : 'average % (batches have different maximum totals)'} (${GROUPS} ${cuts ? 'manual mark-range' : 'equal'} groups)</h3>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg total</th><th>Avg %</th><th>Best total</th></tr></thead><tbody>${groupRows}</tbody></table>
+  ${stamp(inst)}</div>
+
+  <div class="page">${letterhead(inst)}
+  <h3 style="margin-top:0">6 · Subject toppers &amp; students needing support</h3><div class="grid2">${subjTop}</div>
   <div class="grid2" style="margin-top:6px">
     <div><h3>Most improved</h3>${miniList(b.improvers, (s) => `${sgn(s.trend, 2)} pts/test · now ${fx(s.latestPct)}%`)}</div>
     <div><h3>Needs attention (declining)</h3>${miniList(b.decliners, (s) => `${sgn(s.trend, 2)} pts/test · now ${fx(s.latestPct)}%`)}</div>
@@ -246,6 +285,16 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     series: [{ name: subject, color: col, values: ps.byTest.map((x) => x.avgPct), thick: true }],
   }) : '';
   const dist = hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 });
+  // 6 equal rank groups (students ÷ 6, leftovers to the top groups)
+  const GROUPS = 6, GBG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
+  const gBase = Math.floor(ranked.length / GROUPS), gExtra = ranked.length % GROUPS;
+  const gHead = {};
+  let gPos = 0;
+  for (let g = 0; g < GROUPS; g++) {
+    const size = gBase + (g < gExtra ? 1 : 0);
+    if (size) gHead[gPos] = `<tr><td colspan="${tests.length + 6}" class="l" style="background:${GBG[g]};font-weight:800">Group ${g + 1} of ${GROUPS} · ${size} students · ${g === 0 ? 'top' : g === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>`;
+    gPos += size;
+  }
   const rows = ranked.map((s, i) => {
     const pm = b.passOf ? b.passOf(s.batch) : b.passPct;
     const cell = (t) => {
@@ -255,7 +304,7 @@ export function subjectReportHTML(b, subject, ctx = {}) {
       return `<td${low ? ' style="color:#b91c1c;font-weight:700"' : ''}>${fx(v, 2)}</td>`;
     };
     const ok = s.sub[subject] >= pm;
-    return `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
+    return `${gHead[i] || ''}<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
     ${tests.map(cell).join('')}
     <td style="font-weight:700;color:${pctColor(s.sub[subject], pm)}">${fx(s.sub[subject])}%</td><td>${pill(ok ? 'Pass' : 'Fail', ok ? '#047857' : '#b91c1c')}</td><td>${pill(strengthLabel(s.sub[subject], pm).label, strengthLabel(s.sub[subject], pm).color)}</td></tr>`;
   }).join('');
@@ -271,9 +320,97 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     ${kpi('Full marks', ps.full, 'scores')}
   </div>
   <div class="grid2 avoid"><div class="box">${trendChart || '<i>Only one test — no trend yet.</i>'}</div><div class="box"><b>Score distribution</b> (no. of results)${dist}</div></div>
-  <h3>Student-wise marks in ${esc(subject)}</h3>
+  <h3>Student-wise marks in ${esc(subject)} — toppers → lowest (${GROUPS} groups)</h3>
   <div style="font-size:11px;color:#5d6b82;margin:-4px 0 6px">Result = subject average against the ${b.passMixed ? 'pass mark of the student\'s batch' : `${b.passPct}% pass mark`}; marks in red are below it.</div>
   <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Result</th><th>Band</th></tr></thead><tbody>${rows}</tbody></table>
   ${stamp(inst)}</div>`;
 }
 
+
+
+// Navodaya / Sainik insights: qualify chance, seat prediction, sections, Pre vs Mega.
+export function examInsightsHTML({ exam, cfg, series, institute: inst, pool, sp, secs, probOf, cmp, preLabel, megaLabel }) {
+  const selIds = new Set(sp.selected.map((s) => s.sid));
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
+  const stuRows = sp.sorted.map((s, i) => {
+    const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+    const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
+    return `<tr${sp.bubble.includes(s) ? ' style="background:#fffbeb"' : ''}><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td><td class="l">${esc(s.batch)}</td><td>${s.tests}</td>
+      <td>${fx(s.avgPct)}%</td><td><b>${fx(s.projected)}%</b></td><td style="color:${tone(s.trend, 1)}">${s.tests >= 2 ? sgn(s.trend) : '—'}</td>
+      <td style="font-weight:700;color:${band.color}">${fx(p * 100, 0)}%</td><td>${pill(band.label, band.color)}</td><td>${pill(seat[0], seat[1])}</td></tr>`;
+  }).join('');
+  const secRows = secs.map((x) => `<tr><td class="l"><b>${esc(x.subject)}</b></td><td>${esc(x.section || '—')}</td><td>${fx(x.avg)}%</td><td>${fx(x.selAvg)}%</td><td>${fx(x.restAvg)}%</td>
+    <td style="font-weight:700">${x.gap === null ? '—' : sgn(x.gap)}</td><td>${x.weakFor}</td>${cfg.sectionMin ? `<td class="l" style="color:${x.belowMin.length ? '#b91c1c' : '#047857'}">${x.belowMin.length ? esc(x.belowMin.join(', ')) : 'None'}</td>` : ''}</tr>`).join('');
+  const cmpRows = cmp ? cmp.pairs.map((x) => `<tr><td class="l">${esc(x.name)}</td><td class="l">${esc(x.batch)}</td><td>${fx(x.pre)}%</td><td>${fx(x.mega)}%</td>
+    <td style="font-weight:700;color:${tone(x.delta, 1)}">${sgn(x.delta)}</td><td>${x.rankPre}</td><td>${x.rankMega}</td><td style="color:${tone(x.move)}">${x.move > 0 ? '▲ ' + x.move : x.move < 0 ? '▼ ' + -x.move : '='}</td></tr>`).join('') : '';
+  return `<div class="page">${letterhead(inst)}
+  <div class="title">${esc(exam.label)} — Mock Test Insights</div>
+  <div class="sub">${esc(series || '')} · cut-off ${Number(cfg.cutoff) || 0}% · ${Number(cfg.seats) || 0} target selections${Number(cfg.sectionMin) ? ` · sectional minimum ${Number(cfg.sectionMin)}%` : ''}</div>
+  <div class="kpis">
+    ${kpi('Students', pool.length)}
+    ${kpi('Above cut-off', pool.length - sp.below.length, `${sp.below.length} below`, '#047857')}
+    ${kpi('Projected selections', `${sp.selected.length}/${Number(cfg.seats) || 0}`, sp.waiting.length ? `${sp.waiting.length} waiting` : '')}
+    ${kpi('Safe', safe, '', '#047857')}
+    ${kpi('At risk', risk, '', '#b91c1c')}
+    ${kpi('Seat-line margin', sp.margin === null ? '—' : fx(sp.margin) + ' pts', sp.lastIn ? esc(sp.lastIn.name) : '')}
+  </div>
+  <h3>1 · Qualify probability &amp; seat prediction</h3>
+  <div style="font-size:10px;color:#5d6b82;margin:-4px 0 5px">Projection = recent 3-test average plus half the trend. Shaded rows are within 5 points of the seat line.</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Tests</th><th>Avg</th><th>Projected</th><th>Trend</th><th>Chance</th><th>Status</th><th>Seat</th></tr></thead><tbody>${stuRows}</tbody></table>
+  ${stamp(inst)}</div>
+
+  <div class="page">${letterhead(inst)}
+  <h3 style="margin-top:0">2 · Section-wise analysis</h3>
+  <table><thead><tr><th class="l">Subject</th><th>Section</th><th>Avg</th><th>Selected group</th><th>Rest</th><th>Gap</th><th>Weakest for</th>${cfg.sectionMin ? `<th class="l">Below ${cfg.sectionMin}%</th>` : ''}</tr></thead><tbody>${secRows}</tbody></table>
+  ${cmp ? `<h3>3 · Pre Mock vs Mega Mock</h3>
+  <div style="font-size:10px;color:#5d6b82;margin-bottom:5px">${esc(preLabel)} → ${esc(megaLabel)} · ${cmp.matched} matched · average change ${sgn(cmp.avgDelta)} pts · ${cmp.improved} improved · ${cmp.declined} declined</div>
+  <table><thead><tr><th class="l">Student</th><th class="l">Batch</th><th>Pre</th><th>Mega</th><th>Change</th><th>Pre rank</th><th>Mega rank</th><th>Move</th></tr></thead><tbody>${cmpRows}</tbody></table>` : ''}
+  ${stamp(inst)}</div>`;
+}
+
+
+// One-page personal report per student, written for parents.
+export function parentReportsHTML({ exam, cfg, series, institute: inst, sp, probOf, students }) {
+  const total = sp.sorted.length;
+  const selIds = new Set(sp.selected.map((x) => x.sid));
+  return students.map((s) => {
+    const i = sp.sorted.findIndex((x) => x.sid === s.sid);
+    const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+    const status = selIds.has(s.sid) ? 'Selected' : sp.waiting.some((x) => x.sid === s.sid) ? 'Waiting' : 'Below cut-off';
+    const g = groupOfRank(i, total, 6);
+    const subs = Object.entries(s.sub).sort((a, b) => b[1] - a[1]);
+    const advice = adviceFor(s, { cutoff: Number(cfg.cutoff) || 0, status });
+    return `<div class="page">${letterhead(inst)}
+    <div class="title">Mock Test Progress Report — ${esc(exam.short)}</div>
+    <div class="sub">${esc(series || '')} · ${esc(s.name)}${s.gcc ? ` · GCC ${esc(s.gcc)}` : ''} · ${esc(s.batch)}</div>
+    <div class="kpis">
+      ${kpi('Average', fx(s.avgPct) + '%', `${s.tests} tests`)}
+      ${kpi('Projected', fx(s.projected) + '%', `target ${Number(cfg.cutoff) || 0}%`)}
+      ${kpi('Class position', `${i + 1}/${total}`, `Group ${g} of 6`)}
+      ${kpi('Chance of selection', fx(p * 100, 0) + '%', esc(band.label), band.color)}
+      ${kpi('Status', `<span style="font-size:12px">${esc(status)}</span>`, '', status === 'Selected' ? '#047857' : status === 'Waiting' ? '#b45309' : '#b91c1c')}
+      ${kpi('Trend', s.tests >= 2 ? sgn(s.trend) + ' /test' : '—', '', tone(s.trend, 1))}
+    </div>
+    <h3>Test-wise score (%)</h3>
+    <table><thead><tr>${s.testNos.map((t) => `<th>T${t}</th>`).join('')}</tr></thead><tbody><tr>${s.pcts.map((v) => `<td style="font-weight:700">${fx(v)}%</td>`).join('')}</tr></tbody></table>
+    <h3>Subject-wise average</h3>
+    <table><thead><tr><th class="l">Subject</th><th>Average</th><th class="l" style="width:55%"></th></tr></thead><tbody>${subs.map(([k, v]) => `<tr><td class="l">${esc(k)}</td><td><b>${fx(v)}%</b></td><td class="l"><div style="background:#e5e7eb;border-radius:4px;height:9px"><div style="width:${Math.max(0, Math.min(100, v))}%;background:${pctColor(v, 40)};height:9px;border-radius:4px"></div></div></td></tr>`).join('')}</tbody></table>
+    <h3>Mentor's advice</h3>
+    <ul class="ins">${advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+    <div class="sig"><div>Parent / Guardian</div><div>Class Mentor</div><div>Principal</div></div>
+    ${stamp(inst)}</div>`;
+  }).join('');
+}
+
+// Printable watch-list for mentors.
+export function watchListHTML({ exam, series, institute: inst, items }) {
+  const sevColor = (n) => (n >= 3 ? '#b91c1c' : n === 2 ? '#b45309' : '#64748b');
+  const rows = items.map((w, i) => `<tr><td><b>${i + 1}</b></td><td class="l"><b>${esc(w.student.name)}</b></td><td>${esc(w.student.gcc || '—')}</td><td class="l">${esc(w.student.batch)}</td><td>${fx(w.student.avgPct)}%</td>
+    <td class="l">${w.flags.map((f) => `<div style="color:${sevColor(f.severity)}">• ${esc(f.text)}</div>`).join('')}</td></tr>`).join('');
+  return `<div class="page">${letterhead(inst)}
+  <div class="title">${esc(exam.label)} — Mentor Watch-list</div>
+  <div class="sub">${esc(series || '')} · ${items.length} students need attention</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th><th class="l">Batch</th><th>Avg</th><th class="l">Why</th></tr></thead><tbody>${rows || '<tr><td colspan="6">No students flagged.</td></tr>'}</tbody></table>
+  ${stamp(inst)}</div>`;
+}

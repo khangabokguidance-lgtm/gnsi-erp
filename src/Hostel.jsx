@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
+import { StaffAvatar, findStaffPhoto } from './staffPhotos'
+import { findMissingRollCalls } from './missingRollCalls'
+import { canonicalBatch, courseOf } from './courseMap'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -13,10 +16,10 @@ import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
 import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
-import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
+import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
-import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
+import { allocateStudent, vacateStudent, bulkAllocateStudents, bulkVacateStudents, setStudentsStatus } from './hostelAllocation'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -173,7 +176,7 @@ const btn = (bg = MD.color.primary, c = 'white') => ({
 // imperceptible; reads as a printed panel rather than a floating card.
 const card = {
   background: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
-  boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
+  boxShadow: `inset 0 2px 0 rgba(201,162,75,.6), ${MD.elevation[1]}`, border: `1px solid ${MD.color.outlineVariant}`,
 }
 const mobileCard = {
   ...card,
@@ -274,12 +277,25 @@ const TAB_GROUPS = [
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
 
+// A housemaster/housemistress logging in sees only these tabs, each
+// limited to their own house; everything else stays with the office.
+const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
+
+// Rows of one house: matched by the row's student (when it has one) or by
+// the row's own house. No lockHouse = everything (admins, office staff).
+function inHouse(rows, lockHouse, studentIds) {
+  if (!lockHouse) return rows || []
+  const key = normalizeHouse(lockHouse)
+  return (rows || []).filter(r => (r.student_id && studentIds?.has(r.student_id)) || normalizeHouse(r.house) === key)
+}
+
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-const today = () => new Date().toISOString().split('T')[0]
+const today = () => new Date().toLocaleDateString('en-CA')
 const nowTime = () => {
   const d = new Date()
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -289,8 +305,8 @@ function getStudentClass(s) {
   if (!s) return ''
   const batch = (s.batch || '').trim()
   const cls = (s.class_name || '').trim()
-  if (batch && batch !== '???') return batch
-  if (cls && cls !== '???') return cls
+  if (batch && batch !== '???') return canonicalBatch(batch)
+  if (cls && cls !== '???') return canonicalBatch(cls)
   return ''
 }
 
@@ -308,8 +324,8 @@ function getStudentClass(s) {
 //  Activities — within the current roll-call session's time window
 //  (Morning = 00:00–12:00, Night = 12:00–24:00, same calendar date).
 //
-//  Also powers a STANDALONE 3x-daily check (Morning/Afternoon/Night,
-//  8hr split: 00–08, 08–16, 16–24) independent of roll call — see
+//  Also powers the standalone 2x-daily check (Morning/Night, the same
+//  12hr split: 00–12, 12–24), run from the compliance grid — see
 //  DAILY_SLOTS / checkSixTabComplianceForSlot below.
 //
 //  REQUIRED SQL (run once in Supabase):
@@ -355,13 +371,14 @@ export function sessionWindow(dateStr, session) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-// ── Standalone 3x-daily compliance check ──
-// Independent of roll call's morning/night sessions. Splits the day into
-// three even 8-hour slots that the housemaster must clear separately.
+// ── Standalone 2x-daily compliance check ──
+// Twice a day, matching the two roll calls: Morning (00:00–12:00) and
+// Night (12:00–24:00), each unlocked by its own roll call. (It used to be
+// three 8-hour slots; old 'afternoon' entries in the neglect log still
+// display.)
 const DAILY_SLOTS = [
-  { key: 'morning', label: '🌅 Morning', startHour: 0, endHour: 8, rollCallGate: 'morning' },
-  { key: 'afternoon', label: '☀️ Afternoon', startHour: 8, endHour: 16, rollCallGate: 'morning' },
-  { key: 'night', label: '🌙 Night', startHour: 16, endHour: 24, rollCallGate: 'night' },
+  { key: 'morning', label: '🌅 Morning', startHour: 0, endHour: 12, rollCallGate: 'morning' },
+  { key: 'night', label: '🌙 Night', startHour: 12, endHour: 24, rollCallGate: 'night' },
 ]
 
 // ── Housemaster compliance WhatsApp group ──────────────────────────
@@ -377,11 +394,324 @@ function buildComplianceWaMessage(houseName, slotLabel, dateStr, missingLabels, 
   return `⚠️ Compliance Alert — ${who}\n${slotLabel} · ${dateStr}\nMissing: ${missingLabels}\n\nPlease log the above and confirm here.`
 }
 
-// Roll-call-completion report (separate from the compliance-gap message
-// above) — sent whenever a house's roll call hits 100% marked.
-function buildRollCallReportMessage(houseName, sessionLabel, dateStr, marked, total, housemasterName) {
-  const who = housemasterName ? `${housemasterName} (${houseName})` : houseName
-  return `✅ Roll Call Report — ${who}\n${sessionLabel} · ${dateStr}\nMarked: ${marked}/${total}\n\nRoll call completed and submitted.`
+// A short, encouraging line for the housemaster, from their rank and
+// whether today's roll call was on time.
+function motivationLine(rankInfo, late) {
+  if (late) return 'Today ran late — a punctual roll call tomorrow will lift your rank. You can do it!'
+  if (!rankInfo?.rank) return 'Every on-time roll call builds a stronger, safer house. Keep it up!'
+  if (rankInfo.rank === 1) return 'Leading every house — outstanding care and discipline. Keep setting the standard!'
+  if (rankInfo.rank <= 3) return 'In the top three — excellent work. One more push for the top spot!'
+  if (rankInfo.rank <= Math.ceil(rankInfo.total / 2)) return 'Strong and steady — keep the momentum and climb higher!'
+  return 'Every on-time roll call moves you up the table. Let’s climb together!'
+}
+const medalFor = n => n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : '🏆'
+
+// Full roll-call report for WhatsApp: the housemaster's profile and rank,
+// the counts, and who is out — professional and encouraging, so the
+// recipient doesn't have to open the app.
+function buildRollCallWaReport({ houseName, sessionLabel, dateStr, hm, total, present, outing, outpass, other, rankInfo, completedAt, late, mock }) {
+  const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+  const names = list => list.map(st => `   • ${st.name}${st.gcc_no ? ` (GCC ${st.gcc_no})` : ''}`).join('\n')
+  const day = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+  const time = completedAt ? new Date(completedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : null
+  return [
+    `🏠 *GNSI Hostel · Roll Call Report*`,
+    '━━━━━━━━━━━━━━━━━━',
+    `*${title} House* · ${sessionLabel}`,
+    `📅 ${day}`,
+    '',
+    hm ? `👤 *${hm.name}*` : null,
+    hm ? `${hmTitle(hm)}, ${title} House` : null,
+    rankInfo?.rank ? `${medalFor(rankInfo.rank)} Rank *#${rankInfo.rank}* of ${rankInfo.total} housemasters & housemistresses` : null,
+    rankInfo?.score != null ? `⭐ Score ${rankInfo.score}/100${rankInfo.onTimePct != null ? ` · On-time ${rankInfo.onTimePct}%` : ''} _(last 7 days)_` : null,
+    time ? `⏱️ Completed ${time} — ${late ? 'late ⏰' : 'on time ✅'}` : null,
+    '',
+    '📊 *Attendance*',
+    `Total students: ${total}`,
+    `✅ Present: ${present.length}`,
+    `🚶 Outing: ${outing.length}`,
+    outing.length ? names(outing) : null,
+    `🎫 Outpass: ${outpass.length}`,
+    outpass.length ? names(outpass) : null,
+    other ? `• Other: ${other}` : null,
+    ...(mock ? [
+      '',
+      `📝 *Mock Test — ${mock.series}* _(${mock.testCount} test${mock.testCount === 1 ? '' : 's'}, average score)_`,
+      '🏅 Top performers',
+      ...mock.top.map((m, i) => `   ${['🥇', '🥈', '🥉'][i]} ${m.name} — ${m.avg}%`),
+      ...(mock.weak.length ? ['📈 Needs support', ...mock.weak.map(m => `   • ${m.name} — ${m.avg}%`)] : []),
+    ] : []),
+    '',
+    `💬 _${motivationLine(rankInfo, late)}_`,
+    '',
+    '— GNSI Hostel Administration',
+  ].filter(l => l !== null).join('\n')
+}
+
+// ── House mock-test standings (from the Mock Analyzer) ─────────────
+// For one house: the latest mock series, each student's average score
+// across that series' tests, and the top 3 / the 3 who most need support.
+// Students are matched by GCC number, or by name when the sheet has none.
+// Returns null when there are no mock results for the house.
+let mockRowsCache = null // { at, rows } — reused for a few minutes
+async function loadHouseMockStandings(houseStudents) {
+  const [{ loadAll }, { gccDigits, normName }] = await Promise.all([import('./lib/mockTestStore'), import('./lib/mockTestEngine')])
+  if (!mockRowsCache || Date.now() - mockRowsCache.at > 5 * 60 * 1000) {
+    const { rows } = await loadAll()
+    mockRowsCache = { at: Date.now(), rows: rows || [] }
+  }
+  const rows = mockRowsCache.rows.filter(r => Number(r.max_total) > 0)
+  if (!rows.length || !houseStudents?.length) return null
+  const byGcc = new Map(), byName = new Map()
+  const add = (m, k, r) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(r) }
+  rows.forEach(r => { add(byGcc, gccDigits(r.gcc_no), r); add(byName, normName(r.student_name), r) })
+  const rowsFor = st => byGcc.get(gccDigits(st.gcc_no)) || byName.get(normName(st.name)) || []
+  // Latest series that any student of this house sat.
+  const seriesAt = {}
+  houseStudents.forEach(st => rowsFor(st).forEach(r => {
+    const t = r.test_date || r.created_at || ''
+    if (!seriesAt[r.series] || t > seriesAt[r.series]) seriesAt[r.series] = t
+  }))
+  const series = Object.keys(seriesAt).sort((a, b) => (seriesAt[b] > seriesAt[a] ? 1 : seriesAt[b] < seriesAt[a] ? -1 : 0))[0]
+  if (!series) return null
+  const tests = new Set()
+  const list = houseStudents.map(st => {
+    const rs = rowsFor(st).filter(r => r.series === series)
+    if (!rs.length) return null
+    rs.forEach(r => tests.add(r.test_no))
+    const pcts = rs.map(r => (Number(r.total) / Number(r.max_total)) * 100)
+    return { name: st.name, gcc_no: st.gcc_no, avg: Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length), tests: rs.length }
+  }).filter(Boolean).sort((a, b) => b.avg - a.avg)
+  if (!list.length) return null
+  const top = list.slice(0, 3)
+  const weak = list.length > 3 ? list.slice(-3).reverse().filter(x => !top.includes(x)) : []
+  return { series, testCount: tests.size, covered: list.length, top, weak }
+}
+
+// Housemaster's rank on the same 7-day score as the HM ranking.
+async function loadHmRank(houseName) {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - 7)
+  const rows = await computeHMPerformance(start.toISOString().split('T')[0], end.toISOString().split('T')[0])
+  const scored = rows.filter(r => r.hm && r.score !== null)
+  const mine = scored.find(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+  if (!mine) return { rank: null, total: scored.length, score: null, onTimePct: null }
+  return { rank: scored.indexOf(mine) + 1, total: scored.length, score: mine.score, onTimePct: mine.onTimePct }
+}
+
+// Profile card image (1080×1350) for WhatsApp: photo, name, house, rank,
+// today's counts and an encouraging line. Returns a PNG Blob.
+async function buildHmProfileCard({ hm, houseName, sessionLabel, dateStr, rankInfo, total, present, outing, outpass, late, completedAt, mock }) {
+  const MOCK_H = mock ? 400 : 0 // extra height for the mock-test section
+  const W = 1080, H = 1350 + MOCK_H
+  const c = document.createElement('canvas')
+  c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const serif = '"Fraunces", Georgia, "Times New Roman", serif'
+  const sans = '"Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif'
+  const title = String(houseName).replace(/\b\w/g, ch => ch.toUpperCase())
+  const roundRect = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath() }
+  const fitText = (text, maxW, size, font, weight = 700) => {
+    let s = size
+    do { g.font = `${weight} ${s}px ${font}`; s -= 2 } while (g.measureText(text).width > maxW && s > 20)
+  }
+
+  // Background
+  const bg = g.createRadialGradient(W, 0, 50, W, 0, W * 1.4)
+  bg.addColorStop(0, '#1F4E8C'); bg.addColorStop(0.45, '#132B52'); bg.addColorStop(1, '#0B1E3D')
+  g.fillStyle = bg; g.fillRect(0, 0, W, H)
+  g.fillStyle = 'rgba(255,255,255,.05)'
+  for (let y = 20; y < H; y += 28) for (let x = 20; x < W; x += 28) { g.beginPath(); g.arc(x, y, 1.6, 0, Math.PI * 2); g.fill() }
+  const gold = g.createLinearGradient(0, 0, W, 0)
+  gold.addColorStop(0, '#B8913F'); gold.addColorStop(0.5, '#E2C57E'); gold.addColorStop(1, '#B8913F')
+  g.fillStyle = gold; g.fillRect(0, 0, W, 12); g.fillRect(0, H - 12, W, 12)
+
+  // Header
+  g.textAlign = 'center'
+  g.fillStyle = '#E2C57E'; g.font = `800 30px ${sans}`
+  g.fillText('GNSI HOSTEL  ·  ROLL CALL REPORT', W / 2, 92)
+  g.fillStyle = 'rgba(255,255,255,.75)'; g.font = `600 30px ${sans}`
+  const day = new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  g.fillText(`${sessionLabel.replace(/^\S+\s/, '')}  ·  ${day}`, W / 2, 140)
+
+  // Photo
+  const cx = W / 2, cy = 340, r = 150
+  g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40
+  g.beginPath(); g.arc(cx, cy, r + 14, 0, Math.PI * 2); g.fillStyle = gold; g.fill(); g.restore()
+  g.beginPath(); g.arc(cx, cy, r + 4, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill()
+  const url = hm ? findStaffPhoto(hm.name, hm.staff_id || hm.staff_profile_id) : null
+  const img = url ? await new Promise(res => {
+    const im = new Image(); im.crossOrigin = 'anonymous'
+    im.onload = () => res(im); im.onerror = () => res(null); im.src = url
+    setTimeout(() => res(null), 6000)
+  }) : null
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip()
+  if (img) {
+    const scale = Math.max((r * 2) / img.width, (r * 2) / img.height)
+    const w = img.width * scale, h = img.height * scale
+    g.drawImage(img, cx - w / 2, cy - r, w, h) // top-aligned, faces stay in frame
+  } else {
+    const ig = g.createLinearGradient(cx - r, cy - r, cx + r, cy + r)
+    ig.addColorStop(0, '#F8EBC7'); ig.addColorStop(1, '#E2C57E')
+    g.fillStyle = ig; g.fillRect(cx - r, cy - r, r * 2, r * 2)
+    g.fillStyle = '#0B1E3D'; g.font = `700 120px ${serif}`; g.textBaseline = 'middle'
+    g.fillText(String(hm?.name || title).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase(), cx, cy + 6)
+    g.textBaseline = 'alphabetic'
+  }
+  g.restore()
+
+  // Name and house
+  g.fillStyle = '#fff'; fitText(hm?.name || 'Housemaster', W - 140, 66, serif, 700)
+  g.fillText(hm?.name || 'Housemaster', W / 2, 580)
+  g.fillStyle = '#E2C57E'; g.font = `700 34px ${sans}`
+  g.fillText(`${hm ? hmTitle(hm) : 'Housemaster'}  ·  ${title} House`, W / 2, 632)
+
+  // Rank medallion
+  roundRect(140, 680, W - 280, 190, 36)
+  g.fillStyle = 'rgba(255,255,255,.08)'; g.fill()
+  g.lineWidth = 3; g.strokeStyle = 'rgba(226,197,126,.55)'; g.stroke()
+  if (rankInfo?.rank) {
+    g.fillStyle = '#E2C57E'; g.font = `800 26px ${sans}`
+    g.fillText('RANK AMONG HOUSEMASTERS & HOUSEMISTRESSES', W / 2, 728)
+    g.fillStyle = '#fff'; g.font = `700 96px ${serif}`
+    g.fillText(`${medalFor(rankInfo.rank)} #${rankInfo.rank}`, W / 2 - 90, 830)
+    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 32px ${sans}`
+    g.fillText(`of ${rankInfo.total}`, W / 2 + 70, 800)
+    if (rankInfo.score != null) { g.fillStyle = '#E2C57E'; g.font = `800 32px ${sans}`; g.fillText(`Score ${rankInfo.score}/100`, W / 2 + 70, 842) }
+    g.textAlign = 'center'
+  } else {
+    g.fillStyle = '#fff'; g.font = `700 44px ${serif}`
+    g.fillText('Building the record this week', W / 2, 790)
+    g.fillStyle = 'rgba(255,255,255,.7)'; g.font = `600 28px ${sans}`
+    g.fillText('Rank appears after a few on-time roll calls', W / 2, 836)
+  }
+
+  // Counts
+  const tiles = [
+    { l: 'TOTAL', v: total, c: '#fff' },
+    { l: 'PRESENT', v: present, c: '#4ADE80' },
+    { l: 'OUTING', v: outing, c: '#7DD3FC' },
+    { l: 'OUTPASS', v: outpass, c: '#FBBF24' },
+  ]
+  const tw = 196, gap = 22, tx0 = (W - (tw * 4 + gap * 3)) / 2
+  tiles.forEach((t, i) => {
+    const x = tx0 + i * (tw + gap)
+    roundRect(x, 905, tw, 150, 26); g.fillStyle = 'rgba(255,255,255,.07)'; g.fill()
+    g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke()
+    g.fillStyle = t.c; g.font = `700 64px ${serif}`; g.fillText(String(t.v), x + tw / 2, 990)
+    g.fillStyle = 'rgba(255,255,255,.65)'; g.font = `800 22px ${sans}`; g.fillText(t.l, x + tw / 2, 1030)
+  })
+
+  // Mock test: top performers / needs support
+  if (mock) {
+    const y0 = 1085
+    g.fillStyle = '#E2C57E'; g.font = `800 26px ${sans}`
+    g.fillText(`MOCK TEST · ${String(mock.series).toUpperCase()}`, W / 2, y0 + 10)
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `600 22px ${sans}`
+    g.fillText(`Average score · ${mock.testCount} test${mock.testCount === 1 ? '' : 's'} · ${mock.covered} students`, W / 2, y0 + 44)
+    const cols = [
+      { head: '🏅 TOP PERFORMERS', list: mock.top, accent: '#4ADE80', bar: 'rgba(74,222,128,.85)' },
+      { head: '📈 NEEDS SUPPORT', list: mock.weak, accent: '#FBBF24', bar: 'rgba(251,191,36,.85)' },
+    ]
+    const cw = (W - 140 - 24) / 2
+    cols.forEach((col, ci) => {
+      const x = 70 + ci * (cw + 24), y = y0 + 70
+      roundRect(x, y, cw, 300, 26); g.fillStyle = 'rgba(255,255,255,.07)'; g.fill()
+      g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke()
+      g.textAlign = 'left'; g.fillStyle = col.accent; g.font = `800 24px ${sans}`
+      g.fillText(col.head, x + 26, y + 46)
+      if (!col.list.length) {
+        g.fillStyle = 'rgba(255,255,255,.55)'; g.font = `600 24px ${sans}`
+        g.fillText('Everyone is doing well', x + 26, y + 110)
+      }
+      col.list.slice(0, 3).forEach((m, i) => {
+        const ry = y + 96 + i * 70
+        const label = ci === 0 ? ['🥇', '🥈', '🥉'][i] + ' ' : ''
+        g.fillStyle = '#fff'
+        let nm = label + m.name
+        g.font = `700 25px ${sans}`
+        while (g.measureText(nm).width > cw - 140 && nm.length > 4) nm = nm.slice(0, -2) + '…'
+        g.fillText(nm, x + 26, ry)
+        g.textAlign = 'right'; g.fillStyle = col.accent; g.font = `800 28px ${sans}`
+        g.fillText(`${m.avg}%`, x + cw - 26, ry)
+        g.textAlign = 'left'
+        roundRect(x + 26, ry + 14, cw - 52, 10, 5); g.fillStyle = 'rgba(255,255,255,.1)'; g.fill()
+        roundRect(x + 26, ry + 14, Math.max(10, (cw - 52) * Math.min(m.avg, 100) / 100), 10, 5); g.fillStyle = col.bar; g.fill()
+      })
+      g.textAlign = 'center'
+    })
+  }
+
+  // Status pill (moved down by the mock section)
+  g.translate(0, MOCK_H)
+  const time = completedAt ? new Date(completedAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : ''
+  const pill = late ? `⏰ Completed late${time ? ` · ${time}` : ''}` : `✓ Completed on time${time ? ` · ${time}` : ''}`
+  g.font = `800 30px ${sans}`
+  const pw = g.measureText(pill).width + 70
+  roundRect((W - pw) / 2, 1090, pw, 64, 32)
+  g.fillStyle = late ? 'rgba(251,191,36,.18)' : 'rgba(74,222,128,.18)'; g.fill()
+  g.lineWidth = 2; g.strokeStyle = late ? '#FBBF24' : '#4ADE80'; g.stroke()
+  g.fillStyle = late ? '#FDE68A' : '#BBF7D0'; g.fillText(pill, W / 2, 1133)
+
+  // Motivation
+  const line = motivationLine(rankInfo, late)
+  g.fillStyle = '#fff'; g.font = `italic 600 32px ${serif}`
+  const words = line.split(' '), lines = []
+  let cur = ''
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (g.measureText(t).width > W - 200 && cur) { lines.push(cur); cur = w } else cur = t }
+  if (cur) lines.push(cur)
+  const shown = lines.slice(0, 2)
+  shown.forEach((l, i) => g.fillText(`${i === 0 ? '“' : ''}${l}${i === shown.length - 1 ? '”' : ''}`, W / 2, 1208 + i * 42))
+  g.fillStyle = 'rgba(255,255,255,.5)'; g.font = `700 22px ${sans}`
+  g.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W / 2, 1300)
+  g.setTransform(1, 0, 0, 1, 0, 0)
+
+  return new Promise(res => c.toBlob(b => res(b), 'image/png'))
+}
+
+// "Housemaster" / "Housemistress" from the housemasters record.
+function hmTitle(hm) {
+  if (hm?.designation) return hm.designation
+  return /^f/i.test(hm?.gender || '') ? 'Housemistress' : 'Housemaster'
+}
+
+// The house's housemaster/mistress with their Staff-module photo (initials
+// when there's no photo).
+function HmChip({ hm, dark = false, size = 34 }) {
+  if (!hm) {
+    return <span style={{ fontSize: 11.5, color: dark ? 'rgba(255,255,255,.6)' : '#94A3B8' }}>No housemaster assigned</span>
+  }
+  const initials = String(hm.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+      <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+        style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 800, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+          border: '2px solid #E2C57E', boxShadow: '0 4px 10px -4px rgba(11,30,61,.4)' }}>
+        {initials}
+      </StaffAvatar>
+      <span style={{ minWidth: 0, lineHeight: 1.2 }}>
+        <span style={{ display: 'block', fontSize: 9.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: dark ? '#E2C57E' : '#A87A1F' }}>{hmTitle(hm)}</span>
+        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: dark ? '#fff' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hm.name}</span>
+      </span>
+    </span>
+  )
+}
+
+// Large portrait of the housemaster / housemistress for dashboard headers:
+// the Staff-module photo in a gold ring (initials when there is none).
+function HmPortrait({ hm, size = 76 }) {
+  if (!hm) return null
+  const initials = String(hm.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <StaffAvatar name={hm.name} id={hm.staff_id || hm.staff_profile_id}
+      style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: Math.round(size * 0.36), fontWeight: 800, fontFamily: FONT_DISPLAY, color: '#0B1E3D', background: 'linear-gradient(160deg,#F8EBC7,#E2C57E)',
+        border: '3px solid #E2C57E', boxShadow: '0 0 0 3px rgba(255,255,255,.18), 0 12px 24px -10px rgba(0,0,0,.55)' }}>
+      {initials}
+    </StaffAvatar>
+  )
 }
 
 // Mandatory recipient — every roll call completion and every compliance
@@ -423,11 +753,12 @@ function currentDailySlot() {
 // ══════════════════════════════════════════════════════════════
 //  MANDATORY ROLL CALL DEADLINES + LATE PENALTY
 // ══════════════════════════════════════════════════════════════
-//  Institutional rule: Morning roll call must be completed by 7:00 AM,
-//  Night roll call by 8:00 PM. A 15-minute grace window is allowed
-//  beyond the deadline; a roll call whose LAST student is marked after
-//  deadline + grace is flagged as Late and a penalty/fine record is
-//  logged against that house's housemaster/mistress.
+//  Institutional rule: Morning roll call is open until 7:30 AM, night roll
+//  call until 10:00 PM. After the cutoff the roll call is blocked for
+//  that day; the housemaster must request the admin to unlock it
+//  (hm_rollcall_unlock). A roll call finished after the cutoff (only
+//  possible once an admin approves) is flagged Late and a penalty/fine
+//  record is logged against that house's housemaster/mistress.
 //
 //  This is separate from sessionWindow() above (which governs the
 //  12-hour six-tab compliance gating and is left untouched) — this is
@@ -435,10 +766,60 @@ function currentDailySlot() {
 //  itself.
 // ══════════════════════════════════════════════════════════════
 const ROLL_CALL_DEADLINE = {
-  morning: { hour: 7, minute: 0, label: '7:00 AM' },
-  night: { hour: 20, minute: 0, label: '8:00 PM' },
+  morning: { hour: 7, minute: 30, label: '7:30 AM' },
+  night: { hour: 22, minute: 0, label: '10:00 PM' },
 }
-const ROLL_CALL_GRACE_MINUTES = 15
+const ROLL_CALL_GRACE_MINUTES = 0
+// Whether a housemaster is locked out of a roll call once its window has
+// closed (and must ask the admin to unlock it). Off: a missed roll call can
+// still be marked; it is recorded as late (marked_at vs the cutoff) and counts
+// in the monthly ranking. Set to true to bring the admin unlock back.
+const ROLL_CALL_CUTOFF_LOCK = false
+
+// Has the roll call window for this date + session closed?
+function rollCallClosed(dateStr, session, nowMs = Date.now()) {
+  return nowMs > rollCallDeadline(dateStr, session).graceEnd.getTime()
+}
+
+// ── Admin unlock requests (after the cutoff) ──────────────────────
+// A housemaster whose roll call window closed asks the admin to unlock
+// it for that house + day + session. If the table has not been created
+// yet nothing is blocked (no lock-out); admins see a note instead.
+const unlockKey = (house, dateStr, session) => `${normalizeHouse(house)}|${dateStr}|${session}`
+async function loadUnlocks(dateStr) {
+  const from = new Date(`${dateStr}T00:00:00`); from.setDate(from.getDate() - 7)
+  const { data, error } = await supabase.from('hm_rollcall_unlock').select('*')
+    .or(`status.eq.pending,date.gte.${from.toLocaleDateString('en-CA')}`).order('created_at', { ascending: false })
+  if (error) return { ready: false, rows: [] }
+  return { ready: true, rows: data || [] }
+}
+async function requestRollCallUnlock(house, dateStr, session, requestedBy, reason) {
+  const { error } = await supabase.from('hm_rollcall_unlock').upsert([{
+    house, date: dateStr, session, requested_by: requestedBy || 'Housemaster', reason: reason || null,
+    status: 'pending', decided_by: null, decided_at: null, created_at: new Date().toISOString(),
+  }], { onConflict: 'house,date,session' })
+  if (error) throw error
+  try {
+    const { data: admins } = await supabase.from('staff_profiles').select('id').ilike('role', 'admin')
+    const when = `${session === 'morning' ? 'Morning' : 'Night'} roll call · ${dateStr}`
+    await Promise.all((admins || []).map(a => sendPushToStaffId(a.id,
+      `🔓 Roll call unlock request — ${house}`,
+      `${requestedBy || 'Housemaster'} asks to unlock the ${when}. ${reason || ''}`.trim(), '/hostel?tab=attendance')))
+  } catch { /* push is best-effort */ }
+}
+async function decideRollCallUnlock(row, approve, decidedBy) {
+  const { error } = await supabase.from('hm_rollcall_unlock').update({
+    status: approve ? 'approved' : 'rejected', decided_by: decidedBy || 'Admin', decided_at: new Date().toISOString(),
+  }).eq('id', row.id)
+  if (error) throw error
+  try {
+    await notifyHousemasterByHouse(row.house,
+      approve ? '🔓 Roll call unlocked' : 'Roll call request declined',
+      approve ? `Admin unlocked the ${row.session} roll call for ${row.date}. Please complete it now.`
+        : `Admin declined your request to unlock the ${row.session} roll call for ${row.date}.`,
+      '/hostel?tab=attendance')
+  } catch { /* push is best-effort */ }
+}
 
 // Returns the hard deadline and grace-expiry Date objects for a given
 // calendar date + session.
@@ -462,6 +843,28 @@ function getRollCallLateStatus(dateStr, session, lastMarkedAtIso) {
   return { isLate, minutesLate, deadlineLabel: label, graceEnd }
 }
 
+// ── Tell the parents when their child's roll call is marked ─────────
+// Only for today's live roll call (not catch-up of a past day) and only
+// when the status actually changed. Goes to the devices subscribed for
+// that student in the Parents portal.
+function notifyParentRollCall(student, dateStr, session, status, markedBy) {
+  if (!student?.id || dateStr !== today() || !status || status === 'Unmarked') return
+  const first = String(student.name || 'Your child').trim().split(/\s+/)[0]
+  const when = session === 'morning' ? 'Morning' : 'Night'
+  const time = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+  const line = {
+    Present: `✅ ${first} was marked Present`,
+    Late: `✅ ${first} was marked Present (late)`,
+    Absent: `⚠️ ${first} was marked Absent`,
+    Sick: `🤒 ${first} was marked Sick`,
+    Outing: `🚶 ${first} is on outing`,
+    Outpass: `🚶 ${first} is on outpass`,
+    'On Leave': `🏠 ${first} is on leave`,
+  }[status] || `${first} was marked ${status}`
+  sendPushToStudent(student.id, `${when} roll call · ${time}`,
+    `${line}${markedBy && markedBy !== 'Unknown' ? ` by ${markedBy}` : ''}. Open the Parents portal for the week.`)
+}
+
 // ── Penalty/fine logging ──────────────────────────────────────────
 // Reuses hm_neglect_log (same table as compliance-gap logging above)
 // with check_type: 'late_rollcall' so late roll calls surface in the
@@ -473,7 +876,7 @@ async function logLateRollCallPenalty(houseName, dateStr, session, housemasterNa
     const { data, error } = await supabase.from('hm_neglect_log').insert([{
       house: houseName, date: dateStr, session,
       housemaster_name: housemasterName || 'Unknown',
-      missing_tabs: [`Late roll call — ${minutesLate} min past ${deadlineLabel} deadline (incl. 15-min grace). Penalty/fine applicable.`],
+      missing_tabs: [`Late roll call — ${minutesLate} min past ${deadlineLabel} cutoff (admin unlocked). Penalty/fine applicable.`],
       skip_reasons: {},
       check_type: 'late_rollcall',
     }]).select('id').single()
@@ -496,7 +899,7 @@ async function logLateRollCallPenalty(houseName, dateStr, session, housemasterNa
 
 // Core checker — takes an explicit {start, end} ISO window so it can be
 // reused by both the roll-call-linked check (12hr split) and the
-// standalone 3x-daily check (8hr split). Returns array of missing tab keys.
+// standalone 2x-daily check (same 12hr split). Returns array of missing tab keys.
 async function hasAny(queryBuilder) {
   try {
     const { data, error } = await queryBuilder
@@ -576,13 +979,87 @@ async function checkSixTabComplianceForWindow(houseName, start, end, houseStuden
 // existing roll-call completion warning banner.
 async function checkSixTabCompliance(houseName, dateStr, session, houseStudentIds) {
   const { start, end } = sessionWindow(dateStr, session)
-  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  const missing = await checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  return withoutConfirmed(missing, houseName, dateStr, session)
 }
 
-// Standalone 3x-daily wrapper (Morning/Afternoon/Night, 8hr split).
+// Standalone 2x-daily wrapper (Morning/Night, 12hr split).
 async function checkSixTabComplianceForSlot(houseName, dateStr, slotKey, houseStudentIds) {
   const { start, end } = dailySlotWindow(dateStr, slotKey)
-  return checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  const missing = await checkSixTabComplianceForWindow(houseName, start, end, houseStudentIds)
+  return withoutConfirmed(missing, houseName, dateStr, slotKey)
+}
+
+// ── Before-roll-call checklist ─────────────────────────────────────
+// A housemaster can start a roll call only once each compulsory tab has
+// an entry for that session (morning 00–12, night 12–24), or — where the
+// admin allows it — they have confirmed "Nothing to report" for it.
+// Rules per tab: 'off' (not checked), 'confirm' (an entry or "Nothing to
+// report"), 'fill' (an entry is required). Saved in system_settings.
+const PRECHECK_SETTING_KEY = 'hostel_rollcall_required_tabs'
+const PRECHECK_RETURN_KEY = 'gnsi_precheck_return'
+const PRECHECK_RULES = [
+  { key: 'off', label: 'Not required' },
+  { key: 'confirm', label: 'Entry or “Nothing to report”' },
+  { key: 'fill', label: 'Entry required' },
+]
+const PRECHECK_DEFAULT = Object.fromEntries(SIX_TABS.map(t => [t.key, 'confirm']))
+
+async function loadPrecheckRules() {
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', PRECHECK_SETTING_KEY).maybeSingle()
+    const v = typeof data?.value === 'string' ? JSON.parse(data.value) : data?.value
+    if (v && typeof v === 'object') return { ...Object.fromEntries(SIX_TABS.map(t => [t.key, 'off'])), ...v }
+  } catch { /* not saved yet — use the default */ }
+  return PRECHECK_DEFAULT
+}
+
+async function savePrecheckRules(rules) {
+  const { error } = await supabase.from('system_settings').upsert(
+    { key: PRECHECK_SETTING_KEY, value: JSON.stringify(rules), updated_at: new Date().toISOString() },
+    { onConflict: 'key' })
+  return error
+}
+
+// "Nothing to report" confirmations for one house's session → Set of tab
+// keys, or null when the table isn't there yet (SQL 20261024 not run).
+async function loadPrecheckConfirmations(houseName, dateStr, session) {
+  try {
+    const { data, error } = await supabase.from('hm_rollcall_precheck').select('tab_key')
+      .ilike('house', houseName).eq('date', dateStr).eq('session', session)
+    if (error) return null
+    return new Set((data || []).map(r => r.tab_key))
+  } catch { return null }
+}
+
+async function savePrecheckConfirmation(houseName, dateStr, session, tabKey, by) {
+  const { error } = await supabase.from('hm_rollcall_precheck').upsert(
+    { house: houseName, date: dateStr, session, tab_key: tabKey, status: 'none', confirmed_by: by || null },
+    { onConflict: 'house,date,session,tab_key' })
+  return error
+}
+
+// A tab confirmed "Nothing to report" before roll call isn't a gap.
+async function withoutConfirmed(missing, houseName, dateStr, session) {
+  if (!missing.length) return missing
+  const confirmed = await loadPrecheckConfirmations(houseName, dateStr, session)
+  return confirmed ? missing.filter(k => !confirmed.has(k)) : missing
+}
+
+// Each compulsory tab's state for one house's session:
+// 'filled' | 'none' (confirmed nothing to report) | 'pending'.
+async function evaluatePrecheck(houseName, dateStr, session, houseStudentIds, rules) {
+  const { start, end } = sessionWindow(dateStr, session)
+  const tabs = SIX_TABS.filter(t => (rules[t.key] || 'off') !== 'off')
+  const [filled, confirmed] = await Promise.all([
+    Promise.all(tabs.map(t => TAB_CHECKERS[t.key](houseName, start, end, houseStudentIds))),
+    loadPrecheckConfirmations(houseName, dateStr, session),
+  ])
+  const status = {}
+  tabs.forEach((t, i) => {
+    status[t.key] = filled[i] ? 'filled' : rules[t.key] === 'confirm' && confirmed?.has(t.key) ? 'none' : 'pending'
+  })
+  return { status, tableReady: confirmed !== null }
 }
 
 // Re-verify a single tab against a given window — used by the manual
@@ -718,7 +1195,7 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
         <div style={{
           fontSize: '15px', width: '32px', height: '32px', borderRadius: '10px',
-          background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</p>
@@ -736,8 +1213,8 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
     }}>
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
       <div style={{
-        fontSize: '16px', width: '34px', height: '34px', borderRadius: '11px',
-        background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+        fontSize: '16px', width: '36px', height: '36px', borderRadius: '12px',
+        background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, marginLeft: 2,
       }}>{icon}</div>
       <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.25 }}>{label}</p>
       <h2 style={{ fontSize: '29px', fontWeight: '600', color, margin: 0, lineHeight: 1, fontFamily: FONT_DISPLAY, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{value}</h2>
@@ -762,6 +1239,8 @@ function statusStyle(status) {
     Late: { bg: '#fef9c3', color: '#b8923a' },
     'On Leave': { bg: '#dbeafe', color: '#1d4ed8' },
     Sick: { bg: '#f5f3ff', color: '#7c3aed' },
+    Outing: { bg: '#e0f2fe', color: '#0369a1' },
+    Outpass: { bg: '#fef3c7', color: '#b45309' },
     Pending: { bg: '#fef9c3', color: '#b8923a' },
     Approved: { bg: '#dcfce7', color: '#16a34a' },
     Rejected: { bg: '#fee2e2', color: '#dc2626' },
@@ -795,7 +1274,7 @@ function StudentSearchInput({ students, onSelect, placeholder = 'Type name or GC
       .filter(s =>
         (s.name || '').toLowerCase().includes(q) ||
         String(s.gcc_no || '').includes(q) ||
-        (s.batch || '').toLowerCase().includes(q) ||
+        (s.batch || '').toLowerCase().includes(q) || canonicalBatch(s.batch).toLowerCase().includes(q) ||
         (s.course || '').toLowerCase().includes(q) ||
         String(s.admission_no || '').toLowerCase().includes(q)
       )
@@ -1177,7 +1656,13 @@ function MobileActionButtons({ actions }) {
 //  Drop-in replacement for AttendanceTab in Hostel.jsx
 // ══════════════════════════════════════════════════════════════
 
-const ATTENDANCE_TYPES = ['Present', 'Absent', 'Late', 'On Leave', 'Sick']
+// Hostel roll call statuses: in the hostel, out on an outing, or out on an
+// outpass. (Absent / Late / On Leave / Sick were removed; old records with
+// those values still display, see statusConfig.)
+const ATTENDANCE_TYPES = ['Present', 'Outing', 'Outpass']
+// "Late" (arrived after roll call time) is offered for day scholars only; it counts as present.
+const isDayScholar = s => /day\s*scholar/i.test(String(s?.hostel_type || '')) || /day\s*scholar/i.test(String(s?.house || ''))
+const typesFor = s => (isDayScholar(s) ? [...ATTENDANCE_TYPES, 'Late'] : ATTENDANCE_TYPES)
 
 const HOUSE_PALETTE = [
   { color: '#1d4ed8', bg: '#dbeafe', light: '#eff6ff', border: '#93c5fd', dark: '#1e40af' },
@@ -1196,6 +1681,8 @@ const statusConfig = {
   Late: { bg: '#fef9c3', color: '#b8923a', icon: '⏰' },
   'On Leave': { bg: '#dbeafe', color: '#1d4ed8', icon: '🚪' },
   Sick: { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
+  Outing: { bg: '#e0f2fe', color: '#0369a1', icon: '🚶' },
+  Outpass: { bg: '#fef3c7', color: '#b45309', icon: '🎫' },
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
 }
 
@@ -1299,6 +1786,183 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 }
 
 
+// ── Student photos for the roll call card ─────────────────────────────────
+// The shared student list does not carry photos, so they are read here, only
+// for the students of the house being called, in chunks. A photo uploaded to
+// private storage is saved as photo_path only; it gets a temporary viewing
+// link in memory (nothing is written back). photo_path is optional: if that
+// column is missing the query falls back to photo_url alone.
+const STUDENT_PHOTO_BUCKET = 'gnsi'
+const studentPhotoCache = new Map() // student id -> url | null
+function useStudentPhotos(students) {
+  const [, bump] = useState(0)
+  const key = (students || []).map(s => s.id).join(',')
+  useEffect(() => {
+    const ids = (students || []).map(s => s.id).filter(id => !studentPhotoCache.has(id))
+    if (!ids.length) return undefined
+    let alive = true
+    ;(async () => {
+      for (let i = 0; i < ids.length; i += 100) {
+        const part = ids.slice(i, i + 100)
+        try {
+          let { data, error } = await supabase.from('students').select('id, photo_url, photo_path').in('id', part)
+          if (error) ({ data } = await supabase.from('students').select('id, photo_url').in('id', part))
+          const rows = data || []
+          const need = rows.filter(r => !r.photo_url && r.photo_path)
+          const signed = new Map()
+          if (need.length) {
+            const { data: sd } = await supabase.storage.from(STUDENT_PHOTO_BUCKET).createSignedUrls(need.map(r => r.photo_path), 86400)
+            ;(sd || []).forEach(d => { if (d.signedUrl) signed.set(d.path, d.signedUrl) })
+          }
+          for (const r of rows) studentPhotoCache.set(r.id, r.photo_url || signed.get(r.photo_path) || null)
+        } catch { /* photos are a bonus: the card falls back to the initial */ }
+        for (const id of part) if (!studentPhotoCache.has(id)) studentPhotoCache.set(id, null)
+        if (alive) bump(n => n + 1)
+      }
+    })()
+    return () => { alive = false }
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return id => studentPhotoCache.get(id) || null
+}
+function RollCallPhoto({ url, name, fallback }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { setFailed(false) }, [url])
+  if (!url || failed) return <>{fallback ?? (name || '?')[0].toUpperCase()}</>
+  return <img src={url} alt={name || 'Student'} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />
+}
+
+
+// "Fix now" from the HM Dashboard: the dashboard cannot open a catch-up roll call
+// itself (that lives in the Roll Call tab), so it leaves the request here and
+// switches tab; the Roll Call tab picks it up once its data has loaded.
+let pendingRollCallFix = null // { house, date, session } | null
+
+// Profile card sharing is required after a roll call: remember (per browser) and
+// log (audit_logs, action hostel_profile_card_shared) that it was shared, so the
+// Done screen and the HM Dashboard can stop nagging and an admin can check.
+const profileCardKey = (house, date, session) => `gnsi_hm_card_shared_${normalizeHouse(house)}_${date}_${session}`
+function profileCardShared(house, date, session) {
+  try { return localStorage.getItem(profileCardKey(house, date, session)) === '1' } catch { return false }
+}
+function markProfileCardShared(house, date, session) {
+  try { localStorage.setItem(profileCardKey(house, date, session), '1') } catch { /* storage blocked */ }
+  try { window.dispatchEvent(new CustomEvent('gnsi:profilecard-shared')) } catch { /* ignore */ }
+  try {
+    const raw = localStorage.getItem('gnsi_session')
+    const sess = raw ? JSON.parse(raw) : null
+    const user = sess?.user || sess || null
+    supabase.from('audit_logs').insert({
+      action: 'hostel_profile_card_shared', module: 'Hostel', level: 'info', user_id: null,
+      user_name: user?.name || user?.username || 'Unknown',
+      metadata: { house, date, session, raw_user_id: user?.id ?? null, role: user?.role ?? null },
+      created_at: new Date().toISOString(),
+    }).then(() => {}, () => {})
+  } catch { /* the log is a bonus */ }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MISSING ROLL CALL WARNING
+//  House-wise cards at the top of Roll Call and the HM Dashboard: each house is
+//  red "Incomplete" (with its missing roll calls and the instructions below) or
+//  green "Complete"; a housemaster sees only their own house. A roll call of
+//  today or the last two days counts as missing when it is closed but not
+//  complete for a house. A past day counts only if another house did mark
+//  it (so a school holiday never raises it). Reads the three days' hostel
+//  roll call rows once when it opens; nothing refreshes by itself.
+// ══════════════════════════════════════════════════════════════
+function MissingRollCallAlert({ students, onOpen, onFix, lockHouse }) {
+  const [rows, setRows] = useState(null)
+  const [now, setNow] = useState(() => Date.now())
+  const days = useMemo(() => [0, 1, 2].map(i => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA') }), [])
+  useEffect(() => {
+    let alive = true
+    // Three days of every house is well over the 1000-row query cap, which
+    // cut off the newest rows (today's marks) and left finished roll calls
+    // showing as "0 marked". Page through all of them, in a stable order.
+    fetchAllRows(() => supabase.from('attendance_records').select('student_id, house, date, session')
+      .in('session', ['morning', 'night']).gte('date', days[days.length - 1]).order('id'))
+      .then(data => { if (alive) setRows(data) })
+    const t = setInterval(() => setNow(Date.now()), 60000)
+    return () => { alive = false; clearInterval(t) }
+  }, [days])
+
+  const scoped = useMemo(() => !lockHouse ? students
+    : (students || []).filter(s => normalizeHouse(s.house) === normalizeHouse(lockHouse)), [students, lockHouse])
+  const missing = useMemo(() => {
+    if (!rows) return []
+    return findMissingRollCalls({ rows, students: scoped, days, normalizeHouse, isClosed: (d, sess) => rollCallClosed(d, sess, now) })
+  }, [rows, scoped, days, now])
+
+  // One card per house: red "Incomplete" with that house's missing roll calls,
+  // or green "Complete". A housemaster (lockHouse) sees only their own house.
+  if (!rows) return null
+  const fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  const label = h => String(h).replace(/\b\w/g, c => c.toUpperCase())
+  const houseNames = new Map()
+  for (const s of scoped) {
+    const k = normalizeHouse(s.house)
+    if (k && !/day\s*scholar/i.test(k) && !houseNames.has(k)) houseNames.set(k, s.house)
+  }
+  const cards = [...houseNames.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, name]) => ({
+    key: k, name, items: missing.filter(m => normalizeHouse(m.house) === k),
+  }))
+  if (!cards.length) return null
+  const incomplete = cards.filter(c => c.items.length)
+  const single = cards.length === 1
+  return (
+    <div style={{ margin: '0 0 16px' }}>
+      {!single && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: '.06em', textTransform: 'uppercase', color: incomplete.length ? '#B91C1C' : '#15803D' }}>
+            {incomplete.length ? `🚨 Roll call incomplete — ${incomplete.length} of ${cards.length} houses` : `✅ Roll call complete — all ${cards.length} houses`}
+          </span>
+          {onOpen && incomplete.length > 0 && <button type="button" onClick={onOpen} style={{ padding: '6px 12px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+        {cards.map(c => c.items.length ? (
+          <div key={c.key} role="alert" style={{ borderRadius: 14, border: '2px solid #DC2626', background: '#FEF2F2', overflow: 'hidden' }}>
+            <div style={{ padding: '9px 12px', background: '#DC2626', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🚨</span>
+              <div style={{ flex: 1, fontWeight: 900, fontSize: 14 }}>{label(c.name)} · Incomplete</div>
+              {single && onOpen && <button type="button" onClick={onOpen} style={{ padding: '6px 12px', borderRadius: 10, border: 'none', background: '#fff', color: '#B91C1C', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
+            </div>
+            <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {c.items.map(m => (
+                <div key={`${m.date}|${m.session}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#7F1D1D' }}>
+                  <span>{m.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {m.today ? 'Today' : m.yesterday ? 'Yesterday' : ''} {fmtDate(m.date)}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <b>{m.marked} of {m.total} marked</b>
+                    {onFix && <button type="button" onClick={() => onFix(m.house, m.date, m.session)} style={{ padding: '3px 10px', borderRadius: 8, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Fix now</button>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div key={c.key} style={{ borderRadius: 14, border: '2px solid #16A34A', background: '#F0FDF4', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>✅</span>
+            <div style={{ flex: 1, fontWeight: 900, fontSize: 14, color: '#166534' }}>{label(c.name)} · Complete</div>
+          </div>
+        ))}
+      </div>
+      {incomplete.length > 0 && (
+        <div style={{ marginTop: 10, padding: '12px 16px', borderRadius: 14, border: '1px solid #FECACA', background: '#fff', fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 800, color: '#B91C1C', marginBottom: 4 }}>What to do now</div>
+          <ol style={{ margin: 0, paddingLeft: 20 }}>
+            <li><b>Any missed roll call:</b> tap <b>Fix now</b> on its line (or open Roll Call, tap the house, then <b>Catch up</b>) and mark every student. Today's roll call stays locked until yesterday is 100% marked.</li>
+            {ROLL_CALL_CUTOFF_LOCK
+              ? <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed. Tap the house, then <b>Request admin</b> and give the reason. You will get a notification when the admin unlocks it.</li>
+              : <li><b>Today's roll call after {ROLL_CALL_DEADLINE.morning.label} / {ROLL_CALL_DEADLINE.night.label}:</b> the window has closed, but you can still open the house and mark every student now.</li>}
+            <li>Mark <b>every</b> student: Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking.</li>
+            <li>A roll call finished after the cutoff is recorded as <b>late</b> against the housemaster, and a repeat counts against the monthly ranking.</li>
+          </ol>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
@@ -1320,6 +1984,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // Roll call state
   const [rollCallIndex, setRollCallIndex] = useState(0)
   const [rollCallStudents, setRollCallStudents] = useState([])
+  const studentPhotoOf = useStudentPhotos(rollCallStudents)
+  const [, setShareTick] = useState(0) // re-render once the profile card is shared
   const [justMarked, setJustMarked] = useState(null)
   const [savingId, setSavingId] = useState(null)
   const mobile = useMobileView()
@@ -1368,6 +2034,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     [activeStudents]
   )
 
+  // Photos for the house dashboard's student list (the roll call card has its own call).
+  const dashPhotoStudents = useMemo(() => selectedHouse
+    ? activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(selectedHouse)) : [],
+  [activeStudents, selectedHouse])
+  const dashPhotoOf = useStudentPhotos(dashPhotoStudents)
+
   // ── House palette (computed once, used in all views) ──
   const houseIdx = selectedHouse ? houses.indexOf(selectedHouse) : -1
   const pal = houseIdx >= 0 ? HOUSE_PALETTE[houseIdx % HOUSE_PALETTE.length] : HOUSE_PALETTE[0]
@@ -1387,17 +2059,57 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  // The other roll call of the same day, so both of the day's two roll
+  // calls can be shown side by side (the open session's own records are
+  // allRecords, which update live as students are marked).
+  // Each house's active housemaster/mistress (housemasters table, the same
+  // one Admissions and the Housemasters tab use), for names and photos.
+  const [hmByHouse, setHmByHouse] = useState({})
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('housemasters').select('*').eq('status', 'Active').then(({ data }) => {
+      if (cancelled) return
+      const m = {}
+      ;(data || []).forEach(h => { const k = normalizeHouse(h.house); if (k && !m[k]) m[k] = h })
+      setHmByHouse(m)
+    })
+    return () => { cancelled = true }
+  }, [])
+  const hmFor = house => hmByHouse[normalizeHouse(house)] || null
+
+  // House dashboard: student-list filter and search.
+  const [dashFilter, setDashFilter] = useState('All')
+  const [dashQuery, setDashQuery] = useState('')
+
+  // Roll-call screen: a clock for the deadline countdown.
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    const tick = setInterval(() => setClock(Date.now()), 30000)
+    return () => clearInterval(tick)
+  }, [])
+
+  const [otherSessionRecords, setOtherSessionRecords] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('attendance_records').select('student_id, house, session, status')
+      .eq('date', date).eq('session', session === 'morning' ? 'night' : 'morning')
+      .then(({ data }) => { if (!cancelled) setOtherSessionRecords(data || []) })
+    return () => { cancelled = true }
+  }, [date, session])
+
   // Load previous calendar day's records (both sessions) to check completeness
   useEffect(() => {
     let cancelled = false
     setPrevDayLoaded(false)
-    supabase
+    fetchAllRows(() => supabase
       .from('attendance_records')
-      .select('*')
+      .select('student_id, house, session, status')
       .eq('date', prevDate)
-      .then(({ data }) => {
+      .in('session', ['morning', 'night'])
+      .order('id'))
+      .then(data => {
         if (!cancelled) {
-          setPrevDayRecords(data || [])
+          setPrevDayRecords(data)
           setPrevDayLoaded(true)
         }
       })
@@ -1424,34 +2136,57 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const [todayBothSessionRecords, setTodayBothSessionRecords] = useState([])
   useEffect(() => {
     let cancelled = false
-    supabase.from('attendance_records').select('student_id, house, session, status').eq('date', date)
-      .then(({ data }) => { if (!cancelled) setTodayBothSessionRecords(data || []) })
+    // Every hostel roll-call row of the day. A bare select is capped at 1000
+    // rows, so on a busy day some houses' rows were dropped and their roll
+    // call looked incomplete (Locked) while others showed "Tap to check".
+    fetchAllRows(() => supabase.from('attendance_records').select('student_id, house, session, status')
+      .eq('date', date).in('session', ['morning', 'night']).not('house', 'is', null).order('id'))
+      .then(data => { if (!cancelled) setTodayBothSessionRecords(data) })
     return () => { cancelled = true }
   }, [date, allRecords]) // re-check whenever allRecords changes too, so a just-completed roll call unlocks immediately
 
   const isRollCallSessionComplete = (houseName, rollCallSession) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     if (hStudents.length === 0) return true
-    const marked = todayBothSessionRecords.filter(r =>
-      normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === rollCallSession
-    ).length
+    // Distinct current students marked: duplicate rows, or rows of students
+    // who left the house, must not make an unfinished roll call look complete.
+    const ids = new Set(hStudents.map(s => s.id))
+    const marked = new Set(todayBothSessionRecords
+      .filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === rollCallSession && ids.has(r.student_id))
+      .map(r => r.student_id)).size
     return marked >= hStudents.length
   }
 
   // ── Per-house stats (defined before the auto-fire effect that uses it) ──
+  // One record per CURRENT student of the house (the latest, if a student
+  // was marked twice). Counting raw records let duplicates and records of
+  // students who left or moved house push a house past 100% ("47/46 marked",
+  // "-1 pending") — and could hide students who were never marked.
+  const recordsForStudents = (records, hStudents) => {
+    const ids = new Set(hStudents.map(s => s.id))
+    const byStudent = new Map()
+    // r.house: a hostel roll-call record (the table also holds class attendance).
+    for (const r of records) if (r.house && ids.has(r.student_id)) byStudent.set(r.student_id, r)
+    return [...byStudent.values()]
+  }
+
   const getHouseStats = (houseName) => {
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
-    const hRecords = allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+    const hRecords = recordsForStudents(allRecords, hStudents)
     const present = hRecords.filter(r => r.status === 'Present').length
     const absent = hRecords.filter(r => r.status === 'Absent').length
     const sick = hRecords.filter(r => r.status === 'Sick').length
     const onLeave = hRecords.filter(r => r.status === 'On Leave').length
     const late = hRecords.filter(r => r.status === 'Late').length
+    const outing = hRecords.filter(r => r.status === 'Outing').length
+    const outpass = hRecords.filter(r => r.status === 'Outpass').length
+    // Old statuses (before Outing/Outpass) on earlier dates, shown as "Other".
+    const other = absent + sick + onLeave
     const marked = hRecords.length
     const total = hStudents.length
     const unmarked = total - marked
     const pct = total ? Math.round(marked / total * 100) : 0
-    return { total, present, absent, sick, onLeave, late, marked, unmarked, pct }
+    return { total, present: present + late, outing, outpass, other, absent, sick, onLeave, late, marked, unmarked, pct }
   }
 
   // ── Was the previous calendar day fully covered for this house?
@@ -1460,8 +2195,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     const hStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
     const total = hStudents.length
     if (total === 0) return { complete: true, morningMarked: 0, nightMarked: 0, total: 0 }
-    const morningMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'morning').length
-    const nightMarked = prevDayRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName) && r.session === 'night').length
+    const morningMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'morning'), hStudents).length
+    const nightMarked = recordsForStudents(prevDayRecords.filter(r => r.session === 'night'), hStudents).length
     return {
       complete: morningMarked >= total && nightMarked >= total,
       morningMarked, nightMarked, total,
@@ -1488,10 +2223,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
   const catchUpTargetRef = useRef(null)
 
-  const handleCatchUpRollCall = (houseName) => {
+  // `target` = { date, session } fixes that exact missed roll call (the warning
+  // cards list the last three days); without it, yesterday's first incomplete
+  // session is opened.
+  const handleCatchUpRollCall = (houseName, target) => {
     const p = getPrevDayStatus(houseName)
-    const targetSession = p.morningMarked < p.total ? 'morning' : 'night'
-    const targetDate = prevDate
+    const targetSession = target?.session || (p.morningMarked < p.total ? 'morning' : 'night')
+    const targetDate = target?.date || prevDate
     setCatchUpReturn({ date, session }) // remember where we came from
     catchUpTargetRef.current = { date: targetDate, session: targetSession }
     setSelectedHouse(houseName)
@@ -1537,6 +2275,15 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setSession(catchUpReturn.session)
     setCatchUpReturn(null)
   }
+
+  // A "Fix now" tapped on the HM Dashboard: open that missed roll call here.
+  useEffect(() => {
+    if (!pendingRollCallFix || !activeStudents.length || !prevDayLoaded) return
+    const fix = pendingRollCallFix
+    pendingRollCallFix = null
+    handleCatchUpRollCall(fix.house, { date: fix.date, session: fix.session })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStudents.length, prevDayLoaded])
 
   // ── Which alert-panel is expanded (shows student list + quick actions) ──
   const [activeAlertPanel, setActiveAlertPanel] = useState(null) // 'absent' | 'unmarked' | 'unassigned' | null
@@ -1617,11 +2364,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       session={session}
       students={activeStudents}
       allRecords={allRecords}
+      hm={hmFor(reportHouse)}
+      hmTitle={hmFor(reportHouse) ? hmTitle(hmFor(reportHouse)) : undefined}
       onClose={() => setReportHouse(null)}
     />
   )
 
   const handleMark = async (studentId, status) => {
+    if (selectedHouse && lockInfo(selectedHouse).state !== 'open') { openUnlockRequest(selectedHouse); return }
     setSaving(true)
     setSavingId(studentId)
     const existing = allRecords.find(r => r.student_id === studentId)
@@ -1648,18 +2398,21 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       // detection.
       marked_at: new Date().toISOString(),
     }
-    const { error } = existing
+    const { data: inserted, error } = existing
       ? await supabase.from('attendance_records').update({ status, marked_by: payload.marked_by, marked_at: payload.marked_at }).eq('id', existing.id)
-      : await supabase.from('attendance_records').insert([payload])
+      : await supabase.from('attendance_records').insert([payload]).select('id')
     if (!error) {
-      // Optimistic update
+      // Local update with the real row id, so no full reload is needed
+      // after every first-time mark (that re-downloaded the whole roster).
+      const realId = inserted?.[0]?.id
       setAllRecords(prev => {
         if (existing) return prev.map(r => r.student_id === studentId ? { ...r, status } : r)
-        return [...prev, { ...payload, id: Date.now() }]
+        return [...prev, { ...payload, id: realId ?? Date.now() }]
       })
+      if (!existing || existing.status !== status) notifyParentRollCall(student, date, session, status, payload.marked_by)
       setJustMarked(studentId)
           setTimeout(() => setJustMarked(null), 600)
-          if (!existing) await loadAll() // reconcile real DB id
+          if (!existing && realId == null) await loadAll() // no id came back: reconcile
         }
         setSaving(false)
         setSavingId(null)
@@ -1698,7 +2451,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
         `Bulk-marked ${studentIds.length} students Present at once (no individual check)`
       )
     }
-    if (!error) await loadAll()
+    if (!error) {
+      studentIds.forEach(id => {
+        const prev = allRecords.find(r => r.student_id === id)
+        if (prev?.status !== status) notifyParentRollCall(activeStudents.find(x => x.id === id), date, session, status, markedByName)
+      })
+      await loadAll()
+    }
     setSaving(false)
   }
 
@@ -1846,11 +2605,16 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     }
   }
 
-  // ── Standalone 3x-daily compliance check (independent of roll call) ──
+  // ── Standalone 2x-daily compliance check (Morning / Night) ──
   // Tracks per house+date+slot: done / missing tabs / whether the "all
   // clear" confirmation animation has already played for this slot.
   const [dailyCheckHouse, setDailyCheckHouse] = useState(null) // house currently expanded for slot detail
   const [dailyCheckResults, setDailyCheckResults] = useState({}) // key: `${house}_${date}_${slot}` → { missing, checked }
+  // Read-only result worked out by the page itself for slots whose roll call is complete, so
+  // the cards show the real position without a tap. It never logs a gap or sends a message;
+  // those still happen when the check is run (or "Log gaps" is tapped).
+  const [dailyPreview, setDailyPreview] = useState({}) // same key → missing tab keys
+  const resultFor = key => dailyCheckResults[key] || (dailyPreview[key] ? { checked: true, preview: true, missing: dailyPreview[key] } : undefined)
   const [dailyCheckLogId, setDailyCheckLogId] = useState({})
   const [dailySkipPromptTab, setDailySkipPromptTab] = useState(null)
   const [dailySkipDraft, setDailySkipDraft] = useState('')
@@ -1862,6 +2626,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // rather than replaying on every re-render of an already-clear house.
   const [complianceCelebrated, setComplianceCelebrated] = useState({}) // key: complianceKey → true once played
   const [rollCallReportSent, setRollCallReportSent] = useState({}) // key: `${house}_${date}_${session}` → true once WA report auto-sent
+  const [hmRankByHouse, setHmRankByHouse] = useState({}) // `${house}_${date}` → 'loading' | { rank, mock }
+  const [profileCards, setProfileCards] = useState({}) // `${house}_${date}_${session}` → 'loading' | { blob, url } | null
   const [complianceCelebrating, setComplianceCelebrating] = useState(null) // complianceKey currently animating
   // Manual fallback for daily-slot "✓ Complete", mirroring the roll-call
   // linked version — lets the housemaster force a recheck in place.
@@ -1890,6 +2656,29 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setCelebratingSlot(prev => (prev === key ? null : prev)), 1800)
     }
   }
+
+  useEffect(() => {
+    if (loading || !houses.length) return undefined
+    let alive = true
+    const todo = []
+    houses.forEach(houseName => DAILY_SLOTS.forEach(slot => {
+      const key = `${houseName}_${date}_${slot.key}`
+      if (!dailyCheckResults[key]?.checked && dailyPreview[key] === undefined && isRollCallSessionComplete(houseName, slot.rollCallGate)) todo.push({ houseName, slotKey: slot.key, key })
+    }))
+    if (!todo.length) return undefined
+    ;(async () => {
+      for (const t of todo) {
+        if (!alive) return
+        try {
+          const ids = activeStudents.filter(st => normalizeHouse(st.house) === normalizeHouse(t.houseName)).map(st => st.id)
+          const missing = await checkSixTabComplianceForSlot(t.houseName, date, t.slotKey, ids)
+          if (alive) setDailyPreview(prev => ({ ...prev, [t.key]: missing }))
+        } catch { /* leave it as "pending"; tapping still works */ }
+      }
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, houses, date, todayBothSessionRecords])
 
   const handleDailyRecheckTab = async (dailyKey, tabKey, houseName, slotKey) => {
     const recheckKey = `${dailyKey}_${tabKey}`
@@ -2033,7 +2822,202 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     setApprovingLeaveId(null)
   }
 
+  // ── Before-roll-call checklist (housemasters; admins start directly) ──
+  const precheckOn = !isAdmin
+  const [precheckRules, setPrecheckRules] = useState(null)
+  const [precheck, setPrecheck] = useState({}) // `${house}_${date}_${session}` → { status, tableReady }
+  // Reopened after "Fill now" sends the housemaster to a tab and back.
+  const [precheckHouse, setPrecheckHouse] = useState(() => {
+    try {
+      const r = JSON.parse(sessionStorage.getItem(PRECHECK_RETURN_KEY) || 'null')
+      return r && r.date === today() ? r.house : null
+    } catch { return null }
+  })
+  const [precheckBusy, setPrecheckBusy] = useState(null) // tab key being confirmed
+  const [precheckError, setPrecheckError] = useState('')
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const [rulesDraft, setRulesDraft] = useState(null)
+  const [rulesSaving, setRulesSaving] = useState(false)
+  useEffect(() => {
+    try { sessionStorage.removeItem(PRECHECK_RETURN_KEY) } catch { /* private mode */ }
+    let alive = true
+    loadPrecheckRules().then(r => { if (alive) setPrecheckRules(r) })
+    return () => { alive = false }
+  }, [])
+  // Rank shown on the profile card at the top of the roll call screen.
+  const [cardRank, setCardRank] = useState({}) // normalized house → { rank, total, score } | null
+  useEffect(() => {
+    if (!selectedHouse) return
+    const k = normalizeHouse(selectedHouse)
+    let alive = true
+    loadHmRank(selectedHouse).then(r => { if (alive) setCardRank(prev => ({ ...prev, [k]: r })) }).catch(() => {})
+    return () => { alive = false }
+  }, [selectedHouse])
+  // ── Roll call cutoff + admin unlock ──
+  const lockOn =ROLL_CALL_CUTOFF_LOCK && !isAdmin
+  const [unlocks, setUnlocks] = useState({ ready: false, rows: [] })
+  const [unlockTarget, setUnlockTarget] = useState(null) // { house, date, session }
+  const [unlockReason, setUnlockReason] = useState('')
+  const [unlockBusy, setUnlockBusy] = useState(false)
+  const [unlockError, setUnlockError] = useState('')
+  const refreshUnlocks = async () => setUnlocks(await loadUnlocks(date))
+  useEffect(() => {
+    let alive = true
+    const run = () => loadUnlocks(date).then(r => { if (alive) setUnlocks(r) })
+    run()
+    const t = setInterval(() => { if (document.visibilityState === 'visible') run() }, 60000)
+    return () => { alive = false; clearInterval(t) }
+  }, [date])
+  const lockInfo = houseName => {
+    if (!lockOn || !unlocks.ready || !houseName) return { state: 'open' }
+    if (!rollCallClosed(date, session, clock)) return { state: 'open' }
+    const st = getHouseStats(houseName)
+    if (st.total > 0 && st.unmarked === 0) return { state: 'open' }
+    const row = unlocks.rows.find(r => unlockKey(r.house, r.date, r.session) === unlockKey(houseName, date, session))
+    if (row?.status === 'approved') return { state: 'open', row }
+    if (row?.status === 'pending') return { state: 'pending', row }
+    if (row?.status === 'rejected') return { state: 'rejected', row }
+    return { state: 'closed' }
+  }
+  const openUnlockRequest = houseName => { setUnlockReason(''); setUnlockError(''); setUnlockTarget({ house: houseName, date, session }) }
+  const submitUnlockRequest = async () => {
+    if (!unlockTarget) return
+    setUnlockBusy(true); setUnlockError('')
+    try {
+      await requestRollCallUnlock(unlockTarget.house, unlockTarget.date, unlockTarget.session,
+        currentHousemaster?.name || currentUser?.name, unlockReason.trim())
+      await refreshUnlocks()
+      setUnlockTarget(null)
+    } catch (e) {
+      setUnlockError(e?.message || 'Could not send the request. Try again.')
+    }
+    setUnlockBusy(false)
+  }
+  const decideUnlock = async (row, approve) => {
+    setUnlockBusy(true)
+    try { await decideRollCallUnlock(row, approve, currentUser?.name) } catch (e) { alert(e?.message || 'Could not save the decision.') }
+    await refreshUnlocks()
+    setUnlockBusy(false)
+  }
+  const unlockModal = (() => {
+    if (!unlockTarget) return null
+    const { house, date: d, session: sess } = unlockTarget
+    const row = unlocks.rows.find(r => unlockKey(r.house, r.date, r.session) === unlockKey(house, d, sess))
+    const label = String(house).replace(/\b\w/g, c => c.toUpperCase())
+    const cutoff = ROLL_CALL_DEADLINE[sess]?.label
+    const pending = row?.status === 'pending'
+    return (
+      <div onClick={() => setUnlockTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(11,30,61,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 30px 60px -20px rgba(11,30,61,.6)' }}>
+          <div style={{ padding: '18px 20px', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>🔒 Roll call closed</div>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 600, marginTop: 4, color: '#fff' }}>{label} House · {sess === 'morning' ? 'Morning' : 'Night'}</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.75)', marginTop: 3 }}>
+              {new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} · closed at {cutoff}
+            </div>
+          </div>
+          <div style={{ padding: 20 }}>
+            {pending ? (
+              <div style={{ padding: 14, borderRadius: 12, background: '#FEF3C7', color: '#92400E', fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>
+                ⏳ Your request is with the admin. You will get a notification as soon as it is approved.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.55 }}>
+                  The roll call window closed at <b>{cutoff}</b>. Ask the admin to unlock it for this house. {row?.status === 'rejected' && <b style={{ color: '#DC2626' }}>Your earlier request was declined.</b>}
+                </div>
+                <textarea value={unlockReason} onChange={e => setUnlockReason(e.target.value)} rows={3} placeholder="Reason (e.g. students returned late, network issue)"
+                  style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', fontFamily: 'inherit', fontSize: 14, color: '#0B1E3D', resize: 'vertical' }} />
+                {unlockError && <div style={{ marginTop: 8, color: '#DC2626', fontSize: 12.5, fontWeight: 600 }}>{unlockError}</div>}
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button onClick={() => setUnlockTarget(null)} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>{pending ? 'Close' : 'Cancel'}</button>
+              {!pending && (
+                <button onClick={submitUnlockRequest} disabled={unlockBusy || !unlockReason.trim()}
+                  style={{ flex: 1.4, padding: 12, borderRadius: 12, border: 'none', fontWeight: 800, fontFamily: 'inherit', color: '#1A1406', cursor: unlockBusy || !unlockReason.trim() ? 'not-allowed' : 'pointer',
+                    background: unlockReason.trim() ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5' }}>
+                  {unlockBusy ? 'Sending…' : 'Request admin to unlock'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  })()
+  const pendingUnlocks = isAdmin ? unlocks.rows.filter(r => r.status === 'pending') : []
+  const unlockPanel = isAdmin && (pendingUnlocks.length > 0 || !unlocks.ready) ? (
+    <div style={{ margin: '0 0 18px', borderRadius: 16, border: '1.5px solid #E2C57E', background: '#FFFBEB', overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', fontWeight: 800, color: '#92400E', fontSize: 13.5 }}>
+        🔓 Roll call unlock requests {unlocks.ready ? `· ${pendingUnlocks.length} waiting` : ''}
+      </div>
+      {!unlocks.ready && <div style={{ padding: '0 16px 14px', fontSize: 12.5, color: '#92400E' }}>Housemasters are not blocked yet. Run the 20261026 SQL once in Supabase to switch on the 7:30 AM / 10:00 PM cutoff.</div>}
+      {pendingUnlocks.map(r => (
+        <div key={r.id} style={{ padding: '12px 16px', borderTop: '1px solid #F5E6B8', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 170 }}>
+            <div style={{ fontWeight: 800, color: '#0B1E3D', fontSize: 14 }}>{String(r.house).replace(/\b\w/g, c => c.toUpperCase())} · {r.session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {r.date}</div>
+            <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{r.requested_by || 'Housemaster'}{r.reason ? ` — ${r.reason}` : ''}</div>
+          </div>
+          <button disabled={unlockBusy} onClick={() => decideUnlock(r, false)} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Decline</button>
+          <button disabled={unlockBusy} onClick={() => decideUnlock(r, true)} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1F8A4C,#15803D)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Approve</button>
+        </div>
+      ))}
+    </div>
+  ) : null
+  const lockLabel = lk => lk.state === 'pending' ? '⏳ Awaiting admin' : lk.state === 'rejected' ? '🔒 Declined · Request again' : '🔒 Closed · Request admin'
+
+  const precheckKey = houseName => `${houseName}_${date}_${session}`
+  const houseIdsFor = houseName => activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName)).map(s => s.id)
+  const refreshPrecheck = async houseName => {
+    const rules = precheckRules || await loadPrecheckRules()
+    const result = await evaluatePrecheck(houseName, date, session, houseIdsFor(houseName), rules)
+    setPrecheck(prev => ({ ...prev, [`${houseName}_${date}_${session}`]: result }))
+  }
+  useEffect(() => {
+    if (!precheckHouse) return
+    let alive = true
+    const h = precheckHouse
+    ;(precheckRules ? Promise.resolve(precheckRules) : loadPrecheckRules())
+      .then(rules => evaluatePrecheck(h, date, session, houseIdsFor(h), rules))
+      .then(result => { if (alive) setPrecheck(prev => ({ ...prev, [`${h}_${date}_${session}`]: result })) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precheckHouse, date, session, precheckRules])
+  const precheckCleared = houseName => {
+    const st = precheck[precheckKey(houseName)]?.status
+    return !!st && Object.values(st).every(v => v !== 'pending')
+  }
+  const confirmNothing = async (houseName, tabKey) => {
+    setPrecheckBusy(tabKey); setPrecheckError('')
+    const error = await savePrecheckConfirmation(houseName, date, session, tabKey, currentHousemaster?.name || currentUser?.name)
+    setPrecheckBusy(null)
+    if (error) { setPrecheckError('Could not save — ask the office to run SQL 20261024 (hm_rollcall_precheck). ' + (error.message || '')); return }
+    const key = precheckKey(houseName)
+    setPrecheck(prev => ({ ...prev, [key]: { ...prev[key], status: { ...prev[key]?.status, [tabKey]: 'none' } } }))
+  }
+  const fillNow = (houseName, tab) => {
+    try { sessionStorage.setItem(PRECHECK_RETURN_KEY, JSON.stringify({ house: houseName, date })) } catch { /* private mode */ }
+    if (onCompleteTab) onCompleteTab(tab.rootTabId, houseName)
+    else onTabChange?.(tab.rootTabId)
+  }
+
+  // Compulsion: a housemaster / housemistress must confirm the "What has
+  // changed in Hostel" notice before any roll call can be started or marked.
+  const [changesGateHouse, setChangesGateHouse] = useState(null) // house waiting for the notice to be read
+  const changesGateModal = changesGateHouse
+    ? <HostelChangesGate user={currentUser} onConfirmed={() => { const h = changesGateHouse; setChangesGateHouse(null); setTimeout(() => startRollCall(h), 0) }} />
+    : null
+
   const startRollCall = (houseName, { skipBlockCheck = false } = {}) => {
+    if (!isAdmin && !hostelChangesAcked(currentUser)) { setChangesGateHouse(houseName); return false }
+    if (lockInfo(houseName).state !== 'open') { openUnlockRequest(houseName); return false }
+    // Housemasters clear the checklist first (not for a missed past day).
+    const alreadyStarted = allRecords.some(r => r.house && normalizeHouse(r.house) === normalizeHouse(houseName))
+    if (!skipBlockCheck && precheckOn && date === today() && !alreadyStarted && !precheckCleared(houseName)) {
+      setPrecheckHouse(houseName)
+      return false
+    }
     // isHouseBlocked checks whether the day before "today" (homeDate) is
     // complete. That check is meaningless — and self-defeating — while
     // we're deliberately opening the *missed* prior day's catch-up roll
@@ -2062,19 +3046,162 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     return true
   }
 
+  // ── Before-roll-call checklist modal ──
+  const precheckModal = (() => {
+    if (!precheckHouse) return null
+    const h = precheckHouse
+    const result = precheck[precheckKey(h)]
+    const rules = precheckRules || PRECHECK_DEFAULT
+    const tabs = SIX_TABS.filter(t => (rules[t.key] || 'off') !== 'off')
+    const st = result?.status || {}
+    const doneCount = tabs.filter(t => st[t.key] && st[t.key] !== 'pending').length
+    const allClear = !!result && doneCount === tabs.length
+    const title = String(h).replace(/\b\w/g, c => c.toUpperCase())
+    const close = () => { setPrecheckHouse(null); setPrecheckError('') }
+    const pct = tabs.length ? Math.round(doneCount / tabs.length * 100) : 100
+    return (
+      <div role="dialog" aria-modal="true" aria-label="Before roll call" onClick={close}
+        style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(10,18,32,.55)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', display: 'flex', alignItems: mobile ? 'flex-end' : 'center', justifyContent: 'center', padding: mobile ? 0 : 20 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ width: '100%', maxWidth: 560, maxHeight: mobile ? '92vh' : '88vh', overflowY: 'auto', background: '#fff', borderRadius: mobile ? '22px 22px 0 0' : 22, boxShadow: '0 30px 60px -20px rgba(10,18,32,.6)' }}>
+          <div style={{ position: 'relative', color: '#fff', padding: mobile ? '18px 18px 16px' : '22px 24px 18px', borderRadius: mobile ? '22px 22px 0 0' : '22px 22px 0 0',
+            background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, borderRadius: '22px 22px 0 0', background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Before roll call · {session === 'morning' ? '🌅 Morning' : '🌙 Night'}</div>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, lineHeight: 1.2, marginTop: 4 }}>{title} House</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 4 }}>Fill these tabs for this session first — roll call opens once every one is done.</div>
+                <div style={{ marginTop: 10 }}><HmChip hm={hmFor(h)} dark size={30} /></div>
+              </div>
+              <button onClick={close} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(255,255,255,.25)', background: 'rgba(255,255,255,.08)', color: '#fff', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>×</button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
+              <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,.14)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: allClear ? '#22C55E' : 'linear-gradient(90deg,#B8913F,#E2C57E)', transition: 'width .3s' }} />
+              </div>
+              <span style={{ fontSize: 12.5, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{result ? `${doneCount}/${tabs.length}` : '…'}</span>
+            </div>
+          </div>
+
+          <div style={{ padding: mobile ? '14px 14px 18px' : '18px 22px 22px' }}>
+            {!result ? (
+              <div style={{ textAlign: 'center', padding: '26px 0', color: '#64748B', fontSize: 13 }}>Checking today's entries…</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {tabs.map(t => {
+                  const v = st[t.key]
+                  const done = v && v !== 'pending'
+                  const { icon, text } = (() => { const m = t.label.match(/^(\S+)\s+(.*)$/); return m ? { icon: m[1], text: m[2] } : { icon: '•', text: t.label } })()
+                  return (
+                    <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px', borderRadius: 14,
+                      background: done ? '#F0FDF4' : '#FCFBF7', border: `1px solid ${done ? '#BBE5C8' : '#ECE6D8'}` }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0,
+                        background: done ? '#15803D' : 'linear-gradient(160deg,#1F4E8C,#0B1E3D)', color: '#fff' }}>{done ? '✓' : icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: '#0F172A' }}>{text}</div>
+                        <div style={{ fontSize: 11.5, color: done ? '#15803D' : '#94A3B8', marginTop: 1 }}>
+                          {v === 'filled' ? 'Entry added this session' : v === 'none' ? 'Nothing to report — confirmed' : rules[t.key] === 'fill' ? 'Entry required' : 'Add an entry, or confirm nothing to report'}
+                        </div>
+                      </div>
+                      {!done && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {rules[t.key] === 'confirm' && (
+                            <button onClick={() => confirmNothing(h, t.key)} disabled={precheckBusy === t.key}
+                              style={{ padding: '8px 11px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                              {precheckBusy === t.key ? 'Saving…' : 'Nothing to report'}
+                            </button>
+                          )}
+                          <button onClick={() => fillNow(h, t)}
+                            style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                            Fill now →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {tabs.length === 0 && <div style={{ fontSize: 13, color: '#64748B', textAlign: 'center', padding: 10 }}>No tabs are required before roll call.</div>}
+              </div>
+            )}
+            {precheckError && <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '8px 10px' }}>{precheckError}</div>}
+            {result && !result.tableReady && tabs.some(t => rules[t.key] === 'confirm') && !precheckError && (
+              <div style={{ marginTop: 10, fontSize: 11.5, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '8px 10px' }}>
+                “Nothing to report” needs SQL 20261024 run in Supabase.
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => refreshPrecheck(h)}
+                style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ↻ Recheck
+              </button>
+              <button disabled={!allClear} onClick={() => { setPrecheckHouse(null); setSelectedHouse(h); startRollCall(h) }}
+                style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', fontSize: 14, fontWeight: 800, fontFamily: 'inherit',
+                  cursor: allClear ? 'pointer' : 'not-allowed', color: allClear ? '#1A1406' : '#94A3B8',
+                  background: allClear ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5',
+                  boxShadow: allClear ? 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' : 'none' }}>
+                {allClear ? 'Start roll call →' : `🔒 ${tabs.length - doneCount} left before roll call`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  })()
+
+  // ── Admin: which tabs are compulsory before roll call ──
+  const rulesModal = rulesOpen && rulesDraft && (
+    <div role="dialog" aria-modal="true" aria-label="Before roll call settings" onClick={() => setRulesOpen(false)}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(10,18,32,.55)', display: 'flex', alignItems: mobile ? 'flex-end' : 'center', justifyContent: 'center', padding: mobile ? 0 : 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: mobile ? '22px 22px 0 0' : 22, padding: mobile ? 16 : 22, boxShadow: '0 30px 60px -20px rgba(10,18,32,.6)' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#B8923A' }}>Roll call rules</div>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 600, color: '#0B1E3D', marginTop: 2 }}>Tabs to fill before roll call</div>
+        <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 4, marginBottom: 14 }}>Housemasters can't start the morning or night roll call until these are done for that session.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {SIX_TABS.map(t => (
+            <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 14, border: '1px solid #ECE6D8', background: '#FCFBF7' }}>
+              <span style={{ flex: 1, minWidth: 120, fontSize: 13.5, fontWeight: 800, color: '#0F172A' }}>{t.label}</span>
+              <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #E5DCC7', borderRadius: 11, padding: 3, flexWrap: 'wrap' }}>
+                {PRECHECK_RULES.map(r => {
+                  const on = (rulesDraft[t.key] || 'off') === r.key
+                  return (
+                    <button key={r.key} type="button" aria-pressed={on} onClick={() => setRulesDraft(d => ({ ...d, [t.key]: r.key }))}
+                      style={{ padding: '6px 10px', borderRadius: 8, border: 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'linear-gradient(180deg,#1E3A6E,#132A4F)' : 'transparent', color: on ? '#fff' : '#5D6B82' }}>{r.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+          <button onClick={() => setRulesOpen(false)} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button disabled={rulesSaving} onClick={async () => {
+            setRulesSaving(true)
+            const error = await savePrecheckRules(rulesDraft)
+            setRulesSaving(false)
+            if (error) { alert('Could not save: ' + error.message); return }
+            setPrecheckRules(rulesDraft); setPrecheck({}); setRulesOpen(false)
+          }} style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(160deg,#D4AE58,#B8923A)', color: '#1A1406', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {rulesSaving ? 'Saving…' : 'Save rules'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   // ══════════════════════════════════════════════════
   //  VIEW 1: ALL HOUSES OVERVIEW
   // ══════════════════════════════════════════════════
   if (view === 'houses') {
     const totalStudents = activeStudents.length
-    const totalMarked = allRecords.length
-    const totalPresent = allRecords.filter(r => r.status === 'Present').length
-    const totalAbsent = allRecords.filter(r => r.status === 'Absent').length
-    const totalUnmarked = totalStudents - totalMarked
+    const totalMarked = recordsForStudents(allRecords, activeStudents).length
 
     return (
       <div>
-        {reportModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
+        {unlockPanel}
+        <MissingRollCallAlert students={activeStudents} onFix={(house, d, sess) => handleCatchUpRollCall(house, { date: d, session: sess })} />
         <style>{`
           @keyframes hr-daily-pop {
             0% { transform: scale(0.4) rotate(-10deg); opacity: 0; }
@@ -2083,63 +3210,128 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           }
           .hr-pop-in-anim { display: inline-block; animation: hr-daily-pop 0.5s ease-out; }
         `}</style>
-        {/* Date & Session selector */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input
-            type="date" value={date}
-            onChange={e => setDate(e.target.value)}
-            style={{ ...inp, flex: 1, minWidth: 140 }}
-          />
-          <select value={session} onChange={e => setSession(e.target.value)} style={{ ...inp, flex: 1 }}>
-            <option value="morning">🌅 Morning Roll Call</option>
-            <option value="night">🌙 Night Roll Call</option>
-          </select>
-        </div>
-
-        {/* Overall stats bar */}
-        <div style={{
-          background: '#1e3a6e', borderRadius: '14px', padding: '16px 20px',
-          marginBottom: '20px', color: 'white',
-        }}>
-          <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '10px', fontWeight: '600' }}>
-            TODAY'S SUMMARY · {new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            {[
-              { label: 'Total', value: totalStudents, color: 'rgba(255,255,255,0.9)' },
-              { label: 'Present', value: totalPresent, color: '#4ade80' },
-              { label: 'Absent', value: totalAbsent, color: '#f87171' },
-              { label: 'Unmarked', value: totalUnmarked, color: '#fbbf24' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: mobile ? '22px' : '28px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: mobile ? '9px' : '11px', opacity: 0.7 }}>{s.label}</div>
+        {/* ── Today's two roll calls ─────────────────────────────────
+            Roll call happens twice a day. The date bar picks the day; the
+            two cards show both roll calls of that day side by side, and
+            the one you tap is the one the house cards below work on. */}
+        {(() => {
+          const todayStr = today()
+          const shift = n => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA') }
+          const nowHour = new Date().getHours()
+          const liveSession = nowHour < 13 ? 'morning' : 'night'
+          const sessionStats = key => {
+            const recs = recordsForStudents((key === session ? allRecords : otherSessionRecords).filter(r => r.session === key), activeStudents)
+            const count = st => recs.filter(r => r.status === st).length
+            const total = activeStudents.length
+            const marked = recs.length
+            const { graceEnd, label } = rollCallDeadline(date, key)
+            const status = total > 0 && marked >= total ? 'done'
+              : date < todayStr || (date === todayStr && new Date() > graceEnd) ? (marked ? 'overdue' : 'missed')
+              : marked ? 'progress' : 'open'
+            return { total, marked, pct: total ? Math.round(marked / total * 100) : 0, present: count('Present') + count('Late'), outing: count('Outing'), outpass: count('Outpass'), status, due: label }
+          }
+          const STATUS = {
+            done:     { t: 'Complete',     c: '#15803D', b: '#DCFCE7' },
+            progress: { t: 'In progress',  c: '#A16207', b: '#FEF3C7' },
+            open:     { t: 'Not started',  c: '#475569', b: '#F1F5F9' },
+            overdue:  { t: 'Overdue',      c: '#DC2626', b: '#FEE2E2' },
+            missed:   { t: 'Not done',     c: '#DC2626', b: '#FEE2E2' },
+          }
+          const navBtn = { width: 34, height: 34, borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }
+          return (
+            <div style={{ marginBottom: '22px' }}>
+              {/* Date bar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button onClick={() => setDate(shift(-1))} style={navBtn} aria-label="Previous day">‹</button>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: '10.5px', fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>Hostel roll call · twice daily</div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? '18px' : '21px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2 }}>
+                    {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                </div>
+                {date !== todayStr && (
+                  <button onClick={() => setDate(todayStr)} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 12, background: '#0B1E3D', color: '#fff', border: 'none' }}>Today</button>
+                )}
+                <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Pick a date"
+                  style={{ height: 34, padding: '0 10px', borderRadius: 10, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontSize: 12.5, fontFamily: 'inherit' }} />
+                <button onClick={() => setDate(shift(1))} style={navBtn} aria-label="Next day">›</button>
+                {isAdmin && (
+                  <button onClick={() => { setRulesDraft(precheckRules || PRECHECK_DEFAULT); setRulesOpen(true) }} title="Tabs housemasters must fill before roll call"
+                    style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 12 }}>⚙ Before roll call</button>
+                )}
               </div>
-            ))}
-          </div>
-          {/* Overall progress bar */}
-          <div style={{ marginTop: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', opacity: 0.6, marginBottom: '5px' }}>
-              <span>Roll Call Progress</span>
-              <span>{totalMarked}/{totalStudents} marked</span>
+
+              {/* The two roll calls */}
+              <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                {[['morning', '🌅', 'Morning roll call'], ['night', '🌙', 'Night roll call']].map(([key, icon, name]) => {
+                  const st = sessionStats(key)
+                  const on = key === session
+                  const badge = STATUS[st.status]
+                  const fg = on ? '#fff' : '#0B1E3D', sub = on ? 'rgba(255,255,255,.7)' : '#64748B'
+                  return (
+                    <button key={key} type="button" onClick={() => setSession(key)} aria-pressed={on}
+                      style={{
+                        textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', position: 'relative', overflow: 'hidden',
+                        borderRadius: '20px', padding: '16px 18px', color: fg,
+                        border: on ? '1px solid rgba(226,197,126,.6)' : '1px solid #ECE6D8',
+                        background: on
+                          ? (key === 'morning'
+                            ? 'radial-gradient(120% 160% at 100% 0%, #2B4C80 0%, #132B52 50%, #0B1E3D 90%)'
+                            : 'radial-gradient(120% 160% at 100% 0%, #312E81 0%, #1E1B4B 55%, #0B1E3D 95%)')
+                          : '#fff',
+                        boxShadow: on ? '0 20px 36px -22px rgba(11,30,61,.85)' : '0 1px 2px rgba(19,42,79,.05)',
+                        transition: 'transform .15s, box-shadow .2s',
+                      }}
+                      onMouseEnter={e => { if (!on) e.currentTarget.style.transform = 'translateY(-2px)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
+                    >
+                      {on && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0,
+                          background: on ? 'rgba(255,255,255,.1)' : (key === 'morning' ? '#FFF7E6' : '#EEF0FF'), border: on ? '1px solid rgba(255,255,255,.18)' : 'none' }}>{icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: FONT_DISPLAY, fontSize: '17px', fontWeight: 600 }}>{name}</span>
+                            {date === todayStr && key === liveSession && (
+                              <span style={{ fontSize: '9.5px', fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 99, background: on ? '#E2C57E' : '#0B1E3D', color: on ? '#0B1E3D' : '#E2C57E' }}>Now</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: sub, marginTop: '2px' }}>Due by {st.due}</div>
+                        </div>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: 99, background: badge.b, color: badge.c, whiteSpace: 'nowrap' }}>
+                          {st.status === 'done' ? '✓ ' : ''}{badge.t}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '14px' }}>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: '28px', fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'lining-nums tabular-nums', color: on ? '#E2C57E' : '#0B1E3D' }}>{st.marked}</span>
+                        <span style={{ fontSize: '13px', color: sub, fontVariantNumeric: 'tabular-nums' }}>/ {st.total} marked · {st.pct}%</span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: on ? 'rgba(255,255,255,.14)' : '#F1EDE4', overflow: 'hidden', margin: '8px 0 10px' }}>
+                        <div style={{ height: '100%', width: `${Math.min(st.pct, 100)}%`, borderRadius: 99, transition: 'width .4s', background: st.status === 'done' ? '#22C55E' : on ? '#E2C57E' : '#B8923A' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px', color: sub, fontVariantNumeric: 'tabular-nums' }}>
+                        {[['Present', st.present, '#22C55E'], ['Outing', st.outing, '#38BDF8'], ['Outpass', st.outpass, '#F59E0B']].map(([l, v, c]) => (
+                          <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: c }} />
+                            <b style={{ color: fg, fontWeight: 800 }}>{v}</b> {l}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div style={{ height: '6px', background: 'rgba(255,255,255,0.15)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%',
-                width: `${totalStudents ? Math.round(totalMarked / totalStudents * 100) : 0}%`,
-                background: totalMarked === totalStudents ? '#4ade80' : '#60a5fa',
-                borderRadius: '99px', transition: 'width 0.4s',
-              }} />
-            </div>
-          </div>
-        </div>
+          )
+        })()}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         ) : (
           <>
             {/* ══════════════════════════════════════════════════════════
-                MANDATORY 3X-DAILY COMPLIANCE — Futuristic grid dashboard
+                MANDATORY 2X-DAILY COMPLIANCE — Futuristic grid dashboard
                 Same data hooks as before (dailyCheckResults, DAILY_SLOTS,
                 runDailySlotCheck, isRollCallSessionComplete,
                 autoSendComplianceWa, skip/recheck handlers) — only the
@@ -2150,7 +3342,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                 <span style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  📋 Mandatory 3x-Daily Compliance
+                  📋 Mandatory 2x-Daily Compliance
                 </span>
                 <span style={{ fontSize: '10px', fontWeight: '700', color: MD.color.onSurfaceVariant, background: MD.color.surfaceVariant, padding: '2px 8px', borderRadius: MD.radius.pill }}>
                   LIVE
@@ -2166,7 +3358,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   let houseHasGap = false
                   DAILY_SLOTS.forEach(slot => {
                     const key = `${houseName}_${date}_${slot.key}`
-                    const result = dailyCheckResults[key]
+                    const result = resultFor(key)
                     const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                     const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                     const done = result?.checked && remaining.length === 0
@@ -2233,7 +3425,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   let houseGaps = 0, houseDone = 0
                   DAILY_SLOTS.forEach(slot => {
                     const key = `${houseName}_${date}_${slot.key}`
-                    const result = dailyCheckResults[key]
+                    const result = resultFor(key)
                     const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                     const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                     if (result?.checked && remaining.length === 0) houseDone++
@@ -2256,53 +3448,114 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px 14px 18px', cursor: 'pointer' }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ fontWeight: '800', fontSize: '13px', color: MD.color.onSurface, fontFamily: FONT_DISPLAY, display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'capitalize' }}>
                             🏠 {houseName}
                           </div>
                           <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, marginTop: '2px', fontWeight: '600' }}>
                             {houseGaps > 0 ? `${houseGaps} slot${houseGaps > 1 ? 's' : ''} flagged` : houseDone === DAILY_SLOTS.length ? 'Fully compliant today' : 'Checks pending'}
                           </div>
                         </div>
-                        {/* Slot status rings — one ring per daily slot, filled progressively */}
-                        <div style={{ display: 'flex', gap: '5px' }}>
+                        {/* Slot tasks — one tappable task per daily check. A check that
+                            can run now runs straight from here; anything else opens
+                            the card. */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
-                            const result = dailyCheckResults[key]
+                            const result = resultFor(key)
                             const dailyResolvedSet = dailyResolvedByRecheck[key] || {}
                             const remaining = result?.missing?.filter(k => !dailyResolvedSet[k]) || []
                             const done = result?.checked && remaining.length === 0
                             const gaps = result?.checked && remaining.length > 0
                             const isCurrent = slot.key === nowSlot
                             const locked = !result?.checked && !isRollCallSessionComplete(houseName, slot.rollCallGate)
-                            const ringColor = done ? MD.color.success : gaps ? MD.color.error : locked ? MD.color.outline : isCurrent ? MD.color.secondary : MD.color.outlineVariant
+                            // Due now or overdue — never a later slot: a check that finds
+                            // gaps logs neglect and alerts on WhatsApp, so running one
+                            // early would flag the house unfairly.
+                            const todayStr = new Date().toLocaleDateString('en-CA')
+                            const due = date < todayStr ? true : date > todayStr ? false
+                              : DAILY_SLOTS.findIndex(x => x.key === slot.key) <= DAILY_SLOTS.findIndex(x => x.key === nowSlot)
+                            const runnable = !result?.checked && !locked && due
+                            const [icon, ...words] = slot.label.split(' ')
+                            const st = done ? { c: MD.color.success, bg: MD.color.success, fg: '#fff', mark: '✓', note: 'Done' }
+                              : gaps ? { c: MD.color.error, bg: MD.color.errorContainer, fg: MD.color.error, mark: '!', note: `${remaining.length} gap${remaining.length > 1 ? 's' : ''}` }
+                              : locked ? { c: MD.color.outlineVariant, bg: MD.color.surfaceVariant, fg: MD.color.onSurfaceVariant, mark: '🔒', note: 'Locked' }
+                              : runnable ? { c: MD.color.secondary, bg: MD.color.secondaryContainer, fg: MD.color.secondary, mark: '', note: isCurrent ? 'Tap to check' : 'Overdue' }
+                              : { c: MD.color.outlineVariant, bg: 'transparent', fg: MD.color.onSurfaceVariant, mark: '', note: 'Later' }
                             return (
-                              <div
+                              <button
                                 key={slot.key}
-                                title={`${slot.label}: ${done ? 'Complete' : gaps ? 'Gaps found' : locked ? 'Locked — roll call pending' : isCurrent ? 'Current slot' : 'Not checked'}`}
-                                style={{
-                                  width: '22px', height: '22px', borderRadius: '50%',
-                                  border: `2px solid ${ringColor}`,
-                                  background: done ? ringColor : gaps ? ringColor + '22' : 'transparent',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '10px', fontWeight: '800',
-                                  color: done ? 'white' : ringColor,
-                                  boxShadow: isCurrent && !result?.checked && !locked ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
-                                  flexShrink: 0,
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  if (runnable) runDailySlotCheck(houseName, slot.key)
+                                  else setDailyCheckHouse(isExpanded ? null : houseName)
                                 }}
+                                title={`${words.join(' ')} check: ${done ? 'complete' : gaps ? `${remaining.length} gap(s) found — open to review` : locked ? `locked until the ${slot.rollCallGate} roll call is complete` : runnable ? 'tap to run the check now' : 'not due yet'}`}
+                                aria-label={`${words.join(' ')} check — ${st.note}`}
+                                style={{
+                                  position: 'relative', width: '58px', padding: '6px 2px 5px', borderRadius: '12px',
+                                  border: `1.5px solid ${st.c}`, background: st.bg, color: st.fg,
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px',
+                                  cursor: locked ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                                  opacity: locked ? 0.75 : 1,
+                                  boxShadow: runnable ? `0 0 0 3px ${MD.color.secondary}22` : 'none',
+                                  transition: 'transform .12s ease, box-shadow .2s ease',
+                                }}
+                                onMouseEnter={e => { if (!locked) e.currentTarget.style.transform = 'translateY(-1px)' }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none' }}
                               >
-                                {done ? '✓' : gaps ? '!' : locked ? '🔒' : ''}
-                              </div>
+                                <span style={{ fontSize: '16px', lineHeight: 1.1, filter: locked ? 'grayscale(1)' : 'none' }}>{icon}</span>
+                                <span style={{ fontSize: '9.5px', fontWeight: '800', letterSpacing: '.02em', lineHeight: 1.2 }}>{words.join(' ')}</span>
+                                <span style={{ fontSize: '8.5px', fontWeight: '700', opacity: 0.85, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{st.note}</span>
+                                {st.mark && (
+                                  <span style={{
+                                    position: 'absolute', top: '-7px', right: '-7px', width: '18px', height: '18px', borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: done || gaps ? '11px' : '9px', fontWeight: '900',
+                                    background: done ? '#fff' : gaps ? MD.color.error : MD.color.surfaceContainer,
+                                    color: done ? MD.color.success : gaps ? '#fff' : MD.color.onSurfaceVariant,
+                                    border: `1.5px solid ${done ? MD.color.success : gaps ? MD.color.error : MD.color.outlineVariant}`,
+                                  }}>{st.mark}</span>
+                                )}
+                              </button>
                             )
                           })}
                         </div>
                         <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                       </div>
 
+                      {/* ── Fix buttons: one per slot that is not done ── */}
+                      {(() => {
+                        const fixes = DAILY_SLOTS.map(slot => {
+                          const key = `${houseName}_${date}_${slot.key}`
+                          const result = resultFor(key)
+                          const resolved = dailyResolvedByRecheck[key] || {}
+                          const remaining = result?.missing?.filter(k => !resolved[k]) || []
+                          if (result?.checked && remaining.length === 0) return null
+                          const gateOk = isRollCallSessionComplete(houseName, slot.rollCallGate)
+                          const label = slot.key === 'morning' ? '🌅 Morning' : '🌙 Night'
+                          if (!gateOk) return { key: slot.key, label, text: `Fix ${label} roll call`, run: () => { setSelectedHouse(houseName); setSession(slot.rollCallGate); setView('dashboard') } }
+                          const firstGap = SIX_TABS.find(t => remaining.includes(t.key))
+                          if (firstGap) return { key: slot.key, label, text: `Fix ${label} · ${firstGap.label}`, run: () => { if (onCompleteTab) onCompleteTab(firstGap.rootTabId, houseName); else onTabChange?.(firstGap.rootTabId) } }
+                          return { key: slot.key, label, text: `Check ${label}`, run: () => runDailySlotCheck(houseName, slot.key) }
+                        }).filter(Boolean)
+                        if (!fixes.length) return null
+                        return (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 16px 12px 18px' }}>
+                            {fixes.map(f => (
+                              <button key={f.key} type="button" onClick={f.run}
+                                style={{ padding: '6px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.error, color: '#fff', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                🔧 {f.text}
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      })()}
+
                       {isExpanded && (
                         <div style={{ padding: '0 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${MD.color.outlineVariant}`, paddingTop: '12px' }}>
                           {DAILY_SLOTS.map(slot => {
                             const key = `${houseName}_${date}_${slot.key}`
-                            const result = dailyCheckResults[key]
+                            const result = resultFor(key)
                             const isCurrent = slot.key === nowSlot
                             const isCelebrating = celebratingSlot === key
                             const gateComplete = isRollCallSessionComplete(houseName, slot.rollCallGate)
@@ -2316,12 +3569,12 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                   {isCelebrating && (
                                     <span className="hr-pop-in-anim" style={{ fontSize: '16px' }}>✅🎉</span>
                                   )}
-                                  {!result?.checked && gateComplete && (
+                                  {(!result?.checked || (result.preview && result.missing.length > 0)) && gateComplete && (
                                     <button
                                       onClick={() => runDailySlotCheck(houseName, slot.key)}
                                       style={{ padding: '5px 12px', borderRadius: MD.radius.control, border: 'none', background: MD.color.primary, color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                                     >
-                                      Run Check
+                                      {result?.preview ? 'Log gaps' : 'Run Check'}
                                     </button>
                                   )}
                                   {!result?.checked && !gateComplete && (
@@ -2330,7 +3583,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                     </span>
                                   )}
                                   {result?.checked && result.missing.length === 0 && !isCelebrating && (
-                                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✓ All clear</span>
+                                    <span style={{ fontSize: '11px', fontWeight: '700', color: MD.color.success }}>✓ All clear{result.preview ? ' (auto-checked)' : ''}</span>
                                   )}
                                 </div>
                                 {!result?.checked && !gateComplete && (
@@ -2473,10 +3726,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   { key: 'total', label: 'Total', width: 0.7 },
                   { key: 'marked', label: 'Marked', width: 0.7 },
                   { key: 'present', label: 'Present', width: 0.7 },
-                  { key: 'absent', label: 'Absent', width: 0.7 },
-                  { key: 'late', label: 'Late', width: 0.6 },
-                  { key: 'onLeave', label: 'On Leave', width: 0.8 },
-                  { key: 'sick', label: 'Sick', width: 0.6 },
+                  { key: 'outing', label: 'Outing', width: 0.7 },
+                  { key: 'outpass', label: 'Outpass', width: 0.7 },
                   { key: 'pct', label: '% Complete', width: 0.9 },
                 ]}
                 rows={houses.map(h => { const s = getHouseStats(h); return { house: h, ...s } })}
@@ -2491,128 +3742,145 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               {houses.map((houseName, idx) => {
                 const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
                 const stats = getHouseStats(houseName)
-                const allDone = stats.unmarked === 0
+                const allDone = stats.total > 0 && stats.unmarked === 0
+                const blocked = isHouseBlocked(houseName)
+                const lk = lockInfo(houseName)
+                const prev = blocked ? getPrevDayStatus(houseName) : null
+                const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+                const accent = allDone ? '#15803D' : pal.color
+                const R = 22, C = 2 * Math.PI * R
+                const STAT = [
+                  { label: 'Present', value: stats.present, color: '#15803D' },
+                  { label: 'Outing',  value: stats.outing,  color: '#0369A1' },
+                  { label: 'Outpass', value: stats.outpass, color: '#B45309' },
+                  ...(stats.other ? [{ label: 'Other', value: stats.other, color: '#64748B' }] : []),
+                ]
                 return (
                   <div
                     key={houseName}
                     onClick={() => { setSelectedHouse(houseName); setView('dashboard') }}
                     style={{
-                      background: 'white', borderRadius: '14px', overflow: 'hidden',
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                      border: `1.5px solid ${allDone ? '#bbf7d0' : pal.border}`,
-                      cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                      position: 'relative', borderRadius: '20px', overflow: 'hidden', background: '#fff',
+                      border: `1px solid ${allDone ? '#BBE5C8' : '#ECE6D8'}`,
+                      boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)',
+                      cursor: 'pointer', transition: 'transform .18s, box-shadow .18s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 24px 40px -22px rgba(19,42,79,.55)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -24px rgba(19,42,79,.5)' }}
                   >
-                    {/* Color bar */}
-                    <div style={{ height: '5px', background: allDone ? '#16a34a' : pal.color }} />
-                    <div style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <div>
-                          <div style={{ fontSize: '18px', fontWeight: '800', color: pal.color }}>
-                            🏠 {houseName}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                            {stats.total} students
+                    <div style={{ height: '4px', background: `linear-gradient(90deg, ${accent}, ${accent}55)` }} />
+                    <div style={{ padding: '18px 18px 16px' }}>
+                      {/* Header: crest, name, completion ring */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: 42, height: 42, borderRadius: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#E2C57E',
+                          fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 700,
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1.5px #fff, 0 0 0 2.5px #C9A24B',
+                        }}>{title.charAt(0)}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: '19px', fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+                          <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span>{stats.total} students</span>
+                            <span style={{ width: 3, height: 3, borderRadius: '50%', background: '#CBD5E1' }} />
+                            <span style={{ fontWeight: 700, color: allDone ? '#15803D' : blocked ? '#DC2626' : '#A16207' }}>
+                              {allDone ? 'Roll call complete' : blocked ? 'Blocked' : `${stats.unmarked} to mark`}
+                            </span>
                           </div>
                         </div>
-                        {allDone
-                          ? <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#16a34a' }}>✓ Complete</span>
-                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#b8923a' }}>{stats.unmarked} pending</span>
-                        }
+                        <div style={{ position: 'relative', width: 54, height: 54, flexShrink: 0 }} title={`${stats.marked} of ${stats.total} marked`}>
+                          <svg width="54" height="54" viewBox="0 0 54 54" style={{ transform: 'rotate(-90deg)' }}>
+                            <circle cx="27" cy="27" r={R} fill="none" stroke="#F1EDE4" strokeWidth="5" />
+                            <circle cx="27" cy="27" r={R} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round"
+                              strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(stats.pct, 100) / 100)} style={{ transition: 'stroke-dashoffset .5s' }} />
+                          </svg>
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12.5px', fontWeight: 800, color: '#0B1E3D', fontVariantNumeric: 'tabular-nums' }}>
+                            {allDone ? <span style={{ color: '#15803D', fontSize: 18 }}>✓</span> : `${stats.pct}%`}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Mini stats row */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '12px' }}>
-                        {[
-                          { label: 'P', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
-                          { label: 'A', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-                          { label: 'L', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
-                          { label: '🚪', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
-                          { label: '🏥', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
-                        ].map(s => (
-                          <div key={s.label} style={{ textAlign: 'center', padding: '6px 4px', background: s.bg, borderRadius: '8px' }}>
-                            <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                            <div style={{ fontSize: '10px', color: s.color, fontWeight: '600' }}>{s.label}</div>
+                      {/* Housemaster / housemistress */}
+                      <div style={{ marginTop: '12px', padding: '8px 10px', borderRadius: '12px', background: '#FCFBF7', border: '1px solid #F1EDE4' }}>
+                        <HmChip hm={hmFor(houseName)} size={30} />
+                      </div>
+
+                      {/* Status counts */}
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAT.length}, minmax(0,1fr))`, gap: '6px', margin: '16px 0 10px' }}>
+                        {STAT.map(st => (
+                          <div key={st.label} style={{ textAlign: 'center', padding: '8px 2px 7px', borderRadius: '12px', background: st.value ? st.color + '0F' : '#FAF8F3', border: `1px solid ${st.value ? st.color + '2E' : '#F1EDE4'}` }}>
+                            <div style={{ fontFamily: FONT_DISPLAY, fontSize: '18px', fontWeight: 700, lineHeight: 1.1, color: st.value ? st.color : '#CBD5E1', fontVariantNumeric: 'lining-nums tabular-nums' }}>{st.value}</div>
+                            <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: st.value ? st.color : '#94A3B8', marginTop: '3px' }}>{st.label}</div>
                           </div>
                         ))}
                       </div>
 
-                      {/* Progress bar */}
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%',
-                            width: `${stats.pct}%`,
-                            background: allDone ? '#16a34a' : pal.color,
-                            borderRadius: '99px', transition: 'width 0.4s',
-                          }} />
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', textAlign: 'right' }}>
-                          {stats.marked}/{stats.total} marked · {stats.pct}%
-                        </div>
+                      {/* Composition bar */}
+                      <div style={{ display: 'flex', height: '6px', borderRadius: '99px', overflow: 'hidden', background: '#F1EDE4' }}>
+                        {stats.total > 0 && STAT.filter(st => st.value > 0).map(st => (
+                          <div key={st.label} style={{ width: `${(st.value / stats.total) * 100}%`, background: st.color }} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '5px', display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
+                        <span>{session === 'morning' ? 'Morning' : 'Night'} roll call</span>
+                        <span>{stats.marked} / {stats.total} marked</span>
                       </div>
 
-                      {/* Action buttons */}
-                      {(() => {
-                        const blocked = isHouseBlocked(houseName)
-                        return (
-                          <>
-                            {blocked && (
-                              <div
-                                onClick={e => e.stopPropagation()}
-                                style={{ marginBottom: '10px', padding: '10px 12px', background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '10px' }}
-                              >
-                                <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
-                                  🚫 Yesterday's roll call incomplete — {(() => { const p = getPrevDayStatus(houseName); return `${p.morningMarked}/${p.total} morning · ${p.nightMarked}/${p.total} night` })()}
-                                </div>
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a6e', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
-                                >
-                                  📋 Complete Missed Roll Call
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
-                                    style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#dc2626', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                                  >
-                                    🔓 Override (Admin)
-                                  </button>
-                                )}
+                      {/* Yesterday not finished */}
+                      {blocked && (
+                        <div onClick={e => e.stopPropagation()} style={{ marginTop: '14px', padding: '12px', borderRadius: '14px', background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#DC2626', color: '#fff', fontSize: 12, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+                            <div>
+                              <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#991B1B' }}>Yesterday's roll call is incomplete</div>
+                              <div style={{ fontSize: '11.5px', color: '#B91C1C', marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                                Morning {prev.morningMarked}/{prev.total} · Night {prev.nightMarked}/{prev.total}
                               </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
-                                style={{ flex: 1, padding: '9px', borderRadius: '9px', border: 'none', background: pal.bg, color: pal.color, fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
-                              >
-                                📊 Dashboard
-                              </button>
-                              <button
-                                onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
-                                disabled={blocked}
-                                style={{
-                                  flex: 1, padding: '9px', borderRadius: '9px', border: 'none',
-                                  background: blocked ? '#e2e8f0' : pal.color,
-                                  color: blocked ? '#94a3b8' : 'white',
-                                  fontSize: '12px', fontWeight: '700',
-                                  cursor: blocked ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                {blocked ? '🔒 Blocked' : '⚡ Roll Call'}
-                              </button>
                             </div>
-                          </>
-                        )
-                      })()}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                            <button onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
+                              style={{ flex: 1, padding: '8px 10px', borderRadius: '10px', border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Complete missed roll call
+                            </button>
+                            {isAdmin && (
+                              <button onClick={e => { e.stopPropagation(); handleOverride(houseName) }}
+                                style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                Override
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedHouse(houseName); setView('dashboard') }}
+                          style={{ flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid #E5DCC7', background: '#FCFBF7', color: '#0B1E3D', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Dashboard
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); if (blocked) return; setSelectedHouse(houseName); startRollCall(houseName) }}
+                          disabled={blocked}
+                          style={{
+                            flex: 1.3, padding: '10px', borderRadius: '12px', border: 'none', fontFamily: 'inherit',
+                            background: blocked ? '#EEF1F5' : allDone ? 'linear-gradient(180deg,#1F8A4C,#15803D)' : 'linear-gradient(180deg,#1C3A6B,#0B1E3D)',
+                            color: blocked ? '#94A3B8' : '#fff', fontSize: '12.5px', fontWeight: 800,
+                            cursor: blocked ? 'not-allowed' : 'pointer',
+                            boxShadow: blocked ? 'none' : '0 8px 16px -10px rgba(11,30,61,.8)',
+                          }}
+                        >
+                          {blocked ? '🔒 Locked' : lk.state !== 'open' ? lockLabel(lk) : allDone ? 'Roll call ✓' : 'Start roll call →'}
+                        </button>
+                      </div>
                       {allDone && (
                         <button
                           onClick={e => { e.stopPropagation(); setReportHouse(houseName) }}
-                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '9px', border: 'none', background: '#f5f3ff', color: '#7c3aed', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                          style={{ marginTop: '8px', width: '100%', padding: '9px', borderRadius: '12px', border: '1px solid #E9D9B0', background: 'linear-gradient(180deg,#FFFCF3,#F8F0DC)', color: '#7A5A12', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
                         >
-                          📄 View Report
+                          View house report
                         </button>
                       )}
                     </div>
@@ -2621,53 +3889,14 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               })}
             </div>
 
-            {/* ── ALERT BANNER: Absent + Unmarked reminders ── */}
+            {/* ── ALERT BANNER: unmarked reminder ── */}
             {(() => {
-              const absentCount = allRecords.filter(r => r.status === 'Absent').length
               const unmarkedCount = totalStudents - totalMarked
-              if (absentCount === 0 && unmarkedCount === 0) return null
-
-              const absentStudents = activeStudents.filter(s => statusMap[s.id] === 'Absent')
+              if (unmarkedCount <= 0) return null
               const unmarkedStudentsAll = activeStudents.filter(s => !statusMap[s.id])
 
               return (
                 <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {absentCount > 0 && (
-                    <div>
-                      <div
-                        onClick={() => setActiveAlertPanel(activeAlertPanel === 'absent' ? null : 'absent')}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '12px',
-                          padding: '13px 16px', background: '#fff1f2',
-                          border: '1.5px solid #fca5a5', borderRadius: '12px',
-                          fontSize: '13px', color: '#dc2626', fontWeight: '700',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <span style={{ fontSize: '20px' }}>🔴</span>
-                        <div style={{ flex: 1 }}>
-                          <div>{absentCount} student{absentCount > 1 ? 's' : ''} marked <strong>Absent</strong> today</div>
-                          <div style={{ fontSize: '11px', fontWeight: '500', opacity: 0.85, marginTop: '2px' }}>
-                            Verify with housemaster · Check if on approved leave
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '16px', transition: 'transform 0.2s', transform: activeAlertPanel === 'absent' ? 'rotate(180deg)' : 'none' }}>▾</span>
-                      </div>
-                      {activeAlertPanel === 'absent' && (
-                        <AlertStudentPanel
-                          students={absentStudents}
-                          accentColor="#dc2626"
-                          actions={[
-                            { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
-                            { label: '🚪 On Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
-                            { label: '🏥 Sick', status: 'Sick', bg: '#f5f3ff', color: '#7c3aed' },
-                          ]}
-                          onMark={handleMark}
-                          savingId={savingId}
-                        />
-                      )}
-                    </div>
-                  )}
                   {unmarkedCount > 0 && (
                     <div>
                       <div
@@ -2695,9 +3924,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                           accentColor="#b8923a"
                           actions={[
                             { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
-                            { label: '✕ Absent', status: 'Absent', bg: '#fee2e2', color: '#dc2626' },
-                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#b8923a' },
-                            { label: '🚪 Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
+                            { label: '🚶 Outing', status: 'Outing', bg: '#e0f2fe', color: '#0369a1' },
+                            { label: '🎫 Outpass', status: 'Outpass', bg: '#fef3c7', color: '#b45309' },
                           ]}
                           onMark={handleMark}
                           savingId={savingId}
@@ -2766,207 +3994,194 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       })
     const stats = getHouseStats(selectedHouse)
     const unmarkedStudents = hStudents.filter(s => getStatus(s.id) === 'Unmarked')
+    const blocked = isHouseBlocked(selectedHouse)
+    const title = String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())
+    const allDone = stats.total > 0 && stats.unmarked === 0
+    const q = dashQuery.trim().toLowerCase()
+    const shown = hStudents.filter(st => (dashFilter === 'All' || getStatus(st.id) === dashFilter)
+      && (!q || (st.name || '').toLowerCase().includes(q) || String(st.gcc_no || '').includes(q)))
+    const R = 34, C = 2 * Math.PI * R
+    const TILES = [
+      { key: 'Present', value: stats.present, color: '#15803D' },
+      { key: 'Outing', value: stats.outing, color: '#0369A1' },
+      { key: 'Outpass', value: stats.outpass, color: '#B45309' },
+      { key: 'Unmarked', label: 'To mark', value: stats.unmarked, color: '#64748B' },
+    ]
+    const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+    const LETTER = { Present: 'P', Outing: 'O', Outpass: 'U', Late: 'L' }
 
     return (
       <div>
-        {reportModal}
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '13px' }}>
-            ← Back
-          </button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: mobile ? '18px' : '22px', fontWeight: '800', color: pal.color }}>
-              🏠 {selectedHouse} House
+        <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '16px' : '20px 22px', marginBottom: '16px',
+          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}88 0%, transparent 55%), linear-gradient(135deg,#0B1E3D 0%,#132B52 55%,#1C3A6B 100%)`,
+          boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <button onClick={() => setView('houses')} aria-label="Back to all houses"
+              style={{ width: 38, height: 38, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.22)', fontSize: 16, fontWeight: 800 }}>←</button>
+            <div style={{ width: 50, height: 50, borderRadius: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#E2C57E', fontFamily: FONT_DISPLAY, fontSize: 23, fontWeight: 700,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1.5px rgba(255,255,255,.7), 0 0 0 3px #C9A24B' }}>{title.charAt(0)}</div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>GNSI Hostel · House dashboard</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, lineHeight: 1.15, marginTop: 3 }}>{title} House</div>
+              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 3 }}>
+                {stats.total} students · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} roll call · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </div>
+              <div style={{ marginTop: 10 }}><HmChip hm={hmFor(selectedHouse)} dark size={32} /></div>
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>
-              {date} · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} Roll Call
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {allDone && (
+                <button onClick={() => setReportHouse(selectedHouse)}
+                  style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(226,197,126,.55)', background: 'rgba(255,255,255,.08)', color: '#F8EBC7', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  House report
+                </button>
+              )}
+              <button onClick={() => { if (!blocked) startRollCall(selectedHouse) }} disabled={blocked}
+                style={{ padding: '10px 18px', borderRadius: 12, border: 'none', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit',
+                  cursor: blocked ? 'not-allowed' : 'pointer', color: blocked ? '#94A3B8' : '#1A1406',
+                  background: blocked ? 'rgba(255,255,255,.12)' : 'linear-gradient(160deg,#D4AE58,#B8923A)',
+                  boxShadow: blocked ? 'none' : 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' }}>
+                {blocked ? '🔒 Locked' : lockInfo(selectedHouse).state !== 'open' ? lockLabel(lockInfo(selectedHouse)) : allDone ? 'Roll call ✓ — review' : `Start roll call · ${stats.unmarked} left →`}
+              </button>
             </div>
           </div>
-          {stats.unmarked === 0 && (
-            <button
-              onClick={() => setReportHouse(selectedHouse)}
-              style={{ ...btn('#7c3aed'), padding: '10px 16px', fontSize: '13px' }}
-            >
-              📄 View Report
-            </button>
-          )}
-          <button
-            onClick={() => { if (!isHouseBlocked(selectedHouse)) startRollCall(selectedHouse) }}
-            disabled={isHouseBlocked(selectedHouse)}
-            style={{
-              ...btn(isHouseBlocked(selectedHouse) ? '#e2e8f0' : pal.color, isHouseBlocked(selectedHouse) ? '#94a3b8' : 'white'),
-              padding: '10px 20px', fontSize: '14px',
-              cursor: isHouseBlocked(selectedHouse) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isHouseBlocked(selectedHouse) ? '🔒 Blocked' : `⚡ Quick Roll Call ${stats.unmarked > 0 ? `(${stats.unmarked} left)` : '✓'}`}
-          </button>
         </div>
 
-        {isHouseBlocked(selectedHouse) && (
-          <div style={{ background: '#fff1f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626', marginBottom: '6px' }}>
-              🚫 Roll call is blocked for {selectedHouse}
+        {blocked && (
+          <div style={{ ...panel, background: '#FEF2F2', border: '1px solid #FECACA', boxShadow: 'none', padding: '14px 16px', marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#DC2626', color: '#fff', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: '#991B1B' }}>Roll call is locked until yesterday is finished</div>
+              <div style={{ fontSize: 12, color: '#B91C1C', marginTop: 3 }}>
+                {(() => { const p = getPrevDayStatus(selectedHouse); return `${prevDate}: morning ${p.morningMarked}/${p.total}, night ${p.nightMarked}/${p.total}. Both must reach 100% before today's roll call can start.` })()}
+              </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#9a3412', marginBottom: '10px' }}>
-              {(() => {
-                const p = getPrevDayStatus(selectedHouse)
-                return `Yesterday (${prevDate}) wasn't fully marked — ${p.morningMarked}/${p.total} morning, ${p.nightMarked}/${p.total} night. Both sessions must reach 100% before today's roll call can start.`
-              })()}
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => handleCatchUpRollCall(selectedHouse)}
-                style={{ ...btn('#1e3a6e'), fontSize: '12px', padding: '8px 16px' }}
-              >
-                📋 Complete Missed Roll Call
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={() => handleCatchUpRollCall(selectedHouse)}
+                style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Complete missed roll call
               </button>
               {isAdmin && (
-                <button
-                  onClick={() => handleOverride(selectedHouse)}
-                  style={{ ...btn('#dc2626'), fontSize: '12px', padding: '8px 16px' }}
-                >
-                  🔓 Override & Allow Roll Call (Admin)
+                <button onClick={() => handleOverride(selectedHouse)}
+                  style={{ padding: '9px 14px', borderRadius: 10, border: '1px solid #FCA5A5', background: '#fff', color: '#DC2626', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Override (admin)
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px' }}>
-          {[
-            { icon: '👥', label: 'Total', value: stats.total, color: pal.color, bg: pal.bg },
-            { icon: '✅', label: 'Present', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
-            { icon: '❌', label: 'Absent', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-            { icon: '⏰', label: 'Late', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
-            { icon: '🏥', label: 'Sick', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
-            { icon: '🚪', label: 'On Leave', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
-            { icon: '⚪', label: 'Unmarked', value: stats.unmarked, color: '#94a3b8', bg: '#f1f5f9' },
-          ].map(s => (
-            <StatCard key={s.label} icon={s.icon} label={s.label} value={s.value} color={s.color} bg={s.bg} compact />
-          ))}
-        </div>
-
-        {/* Progress */}
-        <div style={{ background: 'white', borderRadius: '12px', padding: '16px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>
-            <span style={{ color: '#1e293b' }}>Roll Call Progress</span>
-            <span style={{ color: stats.pct === 100 ? '#16a34a' : pal.color }}>{stats.marked}/{stats.total} · {stats.pct}%</span>
-          </div>
-          <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', width: `${stats.pct}%`,
-              background: stats.pct === 100 ? '#16a34a' : pal.color,
-              borderRadius: '99px', transition: 'width 0.4s',
-            }} />
-          </div>
-          {stats.pct === 100 && (
-            <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: '700', marginTop: '8px' }}>
-              🎉 All {stats.total} students marked for {selectedHouse}!
+        {/* Progress + counts */}
+        <div style={{ ...panel, padding: mobile ? '16px' : '18px 20px', marginBottom: '16px', display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: 84, height: 84, flexShrink: 0 }}>
+            <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx="42" cy="42" r={R} fill="none" stroke="#F1EDE4" strokeWidth="8" />
+              <circle cx="42" cy="42" r={R} fill="none" stroke={allDone ? '#15803D' : '#B8923A'} strokeWidth="8" strokeLinecap="round"
+                strokeDasharray={C} strokeDashoffset={C * (1 - Math.min(stats.pct, 100) / 100)} style={{ transition: 'stroke-dashoffset .5s' }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, color: '#0B1E3D', lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>{stats.pct}%</div>
+              <div style={{ fontSize: 9.5, fontWeight: 800, color: '#94A3B8', letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 3 }}>marked</div>
             </div>
-          )}
-        </div>
-
-        {/* Quick bulk actions */}
-        {stats.unmarked > 0 && (
-          <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400e', marginBottom: '10px' }}>
-              ⚡ {stats.unmarked} students still unmarked — bulk mark:
+          </div>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '8px' }}>
+              {TILES.map(t => {
+                const on = dashFilter === t.key
+                return (
+                  <button key={t.key} type="button" onClick={() => setDashFilter(on ? 'All' : t.key)} aria-pressed={on} title={`Show ${t.label || t.key}`}
+                    style={{ textAlign: 'center', padding: '9px 4px 8px', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit',
+                      background: on ? t.color : t.value ? t.color + '0F' : '#FAF8F3',
+                      border: `1px solid ${on ? t.color : t.value ? t.color + '33' : '#F1EDE4'}` }}>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.1, fontVariantNumeric: 'lining-nums tabular-nums', color: on ? '#fff' : t.value ? t.color : '#CBD5E1' }}>{t.value}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', marginTop: 3, color: on ? 'rgba(255,255,255,.85)' : t.value ? t.color : '#94A3B8' }}>{t.label || t.key}</div>
+                  </button>
+                )
+              })}
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {['Present', 'Absent', 'On Leave'].map(status => (
-                <button
-                  key={status}
-                  disabled={saving}
-                  onClick={async () => {
-                    const confirmMsg = status === 'Present'
-                      ? `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as Present WITHOUT checking each one individually?\n\nThis is only meant for genuine emergencies. Please verify each student's bed/presence whenever possible — this action is logged and visible to admin.`
-                      : `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`
-                    if (window.confirm(confirmMsg)) {
-                      await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
-                    }
-                  }}
-                  style={{
-                    padding: '8px 16px', borderRadius: '8px', border: 'none',
-                    background: statusConfig[status]?.bg || '#f1f5f9',
-                    color: statusConfig[status]?.color || '#374151',
-                    fontSize: '13px', fontWeight: '700', cursor: 'pointer',
-                  }}
-                >
-                  {statusConfig[status]?.icon} Mark Unmarked as {status}
-                </button>
+            <div style={{ display: 'flex', height: 7, borderRadius: 99, overflow: 'hidden', background: '#F1EDE4', marginTop: 12 }}>
+              {stats.total > 0 && TILES.filter(t => t.key !== 'Unmarked' && t.value > 0).map(t => (
+                <div key={t.key} style={{ width: `${(t.value / stats.total) * 100}%`, background: t.color }} />
               ))}
             </div>
+            <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 6, display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
+              <span>{allDone ? `All ${stats.total} students marked` : `${stats.unmarked} still to mark`}</span>
+              <span>{stats.marked} / {stats.total}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bulk mark the rest */}
+        {stats.unmarked > 0 && (
+          <div style={{ ...panel, boxShadow: 'none', background: 'linear-gradient(180deg,#FFFCF3,#FBF4E2)', border: '1px solid #EBD9A8', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>Mark the {stats.unmarked} remaining at once</div>
+              <div style={{ fontSize: 11.5, color: '#9A7B2F', marginTop: 2 }}>For emergencies only — checking each student is preferred, and this is logged.</div>
+            </div>
+            {ATTENDANCE_TYPES.map(status => (
+              <button key={status} disabled={saving}
+                onClick={async () => {
+                  const confirmMsg = status === 'Present'
+                    ? `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as Present WITHOUT checking each one individually?\n\nThis is only meant for genuine emergencies. Please verify each student's bed/presence whenever possible — this action is logged and visible to admin.`
+                    : `Mark all ${unmarkedStudents.length} unmarked students in ${selectedHouse} as ${status}?`
+                  if (window.confirm(confirmMsg)) await handleBulkMark(unmarkedStudents.map(s => s.id), status, selectedHouse)
+                }}
+                style={{ padding: '8px 14px', borderRadius: 10, border: `1px solid ${statusConfig[status].color}55`, background: '#fff', color: statusConfig[status].color, fontSize: 12.5, fontWeight: 800, cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                All {status === 'Present' ? 'present' : `on ${status.toLowerCase()}`}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Student list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {hStudents.map((student, i) => {
+        {/* Students */}
+        <div style={{ ...panel, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', borderBottom: '1px solid #F1EDE4', flexWrap: 'wrap' }}>
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600, color: '#0B1E3D' }}>Students</div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#7A5A12', background: '#F8F0DC', borderRadius: 99, padding: '2px 9px' }}>
+              {shown.length}{shown.length !== hStudents.length ? ` of ${hStudents.length}` : ''}
+            </span>
+            {dashFilter !== 'All' && (
+              <button onClick={() => setDashFilter('All')} style={{ fontSize: 11.5, fontWeight: 700, color: '#64748B', background: '#F1F5F9', border: 'none', borderRadius: 99, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                {dashFilter === 'Unmarked' ? 'To mark' : dashFilter} ✕
+              </button>
+            )}
+            <input value={dashQuery} onChange={e => setDashQuery(e.target.value)} placeholder="Search name or GCC…" aria-label="Search students"
+              style={{ marginLeft: 'auto', width: mobile ? '100%' : 220, padding: '8px 12px', borderRadius: 10, border: '1px solid #E5DCC7', fontSize: 13, fontFamily: 'inherit', background: '#FCFBF7' }} />
+          </div>
+          {shown.length === 0 && (
+            <div style={{ padding: '28px', textAlign: 'center', fontSize: 13, color: '#94A3B8' }}>No students match.</div>
+          )}
+          {shown.map((student, i) => {
             const status = getStatus(student.id)
-            const sc = statusConfig[status] || statusConfig['Unmarked']
+            const sc = statusConfig[status] || statusConfig.Unmarked
             const isJust = justMarked === student.id
+            const busy = savingId === student.id
+            const initials = String(student.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
             return (
-              <div
-                key={student.id}
-                style={{
-                  background: isJust ? '#f0fdf4' : 'white',
-                  borderRadius: '12px',
-                  padding: '12px 14px',
-                  boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
-                  borderLeft: `4px solid ${sc.color}`,
-                  transition: 'background 0.3s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  flexWrap: mobile ? 'wrap' : 'nowrap',
-                }}
-              >
-                {/* Rank */}
-                <div style={{ fontSize: '12px', color: '#94a3b8', minWidth: '20px', fontWeight: '600' }}>{i + 1}</div>
-
-                {/* Student info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{student.name}</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
-                    GCC-{student.gcc_no || '--'} · {getStudentClass(student) || '--'}
-                  </div>
+              <div key={student.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderTop: i ? '1px solid #F5F1E8' : 'none',
+                background: isJust ? '#F0FDF4' : 'transparent', transition: 'background .3s', flexWrap: mobile ? 'wrap' : 'nowrap' }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, overflow: 'hidden',
+                  color: sc.color, background: sc.bg, boxShadow: `inset 0 0 0 2px ${sc.color}66` }}><RollCallPhoto url={dashPhotoOf(student.id)} name={student.name} fallback={initials} /></div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ fontWeight: 700, color: '#0F172A', fontSize: 13.5 }}>{student.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 1 }}>GCC {student.gcc_no || '—'} · {getStudentClass(student) || '—'}</div>
                 </div>
-
-                {/* Status badge */}
-                <span style={{
-                  padding: '4px 10px', borderRadius: '99px', fontSize: '12px',
-                  fontWeight: '700', background: sc.bg, color: sc.color,
-                  whiteSpace: 'nowrap',
-                }}>
-                  {sc.icon} {status}
+                <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>
+                  {status === 'Unmarked' ? 'To mark' : status}
                 </span>
-
-                {/* Action buttons */}
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', maxWidth: mobile ? '160px' : 'none' }}>
-                  {ATTENDANCE_TYPES.map(s => {
-                    const sConf = statusConfig[s]
-                    const isActive = status === s
+                <div role="group" aria-label={`Mark ${student.name}`} style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 11, background: '#F5F1E8', opacity: busy ? 0.55 : 1 }}>
+                  {typesFor(student).map(st => {
+                    const on = status === st
+                    const c = statusConfig[st].color
                     return (
-                      <button
-                        key={s}
-                        onClick={() => handleMark(student.id, s)}
-                        disabled={savingId === student.id}
-                        title={s}
-                        style={{
-                          width: '34px', height: '34px',
-                          borderRadius: '8px', border: 'none',
-                          background: isActive ? sConf.color : '#f1f5f9',
-                          color: isActive ? 'white' : '#94a3b8',
-                          fontSize: '14px', fontWeight: '700',
-                          cursor: savingId === student.id ? 'wait' : 'pointer',
-                          transition: 'all 0.15s',
-                          opacity: savingId === student.id ? 0.5 : 1,
-                        }}
-                      >
-                        {savingId === student.id ? '⏳' : sConf.icon}
+                      <button key={st} onClick={() => handleMark(student.id, st)} disabled={busy} title={st} aria-pressed={on}
+                        style={{ width: 32, height: 30, borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 800,
+                          background: on ? c : 'transparent', color: on ? '#fff' : c, cursor: busy ? 'wait' : 'pointer',
+                          boxShadow: on ? `0 4px 10px -4px ${c}` : 'none', transition: 'all .12s' }}>
+                        {LETTER[st]}
                       </button>
                     )
                   })}
@@ -2974,6 +4189,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             )
           })}
+          <div style={{ padding: '9px 16px', borderTop: '1px solid #F1EDE4', fontSize: 11, color: '#94A3B8', background: '#FCFBF7' }}>
+            P present · O outing · U outpass
+          </div>
         </div>
       </div>
     )
@@ -2982,6 +4200,26 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   // ══════════════════════════════════════════════════
   //  VIEW 3: QUICK ROLL CALL (Card-by-card)
   // ══════════════════════════════════════════════════
+  if (view === 'rollcall' && selectedHouse && lockInfo(selectedHouse).state !== 'open') {
+    const lk = lockInfo(selectedHouse)
+    const cutoff = ROLL_CALL_DEADLINE[session]?.label
+    return (
+      <div style={{ maxWidth: 460, margin: '40px auto', padding: 24, borderRadius: 20, background: '#fff', border: '1px solid #E5DCC7', textAlign: 'center', boxShadow: '0 20px 40px -24px rgba(11,30,61,.4)' }}>
+        {unlockModal}
+        <div style={{ fontSize: 44 }}>🔒</div>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, color: '#0B1E3D', marginTop: 6 }}>Roll call closed</div>
+        <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.55, marginTop: 8 }}>
+          The {session === 'morning' ? 'morning' : 'night'} roll call for {String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())} closed at {cutoff}. {lk.state === 'pending' ? 'Your request is waiting for the admin.' : lk.state === 'rejected' ? 'The admin declined your last request.' : 'Ask the admin to unlock it.'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button onClick={() => { if (catchUpReturn) returnFromCatchUp(); setView('houses') }} style={{ flex: 1, padding: 12, borderRadius: 12, border: '1px solid #E5DCC7', background: '#fff', color: '#0B1E3D', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Back</button>
+          <button onClick={() => openUnlockRequest(selectedHouse)} style={{ flex: 1.4, padding: 12, borderRadius: 12, border: 'none', background: 'linear-gradient(160deg,#D4AE58,#B8923A)', color: '#1A1406', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {lk.state === 'pending' ? 'View request' : 'Request admin'}
+          </button>
+        </div>
+      </div>
+    )
+  }
   if (view === 'rollcall' && selectedHouse) {
     const total = rollCallStudents.length
     const marked = rollCallStudents.filter(s => getStatus(s.id) !== 'Unmarked').length
@@ -3029,14 +4267,32 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 300)
     }
 
+    // Desktop shortcuts: P present, O outing, U outpass; ← → to move.
+    const KEY_STATUS = { p: 'Present', o: 'Outing', u: 'Outpass', l: 'Late' }
+    const onRollCallKey = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setRollCallIndex(i => Math.max(0, i - 1)); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); setRollCallIndex(i => Math.min(total - 1, i + 1)); return }
+      const st = KEY_STATUS[String(e.key).toLowerCase()]
+      if (!st || isDone || !currentStudent || savingId === currentStudent.id) return
+      if (st === 'Late' && !isDayScholar(currentStudent)) return // Late is for day scholars only
+      e.preventDefault()
+      markAndAdvance(currentStudent.id, st)
+    }
+    const keyHint = (k, on) => !mobile && (
+      <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 5, verticalAlign: 'middle', border: `1px solid ${on ? 'rgba(255,255,255,.55)' : 'currentColor'}`, opacity: 0.7 }}>{k}</span>
+    )
+
     const dismissCardLeavePrompt = () => {
       setCardLeavePrompt(null)
       setTimeout(() => setRollCallIndex(() => effectiveIndex + 1), 200)
     }
 
     return (
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-        {reportModal}
+      <div tabIndex={-1} autoFocus onKeyDown={onRollCallKey} style={{ maxWidth: '500px', margin: '0 auto', outline: 'none' }}>
+        {reportModal}{precheckModal}{rulesModal}{unlockModal}{changesGateModal}
         {rollCallPendingLeave.length > 0 && (
           <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
             <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d4ed8', marginBottom: '8px' }}>
@@ -3082,37 +4338,98 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             📋 Catch-up mode — completing the missed {session} roll call for {date}
           </div>
         )}
+        {/* Profile card — who is taking this roll call (performance-card design) */}
+        {(() => {
+          const profileHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+          const rk = cardRank[normalizeHouse(selectedHouse)]
+          const houseTitle = String(selectedHouse).replace(/\b\w/g, c => c.toUpperCase())
+          return (
+            <div style={{ position: 'relative', textAlign: 'center', color: '#fff', marginBottom: 14, padding: '18px 14px 14px', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+              background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Roll Call</div>
+              <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+              {profileHm ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}><HmPortrait hm={profileHm} size={96} /></div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{profileHm.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(profileHm)} · {houseTitle} House</div>
+                </>
+              ) : (
+                <div style={{ margin: '14px 0 4px', fontSize: 13, color: 'rgba(255,255,255,.7)' }}>No housemaster assigned to {houseTitle} House</div>
+              )}
+              {rk?.rank && (
+                <div style={{ margin: '12px 0 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                    <span style={{ fontSize: 26 }}>{medalFor(rk.rank)}</span>
+                    <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>#{rk.rank}</span>
+                    <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {rk.total}<br /><b style={{ color: '#E2C57E' }}>Score {rk.score}/100</b></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px', padding: '14px 16px', borderRadius: '20px', position: 'relative', overflow: 'hidden', color: '#fff',
+          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`,
+          boxShadow: '0 18px 34px -20px rgba(11,30,61,.75)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
           <button
             onClick={() => { if (catchUpReturn) returnFromCatchUp(); setView('dashboard') }}
-            style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 12px', fontSize: '13px' }}
+            style={{ padding: '8px 13px', fontSize: '13px', fontWeight: 700, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)' }}
           >
             ← Back
           </button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: '800', color: pal.color, fontSize: '16px' }}>⚡ {selectedHouse} Roll Call</div>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {date}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {(() => {
+              // Cutoff countdown: Morning 7:30 AM / Night 10:00 PM.
+              const { deadline, graceEnd, label } = rollCallDeadline(date, session)
+              const mins = Math.round((deadline.getTime() - clock) / 60000)
+              const fmt = m => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`)
+              const state = isDone ? { t: `Done · closes ${label}`, c: '#86EFAC' }
+                : clock > graceEnd.getTime() ? { t: `Past cutoff · closed at ${label} · admin unlocked`, c: '#FCD34D' }
+                : mins <= 24 * 60 ? { t: `Closes at ${label} · ${fmt(mins)} left`, c: '#E9D9B0' }
+                : { t: `Closes at ${label}`, c: '#E9D9B0' }
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 0, fontSize: 11, fontWeight: 800, color: state.c, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)', borderRadius: 99, padding: '3px 10px' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: state.c }} />{state.t}
+                </div>
+              )
+            })()}
           </div>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: pal.color }}>
-            {Math.min(rollCallIndex + 1, total)}/{total}
+          {!catchUpReturn && (
+            <div role="tablist" aria-label="Roll call" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 3, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)' }}>
+              {[['morning', '🌅'], ['night', '🌙']].map(([k, ic]) => (
+                <button key={k} type="button" role="tab" aria-selected={session === k} title={`${k === 'morning' ? 'Morning' : 'Night'} roll call`}
+                  onClick={() => { if (k !== session) { setSession(k); setRollCallIndex(0) } }}
+                  style={{ width: 34, height: 26, borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 14, background: session === k ? 'linear-gradient(160deg,#d4ae58,#b8923a)' : 'transparent', opacity: session === k ? 1 : 0.6 }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ minWidth: 54, textAlign: 'center', padding: '7px 10px', borderRadius: 14, fontWeight: 800, fontSize: 14, color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 16px -8px rgba(184,146,58,.9)' }}>
+            {Math.min(rollCallIndex + 1, total)}<span style={{ opacity: .6, fontWeight: 700 }}>/{total}</span>
           </div>
         </div>
 
 
         {/* Progress bar */}
         <div style={{ marginBottom: '24px' }}>
-          <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{ height: '10px', background: '#e8ecf4', borderRadius: '99px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(19,42,79,.15)' }}>
             <div style={{
               height: '100%',
               width: `${pct}%`,
-              background: pct === 100 ? '#16a34a' : pal.color,
+              background: pct === 100 ? 'linear-gradient(90deg,#16a34a,#22c55e)' : 'linear-gradient(90deg,#1f4e8c,#c9a24b)',
               borderRadius: '99px', transition: 'width 0.4s',
+              boxShadow: '0 0 10px rgba(201,162,75,.55)',
             }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-            <span>{marked} marked</span>
-            <span>{total - marked} remaining</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 700, color: '#5d6b82', marginTop: '6px' }}>
+            <span style={{ color: '#146c3a' }}>● {marked} marked</span>
+            <span style={{ color: '#8a6d2b' }}>{total - marked} remaining ●</span>
           </div>
         </div>
 
@@ -3129,12 +4446,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             // WhatsApp group) exactly once per house/date/session — fires on
             // THIS house's own completed roll call, independent of whichever
             // house the compliance switcher above is currently showing.
+            const byStatus = st => rollCallStudents.filter(x => getStatus(x.id) === st)
             const rollCallReportKey = `${selectedHouse}_${date}_${session}`
-            if (!rollCallReportSent[rollCallReportKey]) {
-              setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
-              const sessionLabel = session === 'morning' ? '🌅 Morning' : '🌙 Night'
-              autoSendComplianceWa(buildRollCallReportMessage(selectedHouse, sessionLabel, date, marked, total, currentHousemaster?.name))
-            }
             const rawMissing = complianceMissing[complianceKey] || []
             const resolvedSet = resolvedByRecheck[complianceKey] || {}
             const missingTabs = rawMissing.filter(k => !resolvedSet[k])
@@ -3148,8 +4461,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             }
             const isCelebratingCompliance = complianceCelebrating === complianceKey
 
-            // ── Mandatory roll-call deadline check (Morning 7:00 AM /
-            //    Night 8:00 PM, 15-minute grace) — computed on THIS
+            // ── Mandatory roll-call deadline check (Morning 7:30 AM /
+            //    Night 10:00 PM cutoff) — computed on THIS
             //    house's own just-completed session, independent of
             //    whichever house the compliance switcher above is showing.
             const ownSessionKey = `${selectedHouse}_${date}_${session}`
@@ -3168,8 +4481,81 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               )
             }
 
+            // ── WhatsApp report with the housemaster's profile and rank.
+            //    The rank loads first (at most 8 s), then the report is
+            //    sent once and the profile card image is made for sharing.
+            const rankKey = `${selectedHouse}_${date}`
+            if (hmRankByHouse[rankKey] === undefined) {
+              setHmRankByHouse(prev => ({ ...prev, [rankKey]: 'loading' }))
+              const houseList = rollCallStudents
+              Promise.race([
+                Promise.all([loadHmRank(selectedHouse).catch(() => null), loadHouseMockStandings(houseList).catch(() => null)])
+                  .then(([rank, mock]) => ({ rank, mock })),
+                new Promise(res => setTimeout(() => res(null), 10000)),
+              ])
+                .catch(() => null)
+                .then(info => setHmRankByHouse(prev => ({ ...prev, [rankKey]: info || { rank: null, mock: null } })))
+            }
+            const rankLoaded = hmRankByHouse[rankKey] !== undefined && hmRankByHouse[rankKey] !== 'loading'
+            const rankInfo = rankLoaded ? hmRankByHouse[rankKey].rank : null
+            const mockInfo = rankLoaded ? hmRankByHouse[rankKey].mock : null
+            const reportHm = hmFor(selectedHouse) || (currentHousemaster?.name ? currentHousemaster : null)
+            const presentList = [...byStatus('Present'), ...byStatus('Late')]
+            const reportArgs = {
+              houseName: selectedHouse, sessionLabel: session === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
+              hm: reportHm, total, present: presentList, outing: byStatus('Outing'), outpass: byStatus('Outpass'),
+              other: rollCallStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(getStatus(x.id))).length,
+              rankInfo, completedAt: lastMarkedAtForOwnSession, late: lateStatus.isLate, mock: mockInfo,
+            }
+            const rollCallWaText = buildRollCallWaReport(reportArgs)
+            if (rankLoaded && !rollCallReportSent[rollCallReportKey]) {
+              setRollCallReportSent(prev => ({ ...prev, [rollCallReportKey]: true }))
+              autoSendComplianceWa(rollCallWaText)
+            }
+            const card = profileCards[rollCallReportKey]
+            if (rankLoaded && card === undefined) {
+              setProfileCards(prev => ({ ...prev, [rollCallReportKey]: 'loading' }))
+              buildHmProfileCard({ ...reportArgs, present: presentList.length, outing: reportArgs.outing.length, outpass: reportArgs.outpass.length })
+                .then(blob => setProfileCards(prev => ({ ...prev, [rollCallReportKey]: blob ? { blob, url: URL.createObjectURL(blob) } : null })))
+                .catch(() => setProfileCards(prev => ({ ...prev, [rollCallReportKey]: null })))
+            }
+            const cardReady = card && card !== 'loading'
+            const cardFileName = `roll-call-${String(selectedHouse).toLowerCase().replace(/\s+/g, '-')}-${date}-${session}.png`
+            const cardShared = profileCardShared(selectedHouse, date, session)
+            const sharedNow = () => { markProfileCardShared(selectedHouse, date, session); setShareTick(n => n + 1); return true }
+            const shareProfileCard = async () => {
+              if (!cardReady) return false
+              const file = new File([card.blob], cardFileName, { type: 'image/png' })
+              try {
+                if (navigator.canShare?.({ files: [file] })) {
+                  await navigator.share({ files: [file], text: rollCallWaText, title: `${selectedHouse} — Roll Call Report` })
+                  return sharedNow()
+                }
+              } catch (e) {
+                if (e?.name === 'AbortError') return false
+              }
+              // No file sharing here (most computers): save the card and open
+              // the chat, so it can be attached there.
+              const a = document.createElement('a')
+              a.href = card.url; a.download = cardFileName
+              document.body.appendChild(a); a.click(); a.remove()
+              window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(rollCallWaText)}`, '_blank', 'noopener,noreferrer')
+              return sharedNow()
+            }
+            // Leaving this screen needs the profile card shared first (when it is ready).
+            const leaveAfterShare = async fn => {
+              if (cardReady && !cardShared) {
+                const ok = await shareProfileCard()
+                if (!ok) return
+              }
+              fn()
+            }
+
             return (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ textAlign: 'center', padding: '36px 22px 28px', borderRadius: 26, border: '1px solid transparent', position: 'relative', overflow: 'hidden',
+            background: 'linear-gradient(180deg,#ffffff 0%,#f7f4ea 100%) padding-box, linear-gradient(150deg,#e9d9b0,#c9a24b 50%,#e9d9b0) border-box',
+            boxShadow: '0 30px 50px -30px rgba(19,42,79,.55), 0 2px 4px rgba(19,42,79,.06)' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 6, background: 'linear-gradient(90deg,#0e203f,#1f4e8c,#c9a24b,#1f4e8c,#0e203f)' }} />
             <style>{`
               @keyframes hr-compliance-pop {
                 0% { transform: scale(0.5) rotate(-8deg); opacity: 0; }
@@ -3214,7 +4600,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 background: linear-gradient(135deg, #22c55e, #16a34a);
                 display: flex; align-items: center; justify-content: center;
                 animation: rc-circle-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-                box-shadow: 0 8px 20px rgba(22,163,74,0.35);
+                box-shadow: 0 0 0 4px #fff, 0 0 0 7px #c9a24b, 0 16px 30px -10px rgba(22,163,74,0.55);
               }
               .rc-success-check {
                 stroke-dasharray: 48; stroke-dashoffset: 48;
@@ -3232,16 +4618,98 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             </div>
             <div className="rc-success-text">
-              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
-                {selectedHouse} Roll Call Complete!
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8a6d2b', marginBottom: 6 }}>GNSI · Hostel</div>
+              <div style={{ fontSize: '26px', fontWeight: '600', color: '#0e203f', marginBottom: '6px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
+                {selectedHouse} Roll Call Complete
               </div>
-              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '4px 0 20px', padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 800, color: '#fff', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>
                 {marked} of {total} students marked
               </div>
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '-6px 0 16px' }}>
+                <span style={{ padding: '8px 14px 8px 8px', borderRadius: 999, background: '#fff', border: '1px solid #EBDDB4' }}>
+                  <HmChip hm={hmFor(selectedHouse)} size={36} />
+                </span>
+              </div>
+              {/* Send the report on WhatsApp — a tap opens WhatsApp with the
+                  report filled in (opening it automatically is usually
+                  blocked by the browser). */}
+              <a href={`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(rollCallWaText)}`} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 22px', borderRadius: 14, marginBottom: 20, textDecoration: 'none',
+                  background: 'linear-gradient(180deg,#25D366,#1DA851)', color: '#fff', fontSize: 14.5, fontWeight: 800,
+                  boxShadow: '0 12px 22px -12px rgba(29,168,81,.9)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>
+                Send report on WhatsApp · 89742 98074
+              </a>
+              {/* Profile card — image with photo, rank and today's counts */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                {cardReady ? (
+                  <img src={card.url} alt={`${selectedHouse} roll call profile card`}
+                    style={{ width: 'min(100%, 260px)', borderRadius: 16, border: '1px solid #E9D9B0', boxShadow: '0 18px 34px -18px rgba(11,30,61,.7)' }} />
+                ) : card === 'loading' || !rankLoaded ? (
+                  <div style={{ width: 'min(100%, 260px)', aspectRatio: '4 / 5', borderRadius: 16, background: 'linear-gradient(160deg,#132B52,#0B1E3D)', color: '#E2C57E', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Preparing profile card…
+                  </div>
+                ) : null}
+                {rankInfo?.rank && (
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>
+                    {medalFor(rankInfo.rank)} Rank #{rankInfo.rank} of {rankInfo.total} · Score {rankInfo.score}/100
+                  </div>
+                )}
+                {cardReady && !cardShared && (
+                  <div style={{ maxWidth: 360, padding: '9px 14px', borderRadius: 12, background: '#FEF2F2', border: '1.5px solid #FCA5A5', color: '#B91C1C', fontSize: 13, fontWeight: 800, lineHeight: 1.4 }}>
+                    📣 Required: share your profile card on WhatsApp to finish this roll call.
+                  </div>
+                )}
+                {cardReady && cardShared && <div style={{ fontSize: 12.5, fontWeight: 800, color: '#15803D' }}>✅ Profile card shared</div>}
+                {cardReady && (
+                  <button type="button" onClick={shareProfileCard}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 14, border: '1px solid #E2C57E', cursor: 'pointer', fontFamily: 'inherit',
+                      background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 13.5, fontWeight: 800, boxShadow: '0 12px 22px -12px rgba(11,30,61,.9)' }}>
+                    📤 Share profile card on WhatsApp
+                  </button>
+                )}
+              </div>
+              {/* Mock test standings for this house */}
+              {mockInfo && (
+                <div style={{ textAlign: 'left', maxWidth: 620, margin: '0 auto 20px', borderRadius: 20, overflow: 'hidden', border: '1px solid #E9D9B0', background: '#fff', boxShadow: '0 18px 34px -24px rgba(11,30,61,.6)' }}>
+                  <div style={{ padding: '14px 18px', color: '#fff', background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>Mock test · {selectedHouse} House</div>
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, marginTop: 3 }}>{mockInfo.series}</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.7)', marginTop: 2 }}>Average score · {mockInfo.testCount} test{mockInfo.testCount === 1 ? '' : 's'} · {mockInfo.covered} students</div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: 12, padding: 14 }}>
+                    {[
+                      { head: '🏅 Top performers', list: mockInfo.top, c: '#15803D', bg: '#F0FDF4', bd: '#BBE5C8', bar: 'linear-gradient(90deg,#22C55E,#15803D)' },
+                      { head: '📈 Needs support', list: mockInfo.weak, c: '#B45309', bg: '#FFFBEB', bd: '#FDE68A', bar: 'linear-gradient(90deg,#FBBF24,#D97706)' },
+                    ].map((col, ci) => (
+                      <div key={col.head} style={{ borderRadius: 14, background: col.bg, border: `1px solid ${col.bd}`, padding: '12px 14px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: col.c, letterSpacing: '.04em', marginBottom: 8 }}>{col.head}</div>
+                        {col.list.length === 0 ? (
+                          <div style={{ fontSize: 12.5, color: '#64748B' }}>Everyone is doing well.</div>
+                        ) : col.list.map((m, i) => (
+                          <div key={m.name + i} style={{ marginBottom: i < col.list.length - 1 ? 9 : 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {ci === 0 ? ['🥇', '🥈', '🥉'][i] + ' ' : ''}{m.name}
+                              </span>
+                              {m.gcc_no && <span style={{ fontSize: 10.5, color: '#94A3B8', fontWeight: 700 }}>GCC {m.gcc_no}</span>}
+                              <span style={{ fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 700, color: col.c, fontVariantNumeric: 'tabular-nums' }}>{m.avg}%</span>
+                            </div>
+                            <div style={{ height: 6, borderRadius: 99, background: 'rgba(15,23,42,.08)', marginTop: 5, overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(m.avg, 100)}%`, height: '100%', borderRadius: 99, background: col.bar }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
-                15-min grace. Late completions are flagged with a penalty/
+            {/* Mandatory deadline badge — Morning 7:30 AM / Night 10:00 PM,
+                cutoff. Late completions are flagged with a penalty/
                 fine notice and logged automatically (see effect above). */}
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -3252,8 +4720,8 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <span style={{ fontSize: '16px' }}>{lateStatus.isLate ? '⏰' : '✅'}</span>
               <span style={{ fontSize: '13px', fontWeight: '700', color: lateStatus.isLate ? '#dc2626' : '#16a34a' }}>
                 {lateStatus.isLate
-                  ? `Late — ${lateStatus.minutesLate} min past ${lateStatus.deadlineLabel} deadline. Penalty/fine applicable.`
-                  : `On time — within ${lateStatus.deadlineLabel} deadline (15-min grace)`}
+                  ? `Late — ${lateStatus.minutesLate} min past the ${lateStatus.deadlineLabel} cutoff. Penalty/fine applicable.`
+                  : `On time — within ${lateStatus.deadlineLabel} cutoff`}
               </span>
             </div>
 
@@ -3404,11 +4872,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '24px' }}>
-              {['Present', 'Absent', 'Sick', 'Late', 'On Leave', 'Unmarked'].map(s => {
+              {['Present', 'Outing', 'Outpass', 'Absent', 'Sick', 'Late', 'On Leave', 'Unmarked'].map(s => {
                 const count = s === 'Unmarked'
                   ? rollCallStudents.filter(st => getStatus(st.id) === 'Unmarked').length
                   : rollCallStudents.filter(st => getStatus(st.id) === s).length
-                if (count === 0 && s !== 'Present' && s !== 'Absent') return null
+                if (count === 0 && !ATTENDANCE_TYPES.includes(s)) return null // old statuses only if used
                 const sc = statusConfig[s]
                 return (
                   <div key={s} style={{ background: sc.bg, borderRadius: '10px', padding: '12px' }}>
@@ -3455,10 +4923,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   <button onClick={() => setReportHouse(selectedHouse)} style={{ ...btn('#7c3aed'), padding: '12px 24px' }}>
                     📄 View Report
                   </button>
-                  <button onClick={() => setView('dashboard')} style={{ ...btn(pal.color), padding: '12px 24px' }}>
+                  <button onClick={() => leaveAfterShare(() => setView('dashboard'))} style={{ ...btn(pal.color), padding: '12px 24px' }}>
                     View {selectedHouse} Dashboard
                   </button>
-                  <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
+                  <button onClick={() => leaveAfterShare(() => setView('houses'))} style={{ ...btn('#f1f5f9', '#374151'), padding: '12px 24px' }}>
                     All Houses
                   </button>
                 </>
@@ -3502,29 +4970,38 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
             {/* Main student card */}
             <div style={{
-              background: 'white', borderRadius: '20px',
-              padding: '28px 24px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-              border: `2px solid ${currentStatus && currentStatus !== 'Unmarked' ? statusConfig[currentStatus]?.color + '40' : '#e2e8f0'}`,
-              marginBottom: '16px',
+              borderRadius: '24px', overflow: 'hidden', position: 'relative',
+              padding: '0 24px 26px',
+              background: `linear-gradient(180deg,#fff 0%,#f7f4ea 100%) padding-box, ${currentStatus && currentStatus !== 'Unmarked' ? `linear-gradient(150deg,${statusConfig[currentStatus]?.color},#e9d9b0)` : 'linear-gradient(150deg,#e9d9b0,#c9a24b 50%,#e9d9b0)'} border-box`,
+              border: '2px solid transparent',
+              boxShadow: '0 30px 50px -30px rgba(19,42,79,.6), 0 2px 4px rgba(19,42,79,.06)',
+              marginBottom: '18px',
               textAlign: 'center',
             }}>
+              {/* Cover band */}
+              <div style={{ height: 78, margin: '0 -24px', position: 'relative', background: `radial-gradient(120% 140% at 100% 0%, ${pal.color}bb 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)` }}>
+                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(255,255,255,.08) 1px,transparent 1px)', backgroundSize: '10px 10px' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
+              </div>
               {/* Avatar */}
               <div style={{
-                width: '72px', height: '72px', borderRadius: '50%',
-                background: pal.bg, border: `3px solid ${pal.color}`,
+                width: '112px', height: '112px', borderRadius: '50%', boxSizing: 'border-box', overflow: 'hidden',
+                background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d) padding-box, linear-gradient(145deg,#e9d9b0,#c9a24b,#8a6d2b) border-box',
+                border: '4px solid transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '28px', fontWeight: '800', color: pal.color,
-                margin: '0 auto 16px',
+                fontSize: '32px', fontWeight: '600', color: '#fff', fontFamily: "'Fraunces',Georgia,serif",
+                margin: '-56px auto 14px', position: 'relative',
+                boxShadow: '0 12px 22px -8px rgba(19,42,79,.6)',
               }}>
-                {(currentStudent.name || '?')[0].toUpperCase()}
+                <RollCallPhoto url={studentPhotoOf(currentStudent.id)} name={currentStudent.name} />
               </div>
 
-              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '6px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#0e203f', marginBottom: '8px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
                 {currentStudent.name}
               </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-                GCC-{currentStudent.gcc_no || '--'} · {getStudentClass(currentStudent) || '--'}
+              <div style={{ fontSize: '12.5px', color: '#5d6b82', marginBottom: '16px', fontWeight: 600 }}>
+                <span style={{ fontWeight: 800, color: '#8a6d2b', letterSpacing: '.05em', background: 'linear-gradient(180deg,#fbf3dc,#f3e5bb)', border: '1px solid #e0c986', borderRadius: 999, padding: '3px 11px', marginRight: 8 }}>GCC-{currentStudent.gcc_no || '--'}</span>
+                {getStudentClass(currentStudent) || '--'}
               </div>
 
               {/* Current status */}
@@ -3610,60 +5087,45 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               )}
             </div>
 
-            {/* Big status buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-              {[
-                { status: 'Present', bg: '#16a34a', label: '✓ Present' },
-                { status: 'Absent', bg: '#dc2626', label: '✕ Absent' },
-              ].map(({ status, bg, label }) => (
-                <button
-                  key={status}
-                  onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={savingId === currentStudent.id}
-                  style={{
-                    padding: '18px', borderRadius: '14px', border: 'none',
-                    background: currentStatus === status ? bg : bg + '15',
-                    color: currentStatus === status ? 'white' : bg,
-                    fontSize: '16px', fontWeight: '800',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    minHeight: '60px',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Secondary status buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
-              {[
-                { status: 'Late', bg: '#b8923a', label: '⏰ Late' },
-                { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick' },
-                { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave' },
-              ].map(({ status, bg, label }) => (
-                <button
-                  key={status}
-                  onClick={() => markAndAdvance(currentStudent.id, status)}
-                  disabled={savingId === currentStudent.id}
-                  style={{
-                    padding: '12px 8px', borderRadius: '10px', border: 'none',
-                    background: currentStatus === status ? bg : bg + '15',
-                    color: currentStatus === status ? 'white' : bg,
-                    fontSize: '13px', fontWeight: '700',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {/* Status buttons: Present (big), then Outing / Outpass */}
+            {[
+              [{ status: 'Present', bg: '#16a34a', label: '✓ Present', k: 'P' }],
+              [{ status: 'Outing', bg: '#0369a1', label: '🚶 Outing', k: 'O' }, { status: 'Outpass', bg: '#b45309', label: '🎫 Outpass', k: 'U' }],
+              ...(isDayScholar(currentStudent) ? [[{ status: 'Late', bg: '#d97706', label: '⏰ Late (day scholar)', k: 'L' }]] : []),
+            ].map((row, ri) => (
+              <div key={ri} style={{ display: 'grid', gridTemplateColumns: `repeat(${row.length}, 1fr)`, gap: '10px', marginBottom: ri ? '20px' : '10px' }}>
+                {row.map(({ status, bg, label, k }) => (
+                  <button
+                    key={status}
+                    onClick={() => markAndAdvance(currentStudent.id, status)}
+                    disabled={savingId === currentStudent.id}
+                    style={{
+                      padding: ri ? '15px 8px' : '18px', borderRadius: '18px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
+                      background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
+                      color: currentStatus === status ? 'white' : bg,
+                      fontSize: ri ? '15px' : '18px', fontWeight: '800', letterSpacing: '.01em',
+                      boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 14px 22px -12px ${bg}` : `0 8px 16px -12px ${bg}`,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      minHeight: ri ? '54px' : '66px',
+                    }}
+                  >
+                    {label}{keyHint(k, currentStatus === status)}
+                  </button>
+                ))}
+              </div>
+            ))}
+            {!mobile && (
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', margin: '-10px 0 16px' }}>
+                Keyboard: P present · O outing · U outpass{isDayScholar(currentStudent) ? ' · L late' : ''} · ← → move
+              </div>
+            )}
 
             {/* Navigation */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button
                 onClick={() => setRollCallIndex(i => Math.max(0, i - 1))}
                 disabled={rollCallIndex === 0}
-                style={{ ...btn('#f1f5f9', '#374151'), padding: '10px 16px', opacity: rollCallIndex === 0 ? 0.4 : 1 }}
+                style={{ ...btn('#fff', '#132a4f'), padding: '10px 18px', borderRadius: 12, border: '1px solid #d8dfec', fontWeight: 700, boxShadow: '0 6px 12px -10px rgba(19,42,79,.6)', opacity: rollCallIndex === 0 ? 0.4 : 1 }}
               >
                 ← Prev
               </button>
@@ -3672,7 +5134,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </span>
               <button
                 onClick={() => setRollCallIndex(i => Math.min(total, i + 1))}
-                style={{ ...btn('#f1f5f9', '#374151'), padding: '10px 16px' }}
+                style={{ ...btn('#fff', '#132a4f'), padding: '10px 18px', borderRadius: 12, border: '1px solid #d8dfec', fontWeight: 700, boxShadow: '0 6px 12px -10px rgba(19,42,79,.6)' }}
               >
                 Skip →
               </button>
@@ -3693,11 +5155,15 @@ const MAINTENANCE_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', 'Closed']
 const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
 
-function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
+function MaintenanceTab({ lockHouse, currentHousemaster, currentUser, autoOpenForm }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
 
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  // A housemaster sees their own house's repairs and the ones they raised.
+  const records = useMemo(() => !lockHouse ? allRecords
+    : allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(lockHouse) || (r.reported_by && r.reported_by === currentUser?.name)),
+  [allRecords, lockHouse, currentUser?.name])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -3705,14 +5171,14 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
   const [filterPriority, setFilterPriority] = useState('All')
   const [search, setSearch] = useState('')
   const mobile = useMobileView()
-  const emptyMaintenance = { category: 'Plumbing', house: '', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }
+  const emptyMaintenance = { category: 'Plumbing', house: lockHouse || '', location: '', room_number: '', description: '', priority: 'Medium', status: 'Raised', reported_by: '', assigned_to: '', resolved_at: '', cost: '', remarks: '' }
   const [form, setForm] = useState(emptyMaintenance)
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   useEffect(() => {
     if (autoOpenForm) {
-      setForm({ ...emptyMaintenance, house: autoOpenForm.house || '' })
+      setForm({ ...emptyMaintenance, house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -3933,7 +5399,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
                   <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a6e' }}>{r.category}</td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
-                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.room_number || '—'}</td>
                   <td style={{ padding: '11px 14px', color: '#374151', maxWidth: 200 }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.description}>{r.description}</div></td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.assigned_to || '—'}</td>
@@ -3968,7 +5434,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
 //       marked before that session's window closed (Morning by 12:00,
 //       Night by 24:00), out of all sessions that reached 100%.
 //    2. Six-tab compliance % — of compliance checks that ran (roll-call
-//       linked + standalone 3x-daily), the % with zero missing tabs.
+//       linked + standalone 2x-daily), the % with zero missing tabs.
 //    3. Neglect-free % — 100 minus (neglect log rows / total checks run).
 //  Weak-performance reasons combine the data pattern (which tabs get
 //  skipped most) with the actual skip_reasons text housemasters typed.
@@ -4002,7 +5468,7 @@ export async function computeHMPerformance(startDateStr, endDateStr) {
   const [attendance, neglect, { data: housemasters }, studentsForCount] = await Promise.all([
     fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr)),
     fetchAllRows(() => supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr)),
-    supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
+    supabase.from('housemasters').select('*').eq('status', 'Active'),
     // Fetched so a "No data" house can be distinguished as either
     // "no students assigned here" or "students exist but nothing was
     // logged" — otherwise both look identical in the ranking card.
@@ -4102,6 +5568,7 @@ export async function computeHMPerformance(startDateStr, endDateStr) {
       house: houseName,
       hmName: hm?.name || 'Unassigned',
       hmPhone: hm?.phone || '',
+      hm: hm || null,
       onTimePct, compliancePct, neglectFreePct, score,
       sessionsCount: sessionKeys.length,
       neglectCount: houseNeglect.length,
@@ -4259,13 +5726,19 @@ function MonthlyCertificateCard() {
 //  breakdown table (one row per day per house: morning/night %
 //  marked, on-time status, absent count).
 // ══════════════════════════════════════════════════════════════
-function HMRollCallReportTab() {
+function HMRollCallReportTab({ lockHouse }) {
   const [rangeMode, setRangeMode] = useState('last10') // 'last10' | 'month'
   const [loading, setLoading] = useState(true)
-  const [houses, setHouses] = useState([])
+  const [allHouses, setHouses] = useState([])
+  // A housemaster sees only their own house's report, opened.
+  const houses = useMemo(() => !lockHouse ? allHouses
+    : [allHouses.find(h => normalizeHouse(h) === normalizeHouse(lockHouse)) || lockHouse],
+  [allHouses, lockHouse])
   const [studentsByHouse, setStudentsByHouse] = useState({}) // house → count of active students
   const [records, setRecords] = useState([]) // attendance_records in range
+  const [hms, setHms] = useState([]) // active housemasters, for each house's photo
   const [expandedHouse, setExpandedHouse] = useState(null)
+  const shownHouse = lockHouse ? (expandedHouse === '' ? null : houses[0]) : expandedHouse
   const mobile = useMobileView()
 
   const { startStr, endStr, dayList } = useMemo(() => {
@@ -4290,12 +5763,14 @@ function HMRollCallReportTab() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [{ data: houseRows }, studentRows, attRows] = await Promise.all([
+      const [{ data: houseRows }, studentRows, attRows, { data: hmRows }] = await Promise.all([
         supabase.from('houses').select('name'),
         getActiveStudents('house'),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr)),
+        supabase.from('housemasters').select('*').eq('status', 'Active'),
       ])
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
+      setHms(hmRows || [])
       const counts = {}
       ;(studentRows || []).forEach(s => {
         const h = normalizeHouse(s.house)
@@ -4315,7 +5790,8 @@ function HMRollCallReportTab() {
       normalizeHouse(r.house) === normalizeHouse(houseName) && r.date === dateStr && r.session === session
     )
     const marked = dayRecords.length
-    const absent = dayRecords.filter(r => r.status === 'Absent').length
+    // "Out": not in the hostel — Outing / Outpass (and the old Absent).
+    const absent = dayRecords.filter(r => r.status === 'Outing' || r.status === 'Outpass' || r.status === 'Absent').length
     const pct = total > 0 ? Math.round((marked / total) * 100) : null
     let onTime = null
     if (marked > 0 && total > 0 && marked >= total) {
@@ -4327,6 +5803,9 @@ function HMRollCallReportTab() {
     return { total, marked, absent, pct, onTime, complete: total > 0 && marked >= total }
   }
 
+  // Today's session whose deadline (plus grace) hasn't passed yet.
+  const isUpcoming = (dateStr, session) => dateStr === today() && new Date() <= rollCallDeadline(dateStr, session).graceEnd
+
   // ── Per-house summary across the whole range ──
   const getHouseSummary = (houseName) => {
     let sessionsExpected = 0, sessionsComplete = 0, onTimeCount = 0, completeWithTimeData = 0, daysBlocked = 0
@@ -4334,6 +5813,7 @@ function HMRollCallReportTab() {
       ;['morning', 'night'].forEach(session => {
         const s = getDayStats(houseName, d, session)
         if (s.total === 0) return // no students in this house — don't count as expected
+        if (!s.complete && isUpcoming(d, session)) return // not due yet today
         sessionsExpected++
         if (s.complete) {
           sessionsComplete++
@@ -4347,15 +5827,12 @@ function HMRollCallReportTab() {
       // despite students existing in the house — i.e. roll call never ran.
       const m = getDayStats(houseName, d, 'morning')
       const n = getDayStats(houseName, d, 'night')
-      if (m.total > 0 && m.marked === 0 && n.marked === 0) daysBlocked++
+      if (m.total > 0 && m.marked === 0 && n.marked === 0 && !isUpcoming(d, 'night')) daysBlocked++
     })
     const completionPct = sessionsExpected > 0 ? Math.round((sessionsComplete / sessionsExpected) * 100) : null
     const onTimePct = completeWithTimeData > 0 ? Math.round((onTimeCount / completeWithTimeData) * 100) : null
     return { sessionsExpected, sessionsComplete, completionPct, onTimePct, daysBlocked }
   }
-
-  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#b8923a' : '#dc2626'
-  const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
 
   // Flattened one-row-per-house-per-day-per-session view, for export only.
   const exportRows = useMemo(() => {
@@ -4378,121 +5855,211 @@ function HMRollCallReportTab() {
     return rows
   }, [houses, dayList, records, studentsByHouse])
 
-  if (loading) {
-    return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading roll call report...</div>
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  const hmFor = h => hms.find(x => normalizeHouse(x.house) === normalizeHouse(h)) || null
+  const fmtDay = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  const weekday = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })
+  // One cell's look: complete on time / complete late / partly marked / not done / upcoming / no students.
+  const cellState = (d, session, s) => {
+    if (s.total === 0) return { key: 'none', bg: '#F8FAFC', fg: '#CBD5E1', border: '#EEF1F5', mark: '–', label: 'No students' }
+    if (s.complete && s.onTime === false) return { key: 'late', bg: '#FEF3C7', fg: '#A16207', border: '#F6DE95', mark: '⏰', label: 'Complete — late' }
+    if (s.complete) return { key: 'ok', bg: '#DCFCE7', fg: '#15803D', border: '#BBE5C8', mark: '✓', label: 'Complete on time' }
+    if (isUpcoming(d, session)) return { key: 'up', bg: '#F1F5F9', fg: '#64748B', border: '#E2E8F0', mark: s.marked ? `${s.pct}%` : '·', label: s.marked ? `In progress · ${s.marked}/${s.total}` : 'Not due yet' }
+    if (s.marked > 0) return { key: 'part', bg: '#FFEDD5', fg: '#C2410C', border: '#FDBA74', mark: `${s.pct}%`, label: `Incomplete · ${s.marked}/${s.total}` }
+    return { key: 'miss', bg: '#FEE2E2', fg: '#B91C1C', border: '#FCA5A5', mark: '✕', label: 'Not done' }
   }
+  const LEGEND = [
+    { label: 'On time', bg: '#DCFCE7', fg: '#15803D', mark: '✓' },
+    { label: 'Late', bg: '#FEF3C7', fg: '#A16207', mark: '⏰' },
+    { label: 'Incomplete', bg: '#FFEDD5', fg: '#C2410C', mark: '%' },
+    { label: 'Not done', bg: '#FEE2E2', fg: '#B91C1C', mark: '✕' },
+    { label: 'Not due yet', bg: '#F1F5F9', fg: '#64748B', mark: '·' },
+  ]
+  const summaries = houses.map(h => ({ house: h, ...getHouseSummary(h) }))
+  const totExpected = summaries.reduce((t, x) => t + x.sessionsExpected, 0)
+  const totComplete = summaries.reduce((t, x) => t + x.sessionsComplete, 0)
+  const withOnTime = summaries.filter(x => x.onTimePct !== null)
+  const overall = {
+    completion: totExpected ? Math.round(totComplete / totExpected * 100) : null,
+    onTime: withOnTime.length ? Math.round(withOnTime.reduce((t, x) => t + x.onTimePct, 0) / withOnTime.length) : null,
+    blocked: summaries.reduce((t, x) => t + x.daysBlocked, 0),
+  }
+  const ringColor = pct => pct === null ? '#CBD5E1' : pct >= 90 ? '#15803D' : pct >= 70 ? '#B8923A' : '#DC2626'
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
-        <div>
-          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Roll Call Report</h2>
-          <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
+      {/* Header */}
+      <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '18px' : '24px 26px', marginBottom: '16px',
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>GNSI Hostel · Roll call report</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 23 : 29, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>
+              {lockHouse ? `${String(lockHouse).replace(/\b\w/g, c => c.toUpperCase())} House` : 'All houses'}
+            </h2>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 5 }}>
+              {fmtDay(startStr)} – {fmtDay(endStr)} · morning &amp; night roll call
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div role="tablist" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.16)' }}>
+              {[{ key: 'last10', label: 'Last 10 days' }, { key: 'month', label: 'This month' }].map(m => {
+                const on = rangeMode === m.key
+                return (
+                  <button key={m.key} role="tab" aria-selected={on} onClick={() => setRangeMode(m.key)}
+                    style={{ padding: '8px 14px', border: 'none', borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                      background: on ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : 'transparent', color: on ? '#1A1406' : 'rgba(255,255,255,.8)' }}>
+                    {m.label}
+                  </button>
+                )
+              })}
+            </div>
+            <ReportExportButtons
+              title={`Roll Call Report${lockHouse ? ` — ${lockHouse}` : ''}`}
+              subtitle={`${startStr} → ${endStr} · ${exportRows.length} house-session rows`}
+              columns={[
+                { key: 'date', label: 'Date', width: 1 },
+                { key: 'house', label: 'House', width: 1 },
+                { key: 'session', label: 'Session', width: 1 },
+                { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
+                { key: 'pct', label: '% Complete', width: 0.9 },
+                { key: 'onTime', label: 'On Time', width: 0.8 },
+                { key: 'absent', label: 'Out', width: 0.7 },
+              ]}
+              rows={exportRows}
+            />
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
-          {[{ key: 'last10', label: 'Last 10 Days' }, { key: 'month', label: 'This Month' }].map(m => (
-            <button
-              key={m.key}
-              onClick={() => setRangeMode(m.key)}
-              style={{
-                padding: '8px 14px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                background: rangeMode === m.key ? '#1e3a6e' : 'transparent',
-                color: rangeMode === m.key ? 'white' : '#64748b',
-              }}
-            >
-              {m.label}
-            </button>
+
+        {/* Overall figures */}
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: 10, marginTop: 18 }}>
+          {[
+            { l: 'Roll calls done', v: loading ? '—' : `${totComplete}/${totExpected}`, sub: 'sessions complete' },
+            { l: 'Completion', v: loading || overall.completion === null ? '—' : `${overall.completion}%`, sub: 'of sessions due' },
+            { l: 'On time', v: loading || overall.onTime === null ? '—' : `${overall.onTime}%`, sub: 'finished before deadline' },
+            { l: 'Days missed', v: loading ? '—' : overall.blocked, sub: 'no roll call at all' },
+          ].map(f => (
+            <div key={f.l} style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: '11px 14px', minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)' }}>{f.l}</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 21 : 25, fontWeight: 600, marginTop: 5, lineHeight: 1.1, fontVariantNumeric: 'lining-nums tabular-nums' }}>{f.v}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 4 }}>{f.sub}</div>
+            </div>
           ))}
         </div>
-        <ReportExportButtons
-          title="Monthly Roll Call Report"
-          subtitle={`${startStr} → ${endStr} · ${exportRows.length} house-session rows`}
-          columns={[
-            { key: 'date', label: 'Date', width: 1 },
-            { key: 'house', label: 'House', width: 1 },
-            { key: 'session', label: 'Session', width: 1 },
-            { key: 'marked', label: 'Marked', width: 0.8, value: r => `${r.marked}/${r.total}` },
-            { key: 'pct', label: '% Complete', width: 0.9 },
-            { key: 'onTime', label: 'On Time', width: 0.8 },
-            { key: 'absent', label: 'Absent', width: 0.7 },
-          ]}
-          rows={exportRows}
-        />
       </div>
 
-      {houses.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No houses found.</div>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', margin: '0 4px 12px', fontSize: 11.5, color: '#64748B' }}>
+        {LEGEND.map(l => (
+          <span key={l.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 20, height: 20, borderRadius: 6, background: l.bg, color: l.fg, fontSize: 10.5, fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{l.mark}</span>
+            {l.label}
+          </span>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[0, 1].map(i => <div key={i} className="hs-skel" style={{ height: 150 }} />)}
+        </div>
+      ) : houses.length === 0 ? (
+        <div style={{ ...panel, textAlign: 'center', padding: '48px', color: '#94a3b8' }}>No houses found.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {houses.map(houseName => {
-            const summary = getHouseSummary(houseName)
-            const isExpanded = expandedHouse === houseName
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {summaries.map((summary, idx) => {
+            const houseName = summary.house
+            const isExpanded = shownHouse === houseName
+            const pal = HOUSE_PALETTE[idx % HOUSE_PALETTE.length]
+            const title = String(houseName).replace(/\b\w/g, c => c.toUpperCase())
+            const R = 26, C = 2 * Math.PI * R
+            const pct = summary.completionPct
+            const strip = [...dayList].reverse() // oldest → newest, left to right
             return (
-              <div key={houseName} style={{ background: 'white', borderRadius: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-                <div
-                  onClick={() => setExpandedHouse(isExpanded ? null : houseName)}
-                  style={{ padding: '16px', cursor: 'pointer' }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>🏠 {houseName}</span>
-                    <span style={{ fontSize: '14px', color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+              <div key={houseName} style={{ ...panel, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: pal.color }} />
+                <div role="button" tabIndex={0} aria-expanded={isExpanded}
+                  onClick={() => setExpandedHouse(isExpanded ? (lockHouse ? '' : null) : houseName)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? (lockHouse ? '' : null) : houseName) } }}
+                  style={{ padding: mobile ? '16px 14px 14px 18px' : '18px 20px 16px 24px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <svg width="64" height="64" viewBox="0 0 64 64" style={{ flexShrink: 0 }} aria-label={pct === null ? 'No data' : `${pct}% complete`}>
+                      <circle cx="32" cy="32" r={R} fill="none" stroke="#F1EDE4" strokeWidth="6" />
+                      <circle cx="32" cy="32" r={R} fill="none" stroke={ringColor(pct)} strokeWidth="6" strokeLinecap="round"
+                        strokeDasharray={C} strokeDashoffset={C * (1 - (pct || 0) / 100)} transform="rotate(-90 32 32)" style={{ transition: 'stroke-dashoffset .5s' }} />
+                      <text x="32" y="36" textAnchor="middle" style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 700, fill: '#0B1E3D' }}>{pct === null ? '—' : `${pct}%`}</text>
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 19, fontWeight: 600, color: '#0B1E3D', lineHeight: 1.2 }}>{title} House</div>
+                      <div style={{ marginTop: 6 }}><HmChip hm={hmFor(houseName)} size={28} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { l: 'Done', v: `${summary.sessionsComplete}/${summary.sessionsExpected}`, c: '#0B1E3D' },
+                        { l: 'On time', v: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, c: ringColor(summary.onTimePct) },
+                        { l: 'Days missed', v: summary.daysBlocked, c: summary.daysBlocked > 0 ? '#DC2626' : '#15803D' },
+                      ].map(t => (
+                        <div key={t.l} style={{ minWidth: 74, padding: '8px 12px', borderRadius: 12, background: '#FCFBF7', border: '1px solid #F1EDE4', textAlign: 'center' }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 700, color: t.c, fontVariantNumeric: 'lining-nums tabular-nums' }}>{t.v}</div>
+                          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#94A3B8', marginTop: 1 }}>{t.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: 14, color: '#94A3B8', transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '8px' }}>
-                    {[
-                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1e3a6e', bg: '#eff6ff' },
-                      { label: 'Completion', value: summary.completionPct === null ? '—' : `${summary.completionPct}%`, color: scoreColor(summary.completionPct), bg: scoreBg(summary.completionPct) },
-                      { label: 'On-Time Rate', value: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, color: scoreColor(summary.onTimePct), bg: scoreBg(summary.onTimePct) },
-                      { label: 'Days Blocked', value: summary.daysBlocked, color: summary.daysBlocked > 0 ? '#dc2626' : '#16a34a', bg: summary.daysBlocked > 0 ? '#fee2e2' : '#dcfce7' },
-                    ].map(s => (
-                      <div key={s.label} style={{ background: s.bg, borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '16px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                        <div style={{ fontSize: '10px', color: s.color, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
-                      </div>
-                    ))}
+
+                  {/* Day strip: top row morning, bottom row night */}
+                  <div style={{ marginTop: 14, overflowX: 'auto', paddingBottom: 2 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `22px repeat(${strip.length}, minmax(22px, 1fr))`, gap: 4, minWidth: strip.length * 26 + 26 }}>
+                      {['🌅', '🌙'].map((icon, row) => (
+                        <Fragment key={icon}>
+                          <span style={{ fontSize: 12, display: 'flex', alignItems: 'center' }}>{icon}</span>
+                          {strip.map(d => {
+                            const session = row === 0 ? 'morning' : 'night'
+                            const c = cellState(d, session, getDayStats(houseName, d, session))
+                            return <span key={d + session} title={`${fmtDay(d)} · ${session} — ${c.label}`}
+                              style={{ height: 22, borderRadius: 6, background: c.bg, border: `1px solid ${c.border}`, color: c.fg, fontSize: 9.5, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>{c.key === 'up' ? '' : c.mark}</span>
+                          })}
+                        </Fragment>
+                      ))}
+                      <span />
+                      {strip.map(d => <span key={d} style={{ fontSize: 9, color: '#94A3B8', textAlign: 'center', fontWeight: 700 }}>{new Date(d + 'T00:00:00').getDate()}</span>)}
+                    </div>
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div style={{ padding: '0 16px 16px' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '520px' }}>
-                        <thead>
-                          <tr style={{ background: '#f8fafc' }}>
-                            {['Date', '🌅 Morning', '🌙 Night', 'Absent (M/N)'].map(h => (
-                              <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', color: '#374151', fontSize: '11px' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dayList.map(d => {
-                            const m = getDayStats(houseName, d, 'morning')
-                            const n = getDayStats(houseName, d, 'night')
-                            const cellStyle = (s) => ({
-                              padding: '8px 10px',
-                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#b8923a' : '#16a34a') : '#dc2626',
-                              fontWeight: '700',
-                            })
-                            return (
-                              <tr key={d} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '8px 10px', color: '#64748b' }}>{d}</td>
-                                <td style={cellStyle(m)}>
-                                  {m.pct === null ? '—' : `${m.pct}%`}
-                                  {m.complete && m.onTime === false && ' ⏰'}
-                                  {m.complete && m.onTime === true && ' ✓'}
-                                </td>
-                                <td style={cellStyle(n)}>
-                                  {n.pct === null ? '—' : `${n.pct}%`}
-                                  {n.complete && n.onTime === false && ' ⏰'}
-                                  {n.complete && n.onTime === true && ' ✓'}
-                                </td>
-                                <td style={{ padding: '8px 10px', color: (m.absent + n.absent) > 0 ? '#dc2626' : '#94a3b8' }}>
-                                  {m.absent} / {n.absent}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                  <div style={{ padding: mobile ? '0 12px 14px 16px' : '0 20px 18px 24px' }}>
+                    <div style={{ borderTop: '1px solid #F1EDE4', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {dayList.map(d => {
+                        const m = getDayStats(houseName, d, 'morning')
+                        const n = getDayStats(houseName, d, 'night')
+                        const isToday = d === today()
+                        const pill = (session, st) => {
+                          const c = cellState(d, session, st)
+                          return (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 99, background: c.bg, border: `1px solid ${c.border}`, color: c.fg, fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                              {session === 'morning' ? '🌅' : '🌙'} {st.total ? `${st.marked}/${st.total}` : '—'}
+                              <span style={{ fontWeight: 700, opacity: .85 }}>{c.label.split(' · ')[0]}</span>
+                            </span>
+                          )
+                        }
+                        return (
+                          <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, background: isToday ? '#FBF4E2' : '#FCFBF7', border: `1px solid ${isToday ? '#E9D9B0' : '#F5F1E8'}` }}>
+                            <div style={{ width: 78, flexShrink: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#0B1E3D' }}>{isToday ? 'Today' : fmtDay(d)}</div>
+                              <div style={{ fontSize: 10.5, color: '#94A3B8' }}>{weekday(d)}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                              {pill('morning', m)}
+                              {pill('night', n)}
+                            </div>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: (m.absent + n.absent) > 0 ? '#B45309' : '#94A3B8', whiteSpace: 'nowrap' }}>
+                              Out {m.absent} / {n.absent}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -4912,6 +6479,175 @@ function CommandCentreTab({ students, currentUser }) {
 }
 
 
+// ══════════════════════════════════════════════════════════════
+//  YOUR RANK — a housemaster's place among all housemasters and
+//  housemistresses, on the same 7-day score as the admin ranking
+//  (on-time roll call, compliance, neglect-free). Their own row is
+//  highlighted; the others show name, house and score only.
+// ══════════════════════════════════════════════════════════════
+function HMRankCard({ house }) {
+  const [rankings, setRankings] = useState(null)
+  const mobile = useMobileView()
+
+  useEffect(() => {
+    let alive = true
+    const end = new Date()
+    const start = new Date()
+    start.setDate(start.getDate() - 7)
+    computeHMPerformance(start.toISOString().split('T')[0], end.toISOString().split('T')[0])
+      .then(r => { if (alive) setRankings(r) })
+      .catch(() => { if (alive) setRankings([]) })
+    return () => { alive = false }
+  }, [])
+
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  if (!rankings) return <div style={{ ...panel, padding: 22, textAlign: 'center', color: '#64748B', fontSize: 13, marginTop: 16 }}>Working out your rank…</div>
+
+  const key = normalizeHouse(house)
+  const ranked = rankings.filter(r => r.hm) // houses with a housemaster/mistress
+  const scored = ranked.filter(r => r.score !== null)
+  const mine = ranked.find(r => normalizeHouse(r.house) === key)
+  const myRank = mine && mine.score !== null ? scored.indexOf(mine) + 1 : null
+  const total = scored.length
+  const medal = n => n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : null
+  const scoreColor = v => v === null ? '#94A3B8' : v >= 80 ? '#15803D' : v >= 60 ? '#B8923A' : '#DC2626'
+  const FACTORS = mine ? [
+    { label: 'On-time roll call', v: mine.onTimePct },
+    { label: 'Compliance', v: mine.compliancePct },
+    { label: 'Neglect-free', v: mine.neglectFreePct },
+  ] : []
+
+  return (
+    <div style={{ ...panel, marginTop: 16, overflow: 'hidden' }}>
+      <div style={{ position: 'relative', color: '#fff', padding: mobile ? '18px' : '20px 24px',
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Your rank · last 7 days</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+              <span style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 38 : 46, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'lining-nums' }}>
+                {myRank ? `${medal(myRank) ? medal(myRank) + ' ' : ''}#${myRank}` : '—'}
+              </span>
+              <span style={{ fontSize: 14, color: 'rgba(255,255,255,.75)' }}>
+                {myRank ? <>of <b style={{ color: '#fff' }}>{total}</b> housemasters &amp; housemistresses</> : 'No roll calls logged yet this week'}
+              </span>
+            </div>
+          </div>
+          {mine && (
+            <div style={{ textAlign: 'center', padding: '10px 18px', borderRadius: 16, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)' }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700, color: mine.score === null ? 'rgba(255,255,255,.5)' : '#E2C57E', lineHeight: 1 }}>{mine.score === null ? '—' : mine.score}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.65)', marginTop: 4 }}>Score / 100</div>
+            </div>
+          )}
+        </div>
+        {mine && (
+          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3, 1fr)', gap: 10, marginTop: 16 }}>
+            {FACTORS.map(f => (
+              <div key={f.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'rgba(255,255,255,.75)' }}>
+                  <span>{f.label}</span><b style={{ color: '#fff' }}>{f.v === null ? '—' : `${f.v}%`}</b>
+                </div>
+                <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,.12)', marginTop: 5, overflow: 'hidden' }}>
+                  <div style={{ width: `${f.v || 0}%`, height: '100%', borderRadius: 99, background: 'linear-gradient(90deg,#B8913F,#E2C57E)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {mine?.topSkippedTabs?.length > 0 && (
+          <div style={{ marginTop: 14, fontSize: 12, color: 'rgba(255,255,255,.8)' }}>
+            To climb: complete <b style={{ color: '#E2C57E' }}>{mine.topSkippedTabs.map(t => t.tab).join(', ')}</b> on time — these were missed most.
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: mobile ? '12px' : '14px 18px 16px' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#B8923A', padding: '2px 4px 8px' }}>All housemasters &amp; housemistresses</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ranked.map(r => {
+            const me = r === mine
+            const n = r.score !== null ? scored.indexOf(r) + 1 : null
+            return (
+              <div key={r.house} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', borderRadius: 14,
+                background: me ? 'linear-gradient(90deg,#FBF4E2,#FFFDF7)' : '#FCFBF7', border: `1px solid ${me ? '#E2C57E' : '#F1EDE4'}` }}>
+                <span style={{ width: 30, textAlign: 'center', fontFamily: FONT_DISPLAY, fontSize: medal(n) ? 19 : 15, fontWeight: 700, color: '#0B1E3D', flexShrink: 0 }}>{n ? (medal(n) || n) : '–'}</span>
+                <span style={{ flex: 1, minWidth: 0 }}><HmChip hm={r.hm} size={32} /></span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: mobile ? 80 : 160 }}>🏠 {r.house}</span>
+                {me && <span style={{ fontSize: 10, fontWeight: 800, color: '#7A5A12', background: '#F8EBC7', borderRadius: 99, padding: '2px 8px' }}>YOU</span>}
+                <span style={{ width: 44, textAlign: 'right', fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 700, color: scoreColor(r.score), fontVariantNumeric: 'tabular-nums' }}>{r.score === null ? '—' : r.score}</span>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 10, padding: '0 4px' }}>Score = equal weight of on-time roll call, six-tab compliance and neglect-free rate.</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin: who has read the mandatory "what has changed" notice ─────────────
+// Matches the confirmations logged by HostelChangesGate (audit_logs,
+// action hostel_changes_ack, current version) to the active housemasters and
+// housemistresses by login id when it is known, else by name.
+function HostelChangesReadList() {
+  const [state, setState] = useState(null) // { hms, acks } | 'error'
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const [{ data: hms }, acks] = await Promise.all([
+          supabase.from('housemasters').select('*').eq('status', 'Active'),
+          fetchAllRows(() => supabase.from('audit_logs').select('user_name, metadata, created_at').eq('action', 'hostel_changes_ack').order('created_at', { ascending: false })),
+        ])
+        if (alive) setState({ hms: hms || [], acks: acks.filter(a => a.metadata?.version === HOSTEL_CHANGES_VERSION) })
+      } catch { if (alive) setState('error') }
+    })()
+    return () => { alive = false }
+  }, [])
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: 20, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)', padding: 18 }
+  if (!state) return <div style={{ ...panel, color: '#64748B', fontSize: 13 }}>Checking who has read the notice…</div>
+  if (state === 'error') return <div style={{ ...panel, color: '#64748B', fontSize: 13 }}>Could not load the read list.</div>
+  const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const idOf = h => [h.staff_profile_id, h.staff_id, h.user_id, h.id].filter(v => v != null).map(String)
+  const used = new Set()
+  const rows = state.hms.map(h => {
+    const ids = idOf(h)
+    const ack = state.acks.find(a => (a.metadata?.raw_user_id != null && ids.includes(String(a.metadata.raw_user_id))) || (norm(a.user_name) && norm(a.user_name) === norm(h.name)))
+    if (ack) used.add(ack)
+    return { hm: h, ack }
+  }).sort((a, b) => (a.ack ? 1 : 0) - (b.ack ? 1 : 0) || String(a.hm.house).localeCompare(String(b.hm.house)))
+  const others = state.acks.filter(a => !used.has(a))
+  const read = rows.filter(r => r.ack).length
+  const when = iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div style={panel}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h3 style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 600, color: '#0B1E3D', margin: 0, flex: 1 }}>📋 Who has read “What has changed in Hostel”</h3>
+        <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 12px', borderRadius: 99, background: read === rows.length && rows.length ? '#DCFCE7' : '#FEF3C7', color: read === rows.length && rows.length ? '#15803D' : '#A16207' }}>{read} of {rows.length} read</span>
+      </div>
+      {rows.length === 0 ? <div style={{ color: '#94A3B8', fontSize: 13 }}>No active housemasters or housemistresses.</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 8 }}>
+          {rows.map(({ hm, ack }) => (
+            <div key={hm.id ?? hm.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${ack ? '#BBE5C8' : '#FDE68A'}`, background: ack ? '#F0FDF4' : '#FFFBEB' }}>
+              <span style={{ fontSize: 18 }}>{ack ? '✅' : '⏳'}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#0F172A', overflowWrap: 'anywhere' }}>{hm.name}</div>
+                <div style={{ fontSize: 11.5, color: '#64748B' }}>{hmTitle(hm)} · {String(hm.house || '—').replace(/\b\w/g, c => c.toUpperCase())}{ack ? ` · read ${when(ack.created_at)}` : ' · not read yet'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {others.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: '#64748B' }}>
+          Also confirmed (not matched to a housemaster): {others.map(a => `${a.user_name || 'Unknown'} (${when(a.created_at)})`).join(', ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HMPerformanceRanking() {
   const [loading, setLoading] = useState(true)
   const [rankings, setRankings] = useState([])
@@ -4969,61 +6705,62 @@ function HMPerformanceRanking() {
         <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No roll-call or compliance data in the last 7 days.</div>
       ) : (
         <>
-          {/* Top / Weak performer highlight */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-            {topPerformer && (
-              <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  🥇 Top Performer
-                </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{topPerformer.hmName}</div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {topPerformer.house} · Score: {topPerformer.score}%</div>
-              </div>
-            )}
-            {weakestPerformer && weakestPerformer.house !== topPerformer?.house && (
-              <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  ⚠️ Needs Attention
-                </div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e293b' }}>{weakestPerformer.hmName}</div>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>🏠 {weakestPerformer.house} · Score: {weakestPerformer.score}%</div>
-              </div>
-            )}
-          </div>
-
-          {/* Full ranking list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Housemaster / housemistress profile cards (the roll-call profile card design), best score first */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
             {rankings.map((r, i) => {
               const isExpanded = expandedHouse === r.house
+              const isTop = topPerformer && r.house === topPerformer.house
+              const isWeak = weakestPerformer && weakestPerformer.house !== topPerformer?.house && r.house === weakestPerformer.house
+              const hmRef = r.hm || { name: r.hmName }
+              const scored = rankings.filter(x => x.score !== null).length
+              const tiles = [
+                { label: 'Score', value: r.score, c: '#fff' },
+                { label: 'On-time', value: r.onTimePct, c: '#4ADE80' },
+                { label: 'Checks', value: r.compliancePct, c: '#7DD3FC' },
+                { label: 'No gaps', value: r.neglectFreePct, c: '#FBBF24' },
+              ]
+              const tag = isTop ? '🥇 Top performer' : isWeak ? '⚠️ Needs attention' : null
               return (
-                <div key={r.house} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', transition: 'box-shadow 0.15s ease' }}>
+                <div key={r.house} style={{ gridColumn: isExpanded ? '1 / -1' : 'auto', borderRadius: 22, overflow: 'hidden', border: '1px solid #C9A24B',
+                  boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)', background: '#fff' }}>
                   <div
                     onClick={() => setExpandedHouse(isExpanded ? null : r.house)}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = isExpanded ? '#f8fafc' : 'white' }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedHouse(isExpanded ? null : r.house) } }}
                     title={isExpanded ? 'Click to collapse' : 'Click to see details'}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : 'white' }}
+                    style={{ cursor: 'pointer', position: 'relative', textAlign: 'center', color: '#fff', padding: '16px 14px 14px',
+                      background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 100%)' }}
                   >
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#94a3b8', width: '22px' }}>#{i + 1}</div>
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{r.hmName}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>🏠 {r.house} · {r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 5, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#E2C57E', marginTop: 4 }}>GNSI Hostel · Performance</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.72)', marginTop: 2 }}>Last 7 days</div>
+                    {tag && <div style={{ display: 'inline-block', marginTop: 8, padding: '3px 12px', borderRadius: 99, fontSize: 11, fontWeight: 800, color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.45)' }}>{tag}</div>}
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '12px 0 8px' }}>
+                      <HmPortrait hm={hmRef} size={96} />
                     </div>
-                    <div style={{
-                      padding: '6px 14px', borderRadius: '99px', fontWeight: '800', fontSize: '14px',
-                      background: scoreBg(r.score), color: scoreColor(r.score),
-                    }}>
-                      {r.score === null ? '—' : `${r.score}%`}
+                    <div style={{ fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, overflowWrap: 'anywhere' }}>{r.hmName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E2C57E', marginTop: 3 }}>{hmTitle(r.hm)} · {String(r.house).replace(/\b\w/g, c => c.toUpperCase())} House</div>
+                    <div style={{ margin: '12px 0', padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.4)' }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#E2C57E' }}>Rank among housemasters &amp; housemistresses</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 }}>
+                        <span style={{ fontSize: 26 }}>{r.score === null ? '—' : medalFor(i + 1)}</span>
+                        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700 }}>{r.score === null ? '—' : `#${i + 1}`}</span>
+                        {r.score !== null && <span style={{ textAlign: 'left', fontSize: 12, lineHeight: 1.25, color: 'rgba(255,255,255,.75)' }}>of {scored}<br /><b style={{ color: '#E2C57E' }}>Score {r.score}/100</b></span>}
+                      </div>
                     </div>
-                    <span style={{
-                      fontSize: '14px', color: isExpanded ? '#1e3a6e' : '#94a3b8', transition: 'transform 0.2s',
-                      transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex',
-                      width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center',
-                      borderRadius: '50%', background: isExpanded ? '#e3ecf7' : 'transparent',
-                    }}>▾</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                      {tiles.map(t => (
+                        <div key={t.label} style={{ borderRadius: 12, padding: '8px 2px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.14)' }}>
+                          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 700, color: t.c }}>{t.value === null || t.value === undefined ? '—' : `${t.value}%`}</div>
+                          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.65)', marginTop: 1 }}>{t.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11.5, color: 'rgba(255,255,255,.7)' }}>{r.sessionsCount} roll calls · {r.neglectCount} gaps logged</div>
+                    <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.5)' }}>
+                      Guidance Navodaya &amp; Sainik Institute <span style={{ display: 'inline-block', marginLeft: 4, transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▾</span>
+                    </div>
                   </div>
                   {isExpanded && (
                     <div style={{ padding: '14px', borderTop: '1px solid #f1f5f9', background: '#fafbfc' }}>
@@ -5255,36 +6992,147 @@ function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onS
 // sessions, night duty, 7-day trend). Dropped into both the mobile and
 // desktop dashboard layouts, right below each one's header, without
 // altering either layout's existing structure below it.
-function FeatureCardsStrip({ cards }) {
+// ── Profile card for sharing, from the HM Dashboard ─────────────────────────
+// The same WhatsApp profile card the roll-call "Done" screen makes (photo, rank,
+// counts, mock-test standings), made on demand for today's morning or night
+// roll call so it can be shared whenever, not only right after finishing.
+function HmProfileCardPanel({ students, lockHouse, currentHousemaster, due = [] }) {
+  const mobile = useMobileView()
+  const houseOptions = useMemo(() => {
+    if (lockHouse) return [lockHouse]
+    const m = new Map()
+    for (const st of students || []) {
+      const k = normalizeHouse(st.house)
+      if (k && !/day\s*scholar/i.test(k) && !m.has(k)) m.set(k, st.house)
+    }
+    return [...m.values()].sort((a, b) => String(a).localeCompare(String(b)))
+  }, [students, lockHouse])
+  const [house, setHouse] = useState(houseOptions[0] || '')
+  const [sess, setSess] = useState(() => (new Date().getHours() >= 15 ? 'night' : 'morning'))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [card, setCard] = useState(null) // { blob, url, text, fileName, marked, total, house }
+  useEffect(() => { if (!house && houseOptions[0]) setHouse(houseOptions[0]) }, [houseOptions, house])
+  useEffect(() => () => { if (card?.url) URL.revokeObjectURL(card.url) }, [card])
+  if (!houseOptions.length) return null
+  const label = h => String(h).replace(/\b\w/g, c => c.toUpperCase())
+
+  const make = async (sessOverride) => {
+    if (!house) return
+    const sessNow = typeof sessOverride === 'string' ? sessOverride : sess
+    if (sessNow !== sess) setSess(sessNow)
+    setBusy(true); setErr(''); setCard(null)
+    try {
+      const date = today()
+      const key = normalizeHouse(house)
+      const houseStudents = (students || []).filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && normalizeHouse(st.house) === key)
+      const ids = new Set(houseStudents.map(st => st.id))
+      const rows = await fetchAllRows(() => supabase.from('attendance_records')
+        .select('student_id, house, status, marked_at').eq('date', date).eq('session', sessNow).not('house', 'is', null).order('id'))
+      const statusOf = new Map()
+      for (const r of rows) if (ids.has(r.student_id)) statusOf.set(r.student_id, r)
+      const by = st => houseStudents.filter(x => statusOf.get(x.id)?.status === st)
+      const present = [...by('Present'), ...by('Late')]
+      const outing = by('Outing'), outpass = by('Outpass')
+      const other = houseStudents.filter(x => ['Absent', 'Sick', 'On Leave'].includes(statusOf.get(x.id)?.status)).length
+      const marked = statusOf.size
+      const lastAt = [...statusOf.values()].reduce((l, r) => r.marked_at && (!l || new Date(r.marked_at) > new Date(l)) ? r.marked_at : l, null)
+      const lateStatus = getRollCallLateStatus(date, sessNow, lastAt)
+      const { data: hms } = await supabase.from('housemasters').select('*').eq('status', 'Active')
+      const hm = (hms || []).find(h => normalizeHouse(h.house) === key) || (lockHouse && currentHousemaster?.name ? currentHousemaster : null)
+      const [rankInfo, mock] = await Promise.all([loadHmRank(house).catch(() => null), loadHouseMockStandings(houseStudents).catch(() => null)])
+      const args = {
+        houseName: house, sessionLabel: sessNow === 'morning' ? '🌅 Morning roll call' : '🌙 Night roll call', dateStr: date,
+        hm, total: houseStudents.length, present, outing, outpass, other, rankInfo, completedAt: lastAt, late: lateStatus.isLate, mock,
+      }
+      const text = buildRollCallWaReport(args)
+      const blob = await buildHmProfileCard({ ...args, present: present.length, outing: outing.length, outpass: outpass.length })
+      if (!blob) throw new Error('Could not draw the card')
+      setCard({ blob, url: URL.createObjectURL(blob), text, sess: sessNow, marked, total: houseStudents.length, house, fileName: `roll-call-${String(house).toLowerCase().replace(/\s+/g, '-')}-${date}-${sessNow}.png` })
+    } catch (e) {
+      setErr(e?.message || 'Could not make the profile card. Try again.')
+    }
+    setBusy(false)
+  }
+  const share = async () => {
+    if (!card) return
+    const file = new File([card.blob], card.fileName, { type: 'image/png' })
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text: card.text, title: `${card.house} — Roll Call Report` })
+        markProfileCardShared(card.house, today(), card.sess)
+        return
+      }
+    } catch (e) { if (e?.name === 'AbortError') return }
+    // No file sharing here (most computers): save the card and open the chat, so it can be attached there.
+    const a = document.createElement('a')
+    a.href = card.url; a.download = card.fileName
+    document.body.appendChild(a); a.click(); a.remove()
+    window.open(`https://wa.me/${HM_COMPLIANCE_WA_NUMBER}?text=${encodeURIComponent(card.text)}`, '_blank', 'noopener,noreferrer')
+    markProfileCardShared(card.house, today(), card.sess)
+  }
+  const pill = on => ({ padding: '7px 14px', borderRadius: 99, border: on ? '1px solid #C9A24B' : '1px solid #E5DCC7', background: on ? '#FBF3DC' : '#fff', color: '#0B1E3D', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' })
   return (
-    <div style={{
-      display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '18px',
-      WebkitOverflowScrolling: 'touch',
-    }}>
-      {cards.map(c => (
-        <div key={c.label} style={{
-          minWidth: '140px', flexShrink: 0,
-          background: 'linear-gradient(160deg, #16233F 0%, #0F1B33 100%)',
-          border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 16px',
-        }}>
-          <div style={{ width: '7px', height: '7px', borderRadius: '2px', background: c.color, marginBottom: '10px' }} />
-          <div style={{ fontSize: '19px', fontWeight: '800', color: '#F3EEE0', fontFamily: FONT_DISPLAY, lineHeight: 1.1 }}>{c.value}</div>
-          <div style={{ fontSize: '10.5px', color: 'rgba(243,238,224,0.55)', fontWeight: '600', marginTop: '4px' }}>{c.label}</div>
-          <div style={{ fontSize: '9.5px', color: 'rgba(243,238,224,0.35)', marginTop: '2px' }}>{c.sub}</div>
+    <div style={{ background: '#fff', border: '1px solid #ECE6D8', borderRadius: 20, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)', padding: 18, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 600, color: '#0B1E3D', flex: 1, minWidth: 180 }}>📤 Profile card for WhatsApp</div>
+        {houseOptions.length > 1 && (
+          <select value={house} onChange={e => { setHouse(e.target.value); setCard(null) }} style={{ padding: '7px 10px', borderRadius: 10, border: '1px solid #E5DCC7', fontFamily: 'inherit', fontWeight: 700, color: '#0B1E3D' }}>
+            {houseOptions.map(h => <option key={h} value={h}>{label(h)}</option>)}
+          </select>
+        )}
+        <button type="button" onClick={() => { setSess('morning'); setCard(null) }} style={pill(sess === 'morning')}>🌅 Morning</button>
+        <button type="button" onClick={() => { setSess('night'); setCard(null) }} style={pill(sess === 'night')}>🌙 Night</button>
+        <button type="button" onClick={make} disabled={busy} style={{ padding: '8px 16px', borderRadius: 12, border: '1px solid #E2C57E', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: busy ? .7 : 1 }}>
+          {busy ? 'Preparing…' : card ? 'Refresh card' : 'Show profile card'}
+        </button>
+      </div>
+      {due.length > 0 && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 14, background: '#FEF2F2', border: '2px solid #DC2626', marginBottom: 12 }}>
+          <span style={{ fontSize: 20 }}>📣</span>
+          <div style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 800, color: '#B91C1C', lineHeight: 1.4 }}>
+            Required: share your profile card on WhatsApp for the {due.map(d => d.name).join(' and ')}. The roll call is complete but the card has not been shared.
+          </div>
+          <button type="button" onClick={() => make(due[0].key)} disabled={busy} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+            {busy ? 'Preparing…' : 'Share now →'}
+          </button>
         </div>
-      ))}
+      )}
+      {err && <div style={{ color: '#DC2626', fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>{err}</div>}
+      {card && (
+        <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 16, alignItems: mobile ? 'stretch' : 'flex-start' }}>
+          <img src={card.url} alt={`${card.house} roll call profile card`} style={{ width: mobile ? '100%' : 280, borderRadius: 16, border: '1px solid #E9D9B0', boxShadow: '0 18px 34px -18px rgba(11,30,61,.7)' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center' }}>
+            <div style={{ fontSize: 13, color: '#475569' }}>
+              {label(card.house)} · {sess === 'morning' ? 'Morning' : 'Night'} roll call · {card.marked} of {card.total} marked
+              {card.marked < card.total && <div style={{ color: '#B45309', fontWeight: 700, marginTop: 2 }}>Roll call is not finished yet; the card shows what is marked so far.</div>}
+            </div>
+            <button type="button" onClick={share} style={{ padding: '11px 20px', borderRadius: 14, border: '1px solid #E2C57E', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', color: '#fff', fontSize: 13.5, fontWeight: 800 }}>
+              📤 Share profile card on WhatsApp
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
+function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [attendanceToday, setAttendanceToday] = useState([])
-  const [eveningToday, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
-  const [leaveToday, setLeaveToday] = useState([])
-  const [sickbayToday, setSickbayToday] = useState([])
-  const [maintenanceOpen, setMaintenanceOpen] = useState([])
-  const [disciplineOpen, setDisciplineOpen] = useState([])
+  // Loaded for every house; a housemaster (lockHouse) sees only their own.
+  const [attendanceAll, setAttendanceToday] = useState([])
+  const [eveningAll, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
+  const [leaveAll, setLeaveToday] = useState([])
+  const [sickbayAll, setSickbayToday] = useState([])
+  const [maintenanceAll, setMaintenanceOpen] = useState([])
+  const [disciplineAll, setDisciplineOpen] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const attendanceToday = inHouse(attendanceAll, lockHouse, studentIds)
+  const eveningToday = inHouse(eveningAll, lockHouse, studentIds)
+  const leaveToday = inHouse(leaveAll, lockHouse, studentIds)
+  const sickbayToday = inHouse(sickbayAll, lockHouse, studentIds)
+  const maintenanceOpen = inHouse(maintenanceAll, lockHouse)
+  const disciplineOpen = inHouse(disciplineAll, lockHouse, studentIds)
   const [nightDutyTonight, setNightDutyTonight] = useState(null)
   // Pending doubt-session tasks assigned to THIS housemaster (from
   // EnhancedLogEntry.jsx's doubt_sessions table) — matched by hm_name,
@@ -5315,7 +7163,9 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 
       const [a, ev, l, s, m, d, n, ds, wk, dutyRes, dutyCompRes] = await Promise.all([
         supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
-        supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'evening'),
+        // Night roll call is saved with session 'night' (it used to be read as
+        // 'evening' here, so the dashboard always showed nobody marked).
+        supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'night'),
         supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
         supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
         supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
@@ -5324,7 +7174,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         hmName
           ? supabase.from('doubt_sessions').select('*').ilike('hm_name', hmName).eq('status', 'open').order('created_at', { ascending: false })
           : Promise.resolve({ data: [] }),
-        fetchAllRows(() => supabase.from('attendance_records').select('date, status, session').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
+        fetchAllRows(() => supabase.from('attendance_records').select('date, status, session, house').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
         supabase.from('hostel_duty_rosters').select('*').eq('date', todayStr).maybeSingle(),
         supabase.from('hostel_duty_completions').select('duty_id, done').eq('date', todayStr),
       ])
@@ -5346,7 +7196,9 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       // (not a fixed denominator, since the active student count itself
       // can drift day to day with admissions/dropouts).
       const byDate = {}
+      const houseKey = normalizeHouse(lockHouse)
       for (const r of (wk || [])) {
+        if (!r.house || (houseKey && normalizeHouse(r.house) !== houseKey)) continue
         if (!byDate[r.date]) byDate[r.date] = { present: 0, total: 0 }
         byDate[r.date].total++
         if (r.status === 'Present') byDate[r.date].present++
@@ -5366,10 +7218,16 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       setLoading(false)
     }
     loadDashboard()
-  }, [currentHousemaster?.name])
+  }, [currentHousemaster?.name, lockHouse])
 
-  const presentCount = attendanceToday.filter(r => r.status === 'Present').length
-  const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
+  // One roll-call record per student (the latest), hostel records only.
+  const perStudent = rows => [...new Map(rows.filter(r => r.house && r.student_id).map(r => [r.student_id, r])).values()]
+  const morningRows = perStudent(attendanceToday)
+  const nightRows = perStudent(eveningToday)
+  const presentCount = morningRows.filter(r => r.status === 'Present' || r.status === 'Late').length
+  // Out of the hostel: Outing / Outpass (and the old Absent, on older days).
+  const isOut = r => r.status === 'Outing' || r.status === 'Outpass' || r.status === 'Absent'
+  const absentCount = morningRows.filter(isOut).length
 
   const toggleDutyCompletion = async (dutyId) => {
     const nextVal = !dutyCompletions[dutyId]
@@ -5394,19 +7252,19 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   // reach 100%). unmarkedCount already excluded them correctly below;
   // reusing the same count for the Roll Call card fixes the mismatch.
   const activeStudentCount = students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout').length
-  const unmarkedCount = activeStudentCount - attendanceToday.length
+  const unmarkedCount = Math.max(0, activeStudentCount - morningRows.length)
 
   // #2 evening roll call status
-  const eveningPresentCount = eveningToday.filter(r => r.status === 'Present').length
-  const eveningMarkedCount = eveningToday.length
+  const eveningPresentCount = nightRows.filter(r => r.status === 'Present' || r.status === 'Late').length
+  const eveningMarkedCount = nightRows.length
   const eveningDone = eveningMarkedCount >= activeStudentCount && activeStudentCount > 0
 
   // One-row-per-metric summary, for the dashboard's Generate Report button.
   const snapshotRows = [
     { metric: 'Present (Morning)', value: presentCount },
-    { metric: 'Absent (Morning)', value: absentCount },
+    { metric: 'Out — outing / outpass (Morning)', value: absentCount },
     { metric: 'Unmarked', value: unmarkedCount },
-    { metric: 'Present (Evening)', value: eveningPresentCount },
+    { metric: 'Present (Night)', value: eveningPresentCount },
     { metric: 'Total Students', value: activeStudentCount },
     { metric: 'Pending Leave Requests', value: leaveToday.length },
     { metric: 'Currently in Sickbay', value: sickbayToday.length },
@@ -5415,417 +7273,242 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
     { metric: 'Pending Doubt Sessions', value: myDoubtTasks.length },
   ]
 
-  const quickActions = [
-    { id: 'attendance', label: '✓ Roll Call', icon: '✓', color: '#16a34a', bg: '#dcfce7', desc: `${presentCount}/${activeStudentCount} marked` },
-    { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
-    { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
-    { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
-    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#b8923a', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
-    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1e3a6e', bg: '#eff6ff', desc: 'Daily notes' },
-    { id: 'doubtsession', label: '🙋 Doubt', icon: '🙋', color: '#b45309', bg: '#fef9c3', desc: `${myDoubtTasks.length} pending` },
+  // re-render when a profile card is shared (the "share it" reminder below)
+  const [, setCardTick] = useState(0)
+  useEffect(() => {
+    const f = () => setCardTick(n => n + 1)
+    window.addEventListener('gnsi:profilecard-shared', f)
+    return () => window.removeEventListener('gnsi:profilecard-shared', f)
+  }, [])
+  if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>Loading dashboard…</div>
+
+  const hmName = currentHousemaster?.name || currentUser?.name || 'House Master'
+  // For an admin / superintendent (no housemaster record): their own staff profile,
+  // found by the login's linked staff_profile_id, else by name. currentUser.id is the
+  // portal login's id, not the staff id, so it can't be used for the photo.
+  const adminAsStaff = (() => {
+    if (currentHousemaster || !currentUser?.name) return null
+    const want = String(currentUser.name).trim().toLowerCase()
+    const prof = (staffProfiles || []).find(p => currentUser.staff_profile_id != null && String(p.id) === String(currentUser.staff_profile_id))
+      || (staffProfiles || []).find(p => String(p.name || '').trim().toLowerCase() === want)
+    return { name: prof?.name || currentUser.name, staff_id: prof?.id ?? currentUser.staff_profile_id ?? undefined }
+  })()
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: '20px', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  const panelTitle = { fontFamily: FONT_DISPLAY, fontSize: '17px', fontWeight: 600, color: '#0B1E3D', margin: 0 }
+  const trendWithData = weekTrend.filter(d => d.presentPct !== null)
+  const weekAvg = trendWithData.length ? Math.round(trendWithData.reduce((t, d) => t + d.presentPct, 0) / trendWithData.length) : null
+  const ROLL_CALLS = [
+    { key: 'morning', icon: '🌅', name: 'Morning roll call', due: '7:30 AM', marked: morningRows.length, present: presentCount, out: absentCount },
+    { key: 'night', icon: '🌙', name: 'Night roll call', due: '10:00 PM', marked: eveningMarkedCount, present: eveningPresentCount, out: nightRows.filter(isOut).length },
   ]
-
-  if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading dashboard...</div>
-
-  // ── Premium overview strip — 10 feature-data cards for at-a-glance
-  // staff knowledge, all computed from real data above (no placeholder
-  // numbers). Rendered above the existing mobile/desktop dashboard body,
-  // which is left completely intact below this. ──────────────────────
-  const attendedPctToday = (presentCount + absentCount) > 0 ? Math.round((presentCount / (presentCount + absentCount)) * 100) : null
-  const featureCards = [
-    { label: 'Attendance today', value: attendedPctToday === null ? '—' : `${attendedPctToday}%`, sub: `${presentCount}/${activeStudentCount} marked`, color: '#5DCAA5' },
-    { label: 'Evening roll call', value: eveningDone ? 'Done' : `${eveningMarkedCount}/${activeStudentCount}`, sub: eveningDone ? `${eveningPresentCount} present` : 'In progress', color: eveningDone ? '#5DCAA5' : '#C9A24B' },
-    { label: 'Total students', value: activeStudentCount, sub: currentHousemaster?.house || 'This house', color: '#7F9CF5' },
-    { label: 'On leave', value: leaveToday.length, sub: 'Approved + pending', color: '#378ADD' },
-    { label: 'In sickbay', value: sickbayToday.length, sub: 'Currently admitted', color: '#A78BDA' },
-    { label: 'Discipline cases', value: disciplineOpen.length, sub: 'Open or in progress', color: '#E24B4A' },
-    { label: 'Urgent repairs', value: maintenanceOpen.length, sub: 'Pending action', color: '#D98E2B' },
-    { label: 'Doubt sessions', value: myDoubtTasks.length, sub: 'Assigned to you', color: '#B45309' },
-    { label: 'Tonight\'s duty', value: nightDutyTonight ? (nightDutyTonight.staff1 || 'Assigned') : 'Unassigned', sub: nightDutyTonight ? (nightDutyTonight.shift || '') : 'No staff set', color: '#8FA0BF' },
-    { label: '7-day trend', value: (() => {
-        const withData = weekTrend.filter(d => d.presentPct !== null)
-        if (!withData.length) return '—'
-        return `${Math.round(withData.reduce((s, d) => s + d.presentPct, 0) / withData.length)}%`
-      })(), sub: 'Avg. present rate', color: '#5DCAA5' },
+  // A housemaster must share the profile card of every completed roll call of today.
+  const cardsDue = lockHouse && activeStudentCount > 0
+    ? ROLL_CALLS.filter(rc => rc.marked >= activeStudentCount && !profileCardShared(lockHouse, today(), rc.key)).map(rc => ({ key: rc.key, name: rc.name }))
+    : []
+  const FIGURES = [
+    { id: 'leave', label: 'On leave', value: leaveToday.length, note: 'from today', color: '#1D4ED8' },
+    { id: 'sickbay', label: 'In sickbay', value: sickbayToday.length, note: 'admitted now', color: '#7C3AED' },
+    { id: 'discipline', label: 'Discipline', value: disciplineOpen.length, note: 'open cases', color: '#DC2626' },
+    { id: 'maintenance', label: 'Urgent repairs', value: maintenanceOpen.length, note: 'pending', color: '#B8923A' },
+    { id: 'doubtsession', label: 'Doubt sessions', value: myDoubtTasks.length, note: 'assigned to you', color: '#B45309' },
+    { id: 'journal', label: 'Journal', value: '✎', note: 'daily notes', color: '#1C3A6B' },
   ]
-
-  if (mobile) {
-    return (
-      <div>
-        {/* ── Ledger header band: navy surface, gold foil rule, register-line greeting ── */}
-        <div style={{
-          background: MD.color.primary, borderRadius: MD.radius.card,
-          padding: '18px 18px 16px', marginBottom: '16px', position: 'relative', overflow: 'hidden',
-        }}>
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 85%)` }} />
-          <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
-            Today's Entry
-          </div>
-          <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'white', margin: 0, fontFamily: FONT_DISPLAY }}>
-            Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', margin: '4px 0 0' }}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
-          <div style={{ marginTop: '12px' }}>
-            <ReportExportButtons
-              title="HM Dashboard — Daily Snapshot"
-              subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
-              columns={[
-                { key: 'metric', label: 'Metric', width: 2 },
-                { key: 'value', label: 'Value', width: 1 },
-              ]}
-              rows={snapshotRows}
-            />
-          </div>
-        </div>
-        <FeatureCardsStrip cards={featureCards} />
-        {myDoubtTasks.length > 0 && (
-          <div
-            onClick={() => onTabChange?.('doubtsession')}
-            style={{
-              ...mobileCard, marginBottom: '14px', cursor: 'pointer',
-              background: MD.color.secondaryContainer, border: `1.5px solid ${MD.color.secondary}`,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '22px' }}>🙋</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.onSecondaryContainer }}>
-                  {myDoubtTasks.length} doubt session{myDoubtTasks.length > 1 ? 's' : ''} need{myDoubtTasks.length === 1 ? 's' : ''} your attention
-                </div>
-                <div style={{ fontSize: '11px', color: MD.color.onSecondaryContainer, opacity: 0.85, marginTop: '2px' }}>
-                  {myDoubtTasks.slice(0, 2).map(t => `${t.subject_name || 'Subject'}${t.class_name ? ' · ' + t.class_name : ''}`).join(' · ').slice(0, 90)}
-                  {myDoubtTasks.length > 2 ? '…' : ''}
-                </div>
-              </div>
-              <span style={{ fontSize: '18px', color: MD.color.onSecondaryContainer }}>→</span>
-            </div>
-          </div>
-        )}
-        {todayDuty && (todayDuty.duties || []).length > 0 && (
-          <div style={{ ...mobileCard, marginBottom: '14px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e3a5f', marginBottom: '10px' }}>📋 Today's Duty</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {todayDuty.duties.map((d, i) => {
-                const done = !!dutyCompletions[d.id]
-                return (
-                  <div key={d.id || i} onClick={() => d.id && toggleDutyCompletion(d.id)} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: d.id ? 'pointer' : 'default' }}>
-                    <input type="checkbox" checked={done} onChange={() => d.id && toggleDutyCompletion(d.id)} disabled={!d.id} style={{ width: 17, height: 17, marginTop: 1, cursor: d.id ? 'pointer' : 'not-allowed' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: done ? '#94a3b8' : '#1e293b', textDecoration: done ? 'line-through' : 'none' }}>
-                        {d.time ? `${d.time} — ` : ''}{d.duty || '—'}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>{d.assigned_to || '—'}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-        {nightDutyTonight && (
-          <div style={{ ...mobileCard, marginBottom: '14px', background: MD.color.primary, color: 'white', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '22px' }}>🌙</span>
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.7 }}>Tonight's Duty</div>
-              <div style={{ fontSize: '15px', fontWeight: '700' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
-              <div style={{ fontSize: '12px', marginTop: '2px', opacity: 0.75 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
-            </div>
-          </div>
-        )}
-        {/* ── Index-tab quick actions: flat cream cards with a colored top tab, not a filled tonal block ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-          {quickActions.map(action => (
-            <button key={action.id} onClick={() => onTabChange?.(action.id)} style={{
-              background: MD.color.surfaceContainer, border: `1px solid ${MD.color.outlineVariant}`,
-              borderTop: `3px solid ${action.color}`, borderRadius: MD.radius.field,
-              padding: '14px 12px', cursor: 'pointer', textAlign: 'left',
-              display: 'flex', flexDirection: 'column', gap: '5px', minHeight: '86px',
-              boxShadow: MD.elevation[1],
-            }}>
-              <span style={{ fontSize: '22px' }}>{action.icon}</span>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: MD.color.onSurface }}>{action.label}</span>
-              <span style={{ fontSize: '11px', color: MD.color.onSurfaceVariant }}>{action.desc}</span>
-            </button>
-          ))}
-        </div>
-        <div style={{ ...mobileCard, marginBottom: '14px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 2px', fontFamily: FONT_DISPLAY }}>Today's Snapshot</h3>
-          <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, margin: '0 0 14px' }}>Morning roll call</p>
-          {(() => {
-            const totalMarked = presentCount + absentCount
-            const attendedPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : null
-            const tallyItems = [
-              { label: 'Present', value: presentCount, color: MD.color.success },
-              { label: 'Absent', value: absentCount, color: MD.color.error },
-              { label: 'On Leave', value: leaveToday.length, color: MD.color.primary },
-              { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed' },
-              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
-            ]
-            return (
-              <>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '32px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: FONT_DISPLAY }}>
-                    {attendedPct === null ? '—' : `${attendedPct}%`}
-                  </span>
-                  <span style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.control, overflow: 'hidden' }}>
-                  {tallyItems.map((s, idx) => (
-                    <div key={s.label} style={{
-                      textAlign: 'center', padding: '10px 4px',
-                      borderLeft: idx % 3 > 0 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
-                      borderTop: idx >= 3 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
-                    }}>
-                      <div style={{ fontSize: '18px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )
-          })()}
-        </div>
-
-        <div style={{ marginBottom: '14px' }}>
-          <MealHeadcountCard
-            presentCount={presentCount}
-            sickbayCount={sickbayToday.length}
-            leaveCount={leaveToday.length}
-            mobile
-            onSendToKitchen={() => onTabChange?.('kitchen')}
-          />
-        </div>
-
-        {isAdmin && (
-          <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <MonthlyCertificateCard />
-            <HMPerformanceRanking />
-          </div>
-        )}
-      </div>
-    )
-  }
+  const attention = [
+    ...(unmarkedCount > 0 ? [{ key: 'unmarked', color: '#B8923A', title: `${unmarkedCount} student${unmarkedCount > 1 ? 's' : ''} not marked`, sub: 'Morning roll call', tab: 'attendance' }] : []),
+    ...(activeStudentCount > 0 && !eveningDone && new Date().getHours() >= 21 ? [{ key: 'night', color: '#B8923A', title: `Night roll call: ${eveningMarkedCount}/${activeStudentCount} marked`, sub: 'Closes at 10:00 PM', tab: 'attendance' }] : []),
+    ...myDoubtTasks.slice(0, 2).map(t => ({ key: 'd' + t.id, color: '#B45309', title: `Doubt session · ${t.subject_name || 'Subject'}`, sub: [t.class_name, t.teacher_name && `from ${t.teacher_name}`].filter(Boolean).join(' · '), tab: 'doubtsession' })),
+    ...maintenanceOpen.map(m => ({ key: 'm' + m.id, color: '#DC2626', title: `Urgent repair · ${m.category || 'Maintenance'}`, sub: [m.location, m.description].filter(Boolean).join(' · '), tab: 'maintenance' })),
+    ...disciplineOpen.slice(0, 3).map(d => ({ key: 'x' + d.id, color: '#DC2626', title: `Discipline · ${d.student_name || 'Student'}`, sub: d.incident || '', tab: 'discipline' })),
+  ]
 
   return (
     <div>
-      {/* ── Ledger header band: navy surface, gold foil rule, register-line greeting ── */}
-      <div style={{
-        background: MD.color.primary, borderRadius: MD.radius.card,
-        padding: '26px 28px 22px', marginBottom: '24px', position: 'relative', overflow: 'hidden',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '20px', flexWrap: 'wrap',
-      }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '4px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 70%)` }} />
-        <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', border: `1px solid rgba(255,255,255,0.06)` }} />
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '6px' }}>
-            Today's Entry · {today()}
+      {/* Header */}
+      <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: '22px', padding: mobile ? '18px' : '24px 26px', marginBottom: '16px',
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 14 : 18, minWidth: 0, flex: '1 1 320px' }}>
+          {/* A housemaster sees their own portrait; an admin / superintendent
+              (no house of their own) sees theirs, from the Staff module. */}
+          {(currentHousemaster || currentUser?.name) && <HmPortrait hm={currentHousemaster || adminAsStaff} size={mobile ? 68 : 88} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>{hmOnly && lockHouse ? `🏠 ${lockHouse}` : 'Housemaster'} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 28, fontWeight: 600, margin: '5px 0 0', lineHeight: 1.15, color: '#fff' }}>Good {greetingWord()}, {hmName}</h2>
+            {!currentHousemaster && currentUser?.name && currentUser?.role && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  {isAdmin ? 'Administration' : currentUser.role}{isAdmin && currentUser.role ? ` · ${currentUser.role}` : ''}
+                </span>
+              </div>
+            )}
+            {currentHousemaster && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: '.06em', color: '#E2C57E', background: 'rgba(226,197,126,.14)', border: '1px solid rgba(226,197,126,.4)' }}>
+                  {hmTitle(currentHousemaster)}{currentHousemaster.house ? ` · ${currentHousemaster.house} House` : ''}
+                </span>
+              </div>
+            )}
+            <div style={{ marginTop: 12 }}>
+              <ReportExportButtons
+                title="HM Dashboard — Daily Snapshot"
+                subtitle={`${hmName} · ${today()}`}
+                columns={[{ key: 'metric', label: 'Metric', width: 2 }, { key: 'value', label: 'Value', width: 1 }]}
+                rows={snapshotRows}
+              />
+            </div>
           </div>
-          <h2 style={{ fontSize: '27px', fontWeight: '800', color: 'white', margin: 0, fontFamily: FONT_DISPLAY }}>
-            Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', margin: '5px 0 0' }}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-          <div style={{ marginTop: '14px' }}>
-            <ReportExportButtons
-              title="HM Dashboard — Daily Snapshot"
-              subtitle={`${currentHousemaster?.name || currentUser?.name || 'House Master'} · ${today()}`}
-              columns={[
-                { key: 'metric', label: 'Metric', width: 2 },
-                { key: 'value', label: 'Value', width: 1 },
-              ]}
-              rows={snapshotRows}
-            />
+          </div>
+          <div style={{ padding: '12px 16px', borderRadius: 16, background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', minWidth: 200 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#E2C57E' }}>🌙 Tonight's duty</div>
+            {nightDutyTonight ? (
+              <>
+                <div style={{ fontSize: 15.5, fontWeight: 700, marginTop: 3 }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,.65)' }}>{[nightDutyTonight.shift, nightDutyTonight.post].filter(Boolean).join(' · ')}</div>
+              </>
+            ) : <div style={{ fontSize: 13, color: 'rgba(255,255,255,.65)', marginTop: 3 }}>Nobody assigned yet</div>}
           </div>
         </div>
-        {nightDutyTonight && (
-          <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'white', padding: '14px 22px', borderRadius: MD.radius.field, backdropFilter: 'blur(2px)' }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', color: MD.color.secondary }}>🌙 Tonight's Duty</div>
-            <div style={{ fontSize: '17px', fontWeight: '700', marginTop: '2px' }}>{nightDutyTonight.staff1}{nightDutyTonight.staff2 ? ` & ${nightDutyTonight.staff2}` : ''}</div>
-            <div style={{ fontSize: '12px', opacity: 0.75 }}>{nightDutyTonight.shift} · {nightDutyTonight.post}</div>
-          </div>
-        )}
       </div>
-      <FeatureCardsStrip cards={featureCards} />
-      {myDoubtTasks.length > 0 && (
-        <div
-          onClick={() => onTabChange?.('doubtsession')}
-          style={{
-            ...card, marginBottom: '20px', cursor: 'pointer',
-            background: MD.color.secondaryContainer, border: `1.5px solid ${MD.color.secondary}`,
-            display: 'flex', alignItems: 'center', gap: '14px',
-          }}
-        >
-          <span style={{ fontSize: '28px' }}>🙋</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '15px', fontWeight: '800', color: MD.color.onSecondaryContainer }}>
-              {myDoubtTasks.length} doubt session{myDoubtTasks.length > 1 ? 's' : ''} need{myDoubtTasks.length === 1 ? 's' : ''} your attention
-            </div>
-            <div style={{ fontSize: '12px', color: MD.color.onSecondaryContainer, opacity: 0.85, marginTop: '3px' }}>
-              {myDoubtTasks.slice(0, 3).map(t => `${t.subject_name || 'Subject'}${t.class_name ? ' · ' + t.class_name : ''}${t.teacher_name ? ' (from ' + t.teacher_name + ')' : ''}`).join('  ·  ')}
-              {myDoubtTasks.length > 3 ? ` +${myDoubtTasks.length - 3} more` : ''}
-            </div>
+
+      <MissingRollCallAlert students={students} lockHouse={lockHouse} onOpen={() => onTabChange?.('attendance')}
+        onFix={(house, d, sess) => { pendingRollCallFix = { house, date: d, session: sess }; onTabChange?.('attendance') }} />
+
+      {/* Today's two roll calls */}
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+        {ROLL_CALLS.map(rc => {
+          const pct = activeStudentCount ? Math.round((rc.marked / activeStudentCount) * 100) : 0
+          const done = activeStudentCount > 0 && rc.marked >= activeStudentCount
+          return (
+            <button key={rc.key} type="button" onClick={() => onTabChange?.('attendance')}
+              style={{ ...panel, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '16px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ width: 42, height: 42, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, background: rc.key === 'morning' ? '#FFF7E6' : '#EEF0FF' }}>{rc.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16.5, fontWeight: 600, color: '#0B1E3D' }}>{rc.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#64748B', marginTop: 2 }}>Due by {rc.due}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 99, background: done ? '#DCFCE7' : rc.marked ? '#FEF3C7' : '#F1F5F9', color: done ? '#15803D' : rc.marked ? '#A16207' : '#475569' }}>
+                  {done ? '✓ Complete' : rc.marked ? 'In progress' : 'Not started'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 12 }}>
+                <span style={{ fontFamily: FONT_DISPLAY, fontSize: 26, fontWeight: 700, color: '#0B1E3D', fontVariantNumeric: 'lining-nums tabular-nums' }}>{rc.marked}</span>
+                <span style={{ fontSize: 12.5, color: '#64748B' }}>/ {activeStudentCount} marked · {rc.present} present · {rc.out} out</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 99, background: '#F1EDE4', overflow: 'hidden', marginTop: 8 }}>
+                <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', borderRadius: 99, background: done ? '#15803D' : '#B8923A', transition: 'width .4s' }} />
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <HmProfileCardPanel students={students} lockHouse={lockHouse} currentHousemaster={currentHousemaster} due={cardsDue} />
+
+      {/* Figures — each opens its tab */}
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(6, minmax(0,1fr))', gap: '10px', marginBottom: '16px' }}>
+        {FIGURES.map(f => (
+          <button key={f.id} type="button" onClick={() => onTabChange?.(f.id)}
+            style={{ ...panel, position: 'relative', overflow: 'hidden', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '13px 14px' }}>
+            <div style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 3, borderRadius: '0 0 3px 3px', background: f.color }} />
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 23, fontWeight: 700, lineHeight: 1.1, marginTop: 3, fontVariantNumeric: 'lining-nums', color: f.value ? f.color : '#CBD5E1' }}>{f.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#0B1E3D', marginTop: 4 }}>{f.label}</div>
+            <div style={{ fontSize: 10.5, color: '#94A3B8', marginTop: 1 }}>{f.note}</div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+        {/* Needs attention */}
+        <div style={{ ...panel, padding: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <h3 style={panelTitle}>Needs attention</h3>
+            {attention.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: '#DC2626', background: '#FEE2E2', borderRadius: 99, padding: '1px 9px' }}>{attention.length}</span>}
           </div>
-          <span style={{ fontSize: '20px', color: MD.color.onSecondaryContainer, fontWeight: '700' }}>→</span>
+          {attention.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: '#15803D', fontWeight: 700, background: '#F0FDF4', border: '1px dashed #BBE5C8', borderRadius: 14 }}>✓ All clear — nothing urgent</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {attention.map(it => (
+                <button key={it.key} type="button" onClick={() => onTabChange?.(it.tab)}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 12, border: '1px solid #F1EDE4', borderLeft: `3px solid ${it.color}`, background: '#FCFBF7', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ marginTop: 4 }}><SealDot color={it.color} /></span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#0F172A' }}>{it.title}</span>
+                    {it.sub && <span style={{ display: 'block', fontSize: 11.5, color: '#64748B', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</span>}
+                  </span>
+                  <span style={{ color: '#94A3B8', fontWeight: 800 }}>→</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
-      {todayDuty && (todayDuty.duties || []).length > 0 && (
-        <div style={{ ...card, marginBottom: '20px' }}>
-          <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a5f', marginBottom: '14px' }}>📋 Today's Duty</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-            {todayDuty.duties.map((d, i) => {
-              const done = !!dutyCompletions[d.id]
+
+        {/* 7-day attendance */}
+        <div style={{ ...panel, padding: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 14 }}>
+            <h3 style={panelTitle}>Morning attendance · 7 days</h3>
+            <span style={{ fontSize: 12, color: '#64748B' }}>avg <b style={{ color: '#0B1E3D' }}>{weekAvg === null ? '—' : `${weekAvg}%`}</b></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 140 }}>
+            {weekTrend.map((d, i) => {
+              const isToday = i === weekTrend.length - 1
+              const v = d.presentPct
               return (
-                <div key={d.id || i} onClick={() => d.id && toggleDutyCompletion(d.id)} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: done ? '#f0fdf4' : '#f8fafc', cursor: d.id ? 'pointer' : 'default' }}>
-                  <input type="checkbox" checked={done} onChange={() => d.id && toggleDutyCompletion(d.id)} disabled={!d.id} style={{ width: 18, height: 18, marginTop: 1, cursor: d.id ? 'pointer' : 'not-allowed' }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: done ? '#94a3b8' : '#1e293b', textDecoration: done ? 'line-through' : 'none' }}>
-                      {d.time ? `${d.time} — ` : ''}{d.duty || '—'}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: 2 }}>{d.assigned_to || '—'}</div>
-                  </div>
+                <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, height: '100%', justifyContent: 'flex-end' }} title={`${d.date}: ${v === null ? 'no roll call' : v + '% present'}`}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: v === null ? '#CBD5E1' : '#0B1E3D', fontVariantNumeric: 'tabular-nums' }}>{v === null ? '—' : `${v}%`}</span>
+                  <div style={{ width: '100%', maxWidth: 34, height: `${v === null ? 4 : Math.max(6, v)}%`, borderRadius: '8px 8px 4px 4px',
+                    background: v === null ? '#F1EDE4' : isToday ? 'linear-gradient(180deg,#D4AE58,#B8923A)' : v >= 90 ? '#1C3A6B' : v >= 75 ? '#5B7BB0' : '#DC2626' }} />
+                  <span style={{ fontSize: 10.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#A87A1F' : '#94A3B8' }}>
+                    {isToday ? 'Today' : new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}
+                  </span>
                 </div>
               )
             })}
           </div>
         </div>
-      )}
-      {/* ── Index-tab quick actions: flat surface cards with a colored top tab, not a filled tonal block ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        {quickActions.map(action => (
-          <div key={action.id} onClick={() => onTabChange?.(action.id)} style={{
-            background: MD.color.surfaceContainer, borderRadius: MD.radius.card,
-            padding: '20px', border: `1px solid ${MD.color.outlineVariant}`,
-            borderTop: `3px solid ${action.color}`, cursor: 'pointer',
-            boxShadow: MD.elevation[1], transition: 'box-shadow 0.15s ease, transform 0.1s ease',
-          }}>
-            <div style={{ fontSize: '26px', marginBottom: '10px' }}>{action.icon}</div>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: action.color, marginBottom: '4px' }}>{action.label}</div>
-            <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{action.desc}</div>
+
+        {/* Today's duty */}
+        {todayDuty && (todayDuty.duties || []).length > 0 && (
+          <div style={{ ...panel, padding: '18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <h3 style={panelTitle}>Today's duty</h3>
+              <span style={{ fontSize: 11, fontWeight: 800, color: '#7A5A12', background: '#F8F0DC', borderRadius: 99, padding: '1px 9px' }}>
+                {todayDuty.duties.filter(d => dutyCompletions[d.id]).length} / {todayDuty.duties.length} done
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {todayDuty.duties.map((d, i) => {
+                const done = !!dutyCompletions[d.id]
+                return (
+                  <label key={d.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 12, background: done ? '#F0FDF4' : '#FCFBF7', border: `1px solid ${done ? '#BBE5C8' : '#F1EDE4'}`, cursor: d.id ? 'pointer' : 'default' }}>
+                    <input type="checkbox" checked={done} onChange={() => d.id && toggleDutyCompletion(d.id)} disabled={!d.id} style={{ width: 17, height: 17, marginTop: 1, accentColor: '#15803D' }} />
+                    <span style={{ flex: 1 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: done ? '#94A3B8' : '#0F172A', textDecoration: done ? 'line-through' : 'none' }}>{d.time ? `${d.time} — ` : ''}{d.duty || '—'}</span>
+                      <span style={{ display: 'block', fontSize: 11.5, color: '#64748B', marginTop: 1 }}>{d.assigned_to || '—'}</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-        <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: FONT_DISPLAY }}>Today's Snapshot</h3>
-          <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Morning roll call · {today()}</p>
-          {(() => {
-            const totalMarked = presentCount + absentCount
-            const attendedPct = totalMarked > 0 ? Math.round((presentCount / totalMarked) * 100) : null
-            const tallyItems = [
-              { label: 'Present', value: presentCount, color: MD.color.success },
-              { label: 'Absent', value: absentCount, color: MD.color.error },
-              { label: 'On Leave', value: leaveToday.length, color: MD.color.primary },
-              { label: 'In Sickbay', value: sickbayToday.length, color: '#7c3aed' },
-              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
-            ]
-            return (
-              <>
-                {/* Anchor stat — the number an HM actually scans for first */}
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '40px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: FONT_DISPLAY }}>
-                    {attendedPct === null ? '—' : `${attendedPct}%`}
-                  </span>
-                  <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
-                </div>
-                {/* Ledger tally row — a single ruled strip, entries separated by hairline dividers like a register page, instead of four competing colored blocks */}
-                <div style={{ display: 'flex', borderTop: `1px solid ${MD.color.outlineVariant}`, borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
-                  {tallyItems.map((s, idx) => (
-                    <div key={s.label} style={{
-                      flex: 1, textAlign: 'center', padding: '14px 8px',
-                      borderLeft: idx > 0 ? `1px dashed ${MD.color.outlineVariant}` : 'none',
-                    }}>
-                      <div style={{ fontSize: '22px', fontWeight: '800', color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '600', marginTop: '2px' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )
-          })()}
-        </div>
-        <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: FONT_DISPLAY }}>Today's Snapshot — Chart</h3>
-          <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Same figures as the tally, at a glance</p>
-          {(() => {
-            const chartItems = [
-              { label: 'Present', value: presentCount, color: MD.color.success },
-              { label: 'Absent', value: absentCount, color: MD.color.error },
-              { label: 'Leave', value: leaveToday.length, color: MD.color.primary },
-              { label: 'Sickbay', value: sickbayToday.length, color: '#7c3aed' },
-              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
-              { label: 'Discipline', value: disciplineOpen.length, color: MD.color.error },
-              { label: 'Repairs', value: maintenanceOpen.length, color: '#b8923a' },
-              { label: 'Doubt', value: myDoubtTasks.length, color: '#b45309' },
-            ]
-            const max = Math.max(1, ...chartItems.map(i => i.value))
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {chartItems.map(item => (
-                  <div key={item.label}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 3 }}>
-                      <span style={{ color: MD.color.onSurfaceVariant, fontWeight: 600 }}>{item.label}</span>
-                      <span style={{ color: item.color, fontWeight: 800 }}>{item.value}</span>
-                    </div>
-                    <div style={{ background: MD.color.surfaceDim, borderRadius: 999, height: 9, overflow: 'hidden' }}>
-                      <div style={{ width: `${(item.value / max) * 100}%`, height: '100%', background: item.color, borderRadius: 999, transition: 'width 0.3s ease' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
-        </div>
-        <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: FONT_DISPLAY }}>Attention Required</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {unmarkedCount > 0 && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.secondaryContainer, borderRadius: MD.radius.control }}>
-                <SealDot color={MD.color.secondary} />
-                <div>
-                  <div style={{ fontWeight: '700', color: MD.color.onSecondaryContainer, fontSize: '14px' }}>{unmarkedCount} students unmarked</div>
-                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>Morning roll call pending</div>
-                </div>
-              </div>
-            )}
-            {maintenanceOpen.map(m => (
-              <div key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.errorContainer, borderRadius: MD.radius.control }}>
-                <SealDot color={MD.color.error} />
-                <div>
-                  <div style={{ fontWeight: '700', color: MD.color.error, fontSize: '14px' }}>🔧 Urgent: {m.category}</div>
-                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{m.location} · {m.description}</div>
-                </div>
-              </div>
-            ))}
-            {disciplineOpen.slice(0, 3).map(d => (
-              <div key={d.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.errorContainer, borderRadius: MD.radius.control }}>
-                <SealDot color={MD.color.error} />
-                <div>
-                  <div style={{ fontWeight: '700', color: MD.color.error, fontSize: '14px' }}>⚠️ {d.student_name}</div>
-                  <div style={{ fontSize: '13px', color: MD.color.onSurfaceVariant }}>{d.incident}</div>
-                </div>
-              </div>
-            ))}
-            {unmarkedCount === 0 && maintenanceOpen.length === 0 && disciplineOpen.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '24px 20px', color: MD.color.success, fontWeight: '700' }}>
-                <div style={{ fontSize: '22px', marginBottom: '6px' }}>✅</div>
-                All clear! No urgent items.
-              </div>
-            )}
-          </div>
-        </div>
+        )}
+
         <MealHeadcountCard
           presentCount={presentCount}
           sickbayCount={sickbayToday.length}
           leaveCount={leaveToday.length}
+          mobile={mobile}
           onSendToKitchen={() => onTabChange?.('kitchen')}
         />
       </div>
 
+      {hmOnly && lockHouse && <HMRankCard house={lockHouse} />}
+
       {isAdmin && (
-        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <HostelChangesReadList />
           <MonthlyCertificateCard />
           <HMPerformanceRanking />
         </div>
@@ -5837,9 +7520,14 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 // ══════════════════════════════════════════════════════════════
 //  TAB: HOUSEMASTER JOURNAL
 // ══════════════════════════════════════════════════════════════
-function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
+function JournalTab({ lockHouse, currentHousemaster, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [entries, setEntries] = useState([])
+  const [allEntries, setEntries] = useState([])
+  // A housemaster reads their own house's journal and their own entries.
+  const myName = currentHousemaster?.name
+  const entries = useMemo(() => !lockHouse ? allEntries
+    : allEntries.filter(e => normalizeHouse(e.house) === normalizeHouse(lockHouse) || (myName && e.housemaster_name === myName)),
+  [allEntries, lockHouse, myName])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -5849,12 +7537,12 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#16a34a') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
   const JOURNAL_CATEGORIES = ['General', 'Assembly', 'Discipline', 'Medical', 'Maintenance', 'Parent Call', 'Staff Handover', 'Inspection', 'Event']
-  const emptyJournalForm = { entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: '', flagged: false }
+  const emptyJournalForm = { entry_date: today(), entry_time: nowTime(), category: 'General', title: '', content: '', house: lockHouse || '', flagged: false }
   const [form, setForm] = useState(emptyJournalForm)
 
   useEffect(() => {
     if (autoOpenForm) {
-      setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime(), house: autoOpenForm.house || '' })
+      setForm({ ...emptyJournalForm, entry_date: today(), entry_time: nowTime(), house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -6354,7 +8042,7 @@ create table if not exists day_scholar_records (
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
                     <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -6368,7 +8056,7 @@ create table if not exists day_scholar_records (
                         : <span style={{ color: '#94a3b8' }}>—</span>}
                     </td>
                     <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12 }}>{r.pickup_point || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, fontFamily: 'monospace' }}>{r.vehicle_number || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#64748b', fontSize: 12, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.vehicle_number || '—'}</td>
                     <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.status)}>{r.status}</span></td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -6683,7 +8371,7 @@ function ScheduleTab({ currentUser }) {
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', textDecoration: isDone ? 'line-through' : 'none' }}>{r.activity}</span>
                     <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: cs.bg, color: cs.color, fontWeight: '700' }}>{r.category}</span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace' }}>{r.from_time}{r.to_time ? ` → ${r.to_time}` : ''}</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.from_time}{r.to_time ? ` → ${r.to_time}` : ''}</div>
                 </div>
                 {adminMode && (
                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -6735,8 +8423,8 @@ function ScheduleTab({ currentUser }) {
                 return (
                   <tr key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1 }}>
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a6e' }}>{r.from_time}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, fontWeight: 600, color: '#1e3a6e' }}>{r.from_time}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
                       <span style={{ fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#94a3b8' : '#1e293b' }}>{r.activity}</span>
@@ -6792,9 +8480,10 @@ const SHIFT_STYLE = {
   'Full Day': { color: '#1e3a6e', bg: '#eff6ff', icon: '📋' },
 }
 
-function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
+function NightDutyTab({ staffProfiles, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const records = useMemo(() => inHouse(allRecords, lockHouse), [allRecords, lockHouse])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -6804,7 +8493,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
   useEffect(() => {
     if (autoOpenForm) {
       setEditRec(null)
-      setForm({ ...emptyMD, date: today(), house: autoOpenForm.house || '' })
+      setForm({ ...emptyMD, date: today(), house: autoOpenForm.house || lockHouse || '' })
       setShowForm(true)
     }
   }, [autoOpenForm?.nonce])
@@ -6835,7 +8524,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       ? await supabase.from('mess_duty').update(payload).eq('id', editRec.id)
       : await supabase.from('mess_duty').insert([payload])
     if (error) alert('Error: ' + error.message)
-    else { setForm(emptyMD); setShowForm(false); setEditRec(null); load() }
+    else { setForm({ ...emptyMD, house: lockHouse || '' }); setShowForm(false); setEditRec(null); load() }
     setSaving(false)
   }
 
@@ -7025,7 +8714,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
           allRows={enriched}
         />
         {isAdmin && (
-          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm(emptyMD) }} style={btn()}>
+          <button onClick={() => { setShowForm(!showForm); setEditRec(null); setForm({ ...emptyMD, house: lockHouse || '' }) }} style={btn()}>
             {showForm ? '✖ Cancel' : '➕ Assign Duty'}
           </button>
         )}
@@ -7262,10 +8951,12 @@ const emptyDisc = {
 }
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
-function DisciplineTab({ students, autoOpenForm, currentUser }) {
+function DisciplineTab({ students, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const mobile = useMobileView()
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const records = useMemo(() => inHouse(allRecords, lockHouse, studentIds), [allRecords, lockHouse, studentIds])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -7488,7 +9179,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -7537,9 +9228,12 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 // ══════════════════════════════════════════════════════════════
 function SuperintendentDashboard({ students, currentUser }) {
   const canReview = isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'superintendent'
+  const mobile = useMobileView()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('Open')
+  const [houseFilter, setHouseFilter] = useState('All')
+  const [savingId, setSavingId] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -7557,60 +9251,144 @@ function SuperintendentDashboard({ students, currentUser }) {
     return r
   }), [records, students])
 
-  const filtered = filter === 'All' ? enriched : enriched.filter(r => r.status === filter)
-  const open = records.filter(r => r.status === 'Open').length
-  const inProgress = records.filter(r => r.status === 'In Progress').length
+  const count = st => records.filter(r => r.status === st).length
+  const activeByHouse = useMemo(() => {
+    const m = {}
+    enriched.filter(r => r.status === 'Open' || r.status === 'In Progress').forEach(r => { const h = r._house || 'No house'; m[h] = (m[h] || 0) + 1 })
+    return Object.entries(m).sort((x, y) => y[1] - x[1])
+  }, [enriched])
+  const filtered = enriched.filter(r => (filter === 'All' || r.status === filter) && (houseFilter === 'All' || (r._house || 'No house') === houseFilter))
 
+  // The change is shown at once and undone if the database refuses it
+  // (before, a failed save still looked saved).
   const handleStatusChange = async (id, status) => {
     if (!canReview) { alert('Only the Superintendent or an admin can update review status.'); return }
-    await supabase.from('discipline_records').update({ status }).eq('id', id)
+    const before = records.find(r => r.id === id)?.status
+    setSavingId(id)
     setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    const { error } = await supabase.from('discipline_records').update({ status }).eq('id', id)
+    setSavingId(null)
+    if (error) {
+      setRecords(prev => prev.map(r => r.id === id ? { ...r, status: before } : r))
+      alert('Could not update the case: ' + error.message)
+    }
   }
 
   if (!canReview) {
     return (
-      <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '16px 20px', fontSize: 13, color: '#92400e', fontWeight: 600 }}>
-        ⚠️ This dashboard is restricted to the Superintendent and admins.
+      <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 14, padding: '16px 20px', fontSize: 13, color: '#92400E', fontWeight: 700 }}>
+        This dashboard is for the Superintendent and admins.
       </div>
     )
   }
 
+  const STATUS = {
+    Open: { c: '#DC2626', b: '#FEE2E2' },
+    'In Progress': { c: '#A16207', b: '#FEF3C7' },
+    Resolved: { c: '#15803D', b: '#DCFCE7' },
+    Closed: { c: '#475569', b: '#F1F5F9' },
+  }
+  const panel = { background: '#fff', border: '1px solid #ECE6D8', borderRadius: 20, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 16px 32px -26px rgba(19,42,79,.5)' }
+  const TILES = [{ key: 'All', label: 'All cases', value: records.length, c: '#0B1E3D' }, ...DISC_STATUSES.map(st => ({ key: st, label: st, value: count(st), c: STATUS[st].c }))]
+
   return (
     <div>
-      <div style={statGrid()}>
-        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a6e" bg="#eff6ff" />
-        <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#b8923a" bg="#fef9c3" />
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ fontSize: 14, color: '#64748b' }}>Discipline cases across all houses, newest first</div>
-        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Status</option>
-          {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {loading
-        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-        : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtered.map(r => (
-              <div key={r.id} style={{ background: 'white', borderRadius: 10, padding: '14px 18px', boxShadow: '0 1px 6px rgba(0,0,0,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                <div style={{ flex: 1, minWidth: 220 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: '#1e293b' }}>
-                    {r.student_name} {r._house && <span style={{ fontWeight: 600, color: '#64748b', fontSize: 12 }}>· {r._house}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{r.incident}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>{r.date} · Reported by {r.reported_by || '—'}</div>
-                </div>
-                <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)} style={{ ...inp, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
-                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
+      {/* Header */}
+      <div style={{ position: 'relative', overflow: 'hidden', color: '#fff', borderRadius: 22, padding: mobile ? 18 : '22px 26px', marginBottom: 16,
+        background: 'radial-gradient(120% 160% at 100% 0%, #1C3A6B 0%, #132B52 45%, #0B1E3D 85%)', boxShadow: '0 22px 40px -24px rgba(11,30,61,.8)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Superintendent · All houses</div>
+            <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: mobile ? 22 : 27, fontWeight: 600, margin: '5px 0 0', color: '#fff' }}>Discipline review</h2>
+            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.7)', marginTop: 4 }}>Every case across the hostel, newest first</div>
+          </div>
+          <div style={{ display: 'flex', gap: 22 }}>
+            {[['Need action', count('Open') + count('In Progress'), '#FCA5A5'], ['Resolved', count('Resolved') + count('Closed'), '#86EFAC']].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 30, fontWeight: 700, lineHeight: 1, color: c, fontVariantNumeric: 'lining-nums' }}>{v}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.65)', marginTop: 4 }}>{l}</div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Status tiles — tap to filter */}
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(5, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+        {TILES.map(t => {
+          const on = filter === t.key
+          return (
+            <button key={t.key} type="button" onClick={() => setFilter(t.key)} aria-pressed={on}
+              style={{ ...panel, boxShadow: on ? `0 0 0 2px ${t.c}` : panel.boxShadow, textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '12px 14px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 14, right: 14, height: 3, borderRadius: '0 0 3px 3px', background: t.c }} />
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, color: t.value ? t.c : '#CBD5E1', marginTop: 3, fontVariantNumeric: 'lining-nums' }}>{t.value}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: '#0B1E3D', marginTop: 2 }}>{t.label}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Active cases by house */}
+      {activeByHouse.length > 0 && (
+        <div style={{ ...panel, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#94A3B8', marginRight: 4 }}>Active by house</span>
+          <button type="button" onClick={() => setHouseFilter('All')}
+            style={{ fontSize: 12, fontWeight: 800, padding: '5px 11px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${houseFilter === 'All' ? '#0B1E3D' : '#E5DCC7'}`, background: houseFilter === 'All' ? '#0B1E3D' : '#fff', color: houseFilter === 'All' ? '#fff' : '#334155' }}>All</button>
+          {activeByHouse.map(([h, n]) => {
+            const on = houseFilter === h
+            return (
+              <button key={h} type="button" onClick={() => setHouseFilter(on ? 'All' : h)}
+                style={{ fontSize: 12, fontWeight: 800, padding: '5px 11px', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize',
+                  border: `1px solid ${on ? '#0B1E3D' : '#E5DCC7'}`, background: on ? '#0B1E3D' : '#fff', color: on ? '#fff' : '#334155' }}>
+                {h} <span style={{ marginLeft: 4, padding: '0 6px', borderRadius: 99, background: on ? 'rgba(255,255,255,.2)' : '#FEE2E2', color: on ? '#fff' : '#DC2626' }}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Cases */}
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 48, color: '#64748B' }}>Loading…</div>
+        : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => {
+              const st = STATUS[r.status] || STATUS.Closed
+              const initials = String(r.student_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+              return (
+                <div key={r.id} style={{ ...panel, borderLeft: `4px solid ${st.c}`, padding: '14px 16px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, color: st.c, background: st.b }}>{initials}</div>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: '#0F172A' }}>{r.student_name || '—'}</span>
+                      {r._house && <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', background: '#F5F1E8', borderRadius: 99, padding: '1px 8px', textTransform: 'capitalize' }}>{r._house}</span>}
+                      {r.class_name && <span style={{ fontSize: 11, color: '#94A3B8' }}>{r.class_name}</span>}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#334155', marginTop: 4 }}>{r.incident || 'No details recorded'}</div>
+                    <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 4 }}>
+                      {r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} · reported by {r.reported_by || '—'}
+                    </div>
+                  </div>
+                  <div role="group" aria-label="Case status" style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 12, background: '#F5F1E8', flexWrap: 'wrap', opacity: savingId === r.id ? 0.6 : 1 }}>
+                    {DISC_STATUSES.map(opt => {
+                      const on = r.status === opt
+                      return (
+                        <button key={opt} type="button" disabled={savingId === r.id} onClick={() => !on && handleStatusChange(r.id, opt)} aria-pressed={on}
+                          style={{ padding: '6px 10px', borderRadius: 9, border: 'none', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 800, cursor: on ? 'default' : 'pointer',
+                            background: on ? STATUS[opt].c : 'transparent', color: on ? '#fff' : '#64748B' }}>
+                          {opt}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
             {filtered.length === 0 && (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No {filter !== 'All' ? filter.toLowerCase() : ''} discipline records</div>
+              <div style={{ ...panel, padding: 36, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+                No {filter !== 'All' ? filter.toLowerCase() + ' ' : ''}cases{houseFilter !== 'All' ? ` in ${houseFilter}` : ''}.
+              </div>
             )}
           </div>
         )
@@ -7628,10 +9406,12 @@ const emptySick = {
   discharge_date: '', status: 'Admitted', attended_by: '',
 }
 
-function SickbayTab({ students, autoOpenForm, currentUser }) {
+function SickbayTab({ students, lockHouse, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const mobile = useMobileView()
-  const [records, setRecords] = useState([])
+  const [allRecords, setRecords] = useState([])
+  const studentIds = useMemo(() => new Set(students.map(s => s.id)), [students])
+  const records = useMemo(() => inHouse(allRecords, lockHouse, studentIds), [allRecords, lockHouse, studentIds])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -7840,7 +9620,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -8093,7 +9873,8 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
       !isAssigned(s) && (
         (s.name || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
         String(s.gcc_no || '').includes(assignSearch) ||
-        (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase())
+        (s.batch || '').toLowerCase().includes(assignSearch.toLowerCase()) ||
+        canonicalBatch(s.batch).toLowerCase().includes(assignSearch.toLowerCase())
       )
     ).slice(0, 10)
     : []
@@ -8101,8 +9882,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   // Option lists for the advanced-filter selects — drawn from every student
   // on record (not just activeStudents) so a filter can still be used to,
   // say, find dropout students of a particular batch.
-  const advBatchOptions = useMemo(() => [...new Set(students.map(s => s.batch).filter(Boolean))].sort(), [students])
-  const advCourseOptions = useMemo(() => [...new Set(students.map(s => s.course).filter(Boolean))].sort(), [students])
+  // Standard names, so "UDAAN", "Udaan — ENG" and the old "Elite" are one
+  // Udaan entry, and a blank course on a Udaan / Pragati batch is Foundation.
+  const advBatchOptions = useMemo(() => [...new Set(students.map(s => canonicalBatch(s.batch)).filter(Boolean))].sort(), [students])
+  const advCourseOptions = useMemo(() => [...new Set(students.map(s => courseOf(s)).filter(c => c && c !== 'Unassigned'))].sort(), [students])
   const advGenderOptions = useMemo(() => [...new Set(students.map(s => s.gender).filter(Boolean))].sort(), [students])
   const advHostelTypeOptions = useMemo(() => [...new Set(students.map(s => s.hostel_type).filter(Boolean))].sort(), [students])
 
@@ -8113,14 +9896,14 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase()
     return students.filter(s => {
-      const matchesSearch = [s.name, s.gcc_no, s.batch, s.course].some(v => (v || '').toString().toLowerCase().includes(q))
+      const matchesSearch = [s.name, s.gcc_no, s.batch, canonicalBatch(s.batch), s.course].some(v => (v || '').toString().toLowerCase().includes(q))
       const matchesFilter = assignFilter === 'All' ? true
         : assignFilter === 'Unassigned' ? (!isAssigned(s) && s.status !== 'Dropout')
         : assignFilter === 'Dropout' ? s.status === 'Dropout'
         : s.status !== 'Dropout' && normalizeHouse(s.house) === normalizeHouse(assignFilter).toLowerCase()
       const matchesAdv =
-        (advBatch === 'All' || s.batch === advBatch) &&
-        (advCourse === 'All' || s.course === advCourse) &&
+        (advBatch === 'All' || canonicalBatch(s.batch) === advBatch) &&
+        (advCourse === 'All' || courseOf(s) === advCourse) &&
         (advGender === 'All' || s.gender === advGender) &&
         (advHostelType === 'All' || s.hostel_type === advHostelType)
       return matchesSearch && matchesFilter && matchesAdv
@@ -8220,10 +10003,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <div>
                           <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
                           <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                            {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.gender || '—'} · {s.batch || '—'}
+                            {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.gender || '—'} · {canonicalBatch(s.batch) || '—'}
                           </div>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                            {s.course || '—'}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                            {courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
                           </div>
                         </div>
                         {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>✕ Remove</button>}
@@ -8246,11 +10029,11 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           onMouseLeave={e => e.currentTarget.style.background = 'white'}
                         >
                           <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
-                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
                             {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>}
@@ -8286,7 +10069,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                   <tbody>
                     {houseDropouts.map(s => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #fef2f2' }}>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#94a3b8' }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#7c2d12' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#b45309', fontSize: 12, fontWeight: 700 }}>🚪 Unassigned/Dropout</td>
                         <td style={{ padding: '9px 14px' }}>
@@ -8537,7 +10320,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <div>
                             <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
                             <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                              {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}{s.course ? ` · ${s.course}` : ''}
+                              {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}{courseOf(s) !== 'Unassigned' ? ` · ${courseOf(s)}` : ''}
                             </div>
                           </div>
                           {s.status === 'Dropout'
@@ -8585,10 +10368,10 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
                         <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
-                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#64748b' }}>{courseOf(s) !== 'Unassigned' ? courseOf(s) : '—'}</td>
                         <td style={{ padding: '9px 14px' }}>
                           {s.status === 'Dropout'
                             ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#fef2f2', color: '#b45309' }}>🚪 Unassigned/Dropout</span>
@@ -10683,9 +12466,11 @@ function KitchenTab({ currentUser }) {
 //  Shows every logged compliance gap: which housemaster skipped
 //  which of the 6 mandatory tabs, for which house/date/session.
 // ══════════════════════════════════════════════════════════════
-function NeglectReportTab({ currentUser }) {
-  const isAdmin = isAdminRole(currentUser?.role)
-  const [records, setRecords] = useState([])
+function NeglectReportTab({ currentUser, lockHouse }) {
+  // Admins see every house; a housemaster sees only their own house's gaps.
+  const isAdmin = isAdminRole(currentUser?.role) || !!lockHouse
+  const [allRecords, setRecords] = useState([])
+  const records = useMemo(() => lockHouse ? allRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(lockHouse)) : allRecords, [allRecords, lockHouse])
   const [loading, setLoading] = useState(true)
   const [houseFilter, setHouseFilter] = useState('All')
   const [hmFilter, setHmFilter] = useState('All')
@@ -10734,7 +12519,7 @@ function NeglectReportTab({ currentUser }) {
   return (
     <div>
       <div style={{ background: '#1e3a6e', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
-        <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report</div>
+        <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report{lockHouse ? ` · ${lockHouse}` : ''}</div>
         <div style={{ fontSize: '12px', opacity: 0.75 }}>
           Tracks housemasters who complete roll call without logging Discipline, Sickbay, Repairs, Journal, Mess Duty, or Activities for their house that session.
         </div>
@@ -10755,14 +12540,18 @@ function NeglectReportTab({ currentUser }) {
       )}
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Houses</option>
-          {houseNames.map(h => <option key={h}>{h}</option>)}
-        </select>
-        <select value={hmFilter} onChange={e => setHmFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
-          <option value="All">All Housemasters</option>
-          {hmNames.map(h => <option key={h}>{h}</option>)}
-        </select>
+        {!lockHouse && (
+          <>
+            <select value={houseFilter} onChange={e => setHouseFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+              <option value="All">All Houses</option>
+              {houseNames.map(h => <option key={h}>{h}</option>)}
+            </select>
+            <select value={hmFilter} onChange={e => setHmFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+              <option value="All">All Housemasters</option>
+              {hmNames.map(h => <option key={h}>{h}</option>)}
+            </select>
+          </>
+        )}
         <ReportExportButtons
           title="Six-Tab Compliance Neglect Report"
           subtitle={`${filtered.length} of ${records.length} logged gaps${houseFilter !== 'All' ? ` · House: ${houseFilter}` : ''}${hmFilter !== 'All' ? ` · HM: ${hmFilter}` : ''}`}
@@ -10833,7 +12622,7 @@ function NeglectReportTab({ currentUser }) {
                       background: r.check_type === 'standalone' ? '#f5f3ff' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#fef2f2' : '#eff6ff',
                       color: r.check_type === 'standalone' ? '#7c3aed' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#dc2626' : '#1e3a6e',
                     }}>
-                      {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : r.check_type === 'missed_rollcall' ? '🚫 Roll Call Missed' : r.check_type === 'missed_sixtab' ? '🚫 Tabs Not Logged' : '✅ Roll Call'}
+                      {r.check_type === 'standalone' ? '📋 Daily check' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : r.check_type === 'missed_rollcall' ? '🚫 Roll Call Missed' : r.check_type === 'missed_sixtab' ? '🚫 Tabs Not Logged' : '✅ Roll Call'}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
@@ -11039,6 +12828,122 @@ function HostelParentItemsTab({ currentHousemaster, currentUser }) {
   )
 }
 
+// The housemaster record for a login. Names are compared without titles,
+// dots, case or word order ("Mr. Pheiroijam Adison" = "Adison Pheiroijam"),
+// also against the login's Staff profile name; then by phone or email; then
+// a record whose name contains all of the login's name words (or the other
+// way round), when exactly one does.
+const NAME_TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'sir', 'madam', 'dr', 'shri', 'smt'])
+const nameWords = n => String(n || '').toLowerCase().replace(/[.,]/g, ' ').split(/\s+/).filter(w => w && !NAME_TITLES.has(w))
+const nameKey = n => nameWords(n).sort().join(' ')
+const digits10 = v => String(v || '').replace(/\D/g, '').slice(-10)
+function findHousemasterForUser(rows, user, staffName) {
+  const active = (rows || []).filter(h => String(h.status || 'Active').toLowerCase() === 'active' && h.house)
+  const keys = [user?.name, staffName, user?.full_name].map(nameKey).filter(Boolean)
+  if (!keys.length && !user?.phone && !user?.email) return null
+  const byName = active.find(h => keys.includes(nameKey(h.name)))
+  if (byName) return byName
+  const phone = digits10(user?.phone || user?.mobile)
+  const email = String(user?.email || '').trim().toLowerCase()
+  const byContact = active.find(h => (phone.length === 10 && digits10(h.phone) === phone) || (email && String(h.email || '').trim().toLowerCase() === email))
+  if (byContact) return byContact
+  const loose = active.filter(h => {
+    const hw = new Set(nameWords(h.name))
+    return [user?.name, staffName].some(n => {
+      const uw = nameWords(n)
+      if (uw.length < 2 || hw.size < 2) return false
+      return uw.every(w => hw.has(w)) || [...hw].every(w => uw.includes(w))
+    })
+  })
+  return loose.length === 1 ? loose[0] : null
+}
+
+// ── Mandatory "what has changed" notice for housemasters and housemistresses ──
+// Shown on opening Hostel until they confirm they have read it. Bump
+// HOSTEL_CHANGES_VERSION (and the list) when something new must be read, so
+// every housemaster / housemistress sees it again. The confirmation is kept in
+// this browser and also logged (audit_logs, action hostel_changes_ack) so an
+// admin can see who has read it.
+const HOSTEL_CHANGES_VERSION = '2026-10-10'
+const HOSTEL_CHANGES = [
+  { area: 'HM Dashboard', icon: '🏠', items: [
+    ['House-wise roll call cards', 'The missing roll call warning now shows your house as a red "Incomplete" card (with each missed roll call and how many are marked) or a green "Complete" card. Admins see one card per house.'],
+    ['Fix now', 'Every missed roll call line has a "Fix now" button. It opens that roll call straight away so you can mark every student.'],
+    ['Profile card for WhatsApp', 'Choose Morning or Night, tap "Show profile card", then share it on WhatsApp: your photo, rank, counts and mock-test standings.'],
+  ] },
+  { area: 'Roll Call', icon: '📋', items: [
+    ['Student photos', 'The roll call card and the student list now show each student\'s photo (initials when there is none).'],
+    ['Missed roll calls can be marked', 'After 7:30 AM / 10:00 PM you no longer need the admin to unlock the roll call. Open the house and mark every student. A roll call finished after the cutoff is recorded as LATE against you, and repeats count against your monthly ranking.'],
+    ['Catch up and Fix now (last 3 days)', 'Missed roll calls of today, yesterday and the day before can all be fixed. Today\'s roll call stays locked until yesterday is 100% marked.'],
+    ['Mark every student', 'Present, Outing, Outpass or Absent. Check on anyone you cannot find before marking. No exceptions.'],
+    ['Daily checks unlock correctly', 'A house whose roll call is complete is no longer shown as "Locked" in the morning / night checks.'],
+  ] },
+]
+const changesStoreKey = user => `gnsi_hostel_changes_ack_${String(user?.id ?? user?.staff_profile_id ?? user?.username ?? user?.name ?? 'user')}`
+function hostelChangesAcked(user) {
+  try { return localStorage.getItem(changesStoreKey(user)) === HOSTEL_CHANGES_VERSION } catch { return false }
+}
+function HostelChangesGate({ user, onConfirmed }) {
+  const storeKey = changesStoreKey(user)
+  const [seen, setSeen] = useState(() => { try { return localStorage.getItem(storeKey) } catch { return null } })
+  const [checked, setChecked] = useState(false)
+  const [saving, setSaving] = useState(false)
+  if (seen === HOSTEL_CHANGES_VERSION) return null
+  const confirm = async () => {
+    setSaving(true)
+    try {
+      await supabase.from('audit_logs').insert({
+        action: 'hostel_changes_ack', module: 'Hostel', level: 'info', user_id: null,
+        user_name: user?.name || user?.username || 'Unknown',
+        metadata: { version: HOSTEL_CHANGES_VERSION, raw_user_id: user?.id ?? null, role: user?.role ?? null },
+        created_at: new Date().toISOString(),
+      })
+    } catch { /* the notice is still confirmed here even if the log fails */ }
+    try { localStorage.setItem(storeKey, HOSTEL_CHANGES_VERSION) } catch { /* storage blocked */ }
+    setSeen(HOSTEL_CHANGES_VERSION)
+    setSaving(false)
+    onConfirmed?.()
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="What has changed in Hostel" style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(11,30,61,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 640, maxHeight: '92vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 22, overflow: 'hidden', boxShadow: '0 40px 80px -30px rgba(0,0,0,.7)' }}>
+        <div style={{ padding: '18px 22px', color: '#fff', background: 'linear-gradient(160deg,#1C3A6B,#0B1E3D)', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#E2C57E' }}>Mandatory · all housemasters &amp; housemistresses</div>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 600, marginTop: 4 }}>What has changed in Hostel</div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.75)', marginTop: 3 }}>Please read this once. Tick the box and confirm to continue.</div>
+        </div>
+        <div style={{ padding: '14px 22px', overflowY: 'auto', flex: 1 }}>
+          {HOSTEL_CHANGES.map(g => (
+            <div key={g.area} style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 900, color: '#0B1E3D', fontSize: 14.5, marginBottom: 6 }}>{g.icon} {g.area}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {g.items.map(([title, text]) => (
+                  <div key={title} style={{ background: '#FBF8EF', border: '1px solid #EFE3C0', borderRadius: 12, padding: '9px 12px' }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#1C3A6B' }}>{title}</div>
+                    <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginTop: 2 }}>{text}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: '1px solid #EFE3C0', background: '#FCFBF7' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#0B1E3D', fontWeight: 700, cursor: 'pointer' }}>
+            <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1 }} />
+            I have read and understood these changes.
+          </label>
+          <button type="button" onClick={confirm} disabled={!checked || saving}
+            style={{ width: '100%', marginTop: 12, padding: 13, borderRadius: 12, border: 'none', fontWeight: 800, fontSize: 14, fontFamily: 'inherit', color: '#1A1406',
+              cursor: checked && !saving ? 'pointer' : 'not-allowed', background: checked ? 'linear-gradient(160deg,#D4AE58,#B8923A)' : '#EEF1F5' }}>
+            {saving ? 'Saving…' : 'Confirm and continue'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Hostel() {
   // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
   // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
@@ -11066,7 +12971,7 @@ function Hostel() {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
   const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
-  const [activeTab, setActiveTab] = useState(() => {
+  const [requestedTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
   })
@@ -11111,7 +13016,17 @@ function Hostel() {
   }, [])
   const userRole = (currentUser?.role || '').toLowerCase()
   const isAdmin = isAdminRole(userRole)
-  const isHM = userRole === 'house master'
+  // A housemaster/housemistress (not an admin) works only with their own
+  // house: the tabs they need, and every list limited to that house.
+  const hmOnly = HM_ROLES.includes(userRole) && !isAdmin
+  const activeTab = hmOnly && !HM_TABS.includes(requestedTab) ? 'hmdashboard' : requestedTab
+  const shownTabs = hmOnly ? TABS.filter(t => HM_TABS.includes(t.id)) : TABS
+  const lockHouse = hmOnly ? (currentHousemaster?.house || '') : ''
+  const myStudents = useMemo(() => {
+    if (!hmOnly) return students
+    const key = normalizeHouse(currentHousemaster?.house)
+    return key ? students.filter(st => normalizeHouse(st.house) === key) : []
+  }, [hmOnly, students, currentHousemaster?.house])
 
   // Track mobile state
   useEffect(() => {
@@ -11135,10 +13050,8 @@ function Hostel() {
       // .select(), capped at 1000 rows).
       getAllStudents('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
-      supabase.from('housemasters').select('*')
-        .eq('status', 'Active')
-        .eq('name', (currentUser?.name || '').trim())
-        .maybeSingle(),
+      // All housemasters; the one for this login is picked below.
+      supabase.from('housemasters').select('*'),
       supabase.from('houses').select('name, color_index'),
     ])
     if (e2) console.error('Staff fetch error:', e2)
@@ -11147,7 +13060,8 @@ function Hostel() {
     console.log('Loaded:', s?.length, 'students,', st?.length, 'staff | sample:', s?.[0])
     setStudents(s || [])
     setStaffProfiles(st || [])
-    setCurrentHousemaster(hm || null)
+    const staffName = (st || []).find(p => currentUser?.staff_profile_id != null && String(p.id) === String(currentUser.staff_profile_id))?.name
+    setCurrentHousemaster(findHousemasterForUser(hm || [], currentUser, staffName))
 
     // Load house colors
     if (houses?.length) {
@@ -11160,7 +13074,7 @@ function Hostel() {
     }
 
     setDataLoading(false)
-  }, [currentUser?.name])
+  }, [currentUser])
 
   useEffect(() => { fetchShared() }, [fetchShared])
 
@@ -11179,25 +13093,28 @@ function Hostel() {
 
   const activeTabDef = TABS.find(t => t.id === activeTab)
   const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
-  const QUICK_TABS = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+  const QUICK_TABS = hmOnly
+    ? ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'transfer', 'nightduty', 'maintenance', 'journal']
+    : ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'transfer', 'kitchen', 'maintenance']
+  const menuGroups = TAB_GROUPS.map(g => ({ ...g, ids: g.ids.filter(id => shownTabs.some(t => t.id === id)) })).filter(g => g.ids.length)
   const splitLabel = label => {
     const m = (label || '').match(/^(\S+)\s+(.*)$/)
     return m ? { icon: m[1], text: m[2] } : { icon: '', text: label }
   }
   const hourNow = new Date().getHours()
   const greeting = hourNow < 12 ? 'Good morning' : hourNow < 17 ? 'Good afternoon' : 'Good evening'
-  const boardersCount = students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
+  const boardersCount = myStudents.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
   const houseCount = Object.keys(houseColorMap).length
 
-  const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
+  const standaloneTab = !hmOnly && (activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport')
 
   const tabContent = {
-    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
+    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={myStudents} currentUser={currentUser} canDropout={!hmOnly} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
-    nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
-    discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
+    nightduty: <NightDutyTab staffProfiles={staffProfiles} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
+    discipline: <DisciplineTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
     superintendentdash: <SuperintendentDashboard students={students} currentUser={currentUser} />,
-    sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
+    sickbay: <SickbayTab students={myStudents} lockHouse={lockHouse} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
     houseexpense: <HouseExpenseTab currentUser={currentUser} />,
@@ -11206,19 +13123,19 @@ function Hostel() {
     studymaterial: <StudyMaterialTab students={students} currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
-    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
+    hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} lockHouse={lockHouse} />,
     adminmonitor: <AdminMonitorTab staffProfiles={staffProfiles} />,
     // ─── NEW TABS ──────────────────────────────────────
-    attendance: <AttendanceTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={changeTab} onCompleteTab={navigateAndOpenForm} />,
-    leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
-    maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
+    attendance: <AttendanceTab students={myStudents} currentHousemaster={currentHousemaster} currentUser={currentUser} onTabChange={changeTab} onCompleteTab={navigateAndOpenForm} />,
+    leave: <LeaveTab students={myStudents} lockHouse={lockHouse} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    hmdashboard: <HMDashboard students={myStudents} hmOnly={hmOnly} lockHouse={lockHouse} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
+    maintenance: <MaintenanceTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
     parentitems: <HostelParentItemsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
+    journal: <JournalTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    neglectreport: <NeglectReportTab currentUser={currentUser} />,
-    hmrollreport: <HMRollCallReportTab />,
+    neglectreport: <NeglectReportTab currentUser={currentUser} lockHouse={lockHouse} />,
+    hmrollreport: <HMRollCallReportTab lockHouse={lockHouse} />,
     commandcentre: <CommandCentreTab students={students} currentUser={currentUser} />,
   }
 
@@ -11227,6 +13144,7 @@ function Hostel() {
       padding: mobile ? '12px' : '28px', fontFamily: FONT_BODY,
       paddingBottom: mobile ? '80px' : '28px', background: MD.color.surfaceDim, minHeight: '100vh',
     }}>
+      {hmOnly && <HostelChangesGate user={currentUser} />}
       {/* Module-wide heading default — serif display face for every h1–h3
           that doesn't explicitly override it, so the refined type system
           applies consistently across all 17 tabs without editing each
@@ -11277,8 +13195,8 @@ function Hostel() {
           background: none; color: #1c2530; display: flex; align-items: center; gap: 10px; }
         .hs-mi:hover { background: #faf8f3 !important; border-color: #e8e3d8; filter: none !important; }
         .hs-mi.on { background: #eef2f9 !important; border-color: #c9d4e8; color: #132a4f; font-weight: 700; }
-        .hs-mi .ic { width: 30px; height: 30px; border-radius: 9px; background: #f3f0e8; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-        .hs-mi.on .ic { background: #fff; box-shadow: 0 0 0 1px #e9d9b0; }
+        .hs-mi .ic { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(160deg,#1f4e8c,#0b1e3d); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+        .hs-mi.on .ic { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #c9a24b; }
         .hs-stat { transition: transform .15s, box-shadow .15s; }
         .hs-stat:hover { transform: translateY(-2px); box-shadow: ${MD.elevation[2]} !important; }
         .hs-skel { height: 96px; border-radius: 16px; border: 1px solid #e8e3d8; background: linear-gradient(90deg, #fff 0%, #f3f0e8 40%, #fff 80%); background-size: 800px 100%; animation: hsShim 1.3s linear infinite; }
@@ -11327,8 +13245,10 @@ function Hostel() {
         {/* Hero quick figures */}
         <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: mobile ? 8 : 12, marginTop: mobile ? 16 : 22 }}>
           {[
-            { l: 'Students', v: dataLoading ? '—' : students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout').length, sub: 'Active roster' },
-            { l: 'In houses', v: dataLoading ? '—' : boardersCount, sub: houseCount ? `${houseCount} houses` : 'Allocated' },
+            { l: 'Students', v: dataLoading ? '—' : myStudents.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout').length, sub: hmOnly ? 'In your house' : 'Active roster' },
+            ...(hmOnly
+              ? [{ l: 'Your house', v: lockHouse || '—', sub: currentHousemaster ? hmTitle(currentHousemaster) : 'Not linked', small: true }]
+              : [{ l: 'In houses', v: dataLoading ? '—' : boardersCount, sub: houseCount ? `${houseCount} houses` : 'Allocated' }]),
             { l: 'Staff', v: dataLoading ? '—' : staffProfiles.length, sub: 'On record' },
             ...(!mobile ? [{ l: 'Section', v: activeTabDef ? splitLabel(activeTabDef.label).text : '—', sub: activeGroup?.label || 'Dashboard', small: true }] : []),
           ].map(h => (
@@ -11385,12 +13305,12 @@ function Hostel() {
                 onKeyDown={e => {
                   if (e.key !== 'Enter') return
                   const q = menuQuery.trim().toLowerCase(); if (!q) return
-                  const hit = TABS.find(t => t.label.toLowerCase().includes(q))
+                  const hit = shownTabs.find(t => t.label.toLowerCase().includes(q))
                   if (hit) { changeTab(hit.id); setMenuOpen(false) }
                 }} />
             </div>
             <div style={{ overflowY: 'auto', padding: mobile ? '10px 12px 28px' : '14px 16px 18px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: mobile ? 4 : '6px 16px', alignContent: 'start' }}>
-              {TAB_GROUPS.map(group => {
+              {menuGroups.map(group => {
                 const q = menuQuery.trim().toLowerCase()
                 const items = group.ids.map(id => TABS.find(tab => tab.id === id)).filter(t => t && (!q || t.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)))
                 if (!items.length) return null
@@ -11419,6 +13339,12 @@ function Hostel() {
       {/* Desktop/Tablet Tab Bar and Mobile Tab Grid removed — all tabs now
           live in the hamburger menu in the header above, per instruction. */}
 
+      {hmOnly && !dataLoading && !lockHouse && (
+        <div role="alert" style={{ marginBottom: 16, padding: '14px 16px', borderRadius: 14, background: '#FFF7E6', border: '1px solid #F1D9A6', color: '#7A5A12', fontSize: 13.5, lineHeight: 1.5 }}>
+          <b>Your login isn't linked to a house yet.</b> Ask the office to add you under Hostel → 🧑‍🏫 HM with the same name you log in with
+          ({currentUser?.name || 'your name'}) and your house. Until then no students are shown.
+        </div>
+      )}
       {dataLoading && !standaloneTab
         ? (
           <div aria-busy="true">
@@ -11429,7 +13355,7 @@ function Hostel() {
             <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: MD.color.onSurfaceVariant, marginTop: 14 }}>Loading student &amp; staff data…</div>
           </div>
         )
-        : tabContent[activeTab]
+        : hmOnly && !lockHouse ? null : tabContent[activeTab]
       }
 
       {/* Phone: payments-app style bottom navigation — the day-to-day sections + the full menu */}
@@ -11456,7 +13382,7 @@ body:has(.hs-bottom){padding-bottom:76px}
     </div>
   )
 }
-function StudentTransferTab({ students, currentUser }) {
+function StudentTransferTab({ students, currentUser, canDropout = true }) {
   const [houses, setHouses] = useState([])
   const [search, setSearch] = useState('')
   const [filterHouse, setFilterHouse] = useState('All')
@@ -11468,9 +13394,10 @@ function StudentTransferTab({ students, currentUser }) {
   const [toast, setToast] = useState(null)
   const mobile = useMobileView()
 
+  const [showDropouts, setShowDropouts] = useState(false)
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color })
-    setTimeout(() => setToast(null), 3500)
+    setTimeout(() => setToast(null), color === '#dc2626' ? 9000 : 3500) // errors stay long enough to read
   }
 
   // Load houses
@@ -11479,6 +13406,17 @@ function StudentTransferTab({ students, currentUser }) {
       .then(({ data }) => setHouses(data || []))
       .finally(() => setLoading(false))
   }, [])
+  // The houses table can be empty or miss a house; fall back to the houses the
+  // students are actually in, so there is always something to transfer to.
+  const houseOptions = useMemo(() => {
+    const byKey = new Map()
+    for (const h of houses) byKey.set(normalizeHouse(h.name), { id: h.id ?? h.name, name: h.name })
+    for (const s of students) {
+      const k = normalizeHouse(s.house)
+      if (k && !byKey.has(k)) byKey.set(k, { id: `s-${k}`, name: s.house })
+    }
+    return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+  }, [houses, students])
 
   // Students filtered by search and current house
   const activeStudents = useMemo(() =>
@@ -11502,7 +13440,8 @@ function StudentTransferTab({ students, currentUser }) {
       list = list.filter(s =>
         (s.name || '').toLowerCase().includes(q) ||
         String(s.gcc_no || '').includes(q) ||
-        (s.batch || '').toLowerCase().includes(q)
+        (s.batch || '').toLowerCase().includes(q) ||
+        canonicalBatch(s.batch).toLowerCase().includes(q)
       )
     }
     return list
@@ -11647,6 +13586,44 @@ function StudentTransferTab({ students, currentUser }) {
     setTransferring(false)
   }
 
+  // ── Dropout: mark students as Dropout (and free their bed), or bring them back ──
+  const markDropout = async list => {
+    if (!list.length) { showToast('Select at least one student.', '#b8923a'); return }
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Mark ${names} as Dropout? They leave every roll call and their house, and can be reactivated from the Dropout list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Dropout')
+      await bulkVacateStudents(ids)
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Dropout' })
+      showToast(`✅ ${names} marked as Dropout`)
+      setSelectedIds(new Set())
+    } catch (e) {
+      showToast('Dropout failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const reactivate = async list => {
+    if (!list.length) return
+    const names = list.length === 1 ? list[0].name : `${list.length} students`
+    if (!window.confirm(`Reactivate ${names}? They return as Active and unassigned; give them a house from the list.`)) return
+    setTransferring(true)
+    try {
+      const ids = list.map(s => s.id)
+      await setStudentsStatus(ids, 'Active')
+      broadcastStudentsUpdate({ type: 'status_change', ids: new Set(ids), status: 'Active' })
+      showToast(`✅ ${names} reactivated`)
+    } catch (e) {
+      showToast('Reactivate failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+  const dropoutList = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return !q ? dropoutStudents : dropoutStudents.filter(s => (s.name || '').toLowerCase().includes(q) || String(s.gcc_no || '').includes(q) || (s.batch || '').toLowerCase().includes(q))
+  }, [dropoutStudents, search])
+
   // Stats
   const totalActive = activeStudents.length
   const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
@@ -11671,7 +13648,9 @@ function StudentTransferTab({ students, currentUser }) {
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
         <StatCard icon="👥" label="Total Active" value={totalActive} color="#1e3a6e" bg="#eff6ff" compact={mobile} />
         <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" compact={mobile} />
-        <StatCard icon="🚪" label="Dropout" value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        <div onClick={() => setShowDropouts(v => !v)} style={{ cursor: 'pointer' }} title="Show / hide the Dropout list">
+          <StatCard icon="🚪" label={showDropouts ? 'Dropout ▲' : 'Dropout ▼'} value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        </div>
         <StatCard icon="✅" label="Selected" value={selectedCount} color="#16a34a" bg="#dcfce7" compact={mobile} />
       </div>
 
@@ -11685,11 +13664,11 @@ function StudentTransferTab({ students, currentUser }) {
         <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="All">All Houses</option>
           <option value="Unassigned">Unassigned Only</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <select value={targetHouse} onChange={e => setTargetHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="">— Target House —</option>
-          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          {houseOptions.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
         <input
           value={roomNumber}
@@ -11717,6 +13696,15 @@ function StudentTransferTab({ students, currentUser }) {
         >
           {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
         </button>
+        {canDropout && (
+          <button
+            onClick={() => markDropout(activeStudents.filter(s => selectedIds.has(s.id)))}
+            disabled={transferring || selectedIds.size === 0}
+            style={{ ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#b45309'), whiteSpace: 'nowrap' }}
+          >
+            🚪 Dropout ({selectedCount})
+          </button>
+        )}
         <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
@@ -11732,6 +13720,27 @@ function StudentTransferTab({ students, currentUser }) {
           </button>
         )}
       </div>
+
+      {canDropout && showDropouts && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🚪 Dropout students ({dropoutList.length})</div>
+          {dropoutList.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: 13 }}>No dropout students{search.trim() ? ' match the search' : ''}.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {dropoutList.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}</div>
+                  </div>
+                  <button onClick={() => reactivate([s])} disabled={transferring} style={{ ...btn('#16a34a'), fontSize: 12, padding: '6px 12px' }}>↩ Reactivate</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mobile ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -11752,7 +13761,7 @@ function StudentTransferTab({ students, currentUser }) {
                     <div>
                       <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
                       <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                        {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}
+                        {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{canonicalBatch(s.batch) || '—'}
                       </div>
                     </div>
                   </div>
@@ -11779,6 +13788,15 @@ function StudentTransferTab({ students, currentUser }) {
                       style={{ ...btn('#fee2e2', '#dc2626'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
                     >
                       ✕ Remove
+                    </button>
+                  )}
+                  {canDropout && (
+                    <button
+                      onClick={() => markDropout([s])}
+                      disabled={transferring}
+                      style={{ ...btn('#fef3c7', '#b45309'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                    >
+                      🚪 Dropout
                     </button>
                   )}
                 </div>
@@ -11826,8 +13844,8 @@ function StudentTransferTab({ students, currentUser }) {
                   </td>
                   <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
-                  <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
-                  <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
+                  <td style={{ padding: '9px 14px', color: '#64748b' }}>{canonicalBatch(s.batch) || '—'}</td>
                   <td style={{ padding: '9px 14px' }}>
                     {currentHouse !== '—' ? (
                       <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e' }}>🏠 {currentHouse}</span>
@@ -11864,6 +13882,21 @@ function StudentTransferTab({ students, currentUser }) {
                         }}
                       >
                         ✕ Remove
+                      </button>
+                    )}
+                    {canDropout && (
+                      <button
+                        onClick={() => markDropout([s])}
+                        disabled={transferring}
+                        style={{
+                          ...btn('#fef3c7', '#b45309'),
+                          fontSize: 11,
+                          padding: '5px 12px',
+                          cursor: transferring ? 'wait' : 'pointer',
+                          opacity: transferring ? 0.6 : 1,
+                        }}
+                      >
+                        🚪 Dropout
                       </button>
                     )}
                   </td>

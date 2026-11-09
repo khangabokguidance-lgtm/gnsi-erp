@@ -262,7 +262,7 @@ export async function runDaily() {
 export async function enforceCompliance(req, res) {
   if (req.method !== 'GET') return res.status(405).end()
   // Vercel sends "Authorization: Bearer $CRON_SECRET" when CRON_SECRET is set.
-  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' })
   }
   const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query?.date || '') ? req.query.date : todayIST()

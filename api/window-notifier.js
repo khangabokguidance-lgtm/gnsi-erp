@@ -6,6 +6,8 @@ import { createClient } from '@supabase/supabase-js'
 import { enforceCompliance, runDaily } from '../server/hostelCompliance.js'
 import { rollcallReminder } from '../server/rollcallReminder.js'
 import { runFeeAlerts } from '../server/feeAlerts.js'
+import { runBackup } from '../server/backup.js'
+import { timingSafeEqual } from 'node:crypto'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -31,10 +33,24 @@ function todayIST() {
 
 // One function, several cron jobs (Vercel Hobby allows max 12 functions):
 //   /api/window-notifier                      → shift check-in window alerts
-//   /api/window-notifier?job=daily            → shift alerts + yesterday's housemaster enforcement + morning roll call warning
+//   /api/window-notifier?job=daily            → shift alerts + yesterday's housemaster enforcement + morning roll call warning + nightly backup
 //   /api/window-notifier?job=compliance       → manual enforcement (&date=) or &phase=warn-morning|warn-evening
 //   /api/window-notifier?job=rollcall-reminder → roll call cutoff reminders (needs per-minute cron)
+// Every job (and the plain shift-alert run) needs the cron secret. If CRON_SECRET is not configured
+// the endpoint refuses to run rather than being open to the internet. Vercel Cron sends
+// "Authorization: Bearer $CRON_SECRET" automatically once the variable exists in the project.
+function cronAuthorized(req) {
+  const secret = process.env.CRON_SECRET
+  if (!secret) return 'not-configured'
+  const got = Buffer.from(String(req.headers.authorization || ''))
+  const want = Buffer.from(`Bearer ${secret}`)
+  return got.length === want.length && timingSafeEqual(got, want) ? 'ok' : 'denied'
+}
+
 export default async function handler(req, res) {
+  const auth = cronAuthorized(req)
+  if (auth === 'not-configured') return res.status(503).json({ error: 'CRON_SECRET is not set on the server; refusing to run.' })
+  if (auth !== 'ok') return res.status(401).json({ error: 'unauthorized' })
   const job = req.query?.job
   if (job === 'compliance') return enforceCompliance(req, res)
   if (job === 'rollcall-reminder') return rollcallReminder(req, res)
@@ -42,11 +58,10 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end()
   let compliance
   if (job === 'daily') {
-    if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-      return res.status(401).json({ error: 'unauthorized' })
-    }
     try { compliance = await runDaily() } catch (e) { compliance = { error: e.message } }
     try { compliance = { ...compliance, feeAlerts: await runFeeAlerts() } } catch (e) { compliance = { ...compliance, feeAlerts: { error: e.message } } }
+    // Nightly backup (core tables daily, everything on Sundays) — see server/backup.js.
+    try { const b = await runBackup(); compliance = { ...compliance, backup: { ok: b.ok, path: b.path, bytes: b.bytes } } } catch (e) { compliance = { ...compliance, backup: { error: e.message } } }
   }
   const now      = nowIST()
   const todayStr = todayIST()

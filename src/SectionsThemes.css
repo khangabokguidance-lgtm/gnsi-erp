@@ -1,0 +1,18 @@
+/* SectionsThemes.css — alternative looks for the "Explore GNSI" grid.
+   Default is the light premium card style in LandingExtras.css; set
+   Website → Settings → "All Sections Grid Style" to `dark` for this one. */
+
+.sec-grid-wrap.sec-theme-dark{background:radial-gradient(900px 380px at 50% -10%,rgba(201,162,75,.22),transparent 60%),linear-gradient(180deg,#0B1E3D,#081629)!important;border-bottom:1px solid rgba(255,255,255,.08)}
+.sec-theme-dark .sec-grid-h{color:#fff}
+.sec-theme-dark .sec-grid-title{color:var(--goldLL,#E2C57E)!important}
+.sec-theme-dark .sec-chip{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85);border-color:rgba(255,255,255,.16)}
+.sec-theme-dark .sec-chip:hover{border-color:var(--goldL,#C9A24B)}
+.sec-theme-dark .sec-chip.on{background:linear-gradient(135deg,#C9A24B,#B8913F);color:#111;box-shadow:0 8px 20px rgba(201,162,75,.35)}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile{background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.03))!important;border:1px solid rgba(255,255,255,.12)!important;border-top:1px solid rgba(255,255,255,.12)!important;backdrop-filter:blur(8px);box-shadow:0 14px 30px -16px rgba(0,0,0,.6)!important}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile:hover{border-color:var(--goldL,#C9A24B)!important;box-shadow:0 0 0 1px rgba(201,162,75,.4),0 24px 44px -16px rgba(0,0,0,.7)!important}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile .sec-tile-lb{color:#fff}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile .sec-tile-ic{background:rgba(255,255,255,.1);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile .sec-tile-go{color:var(--goldLL,#E2C57E)}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile.active{background:linear-gradient(150deg,#C9A24B,#B8913F)!important;border-color:transparent!important}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile.active .sec-tile-lb{color:#111}
+.sec-grid-wrap.sec-theme-dark .sec-grid .sec-tile.active .sec-tile-go{color:#111}

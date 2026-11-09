@@ -16,6 +16,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
 import { bmeiToUnicode } from './mayekSegments'
+import { fixApunOrder } from './meetei_mayek'
 
 const C = {
   navy: '#1e3a5f', slate: '#64748b', green: '#16a34a',
@@ -41,7 +42,7 @@ async function fetchQuestionSlides(subject, chapter) {
     title: q.question,
     // The receiver draws in Noto Sans Meetei Mayek, so BMEI04 keystrokes are
     // converted to Unicode first (Latin runs like CCCIV stay as typed).
-    title_mayek: q.question_mayek_font === 'bmei04' ? bmeiToUnicode(q.question_mayek) : (q.question_mayek || ''),
+    title_mayek: q.question_mayek_font === 'bmei04' ? bmeiToUnicode(q.question_mayek) : fixApunOrder(q.question_mayek || ''),
     options: ['A','B','C','D'].map(l => ({
       letter: l,
       text: q[`option_${l.toLowerCase()}`] || '',
@@ -132,7 +133,7 @@ export default function CastReceiver() {
 
   if (error) {
     return (
-      <div style={{ minHeight:'100vh', background:C.navy, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif' }}>
+      <div style={{ minHeight:'100vh', background:C.navy, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
         <div style={{ textAlign:'center' }}>
           <div style={{ fontSize:22, fontWeight:700, marginBottom:8 }}>⚠️ {error}</div>
           <div style={{ fontSize:13, opacity:.7 }}>Check the cast link and try again from the presenter's device.</div>
@@ -143,7 +144,7 @@ export default function CastReceiver() {
 
   if (!slides) {
     return (
-      <div style={{ minHeight:'100vh', background:C.navy, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'system-ui,sans-serif', fontSize:18 }}>
+      <div style={{ minHeight:'100vh', background:C.navy, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", fontSize:18 }}>
         📡 Connecting to GNSI cast session…
       </div>
     )
@@ -152,7 +153,7 @@ export default function CastReceiver() {
   const slide = slides[Math.min(index, slides.length - 1)]
 
   return (
-    <div style={{ minHeight:'100vh', background:C.navy, display:'flex', flexDirection:'column', fontFamily:'system-ui,sans-serif' }}>
+    <div style={{ minHeight:'100vh', background:C.navy, display:'flex', flexDirection:'column', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <div style={{ padding:'10px 24px', background:'rgba(0,0,0,.2)', color:'#fff', fontSize:12, fontWeight:700, opacity:.8, display:'flex', justifyContent:'space-between' }}>
         <span>GNSI Portal — {subject} · {chapter}</span>
         <span>Slide {index+1} of {slides.length}</span>

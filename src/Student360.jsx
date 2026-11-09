@@ -167,7 +167,7 @@ function StudentSearch({ students, onSelect }) {
                 <div style={{ fontSize: 12, color: SLATE[500] }}>{s.course || '—'} · {s.batch || '—'} · {s.class_name || '—'}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                {s.gcc_no && <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: GOLD }}>GCC-{s.gcc_no}</span>}
+                {s.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, fontWeight: 700, color: GOLD }}>GCC-{s.gcc_no}</span>}
                 <StatusPill status={s.status} />
               </div>
             </div>
@@ -495,7 +495,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800 }}>{selected.name}</div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {selected.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: GOLD, fontSize: 12 }}>GCC-{selected.gcc_no}</span>}
+                  {selected.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: GOLD, fontSize: 12 }}>GCC-{selected.gcc_no}</span>}
                   {selected.admission_no && <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 12 }}>Adm# {selected.admission_no}</span>}
                   <StatusPill status={selected.status} />
                 </div>
@@ -556,6 +556,10 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                     studentContext={selected} onSaved={v => onProfileFieldSaved('status', v)} />
                   <EditableRow label="Gender" value={rawStudent.gender} tableKey="students" rowId={selected.id} field="gender"
                     studentContext={selected} onSaved={v => onProfileFieldSaved('gender', v)} />
+                  <EditableRow label="District (Manipur)" value={rawStudent.district} tableKey="students" rowId={selected.id} field="district"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('district', v)} />
+                  <EditableRow label="Caste / Category" value={rawStudent.caste} tableKey="students" rowId={selected.id} field="caste"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('caste', v)} />
                   <EditableRow label="Date of Birth" value={rawStudent.dob} tableKey="students" rowId={selected.id} field="dob"
                     studentContext={selected} onSaved={v => onProfileFieldSaved('dob', v)} />
                   <EditableRow label="Admission Date" value={rawStudent.admission_date} tableKey="students" rowId={selected.id} field="admission_date"
@@ -1695,7 +1699,7 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
                         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: NAVY, fontWeight: 700 }}>
                         {r.student_name || '—'}
                       </button>
-                      {r.gcc_no && <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: SLATE[400] }}>GCC-{r.gcc_no}</div>}
+                      {r.gcc_no && <div style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 10.5, color: SLATE[400] }}>GCC-{r.gcc_no}</div>}
                     </td>
                     <td style={{ padding: '9px 12px', color: SLATE[600], maxWidth: 380 }}>{r.message}</td>
                     <td style={{ padding: '9px 12px', color: SLATE[500], whiteSpace: 'nowrap' }}>{fmtDate(r.detected_at)}</td>

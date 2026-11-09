@@ -7,16 +7,31 @@
 //   charts   lib/mockTestCharts.js   SVG charts (screen + print)
 //   reports  lib/mockTestReports.js  A4 print documents
 //   store    lib/mockTestStore.js    Supabase table + browser fallback
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react';
 import {
-  DEFAULT_SERIES, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
+  DEFAULT_SERIES, MEGA_SERIES, inScope, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
-import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
+import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML, examInsightsHTML, parentReportsHTML, watchListHTML } from './lib/mockTestReports';
+import { COURSES, OTHER_COURSE, courseOfBatch, filterByCourse, courseCounts } from './lib/mockTestCourse';
+import { normalizeCuts, groupByCuts, defaultCuts, cutLabel } from './lib/mockTestExam';
+import { EXAMS, EXAM_IDS, examOfBatch, examStudents, qualifyProbability, qualifyBand, MIN_TESTS_SAFE, simulate, scoreNeeded, watchList, groupOfRank, seatPrediction, sectionAnalysis, compareSeries } from './lib/mockTestExam';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount, loadGroupChoices, saveGroupChoice, clearGroupChoices, GROUP_BASIS_ALL, loadGroupMentors, saveGroupMentor, mentorKey, loadClassLanguages, saveClassLanguage, loadRemoved, saveRemoved, loadCustomGroups, saveCustomGroup, deleteCustomGroup, newGroupId, loadSchedule, saveScheduleEntry, resetSchedule, loadExamConfig, saveExamConfig } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
+import { classGroups, subjectsOf, languageOfBatch, LANGUAGES, GROUP_META } from './lib/mockTestGroups';
+import { loadHouseDirectory } from './houseDirectory';
+import MockGroupReport from './MockGroupReport';
+import MockDutyDesk from './MockDutyDesk';
+import MockRevisionPlan from './MockRevisionPlan';
+import { InstructionForm, InstructionSummary } from './DutyInstruction';
+import { pickInstruction, hasInstruction, slotText, DAYS } from './lib/dutyInstruction';
+import { mergeSchedule, withSchedule, stripScheduleDefaults } from './lib/studySchedule';
+import { collectDuties, assignmentsFrom, parseScope, mixScope, dutyRoomClashes } from './lib/mockTestDuty';
+import { sheetName } from './lib/mockTestReport';
+import { printPremium, ICON } from './lib/printPremium';
+import { loggedInName } from './lib/collector';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
@@ -37,6 +52,9 @@ const SUBTABS = [
   { id: 'student', color: '#0e7490', icon: 'student', label: 'Student Analyser' },
   { id: 'subject', color: '#b45309', icon: 'subject', label: 'Subject Analysis' },
   { id: 'batch', color: '#047857', icon: 'batch', label: 'Batch / Test Report' },
+  { id: 'groups', color: '#be185d', icon: 'groups', label: 'Self-Study Groups' },
+  { id: 'exam', color: '#9a3412', icon: 'batch', label: 'Navodaya / Sainik Insights' },
+  { id: 'revision', color: '#0369a1', icon: 'subject', label: 'Revision Plan' },
   { id: 'data', color: '#6d28d9', icon: 'data', label: 'Upload & Data' },
 ];
 
@@ -78,16 +96,23 @@ const MOBILE_CSS = `
   .mta .mta-half { flex: 1 1 calc(50% - 6px); }
   .mta .mta-svg { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .mta .mta-svg > div { min-width: var(--mw, 0); }
+  /* sub-tabs: two per row, every tab visible (no sideways scrolling) */
+  .mta .mta-tabs { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px !important; }
+  .mta .mta-tab { width: 100%; min-width: 0; min-height: 40px; padding: 4px 10px 4px 5px !important; gap: 7px !important; font-size: 12.5px !important; white-space: normal !important; text-align: left; line-height: 1.2; }
+  .mta .mta-tab > span:first-child { width: 26px !important; height: 26px !important; }
 }`;
 
-export default function MockTestAnalyzer({ institute, currentUser, canUpload = true, canDelete = false }) {
+// scope: 'pre' = the Pre Mock Test tab, 'mega' = the Mega Mock Test tab. Each keeps its own series.
+export default function MockTestAnalyzer({ institute, currentUser, canUpload = true, canDelete = false, scope = 'pre' }) {
+  const mega = scope === 'mega';
+  const homeSeries = mega ? MEGA_SERIES : DEFAULT_SERIES;
   const [tab, setTab] = useState('overview');
   const [allRows, setAllRows] = useState([]);
   const [mode, setMode] = useState('cloud');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [series, setSeries] = useState(DEFAULT_SERIES);
+  const [series, setSeries] = useState(homeSeries);
   // Pass marks live per series in Supabase (mock_test_settings) so they follow the user across devices.
   const [cfg, setCfg] = useState({});
   const cfgRef = useRef({});
@@ -117,9 +142,9 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
 
   const apply = useCallback((r) => {
     setAllRows(r.rows); setMode(r.mode); setNote(r.note); setErr('');
-    const names = [...new Set(r.rows.map((x) => x.series))];
+    const names = [...new Set(r.rows.map((x) => x.series))].filter((n) => inScope(n, scope));
     setSeries((cur) => (names.length && !names.includes(cur) ? names[0] : cur));
-  }, []);
+  }, [scope]);
   const applyFix = useCallback((f) => { setFixes(f.fixes); setFixMode(f.mode); }, []);
   const reload = useCallback(async () => {
     try { apply(await loadAll()); applyFix(await loadFixes()); } catch (e) { setErr(e.message || String(e)); }
@@ -133,7 +158,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
     return () => { live = false; };
   }, [apply, applyFix]);
 
-  const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].sort(), [allRows]);
+  const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].filter((n) => inScope(n, scope)).sort(), [allRows, scope]);
   // uploaded rows -> saved Student Data Fix Engine rules -> identity matching
   const seriesRaw = useMemo(() => allRows.filter((r) => r.series === series), [allRows, series]);
   const resolved = useMemo(() => resolveIdentities(applyFixes(seriesRaw, fixes.filter((f) => !f.series || f.series === series))), [seriesRaw, fixes, series]);
@@ -141,10 +166,16 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   // Upload & Data tab keeps working on the full records.
   const [filter, setFilter] = useState(emptyFilter);
   const filterOn = isFilterActive(filter);
-  const rows = useMemo(() => applyDataFilter(resolved, filter), [resolved, filter]);
-  const metaAll = useMemo(() => seriesMeta(resolved), [resolved]);
+  // Course switcher (Sainik / Navodaya / Foundation): scopes every analysis tab.
+  const [course, setCourse] = useState('');
+  const counts = useMemo(() => courseCounts(resolved), [resolved]);
+  const scoped = useMemo(() => filterByCourse(resolved, course), [resolved, course]);
+  const rows = useMemo(() => applyDataFilter(scoped, filter), [scoped, filter]);
+  const metaAll = useMemo(() => seriesMeta(scoped), [scoped]);
+  const metaFull = useMemo(() => seriesMeta(resolved), [resolved]);
   const meta = useMemo(() => seriesMeta(rows), [rows]);
   const changeSeries = useCallback((s) => { setSeries(s); setFilter(emptyFilter()); }, []);
+  const changeCourse = useCallback((c) => { setCourse(c); setFilter(emptyFilter()); }, []);
   // Remount the analysis views when the available batches / tests / subjects change,
   // so a stale dropdown selection can never point at data the filter removed.
   const viewKey = `${meta.batches.join('|')}#${meta.tests.join('|')}#${meta.subjects.join('|')}`;
@@ -165,7 +196,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         </Field>
       ))}
       <div style={{ fontSize: 12, color: '#5d6b82', paddingBottom: 8 }}>
-        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${resolved.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
+        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${scoped.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
         {' · '}<b style={{ color: mode === 'cloud' ? '#047857' : '#b45309' }}>{mode === 'cloud' ? 'Saved to database' : 'Saved in this browser only'}</b>
       </div>
     </div>
@@ -179,43 +210,298 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
-      {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+      {resolved.length ? (
+        <div className="mta-courses" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+          {[{ id: '', label: 'All courses', icon: '📚', color: NAVY, hint: 'Sainik + Navodaya + Foundation' }, ...COURSES, ...(counts.other ? [OTHER_COURSE] : [])].map((c) => {
+            const on = course === c.id;
+            return (
+              <button key={c.id || 'all'} onClick={() => changeCourse(c.id)} style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', borderRadius: 14, border: `2px solid ${on ? c.color : '#e8e3d8'}`, background: on ? c.color : '#fff', color: on ? '#fff' : '#0f1b2e', boxShadow: on ? `0 4px 12px ${c.color}44` : '0 2px 8px rgba(19,42,79,.05)' }}>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{c.icon} {c.label}</div>
+                <div style={{ fontSize: 11.5, opacity: .85 }}>{counts[c.id] ?? 0} students · {c.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+      {scoped.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={scoped} shown={rows.length} total={scoped.length} /> : null}
+      <div className="mta-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 12px', padding: '2px 0 6px' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
+          <button key={t.id} className="mta-tab" onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 1 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
         ))}
       </div>
-      {!rows.length && tab !== 'data' ? (
+      {!rows.length && tab !== 'data' && tab !== 'revision' ? (
         resolved.length ? (
           <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
             <div style={{ fontSize: 34 }}>🔎</div>
             <div style={{ fontWeight: 700, margin: '6px 0' }}>No results match the current filter</div>
-            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{describeFilter(filter)}</div>
-            <button style={ui.btn} onClick={() => setFilter(emptyFilter())}>Clear filter</button>
+            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{[course ? `Course: ${[...COURSES, OTHER_COURSE].find((c) => c.id === course)?.label}` : '', filterOn ? describeFilter(filter) : ''].filter(Boolean).join(' · ')}</div>
+            <button style={ui.btn} onClick={() => { setFilter(emptyFilter()); setCourse(''); }}>Clear filter &amp; course</button>
           </div>
         ) : (
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
           <div style={{ fontSize: 34 }}>📊</div>
           <div style={{ fontWeight: 700, margin: '6px 0' }}>No mock-test results for “{series}” yet</div>
-          <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.</div>
+          <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{mega ? 'Upload the Mega Mock Test Excel result sheets to start analysing.' : 'Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.'}</div>
           <button style={ui.btn} onClick={() => setTab('data')}>Go to Upload &amp; Data</button>
         </div>
         )
       ) : null}
-      {rows.length && tab === 'overview' ? <Overview key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'overview' ? <Overview key={`${series}|${viewKey}`} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} seriesName={series} who={who} canEdit={canUpload} /> : null}
       {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
       {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} passBy={passBy} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'groups' ? <GroupsView key={`${series}|${viewKey}`} rows={rows} institute={institute} series={seriesLabel} seriesName={series} canEdit={canUpload} who={who} passPct={passPct} currentUser={currentUser} /> : null}
+      {rows.length && tab === 'exam' ? <ExamInsights key={`${series}|${viewKey}`} rows={rows} series={series} seriesLabel={seriesLabel} scope={scope} institute={institute} who={who} canEdit={canUpload} otherNames={[...new Set(allRows.map((r) => r.series))].filter((n) => !inScope(n, scope)).sort()} loadOther={(n) => resolveIdentities(applyFixes(allRows.filter((r) => r.series === n), fixes.filter((f) => !f.series || f.series === n)))} /> : null}
+      {tab === 'revision' ? <MockRevisionPlan key={`${series}|${viewKey}`} rows={rows} series={seriesLabel} passPct={passPct} institute={institute} /> : null}
       {tab === 'data' ? (
-        <DataView allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
+        <DataView scope={scope} allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaFull} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
   );
 }
 
+
+// ─── Navodaya / Sainik insights ───────────────────────────────────────────────
+function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames, loadOther, who, canEdit }) {
+  // Cut-offs, seats and batch→exam choices are stored per series in the database
+  // (mock_test_settings.exam_config) so every teacher and device sees the same targets.
+  const [conf, setConf] = useState({});
+  const [ready, setReady] = useState(false);
+  const [saveMode, setSaveMode] = useState('cloud');
+  const [saveErr, setSaveErr] = useState('');
+  const timer = useRef(null);
+  const confRef = useRef({});
+  const pending = useRef(null);
+  useEffect(() => {
+    let live = true;
+    loadExamConfig(series).then((r) => { if (live) { confRef.current = r.config; setConf(r.config); setSaveMode(r.mode); } })
+      .catch((e) => { if (live) setSaveErr(`Could not load saved targets: ${e.message || e}`); })
+      .finally(() => { if (live) setReady(true); });
+    return () => { live = false; clearTimeout(timer.current); if (pending.current) pending.current(); };   // flush a pending save on tab change
+  }, [series]);
+  const persist = (next) => {
+    confRef.current = next; setConf(next); setSaveErr('');
+    pending.current = () => { pending.current = null; saveExamConfig(series, confRef.current, saveMode, who || '').catch((e) => setSaveErr(`Could not save targets: ${e.message || e}`)); };
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => pending.current && pending.current(), 500);
+  };
+  const getCfg = (ex) => {
+    const raw = { cutoff: EXAMS[ex].cutoff, seats: EXAMS[ex].seats, sectionMin: EXAMS[ex].sectionMin, ...(conf[ex] || {}) };
+    return { cutoff: Math.min(100, Math.max(0, Number(raw.cutoff) || 0)), seats: Math.max(0, Math.floor(Number(raw.seats) || 0)), sectionMin: Math.min(100, Math.max(0, Number(raw.sectionMin) || 0)) };
+  };
+  const setCfg = (ex, patch) => persist({ ...conf, [ex]: { ...getCfg(ex), ...patch } });
+  const override = conf.override || EMPTY_OBJ;
+  const setOv = (batch, v) => {
+    const n = { ...override, [batch]: v };
+    if (!v) delete n[batch];
+    persist({ ...conf, override: n });
+  };
+  const batches = useMemo(() => [...new Set(rows.map((r) => r.batch))].sort(), [rows]);
+  const students = useMemo(() => examStudents(rows, override), [rows, override]);
+  const present = EXAM_IDS.filter((ex) => students.some((s) => s.exam === ex));
+  const [exam, setExam] = useState('');
+  const active = present.includes(exam) ? exam : present[0] || '';
+  const [otherSeries, setOtherSeries] = useState('');
+  const [simSid, setSimSid] = useState('');
+  const [simPct, setSimPct] = useState(70);
+  const [parentSid, setParentSid] = useState('');
+  const otherStudents = useMemo(() => (otherSeries ? examStudents(loadOther(otherSeries), override) : []), [otherSeries, override]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mapper = (
+    <div style={ui.card}>
+      <h4 style={{ margin: '0 0 6px' }}>Which batch prepares for which exam?</h4>
+      <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>Detected from the batch name (“Navodaya…” / “Sainik…”). Change any batch below if it was detected wrongly.</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {batches.map((b) => (
+          <Field key={b} label={b}>
+            <select style={ui.input} disabled={!canEdit} value={override[b] || ''} onChange={(e) => setOv(b, e.target.value)}>
+              <option value="">Auto ({EXAMS[examOfBatch(b)]?.short || 'none'})</option>
+              {EXAM_IDS.map((ex) => <option key={ex} value={ex}>{EXAMS[ex].short}</option>)}
+              <option value="none">Not applicable</option>
+            </select>
+          </Field>
+        ))}
+      </div>
+    </div>
+  );
+  if (!ready) return <div style={{ padding: 30, textAlign: 'center', color: '#8a93a6' }}>⏳ Loading saved targets…</div>;
+  if (!active) return <>{mapper}<div style={{ ...ui.card, textAlign: 'center', padding: 30, color: '#5d6b82' }}>No batch is mapped to Navodaya or Sainik yet. Pick the exam for a batch above.</div></>;
+
+  const ex = active, E = EXAMS[ex], cfg = getCfg(ex);
+  const pool = students.filter((s) => s.exam === ex);
+  const sp = seatPrediction(pool, { seats: cfg.seats, cutoff: cfg.cutoff });
+  const secs = sectionAnalysis(pool, ex, sp.selected.map((s) => s.sid), cfg.sectionMin);
+  const probOf = new Map(pool.map((s) => [s.sid, qualifyProbability(s, cfg.cutoff)]));
+  const selIds = new Set(sp.selected.map((s) => s.sid));
+  const cmp = otherSeries ? compareSeries(
+    (mega_(scope) ? otherStudents : pool).filter((x) => x.exam === ex),
+    (mega_(scope) ? pool : otherStudents).filter((x) => x.exam === ex),
+  ) : null;
+  const watch = watchList(pool, cfg.cutoff);
+  const simStudent = pool.find((x) => x.sid === simSid) || pool[0];
+  const sim = simStudent ? simulate(simStudent, simPct, pool, { cutoff: cfg.cutoff, seats: cfg.seats }) : null;
+  const simBefore = simStudent ? { probability: probOf.get(simStudent.sid), position: sp.sorted.findIndex((x) => x.sid === simStudent.sid) + 1, status: selIds.has(simStudent.sid) ? 'Selected' : sp.waiting.includes(simStudent) ? 'Waiting' : 'Below cut-off' } : null;
+  const need = simStudent ? scoreNeeded(simStudent, cfg.cutoff) : null;
+  const printParents = (list) => printDocument(parentReportsHTML({ exam: E, cfg, series: seriesLabel, institute, sp, probOf, students: list }), `${seriesLabel} — ${E.short} parent reports`, institute);
+  const printWatch = () => printDocument(watchListHTML({ exam: E, series: seriesLabel, institute, items: watch }), `${seriesLabel} — ${E.short} watch-list`, institute);
+  const exportXlsx = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const add = (name, data) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{ Note: 'No data' }]), name);
+    const lb = [...pool].sort((a, b) => b.avgTotal - a.avgTotal);
+    add('Qualify & seats', sp.sorted.map((x, i) => ({ '#': i + 1, Group: groupOfRank(i, sp.sorted.length), Student: x.name, GCC: x.gcc, Batch: x.batch, Tests: x.tests, 'Avg %': r1(x.avgPct), 'Projected %': r1(x.projected), 'Trend / test': r1(x.trend), 'Qualify chance %': r1(probOf.get(x.sid) * 100), Band: qualifyBand(probOf.get(x.sid), x.tests).label, Seat: selIds.has(x.sid) ? 'Selected' : sp.waiting.includes(x) ? 'Waiting' : 'Below cut-off' })));
+    add('Leaderboard (6 groups)', lb.map((x, i) => ({ '#': i + 1, Group: groupOfRank(i, lb.length), Student: x.name, GCC: x.gcc, Batch: x.batch, 'Avg %': r1(x.avgPct), 'Avg total': r1(x.avgTotal) })));
+    add('Sections', secs.map((x) => ({ Subject: x.subject, Section: x.section, 'Avg %': r1(x.avg), 'Selected group %': r1(x.selAvg), 'Rest %': r1(x.restAvg), Gap: r1(x.gap), 'Weakest for': x.weakFor, [`Below ${cfg.sectionMin}%`]: x.belowMin.join(', ') })));
+    add('Watch-list', watch.map((w, i) => ({ '#': i + 1, Student: w.student.name, GCC: w.student.gcc, Batch: w.student.batch, 'Avg %': r1(w.student.avgPct), Why: w.flags.map((f) => f.text).join(' | ') })));
+    if (cmp) add('Pre vs Mega', cmp.pairs.map((x) => ({ Student: x.name, Batch: x.batch, 'Pre %': r1(x.pre), 'Mega %': r1(x.mega), Change: r1(x.delta), 'Pre rank': x.rankPre, 'Mega rank': x.rankMega, 'Rank move': x.move })));
+    XLSX.writeFile(wb, `${seriesLabel} - ${E.short} insights.xlsx`.replace(/[\\/:*?"<>|]/g, '-'));
+  };
+  const num = (k) => (e) => setCfg(ex, { [k]: Math.max(0, Number(e.target.value) || 0) });
+  const safe = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'Safe').length;
+  const risk = pool.filter((s) => qualifyBand(probOf.get(s.sid), s.tests).label === 'At risk').length;
+
+  const print = () => printDocument(examInsightsHTML({
+    exam: E, cfg, series: seriesLabel, institute, pool, sp, secs, probOf, cmp, preLabel: mega_(scope) ? otherSeries : series, megaLabel: mega_(scope) ? series : otherSeries,
+  }), `${seriesLabel} — ${E.short} insights`, institute);
+
+  return (
+    <>
+      {saveErr ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {saveErr}</div> : null}
+      {mapper}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {present.map((id) => <button key={id} style={chip(id === ex)} onClick={() => setExam(id)}>{EXAMS[id].label} · {students.filter((s) => s.exam === id).length}</button>)}
+      </div>
+      <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <Field label="Cut-off (projected %)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.cutoff} onChange={num('cutoff')} /></Field>
+        <Field label="Seats / target selections"><input type="number" min={0} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.seats} onChange={num('seats')} /></Field>
+        <Field label="Sectional minimum (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} disabled={!canEdit} value={cfg.sectionMin} onChange={num('sectionMin')} /></Field>
+        <div style={{ fontSize: 12, color: '#5d6b82', flex: '1 1 240px' }}>{canEdit ? 'Set these to the targets for this year.' : 'Only users who can upload results can change these targets.'} Projection = recent 3-test average plus half the trend; probability uses the student&apos;s score consistency. Saved to the database for this series{saveMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'}.</div>
+        <button style={ui.btn} onClick={print}>🖨️ Print {E.short} insights</button>
+        <button style={ui.ghost} onClick={exportXlsx}>⬇️ Excel (all sheets)</button>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Stat label="Students" value={pool.length} sub={E.label} color={E.color} />
+        <Stat label="Above cut-off" value={pool.length - sp.below.length} sub={`${sp.below.length} below`} color="#047857" />
+        <Stat label="Projected selections" value={`${sp.selected.length}/${cfg.seats}`} sub={sp.waiting.length ? `${sp.waiting.length} waiting list` : 'no waiting list'} color={NAVY} />
+        <Stat label="Safe / At risk" value={`${safe} / ${risk}`} sub="by qualify chance" color="#b45309" />
+        <Stat label="Seat-line margin" value={sp.margin === null ? '—' : `${fx(sp.margin)} pts`} sub={sp.lastIn ? `last in: ${sp.lastIn.name}` : ''} color="#be123c" />
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🎯 Qualify probability &amp; seat prediction</h4>
+        <Table maxH={520} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg %', 'Projected %', 'Trend', 'Qualify chance', 'Status', 'Seat']}>
+          {sp.sorted.map((s, i) => {
+            const p = probOf.get(s.sid), band = qualifyBand(p, s.tests);
+            const seat = selIds.has(s.sid) ? ['Selected', '#047857'] : sp.waiting.includes(s) ? ['Waiting', '#b45309'] : ['Below cut-off', '#b91c1c'];
+            return (
+              <tr key={s.sid} style={sp.bubble.includes(s) ? { background: '#fffbeb' } : undefined}>
+                <td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
+                <td style={ui.td}>{fx(s.avgPct)}%</td><td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.projected)}%</td><td style={{ ...ui.td, color: tone(s.trend, 1) }}>{s.tests >= 2 ? sgn(s.trend) : '—'}</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: band.color }}>{fx(p * 100, 0)}%{s.tests < MIN_TESTS_SAFE ? <span title={`Fewer than ${MIN_TESTS_SAFE} tests — low confidence, cannot be marked Safe`}> ⚠</span> : null}</td>
+                <td style={ui.td}><Pill text={band.label} color={band.color} /></td><td style={ui.td}><Pill text={seat[0]} color={seat[1]} /></td>
+              </tr>
+            );
+          })}
+        </Table>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Shaded rows are within 5 points of the seat line — the students where extra coaching changes the result.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🧩 Section-wise analysis</h4>
+        <Table head={['Subject', 'Section', 'Avg %', 'Selected group', 'Rest', 'Gap', 'Weakest for', ...(cfg.sectionMin ? [`Below ${cfg.sectionMin}%`] : [])]}>
+          {secs.map((x) => (
+            <tr key={x.subject}>
+              <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>{x.subject}</td><td style={ui.td}>{x.section || '—'}</td>
+              <td style={{ ...ui.td, background: heatBg(x.avg) }}>{fx(x.avg)}%</td><td style={ui.td}>{fx(x.selAvg)}%</td><td style={ui.td}>{fx(x.restAvg)}%</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: tone(-(x.gap || 0), 5) }}>{x.gap === null ? '—' : sgn(x.gap)}</td><td style={ui.td}>{x.weakFor} students</td>
+              {cfg.sectionMin ? <td style={{ ...ui.td, color: x.belowMin.length ? '#b91c1c' : '#047857', fontWeight: 700, whiteSpace: 'normal' }}>{x.belowMin.length ? `${x.belowMin.length}: ${x.belowMin.slice(0, 4).join(', ')}${x.belowMin.length > 4 ? '…' : ''}` : 'None'}</td> : null}
+            </tr>
+          ))}
+        </Table>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>“Gap” = how far the projected-selected group leads the rest; the biggest gaps are the subjects that decide selection. Sectional minimum flags students who could be rejected despite a good total.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🧪 What-if simulator</h4>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+          <Field label="Student"><select style={ui.input} value={simStudent?.sid || ''} onChange={(e) => setSimSid(e.target.value)}>{sp.sorted.map((x) => <option key={x.sid} value={x.sid}>{x.name} · {x.batch}</option>)}</select></Field>
+          <Field label={`Next test score: ${simPct}%`}><input type="range" min={0} max={100} value={simPct} onChange={(e) => setSimPct(Number(e.target.value))} style={{ width: 220 }} /></Field>
+        </div>
+        {sim && simBefore ? (
+          <>
+            <Table head={['', 'Qualify chance', 'Projected %', 'Position', 'Seat']}>
+              <tr><td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>Now</td><td style={ui.td}>{fx(simBefore.probability * 100, 0)}%</td><td style={ui.td}>{fx(simStudent.projected)}%</td><td style={ui.td}>{simBefore.position}</td><td style={ui.td}>{simBefore.status}</td></tr>
+              <tr><td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>If next test = {simPct}%</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: tone(sim.probability - simBefore.probability, 0.005) }}>{fx(sim.probability * 100, 0)}%</td><td style={ui.td}>{fx(sim.projected)}%</td>
+                <td style={{ ...ui.td, fontWeight: 700, color: tone(simBefore.position - sim.position) }}>{sim.position}</td><td style={ui.td}>{sim.status}</td></tr>
+            </Table>
+            <div style={{ fontSize: 13, marginTop: 8 }}>🎯 {need === null ? (simStudent.tests + 1 < MIN_TESTS_SAFE ? 'Needs at least 3 tests in total before a “Safe” rating is possible.' : 'Even a perfect next test will not make this student “Safe” — several strong tests are needed.') : <>Score at least <b>{need}%</b> in the next test to reach a “Safe” qualify chance.</>}</div>
+          </>
+        ) : null}
+      </div>
+
+      <div style={ui.card}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, flex: 1 }}>🚨 Watch-list — {watch.length} students need attention</h4>
+          <button style={ui.ghost} disabled={!watch.length} onClick={printWatch}>🖨️ Print watch-list</button>
+        </div>
+        {watch.length ? (
+          <Table maxH={380} head={['Student', 'Batch', 'Avg %', 'Why']}>
+            {watch.map((w) => (
+              <tr key={w.student.sid}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{w.student.name}</td><td style={ui.td}>{w.student.batch}</td><td style={ui.td}>{fx(w.student.avgPct)}%</td>
+                <td style={{ ...ui.td, textAlign: 'left', whiteSpace: 'normal' }}>{w.flags.map((f, k) => <div key={k} style={{ color: f.severity >= 3 ? '#b91c1c' : f.severity === 2 ? '#b45309' : '#64748b' }}>• {f.text}</div>)}</td></tr>
+            ))}
+          </Table>
+        ) : <i style={{ color: '#5d6b82' }}>No student is flagged right now.</i>}
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Flags: sharp drop in the latest test, falling trend, missed tests, “At risk” qualify chance, too few tests.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>👨‍👩‍👧 Parent / student progress reports</h4>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Field label="One student"><select style={ui.input} value={parentSid} onChange={(e) => setParentSid(e.target.value)}><option value="">— choose —</option>{sp.sorted.map((x) => <option key={x.sid} value={x.sid}>{x.name} · {x.batch}</option>)}</select></Field>
+          <button style={ui.btn} disabled={!parentSid} onClick={() => printParents(pool.filter((x) => x.sid === parentSid))}>🖨️ Print this report</button>
+          <button style={ui.ghost} onClick={() => printParents(sp.sorted)}>🖨️ Print all {pool.length} (one page each)</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>One A4 page per student: score by test, subject strengths, class position and group, chance of selection and the mentor&apos;s advice, with signature lines.</div>
+      </div>
+
+      <div style={ui.card}>
+        <h4 style={{ margin: '0 0 8px' }}>🔁 {mega_(scope) ? 'Pre Mock vs Mega Mock' : 'Pre Mock vs Mega Mock'} comparison</h4>
+        <Field label={mega_(scope) ? 'Compare with Pre Mock series' : 'Compare with Mega Mock series'}>
+          <select style={ui.input} value={otherSeries} onChange={(e) => setOtherSeries(e.target.value)}>
+            <option value="">— choose —</option>
+            {otherNames.map((n) => <option key={n}>{n}</option>)}
+          </select>
+        </Field>
+        {!otherNames.length ? <div style={{ fontSize: 13, color: '#5d6b82', marginTop: 8 }}>No {mega_(scope) ? 'Pre Mock' : 'Mega Mock'} results uploaded yet.</div> : null}
+        {cmp ? (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <Stat label="Matched students" value={cmp.matched} sub={cmp.preOnly ? `${cmp.preOnly} only in Pre` : ''} color={NAVY} />
+              <Stat label="Avg change" value={`${sgn(cmp.avgDelta)} pts`} sub="Mega − Pre" color={tone(cmp.avgDelta) === '#4b5870' ? NAVY : tone(cmp.avgDelta)} />
+              <Stat label="Improved" value={cmp.improved} color="#047857" />
+              <Stat label="Declined" value={cmp.declined} color="#b91c1c" />
+            </div>
+            <Table maxH={420} head={['Student', 'Batch', 'Pre %', 'Mega %', 'Change', 'Pre rank', 'Mega rank', 'Rank move']}>
+              {cmp.pairs.map((x, i) => (
+                <tr key={i}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{x.name}</td><td style={ui.td}>{x.batch}</td><td style={ui.td}>{fx(x.pre)}%</td><td style={ui.td}>{fx(x.mega)}%</td>
+                  <td style={{ ...ui.td, fontWeight: 700, color: tone(x.delta, 1) }}>{sgn(x.delta)}</td><td style={ui.td}>{x.rankPre}</td><td style={ui.td}>{x.rankMega}</td>
+                  <td style={{ ...ui.td, fontWeight: 700, color: tone(x.move) }}>{x.move > 0 ? `▲ ${x.move}` : x.move < 0 ? `▼ ${-x.move}` : '='}</td></tr>
+              ))}
+            </Table>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+const mega_ = (scope) => scope === 'mega';
+
 // ─── Data filter ──────────────────────────────────────────────────────────────
 const chip = (on) => ({ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? NAVY : '#d9d2c2'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : '#2e3b52' });
+const EMPTY_OBJ = {};
 const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
 function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
@@ -325,12 +611,57 @@ function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
+const GROUP_BG = ['#dcfce7', '#ecfccb', '#fef9c3', '#ffedd5', '#fee2e2', '#fecdd3'];
 const passLabel = (b) => (b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`);
 
-function Overview({ rows, meta, passPct, passBy, institute, series }) {
+function Overview({ rows, meta, passPct, passBy, institute, series, seriesName, who, canEdit }) {
   const cmp = useMemo(() => batchComparison(rows, passPct, passBy), [rows, passPct, passBy]);
   const all = useMemo(() => batchAnalysis(rows, '', null, { passPct, passByBatch: passBy }), [rows, passPct, passBy]);
   const subs = meta.subjects;
+  // Raw totals are only comparable when every student's paper has the same maximum; otherwise rank by average %.
+  const sameMax = useMemo(() => new Set(all.students.map((s) => s.max)).size <= 1, [all]);
+  // Group mode: 'equal' = students ÷ 6, or 'manual' = mark ranges the admin sets (saved per series).
+  const [cutsRaw, setCutsRaw] = useState(null);    // null = equal split
+  const [draft, setDraft] = useState(null);        // raw input strings while editing
+  const [cfgMode, setCfgMode] = useState('cloud');
+  const [cfgErr, setCfgErr] = useState('');
+  const cfgRef = useRef({});
+  const saveT = useRef(null);
+  const dirty = useRef(false);
+  const flush = useRef(() => {});
+  useEffect(() => {
+    let live = true;
+    loadExamConfig(seriesName).then((r) => { if (live) { cfgRef.current = r.config || {}; setCutsRaw(normalizeCuts(r.config?.groupCuts)); setCfgMode(r.mode); } }).catch(() => {});
+    return () => { live = false; clearTimeout(saveT.current); if (dirty.current) flush.current(); };   // don't lose a pending save when the tab changes
+  }, [seriesName]);
+  const cuts = normalizeCuts(cutsRaw);
+  const saveCuts = (next) => {
+    setCutsRaw(next); setCfgErr('');
+    cfgRef.current = { ...cfgRef.current, groupCuts: next || undefined };
+    if (!next) delete cfgRef.current.groupCuts;
+    dirty.current = true;
+    flush.current = () => { dirty.current = false; saveExamConfig(seriesName, cfgRef.current, cfgMode, who || '').catch((e) => setCfgErr(`Could not save the groups: ${e.message || e}`)); };
+    clearTimeout(saveT.current);
+    saveT.current = setTimeout(() => flush.current(), 400);
+  };
+  const maxTotal = Math.max(0, ...all.students.map((s) => s.max || 0));
+  const leaderboard = useMemo(() => [...all.students].sort(cuts
+    ? (a, b) => b.avgTotal - a.avgTotal || b.avgPct - a.avgPct || a.name.localeCompare(b.name)
+    : (a, b) => (sameMax ? b.avgTotal - a.avgTotal : 0) || b.avgPct - a.avgPct || b.avgTotal - a.avgTotal || a.name.localeCompare(b.name)), [all, sameMax, cutsRaw]); // eslint-disable-line react-hooks/exhaustive-deps
+  const GROUPS = 6;
+  const { groupOf, groupStart, groupSize } = useMemo(() => {
+    const n = leaderboard.length;
+    const groupOf = [], groupStart = [];
+    const sizes = cuts
+      ? Array.from({ length: GROUPS }, (_, g) => leaderboard.filter((s) => groupByCuts(s.avgTotal, cuts) === g).length)
+      : Array.from({ length: GROUPS }, (_, g) => Math.floor(n / GROUPS) + (g < n % GROUPS ? 1 : 0));
+    let i = 0;
+    sizes.forEach((size, g) => { for (let k = 0; k < size; k++, i++) { groupOf[i] = g; groupStart[i] = i - k; } });
+    return { groupOf, groupStart, groupSize: sizes };
+  }, [leaderboard, cutsRaw]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startManual = () => saveCuts(cuts || defaultCuts(maxTotal));
+  const editCut = (i, v) => setDraft((d) => { const n = [...(d || cuts)]; n[i] = v; return n; });
+  const applyDraft = () => { const n = normalizeCuts(draft); if (n) { saveCuts(n); setDraft(null); } else setCfgErr('Enter a mark (0 or more) for all 5 boundaries.'); };
   const trend = lineChart({
     labels: all.perTest.map((t) => `T${t.test_no}`), yMax: 100, unit: '%', title: 'Institute average % by test',
     series: [{ name: 'Overall', color: NAVY, values: all.perTest.map((t) => t.avgPct), thick: true },
@@ -355,6 +686,47 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
         <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={batchBars} /></div>
       </div>
       <div style={ui.card}>
+        <h4 style={{ margin: '0 0 4px' }}>🏆 Toppers → lowest — total marks of all subjects</h4>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px' }}>
+          <button style={chip(!cuts)} disabled={!canEdit && !!cuts} onClick={() => { setDraft(null); saveCuts(null); }}>Equal 6 groups</button>
+          <button style={chip(!!cuts)} disabled={!canEdit && !cuts} onClick={startManual}>Manual groups by total marks</button>
+          {!canEdit ? <span style={{ fontSize: 12, color: '#8a93a6' }}>Only users who can upload results can change the groups.</span> : null}
+        </div>
+        {cuts ? (
+          <div style={{ background: '#faf7ef', border: '1px solid #eee7d6', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 6 }}>Set the <b>minimum average total</b> for each group{maxTotal ? ` (maximum total is ${maxTotal})` : ''}. Group 6 is everyone below Group 5&apos;s mark.</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {(draft || cuts).map((c, i) => (
+                <Field key={i} label={`Group ${i + 1} from`}><input type="number" min={0} disabled={!canEdit} style={{ ...ui.input, width: 90, background: GROUP_BG[i] }} value={c} onChange={(e) => editCut(i, e.target.value)} /></Field>
+              ))}
+              {canEdit ? <>
+                <button style={ui.btn} disabled={!draft} onClick={applyDraft}>Apply</button>
+                <button style={ui.ghost} onClick={() => { setDraft(null); saveCuts(defaultCuts(maxTotal)); }}>Fill from max (80/65/50/40/30%)</button>
+              </> : null}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {groupSize.map((n, g) => <span key={g} style={{ background: GROUP_BG[g], borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>G{g + 1} ({cutLabel(g, cuts)}): {n}</span>)}
+            </div>
+            {!sameMax ? <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>⚠ Batches have different maximum totals — marks ranges compare raw totals.</div> : null}
+            {cfgErr ? <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 6 }}>{cfgErr}</div> : null}
+            <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 6 }}>Saved for this series{cfgMode === 'cloud' ? '' : ' (this browser only until the database update is applied)'} · used in the printed institute report too.</div>
+          </div>
+        ) : null}
+        <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>{sameMax ? 'Ranked by average total marks across all tests' : 'Batches have different maximum totals, so students are ranked by average % (total marks shown alongside)'} ({all.students.length} students, all batches), split into {GROUPS} {cuts ? 'manual mark-range' : 'equal'} groups.</div>
+        <Table maxH={560} head={['#', 'Student', 'GCC', 'Batch', 'Tests', 'Avg total', 'Out of', 'Avg %', 'Best total']}>
+          {leaderboard.map((s, i) => (
+            <Fragment key={s.sid}>
+            {i === groupStart[i] && groupOf[i] !== undefined ? (
+              <tr><td colSpan={9} style={{ ...ui.td, textAlign: 'left', fontWeight: 800, background: GROUP_BG[groupOf[i]], color: NAVY }}>Group {groupOf[i] + 1} of {GROUPS}{cuts ? ` · ${cutLabel(groupOf[i], cuts)} marks` : ''} · {groupSize[groupOf[i]]} students · {groupOf[i] === 0 ? 'top' : groupOf[i] === GROUPS - 1 ? 'lowest' : 'middle'}</td></tr>
+            ) : null}
+            <tr><td style={{ ...ui.td, fontWeight: 700 }}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td><td style={ui.td}>{s.tests}</td>
+              <td style={{ ...ui.td, fontWeight: 700 }}>{fx(s.avgTotal, 2)}</td><td style={ui.td}>{s.max ?? '—'}</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(s.avgPct, passPct).color }}>{fx(s.avgPct)}%</td><td style={ui.td}>{fx(s.best, 2)}</td></tr>
+            </Fragment>
+          ))}
+        </Table>
+      </div>
+      <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Batch comparison</h4>
         <Table head={['Batch', 'Students', 'Tests', 'Avg %', 'Pass % (mark)', 'Highest', ...subs.map((s) => `${s} %`)]}>
           {cmp.map((c) => (
@@ -370,7 +742,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
         <h4 style={{ margin: '0 0 8px' }}>Subject difficulty — all batches</h4>
         <Svg minW={440} html={hBars({ items: [...all.perSubject].sort((a, b) => a.avgPct - b.avgPct).map((s) => ({ label: s.subject, value: s.avgPct, color: subjColor(subs, s.subject) })), width: 640 })} />
         <div style={{ marginTop: 10 }}>
-          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series }), `${series} — Institute report`)}>🖨️ Print institute report</button>
+          <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series, groupCuts: cuts }), `${series} — Institute report`, institute)}>🖨️ Print institute report</button>
         </div>
       </div>
     </>
@@ -400,7 +772,7 @@ function StudentView({ rows, meta, passPct, passBy, institute, series }) {
 
   const printAll = () => {
     const html = list.map((s) => studentReportHTML(studentAnalysis(rows, s.sid, { passPct, passByBatch: passBy }), ctx)).join('');
-    printDocument(html, `${series} — Student reports${batch ? ' · ' + batch : ''}`);
+    printDocument(html, `${series} — Student reports${batch ? ' · ' + batch : ''}`, institute);
   };
 
   return (
@@ -418,7 +790,7 @@ function StudentView({ rows, meta, passPct, passBy, institute, series }) {
         <button className="mta-half" style={ui.ghost} disabled={idx <= 0} onClick={() => setSid(list[idx - 1].sid)}>◀ Prev</button>
         <button className="mta-half" style={ui.ghost} disabled={idx < 0 || idx >= list.length - 1} onClick={() => setSid(list[idx + 1].sid)}>Next ▶</button>
       </div>
-      {!a ? <div style={ui.card}>No student matches the filter.</div> : <StudentCard a={a} onPrint={() => printDocument(studentReportHTML(a, ctx), `${a.name} — Performance report`)} onPrintAll={printAll} count={list.length} batch={batch} />}
+      {!a ? <div style={ui.card}>No student matches the filter.</div> : <StudentCard a={a} onPrint={() => printDocument(studentReportHTML(a, ctx), `${a.name} — Performance report`, institute)} onPrintAll={printAll} count={list.length} batch={batch} />}
     </>
   );
 }
@@ -532,8 +904,8 @@ function SubjectView({ rows, meta, passPct, passBy, institute, series }) {
         <Field label="Subject"><select style={ui.input} value={ps.subject} onChange={(e) => setSubject(e.target.value)}>{meta.subjects.map((s) => <option key={s}>{s}</option>)}</select></Field>
         <Field label="Batch"><select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}><option value="">All batches</option>{meta.batches.map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Test"><select style={ui.input} value={test} onChange={(e) => setTest(e.target.value)}><option value="">All tests</option>{meta.tests.map((t) => <option key={t} value={t}>Test {t}</option>)}</select></Field>
-        <button style={ui.btn} onClick={() => printDocument(subjectReportHTML(b, ps.subject, { institute, series }), `${ps.subject} — Subject analysis`)}>🖨️ Print subject report</button>
-        <button style={ui.ghost} onClick={() => printDocument(b.meta.subjects.map((s) => subjectReportHTML(b, s, { institute, series })).join(''), 'All subjects — analysis')}>🖨️ Print all subjects</button>
+        <button style={ui.btn} onClick={() => printDocument(subjectReportHTML(b, ps.subject, { institute, series }), `${ps.subject} — Subject analysis`, institute)}>🖨️ Print subject report</button>
+        <button style={ui.ghost} onClick={() => printDocument(b.meta.subjects.map((s) => subjectReportHTML(b, s, { institute, series })).join(''), 'All subjects — analysis', institute)}>🖨️ Print all subjects</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Average" value={`${fx(ps.avg, 2)}/${ps.max}`} sub={`${fx(ps.avgPct)}%`} color={ps.label.color} />
@@ -592,7 +964,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12 }}>
         <Field label="Batch"><select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)}><option value="">All batches</option>{meta.batches.map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Test"><select style={ui.input} value={test} onChange={(e) => setTest(e.target.value)}><option value="">All tests</option>{meta.tests.map((t) => <option key={t} value={t}>Test {t}</option>)}</select></Field>
-        <button style={ui.btn} onClick={() => printDocument(batchReportHTML(b, { institute, series }), `${series} — ${batch || 'All batches'} report`)}>🖨️ Print report</button>
+        <button style={ui.btn} onClick={() => printDocument(batchReportHTML(b, { institute, series }), `${series} — ${batch || 'All batches'} report`, institute)}>🖨️ Print report</button>
         <button style={ui.ghost} onClick={exportXlsx}>⬇️ Export ranking (Excel)</button>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -640,7 +1012,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
 // ─── Upload & data ────────────────────────────────────────────────────────────
 const SEED_SUBJECTS = ['Mental Ability', 'EVS', 'Mathematics', 'Passage'];
 
-function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
+function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
   const [files, setFiles] = useState([]);
   const [seriesEdit, setNewSeries] = useState(null);
   const newSeries = seriesEdit ?? series;
@@ -690,6 +1062,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   const saveAll = async () => {
     const ok = files.filter(valid);
     if (!ok.length) return;
+    if (!inScope(newSeries.trim(), scope)) { setMsg(scope === 'mega' ? '❌ Mega Mock Test results must be saved into a series with “Mega” in its name (for example “Mega Mock Test 2026”).' : '❌ This tab is for Pre Mock Tests — a series with “Mega” in its name belongs in the Mega Mock Test tab.'); return; }
     setBusy('Saving…'); setMsg('');
     try {
       const rows = ok.flatMap(buildRows);
@@ -703,14 +1076,15 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   };
 
   const loadSeed = async () => {
-    if (!window.confirm('Load the built-in Pre Mock Test 2026 data (24 sheets, 1,046 results)? Sheets already saved for the same test and batch will be replaced.')) return;
+    const seed = (await import('./data/preMockTest2026.json')).default;
+    const sheets = new Set(seed.map((r) => `${r[0]}|${r[1]}`)).size, tests = new Set(seed.map((r) => r[0])).size, batches = new Set(seed.map((r) => r[1])).size;
+    if (!window.confirm(`Load the built-in Pre Mock Test 2026 data (${sheets} sheets, ${seed.length.toLocaleString('en-IN')} results — ${tests} tests · ${batches} batches)? Sheets already saved for the same test and batch will be replaced.`)) return;
     setBusy('Loading built-in data…'); setMsg('');
     try {
-      const seed = (await import('./data/preMockTest2026.json')).default;
       const rows = rowsFromSeed(seed, DEFAULT_SERIES, SEED_SUBJECTS, 25);
       await saveRows(rows, mode, who || 'seed');
       setSeries(DEFAULT_SERIES);
-      setMsg(`✅ Loaded ${rows.length} results (8 tests · 5 batches).`);
+      setMsg(`✅ Loaded ${rows.length} results (${tests} tests · ${batches} batches).`);
       await reload();
     } catch (e) { setMsg(`❌ ${e.message || e}`); }
     setBusy('');
@@ -776,7 +1150,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
             One sheet per batch per test with columns <b>GCC No · Name · subject columns · Score · Rank</b> (any column order). Several files can be uploaded at once; test number and batch are read from the file name and can be corrected below. Re-uploading the same test + batch replaces the earlier copy.
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <Field label="Save into series" grow><input style={{ ...ui.input, width: '100%' }} list="mta-series" value={newSeries} onChange={(e) => setNewSeries(e.target.value)} /><datalist id="mta-series">{[...new Set(allRows.map((r) => r.series))].map((s) => <option key={s} value={s} />)}</datalist></Field>
+            <Field label="Save into series" grow><input style={{ ...ui.input, width: '100%' }} list="mta-series" value={newSeries} onChange={(e) => setNewSeries(e.target.value)} /><datalist id="mta-series">{[...new Set(allRows.map((r) => r.series))].filter((n) => inScope(n, scope)).map((s) => <option key={s} value={s} />)}</datalist></Field>
             <Field label="Excel / CSV files"><input ref={fileRef} type="file" multiple accept=".xls,.xlsx,.csv" onChange={(e) => e.target.files?.length && onFiles(e.target.files)} /></Field>
           </div>
           {files.map((f) => (
@@ -817,9 +1191,9 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
         </div>
       ) : <div style={{ ...ui.card, fontSize: 13, color: '#5d6b82' }}>You do not have permission to upload results.</div>}
 
-      {canUpload ? (
+      {canUpload && scope !== 'mega' ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>59 result sheets · 13 tests (1, 2, 5–8 and 10–16) · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>
@@ -891,6 +1265,564 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
           </Table>
         ) : <div style={{ color: '#5d6b82', fontSize: 13 }}>Nothing saved yet.</div>}
       </div>
+    </>
+  );
+}
+
+// ─── Self-study groups ────────────────────────────────────────────────────────
+// Every class is split into 7 self-study groups from Group 1 (weakest marks) to Group 7 (strongest),
+// by each student's average % over the tests in view. See lib/mockTestGroups.js.
+const escH = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// "House Master/Mistress: Rohit Sharma (5), Anita Devi (3)" — who is assigned to the students in a group.
+function hmSummary(group, hmOf) {
+  const counts = new Map();
+  group.students.forEach((s) => { const l = hmOf(s.gcc).label || ''; counts.set(l, (counts.get(l) || 0) + 1); });
+  const named = [...counts].filter(([l]) => l).sort((a, b) => b[1] - a[1]);
+  const none = counts.get('') || 0;
+  if (!named.length) return 'Their House Masters: none recorded';
+  return `Their House Masters: ${named.map(([l, n]) => `${l} (${n})`).join(', ')}${none ? ` · ${none} not recorded` : ''}`;
+}
+
+function GroupsView({ rows, institute, series, seriesName, canEdit = false, who = '', passPct = 40, currentUser = null }) {
+  const [language, setLanguage] = useState('');
+  const [batch, setBatch] = useState('');
+  const [mode, setMode] = useState('equal');
+  const [house, setHouse] = useState('');
+  // Assigned House Master / Mistress for each student's house, from the Staff Records (null while loading / unavailable).
+  const [dir, setDir] = useState(null);
+  const [dirErr, setDirErr] = useState('');
+  useEffect(() => {
+    let live = true;
+    loadHouseDirectory().then((d) => { if (live) setDir(d); }).catch((e) => { if (live) setDirErr(e.message || String(e)); });
+    return () => { live = false; };
+  }, []);
+  const hmOf = useCallback((gcc) => (dir ? dir.lookup(gcc) : { house: '', masters: [], label: '' }), [dir]);
+  const scoped = useMemo(() => (house && dir ? rows.filter((r) => dir.lookup(r.gcc_no).house === house) : rows), [rows, house, dir]);
+  // Layout: one set of 7 groups per class, or ONE mixed set across the chosen classes. Basis: overall marks, or one subject.
+  const [layout, setLayout] = useState('class');
+  const [mixPick, setMixPick] = useState([]);
+  const [basis, setBasis] = useState('');
+  const subjects = useMemo(() => subjectsOf(rows), [rows]);
+  // Manual choices (admin): { [basis]: { [sid]: 1..7 } }, saved per series.
+  const [choices, setChoices] = useState({});
+  const [choiceMode, setChoiceMode] = useState('local');
+  const [editing, setEditing] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  useEffect(() => {
+    let live = true;
+    loadGroupChoices(seriesName).then((r) => { if (live) { setChoices(r.choices); setChoiceMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Manual group choices could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const basisKey = basis || GROUP_BASIS_ALL;
+  const overrides = choices[basisKey] || EMPTY_OBJ;
+  const manualTotal = Object.keys(overrides).length;
+  const move = async (sid, grp, b = basis) => {
+    setSaveMsg('');
+    const bk = b || GROUP_BASIS_ALL;
+    setChoices((cur) => { const m = { ...(cur[bk] || {}) }; if (grp === null) delete m[sid]; else m[sid] = grp; return { ...cur, [bk]: m }; });
+    try { await saveGroupChoice(seriesName, b, sid, grp, choiceMode, who); flash(grp === null ? 'Back to the automatic group ✓' : `Moved to Group ${grp} ✓`); }
+    catch (e) { setSaveMsg(`Could not save the change: ${e.message || e}`); }
+  };
+  const resetManual = async () => {
+    if (!window.confirm(`Remove all ${manualTotal} manual group choice${manualTotal === 1 ? '' : 's'} for ${basis || 'overall marks'}? Students go back to their automatic group.`)) return;
+    setChoices((cur) => ({ ...cur, [basisKey]: {} }));
+    try { await clearGroupChoices(seriesName, basis, choiceMode); } catch (e) { setSaveMsg(`Could not reset: ${e.message || e}`); }
+  };
+  // Top group (admin's choice): Group 7 = the best N students (across all chosen classes when mixed). 0 = automatic.
+  const [topText, setTopText] = useState('');
+  const topN = Math.max(0, Math.floor(Number(topText) || 0));
+  // House Master / Mistress assigned to each group (per subject / overall, per set of students).
+  const [mentors, setMentors] = useState({});
+  const [mentorMode, setMentorMode] = useState('local');
+  useEffect(() => {
+    let live = true;
+    loadGroupMentors(seriesName).then((r) => { if (live) { setMentors(r.mentors); setMentorMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Assigned House Masters could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  // Language of each class, set by the admin (wins over the language guessed from the class name).
+  const [languages, setLanguages] = useState({});
+  const [langMode, setLangMode] = useState('local');
+  useEffect(() => {
+    let live = true;
+    loadClassLanguages().then((r) => { if (live) { setLanguages(r.languages); setLangMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Class languages could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, []);
+  const setClassLanguage = async (name, value) => {
+    setSaveMsg('');
+    setLanguages((cur) => { const n = { ...cur }; if (value) n[name] = value; else delete n[name]; return n; });
+    if (language && value !== language) setBatch('');
+    try { await saveClassLanguage(name, value || null, langMode, who); flash('Class language saved ✓'); }
+    catch (e) { setSaveMsg(`Could not save the class language: ${e.message || e}`); }
+  };
+  const setKeyOf = (c) => (c.mixed ? mixScope(language, mixPick) : `class:${c.batch}`);
+  const mentorOf = (c, b, g) => mentors[mentorKey(b, setKeyOf(c), g.no)] || null;
+  const assign = async (c, g, key) => {
+    setSaveMsg('');
+    const person = key ? [...(dir?.masters || []), ...(dir?.teachers || [])].find((m) => m.key === key) : null;
+    const value = person ? { ...pickInstruction(mentorOf(c, basis, g)), name: person.name, title: person.title } : null;   // a new person keeps the instruction of the slot
+    const k = mentorKey(basis, setKeyOf(c), g.no);
+    setMentors((cur) => { const n = { ...cur }; if (value) n[k] = value; else delete n[k]; return n; });
+    try { await saveGroupMentor(seriesName, basis, setKeyOf(c), g.no, value, mentorMode, who); flash(value ? `${value.name} is now on duty ✓` : 'Duty removed ✓'); }
+    catch (e) { setSaveMsg(`Could not save who is on duty: ${e.message || e}`); }
+  };
+  // Duty desk: students a teacher/admin removed from the groups, and groups built by hand.
+  const userName = String(currentUser?.name || '').trim() || loggedInName(currentUser);
+  const userStaffId = currentUser?.staff_profile_id ?? null;
+  const [removed, setRemoved] = useState({});
+  const [removedMode, setRemovedMode] = useState('local');
+  const [custom, setCustom] = useState([]);
+  const [customMode, setCustomMode] = useState('local');
+  const [view, setView] = useState('groups');          // 'groups' | 'duty' | 'report'
+  const [guideOpen, setGuideOpen] = useState(() => { try { return localStorage.getItem('gnsi_mock_groups_guide_v1') !== 'done'; } catch { return true; } });
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const flash = useCallback((m) => { setToast(m); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 2600); }, []);
+  const closeGuide = () => { setGuideOpen(false); try { localStorage.setItem('gnsi_mock_groups_guide_v1', 'done'); } catch { /* storage unavailable */ } };
+  useEffect(() => {
+    let live = true;
+    loadRemoved(seriesName).then((r) => { if (live) { setRemoved(r.removed); setRemovedMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Removed students could not be loaded: ${e.message || e}`); });
+    loadCustomGroups(seriesName).then((r) => { if (live) { setCustom(r.groups); setCustomMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`Manual groups could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const removedFor = useCallback((b) => removed[b || GROUP_BASIS_ALL] || EMPTY_OBJ, [removed]);
+  const removeIn = async (b, sid, reason) => {
+    const bk = b || GROUP_BASIS_ALL;
+    setRemoved((cur) => ({ ...cur, [bk]: { ...(cur[bk] || {}), [sid]: { reason, by: userName || who, at: new Date().toISOString() } } }));
+    try { await saveRemoved(seriesName, b, sid, { reason }, removedMode, userName || who); flash('Student removed ✓'); } catch (e) { setSaveMsg(`Could not save the removal: ${e.message || e}`); }
+  };
+  const restoreIn = async (b, sid) => {
+    const bk = b || GROUP_BASIS_ALL;
+    setRemoved((cur) => { const m = { ...(cur[bk] || {}) }; delete m[sid]; return { ...cur, [bk]: m }; });
+    try { await saveRemoved(seriesName, b, sid, null, removedMode, userName || who); flash('Student restored ✓'); } catch (e) { setSaveMsg(`Could not restore: ${e.message || e}`); }
+  };
+  const saveCustom = async (g) => {
+    const group = { ...g, id: g.id || newGroupId() };
+    setCustom((cur) => [...cur.filter((x) => x.id !== group.id), group]);
+    try { await saveCustomGroup(seriesName, group, customMode, userName || who); flash('Group saved ✓'); } catch (e) { setSaveMsg(`Could not save the group: ${e.message || e}`); }
+  };
+  const deleteCustom = async (id) => {
+    setCustom((cur) => cur.filter((x) => x.id !== id));
+    try { await deleteCustomGroup(seriesName, id, customMode); flash('Group deleted ✓'); } catch (e) { setSaveMsg(`Could not delete the group: ${e.message || e}`); }
+  };
+  const removedHere = removedFor(basis);
+  const viewRows = useMemo(() => (Object.keys(removedHere).length ? scoped.filter((r) => !removedHere[r.sid]) : scoped), [scoped, removedHere]);
+  // Duties are built from the saved assignments themselves (not from the layout / filters on screen), so the
+  // Duty desk, the duty sheets and the report always show everyone who is on duty.
+  // Study schedule: a time slot for each subject and a room for each group number (defaults: Passage 6-7 am, Maths 3:15-4:45 pm,
+  // EVS 5:30-7 pm; Group 1-7 -> Room 1-7). It fills in whatever a duty assignment leaves empty.
+  const [savedSchedule, setSavedSchedule] = useState({ subjects: {}, rooms: {} });
+  const [scheduleMode, setScheduleMode] = useState('local');
+  const [schedOpen, setSchedOpen] = useState(false);
+  useEffect(() => {
+    let live = true;
+    loadSchedule(seriesName).then((r) => { if (live) { setSavedSchedule(r.saved); setScheduleMode(r.mode); } }).catch((e) => { if (live) setSaveMsg(`The study schedule could not be loaded: ${e.message || e}`); });
+    return () => { live = false; };
+  }, [seriesName]);
+  const schedule = useMemo(() => mergeSchedule(savedSchedule), [savedSchedule]);
+  const setSubjectSlot = async (subject, value) => {
+    setSavedSchedule((cur) => ({ ...cur, subjects: { ...cur.subjects, [subject]: value } }));
+    try { await saveScheduleEntry(seriesName, 'subject', subject, value, scheduleMode, who); } catch (e) { setSaveMsg(`Could not save the time slot: ${e.message || e}`); }
+  };
+  const setRoomName = (group, value) => setSavedSchedule((cur) => ({ ...cur, rooms: { ...cur.rooms, [group]: value } }));
+  const saveRoomName = async (group) => {
+    try { await saveScheduleEntry(seriesName, 'room', group, String(schedule.rooms[group] ?? ''), scheduleMode, who); flash('Room saved ✓'); } catch (e) { setSaveMsg(`Could not save the room: ${e.message || e}`); }
+  };
+  const resetSched = async () => {
+    if (!window.confirm('Go back to the standard schedule (Passage 6:00–7:00 am, Mathematics 3:15–4:45 pm, EVS 5:30–7:00 pm; Group 1–7 in Room 1–7)?')) return;
+    setSavedSchedule({ subjects: {}, rooms: {} });
+    try { await resetSchedule(seriesName, scheduleMode); flash('Standard schedule restored ✓'); } catch (e) { setSaveMsg(`Could not reset the schedule: ${e.message || e}`); }
+  };
+  const assignments = useMemo(() => assignmentsFrom(mentors), [mentors]);
+  const dutyOpts = useCallback((b, scope) => {
+    const sc = parseScope(scope);
+    return { mode, basis: b, topN, languages, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, ...(sc.mix ? { mix: true, language: sc.language, classes: sc.classes } : { batch: sc.batch }) };
+  }, [mode, topN, languages, choices]);
+  const duties = useMemo(() => collectDuties({ rows, assignments, optsFor: dutyOpts, removedFor, custom, hmOf, schedule }), [rows, assignments, dutyOpts, removedFor, custom, hmOf, schedule]);
+  const roomClash = useMemo(() => dutyRoomClashes(duties), [duties]);
+  // Instruction (where / why / when / what to do) for the person on duty of a group.
+  const [instEditKey, setInstEditKey] = useState(null);   // `${setKey}|${group}` of the card being edited
+  const [instDraft, setInstDraft] = useState(null);
+  const [instAll, setInstAll] = useState(false);
+  const saveDutyDetails = async (b, setKey, grp, details) => {
+    const k = mentorKey(b, setKey, grp);
+    const cur = mentors[k];
+    if (!cur?.name) return;
+    const value = { ...cur, ...stripScheduleDefaults(details, schedule, b || 'Overall marks', grp) };
+    setMentors((m) => ({ ...m, [k]: value }));
+    try { await saveGroupMentor(seriesName, b, setKey, grp, value, mentorMode, who); flash('Instruction saved ✓'); }
+    catch (e) { setSaveMsg(`Could not save the instruction: ${e.message || e}`); }
+  };
+  const saveInstructionFor = async (sec, details) => {
+    if (sec.kind === 'custom') {
+      const cg = custom.find((x) => x.id === sec.id);
+      if (cg) await saveCustom({ ...cg, ...stripScheduleDefaults(details, schedule, cg.basis || 'Overall marks', 0) });
+      return;
+    }
+    await saveDutyDetails(sec.basis, sec.scope, sec.group, details);
+  };
+  const everything = useMemo(() => classGroups(rows, { mode, languages }), [rows, mode, languages]);
+  const classes = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, overrides, layout, mixPick, topN, languages]);
+  // The same groups without any manual moves — to show where manually moved students started.
+  const autoClasses = useMemo(() => classGroups(viewRows, { language, batch: layout === 'mix' ? '' : batch, mode, basis, overrides: EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages }), [viewRows, language, batch, mode, basis, layout, mixPick, topN, languages]);
+  const layoutLabel = layout === 'mix' ? `Mixed classes${language ? ` · ${language}` : ''}` : `Class-wise${language ? ` · ${language}` : ''}`;
+  const langCount = (l) => everything.filter((c) => c.language === l).length;
+  const unlabelled = everything.filter((c) => !c.language).map((c) => c.batch);
+  const pickable = everything.filter((c) => !language || c.language === language);
+
+  const flatOf = (cls, b) => cls.flatMap((c) => c.groups.flatMap((g) => g.students.map((s) => ({
+    'Assigned for duty (group)': mentorOf(c, b, g)?.name || '—',
+    Class: s.batch || c.batch, 'Group layout': c.mixed ? `Mixed (${c.classes.join(' + ')})` : 'Class-wise', Language: c.language || '—', Basis: b || 'Overall marks', Group: `${g.name} — ${g.tag}`,
+    'Group set by': s.manual ? 'Admin (manual)' : 'Automatic', GCC: s.gcc, Name: s.name, House: hmOf(s.gcc).house || '—', 'House Master / Mistress': hmOf(s.gcc).label || '—',
+    [`${b || 'Average'} %`]: Math.round(s.avg * 10) / 10, 'Overall %': Math.round(s.overall * 10) / 10,
+    'Tests taken': s.tests, 'Weakest subject': s.weakest || '—', 'Group focus subject': g.focus || '—',
+  }))));
+  const opts = (b) => ({ language, batch: layout === 'mix' ? '' : batch, mode, basis: b, overrides: choices[b || GROUP_BASIS_ALL] || EMPTY_OBJ, mix: layout === 'mix', classes: mixPick, topN, languages });
+  const exportXlsx = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classes, basis)), 'Self-study groups');
+    XLSX.writeFile(wb, `${series} - self-study groups${basis ? ` - ${basis}` : ''}${language ? ` - ${language}` : ''}.xlsx`);
+  };
+  // One sheet per subject (each subject has its own 7 groups), using the same layout, filters and manual choices.
+  const exportAllSubjects = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    subjects.forEach((sub) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatOf(classGroups(scoped, opts(sub)), sub)), sheetName(sub, used)));
+    XLSX.writeFile(wb, `${series} - self-study groups - every subject.xlsx`);
+  };
+  // Print: the admin chooses which subject(s) to include; each subject prints as its own section.
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printPick, setPrintPick] = useState([]);
+  const groupsFor = (b) => (b === basis ? classes : classGroups(scoped.filter((r) => !removedFor(b)[r.sid]), opts(b)));
+  const groupsHtml = (cls, b) => cls.map((c) => `<h2>${escH(c.batch)}${c.mixed ? ` (${escH(c.classes.join(' + '))})` : ''}${c.language ? ` · ${escH(c.language)}` : ''} <small>— ${c.count} students · avg ${fx(c.avg)}%</small></h2>
+      ${c.groups.map((g) => `<h3>${escH(g.name)} — ${escH(g.tag)} <small>${(() => { const sc = withSchedule(mentorOf(c, b, g), schedule, b || 'Overall marks', g.no); return [sc.venue && `${ICON.pin}${escH(sc.venue)}`, slotText(sc) && `${ICON.clock}${escH(slotText(sc))}`].filter(Boolean).join(' · ') + (sc.venue || slotText(sc) ? ' · ' : ''); })()}${mentorOf(c, b, g) ? `On duty: ${escH(mentorOf(c, b, g).name)} · ` : ''}${g.n ? `${g.n} students · ${fx(g.min)}–${fx(g.max)}% · focus: ${escH(g.focus || '—')}` : 'no students'}</small></h3>
+      ${g.n ? `<table><thead><tr><th>#</th><th>GCC</th><th>Name</th><th>House</th><th>House Master / Mistress</th><th>${escH(b || 'Avg')} %</th><th>Weakest subject</th></tr></thead><tbody>${g.students.map((s, i) => `<tr><td>${i + 1}</td><td>${escH(s.gcc)}</td><td>${escH(s.name)}</td><td>${escH(hmOf(s.gcc).house || '—')}</td><td>${escH(hmOf(s.gcc).label || '—')}</td><td>${fx(s.avg)}${s.manual ? ' ✎' : ''}</td><td>${escH(s.weakest || '—')}</td></tr>`).join('')}</tbody></table>` : ''}`).join('')}`).join('');
+  const print = (bases = [basis]) => {
+    const list = (bases.length ? bases : [basis]);
+    const body = list.map((b, i) => `<div style="${i ? 'break-before:page;page-break-before:always' : ''}"><h2 style="background:#0f2d5e;color:#fff;padding:5px 10px;border-radius:4px">Subject: ${escH(b || 'Overall marks')}</h2>${groupsHtml(groupsFor(b), b)}</div>`).join('');
+    printPremium(`<h1>Self-study groups — ${escH(series)}</h1><p>${escH(institute?.name || '')}${language ? ` · ${escH(language)}` : ''} · ${list.length === 1 ? `subject: ${escH(list[0] || 'overall marks')}` : `subjects: ${escH(list.map((b) => b || 'Overall marks').join(', '))}`} · ${layout === 'mix' ? 'mixed classes' : 'class-wise'} · ${mode === 'bands' ? 'by fixed mark bands' : '7 equal groups, weakest to strongest'}</p>${body}`, { title: `Self-study groups - ${series}`, institute, docLabel: `Self-study groups · ${series}` });
+  };
+
+  const prog = (() => { let total = 0, assigned = 0, instr = 0; classes.forEach((c) => c.groups.forEach((g) => { if (!g.n) return; total++; const m = mentorOf(c, basis, g); if (m?.name) { assigned++; if (hasInstruction(m)) instr++; } })); return { total, assigned, instr }; })();
+  const emptyHidden = showEmpty ? 0 : classes.reduce((t, c) => t + c.groups.filter((g) => !g.n).length, 0);
+  return (
+    <>
+      <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ background: 'linear-gradient(135deg,#0f2347 0%,#1e3a6e 60%,#2b4f8f 100%)', color: '#fff', padding: '14px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 20, fontWeight: 700 }}>Self-Study Groups</div>
+              <div style={{ fontSize: 12.5, color: '#d6def0', marginTop: 2, maxWidth: 560 }}>Split students into 7 groups from weakest to strongest marks, choose who looks after each group, and print their duty sheets.</div>
+            </div>
+            <button style={{ ...ui.ghost, background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.3)', padding: '6px 12px' }} onClick={() => (guideOpen ? closeGuide() : setGuideOpen(true))} aria-expanded={guideOpen}>❓ How it works</button>
+          </div>
+          <div role="tablist" aria-label="Self-study views" style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+            {[['groups', '👥 Groups'], ['duty', `🧑‍🏫 Duty desk${duties.length ? ` (${duties.length})` : ''}`], ['report', '📑 Reports']].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)} style={{ padding: '8px 16px', borderRadius: 999, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', background: view === id ? '#fff' : 'rgba(255,255,255,.14)', color: view === id ? NAVY : '#fff' }}>{label}</button>
+            ))}
+          </div>
+        </div>
+        {guideOpen ? (
+          <div style={{ padding: '12px 16px', background: '#fffbeb', borderTop: '1px solid #f1deaa', fontSize: 13, lineHeight: 1.6 }}>
+            <b>How it works — 3 steps</b>
+            <ol style={{ margin: '4px 0 6px', paddingLeft: 20 }}>
+              <li><b>Groups:</b> choose the subject, and whether students are grouped within each class or mixed across classes. Group 1 is the weakest, Group 7 the strongest.</li>
+              <li><b>Duty:</b> on each group, pick who is on duty (a House Master or a teacher) and add an instruction — where, why and when.</li>
+              <li><b>Duty desk:</b> every person's groups and students in one place. Print their duty sheet; teachers can remove or transfer their own students.</li>
+            </ol>
+            <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={closeGuide}>Got it — hide this</button>
+          </div>
+        ) : null}
+      </div>
+      {saveMsg ? <div role="alert" style={{ fontSize: 12.5, color: '#991B1B', background: '#fef2f2', border: '1px solid #fbd5d5', borderRadius: 10, padding: '6px 12px', margin: '0 0 10px' }}>{saveMsg}</div> : null}
+
+      {view === 'groups' ? (
+        <>
+          <div style={ui.card}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <Field label="Group by marks in">
+                <select style={ui.input} value={basis} onChange={(e) => setBasis(e.target.value)} aria-label="Group by marks in">
+                  <option value="">Overall marks (all subjects)</option>
+                  {subjects.map((sub) => <option key={sub} value={sub}>{sub} only</option>)}
+                </select>
+              </Field>
+              <Field label="Group students">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button style={chip(layout === 'class')} onClick={() => setLayout('class')}>Within each class</button>
+                  <button style={chip(layout === 'mix')} onClick={() => setLayout('mix')}>Mixed across classes</button>
+                </div>
+              </Field>
+              <Field label="Language">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button style={chip(!language)} onClick={() => { setLanguage(''); setBatch(''); }}>All</button>
+                  {LANGUAGES.map((l) => <button key={l} style={chip(language === l)} onClick={() => { setLanguage(l); setBatch(''); }}>{l}{` (${langCount(l)})`}</button>)}
+                </div>
+              </Field>
+              {layout === 'class' ? (
+                <Field label="Class">
+                  <select style={ui.input} value={batch} onChange={(e) => setBatch(e.target.value)} aria-label="Class">
+                    <option value="">All classes</option>
+                    {pickable.map((c) => <option key={c.batch} value={c.batch}>{c.batch}</option>)}
+                  </select>
+                </Field>
+              ) : (
+                <Field label="Classes in the mix">
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button style={chip(!mixPick.length)} onClick={() => setMixPick([])}>All{language ? ` ${language}` : ''}</button>
+                    {pickable.map((c) => <button key={c.batch} style={chip(mixPick.includes(c.batch))} onClick={() => setMixPick((cur) => toggleIn(cur, c.batch))}>{c.batch}</button>)}
+                  </div>
+                </Field>
+              )}
+            </div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: '#2e3b52' }}>⚙️ More options — house, how to divide, top group size{canEdit ? ', class languages' : ''}</summary>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', margin: '10px 0 4px' }}>
+                {dir && dir.houses.length ? (
+                  <Field label="House">
+                    <select style={ui.input} value={house} onChange={(e) => setHouse(e.target.value)} aria-label="House">
+                      <option value="">All houses</option>
+                      {dir.houses.map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </Field>
+                ) : null}
+                <Field label="How to divide">
+                  <select style={ui.input} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="How to divide">
+                    <option value="equal">7 equal groups (by rank)</option>
+                    <option value="bands">Fixed mark bands (&lt;30 … 80+)</option>
+                  </select>
+                </Field>
+                <Field label={layout === 'mix' ? 'Top group size — best … students' : 'Top group size — best … per class'}>
+                  <input type="number" min={0} placeholder="0 = automatic" style={{ ...ui.input, width: 130 }} value={topText} onChange={(e) => setTopText(e.target.value)} aria-label="Number of students in the top group" />
+                </Field>
+                <label style={{ fontSize: 13, paddingBottom: 8 }}><input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} /> Show empty groups</label>
+              </div>
+              {canEdit ? (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#2e3b52', marginBottom: 4 }}>Language of each class (English / Meitei Mayek)</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {everything.map((c) => (
+                      <label key={c.batch} style={{ fontSize: 12, color: '#5d6b82' }}>{c.batch}
+                        <select aria-label={`Language of ${c.batch}`} style={{ ...ui.input, display: 'block', padding: '3px 6px', fontSize: 12.5, marginTop: 2 }} value={LANGUAGES.includes(languages[c.batch]) ? languages[c.batch] : ''} onChange={(e) => setClassLanguage(c.batch, e.target.value)}>
+                          <option value="">{`Automatic (${languageOfBatch(c.batch) || 'none — from the name'})`}</option>
+                          {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 4 }}>Used by the Language filter. Saved for every series · <b style={{ color: langMode === 'cloud' ? '#047857' : '#b45309' }}>{langMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></div>
+                </div>
+              ) : null}
+            </details>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', borderTop: '1px solid #f1ede3', marginTop: 12, paddingTop: 10 }}>
+              <span style={{ fontSize: 12.5, color: '#5d6b82', flex: '1 1 220px' }}>
+                {classes.length ? <>Showing <b>{classes.reduce((t, c) => t + c.count, 0)} students</b> in {classes.length} {layout === 'mix' ? 'mixed set' : `class${classes.length === 1 ? '' : 'es'}`} · by <b>{basis || 'overall marks'}</b>{language ? ` · ${language}` : ''}{house ? ` · ${house}` : ''}{topN ? ` · top group of ${topN}` : ''}</> : 'No students match these choices.'}
+              </span>
+              <button style={printOpen ? { ...ui.btn } : ui.ghost} disabled={!classes.length} onClick={() => { setPrintPick([basis]); setPrintOpen((v) => !v); }} aria-expanded={printOpen}>🖨️ Print…</button>
+              <button style={ui.ghost} disabled={!classes.length} onClick={exportXlsx}>⬇️ Excel</button>
+              <button style={ui.ghost} disabled={!classes.length || !subjects.length} onClick={exportAllSubjects} title="One sheet per subject, each with its own 7 groups">⬇️ Excel — every subject</button>
+              {canEdit ? <button style={editing ? { ...ui.btn, background: '#be185d' } : ui.ghost} onClick={() => setEditing((e) => !e)}>{editing ? '✅ Done moving' : '✏️ Move students by hand'}</button> : null}
+            </div>
+            {printOpen ? (
+              <div style={{ marginTop: 10, background: '#f8fafc', border: '1px solid #d9e2f0', borderRadius: 12, padding: '10px 12px' }} role="group" aria-label="Subjects to print">
+                <b style={{ fontSize: 13 }}>Print which subjects?</b>
+                <span style={{ fontSize: 12, color: '#5d6b82', marginLeft: 8 }}>Each subject prints as its own section.</span>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0' }}>
+                  {[['', 'Overall marks'], ...subjects.map((x) => [x, x])].map(([b, label]) => <button key={label} style={chip(printPick.includes(b))} onClick={() => setPrintPick((cur) => (cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b]))} aria-pressed={printPick.includes(b)}>{label}</button>)}
+                  <button style={{ ...chip(false), borderStyle: 'dashed' }} onClick={() => setPrintPick(['', ...subjects])}>All subjects</button>
+                  <button style={{ ...chip(false), borderStyle: 'dashed' }} onClick={() => setPrintPick([basis])}>Only {basis || 'overall marks'}</button>
+                </div>
+                <button style={ui.btn} disabled={!printPick.length} onClick={() => { print(printPick); setPrintOpen(false); }}>🖨️ Print {printPick.length || ''} subject{printPick.length === 1 ? '' : 's'}</button>
+                <button style={{ ...ui.ghost, marginLeft: 8 }} onClick={() => setPrintOpen(false)}>Cancel</button>
+              </div>
+            ) : null}
+            {canEdit && (editing || manualTotal) ? (
+              <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 8 }}>
+                {manualTotal ? `${manualTotal} student${manualTotal === 1 ? '' : 's'} moved by hand for ${basis || 'overall marks'} (marked ✎)` : `Nobody moved by hand for ${basis || 'overall marks'} yet`}
+                {' · '}<b style={{ color: choiceMode === 'cloud' ? '#047857' : '#b45309' }}>{choiceMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b>
+                {manualTotal ? <> {' · '}<button style={{ ...ui.ghost, padding: '2px 10px', fontSize: 12 }} onClick={resetManual}>↺ Reset to automatic</button></> : null}
+              </div>
+            ) : null}
+          </div>
+
+          {prog.total ? (
+            <div style={{ ...ui.card, padding: '10px 14px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 13 }}>Duty setup</b>
+              <div style={{ flex: '1 1 140px', maxWidth: 240 }} aria-label={`${prog.assigned} of ${prog.total} groups have someone on duty`}>
+                <div style={{ height: 8, borderRadius: 999, background: '#eceff4', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.round((prog.assigned / prog.total) * 100)}%`, background: prog.assigned === prog.total ? '#16a34a' : '#ca8a04' }} /></div>
+              </div>
+              <span style={{ fontSize: 12.5 }}><b>{prog.assigned}</b> of {prog.total} groups have someone on duty{prog.assigned ? <> · <b>{prog.instr}</b> with an instruction</> : null}</span>
+              {canEdit && prog.assigned < prog.total ? <span style={{ fontSize: 12, color: '#92400E' }}>Use “Assigned for duty” on each group below.</span> : null}
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={schedOpen ? { ...ui.btn, padding: '4px 12px', fontSize: 12.5 } : { ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={() => setSchedOpen((v) => !v)} aria-expanded={schedOpen}>🗓 Time slots &amp; rooms</button>
+                <button style={{ ...ui.ghost, padding: '4px 12px', fontSize: 12.5 }} onClick={() => setView('duty')}>Open Duty desk →</button>
+              </span>
+            </div>
+          ) : null}
+          {schedOpen ? (
+            <div style={{ ...ui.card, border: '1.5px solid #b8923a' }} role="region" aria-label="Study schedule">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <b style={{ fontSize: 14 }}>🗓 Study schedule — time slot for each subject, room for each group</b>
+                <span style={{ fontSize: 12, color: '#5d6b82' }}>Applies to every duty card, the Duty desk, duty sheets and reports · <b style={{ color: scheduleMode === 'cloud' ? '#047857' : '#b45309' }}>{scheduleMode === 'cloud' ? 'saved to database' : 'saved in this browser only'}</b></span>
+              </div>
+              <div style={{ fontSize: 12, color: '#5d6b82', margin: '4px 0 10px' }}>A person's own “where / when” (set on their instruction) still wins; the schedule fills in the rest. Leave a time empty for no fixed slot.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Time slot for each subject</div>
+                  {[...new Set([...subjects, ...Object.keys(schedule.subjects)])].map((sub) => {
+                    const v = schedule.subjects[sub] || { from: '', to: '', days: [] };
+                    const bad = v.from && v.to && v.to <= v.from;
+                    return (
+                      <div key={sub} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid #f4f0e6' }}>
+                        <b style={{ width: 110, fontSize: 13 }}>{sub}</b>
+                        {canEdit ? (
+                          <>
+                            <input type="time" style={ui.input} value={v.from} onChange={(e) => setSubjectSlot(sub, { ...v, from: e.target.value })} aria-label={`${sub} from`} />
+                            <span style={{ color: '#5d6b82' }}>to</span>
+                            <input type="time" style={ui.input} value={v.to} onChange={(e) => setSubjectSlot(sub, { ...v, to: e.target.value })} aria-label={`${sub} to`} />
+                            <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }}>
+                              {DAYS.map((d) => <button key={d} type="button" style={{ ...chip((v.days || []).includes(d)), padding: '2px 7px', fontSize: 11 }} onClick={() => setSubjectSlot(sub, { ...v, days: (v.days || []).includes(d) ? v.days.filter((x) => x !== d) : [...(v.days || []), d] })} aria-pressed={(v.days || []).includes(d)} aria-label={`${sub} ${d}`}>{d}</button>)}
+                            </span>
+                            {bad ? <span role="alert" style={{ fontSize: 11.5, color: '#b42318' }}>end must be after start</span> : null}
+                          </>
+                        ) : <span style={{ fontSize: 13 }}>{slotText(v) || 'no fixed slot'}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Room for each group</div>
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                    <div key={n} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', borderTop: '1px solid #f4f0e6' }}>
+                      <b style={{ width: 70, fontSize: 13, color: GROUP_META[n - 1].color }}>Group {n}</b>
+                      {canEdit ? <input style={{ ...ui.input, width: 160 }} value={schedule.rooms[n] ?? ''} onChange={(e) => setRoomName(n, e.target.value)} onBlur={() => saveRoomName(n)} aria-label={`Room for Group ${n}`} /> : <span style={{ fontSize: 13 }}>{schedule.rooms[n] || '—'}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {layout === 'class' && classes.length > 1 ? <div style={{ fontSize: 12, color: '#92400E', marginTop: 8 }}>With <b>Within each class</b>, every class has its own Group 1…7, so several Group 1s are sent to the same room at the same time. <b>Mixed across classes</b> gives one set of 7 groups for 7 rooms.</div> : null}
+              {roomClash.length ? (
+                <div role="alert" style={{ marginTop: 8, background: '#fef2f2', border: '1px solid #fbd5d5', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, color: '#b42318' }}>
+                  <b>⚠ {roomClash.length} room clash{roomClash.length === 1 ? '' : 'es'}:</b> two groups in the same room at the same time — e.g. {roomClash.slice(0, 2).map((x) => `${x.venue}: ${x.a} and ${x.b}`).join('; ')}{roomClash.length > 2 ? '…' : ''}
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {canEdit ? <button style={ui.ghost} onClick={resetSched}>↺ Back to the standard schedule</button> : null}
+                <button style={ui.ghost} onClick={() => setSchedOpen(false)}>Close</button>
+              </div>
+            </div>
+          ) : null}
+          {Object.keys(removedHere).length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{Object.keys(removedHere).length} student{Object.keys(removedHere).length === 1 ? ' is' : 's are'} removed from the {basis || 'overall'} groups — restore them in the Duty desk.</div> : null}
+          {dirErr ? <div style={{ fontSize: 12, color: '#92400E', margin: '0 2px 10px' }}>House Master / Mistress could not be loaded ({dirErr}) — the groups are shown without them.</div> : null}
+          {language && !classes.length ? (
+            <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>
+              No class is marked <b>{language}</b>. {canEdit ? 'Open “More options” and set the language of each class.' : 'Ask an admin to set the language of each class.'}
+            </div>
+          ) : null}
+          {!language && unlabelled.length ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>No language is set for {unlabelled.join(', ')} — they appear under “All” only.</div> : null}
+          {emptyHidden ? <div style={{ fontSize: 12, color: '#5d6b82', margin: '0 2px 10px' }}>{emptyHidden} empty group{emptyHidden === 1 ? ' is' : 's are'} hidden — tick “Show empty groups” in More options to see {emptyHidden === 1 ? 'it' : 'them'}.</div> : null}
+        </>
+      ) : null}
+
+      {view === 'duty' ? (
+        <MockDutyDesk rows={rows} series={series} institute={institute} subjects={subjects} duties={duties}
+          removed={removed} custom={custom} dir={dir} canEdit={canEdit} userName={userName} userStaffId={userStaffId}
+          onRemove={removeIn} onRestore={restoreIn} onTransfer={(b, sid, grp) => move(sid, grp, b)} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom} onSaveInstruction={saveInstructionFor}
+          storageNote={removedMode === 'local' || customMode === 'local' ? 'Removals and manual groups are saved in this browser only until the database tables are added (migration 20261052).' : ''}
+          onClose={() => setView('groups')} />
+      ) : null}
+
+      {view === 'report' ? (
+        classes.length ? (
+          <MockGroupReport classes={classes} autoClasses={autoClasses} basis={basis} series={series} institute={institute} passPct={passPct} duties={duties} allSubjects={subjects}
+            hmOf={hmOf} mentorOf={(c, g) => mentorOf(c, basis, g)} layoutLabel={layoutLabel} onClose={() => setView('groups')} />
+        ) : <div style={{ ...ui.card, textAlign: 'center', color: '#5d6b82' }}>There are no students to report on with the current choices. <button style={{ ...ui.ghost, marginLeft: 8 }} onClick={() => setView('groups')}>← Back to groups</button></div>
+      ) : null}
+
+      {view === 'groups' ? classes.map((c) => (
+        <div key={c.batch} style={ui.card}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>{c.batch}</h3>
+            {c.mixed ? <span style={{ fontSize: 12.5, color: '#2e3b52' }}>{c.classes.join(' + ')}</span> : null}
+            {basis ? <Pill text={`${basis} only`} color="#be185d" /> : null}
+            {c.language ? <Pill text={c.language} color={c.language === 'English' ? '#1e3a6e' : '#7c3aed'} /> : null}
+            <span style={{ fontSize: 12.5, color: '#5d6b82' }}>{c.count} students · {c.mixed ? 'average' : 'class average'} {fx(c.avg)}%</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+            {c.groups.filter((g) => showEmpty || g.n).map((g) => (
+              <div key={g.no} style={{ border: '1px solid #e8e3d8', borderTop: `4px solid ${g.color}`, borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 10px', background: `${g.color}12` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
+                    <b style={{ color: g.color }}>{g.name} · {g.tag}</b>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>{g.n}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{g.n ? `${fx(g.min)}–${fx(g.max)}% · avg ${fx(g.avg)}%` : 'no students'}</div>
+                  {g.focus ? <div style={{ fontSize: 11.5, marginTop: 3 }}>{basis ? 'Subject' : 'Focus'}: <b>{g.focus}</b> <span style={{ color: '#5d6b82' }}>({fx(g.focusPct, 0)}%)</span></div> : null}
+                  {dir && g.n ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{hmSummary(g, hmOf)}</div> : null}
+                  {g.n && !mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#b45309', fontWeight: 700 }}>⚠ Nobody on duty yet</div> : null}
+                  {g.n && !mentorOf(c, basis, g) ? (() => { const sc = withSchedule({}, schedule, basis || 'Overall marks', g.no); const t = [sc.venue && `📍 ${sc.venue}`, slotText(sc) && `🕔 ${slotText(sc)}`].filter(Boolean).join(' · '); return t ? <div style={{ fontSize: 11.5, marginTop: 3, color: '#2e3b52' }}>{t}</div> : null; })() : null}
+                  {canEdit && dir ? (
+                    <label style={{ display: 'block', fontSize: 11, marginTop: 5, color: '#5d6b82' }}>Assigned for duty
+                      <select aria-label={`Assigned for duty for ${g.name}`} style={{ ...ui.input, width: '100%', padding: '3px 6px', fontSize: 12, marginTop: 2 }}
+                        value={([...dir.masters, ...dir.teachers].find((m) => m.name === mentorOf(c, basis, g)?.name) || {}).key || ''} onChange={(e) => assign(c, g, e.target.value)}>
+                        <option value="">— not assigned —</option>
+                        {dir.masters.length ? <optgroup label="House Masters / Mistresses">{dir.masters.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
+                        {dir.teachers.length ? <optgroup label="Teaching staff">{dir.teachers.map((m) => <option key={m.key} value={m.key}>{m.name} ({m.title})</option>)}</optgroup> : null}
+                      </select>
+                    </label>
+                  ) : mentorOf(c, basis, g) ? <div style={{ fontSize: 11.5, marginTop: 4 }}>Assigned: <b>{mentorOf(c, basis, g).name}</b> <span style={{ color: '#5d6b82' }}>({mentorOf(c, basis, g).title})</span></div> : null}
+                  {mentorOf(c, basis, g) ? (
+                    <div style={{ marginTop: 5 }}>
+                      <InstructionSummary value={withSchedule(mentorOf(c, basis, g), schedule, basis || 'Overall marks', g.no)} compact />
+                      {canEdit && dir ? (
+                        <button style={{ ...ui.ghost, padding: '2px 8px', fontSize: 11.5, marginTop: 2 }} onClick={() => {
+                          const key = `${setKeyOf(c)}|${g.no}`;
+                          if (instEditKey === key) { setInstEditKey(null); return; }
+                          setInstEditKey(key); setInstDraft(withSchedule(mentorOf(c, basis, g), schedule, basis || 'Overall marks', g.no)); setInstAll(false);
+                        }} aria-label={`Instructions for ${g.name}`}>{hasInstruction(mentorOf(c, basis, g)) ? '📋 Edit instruction' : '📋 Add instruction'}</button>
+                      ) : null}
+                      {instEditKey === `${setKeyOf(c)}|${g.no}` && instDraft ? (
+                        <div style={{ marginTop: 6, background: '#fffdf5', border: '1px solid #f1deaa', borderRadius: 10, padding: 8 }}>
+                          <InstructionForm value={instDraft} onChange={setInstDraft} who={mentorOf(c, basis, g).name} />
+                          <label style={{ display: 'block', fontSize: 11.5, margin: '6px 0' }}><input type="checkbox" checked={instAll} onChange={(e) => setInstAll(e.target.checked)} /> Same for all of {mentorOf(c, basis, g).name}'s groups in {basis || 'overall marks'}</label>
+                          <button style={{ ...ui.btn, padding: '5px 12px', fontSize: 12 }} disabled={!!(instDraft.from && instDraft.to && instDraft.to <= instDraft.from)} onClick={async () => {
+                            const who2 = mentorOf(c, basis, g).name;
+                            const targets = instAll ? classes.flatMap((c2) => c2.groups.filter((g2) => mentorOf(c2, basis, g2)?.name === who2).map((g2) => [c2, g2])) : [[c, g]];
+                            for (const [c2, g2] of targets) await saveDutyDetails(basis, setKeyOf(c2), g2.no, instDraft);
+                            setInstEditKey(null);
+                          }}>Save</button>
+                          <button style={{ ...ui.ghost, padding: '4px 10px', fontSize: 12, marginLeft: 6 }} onClick={() => setInstEditKey(null)}>Cancel</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {g.students.map((s) => (
+                    <div key={s.sid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 10px', borderTop: '1px solid #f1ede3', fontSize: 12.5 }}>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.manual ? <span title="Placed here by an admin" style={{ color: '#be185d' }}>✎ </span> : null}{s.name} <span style={{ color: '#8a93a6' }}>{s.gcc ? `· ${s.gcc}` : ''}</span>
+                        {c.mixed ? <span style={{ display: 'block', fontSize: 11, color: '#7c3aed' }}>{s.batch}</span> : null}
+                        {dir ? <span style={{ display: 'block', fontSize: 11, color: '#5d6b82' }}>{hmOf(s.gcc).house ? `${hmOf(s.gcc).house} · ${hmOf(s.gcc).label || 'no House Master / Mistress assigned'}` : 'House not recorded'}</span> : null}</span>
+                      {editing && canEdit ? (
+                        <select aria-label={`Group for ${s.name}`} style={{ ...ui.input, padding: '2px 4px', fontSize: 12, flexShrink: 0 }} value={s.manual ? g.no : 'auto'}
+                          onChange={(e) => move(s.sid, e.target.value === 'auto' ? null : Number(e.target.value))}>
+                          <option value="auto">Auto</option>
+                          {GROUP_META.map((m) => <option key={m.no} value={m.no}>Group {m.no}</option>)}
+                        </select>
+                      ) : null}
+                      <b style={{ color: g.color, flexShrink: 0 }}>{fx(s.avg)}%</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )) : null}
+      {toast ? <div role="status" style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', background: '#0f2347', color: '#fff', padding: '9px 18px', borderRadius: 999, fontSize: 13, fontWeight: 600, boxShadow: '0 10px 26px -10px rgba(0,0,0,.5)', zIndex: 9999 }}>{toast}</div> : null}
     </>
   );
 }

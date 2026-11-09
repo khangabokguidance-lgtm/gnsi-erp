@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { PX } from './premiumUI'
 import SyllabusOfficial from './SyllabusOfficial'
+import { isAdminRole } from './roles'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SUBJECTS = [
@@ -433,7 +434,7 @@ function CourseDurationForm({ courses, subtypesFor, settings, onSaved, showToast
           <label style={S.label}>Holidays to exclude (one YYYY-MM-DD per line)</label>
           <textarea value={form.holidays_text} onChange={e=>setForm(f=>({...f,holidays_text:e.target.value}))}
             rows={4} placeholder={'2026-08-15\n2026-10-02\n2026-11-01'}
-            style={{ ...S.input, resize:'vertical', fontFamily:'monospace', fontSize:12 }}/>
+            style={{ ...S.input, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }}/>
         </div>
 
         <div style={{ display:'flex', gap:8 }}>
@@ -496,8 +497,11 @@ const _name = (
   currentUser?.email ||
   ''
 )
-const isAdmin = ['admin','manager','administrator','co-admin','principal'].includes(_rawRole)
-const isStaff = _rawRole === 'teacher'
+// Admin rights come only from the shared admin roles (Admin/Administrator/Co-Admin)
+// or the explicit 'Teaching + Admin' role. 'manager'/'principal' used to be
+// treated as admin here, handing full syllabus control to non-admin staff.
+const isAdmin = isAdminRole(currentUser?.role) || _rawRole === 'teaching + admin'
+const isStaff = !isAdmin && (_rawRole === 'teacher' || _rawRole === 'teaching')
 const staffName = _name
 
   // ── State ──
@@ -1377,7 +1381,7 @@ const staffName = _name
               </select>
             </div>
           </div>
-          <textarea value={csvText} onChange={e=>setCsvText(e.target.value)} rows={10} placeholder={"Fractions, 2026-06-01, important|exam\nDecimals\nRatio and Proportion, 2026-06-08"} style={{ ...S.input, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:12 }}/>
+          <textarea value={csvText} onChange={e=>setCsvText(e.target.value)} rows={10} placeholder={"Fractions, 2026-06-01, important|exam\nDecimals\nRatio and Proportion, 2026-06-08"} style={{ ...S.input, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:12 }}/>
           <button onClick={handleCSVImport} style={S.btn('#a7771f')}>📥 Import Topics</button>
         </div>
       )}

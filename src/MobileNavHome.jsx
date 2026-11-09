@@ -6,11 +6,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavIcon } from './navIcons'
 
 const NAVY = '#0B1E3D', NAVY2 = '#1F4E8C', GOLD = '#C9A24B', INK = '#1c2433', SUB = '#5d6b82'
-const DEFAULT_QUICK = ['dashboard', 'students', 'fees', 'attendance', 'hostel', 'teaching', 'studentfeeledger', 'leave']
+const DEFAULT_QUICK = ['dashboard', 'studentshub', 'feeshub', 'attendance', 'hostel', 'teaching', 'learninghub', 'hr']
 const GROUP_TITLES = { CORE: 'Students & Admissions', FINANCE: 'Fees & Finance', ACADEMIC: 'Academics', PEOPLE: 'Staff & Hostel', OPERATIONS: 'Front Office', MANAGEMENT: 'Management' }
 const PREVIEW = 8 // two rows of four, then "View All"
 // Shorter names for the icon grid so every label fits in two lines.
-const SHORT = { construction: 'Campus Works', questionbankviewer: 'QB Viewer', studentfeeledger: 'Fee Ledger', bulkadmission: 'Bulk Admission', faceattendance: 'Face Attendance', website: 'Website', studymaterial: 'Study Material' }
+const SHORT = { construction: 'Campus Works', questionbankviewer: 'QB Viewer', studentfeeledger: 'Fee Ledger', bulkadmission: 'Bulk Admission', faceattendance: 'Face Attendance', website: 'Website', studymaterial: 'Study Material', studentshub: 'Students', examshub: 'Exams', adminhub: 'Admin' }
 const short = it => SHORT[it.id] || it.label
 
 const CSS = `
@@ -42,8 +42,8 @@ const CSS = `
 .mnh-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 4px}
 .mnh-g{display:flex;flex-direction:column;align-items:center;gap:8px;background:none;border:none;cursor:pointer;padding:4px 0;font-family:inherit;color:${INK};-webkit-tap-highlight-color:transparent;position:relative;border-radius:14px}
 .mnh-g:active{background:#f1f4f9}
-.mnh-gi{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:${NAVY2};background:#eef3fb}
-.mnh-g.on .mnh-gi{background:linear-gradient(160deg,${NAVY2},${NAVY});color:#fff}
+.mnh-gi{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7)}
+.mnh-g.on .mnh-gi{box-shadow:0 0 0 3px #fff,0 0 0 6px #c9a24b}
 .mnh-gl{font-size:12px;font-weight:600;line-height:1.25;text-align:center;max-width:82px;color:#2b3445;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .mnh-badge{position:absolute;top:0;right:calc(50% - 32px);min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
 .mnh-promo{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:22px;margin-bottom:14px;background:linear-gradient(120deg,#dff1fb,#d3ebf9);border:none;width:100%;text-align:left;cursor:pointer;font-family:inherit;color:#141a26}
@@ -103,7 +103,7 @@ export default function MobileNavHome({ open, onClose, groups, allowedModules, a
   }
 
   const q = query.trim().toLowerCase()
-  const hits = q ? allItems.filter(i => i.label.toLowerCase().includes(q)) : []
+  const hits = q ? allItems.filter(i => i.label.toLowerCase().includes(q) || !!i.keywords?.includes(q)) : []
   const hour = new Date().getHours()
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = (currentUser?.name || 'there').split(' ')[0]

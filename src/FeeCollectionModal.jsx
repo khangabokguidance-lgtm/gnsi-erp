@@ -1,6 +1,7 @@
 // FeeCollectionModal.jsx
 
 import { logHostelOverride } from './hostelFeeCheck'
+import { loggedInName } from './lib/collector'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
@@ -14,6 +15,9 @@ import {
   saveStudentFlatFeeOverride, getStudentFlatFeeOverride,
 } from './feeEngine'
 import { confirmFeeMonthOpen } from './monthLock'
+import { useFeeCollectionPresence } from './feePresence'
+import FeeClashBanner from './FeeClashBanner'
+import FeeBalanceCollect from './FeeBalanceCollect'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 
 const FEE_ITEMS = [
@@ -163,6 +167,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   }
 
   const gcc    = gccStr(validGcc(app?.gcc) ?? validGcc(app?.gcc_no) ?? validGcc(student?.gcc_no) ?? '')
+  const clashOthers = useFeeCollectionPresence(gcc, currentUser)   // who else has this student's fee form open
 
   // ✦ Safe numeric form of gcc for .eq('gcc_no', ...) queries against the
   // students table (gcc_no is an integer column there). `gcc` is already
@@ -304,7 +309,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // Now auto-fills from the authenticated session's username. Still
   // editable (not locked) in case session data is ever missing or a
   // different staff member genuinely collected the payment in person.
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const collectedBy = loggedInName(currentUser)
   // ✦ Stable staff identifier for audit trail attribution, separate from
   // `collectedBy` (which stays a free-text, editable display name field —
   // see the comment above). staffId is the logged-in session's own
@@ -733,7 +739,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   //    or cheque with no number can't be reconciled in Accounts.
   //  • A month closed in Accounts blocks collections dated in it.
   const preflight = async ({ hostelCheck = true } = {}) => {
-    if (!collectedBy.trim()) { alert('Collected By is required — enter the name of the staff collecting this payment.'); return false }
+    if (!collectedBy.trim()) { alert('Collected By is required and is filled in from your login — sign out and in again.'); return false }
     if (payMode !== 'Cash' && !txnRef.trim()) { alert(`${payMode === 'UPI' ? 'UPI Txn / UTR No.' : 'Transaction / cheque reference'} is required for ${payMode} payments.`); return false }
     // Wrong hostel-type fee: charging at a type other than the student's record
     // (the bed auto-correction to Boarder excepted), or a Boarder with no bed.
@@ -774,7 +780,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -783,7 +789,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setPaidAdmItems(p => [...new Set([...p, ...admFeeItems.map(i => i.label)])])
       setSelected({})
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
 
@@ -821,7 +827,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       const above = unpaid.some(f => flatNeedsReasonFor(f) && flatGapFor(f) > 0)
       if (isAdmin || above) return alert('One or more selected months are priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
       const short = unpaid.filter(f => flatNeedsReasonFor(f)).reduce((s, f) => s + Math.abs(flatGapFor(f)), 0)
-      if (!window.confirm(`The selected months are ₹${short.toLocaleString('en-IN')} below the standard flat fee in total.\n\nThey will be saved and sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return
+      if (!window.confirm(`The selected months are ₹${short.toLocaleString('en-IN')} below the standard flat fee in total.\n\nThis will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`)) return
     }
     if (!(await preflight())) return
     setSaving(true); setError(null)
@@ -855,7 +861,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -868,7 +874,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setFlatAdvanceAuthorized(false)
       setFlatRateAuthorized(false)
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
 
@@ -903,7 +909,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       // Above the rate, or an admin who hasn't confirmed yet: authorise first.
       if (isAdmin || courseAmtGap > 0) return alert('This amount is priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
       // Staff: save it, and send the shortfall to an admin for approval.
-      if (!window.confirm(`This is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} below the standard course fee.\n\nIt will be saved and sent to an admin for approval. Until approved, the ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} shortfall stays due on the student's ledger.`)) return
+      if (!window.confirm(`This is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} below the standard course fee.\n\nThis will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`)) return
     }
 
     // ✦ Advance months — build the run of consecutive months starting at
@@ -946,7 +952,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -961,8 +967,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setCourseAmtReason('')
       setAdvanceMonthCount(1)
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
+  }
+
+  const saveBalance = async items => {
+    if (saving) return
+    if (!isStudentActive) return alert(inactiveStatusMsg)
+    if (!(await preflight())) throw new Error('Cancelled.')
+    setSaving(true); setError(null)
+    try {
+      const rNo = rcptNo()
+      const { sections, total, skipped } = await collectFee({
+        gcc, studentName: name, admNo: admNo || '--', className: batch || '', course: course || '',
+        hostelType, payDate, payMode, txnRef: txnRef || null,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items, isRepeater,
+      })
+      if (skipped?.length) setError(`Nothing owed, skipped: ${skipped.join(', ')}`)
+      if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      if (total > 0) { setSaved({ rcpt: rNo, items: 'Balance of part-paid month(s)', total }); setPaymentToast({ amount: total, label: 'Balance payment' }) }
+      onSaved?.()
+    } finally { setSaving(false) }
   }
 
   const handleClose = () => typeof onClose === 'function' && onClose()
@@ -1060,6 +1085,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             <button type="button" aria-label="Close" onClick={handleClose} style={{ width:34, height:34, borderRadius:'50%', border:`1px solid ${C.slate[200]}`, background:'white', cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
 
+          <FeeClashBanner others={clashOthers} />
           {!isStudentActive && (
             <div style={{ marginTop:12, background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'10px 14px' }}>
               <div style={{ fontSize:12, color:'#991B1B', fontWeight:700 }}>⛔ {inactiveStatusMsg}</div>
@@ -1097,6 +1123,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       <strong style={{ color: hasOverride ? C.violet : C.emerald }}>
                         ₹{fmt(feeRates.flatFee).replace('₹','')}/month
                       </strong>
+                      {feeRates.addonFee > 0 && !hasOverride && <span style={{ color:'#7a4a00', fontWeight:600 }}>(includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}
                       {hasOverride && (
                         <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd', letterSpacing:'.04em' }}>
                           OVERRIDE
@@ -1108,10 +1135,18 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         ✏️ {overrideMode ? 'Cancel' : 'Change'}
                       </button>
                     </span>
-                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on{feeRates.addonReason === 'exam' ? ' — appears in the Exam Combined papers' : ''})</span>}</span>
                   </>
               }
             </div>
+
+            {/* Rates not configured → these amounts are built-in defaults, not what Fee Setup says */}
+            {!ratesLoading && feeRates.usingFallbackRates && (
+              <div role="alert" style={{ marginTop:8, background:'#fff9ec', border:'1px solid #eadbb2', borderRadius:8, padding:'8px 12px', fontSize:11.5, color:'#7a4a00', lineHeight:1.5 }}>
+                ⚠ <strong>Default rates in use.</strong> Fee Setup has no rate for {course || 'this course'}{batch && batch !== '—' ? ` · ${batch}` : ''} · {hostelType} in {sessionYear}.
+                The amounts above (flat ₹{fmt(feeRates.flatFee).replace('₹','')}, course ₹{fmt(feeRates.courseFee).replace('₹','')}) are the old built-in values — set the real rate in Fee Setup before collecting.
+              </div>
+            )}
 
             {/* ── Inline override editor ── */}
             {overrideMode && (
@@ -1174,6 +1209,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             {tabBtn('admission', 'Admission', '🎓')}
             {tabBtn('flat',      'Monthly Flat Fee', '📅')}
             {tabBtn('course',    'Course Fee', '📚')}
+            {tabBtn('balance',   'Part-paid Balance', '➕')}
           </div>
         </div>
 
@@ -1432,6 +1468,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           )}
 
           {/* ── Course fee tab ── */}
+          {tab === 'balance' && (
+            <FeeBalanceCollect student={{ gcc_no: gcc, course, batch, hostel_type: hostelType, admission_date: admissionDate, is_repeater: isRepeater, session: student?.session }}
+              saving={saving} disabled={!collectedBy.trim() || !admissionDate} onCollect={saveBalance} />
+          )}
+
           {tab === 'course' && (
             <div>
               <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:9, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#1d4ed8' }}>
@@ -1652,12 +1693,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
-                  Collected by
-                  {(currentUser?.userName || currentUser?.name) && collectedBy === (currentUser?.userName || currentUser?.name) && (
-                    <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>
-                  )}
+                  Collected by * <span style={{ fontWeight:500, opacity:.7 }}>(automatic — you)</span>
+                  {collectedBy && <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>}
                 </label>
-                <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={inp} />
+                <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" style={{ ...inp, background:'#f4f1e8', cursor:'not-allowed' }} />
               </div>
             </div>
           </div>
@@ -1716,6 +1755,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           <button type="button" onClick={handleClose} style={{ padding:'11px 20px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
+            hidden={tab==='balance'}
             disabled={blocked}
             style={{ padding:'11px 24px', borderRadius:12, border: blocked ? 'none' : '1px solid #a37f2e', fontSize:13.5, fontWeight:800,
               cursor: blocked ? 'not-allowed' : 'pointer',

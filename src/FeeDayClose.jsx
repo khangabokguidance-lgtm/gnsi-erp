@@ -3,6 +3,7 @@
 // closing per date in fee_day_close (migration 20261009_fee_dayclose_refunds_register.sql).
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
+import { cardFlush as card, input as inp, btn, btnPrimary, cell, head } from './feeTheme'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_day_close/.test(err.message || ''))
 const SETUP_MSG = 'Run supabase/migrations/20261009_fee_dayclose_refunds_register.sql in the Supabase SQL editor to switch on day closing.'
@@ -32,12 +33,6 @@ function downloadCsv(rows, filename) {
   a.download = `${filename}.csv`; a.click(); URL.revokeObjectURL(a.href)
 }
 
-const card = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }
-const inp = { padding: '8px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' }
-const btn = { padding: '8px 14px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
-const btnPrimary = { ...btn, background: '#1e3a6e', color: 'white', border: '1px solid #1e3a6e' }
-const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
 
 function Chip({ diff }) {
   const d = Number(diff || 0)
@@ -56,6 +51,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
   const [cashCounted, setCashCounted] = useState('')
   const [otherCounted, setOtherCounted] = useState({})
   const [note, setNote] = useState('')
+  const [userCash, setUserCash] = useState({})      // collector -> cash handed in (₹)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -82,11 +78,15 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
     return { byMode, byUser, total, count }
   }, [receipts, date])
 
+  // When any collector's handed-in cash is entered, the counted total is their sum.
+  const anyUser = Object.values(userCash).some(v => String(v ?? '').trim() !== '')
+  const userSum = Object.values(userCash).reduce((t, v) => t + (Number(v) || 0), 0)
+  const cashVal = anyUser ? String(Math.round(userSum * 100) / 100) : cashCounted
   const recordedCash = Object.entries(day.byMode).reduce((t, [m, v]) => t + (isCash(m) ? v.amount : 0), 0)
   const existing = history.find(h => dayOf(h.close_date) === date)
   const isClosed = existing && existing.status === 'closed'
-  const hasCount = String(cashCounted).trim() !== ''
-  const diff = hasCount ? Math.round((Number(cashCounted) - recordedCash) * 100) / 100 : 0
+  const hasCount = String(cashVal).trim() !== ''
+  const diff = hasCount ? Math.round((Number(cashVal) - recordedCash) * 100) / 100 : 0
   const nonCashModes = Object.keys(day.byMode).filter(m => !isCash(m))
 
   // Earlier days (last 30) that have collections but no closing.
@@ -99,12 +99,13 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
     return [...days].filter(d => !closed.has(d)).length
   }, [receipts, history, today, setup])
 
-  const canSave = !isClosed && hasCount && Number(cashCounted) >= 0 && (diff === 0 || note.trim().length >= 5) && !busy
+  const canSave = !isClosed && hasCount && Number(cashVal) >= 0 && (diff === 0 || note.trim().length >= 5) && !busy
 
   const save = async () => {
     setBusy(true); setMsg(null)
     const recorded = Object.fromEntries(Object.entries(day.byMode).map(([m, v]) => [m, v.amount]))
-    const counted = { Cash: Number(cashCounted) }
+    const counted = { Cash: Number(cashVal) }
+    if (anyUser) counted.by_user = Object.fromEntries(Object.entries(userCash).filter(([, v]) => String(v ?? '').trim() !== '').map(([u, v]) => [u, Number(v)]))
     nonCashModes.forEach(m => { if (String(otherCounted[m] ?? '').trim() !== '') counted[m] = Number(otherCounted[m]) })
     const row = { recorded, counted, difference: diff, note: note.trim() || null, closed_by: me, status: 'closed' }
     const { error } = existing
@@ -112,7 +113,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
       : await supabase.from('fee_day_close').insert({ close_date: date, ...row })
     setBusy(false)
     if (error) { setMsg({ bad: true, t: missingTable(error) ? SETUP_MSG : error.code === '23505' ? 'This date was already closed by someone else — refresh.' : error.message }); return }
-    setMsg({ t: `Day ${date} closed.` }); setCashCounted(''); setOtherCounted({}); setNote(''); setTick(t => t + 1)
+    setMsg({ t: `Day ${date} closed.` }); setCashCounted(''); setUserCash({}); setOtherCounted({}); setNote(''); setTick(t => t + 1)
   }
 
   const reopen = async h => {
@@ -130,7 +131,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
     const modeRows = Object.entries(day.byMode).map(([m, v]) => `<tr><td>${esc(m)}</td><td class="r">${v.count}</td><td class="r">₹${n(v.amount)}</td></tr>`).join('')
     const userRows = Object.entries(day.byUser).map(([u, v]) => `<tr><td>${esc(u)}</td><td class="r">${v.count}</td><td class="r">₹${n(v.cash)}</td><td class="r">₹${n(v.amount)}</td></tr>`).join('')
     const c = existing && existing.status === 'closed' ? existing : null
-    const cashC = c ? Number(c.counted?.Cash ?? 0) : hasCount ? Number(cashCounted) : null
+    const cashC = c ? Number(c.counted?.Cash ?? 0) : hasCount ? Number(cashVal) : null
     const d = c ? Number(c.difference || 0) : hasCount ? diff : null
     w.document.write(`<!doctype html><html><head><title>Day closing ${esc(date)}</title><style>
       body{font-family:Arial,sans-serif;padding:24px;color:#14213d;font-size:13px}h1{font-size:18px;color:#1e3a6e;margin:0 0 4px}
@@ -166,7 +167,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
             <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a6e' }}>🧾 Day closing</div>
             <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 2 }}>Match the cash in hand with what the system recorded for the day</div>
           </div>
-          <input type="date" value={date} max={today} onChange={e => { if (e.target.value && e.target.value <= today) { setDate(e.target.value); setMsg(null) } }} style={inp} />
+          <input type="date" value={date} max={today} onChange={e => { if (e.target.value && e.target.value <= today) { setDate(e.target.value); setMsg(null); setUserCash({}) } }} style={inp} />
           <button onClick={printSheet} style={btn}>🖨 Day closing sheet</button>
         </div>
 
@@ -191,10 +192,16 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr><th style={head}>Collector</th><th style={{ ...head, textAlign: 'right' }}>Receipts</th><th style={{ ...head, textAlign: 'right' }}>Cash</th><th style={{ ...head, textAlign: 'right' }}>Total</th></tr></thead>
+              <thead><tr><th style={head}>Collector</th><th style={{ ...head, textAlign: 'right' }}>Receipts</th><th style={{ ...head, textAlign: 'right' }}>Cash</th><th style={{ ...head, textAlign: 'right' }}>Total</th><th style={{ ...head, textAlign: 'right' }}>Cash handed in</th></tr></thead>
               <tbody>
-                {Object.entries(day.byUser).map(([u, v]) => <tr key={u}><td style={cell}>{u}</td><td style={{ ...cell, textAlign: 'right' }}>{v.count}</td><td style={{ ...cell, textAlign: 'right' }}>₹{n(v.cash)}</td><td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>₹{n(v.amount)}</td></tr>)}
-                {day.count === 0 && <tr><td colSpan={4} style={{ ...cell, color: '#8a93a6', textAlign: 'center' }}>—</td></tr>}
+                {Object.entries(day.byUser).map(([u, v]) => <tr key={u}><td style={cell}>{u}</td><td style={{ ...cell, textAlign: 'right' }}>{v.count}</td><td style={{ ...cell, textAlign: 'right' }}>₹{n(v.cash)}</td><td style={{ ...cell, textAlign: 'right', fontWeight: 700 }}>₹{n(v.amount)}</td>
+                  <td style={{ ...cell, textAlign: 'right' }}>
+                    {isClosed
+                      ? (existing.counted?.by_user && existing.counted.by_user[u] != null ? <>₹{n(existing.counted.by_user[u])} <Chip diff={existing.counted.by_user[u] - v.cash} /></> : '—')
+                      : <><input type="number" min="0" placeholder="₹" value={userCash[u] ?? ''} onChange={e => setUserCash(c => ({ ...c, [u]: e.target.value }))} style={{ ...inp, width: 96, padding: '4px 8px', textAlign: 'right' }} />
+                          {String(userCash[u] ?? '').trim() !== '' && <span style={{ marginLeft: 6 }}><Chip diff={Math.round((Number(userCash[u]) - v.cash) * 100) / 100} /></span>}</>}
+                  </td></tr>)}
+                {day.count === 0 && <tr><td colSpan={5} style={{ ...cell, color: '#8a93a6', textAlign: 'center' }}>—</td></tr>}
               </tbody>
             </table>
           </div>
@@ -211,7 +218,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
               {existing && <div style={{ fontSize: 12, color: '#b45309', marginBottom: 8 }}>This day was reopened by {existing.reopened_by} ({existing.reopen_reason}) — close it again below.</div>}
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82' }}>Cash counted in hand (₹)
-                  <input type="number" min="0" value={cashCounted} onChange={e => setCashCounted(e.target.value)} style={{ ...inp, display: 'block', width: 170, marginTop: 4 }} />
+                  <input type="number" min="0" value={cashVal} readOnly={anyUser} title={anyUser ? 'Sum of the per-collector amounts above' : ''} onChange={e => setCashCounted(e.target.value)} style={{ ...inp, display: 'block', width: 170, marginTop: 4, background: anyUser ? '#f3f0e8' : undefined }} />
                 </label>
                 {nonCashModes.map(m => (
                   <label key={m} style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82' }}>{m} statement (optional)

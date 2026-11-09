@@ -12,6 +12,9 @@ export default {
     { name: '📒 Student ledger', what: 'Search one student and see their full fee record, receipts, month-wise register and statement.' },
     { name: '📅 Fee Day Book', what: 'All fee receipts for a day, week or month, with cash, UPI and other totals. Print it.' },
     { name: '🗓 Monthly Fee Ledger', what: 'One register for all students showing who has paid and who has dues. Print it.' },
+    { name: '🧾 Month-wise Collection', what: 'Pick a month and see every receipt collected in it, by day, with totals by payment mode, fee head and collector. Print it or export to Excel.' },
+    { name: '⚠️ Month-wise Dues', what: 'Pick a month and see every student who owes fee for it (unpaid or short-paid), biggest due first. Print it or export to Excel.' },
+    { name: '🎓 Waivers & Concessions', what: 'Every student who gets a fee waiver or concession, split by course fee and flat fee, with where it comes from. Flags students who keep paying a reduced amount with no concession on record.' },
     { name: '💸 Expenditure Day Book', what: 'Expense day book from Accounts. Shown only to users who can open Accounts.' },
     { name: '⚖️ Income & Expenditure', what: 'Income and expenditure register from Accounts. Shown only to users who can open Accounts.' },
   ],
@@ -75,6 +78,38 @@ export default {
         'Use "Students" to include inactive students if needed.',
         'Press "🖨️ Print register" to print.',
       ],
+    },
+    {
+      title: 'See what was collected in a month',
+      body: [
+        'Open the "🧾 Month-wise Collection" tab and choose the session.',
+        'The table shows each month from April to March with its receipts and amount collected. Click a month to open it.',
+        'Read the totals by payment mode, fee head and collector, then the receipts grouped by day.',
+        'Click a receipt number to reprint it, or a student name to open their ledger.',
+        'Press "🖨️ Print month" or "📊 Excel" to take the report to the Founder\'s Office.',
+      ],
+    },
+    {
+      title: 'See which students owe fee in a month',
+      body: [
+        'Open the "⚠️ Month-wise Dues" tab and choose the session.',
+        'Narrow by Course, Batch, Hostel or the Search box if you only chase some students.',
+        'Click a month in the table. The list below shows every student who owes for that month, biggest due first. "Unpaid" means nothing paid; "Short-paid" means part paid.',
+        'Click a student name to open the ledger, or collect from the Fees module (see "Fee counter routine" there).',
+        'Press "🖨️ Print month" or "📊 Excel" to get the list for the fee counter.',
+      ],
+      tip: 'This tab shows monthly fees only. Admission fee and dues brought forward from earlier sessions are in the Monthly Fee Ledger.',
+    },
+    {
+      title: 'Find students with a fee waiver or concession',
+      body: [
+        'Open the "🎓 Waivers & Concessions" tab and choose the session. Narrow by Course, Batch or Hostel if needed.',
+        'Each student is listed with the amount waived on course fee and flat fee, and tags showing the source: Approved concession, Standing scholarship, Custom / lower fee, Dues written off, Concession pending, or Repeater.',
+        'Use "Type" to show only one source. Choose "⚠ Unrecorded pattern" to see students who pay the same reduced amount month after month with no concession on record.',
+        'For an unrecorded pattern, ask who agreed it. If it was agreed, enter a concession (Fees → Register) or a custom fee so their dues are right; if not, collect the balance.',
+        'Press "🖨️ Print list" or "📊 Excel" for the Founder\'s Office.',
+      ],
+      tip: 'A part payment that is still owed is not a waiver. It stays on the dues list until it is paid or a concession is approved.',
     },
     {
       title: 'Print every ledger or export to Excel',

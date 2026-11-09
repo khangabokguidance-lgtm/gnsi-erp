@@ -1,5 +1,6 @@
 import webpush from "web-push"
 import { createClient } from "@supabase/supabase-js"
+import { requireStaff, isAdmin, rateLimit } from "./_guard/guard.js"
 
 webpush.setVapidDetails(
   process.env.VAPID_SUBJECT || "mailto:admin@guidancekhangabok.in",
@@ -10,10 +11,21 @@ webpush.setVapidDetails(
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end()
 
-  const { title, body, icon = "/logo.png", url = "/", staffId = null, tag = null } = req.body || {}
+  // Only signed-in staff may send notifications; a broadcast to every device needs an admin.
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: "push", max: 60, id: user.id })) return
+
+  const { title, body, icon = "/logo.png", url = "/", staffId = null, studentId = null, tag = null } = req.body || {}
 
   if (!title || !body) {
     return res.status(400).json({ error: "title and body are required" })
+  }
+  if (String(title).length > 120 || String(body).length > 500) {
+    return res.status(400).json({ error: "title or body too long" })
+  }
+  if (!staffId && !studentId && !(await isAdmin(user))) {
+    return res.status(403).json({ error: "Only an admin can notify every device." })
   }
 
   const supabase = createClient(
@@ -25,6 +37,8 @@ export default async function handler(req, res) {
   // ── Broadcast send (no staffId given): every subscribed device ──
   let query = supabase.from("push_subscriptions").select("*")
   if (staffId) query = query.eq("staff_id", staffId)
+  // Parent devices: only the ones subscribed for this student.
+  if (studentId) query = query.eq("student_id", studentId).eq("role", "parent")
 
   const { data: subs, error } = await query
   if (error) return res.status(500).json({ error: error.message })
@@ -38,8 +52,16 @@ export default async function handler(req, res) {
   await Promise.allSettled(
     subs.map(async (sub) => {
       try {
+        // Older parent rows kept the whole subscription as JSON.
+        let keys = { p256dh: sub.p256dh, auth: sub.auth }
+        if (!keys.p256dh || !keys.auth) {
+          try {
+            const j = typeof sub.subscription === "string" ? JSON.parse(sub.subscription) : sub.subscription
+            keys = j?.keys || keys
+          } catch { /* leave as is */ }
+        }
         await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          { endpoint: sub.endpoint, keys },
           payload
         )
         sent++

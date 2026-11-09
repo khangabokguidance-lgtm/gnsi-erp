@@ -8,6 +8,8 @@
 import React, { useState } from 'react'
 import { receiptDocument, receiptSheet, receiptHeader, openReceiptWindow, esc, fmtDate } from './premiumReceipt'
 import { getInstitute } from './systemSettings'
+import { parentPhoneOf } from './lib/cbtCertLogic'
+import { CERT_CSS } from './certificateCss'
 
 const NAVY = '#0B1E3D'
 
@@ -32,14 +34,6 @@ const certNo = (st, type) => {
   return `GNSI/CERT/${yr}/${type.id.slice(0, 3).toUpperCase()}-${String(st.gcc_no || '').padStart(4, '0')}-${rnd}`
 }
 
-const CERT_CSS = `
-  .ct-body{margin-top:14px;border:1px solid #E6DCC3;border-left:5px solid #C9A24B;background:#FFFCF4;border-radius:8px;padding:22px 26px}
-  .ct-body p{font-family:'Playfair Display',Georgia,serif;font-size:15px;line-height:2;color:#1F2A44;text-align:justify}
-  .ct-body .nm{font-size:19px;font-weight:700;color:#0B1E3D;border-bottom:1.5px solid #C9A24B;padding:0 4px}
-  .ct-purpose{margin-top:12px;font-size:12.5px;color:#334155}
-  .ct-seal{width:92px;height:92px;border-radius:50%;border:2px dashed #94A3B8;color:#94A3B8;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;text-align:center;line-height:1.5}
-  .ct-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
-`
 
 function certificateSheet(st, type, opts) {
   const inst = getInstitute()
@@ -65,7 +59,7 @@ function certificateSheet(st, type, opts) {
       <table class="info"><tbody>
         <tr>${cell('Student Name', esc(st.name), ' colspan="2"')}${cell('GCC No.', `<span class="mono">GCC-${esc(st.gcc_no || '—')}</span>`)}${cell('Admission No.', data.adm)}</tr>
         <tr>${cell("Father's Name", esc(st.father_name || '—'), ' colspan="2"')}${cell('Course', data.course)}${cell('Class / Batch', esc(st.class_name || '—'))}</tr>
-        ${st.dob ? `<tr>${cell('Date of Birth', esc(fmtDate(st.dob)), ' colspan="2"')}${cell('Hostel', esc(st.hostel_type || '—'), ' colspan="2"')}</tr>` : ''}
+        <tr>${cell('Parent contact', `<span class="mono">${esc(parentPhoneOf(st) || '—')}</span>`, ' colspan="2"')}${cell('Date of Birth', st.dob ? esc(fmtDate(st.dob)) : '—')}${cell('Hostel', esc(st.hostel_type || '—'))}</tr>
       </tbody></table>
       <div class="ct-body">
         <p>This is to certify that <span class="nm">${esc(st.name)}</span>,${parent} GCC No. <b>${esc(st.gcc_no || '—')}</b>, ${type.text(data)}</p>
@@ -153,6 +147,7 @@ function meritSheet(it) {
       <table class="info"><tbody>
         <tr>${cell('Student Name', esc(st.name), ' colspan="2"')}${cell('GCC No.', `<span class="mono">GCC-${esc(st.gcc_no || '—')}</span>`)}${cell('Rank', `<b style="color:#B8860B">${ord}</b>`)}</tr>
         <tr>${cell('Course', esc(it.course || st.course || '—'))}${cell('Class / Batch', esc(st.class_name || '—'))}${cell('Marks obtained', `<span class="mono">${esc(it.total)} / ${esc(it.courseMax)}</span>`)}${cell('Percentage', `<span class="mono">${Number(it.pct || 0).toFixed(1)}%</span>`)}</tr>
+        <tr>${cell("Father's Name", esc(st.father_name || '—'), ' colspan="2"')}${cell('Parent contact', `<span class="mono">${esc(parentPhoneOf(st) || '—')}</span>`, ' colspan="2"')}</tr>
       </tbody></table>
       <div class="ct-body" style="text-align:center">
         <p style="text-align:center;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#7A5A14">Certificate of merit</p>

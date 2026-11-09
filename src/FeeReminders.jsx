@@ -3,20 +3,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { loadStanding } from './feeStanding'
 import { supabase } from './supabase'
+import StudentJump from './StudentJump'
+import { NAVY, BORDER, card, label, input, btnFn as btn, th, td } from './feeTheme'
 
 const n = v => Number(v || 0).toLocaleString('en-IN')
-const NAVY = '#1e3a6e'
-const BORDER = '#e8e3d8'
 const INSTITUTE = 'Guidance Navodaya & Sainik Institute (GNSI)'
 const SETUP_MSG = 'Run supabase/migrations/20261008_fee_reminders_installments.sql in the Supabase SQL editor to switch on reminder history and promise-to-pay.'
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_reminders/.test(err.message || ''))
 
-const card = { background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 14, padding: 14 }
-const label = { fontSize: 10, fontWeight: 800, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4, display: 'block' }
-const input = { padding: '7px 10px', border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12.5, background: '#fff', minWidth: 0 }
-const btn = (bg = NAVY, fg = '#fff') => ({ padding: '7px 13px', borderRadius: 8, border: 'none', background: bg, color: fg, fontWeight: 700, fontSize: 12, cursor: 'pointer' })
-const th = { padding: '8px 10px', textAlign: 'left', fontSize: 10.5, fontWeight: 800, color: '#fff', background: NAVY, whiteSpace: 'nowrap' }
-const td = { padding: '8px 10px', fontSize: 12, borderBottom: `1px solid ${BORDER}`, verticalAlign: 'top' }
 
 const DEFAULT_TEMPLATE = `Dear Parent,
 
@@ -56,7 +50,7 @@ async function fetchLogs() {
   return { data: data || [], error }
 }
 
-export default function FeeReminders({ students = [], liveRows = [], isAdmin, currentUser }) {
+export default function FeeReminders({ students = [], liveRows = [], isAdmin, currentUser, onCollect, onLedger }) {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
@@ -271,7 +265,7 @@ export default function FeeReminders({ students = [], liveRows = [], isAdmin, cu
                 <tr key={r._gcc}>
                   <td style={td}><input type="checkbox" checked={selected.has(r._gcc)} onChange={() => toggleOne(r._gcc)} aria-label={`Select ${r.name}`} /></td>
                   <td style={td}><div style={{ fontWeight: 800 }}>{r.name}{plans.get(String(parseInt(r.gcc_no) || 0)) && <span title="Has an instalment plan" style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? '#fef2f2' : '#f0f9ff', color: plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? '#b91c1c' : '#0369a1' }}>{plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? 'PLAN OVERDUE' : 'ON PLAN'}</span>}</div><div style={{ fontSize: 10.5, color: '#6b7280' }}>GCC-{r.gcc_no} · {r._phone ? `+${r._phone}` : <span style={{ color: '#b91c1c' }}>no phone</span>}</div></td>
-                  <td style={td}>{r.course || '—'}<div style={{ fontSize: 10.5, color: '#6b7280' }}>{[r.batch, r.hostel_type].filter(Boolean).join(' · ')}</div></td>
+                  <td style={td}>{r.course || '—'}<div style={{ fontSize: 10.5, color: '#6b7280' }}>{[r.batch, r.hostel_type].filter(Boolean).join(' · ')}</div><StudentJump gcc={r.gcc_no} students={students} onCollect={onCollect} onLedger={onLedger} /></td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 900, color: '#dc2626' }}>₹{n(r._due)}</td>
                   <td style={td}>
                     {st?.count ? <><div style={{ fontWeight: 700 }}>{st.count}×</div><div style={{ fontSize: 10.5, color: '#6b7280' }}>last {fmtDate(st.last)}</div></> : <span style={{ color: '#9ca3af' }}>Never</span>}

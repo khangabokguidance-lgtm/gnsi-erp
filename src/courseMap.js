@@ -11,16 +11,59 @@
 export const COURSE_BATCHES = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
   Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B', 'Lakshya'],   // 'Lakshya' = older, unsplit records
-  Foundation:        ['Prime', 'Elite'],
+  Foundation:        ['Pragati', 'Udaan'],
   'Combined Course': [],
 }
 export const COURSE_ORDER = ['Sainik', 'Navodaya', 'Foundation', 'Combined Course']
+
+// Batches offered for NEW records: the standard list without the older unsplit 'Lakshya'
+// (kept only so existing rows still resolve).
+export const NEW_RECORD_BATCHES = Object.fromEntries(COURSE_ORDER.map(c => [c, COURSE_BATCHES[c].filter(b => b !== 'Lakshya')]))
+
+// The { course: { subtypes, ...extra } } shape the Admissions / Students / Fees screens use, built from
+// the one standard list above so they cannot drift apart. `extra` adds per-course fields (colours);
+// `order` keeps a screen's own course order; `includeLegacy` keeps the old unsplit 'Lakshya'.
+export const courseStructure = (extra = {}, { order = COURSE_ORDER, includeLegacy = false } = {}) =>
+  Object.fromEntries(order.map(c => [c, { subtypes: [...(includeLegacy ? COURSE_BATCHES : NEW_RECORD_BATCHES)[c]], ...(extra[c] || {}) }]))
+
+// Same, as plain { course: [batches] } with the '—' placeholder for a course without batches
+// (Fee Setup keys its rows on it).
+export const courseBatchLists = () => Object.fromEntries(COURSE_ORDER.map(c => [c, NEW_RECORD_BATCHES[c].length ? [...NEW_RECORD_BATCHES[c]] : ['—']]))
 
 const BATCH_TO_COURSE = (() => {
   const m = {}
   Object.entries(COURSE_BATCHES).forEach(([c, bs]) => bs.forEach(b => { m[b.toLowerCase()] = c }))
   return m
 })()
+
+// Foundation batches were renamed (Elite → Udaan, Prime → Pragati); rows not
+// yet renamed still mean the new batch.
+const RENAMED_BATCHES = { elite: 'Udaan', prime: 'Pragati' }
+const STANDARD_BATCHES = Object.values(COURSE_BATCHES).flat()
+
+// Spellings a batch may still be saved under elsewhere (e.g. Fee Setup rows
+// written before the rename) — used to look those rows up.
+export const BATCH_ALIASES = {
+  Udaan: ['Udaan', 'UDAAN', 'Elite', 'ELITE'],
+  Pragati: ['Pragati', 'PRAGATI', 'Prime', 'PRIME'],
+}
+
+export const isStandardBatch = b => STANDARD_BATCHES.includes(b)
+
+// A batch as the standard name: case and spacing don't matter, a section
+// suffix is dropped ("UDAAN — ENG" → Udaan) and the old names map to the
+// new ones ("ELITE" → Udaan). Unknown names come back trimmed, unchanged.
+export function canonicalBatch(raw) {
+  const s = String(raw || '').trim().replace(/\s+/g, ' ')
+  if (!s) return ''
+  // Whole value first, ignoring spaces and dashes ("LAKSHYA - A" → Lakshya A).
+  const squash = v => v.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const whole = STANDARD_BATCHES.find(b => squash(b) === squash(s)) || RENAMED_BATCHES[squash(s)]
+  if (whole) return whole
+  const base = s.split(/\s*[—–-]\s*/)[0].trim()
+  const low = base.toLowerCase()
+  return RENAMED_BATCHES[low] || STANDARD_BATCHES.find(b => b.toLowerCase() === low) || s
+}
 
 export function normalizeCourse(raw) {
   const s = String(raw || '').trim().toLowerCase()
@@ -35,14 +78,15 @@ export function normalizeCourse(raw) {
 // Course for a student row — 'Unassigned' when neither course nor batch tells us.
 export function courseOf(s) {
   return normalizeCourse(s?.course)
-    || BATCH_TO_COURSE[String(s?.batch || '').trim().toLowerCase()]
-    || BATCH_TO_COURSE[String(s?.class_name || '').trim().toLowerCase()]
+    || BATCH_TO_COURSE[canonicalBatch(s?.batch).toLowerCase()]
+    || BATCH_TO_COURSE[canonicalBatch(s?.class_name).toLowerCase()]
     || 'Unassigned'
 }
 
-// Batch for a student row (students.batch, falling back to class_name).
+// Batch for a student row (students.batch, falling back to class_name), in
+// the standard name ("UDAAN", "Udaan — ENG", old "Elite" → Udaan).
 export function batchOf(s) {
-  return String(s?.batch || s?.class_name || '').trim() || 'No batch'
+  return canonicalBatch(s?.batch || s?.class_name) || 'No batch'
 }
 
 // Batches to offer for a course: the standard list, plus any other batch
@@ -71,3 +115,10 @@ export const takeAttendanceHandoff = () => take(KEY_ATT)
 // Students: { gcc }  → opens that student's profile
 export const handoffToStudents = v => put(KEY_STU, v)
 export const takeStudentsHandoff = () => take(KEY_STU)
+// Fees: { gcc } → opens Fee Payment for that student.  Admissions: { gcc } → opens that application's detail.
+const KEY_FEES = 'gnsi_handoff_fees'
+const KEY_ADM = 'gnsi_handoff_admissions'
+export const handoffToFees = v => put(KEY_FEES, v)
+export const takeFeesHandoff = () => take(KEY_FEES)
+export const handoffToAdmissions = v => put(KEY_ADM, v)
+export const takeAdmissionsHandoff = () => take(KEY_ADM)

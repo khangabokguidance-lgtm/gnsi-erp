@@ -9,6 +9,8 @@
 // Two calls, per Bhashini's pipeline API: a config call to ULCA returns the
 // inference endpoint, its key and the model's serviceId for the language
 // pair (cached per warm instance); the compute call then translates.
+import { requireStaff, rateLimit } from './_guard/guard.js'
+
 const CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline'
 const DEFAULT_PIPELINE = '64392f96daac500b55c543cd' // MeitY's public pipeline
 const LANGS = {
@@ -74,6 +76,10 @@ async function compute(cfg, src, tgt, texts) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
+
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: 'bhashini', max: 30, id: user.id })) return
 
   const userId = process.env.BHASHINI_USER_ID
   const apiKey = process.env.BHASHINI_ULCA_API_KEY

@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import { CHANGELOG, TYPE_META } from './data/changelog'
 import * as INTRO from './data/guideIntro'
 import { bookHtml, bookMarkdown, orderChapters, BOOK_CSS } from './lib/guideBook'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 const modules = import.meta.glob('./data/tutorials/*.js', { eager: true })
 const GUIDES = Object.values(modules).map(m => m.default).filter(Boolean)
@@ -183,28 +184,22 @@ export default function HelpCenter({ currentUser, canAccess, onNavigate }) {
   const goModule = id => onNavigate?.(id)
   const g = sel ? byId[sel] : null
 
-  const tabBtn = (id, label) => (
-    <button key={id} type="button" onClick={() => setView(id)} aria-pressed={view === id}
-      style={{ padding: '8px 16px', borderRadius: 999, border: view === id ? `1px solid ${NAVY}` : `1px solid ${LINE}`, background: view === id ? NAVY : 'white', color: view === id ? 'white' : NAVY, fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>{label}</button>
-  )
-
   return (
-    <div style={{ padding: '18px 20px 40px', maxWidth: 1180, margin: '0 auto', fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-        <div style={{ flex: '1 1 260px' }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: NAVY, fontFamily: "'Fraunces',Georgia,serif" }}>📖 Help &amp; Training</div>
-          <div style={{ fontSize: 13, color: '#64748b' }}>Hello {currentUser?.name || 'there'} — learn each module step by step, and see what has changed.</div>
-        </div>
-        <div style={{ ...card, padding: '10px 16px', minWidth: 220 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: GOLD, letterSpacing: '.1em' }}>YOUR TRAINING</div>
-          <div style={{ height: 8, background: '#eef0f4', borderRadius: 4, overflow: 'hidden', margin: '6px 0 4px' }}><div style={{ height: '100%', width: `${pct}%`, background: '#16a34a', transition: 'width .4s' }} /></div>
-          <div style={{ fontSize: 12, color: '#475569' }}>{doneMine} of {mine.length} modules learned ({pct}%)</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {tabBtn('new', "✨ What's new")}{tabBtn('guides', '📚 Module guides')}{tabBtn('paths', '🎯 Training paths')}{tabBtn('book', '📘 Complete guide')}
-      </div>
+    <div className="px-root" style={{ padding: 'clamp(12px, 2.5vw, 20px) clamp(12px, 2.5vw, 20px) 40px', maxWidth: 1180, margin: '0 auto', minHeight: 'auto', background: 'transparent' }}>
+      <PremiumStyles />
+      <PremiumHero eyebrow="GNSI · Help & Training" title="Help & Training"
+        subtitle={`Hello ${currentUser?.name || 'there'} — learn each module step by step, and see what has changed`}
+        icon={<span style={{ fontSize: 22 }}>📖</span>}
+        stats={[
+          { label: 'Your training', value: `${pct}%`, sub: `${doneMine} of ${mine.length} modules learned`, tone: pct >= 100 ? '#86efac' : undefined, onClick: () => setView('paths') },
+          { label: 'What’s new', value: CHANGELOG.length, sub: 'Release notes', onClick: () => setView('new') },
+          { label: 'Guides', value: mine.length, sub: 'Modules you use', onClick: () => setView('guides') },
+        ]} />
+      <nav className="px-tabs" role="tablist" aria-label="Help sections">
+        {[['new', "✨ What's new"], ['guides', '📚 Module guides'], ['paths', '🎯 Training paths'], ['book', '📘 Complete guide']].map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} className={'px-tab' + (view === id ? ' on' : '')} onClick={() => setView(id)}>{label}</button>
+        ))}
+      </nav>
 
       {view === 'new' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

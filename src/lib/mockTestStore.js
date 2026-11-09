@@ -5,6 +5,7 @@
 // localStorage instead so nothing is lost, and the screen tells the user to
 // run the migration.
 import { supabase } from '../supabase';
+import { pickInstruction, daysToText, daysFromText } from './dutyInstruction.js';
 
 const TABLE = 'mock_test_results';
 const LS_KEY = 'gnsi_mock_test_results_v1';
@@ -175,5 +176,315 @@ export async function saveSettings(series, cfg, mode, who = '') {
     { series, pass_pct: cfg.passPct, pass_by_batch: cfg.passBy || {}, updated_by: who || null, updated_at: new Date().toISOString() },
     { onConflict: 'series' },
   );
+  if (error) throw error;
+}
+
+// ─── Navodaya / Sainik targets (cut-off, seats, sectional minimum, batch→exam) ─
+// Stored in mock_test_settings.exam_config (20261060_mock_test_exam_config.sql); a copy is kept in this
+// browser so the values survive while the migration is pending.
+const EXAM_LS = 'gnsi_mock_exam_config_v1';
+const examRead = () => { try { return JSON.parse(localStorage.getItem(EXAM_LS) || '{}') || {}; } catch { return {}; } };
+const examWrite = (all) => { try { localStorage.setItem(EXAM_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+const missingColumn = (e) => !!e && (e.code === '42703' || /exam_config/i.test(e.message || ''));
+
+// → { config: { navodaya?, sainik?, override? }, mode: 'cloud' | 'local' }
+export async function loadExamConfig(series) {
+  const local = examRead()[series] || {};
+  const { data, error } = await supabase.from(SET_TABLE).select('exam_config').eq('series', series).maybeSingle();
+  if (error) {
+    if (missingTable(error) || missingColumn(error)) return { config: local, mode: 'local' };
+    throw error;
+  }
+  return { config: data?.exam_config && Object.keys(data.exam_config).length ? data.exam_config : local, mode: 'cloud' };
+}
+
+export async function saveExamConfig(series, config, mode, who = '') {
+  examWrite({ ...examRead(), [series]: config });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(SET_TABLE).upsert(
+    { series, exam_config: config, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series' },
+  );
+  if (error) throw error;
+}
+
+// ─── Manual self-study groups ────────────────────────────────────────────────
+// The admin's own choice of group (1 = weakest … 7 = strongest) for a student, kept per series and per basis
+// ('overall' or a subject name). Table `mock_test_study_groups` (20261049_mock_test_study_groups.sql); a copy
+// is always kept in this browser too, so choices survive while the migration is pending.
+const GRP_TABLE = 'mock_test_study_groups';
+const GRP_LS = 'gnsi_mock_study_groups_v1';
+export const GROUP_BASIS_ALL = 'overall';
+const grpRead = () => { try { return JSON.parse(localStorage.getItem(GRP_LS) || '{}') || {}; } catch { return {}; } };
+const grpWrite = (all) => { try { localStorage.setItem(GRP_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+const basisKey = (b) => b || GROUP_BASIS_ALL;
+
+// → { choices: { [basis]: { [sid]: 1..7 } }, mode: 'cloud' | 'local' }
+export async function loadGroupChoices(series) {
+  const local = grpRead()[series] || {};
+  const { data, error } = await supabase.from(GRP_TABLE).select('basis, student_key, grp').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { choices: local, mode: 'local' };
+    throw error;
+  }
+  const choices = {};
+  data.forEach((r) => { (choices[r.basis] ||= {})[r.student_key] = Number(r.grp); });
+  return { choices, mode: 'cloud' };
+}
+
+// grp: 1..7, or null to remove the manual choice (back to the automatic group).
+export async function saveGroupChoice(series, basis, sid, grp, mode, who = '') {
+  const b = basisKey(basis);
+  const all = grpRead();
+  const cur = { ...(all[series] || {}) };
+  const forBasis = { ...(cur[b] || {}) };
+  if (grp === null) delete forBasis[sid]; else forBasis[sid] = grp;
+  cur[b] = forBasis;
+  grpWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (grp === null) {
+    const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b).eq('student_key', sid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(GRP_TABLE).upsert(
+    { series, basis: b, student_key: sid, grp, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series,basis,student_key' },
+  );
+  if (error) throw error;
+}
+
+// Remove every manual choice for one basis of a series.
+export async function clearGroupChoices(series, basis, mode) {
+  const b = basisKey(basis);
+  const all = grpRead();
+  if (all[series]) { const cur = { ...all[series] }; delete cur[b]; grpWrite({ ...all, [series]: cur }); }
+  if (mode === 'local') return;
+  const { error } = await supabase.from(GRP_TABLE).delete().eq('series', series).eq('basis', b);
+  if (error) throw error;
+}
+
+// ─── House Master / Mistress assigned to a self-study group ──────────────────
+// The admin picks, for each group of each subject (or overall), the House Master / Mistress who looks after it.
+// Key = basis ('overall' or a subject) + set (one class, or the mixed set of a language) + group number.
+// Table `mock_test_group_mentors` (20261050_mock_test_group_mentors.sql); browser copy kept as the fallback.
+const MEN_TABLE = 'mock_test_group_mentors';
+const MEN_LS = 'gnsi_mock_group_mentors_v1';
+const menRead = () => { try { return JSON.parse(localStorage.getItem(MEN_LS) || '{}') || {}; } catch { return {}; } };
+const menWrite = (all) => { try { localStorage.setItem(MEN_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+export const mentorKey = (basis, set, grp) => `${basis || GROUP_BASIS_ALL}|${set}|${grp}`;
+
+// → { mentors: { [mentorKey]: { name, title } }, mode: 'cloud' | 'local' }
+export async function loadGroupMentors(series) {
+  const local = menRead()[series] || {};
+  const { data, error } = await supabase.from(MEN_TABLE).select('*').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { mentors: local, mode: 'local' };
+    throw error;
+  }
+  const mentors = {};
+  data.forEach((r) => {
+    const k = mentorKey(r.basis, r.scope, r.grp);
+    const det = pickInstruction(r);
+    const mine = local[k] && local[k].name === r.mentor_name ? pickInstruction(local[k]) : null;   // details kept in this browser while the columns are missing
+    mentors[k] = { name: r.mentor_name, title: r.mentor_title || '', ...(Object.values(det).some((v) => (Array.isArray(v) ? v.length : v)) || !mine ? det : mine) };
+  });
+  return { mentors, mode: 'cloud' };
+}
+
+// mentor: { name, title } or null to clear.
+export async function saveGroupMentor(series, basis, set, grp, mentor, mode, who = '') {
+  const k = mentorKey(basis, set, grp);
+  const all = menRead();
+  const cur = { ...(all[series] || {}) };
+  if (mentor) cur[k] = mentor; else delete cur[k];
+  menWrite({ ...all, [series]: cur });
+  if (mode === 'local') return;
+  const b = basis || GROUP_BASIS_ALL;
+  if (!mentor) {
+    const { error } = await supabase.from(MEN_TABLE).delete().eq('series', series).eq('basis', b).eq('scope', set).eq('grp', grp);
+    if (error) throw error;
+    return;
+  }
+  const base = { series, basis: b, scope: set, grp, mentor_name: mentor.name, mentor_title: mentor.title || null, updated_by: who || null, updated_at: new Date().toISOString() };
+  const d = pickInstruction(mentor);
+  const full = { ...base, venue: d.venue || null, reason: d.reason || null, days: daysToText(d.days) || null, time_from: d.from || null, time_to: d.to || null, instruction: d.instruction || null };
+  let { error } = await supabase.from(MEN_TABLE).upsert(full, { onConflict: 'series,basis,scope,grp' });
+  // the instruction columns come with migration 20261053: until then the name is saved and the instruction stays in this browser
+  if (error && /column|schema cache/i.test(error.message || '')) ({ error } = await supabase.from(MEN_TABLE).upsert(base, { onConflict: 'series,basis,scope,grp' }));
+  if (error) throw error;
+}
+
+// ─── Language of each class (English / Meitei Mayek) ─────────────────────────
+// The admin's own setting, used by the Self-Study Groups language filter. It wins over the language guessed from
+// the class name, and applies to every series (a class keeps its language). Table `mock_test_class_languages`
+// (20261051_mock_test_class_languages.sql); browser copy kept as the fallback.
+const LANG_TABLE = 'mock_test_class_languages';
+const LANG_LS = 'gnsi_mock_class_languages_v1';
+const langRead = () => { try { return JSON.parse(localStorage.getItem(LANG_LS) || '{}') || {}; } catch { return {}; } };
+const langWrite = (all) => { try { localStorage.setItem(LANG_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+
+// → { languages: { [class]: 'English' | 'Meitei Mayek' }, mode: 'cloud' | 'local' }
+export async function loadClassLanguages() {
+  const local = langRead();
+  const { data, error } = await supabase.from(LANG_TABLE).select('batch, language');
+  if (error) {
+    if (missingTable(error)) return { languages: local, mode: 'local' };
+    throw error;
+  }
+  return { languages: Object.fromEntries(data.map((r) => [r.batch, r.language])), mode: 'cloud' };
+}
+
+// language: 'English' | 'Meitei Mayek', or null to go back to the language guessed from the class name.
+export async function saveClassLanguage(batch, language, mode, who = '') {
+  const all = { ...langRead() };
+  if (language) all[batch] = language; else delete all[batch];
+  langWrite(all);
+  if (mode === 'local') return;
+  if (!language) {
+    const { error } = await supabase.from(LANG_TABLE).delete().eq('batch', batch);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(LANG_TABLE).upsert(
+    { batch, language, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'batch' },
+  );
+  if (error) throw error;
+}
+
+// ─── Duty desk: students removed from a group, and manually built groups ─────
+// removed: a teacher/admin takes a student out of the self-study groups (kept per series + basis, restorable).
+// custom : a group built from a manual choice of students, with its own name, duty person and student list.
+// Tables `mock_test_removed_students` and `mock_test_custom_groups` (20261052_mock_test_duty_desk.sql);
+// browser copies are kept as the fallback while the migration is pending.
+const REM_TABLE = 'mock_test_removed_students';
+const REM_LS = 'gnsi_mock_removed_students_v1';
+const CUS_TABLE = 'mock_test_custom_groups';
+const CUS_LS = 'gnsi_mock_custom_groups_v1';
+const jread = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v ?? d; } catch { return d; } };
+const jwrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
+
+// → { removed: { [basis]: { [sid]: { reason, by, at } } }, mode }
+export async function loadRemoved(series) {
+  const local = (jread(REM_LS, {}) || {})[series] || {};
+  const { data, error } = await supabase.from(REM_TABLE).select('basis, student_key, reason, removed_by, removed_at').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { removed: local, mode: 'local' };
+    throw error;
+  }
+  const removed = {};
+  data.forEach((r) => { (removed[r.basis] ||= {})[r.student_key] = { reason: r.reason || '', by: r.removed_by || '', at: r.removed_at || '' }; });
+  return { removed, mode: 'cloud' };
+}
+
+// info: { reason } to remove, or null to bring the student back.
+export async function saveRemoved(series, basis, sid, info, mode, who = '') {
+  const b = basisKey(basis);
+  const all = jread(REM_LS, {}) || {};
+  const cur = { ...(all[series] || {}) };
+  const forBasis = { ...(cur[b] || {}) };
+  if (info) forBasis[sid] = { reason: info.reason || '', by: who, at: new Date().toISOString() }; else delete forBasis[sid];
+  cur[b] = forBasis;
+  jwrite(REM_LS, { ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (!info) {
+    const { error } = await supabase.from(REM_TABLE).delete().eq('series', series).eq('basis', b).eq('student_key', sid);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await supabase.from(REM_TABLE).upsert(
+    { series, basis: b, student_key: sid, reason: info.reason || null, removed_by: who || null, removed_at: new Date().toISOString() },
+    { onConflict: 'series,basis,student_key' },
+  );
+  if (error) throw error;
+}
+
+// → { groups: [{ id, name, basis, dutyName, dutyTitle, students: [sid], note }], mode }
+export async function loadCustomGroups(series) {
+  const local = (jread(CUS_LS, {}) || {})[series] || [];
+  const { data, error } = await supabase.from(CUS_TABLE).select('*').eq('series', series).order('created_at', { ascending: true });
+  if (error) {
+    if (missingTable(error)) return { groups: local, mode: 'local' };
+    throw error;
+  }
+  const localById = new Map(local.map((g) => [g.id, g]));
+  return { groups: data.map((r) => {
+    const det = pickInstruction(r), mine = localById.get(r.id);
+    const has = Object.values(det).some((v) => (Array.isArray(v) ? v.length : v));
+    return { id: r.id, name: r.name, basis: r.basis || '', dutyName: r.duty_name || '', dutyTitle: r.duty_title || '', students: Array.isArray(r.student_keys) ? r.student_keys : [], note: r.note || '', ...(has || !mine ? det : pickInstruction(mine)) };
+  }), mode: 'cloud' };
+}
+
+export const newGroupId = () => `cg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+export async function saveCustomGroup(series, group, mode, who = '') {
+  const all = jread(CUS_LS, {}) || {};
+  const list = [...(all[series] || []).filter((g) => g.id !== group.id), group];
+  jwrite(CUS_LS, { ...all, [series]: list });
+  if (mode === 'local') return;
+  const base = { id: group.id, series, name: group.name, basis: group.basis || null, duty_name: group.dutyName || null, duty_title: group.dutyTitle || null, student_keys: group.students, note: group.note || null, updated_by: who || null, updated_at: new Date().toISOString() };
+  const d = pickInstruction(group);
+  let { error } = await supabase.from(CUS_TABLE).upsert({ ...base, venue: d.venue || null, reason: d.reason || null, days: daysToText(d.days) || null, time_from: d.from || null, time_to: d.to || null, instruction: d.instruction || null }, { onConflict: 'id' });
+  if (error && /column|schema cache/i.test(error.message || '')) ({ error } = await supabase.from(CUS_TABLE).upsert(base, { onConflict: 'id' }));
+  if (error) throw error;
+}
+
+export async function deleteCustomGroup(series, id, mode) {
+  const all = jread(CUS_LS, {}) || {};
+  jwrite(CUS_LS, { ...all, [series]: (all[series] || []).filter((g) => g.id !== id) });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(CUS_TABLE).delete().eq('series', series).eq('id', id);
+  if (error) throw error;
+}
+
+// ─── Study schedule: time slot per subject, room per group number ────────────
+// Saved per series. Anything not saved falls back to DEFAULT_SCHEDULE (lib/studySchedule.js). Table
+// `mock_test_study_schedule` (20261054_mock_test_study_schedule.sql); browser copy kept as the fallback.
+const SCH_TABLE = 'mock_test_study_schedule';
+const SCH_LS = 'gnsi_mock_study_schedule_v1';
+
+// → { saved: { subjects: { [subject]: { from, to, days } }, rooms: { [group]: 'Room 1' } }, mode }
+export async function loadSchedule(series) {
+  const local = (jread(SCH_LS, {}) || {})[series] || { subjects: {}, rooms: {} };
+  const { data, error } = await supabase.from(SCH_TABLE).select('*').eq('series', series);
+  if (error) {
+    if (missingTable(error)) return { saved: local, mode: 'local' };
+    throw error;
+  }
+  const saved = { subjects: {}, rooms: {} };
+  data.forEach((r) => {
+    if (r.kind === 'subject') saved.subjects[r.key] = { from: r.time_from || '', to: r.time_to || '', days: daysFromText(r.days) };
+    else if (r.kind === 'room') saved.rooms[r.key] = r.room || '';
+  });
+  return { saved, mode: 'cloud' };
+}
+
+// kind 'subject': value { from, to, days }   ·   kind 'room': value 'Room 1'   ·   value null = back to the default
+export async function saveScheduleEntry(series, kind, key, value, mode, who = '') {
+  const all = jread(SCH_LS, {}) || {};
+  const cur = { subjects: { ...(all[series]?.subjects || {}) }, rooms: { ...(all[series]?.rooms || {}) } };
+  const bucket = kind === 'subject' ? cur.subjects : cur.rooms;
+  if (value === null) delete bucket[key]; else bucket[key] = value;
+  jwrite(SCH_LS, { ...all, [series]: cur });
+  if (mode === 'local') return;
+  if (value === null) {
+    const { error } = await supabase.from(SCH_TABLE).delete().eq('series', series).eq('kind', kind).eq('key', String(key));
+    if (error) throw error;
+    return;
+  }
+  const row = kind === 'subject'
+    ? { series, kind, key: String(key), time_from: value.from || null, time_to: value.to || null, days: daysToText(value.days) || null, room: null }
+    : { series, kind, key: String(key), time_from: null, time_to: null, days: null, room: String(value) };
+  const { error } = await supabase.from(SCH_TABLE).upsert({ ...row, updated_by: who || null, updated_at: new Date().toISOString() }, { onConflict: 'series,kind,key' });
+  if (error) throw error;
+}
+
+// Remove every saved entry of a series: back to the defaults.
+export async function resetSchedule(series, mode) {
+  const all = jread(SCH_LS, {}) || {};
+  const next = { ...all }; delete next[series]; jwrite(SCH_LS, next);
+  if (mode === 'local') return;
+  const { error } = await supabase.from(SCH_TABLE).delete().eq('series', series);
   if (error) throw error;
 }

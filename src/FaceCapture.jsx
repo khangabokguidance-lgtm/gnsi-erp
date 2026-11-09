@@ -31,7 +31,7 @@ const S = {
   btn: (color = '#C9A24B', disabled = false) => ({
     width: '100%', marginTop: 14, background: disabled ? '#5b6473' : color, color: '#0B1E3D',
     border: 'none', borderRadius: 12, padding: 13, fontWeight: 700, fontSize: 14,
-    cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Arial,sans-serif',
+    cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: "'Inter',Arial,sans-serif",
   }),
 }
 
@@ -306,7 +306,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   return (
     <div style={S.overlay}>
       <div style={S.card}>
-        <div style={{ color: '#C9A24B', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: 'Arial,sans-serif', marginBottom: 4 }}>
+        <div style={{ color: '#C9A24B', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: "'Inter',Arial,sans-serif", marginBottom: 4 }}>
           Face check-in
         </div>
         <div style={{ position: 'relative', marginTop: 10 }}>
@@ -389,7 +389,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
           })()}
 
           {(!cameraReady || !modelsReady) && !error && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F1E6', fontSize: 12, fontFamily: 'Arial,sans-serif' }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F1E6', fontSize: 12, fontFamily: "'Inter',Arial,sans-serif" }}>
               Preparing camera…
             </div>
           )}
@@ -397,7 +397,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
           {running && phase === 'blink' && liveEar !== null && (
             <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
               <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>👁 Blink now…</span>
-              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: 'monospace' }}>
+              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>
                 EAR {liveEar.toFixed(2)}
               </span>
             </div>
@@ -417,7 +417,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
             </div>
           )}
         </div>
-        <div style={{ color: rateLimitMessage ? '#fbbf24' : isOffline ? '#f87171' : error ? '#f87171' : (multiFaceMessage || qualityWarning) ? '#fbbf24' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
+        <div style={{ color: rateLimitMessage ? '#fbbf24' : isOffline ? '#f87171' : error ? '#f87171' : (multiFaceMessage || qualityWarning) ? '#fbbf24' : '#F5F1E6', fontFamily: "'Inter',Arial,sans-serif", fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
           {statusText}
         </div>
         {!error ? (
@@ -433,7 +433,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
           <button style={S.btn('#5b6473', false)} onClick={retry}>Try again</button>
         )}
         {!running && (
-          <button onClick={cancel} style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: '#8FA0BF', fontSize: 12, fontFamily: 'Arial,sans-serif', cursor: 'pointer', padding: 6 }}>
+          <button onClick={cancel} style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: '#8FA0BF', fontSize: 12, fontFamily: "'Inter',Arial,sans-serif", cursor: 'pointer', padding: 6 }}>
             Cancel
           </button>
         )}

@@ -2,12 +2,14 @@
 // rate: approve (waive the shortfall) or reject (it stays due), see who gives
 // low fees and why, and scan the ledgers for short payments with no reason
 // on file.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
 import { LedgerLink } from './LedgerLinks'
 import { HOSTEL_MISMATCH_REASON } from './hostelFeeCheck'
+import { loadFeeRequests, decideFeeRequest, REQUESTS_SETUP_MSG } from './feeRequests'
+import { recordApprovedRequest } from './feeRequestRecord'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -17,16 +19,42 @@ const chip = on => ({ padding: '6px 12px', borderRadius: 999, border: `1px solid
 const inp = { border: '1px solid #d8dfec', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit', minWidth: 0 }
 const btn = (bg, color = '#fff') => ({ padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color, fontWeight: 800, fontSize: 12, cursor: 'pointer' })
 
-function Breakdown({ title, rows, label }) {
+function Breakdown({ title, rows, label, onPick, isActive }) {
+  const [open, setOpen] = useState(true)      // whole card: collapse / expand
+  const [all, setAll] = useState(false)       // list: top 5 / every row
+  const LIMIT = 5
+  const shown = all ? rows : rows.slice(0, LIMIT)
+  const max = Math.max(1, ...rows.map(r => Number(r.total) || 0))   // for the share bar
   return (
     <div style={{ ...card, margin: 0, padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc' }}>{title}</div>
-      {rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : rows.slice(0, 8).map(r => (
-        <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5 }}>
-          <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
-          <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+        <span>{title}{rows.length ? ` (${rows.length})` : ''}</span>
+        <span aria-hidden="true" style={{ fontSize: 12, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+      {open && (rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : <>
+        <div style={all ? { maxHeight: 360, overflowY: 'auto' } : undefined}>
+          {shown.map(r => {
+            const on = !!isActive?.(r), pick = onPick && r.key
+            const pct = Math.round(((Number(r.total) || 0) / max) * 100)
+            return (
+              <div key={r.key} role={pick ? 'button' : undefined} tabIndex={pick ? 0 : undefined} title={pick ? (on ? 'Click to clear this filter' : 'Click to list these entries') : undefined}
+                onClick={pick ? () => onPick(r) : undefined} onKeyDown={pick ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(r) } } : undefined}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, cursor: pick ? 'pointer' : 'default',
+                  background: on ? '#e8eefb' : `linear-gradient(90deg,#fdecea ${pct}%,transparent ${pct}%)`, boxShadow: on ? 'inset 3px 0 0 #1e3a6e' : 'none' }}>
+                <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
+                <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+              </div>
+            )
+          })}
         </div>
-      ))}
+        {rows.length > LIMIT && (
+          <button type="button" onClick={() => setAll(a => !a)}
+            style={{ width: '100%', padding: '8px 14px', border: 'none', borderTop: '1px solid #f1f5f9', background: '#fff', color: '#1e3a6e', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {all ? 'Show less' : `Show all ${rows.length}`}
+          </button>
+        )}
+      </>)}
     </div>
   )
 }
@@ -40,11 +68,17 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(null)
+  const [viewMode, setViewMode] = useState('list')  // list | month
+  const [reqs, setReqs] = useState({ rows: [], setupNeeded: false })   // payments waiting for approval BEFORE they are recorded
+  const loadReqs = useCallback(() => { loadFeeRequests().then(setReqs) }, [])
+  useEffect(() => { loadReqs() }, [loadReqs])
+  const todayStr = new Date().toLocaleDateString('en-CA')
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
+  const listRef = useRef(null)
 
-  const reload = useCallback(() => { loadConcessions().then(setData); onChanged?.() }, [onChanged])
+  const reload = useCallback(() => { loadConcessions().then(setData); loadReqs(); onChanged?.() }, [onChanged, loadReqs])
   useEffect(() => { let live = true; loadConcessions().then(d => { if (live) setData(d) }); return () => { live = false } }, [])
 
   const rows = useMemo(() => data?.rows || [], [data])
@@ -56,6 +90,42 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       && (!from || String(r.pay_date || r.created_at).slice(0, 10) >= from) && (!to || String(r.pay_date || r.created_at).slice(0, 10) <= to)
       && (!t || [r.student_name, r.gcc, r.receipt_no, r.reason_note, r.collected_by].some(v => String(v || '').toLowerCase().includes(t))))
   }, [rows, status, reason, staff, q, from, to])
+
+  // Click a row in a breakdown card → list exactly those entries (click again to clear).
+  const drill = (patch, clear) => {
+    const same = Object.entries(patch).every(([k, v]) => ({ staff, reason, q })[k] === v)
+    const next = same ? clear : patch
+    setStatus('All'); setFrom(''); setTo('')
+    if ('staff' in next) setStaff(next.staff); if ('reason' in next) setReason(next.reason); if ('q' in next) setQ(next.q)
+    if (!same) setTimeout(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
+  const exportCsv = () => {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const head = ['Date', 'GCC', 'Student', 'Fee', 'Month', 'Year', 'Standard', 'Collected', 'Short', 'Reason', 'Note', 'Collected by', 'Receipt', 'Status', 'Decided by']
+    const lines = shown.map(c => [String(c.pay_date || c.created_at || '').slice(0, 10), c.gcc, c.student_name, c.fee_kind === 'flat' ? 'Flat' : 'Course', c.month, c.year, c.standard_amount, c.collected_amount, c.shortfall, c.reason, c.reason_note, c.collected_by, c.receipt_no, c.status, c.decided_by].map(esc).join(','))
+    const url = URL.createObjectURL(new Blob(['\ufeff' + [head.map(esc).join(','), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `low-fees-${todayStr}.csv`; a.click(); URL.revokeObjectURL(url)
+  }
+
+  // Month-wise view: the same (filtered) entries grouped by fee month, newest first.
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const monthGroups = useMemo(() => {
+    const m = new Map()
+    for (const c of shown) {
+      const idx = MONTHS.indexOf(c.month)
+      const key = `${c.year || 0}-${String(idx < 0 ? 0 : idx + 1).padStart(2, '0')}`
+      if (!m.has(key)) m.set(key, { key, label: c.month ? `${c.month} ${c.year || ''}`.trim() : 'No month', rows: [] })
+      m.get(key).rows.push(c)
+    }
+    return [...m.values()].sort((a, b) => b.key.localeCompare(a.key))
+  }, [shown]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pending requests raised today — a pending request always comes from a
+  // non-admin (an admin's own are approved at the counter), so this is the
+  // "today's non-admin requests" list.
+  const todayPending = rows.filter(r => r.status === 'pending' && String(r.pay_date || r.created_at).slice(0, 10) === todayStr)
+  const isTodayView = status === 'pending' && from === todayStr && to === todayStr
+  const showToday = () => { setStatus('pending'); setFrom(todayStr); setTo(todayStr); setReason('All'); setStaff('All'); setQ('') }
 
   if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
 
@@ -70,6 +140,31 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
     try { await decideConcession(c, approve, { by: me, note }); reload() } catch (e) { alert(e.message) }
     setBusy(null)
   }
+
+  const decideReq = async (r, approve) => {
+    const note = window.prompt(approve
+      ? `Approve ${inr(r.shortfall)} below standard for ${r.student_name || 'GCC-' + r.gcc}?\n\nThe collector can then record the payment and print the receipt. Note (optional):`
+      : `Reject this low-fee payment for ${r.student_name || 'GCC-' + r.gcc}?\n\nNothing is recorded. Reason (optional):`, '')
+    if (note === null) return
+    setBusy(r.id)
+    try {
+      await decideFeeRequest(r, approve, { by: me, note })
+      if (approve) {
+        // Approved → record the payment now (in this admin session) so the collector can print the receipt.
+        try { const out = await recordApprovedRequest({ ...r, status: 'approved', decided_by: me }, me); alert(`Approved and recorded ✓\nReceipt ${out.receiptNo} · ₹${Number(out.total).toLocaleString('en-IN')}\nThe collector can now print it from "My low-fee requests".`) }
+        catch (e) { alert(`Approved, but the payment could not be recorded yet: ${e.message}\nUse "Record now" on this request to retry.`) }
+      }
+      reload()
+    } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const recordNow = async r => {
+    setBusy(r.id)
+    try { const out = await recordApprovedRequest(r, me); alert(`Recorded ✓ Receipt ${out.receiptNo} · ₹${Number(out.total).toLocaleString('en-IN')}`); reload() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const pendingReqs = (reqs.rows || []).filter(r => r.status === 'pending')
+  const unrecordedReqs = (reqs.rows || []).filter(r => r.status === 'approved')
 
   const runScan = async () => {
     setScan('running')
@@ -94,6 +189,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       receiptNo: p.receipt, payDate: p.date, collectedBy: p.by, approvedBy: approve ? me : null,
     })
     if (c && !approve) { try { await decideConcession(c, false, { by: me, note: 'Kept due on review' }) } catch (e) { alert(e.message) } }
+    if (c && approve && c.status === 'pending') alert(`Filed as PENDING: a concession above ₹2,000 must be approved by a different admin than the one who filed it. Ask another admin to approve it in Low Fees.`)
     if (!c) alert(CONCESSIONS_SETUP_MSG)
     setScan(sc => sc && sc.items ? { ...sc, items: sc.items.filter(x => x !== u) } : sc)
     setBusy(null); reload()
@@ -115,13 +211,55 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
         </div>
       </div>
 
+      {reqs.setupNeeded && <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412', fontSize: 13 }}>⚙️ {REQUESTS_SETUP_MSG}</div>}
+      {pendingReqs.length > 0 && (
+        <div style={{ ...card, padding: 0, overflow: 'hidden', borderColor: '#c9a24b' }}>
+          <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg,#7a4b00,#b8923a)', color: '#fff', fontWeight: 800 }}>
+            ⏳ Payments waiting for your approval ({pendingReqs.length}) <span style={{ fontWeight: 600, opacity: .85, fontSize: 12 }}>· not recorded and no receipt until you approve</span>
+          </div>
+          {pendingReqs.map(r => { const s = r.summary || {}; return (
+            <div key={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+              <div style={{ minWidth: 220, flex: '2 1 260px' }}>
+                <div style={{ fontWeight: 800 }}><LedgerLink gcc={r.gcc}>{r.student_name || `GCC-${r.gcc}`}</LedgerLink> <span style={{ color: '#98a2b3', fontWeight: 600, fontSize: 12 }}>GCC-{r.gcc} · {(s.months || []).join(', ')}</span></div>
+                <div style={{ fontSize: 12.5, marginTop: 3 }}><b>{(s.reasons || []).join(', ') || '—'}</b></div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>Requested by {r.requested_by || '—'} · {fmtD(r.created_at)}</div>
+              </div>
+              <div style={{ fontSize: 12.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <div>Standard {inr(s.standard)} · Offered {inr(s.collected)}</div>
+                <div style={{ fontWeight: 800, color: '#b42318' }}>Short {inr(r.shortfall)}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button disabled={busy === r.id} style={btn('#146c3a')} onClick={() => decideReq(r, true)}>Approve</button>
+                <button disabled={busy === r.id} style={btn('#fff', '#b42318')} onClick={() => decideReq(r, false)}>Reject</button>
+              </div>
+            </div>) })}
+        </div>
+      )}
+
+      {unrecordedReqs.length > 0 && (
+        <div style={{ ...card, background: '#fffbeb', borderColor: '#fcd34d' }}>
+          <b style={{ color: '#92400e' }}>Approved but not recorded yet ({unrecordedReqs.length})</b>
+          {unrecordedReqs.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', fontSize: 13 }}>
+              <span>{r.student_name || `GCC-${r.gcc}`} · {(r.summary?.months || []).join(', ')} · short {inr(r.shortfall)}</span>
+              <button disabled={busy === r.id} style={btn('#1e3a6e')} onClick={() => recordNow(r)}>Record now</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {data?.setupNeeded && <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412', fontSize: 13 }}>⚙️ {CONCESSIONS_SETUP_MSG}</div>}
       {data?.error && <div style={{ ...card, color: '#b42318' }}>Could not load: {data.error}</div>}
 
       <div style={card}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {[['pending', `Pending (${sum.pending.count})`], ['approved', 'Approved'], ['rejected', 'Rejected'], ['All', 'All']].map(([k, l]) => <button key={k} style={chip(status === k)} onClick={() => setStatus(k)}>{l}</button>)}
-          <button style={{ ...chip(reason === HOSTEL_MISMATCH_REASON), marginLeft: 'auto' }} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
+          <button style={{ ...chip(isTodayView), borderColor: '#c9a24b' }} onClick={() => isTodayView ? (setFrom(''), setTo('')) : showToday()}>🕘 Today pending ({todayPending.length})</button>
+          <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+            <button style={chip(viewMode === 'list')} onClick={() => setViewMode('list')}>☰ List</button>
+            <button style={chip(viewMode === 'month')} onClick={() => setViewMode('month')}>📅 By month</button>
+          </span>
+          <button style={chip(reason === HOSTEL_MISMATCH_REASON)} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <select style={inp} value={reason} onChange={e => setReason(e.target.value)} aria-label="Filter by reason"><option>All</option>{CONCESSION_REASONS.map(r => <option key={r}>{r}</option>)}</select>
@@ -129,13 +267,25 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
           <input type="date" style={inp} value={from} onChange={e => setFrom(e.target.value)} aria-label="From" />
           <input type="date" style={inp} value={to} onChange={e => setTo(e.target.value)} aria-label="To" />
           <input style={{ ...inp, flex: '1 1 180px' }} placeholder="Student, GCC, receipt, staff, note…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search low fees" />
+          {(reason !== 'All' || staff !== 'All' || q || from || to) && <button style={chip(false)} onClick={() => { setReason('All'); setStaff('All'); setQ(''); setFrom(''); setTo('') }}>✕ Clear filters</button>}
+          <button style={chip(false)} disabled={!shown.length} onClick={exportCsv} title="Download the entries shown below as a spreadsheet (CSV)">⬇ Export CSV ({shown.length})</button>
         </div>
       </div>
 
-      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div ref={listRef} style={{ ...card, padding: 0, overflow: 'hidden', scrollMarginTop: 12 }}>
         {!data && <div style={{ padding: 20, color: '#64748b' }}>Loading…</div>}
-        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
-        {shown.map(c => (
+        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{isTodayView ? 'No pending low-fee requests from staff today.' : status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
+        {(viewMode === 'month' ? monthGroups : [{ key: 'all', rows: shown }]).map(g => (
+          <Fragment key={g.key}>
+            {viewMode === 'month' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: 'linear-gradient(135deg,#0e203f,#1f4e8c)', color: '#fff', borderTop: '1px solid #f1f5f9' }}>
+                <b style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 15 }}>📅 {g.label}</b>
+                <span style={{ fontSize: 12, opacity: .9 }}>
+                  {g.rows.length} entr{g.rows.length === 1 ? 'y' : 'ies'} · {g.rows.filter(r => r.status === 'pending').length} pending · short <b style={{ color: '#e9d9b0' }}>{inr(g.rows.reduce((t, r) => t + (Number(r.shortfall) || 0), 0))}</b>
+                </span>
+              </div>
+            )}
+            {g.rows.map(c => (
           <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ minWidth: 220, flex: '2 1 260px' }}>
               <div style={{ fontWeight: 800 }}><LedgerLink gcc={c.gcc}>{c.student_name || `GCC-${c.gcc}`}</LedgerLink> <span style={{ color: '#98a2b3', fontWeight: 600, fontSize: 12 }}>GCC-{c.gcc} · {c.fee_kind === 'flat' ? 'Flat fee' : `Course fee${c.course ? ' — ' + c.course : ''}`} · {c.month} {c.year}</span></div>
@@ -152,13 +302,15 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
               {c.status !== 'rejected' && <button disabled={busy === c.id} style={btn('#fff', '#b42318')} onClick={() => decide(c, false)}>Reject</button>}
             </div>
           </div>
+            ))}
+          </Fragment>
         ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 14 }}>
-        <Breakdown title="By staff who collected" rows={sum.byStaff} />
-        <Breakdown title="By reason" rows={sum.byReason} />
-        <Breakdown title="Students given low fees more than once" rows={sum.repeat} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />
+        <Breakdown title="By staff who collected" rows={sum.byStaff} onPick={r => drill({ staff: r.key }, { staff: 'All' })} isActive={r => staff === r.key} />
+        <Breakdown title="By reason" rows={sum.byReason} onPick={r => drill({ reason: r.key }, { reason: 'All' })} isActive={r => reason === r.key} />
+        <Breakdown title="Students given low fees more than once" rows={sum.repeat} onPick={r => drill({ q: r.key.split('|')[0] }, { q: '' })} isActive={r => q === r.key.split('|')[0]} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />
       </div>
 
       <div style={card}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { NavIcon } from "./navIcons"
 import {
@@ -11,6 +11,8 @@ import {
 } from "recharts"
 import { supabase } from "./supabase"
 import AdminIntelligence from "./AdminIntelligencePage"
+import AdminCentre from './AdminCentre'
+import { computeDuesSnapshot } from './duesSnapshot'
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
@@ -75,9 +77,12 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
 // for that section (see the grep of every <div ref={setSectionRef('id')}>
 // below). Order here is the order tabs render in the nav bar and follows
 // the order sections actually appear on the page.
+const SEC_ICON = { centre:'dashboard', overview:'overview', security:'shield', intel:'intel', finance:'fees', students:'students', dropout:'dropout', admissions:'admissions', staff:'staff', attendance:'attendance', academic:'courses', tests:'exams', enquiry:'search', hostel:'hostel', houses:'awards', operations:'feesetup', batches:'batches', doubts:'doubts', parents:'parents', material:'studymaterial', results:'awards', teaching:'teaching', feesetup:'card', feeledger:'studentfeeledger', entrance:'entrance', lockers:'studylockers', syllabus:'syllabus', qbank:'questionbank', social:'social', connect:'connect', expenses:'expenses' }
+const SecIcon = ({ id, fallback, size = 20 }) => SEC_ICON[id] ? <NavIcon id={SEC_ICON[id]} size={size} /> : fallback
+
 const SECTION_TABS = [
-  { id: 'overview',   icon: '📊', label: 'Overview' },
-  { id: 'security',   icon: '🛡️', label: '360° Health' },
+  { id: 'centre',     icon: '🧭', label: 'Command Centre' },
+  { id: 'overview',   icon: '📊', label: 'Classic Overview' },
   { id: 'intel',      icon: '🧠', label: 'Intelligence' },
   { id: 'finance',    icon: '💰', label: 'Finance' },
   { id: 'students',   icon: '🎓', label: 'Students' },
@@ -139,21 +144,23 @@ const SECTION_MODULE_DEFAULT = {
   hostel:      'hostel',
   houses:      'hostel',
   operations:  'staff',
-  batches:     'timetable',
-  doubts:      'doubts',
+  batches:     'courses',
+  doubts:      'teaching',
   parents:     'reception',
-  material:    'studymaterial',
+  material:    'learninghub',
   results:     'exams',
-  teaching:    'teachingaids',
+  teaching:    'teaching',
   feesetup:    'feesetup',
   feeledger:   'fees',
-  entrance:    'admissions',
+  entrance:    'learninghub',
   lockers:     'studylockers',
-  syllabus:    'syllabus',
-  qbank:       'questionbank',
+  syllabus:    'teaching',
+  qbank:       'learninghub',
   social:      'social',
   connect:     'connect',
   expenses:    'accounts',
+  intel:       'reports',
+  centre:      'reports',
 }
 
 // Per-KPI overrides — only where the card's data doesn't belong to its
@@ -309,35 +316,44 @@ function Tip({ active, payload, label }) {
 
 function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, trend, onClick }) {
   const [hover, setHover] = useState(false)
+  const live = !!onClick
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => onClick && setHover(true)}
+      role={live ? "button" : undefined}
+      tabIndex={live ? 0 : undefined}
+      onKeyDown={live ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
+      onMouseEnter={() => live && setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => live && setHover(true)}
+      onBlur={() => setHover(false)}
       style={{
-      background:T.bgCard,
-      border:`1px solid ${hover ? color+'55' : T.border}`,
-      borderRadius:16,padding:"18px 18px 16px",
+      background:`linear-gradient(160deg, ${T.bgCard} 55%, ${color}0f)`,
+      border:`1px solid ${hover ? color+'66' : T.border}`,
+      borderRadius:18,padding:"18px 18px 16px",
       display:"flex",flexDirection:"column",gap:8,
-      position:"relative",overflow:"hidden",
-      boxShadow: hover ? SHADOW_HI : SHADOW,
-      transform: hover ? "translateY(-3px)" : "none",
-      cursor: onClick ? "pointer" : "default",
+      position:"relative",overflow:"hidden",outline:"none",
+      boxShadow: hover ? `0 14px 32px ${color}26, 0 2px 6px rgba(19,26,43,.06)` : SHADOW,
+      transform: hover ? "translateY(-4px)" : "none",
+      cursor: live ? "pointer" : "default",
       transition: "box-shadow .2s ease, border-color .2s ease, transform .2s ease",
     }}>
-      <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${color}, ${color}55)`}}/>
-      <div style={{position:"absolute",right:-28,top:-28,width:90,height:90,borderRadius:"50%",background:`${color}0d`}}/>
+      <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${color}, ${color}33)`}}/>
+      <div style={{position:"absolute",right:-28,top:-28,width:100,height:100,borderRadius:"50%",background:`${color}12`,transform:hover?"scale(1.25)":"none",transition:"transform .3s ease"}}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative"}}>
-        <span style={{width:36,height:36,borderRadius:11,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:17,background:`${color}14`,border:`1px solid ${color}30`}}>{icon}</span>
+        <span style={{width:38,height:38,borderRadius:12,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:18,background:`${color}1a`,border:`1px solid ${color}38`}}>{icon}</span>
         <Badge label={label} color={color}/>
       </div>
-      <div style={{fontSize:27,fontWeight:700,color:T.ink,letterSpacing:"-.01em",lineHeight:1,fontFamily:SERIF,position:"relative"}}>
+      <div style={{fontSize:28,fontWeight:700,color:T.ink,letterSpacing:"-.01em",lineHeight:1,fontFamily:SERIF,position:"relative"}}>
         {isMoney ? fmt(value) : <Counter value={value}/>}
       </div>
       {sub && <div style={{fontSize:11.5,color:T.inkSub}}>{sub}</div>}
       {trend!==undefined && <div style={{fontSize:11,fontWeight:700,color:trend>=0?T.emerald:T.rose}}>{trend>=0?"▲":"▼"} {Math.abs(trend)}% vs last month</div>}
       {progress!==undefined && <ProgressBar value={progress} max={progressMax} color={color}/>}
-      {onClick && <div style={{fontSize:10.5,fontWeight:600,color:T.inkSub,opacity:hover?1:0,transition:"opacity .15s ease",marginTop:-2}}>View details →</div>}
+      {live && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10.5,fontWeight:700,color,marginTop:-2,letterSpacing:".04em",textTransform:"uppercase"}}>
+        <span style={{opacity:hover?1:.7}}>Open module</span>
+        <span style={{width:20,height:20,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",background:hover?color:`${color}1a`,color:hover?"#fff":color,transition:"all .2s ease",transform:hover?"translateX(2px)":"none"}}>→</span>
+      </div>}
     </div>
   )
 }
@@ -403,7 +419,7 @@ function TableWrap({ children }) {
 // Phone: payments-app style bottom navigation (four key sections + an "All" sheet
 // with a searchable icon grid of every section) replaces the scrolling pill row.
 const BOTTOM_MAIN = [
-  { id: 'overview', label: 'Home', icon: 'dashboard' },
+  { id: 'centre', label: 'Home', icon: 'dashboard' },
   { id: 'finance', label: 'Finance', icon: 'accounts' },
   { id: 'students', label: 'Students', icon: 'students' },
   { id: 'intel', label: 'Insights', icon: 'radar' },
@@ -427,8 +443,8 @@ body:has(.dh-bottom){padding-bottom:76px}
 .dh-grid{overflow-y:auto;padding:4px 10px calc(18px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
 .dh-tile{background:none;border:0;padding:8px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
 .dh-tile:active{background:#f3f0e8}
-.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 6px 10px rgba(19,42,79,.08)}
-.dh-tile.on .dh-ic{background:linear-gradient(180deg,#d4ae58,#b8923a);box-shadow:0 0 0 3px #fff,0 0 0 5px #b8923a}
+.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7)}
+.dh-tile.on .dh-ic{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:0 0 0 3px #fff,0 0 0 6px #c9a24b}
 .dh-empty{grid-column:1/-1;text-align:center;color:#5d6b82;font-size:13px;padding:22px 0}`
 
 function useIsPhone() {
@@ -474,7 +490,7 @@ function PhoneSectionNav({ activeId, onSelect }) {
             <div className="dh-grid">
               {list.map(t => (
                 <button key={t.id} type="button" className={"dh-tile" + (t.id === activeId ? " on" : "")} onClick={() => pick(t.id)}>
-                  <span className="dh-ic">{t.icon}</span>{t.label}
+                  <span className="dh-ic"><SecIcon id={t.id} fallback={t.icon} size={24} /></span>{t.label}
                 </button>
               ))}
               {!list.length && <div className="dh-empty">No section matches “{q}”.</div>}
@@ -524,7 +540,7 @@ function SectionNav({ activeId, onSelect }) {
                 transition: "background .15s ease, color .15s ease",
               }}
             >
-              <span style={{fontSize:13,opacity:active?1:.7}}>{t.icon}</span>
+              <span style={{display:"inline-flex",alignItems:"center",fontSize:13,opacity:active?1:.7}}><SecIcon id={t.id} fallback={t.icon} size={15} /></span>
               {t.label}
             </button>
           )
@@ -775,6 +791,11 @@ function getDailyBriefing(data, max = 5) {
 }
 
 // ─── DATA LOADING ─────────────────────────────────────────────────────────────
+// The last loaded dashboard, reused for a few minutes (see load() below).
+const DASHBOARD_CACHE_MS = 5 * 60 * 1000
+let dashboardCache = null
+let duesCache = null   // { at, snap } — school-wide dues from the fee engine
+
 async function loadAllData() {
   const today = todayStr(), nowD = new Date()
 
@@ -847,7 +868,7 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("selections").select("id,student_name,exam_name,rank,year,batch_name,category,school_allotted")),
     safeFetch(()=>supabase.from("monthly_syllabus").select("teacher_name,subject,batch_name,total_topics,covered_topics,month")),
     // FIX #4: single fetch with all needed columns (removed duplicate)
-    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks,technique_detail,key_concepts")),
+    safeFetch(()=>supabase.from("teaching_logs").select("teacher_name,teaching_date,late_submission,submitted_at,topic_taught,classwork,remarks")),
     safeFetch(()=>supabase.from("fee_structures").select("session_year,course,batch,hostel_type,flat_fee,course_fee,admission_fee")),
     safeFetch(()=>supabase.from("student_fee_overrides").select("gcc_no,flat_fee_override,reason,created_at")),
     // FIX: removed .limit(200) — was silently dropping older flat/course fee records
@@ -2163,7 +2184,7 @@ function StaffAccountTool({ f, onDone, log }) {
             {(f.id === "weak_hash" || f.id === "staff_unlinked") && (<>
               <input type="checkbox" checked={!!sel[u.id]} onChange={e => setSel(s => ({ ...s, [u.id]: e.target.checked }))} title="Select for bulk generate"/>
               <input type="text" placeholder="new password" value={pw[u.id] || ""} onChange={e => setPw(s => ({ ...s, [u.id]: e.target.value }))}
-                style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily:"monospace"}}/>
+                style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace"}}/>
               <button disabled={busy === u.id} onClick={() => setPw(s => ({ ...s, [u.id]: genPw() }))} title="Generate a new password"
                 style={{border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,borderRadius:999,padding:"4px 9px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>🎲</button>
               <button disabled={busy === u.id} onClick={() => reset(u)} style={{border:"none",background:"#0f7a52",color:"#fff",borderRadius:999,padding:"4px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>Set</button>
@@ -2493,16 +2514,47 @@ export function SecurityCenter({ onNavigate } = {}) {
 }
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
-export default function GNSIDashboard({ scrollToSection, onNavigate }) {
-  const [data, setData] = useState(null)
+export default function GNSIDashboard({ scrollToSection, onNavigate, currentUser }) {
+  const [rawData, setData] = useState(null)
+  const [dues, setDues] = useState(() => duesCache?.snap || null)
+  const [duesBusy, setDuesBusy] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [now, setNow] = useState(new Date())
   const [liveTotal, setLiveTotal] = useState(0)
 
+  // Fee Pending / Defaulters / Aging come from the fee engine (rates × months owed − payments) — the same
+  // numbers the Fees module shows — instead of the old, unused fee_invoices table.
+  const data = useMemo(() => {
+    if (!rawData || !dues) return rawData
+    const a = dues.aging
+    return {
+      ...rawData,
+      feePending: dues.total,
+      feeAging: [
+        { bucket: '1 month behind', amount: a.one.amount, count: a.one.count, color: T.amber },
+        { bucket: '2 months behind', amount: a.two.amount, count: a.two.count, color: T.orange },
+        { bucket: '3+ months behind', amount: a.three.amount, count: a.three.count, color: T.rose },
+      ],
+      defaulters: dues.top.map(d => ({ name: d.name, gcc: `GCC-${d.gcc}`, due: d.due, course: d.course, status: `${d.months} mo overdue` })),
+      duesMeta: { count: dues.count, of: dues.of, partial: dues.partial },
+    }
+  }, [rawData, dues])
+  useEffect(() => {
+    if (!rawData || duesBusy) return
+    if (duesCache && Date.now() - duesCache.at < DASHBOARD_CACHE_MS) { setDues(duesCache.snap); return }
+    let live = true
+    setDuesBusy(true)
+    computeDuesSnapshot().then(snap => { duesCache = { at: Date.now(), snap }; if (live) setDues(snap) })
+      .catch(e => console.warn('Dues snapshot failed:', e.message))
+      .finally(() => live && setDuesBusy(false))
+    return () => { live = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawData])
+
   const sectionRefs = useRef({})
   const setSectionRef = (id) => (el) => { if (el) sectionRefs.current[id] = el }
-  const [activeSection, setActiveSection] = useState('overview')
+  const [activeSection, setActiveSection] = useState('centre')
 
   // Collapsible sections — every section except Overview (the landing
   // summary, always shown open) starts collapsed so the page loads
@@ -2512,7 +2564,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   // only runs once, not on every render.
   const [collapsedSections, setCollapsedSections] = useState(() => {
     const initial = {}
-    SECTION_TABS.forEach(t => { if (t.id !== 'overview') initial[t.id] = true })
+    SECTION_TABS.forEach(t => { if (t.id !== 'overview' && t.id !== 'centre') initial[t.id] = true })
     return initial
   })
   const toggleSection = useCallback(id => {
@@ -2555,9 +2607,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),60000); return()=>clearInterval(t) },[])
 
-  const load = useCallback(async()=>{
+  // loadAllData() downloads ~50 tables, so its result is kept for
+  // DASHBOARD_CACHE_MS and reused when the dashboard is reopened. Calling
+  // load() with no argument (Retry, the live-update reload) always refetches.
+  const load = useCallback(async(opts)=>{
+    if (opts?.useCache && dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_CACHE_MS) {
+      setData(dashboardCache.data); setLiveTotal(dashboardCache.data.totalFeeCollected); setLoading(false); setError(null)
+      return
+    }
     setLoading(true); setError(null)
-    try { const d=await loadAllData(); setData(d); setLiveTotal(d.totalFeeCollected) }
+    try { const d=await loadAllData(); dashboardCache = { at: Date.now(), data: d }; setData(d); setLiveTotal(d.totalFeeCollected) }
     catch(e) { console.error(e); setError(e.message) }
     finally { setLoading(false) }
   },[])
@@ -2568,15 +2627,22 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
     // overwritten (upsertAccount uses onConflict→UPDATE, which never fires INSERT).
     // Instead, on ANY accounts change we debounce a full reload so every total
     // reconverges to the authoritative paginated figure rather than guessing deltas.
+    // A reload is ~50 requests, so it waits for a quiet minute, runs only in a
+    // visible tab, and at most once per DASHBOARD_CACHE_MS however many fee or
+    // expense entries are made in between.
     let debounce
     const channel=supabase.channel("gnsi-live")
       .on("postgres_changes",{event:"*",schema:"public",table:"accounts"},
-        ()=>{ clearTimeout(debounce); debounce=setTimeout(()=>{ load() }, 1500) })
+        ()=>{ clearTimeout(debounce); debounce=setTimeout(()=>{
+          if (document.visibilityState !== 'visible') return
+          if (dashboardCache && Date.now() - dashboardCache.at < DASHBOARD_CACHE_MS) return
+          load()
+        }, 60000) })
       .subscribe()
     return()=>{ clearTimeout(debounce); channel.unsubscribe() }
   },[load])
 
-  useEffect(()=>{ load() },[load])
+  useEffect(()=>{ load({ useCache: true }) },[load])
 
   if(error) return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
@@ -2672,6 +2738,10 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
       <div style={{padding:"20px clamp(12px,2.2vw,28px)",maxWidth:1500,margin:"0 auto"}}>
 
         {/* ═══ OVERVIEW ════════════════════════════════════════ */}
+        <div ref={setSectionRef('centre')} className="dash-section" style={{display: activeSection === 'centre' ? 'block' : 'none'}}>
+          {activeSection === 'centre' && <AdminCentre data={data} briefing={dailyBriefing} currentUser={currentUser} onNavigate={onNavigate} onOpenSection={goToSection}/>}
+        </div>
+
         <div ref={setSectionRef('overview')} className="dash-section" style={{display: activeSection === 'overview' ? 'block' : 'none'}}>
           <div style={{
             display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16,
@@ -2713,11 +2783,6 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               color:"#0B1E3D",fontSize:12.5,fontWeight:800,
               cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(201,162,75,.35)",
             }}>🔔 Enable Notifications</button>
-            <button onClick={() => goToSection('security')} style={{
-              padding:"10px 18px",borderRadius:999,position:"relative",
-              border:"1px solid rgba(226,197,126,.5)",background:"rgba(255,255,255,.08)",
-              color:"#fff",fontSize:12.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
-            }}>🛡️ 360° Health Check</button>
           </div>
 
           {/* Daily Briefing — rule-based summary (getDailyBriefing →
@@ -2784,7 +2849,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
                 // FIX: feePending is hardcoded to 0 (fee_invoices pending-calc isn't wired
                 // up yet — see feePending definition). A 0-max progress bar always rendered
                 // as a misleading "100% collected" bar. Show an honest note instead.
-                <div style={{fontSize:11,color:T.inkSub}}>Pending amount not tracked yet</div>
+                <div style={{fontSize:11,color:T.inkSub}}>{dues?"No fees pending":"Working out pending dues…"}</div>
               )}
             </div>
             <div className="fee-banner-meta">
@@ -2855,7 +2920,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
             <Panel title="⚠️ Defaulters" accent={T.rose}>
-              {data.defaulters.length===0?<div style={{color:T.emerald,fontSize:13,fontWeight:600}}>✅ No outstanding fees!</div>:(
+              {data.defaulters.length===0?<div style={{color:dues?T.emerald:T.inkSub,fontSize:13,fontWeight:600}}>{dues?"✅ No outstanding fees!":"Working out dues…"}</div>:(
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {data.defaulters.map((d,i)=>(
                     <div key={i} style={{padding:"8px 10px",borderRadius:9,background:`${T.rose}08`,border:`1px solid ${T.rose}20`}}>
@@ -2904,10 +2969,6 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
-        <div ref={setSectionRef('security')} className="dash-section" style={{display: activeSection === 'security' ? 'block' : 'none'}}>
-          {activeSection === 'security' && <SecurityCenter onNavigate={onNavigate}/>}
-        </div>
-
         {/* ═══ ADMIN INTELLIGENCE ═════════════════════════════ */}
         <div ref={setSectionRef('intel')} className="dash-section" style={{display: activeSection === 'intel' ? 'block' : 'none'}}>
           {activeSection === 'intel' && <AdminIntelligence onOpenStudent={() => onNavigate?.('students')}/>}
@@ -2920,7 +2981,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('finance', "Total Collected")} icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
-            <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
+            <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.duesMeta?`${data.duesMeta.count} of ${data.duesMeta.of} students owe${data.duesMeta.partial?" · lower bound (some data failed)":""}`:"Working out…"}/>
             <KPI onClick={kpiClick('finance', "Admission Fee")} icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
             <KPI onClick={kpiClick('finance', "Flat Fee")} icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
             <KPI onClick={kpiClick('finance', "Course Fee")} icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
@@ -2939,7 +3000,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </ResponsiveContainer>
             </Panel>
             <Panel title="Fee Aging Buckets">
-              {data.feeAging.every(f=>f.amount===0)?<EmptyState msg="No outstanding invoices"/>:data.feeAging.map(f=>(
+              {data.feeAging.every(f=>f.amount===0)?<EmptyState msg={dues?"No outstanding fees":"Working out dues…"}/>:data.feeAging.map(f=>(
                 <div key={f.bucket} style={{marginBottom:13}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:T.inkSub}}>{f.bucket}</span><span style={{fontSize:13,fontWeight:800,color:f.color}}>{fmt(f.amount)}</span></div>
                   <ProgressBar value={f.amount} max={data.feePending||1} color={f.color} height={7}/>
@@ -2948,7 +3009,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
             </Panel>
           </div>
           <Panel title="Fee Defaulters">
-            {data.defaulters.length===0?<div style={{color:T.emerald,fontWeight:600,fontSize:13}}>✅ No outstanding invoices!</div>:(
+            {data.defaulters.length===0?<div style={{color:dues?T.emerald:T.inkSub,fontWeight:600,fontSize:13}}>{dues?"✅ No outstanding fees!":"Working out dues…"}</div>:(
               <TableWrap>
                 <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:480}}>
                   <thead><tr>{["Student","GCC","Course","Due","Status"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
