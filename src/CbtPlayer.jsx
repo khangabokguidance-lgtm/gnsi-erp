@@ -13,6 +13,7 @@ import { presentTest, isShuffled } from './lib/cbtShuffle'
 import { fsExits } from './lib/cbtProctorLogic'
 import { sectionTimed, settleSection, nextSection } from './lib/cbtSections'
 import { Calculator, RoughPad } from './CbtTools'
+import { useStaffPhotos } from './staffPhotos'
 
 // The founder's welcome (same person, photo and message as the website's founder section).
 const FOUNDER = {
@@ -39,6 +40,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'intro')
   const [islide, setIslide] = useState(0)            // instructions: which slide is showing
   const [idir, setIdir] = useState('fwd')            // …and which way it slid in
+  const findStaffPhoto = useStaffPhotos()             // the founder's photo comes from the Staff / Website Faculty photos
   const [a, setA] = useState(resume || null)
   // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
   const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
@@ -386,10 +388,12 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   if (stage === 'instructions') {
     const nQ = flatQuestions(test).length
     const maxM = Math.round(nQ * test.marking.correct * 100) / 100
+    // Staff photos first (Staff profile, then Website → Faculty), matched by name; the website's founder photo is the fallback.
+    const founderPhoto = [FOUNDER.name, 'Himan Singh', 'Himan'].map(n => findStaffPhoto(n)).find(Boolean) || FOUNDER.photo
     const slides = [
       { key: 'founder', icon: '🎓', kicker: 'From our Founder', title: 'A message to every candidate', body: <div className="cbt-founder">
-        <div className="cbt-founder-pic">
-          <img src={FOUNDER.photo} alt={FOUNDER.name} onError={e => { e.currentTarget.parentNode.classList.add('nophoto') }} />
+        <div className="cbt-founder-pic" key={founderPhoto}>
+          <img src={founderPhoto} alt={FOUNDER.name} onError={e => { e.currentTarget.parentNode.classList.add('nophoto') }} />
           <span aria-hidden="true">{FOUNDER.name[0]}</span>
         </div>
         <div className="cbt-founder-txt">
