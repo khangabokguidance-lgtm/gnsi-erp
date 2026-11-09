@@ -10,6 +10,9 @@
 // the timeline is always the current record (so an edit made elsewhere still
 // applies from the last recorded change onward).
 import { supabase } from './supabase'
+import { getFeeRates } from './feeEngine'
+import { courseChangesFor } from './courseHistory'
+import { courseOnMonth, otherCoursesInSession, planHostelRange } from './lib/courseHistory'
 
 export const HOSTEL_TYPE_LIST = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HISTORY_SETUP_MSG = 'Changing hostel type with an effective month needs the database update 20260930_hostel_type_history.sql — run it in Supabase (SQL editor) first.'
@@ -127,17 +130,50 @@ export async function clearHistory(gcc) {
 
 const SESSION_MONTHS = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March']
 
-// Rates for a session honouring the timeline. rateOf(type) → Promise<rates>.
-// No changes → the plain rates object for the current type (unchanged
-// behaviour). With changes → a function (month, year) → rates for the type in
-// effect that month (with .hostelType); fn.current = current type's rates.
+// Rates for a session honouring the hostel-type AND course timelines. rateOf(type) →
+// Promise<rates> for the student's CURRENT course.
+// No changes at all → the plain rates object for the current type (unchanged
+// behaviour). With changes → a function (month, year) → rates for the type (and
+// course) in effect that month (with .hostelType / .course); fn.current = current
+// type's rates. A month before a course change is priced at the OLD course's
+// Fee Setup rates; the student's custom fees apply to the current course only.
 export async function sessionRates(student, session, changes, rateOf) {
   const cur = currentType(student)
-  if (!changes?.length) return rateOf(cur)
+  const courses = await courseChangesFor(student)
+  if (!changes?.length && !courses.length) return rateOf(cur)
   const types = new Set([cur, ...typesInSession(student, changes, session, SESSION_MONTHS)])
   const byType = {}
   for (const t of types) byType[t] = await rateOf(t)
-  const fn = (month, year) => { const t = typeOnMonth(student, changes, month, year); return { ...(byType[t] || byType[cur]), hostelType: t } }
+  // Rates of each earlier / later course the session's months fall in, per hostel type.
+  const startY = Number(String(session).slice(0, 4))
+  const others = otherCoursesInSession(student, courses, startY)
+  const byCourse = {}
+  for (const o of others) {
+    const key = `${o.course}|${o.batch}`
+    byCourse[key] = {}
+    for (const t of types) { try { byCourse[key][t] = await getFeeRates(session, o.course, o.batch, t) } catch { /* fall back to the current course's rates */ } }
+  }
+  const fn = (month, year) => {
+    const t = changes?.length ? typeOnMonth(student, changes, month, year) : cur
+    const c = courses.length ? courseOnMonth(student, courses, month, year) : null
+    const base = (c && !c.current && byCourse[`${c.course}|${c.batch}`]?.[t]) || byType[t] || byType[cur]
+    return { ...base, hostelType: t, ...(c ? { course: c.course } : null) }
+  }
   fn.current = byType[cur]
   return fn
+}
+
+// Change hostel type for a RANGE of months: the new type applies from `from` through
+// `until`, then the student returns to their current type. Without `until` it is a
+// plain change from `from` onward. Each step is saved as its own dated change.
+export async function changeHostelTypeRange({ student, toType, from, until = '', reason, by, changes = [] }) {
+  const plan = planHostelRange({ currentType: currentType(student), toType, from, until })
+  if (plan.error) throw new Error(plan.error)
+  let st = student, list = changes
+  for (const step of plan.steps) {
+    await changeHostelType({ student: st, toType: step.toType, effectiveFrom: step.effectiveFrom, reason: reason || null, by, changes: list })
+    list = [...list, { effective_from: step.effectiveFrom }]
+    st = { ...st, hostel_type: step.toType }
+  }
+  return plan.steps
 }

@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { loadStudentHistory, sessionRates } from './hostelHistory'
+import { courseChangesFor } from './courseHistory'
 import { supabase } from './supabase'
 import { loadStanding } from './feeStanding'
 import { standingWaiver } from './lib/standingMath'
@@ -174,7 +175,8 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   if (!ratesResult._failed) {
     const changes = preloaded?.history ?? await loadStudentHistory(gcc, { staff })
     historyLoaded = changes
-    if (changes.length) {
+    const courseCh = await courseChangesFor(student)   // a mid-session course change also needs month-by-month rates
+    if (changes.length || courseCh.length) {
       try {
         const fn = await sessionRates(student, sessionYear, changes, type => getFeeRates(sessionYear, student.course, student.batch, type, gcc))
         if (typeof fn === 'function') rateAt = fn

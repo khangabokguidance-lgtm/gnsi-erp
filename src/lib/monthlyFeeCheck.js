@@ -32,10 +32,11 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100
 // students: students rows (gcc_no, name, course, batch, hostel_type, status)
 // courseRows: adm_course_fees; flatRows: adm_flat_fees (paid rows only are used)
 // rateOf({ session, course, batch, type, field, student }) → standard rate, 0 if none
+// courseAt(student, month, year) → { course, batch } in force that month (e.g. from course history); defaults to the student's own
 // typeAt(student, month, year) → hostel type in force that month (e.g. from hostel history); defaults to
 //   the student's current hostel_type
 // tolerance: rupees of difference treated as equal
-export function checkMonthlyFees({ students = [], courseRows = [], flatRows = [], rateOf, typeAt = null, tolerance = 0.5 }) {
+export function checkMonthlyFees({ students = [], courseRows = [], flatRows = [], rateOf, typeAt = null, courseAt = null, tolerance = 0.5 }) {
   const groups = new Map() // `${gcc}|${kind}|${year}|${month}` → payments
   const push = (gcc, kind, month, year, p) => {
     const k = `${gcc}|${kind}|${year}|${month}`
@@ -65,6 +66,8 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
     for (const g of gs) {
       const session = sessionOf(g.month, g.year)
       const type = (typeAt && typeAt(st, g.month, g.year)) || st.hostel_type || 'Day Scholar'
+      // the course / batch in force that month (a mid-session course change keeps earlier months at the old course)
+      const cb = (courseAt && courseAt(st, g.month, g.year)) || { course: st.course || '', batch: st.batch || '' }
       const field = g.kind === 'flat' ? 'flat_fee' : 'course_fee'
       const paid = r2(g.pays.reduce((s, p) => s + p.amount, 0))
       const concession = g.pays.some(p => p.concession)
@@ -72,9 +75,9 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
       const tags = [...new Set(g.pays.map(p => p.tag).filter(t => FEE_TYPES.includes(t)))]
       if (tags.some(t => t !== type)) flags.push('tag-differs')
       const payCourse = g.pays.map(p => p.course).find(Boolean)
-      if (g.kind === 'course' && payCourse && st.course && payCourse !== st.course) flags.push('course-differs')
+      if (g.kind === 'course' && payCourse && cb.course && payCourse !== cb.course) flags.push('course-differs')
 
-      const rateFor = t => (session ? Number(rateOf({ session, course: st.course || '', batch: st.batch || '', type: t, field, student: st })) || 0 : 0)
+      const rateFor = t => (session ? Number(rateOf({ session, course: cb.course || '', batch: cb.batch || '', type: t, field, student: st })) || 0 : 0)
       const expected = rateFor(type)
       let verdict, detectedType = null
       if (!(expected > 0)) verdict = 'no-rate'
@@ -87,7 +90,7 @@ export function checkMonthlyFees({ students = [], courseRows = [], flatRows = []
       }
       summary.months++; summary[verdict]++
       months.push({
-        month: g.month, year: g.year, session, kind: g.kind, hostelType: type, course: st.course || '',
+        month: g.month, year: g.year, session, kind: g.kind, hostelType: type, course: cb.course || '',
         expected, paid, diff: r2(paid - expected), verdict, detectedType, flags,
         pays: g.pays.map((p) => ({ table: p.table, id: p.id, receipt: p.receipt, mode: p.mode, amount: p.amount })),
       })

@@ -3,7 +3,7 @@
 // low fees and why, and scan the ledgers for short payments with no reason
 // on file.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
+import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, REASON_NOTE_PROMPT, reasonNeedsNote, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
 import { LedgerLink } from './LedgerLinks'
@@ -83,6 +83,8 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
 
   const rows = useMemo(() => data?.rows || [], [data])
   const sum = useMemo(() => summarise(rows), [rows])
+  // The current choices plus any older reasons still on file (so old requests stay filterable).
+  const reasonList = useMemo(() => [...CONCESSION_REASONS, ...new Set(rows.map(r => r.reason).filter(r => r && !CONCESSION_REASONS.includes(r)))], [rows])
   const staffList = useMemo(() => [...new Set(rows.map(r => r.collected_by).filter(Boolean))].sort(), [rows])
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase()
@@ -181,11 +183,17 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
     const key = `${u.student.gcc_no}|${u.month}|${u.year}`
     const why = draft[key]
     if (!why) { alert('Choose a reason first.'); return }
+    let note = 'Recorded on review'
+    if (reasonNeedsNote(why)) {
+      const name = (window.prompt(`${REASON_NOTE_PROMPT[why]} (required for ${why}):`, '') || '').trim()
+      if (!name) { alert(`${REASON_NOTE_PROMPT[why]} is required for ${why}.`); return }
+      note = `Staff: ${name}`
+    }
     const p = u.payment
     setBusy(key)
     const c = await recordConcession({
       table: p.kind === 'flat' ? 'adm_flat_fees' : 'adm_course_fees', rowId: p.rowId, kind: p.kind, gcc: u.student.gcc_no, studentName: u.student.name,
-      month: u.month, year: u.year, course: u.student.course, standard: u.expected, collected: u.paid, reason: why, note: 'Recorded on review',
+      month: u.month, year: u.year, course: u.student.course, standard: u.expected, collected: u.paid, reason: why, note,
       receiptNo: p.receipt, payDate: p.date, collectedBy: p.by, approvedBy: approve ? me : null,
     })
     if (c && !approve) { try { await decideConcession(c, false, { by: me, note: 'Kept due on review' }) } catch (e) { alert(e.message) } }
@@ -262,7 +270,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
           <button style={chip(reason === HOSTEL_MISMATCH_REASON)} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <select style={inp} value={reason} onChange={e => setReason(e.target.value)} aria-label="Filter by reason"><option>All</option>{CONCESSION_REASONS.map(r => <option key={r}>{r}</option>)}</select>
+          <select style={inp} value={reason} onChange={e => setReason(e.target.value)} aria-label="Filter by reason"><option>All</option>{reasonList.map(r => <option key={r}>{r}</option>)}</select>
           <select style={inp} value={staff} onChange={e => setStaff(e.target.value)} aria-label="Filter by staff"><option value="All">All staff</option>{staffList.map(s => <option key={s}>{s}</option>)}</select>
           <input type="date" style={inp} value={from} onChange={e => setFrom(e.target.value)} aria-label="From" />
           <input type="date" style={inp} value={to} onChange={e => setTo(e.target.value)} aria-label="To" />

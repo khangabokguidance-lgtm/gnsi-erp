@@ -44,7 +44,7 @@ import {
 import { getDuesForStudents, getStudentDues } from './feeDues'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
-import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
+import { CONCESSION_REASONS, REASON_NOTE_PROMPT, reasonNeedsNote, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
 import { loadStanding } from './feeStanding'
@@ -66,6 +66,9 @@ import { loggedInName } from './lib/collector'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
+import StudentFeeAdjust from './StudentFeeAdjust'
+import { loadStudentCourseHistory } from './courseHistory'
+import { courseOnMonth } from './lib/courseHistory'
 import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
@@ -2993,6 +2996,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const st = Number(sessionOfDate(payDate || today()).slice(0, 4))
     return typeOnMonth(student, hostelChanges, month, ['January', 'February', 'March'].includes(month) ? st + 1 : st)
   }
+  // Course timeline: a mid-session course change keeps earlier months at the old course's rates.
+  const [courseHist, setCourseHist] = useState({ gcc: null, changes: [] })
+  const courseChanges = student && courseHist.gcc === gccStr(student.gcc_no) ? courseHist.changes : []
+  const courseFor = month => {
+    if (!month || !student || !courseChanges.length) return { course: student?.course || '', batch: student?.batch || '', current: true }
+    const st = Number(sessionOfDate(payDate || today()).slice(0, 4))
+    return courseOnMonth(student, courseChanges, month, ['January', 'February', 'March'].includes(month) ? st + 1 : st)
+  }
+  const [adjOpen, setAdjOpen] = useState(false)
   // Loads a student's timeline + their course rate at each type in it.
   const loadHostelHist = async s => {
     const changes = await loadStudentHistory(s.gcc_no)
@@ -3284,9 +3296,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // Shared by Save and Razorpay: low-fee reasons, and the hostel-type checks
   // that need an admin. Returns true when the payment may go ahead.
   const approvalGate = async () => {
-    const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonOf(r) === 'Other' || isWrongType(r)) && !(r.reasonNote || '').trim()))
+    const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonNeedsNote(reasonOf(r)) || isWrongType(r)) && !(r.reasonNote || '').trim()))
     if (noReason) {
-      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${typeFor(noReason.for_month)}; explain why` : `choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''}`} before saving.`, '#dc2626')
+      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${typeFor(noReason.for_month)}; explain why` : `choose a reason${reasonNeedsNote(noReason.reason) ? ` and enter the ${REASON_NOTE_PROMPT[noReason.reason].toLowerCase()}` : ''}`} before saving.`, '#dc2626')
       return false
     }
     const issues = []
@@ -3434,7 +3446,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
         const short = lowFeeGap(r)
         const typeNote = isWrongType(r) ? `Charged at ${r.hostelType} rate — student is ${typeFor(r.for_month)}` : ''
-        const why = [typeNote, (r.reasonNote || '').trim()].filter(Boolean).join('; ')
+        const why = [typeNote, reasonNeedsNote(reasonOf(r)) ? `Staff: ${(r.reasonNote || '').trim()}` : (r.reasonNote || '').trim()].filter(p => p && p !== 'Staff:').join('; ')
         items.push({
           kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt,
           ...(short > 0 ? {
@@ -3714,9 +3726,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setFlatChecked(studentFlatFees.map(ff => !paid.includes(`${ff.month}|${ff.year}`)))
 
     const { changes: sChanges, rates: sTypeRates } = await loadHostelHist(s)
-    const defaultCourse     = s.course && COURSE_STRUCTURE[s.course] ? s.course : ''
+    const sCourses = await loadStudentCourseHistory(s.gcc_no)
+    setCourseHist({ gcc: gccStr(s.gcc_no), changes: sCourses })
+    let defaultCourse       = s.course && COURSE_STRUCTURE[s.course] ? s.course : ''
     let defaultHostelType   = s.hostel_type || 'Day Scholar'
-    const defaultBatch      = s.batch || ''
+    let defaultBatch        = s.batch || ''
 
     let defaultAmt = ''
     if (defaultCourse && defaultHostelType) {
@@ -3737,6 +3751,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (firstDue && sChanges.length) {
       const t = typeOnMonth(s, sChanges, firstDue.month, firstDue.year)
       if (t !== defaultHostelType && sTypeRates[t] != null) { defaultHostelType = t; defaultAmt = sTypeRates[t] }
+    }
+    // Priced at the course in effect that month (mid-session course change).
+    if (firstDue && sCourses.length) {
+      const c = courseOnMonth(s, sCourses, firstDue.month, firstDue.year)
+      if (!c.current && c.course) {
+        try {
+          const r = await getFeeRates(sSessionYear, c.course, c.batch, defaultHostelType)
+          defaultAmt = r.courseFee || defaultAmt
+          defaultCourse = COURSE_STRUCTURE[c.course] ? c.course : defaultCourse
+          defaultBatch = c.batch
+        } catch { /* keep the current course's amount */ }
+      }
     }
     setCrsfRows([{
       course:     defaultCourse,
@@ -3795,11 +3821,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     // With a hostel type change on file, picking a month re-prices the line at
     // the type in effect that month.
     const monthRetype = field === 'for_month' && hostelChanges.length > 0 && typeFor(value) !== typeFor(crsfRows[i]?.for_month)
-    if (field === 'course' || field === 'hostelType' || field === 'subtype' || monthRetype) {
+    // …and a course change on file re-prices it at the course in effect that month.
+    const monthRecourse = field === 'for_month' && courseChanges.length > 0 && (() => { const a = courseFor(value), b = courseFor(crsfRows[i]?.for_month); return a.course !== b.course || a.batch !== b.batch })()
+    if (field === 'course' || field === 'hostelType' || field === 'subtype' || monthRetype || monthRecourse) {
       const currentRow = crsfRows[i]
-      const course     = field === 'course'     ? value : currentRow.course
+      const monthCourse = monthRecourse ? courseFor(value) : null
+      const course     = monthCourse ? monthCourse.course : field === 'course' ? value : currentRow.course
       const ht         = monthRetype ? typeFor(value) : field === 'hostelType' ? value : currentRow.hostelType || hostelType
-      const batch      = field === 'subtype'    ? value : (field === 'course' ? '' : currentRow.subtype || '')
+      const batch      = monthCourse ? monthCourse.batch : field === 'subtype' ? value : (field === 'course' ? '' : currentRow.subtype || '')
       if (course && ht) {
         const rateAt = async type => {
           try { return (await getFeeRates(sessionYear, course, batch, type)).courseFee || syncCourseFeeAmt(course, type) }
@@ -3811,7 +3840,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const own = ht === ownType ? amt : await rateAt(ownType)
         setCrsfRows(rows => {
           const updated = [...rows]
-          updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0, own: Number(own) || 0, ...(monthRetype ? { hostelType: ht } : {}) }
+          updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0, own: Number(own) || 0, ...(monthRetype ? { hostelType: ht } : {}), ...(monthCourse ? { course, subtype: batch } : {}) }
           return updated
         })
       }
@@ -3917,6 +3946,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {isAdmin && (
             <button type="button" className={`fp-tool-btn${htOpen ? ' on' : ''}`} onClick={openHostelChange}>🏠 Change hostel type</button>
           )}
+          {isAdmin && (
+            <button type="button" className={`fp-tool-btn${adjOpen ? ' on' : ''}`} onClick={() => setAdjOpen(o => !o)} title="Change hostel type or course for chosen months, give a discount, or waive a due">🛠 Fee adjustments</button>
+          )}
           <button type="button" className={`fp-tool-btn${isRepeater ? ' on' : ''}`} onClick={toggleRepeater} disabled={repeaterSaving}
             title={isRepeater ? 'Remove repeater tag' : 'Mark as repeater (2+ years at GNSI)'}>
             {repeaterSaving ? '…' : isRepeater ? '✓ Repeater' : 'Mark repeater'}
@@ -3976,6 +4008,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             </div>
           </div>
         </div>
+      )}
+
+      {adjOpen && isAdmin && (
+        <StudentFeeAdjust student={student} isAdmin={isAdmin} me={collectedBy.trim() || currentUser?.name || 'Admin'} onClose={() => setAdjOpen(false)}
+          onChanged={next => { onRefresh?.(); if (next) handleSelect({ ...student, ...next }) }} />
       )}
 
       {bedIssue && (
@@ -4324,9 +4361,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginTop: 8 }}>
                         <select value={reasonOf(row)} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee">
                           <option value="">— Reason —</option>
-                          {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
+                          {(wrong ? [HOSTEL_MISMATCH_REASON, ...CONCESSION_REASONS] : CONCESSION_REASONS).map(x => <option key={x}>{x}</option>)}
                         </select>
-                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={reasonOf(row) === 'Other' || wrong ? 'Explain (required)' : 'Details (optional)'} />
+                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label={REASON_NOTE_PROMPT[reasonOf(row)] || 'Low fee explanation'}
+                          style={reasonNeedsNote(reasonOf(row)) && !(row.reasonNote || '').trim() ? { borderColor: '#dc2626' } : undefined}
+                          placeholder={REASON_NOTE_PROMPT[reasonOf(row)] ? `${REASON_NOTE_PROMPT[reasonOf(row)]} (required)` : wrong ? 'Explain (required)' : 'Details (optional)'} />
                       </div>
                       {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
                     </div>
