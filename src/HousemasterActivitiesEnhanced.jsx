@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import jsPDF from 'jspdf'
+import { pdfLetterhead, pdfFooters } from './reportKit'
 
 // ─── Shared style tokens (kept consistent with parent file) ───
 const inp = {
@@ -1238,28 +1239,11 @@ function DutyRosterPanel({ currentUser }) {
   const handleGeneratePDF = () => {
     if (!roster) return
     setPdfStatus('generating')
-    const NAVY = [30, 58, 95], GOLD = [202, 138, 4], GREY = [100, 116, 139]
+    const NAVY = [30, 58, 95], GREY = [100, 116, 139]
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = 210, marginX = 16
-    let y = 20
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(15)
-    doc.setTextColor(...NAVY)
-    doc.text('Guidance Navodaya & Sainik Institute', W / 2, y, { align: 'center' })
-    y += 7
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(12)
-    doc.setTextColor(...GREY)
-    doc.text('Daily Duty List', W / 2, y, { align: 'center' })
-    y += 6
-    doc.setFontSize(10)
-    doc.text(`Date: ${dateLabel(roster.date)}`, W / 2, y, { align: 'center' })
-    y += 6
-    doc.setDrawColor(...GOLD)
-    doc.setLineWidth(0.6)
-    doc.line(marginX, y, W - marginX, y)
-    y += 10
+    // the shared report letterhead (reportKit.js)
+    let y = pdfLetterhead(doc, { title: 'Daily Duty List', date: dateLabel(roster.date), margin: marginX }) + 4
 
     // Duty table
     const usableWidth = W - marginX * 2
@@ -1330,6 +1314,7 @@ function DutyRosterPanel({ currentUser }) {
       }
     }
 
+    pdfFooters(doc, { margin: marginX })
     doc.save(`Duty_Roster_${roster.date}.pdf`)
     setPdfStatus('ready')
     setTimeout(() => setPdfStatus('idle'), 2000)

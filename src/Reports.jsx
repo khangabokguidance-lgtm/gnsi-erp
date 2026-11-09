@@ -4,6 +4,8 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ExcelJS from 'exceljs'
 import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
+import { getInstitute } from './systemSettings'
+import { reportHTML, reportTable, openReport, pdfLetterhead, pdfFooters, PDF_TABLE_STYLES, esc } from './reportKit'
 
 // Every row of a report source. A plain .select() stops at Supabase's 1000-row
 // cap, so reports (and their totals) were silently truncated. Pages in id order
@@ -228,7 +230,8 @@ const BUILTIN_PRESETS = [
   { id: 'course-enrollments', label: '🗂️ All Enrollments', builtin: true, config: { sourceKey: 'course_enrollments', selectedCols: ['student_name','gcc_no','course','subtype','hostel_type','session_year','status'], statusFilter: 'Active', search: '', dateFrom: '', dateTo: '', groupBy: 'course', sortCol: 'student_name', sortDir: 'asc' }, postFilter: null },
 ]
 
-const DEFAULT_INSTITUTE = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok Sorok Wangma, Thoubal, Manipur', phone: '+91-8974298074' }
+// The letterhead starts from System Settings → Basic Info; staff can adjust it for one report here.
+const DEFAULT_INSTITUTE = () => { const i = getInstitute({ address: 'Khangabok Sorok Wangma, Thoubal, Manipur' }); return { name: i.name, address: i.address, phone: i.phone } }
 const CHART_COLORS = ['#132a4f','#2f4f86','#10b981','#f59e0b','#ef4444','#b8923a','#06b6d4','#f97316']
 const POSITIVE = new Set(['Confirmed','Paid','Present','Passed','Occupied','Approved','Active','Enrolled','Completed','Income'])
 const NEGATIVE  = new Set(['Pending','Absent','Vacant','Rejected','Unpaid','Failed','Cancelled','Dropped','Overdue','Expense'])
@@ -460,27 +463,21 @@ export default function Reports() {
   const allPresets    = [...BUILTIN_PRESETS, ...savedPresets]
 
   // ── Export helpers (same logic as original) ───────────────────
+  // PDF, Word and Print share the portal's report design (reportKit.js): letterhead, title band, summary, table.
+  const reportTitle = `${source.label} Report`
+  const summary = [['Total records', String(rows.length)], ['Status', statusFilter], ['From', dateFrom || 'All'], ['To', dateTo || 'All']]
   const exportPdf = () => {
     const isWide = activeCols.length > 6
-    const doc    = new jsPDF(isWide ? 'l' : 'p', 'pt', 'a4')
-    const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight()
-    const mx = 36, navy=[15,40,80], steel=[30,58,95], sky=[56,96,156], silver=[241,245,249], muted=[100,116,139], white=[255,255,255], gold=[180,140,40]
-    doc.setFillColor(...navy); doc.rect(0,0,pw,110,'F')
-    doc.setFillColor(...gold); doc.rect(0,0,pw,3,'F')
-    let logoX=mx
-    if(logoDataUrl){ const ext=logoDataUrl.split(';')[0].split('/')[1].toUpperCase(); try{doc.addImage(logoDataUrl,ext==='SVG'?'PNG':ext,mx,18,70,70);logoX=mx+82}catch{logoX=mx} }
-    else { doc.setFillColor(...sky);doc.circle(mx+35,55,35,'F');doc.setFont('helvetica','bold').setFontSize(26).setTextColor(...white);doc.text('G',mx+35,62,{align:'center'});logoX=mx+82 }
-    doc.setFont('helvetica','bold').setFontSize(16).setTextColor(...white); doc.text(institute.name,logoX,40)
-    doc.setFont('helvetica','normal').setFontSize(9).setTextColor(180,200,230); doc.text(institute.address,logoX,56); doc.text(`Phone: ${institute.phone}`,logoX,70)
-    const bW=120,bH=28,bX=pw-mx-bW,bY=18; doc.setFillColor(...sky);doc.roundedRect(bX,bY,bW,bH,4,4,'F')
-    doc.setFont('helvetica','bold').setFontSize(10).setTextColor(...white); doc.text(`${source.label} Report`,bX+bW/2,bY+18,{align:'center'})
-    const ribbonY=110; doc.setFillColor(...silver);doc.rect(0,ribbonY,pw,48,'F')
-    const si=[{label:'Total Records',value:String(rows.length)},{label:'Status Filter',value:statusFilter},{label:'Date From',value:dateFrom||'All'},{label:'Date To',value:dateTo||'All'}]
-    const boxW=(pw-mx*2)/si.length
-    si.forEach((item,i)=>{ const bx=mx+i*boxW; if(i>0){doc.setDrawColor(200,210,220).setLineWidth(0.5);doc.line(bx,ribbonY+8,bx,ribbonY+40)} doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...muted);doc.text(item.label.toUpperCase(),bx+boxW/2,ribbonY+18,{align:'center'});doc.setFont('helvetica','bold').setFontSize(11).setTextColor(...steel);doc.text(item.value,bx+boxW/2,ribbonY+34,{align:'center'}) })
-    doc.setFillColor(...gold);doc.rect(0,ribbonY+48,pw,2,'F')
-    let tY=ribbonY+58
-    autoTable(doc,{ startY:tY, head:[['#',...activeCols.map(c=>c.label)]], body:rows.map((row,i)=>[i+1,...activeCols.map(c=>fmt(row[c.key]))]), styles:{font:'helvetica',fontSize:8,cellPadding:{top:5,bottom:5,left:6,right:6},valign:'middle',textColor:[30,41,59]}, headStyles:{fillColor:steel,textColor:white,fontStyle:'bold',fontSize:8}, alternateRowStyles:{fillColor:[248,250,252]}, margin:{left:mx,right:mx,bottom:52}, didDrawPage:()=>{ const p=doc.internal.getCurrentPageInfo().pageNumber,t=doc.internal.getNumberOfPages(); doc.setFillColor(...silver);doc.rect(0,ph-38,pw,38,'F');doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...muted);doc.text(`${institute.name}  •  ${source.label} Report  •  Confidential`,mx,ph-16);doc.text(`Printed: ${generatedText}`,pw/2,ph-16,{align:'center'});const pill=`Page ${p} of ${t}`,pW=70,pH2=16,pX=pw-mx-pW,pY=ph-28;doc.setFillColor(...steel);doc.roundedRect(pX,pY,pW,pH2,3,3,'F');doc.setFont('helvetica','bold').setFontSize(8).setTextColor(...white);doc.text(pill,pX+pW/2,pY+11,{align:'center'}) } })
+    const doc = new jsPDF(isWide ? 'l' : 'p', 'pt', 'a4')
+    const mx = 28
+    let y = pdfLetterhead(doc, { title: reportTitle, institute, logo: logoDataUrl || undefined, margin: mx })
+    doc.setFontSize(8.5); doc.setTextColor(71, 85, 105)
+    doc.text(summary.map(([l, v]) => `${l}: ${v}`).join('    ·    '), mx, y + 4)
+    y += 14
+    autoTable(doc, { startY: y, head: [['#', ...activeCols.map(c => c.label)]], body: rows.map((row, i) => [i + 1, ...activeCols.map(c => fmt(row[c.key]))]),
+      styles: { font: 'helvetica', fontSize: 8, cellPadding: { top: 5, bottom: 5, left: 6, right: 6 }, valign: 'middle' }, ...PDF_TABLE_STYLES,
+      margin: { left: mx, right: mx, bottom: 40 } })
+    pdfFooters(doc, { institute, margin: mx })
     doc.save(`GNSI-${source.label}-Report-${fileStamp}.pdf`)
   }
 
@@ -501,20 +498,16 @@ export default function Reports() {
     const blob=new Blob([headers+'\n'+body],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`GNSI-${source.label}-${fileStamp}.csv`; a.click(); URL.revokeObjectURL(url)
   }
 
+  const reportDoc = (autoPrint) => reportHTML({
+    title: reportTitle, institute, logo: logoDataUrl || undefined, orientation: activeCols.length > 6 ? 'landscape' : 'portrait', autoPrint,
+    meta: summary,
+    body: reportTable([{ label: '#', render: (_, i) => i + 1, align: 'center', width: '34px' }, ...activeCols.map(c => ({ label: c.label, render: row => esc(fmt(row[c.key]) ?? '—') }))], rows),
+  })
   const exportWord = () => {
-    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #d9d2c2;padding:8px 12px;background:#132a4f;color:#fff;font-size:12px;">${h}</th>`).join('')
-    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e8e3d8;padding:8px 12px;font-size:12px;">${v}</td>`).join('')}</tr>`).join('')
-    const html=`<html><head><meta charset="utf-8"/></head><body style="font-family:Arial,sans-serif;margin:30px;"><div style="border-bottom:2px solid #132a4f;padding-bottom:12px;margin-bottom:16px;"><div style="font-size:18px;font-weight:700;color:#132a4f;">${institute.name}</div><div style="font-size:12px;color:#4b5870;">${institute.address} | ${institute.phone}</div><div style="font-size:12px;color:#4b5870;">Report: ${source.label} | Date: ${generatedText} | Total: ${rows.length}</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table></body></html>`
-    const blob=new Blob([html],{type:'application/msword'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`GNSI-${source.label}-Report-${fileStamp}.doc`; a.click(); URL.revokeObjectURL(url)
+    const blob = new Blob([reportDoc(false)], { type: 'application/msword' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `GNSI-${source.label}-Report-${fileStamp}.doc`; a.click(); URL.revokeObjectURL(url)
   }
 
-  const handlePrint = () => {
-    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #d9d2c2;padding:8px 10px;background:#132a4f;color:#fff;font-size:11px;">${h}</th>`).join('')
-    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e8e3d8;padding:8px 10px;font-size:11px;">${v}</td>`).join('')}</tr>`).join('')
-    const win=window.open('','_blank','width=1050,height=750'); if(!win)return
-    win.document.write(`<html><head><meta charset="utf-8"/><style>body{font-family:Arial,sans-serif;padding:22px;}table{width:100%;border-collapse:collapse;}@page{margin:14mm;}</style></head><body><div style="border-bottom:2px solid #132a4f;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;"><div><div style="font-size:18px;font-weight:700;color:#132a4f;">${institute.name}</div><div style="font-size:11px;color:#4b5870;">${institute.address} | ${institute.phone}</div></div><div style="text-align:right;font-size:11px;color:#4b5870;"><strong>${source.label} Report</strong><br/>Date: ${generatedText}<br/>Total: ${rows.length}</div></div><table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();setTimeout(()=>window.close(),400)}<\/script></body></html>`)
-    win.document.close()
-  }
+  const handlePrint = () => openReport(reportTitle, reportDoc(false))
 
   // ── Render ─────────────────────────────────────────────────────
   return (

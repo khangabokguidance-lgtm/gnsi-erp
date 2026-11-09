@@ -9,6 +9,7 @@ import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { fmt, fmtDate, escH } from './feeLedgerModel'
 import { instNameHTML } from './systemSettings'
+import { rebrandReport } from './reportKit'
 
 // Same rule as Accounts.jsx: absent status = legacy Confirmed; anything but
 // 'Confirmed' (Pending, Void, …) is not real money.
@@ -93,7 +94,9 @@ tfoot td,.sub td{font-weight:800;background:#f7f4ea;border-top:1.3px solid #1d3a
 .np{position:sticky;top:0;display:flex;justify-content:center;gap:8px;padding:8px;background:#0b1e3d;margin:-14px -16px 12px}.np button{padding:8px 20px;border-radius:999px;border:none;font-weight:800;cursor:pointer;background:#E2C57E;color:#0b1e3d}
 @media print{.np{display:none}}`
 function openDoc(title, body, landscape = false) {
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)}</title><style>${CSS}@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:8mm}</style></head><body><div class="np"><button onclick="window.print()">🖨 Print</button><button onclick="window.close()" style="background:#fff">Close</button></div>${body}</body></html>`
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)}</title><style>${CSS}@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:8mm}</style></head><body><div class="np"><button onclick="window.print()">🖨 Print</button><button onclick="window.close()" style="background:#fff">Close</button></div>${body}</body></html>`
+  // the shared report design (reportKit.js): letterhead, title band, footer
+  html = rebrandReport(html, { title, orientation: landscape ? 'landscape' : 'portrait', drop: ['.np', '.inst'], subtitleFrom: 'body > h1', signatures: [] })
   const w = window.open('', '_blank', 'width=1100,height=900')
   if (!w) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
   w.document.write(html); w.document.close()

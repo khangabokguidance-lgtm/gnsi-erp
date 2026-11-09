@@ -15,6 +15,7 @@
 import { useState, useMemo } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { pdfLetterhead, pdfFooters, PDF_TABLE_STYLES } from './reportKit'
 import * as XLSX from 'xlsx'
 
 // ─── Re-use the same tokens as Admissions.jsx so this never looks bolted-on ──
@@ -72,7 +73,6 @@ const QUOTA_TYPES   = ['Open','Sports','Defence Ward','Staff Ward','NRI','Other'
 const ADM_STATUSES  = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
 
 const fmt   = n => Number(n||0).toLocaleString('en-IN')
-const today = () => new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
 const todayCompact = () => new Date().toISOString().slice(0,10)
 
 // ─── Report template registry ───────────────────────────────────────────────
@@ -132,28 +132,10 @@ function useFilteredData(apps, filters) {
 // ─── PDF builder ────────────────────────────────────────────────────────────
 function buildPDF(templateKey, rows, cols, filters) {
   const doc = new jsPDF({ unit:'pt', format:'a4' })
-  const pageWidth = doc.internal.pageSize.getWidth()
 
-  // Letterhead
-  doc.setFillColor(19,42,79)
-  doc.rect(0, 0, pageWidth, 70, 'F')
-  doc.setFillColor(184,146,58)
-  doc.rect(0, 70, pageWidth, 2.5, 'F')
-  doc.setTextColor(255,255,255)
-  doc.setFont('helvetica','bold')
-  doc.setFontSize(16)
-  doc.text('GNSI — Guidance Navodaya & Sainik Institute', 40, 30)
-  doc.setFont('helvetica','normal')
-  doc.setFontSize(9)
-  doc.text('Khangabok, Thoubal District, Manipur', 40, 46)
-  doc.setFontSize(8)
-  doc.text(`Generated on ${today()}`, 40, 60)
-
+  // The portal's report letterhead (reportKit.js)
   const tmpl = TEMPLATES.find(t=>t.key===templateKey)
-  doc.setTextColor(19,42,79)
-  doc.setFont('helvetica','bold')
-  doc.setFontSize(13)
-  doc.text(tmpl.label, 40, 92)
+  const top = pdfLetterhead(doc, { title: tmpl.label, margin: 40 })
 
   const filterLine = [
     filters.session !== 'All' ? `Session: ${filters.session}` : null,
@@ -166,21 +148,21 @@ function buildPDF(templateKey, rows, cols, filters) {
     doc.setFont('helvetica','normal')
     doc.setFontSize(9)
     doc.setTextColor(110,110,115)
-    doc.text(filterLine, 40, 108)
+    doc.text(filterLine, 40, top + 4)
   }
 
-  let startY = filterLine ? 124 : 112
+  let startY = filterLine ? top + 16 : top + 4
 
   if (templateKey === 'summary') {
     const byStatus = ADM_STATUSES.map(s => [s, rows.filter(a=>a.status===s).length])
     const byCourse = Object.keys(COURSE_STRUCTURE).map(c => [c, rows.filter(a=>a.course===c).length])
     autoTable(doc, {
       startY, head:[['Status','Count']], body:byStatus,
-      theme:'striped', headStyles:{ fillColor:[30,58,110] }, alternateRowStyles:{ fillColor:[250,248,243] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 24, head:[['Course','Count']], body:byCourse,
-      theme:'striped', headStyles:{ fillColor:[30,58,110] }, alternateRowStyles:{ fillColor:[250,248,243] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(19,42,79)
     doc.text(`Total Applications: ${rows.length}`, 40, doc.lastAutoTable.finalY + 24)
@@ -194,7 +176,7 @@ function buildPDF(templateKey, rows, cols, filters) {
       .filter(Boolean)
     autoTable(doc, {
       startY, head:[['GCC','Name','Course','Amount','Date']], body:feeRows,
-      theme:'striped', headStyles:{ fillColor:[5,150,105] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
     const total = feeRows.reduce((s,r) => s + parseInt(String(r[3]).replace(/[^\d]/g,'')||0), 0)
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(5,150,105)
@@ -208,7 +190,7 @@ function buildPDF(templateKey, rows, cols, filters) {
     })
     autoTable(doc, {
       startY, head:[['House','Occupied','Capacity','Fill %']], body:houseRows,
-      theme:'striped', headStyles:{ fillColor:[124,58,237] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
 
   } else if (templateKey === 'category') {
@@ -216,21 +198,15 @@ function buildPDF(templateKey, rows, cols, filters) {
     const quotaRows = QUOTA_TYPES.map(q => [q, rows.filter(a=>a.quota===q).length])
     autoTable(doc, {
       startY, head:[['Category','Count']], body:catRows,
-      theme:'striped', headStyles:{ fillColor:[217,119,6] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 24, head:[['Quota Type','Count']], body:quotaRows,
-      theme:'striped', headStyles:{ fillColor:[217,119,6] }, margin:{ left:40, right:40 },
+      ...PDF_TABLE_STYLES, margin:{ left:40, right:40 },
     })
   }
 
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages()
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i)
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,155)
-    doc.text(`GNSI Portal v2.0 · Page ${i} of ${pageCount}`, 40, doc.internal.pageSize.getHeight() - 24)
-  }
+  pdfFooters(doc, { margin: 40 })
 
   doc.save(`GNSI_${tmpl.label.replace(/\s+/g,'_')}_${todayCompact()}.pdf`)
 }

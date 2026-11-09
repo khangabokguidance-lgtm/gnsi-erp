@@ -1,3 +1,4 @@
+import { rebrandReport, pdfLetterhead, pdfFooters, PDF_TABLE_STYLES } from './reportKit'
 import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
@@ -1572,7 +1573,7 @@ function Accounts({role,userId}){
     const regTitle=`Daily ${dailyLabelWord} Register`
     const dateModeLabel=dailyIsIncome?(dailyDateMode==='payment'?'Actual Payment Date':'Entry Date'):'Entry Date'
     let rowNum=0
-    w.document.write(`<html><head><title>${regTitle}</title><style>
+    w.document.write(rebrandReport(`<html><head><title>${regTitle}</title><style>
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
@@ -1594,7 +1595,7 @@ function Accounts({role,userId}){
       return`<tr><td colspan="${dailyIsIncome?7:6}" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="${dailyIsIncome?6:5}">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
     <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank/UPI/Card: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
-    </table></body></html>`)
+    </table></body></html>`, { title: regTitle, drop: ["h1"] }))
     w.document.close();w.print()
   }
 
@@ -1624,7 +1625,7 @@ function Accounts({role,userId}){
     ${plDatewise.map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
     <tr class="total"><td>Total</td><td class="green">${fmt(totalThisInc)}</td><td class="red">${fmt(totalThisExp)}</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
     </table>`:''
-    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a6e}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    w.document.write(rebrandReport(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a6e}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
     <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     ${plShowDatewise?datewiseSection:`<h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
@@ -1638,7 +1639,7 @@ function Accounts({role,userId}){
     <tr><td>Total Income</td><td class="green">${fmt(totalThisInc)}</td></tr>
     <tr><td>Total Expenditure</td><td class="red">${fmt(totalThisExp)}</td></tr>
     <tr class="total"><td>Net Surplus / Deficit</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
-    </table></body></html>`)
+    </table></body></html>`, { title: `Income & Expenditure Statement — ${plPeriodLabel}`, drop: ["h1"] }))
     w.document.close();w.print()
   }
 
@@ -1647,13 +1648,13 @@ function Accounts({role,userId}){
   const printDatewise=()=>{
     const w=window.open('','_blank')
     const periodLabel=`${rptDateFrom||'Beginning'} to ${rptDateTo||'Present'}`
-    w.document.write(`<html><head><title>Date-wise Income &amp; Expenditure - ${periodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    w.document.write(rebrandReport(`<html><head><title>Date-wise Income &amp; Expenditure - ${periodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Date-wise Income &amp; Expenditure</h1>
     <p>Period: ${periodLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     <table><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th></tr>
     ${[...reportByDate].sort((a,b)=>a.date<b.date?-1:1).map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
     <tr class="total"><td>Total</td><td class="green">${fmt(reportTotals.income)}</td><td class="red">${fmt(reportTotals.expense)}</td><td class="${reportTotals.net>=0?'green':'red'}">${fmt(reportTotals.net)}</td></tr>
-    </table></body></html>`)
+    </table></body></html>`, { title: `Date-wise Income & Expenditure — ${periodLabel}`, drop: ["h1"] }))
     w.document.close();w.print()
   }
 
@@ -1807,22 +1808,13 @@ function Accounts({role,userId}){
       const pageH=doc.internal.pageSize.getHeight()
       const margin=40
 
-      // letterhead
-      doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(30,58,95)
-      doc.text(INSTITUTE_INFO.name,pageW/2,42,{align:'center'})
-      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(100,116,139)
-      doc.text(INSTITUTE_INFO.tagline,pageW/2,56,{align:'center'})
-      doc.text(INSTITUTE_INFO.address,pageW/2,68,{align:'center'})
-      const contact=[INSTITUTE_INFO.phone,INSTITUTE_INFO.email,INSTITUTE_INFO.website].filter(Boolean).join('   |   ')
-      if(contact)doc.text(contact,pageW/2,80,{align:'center'})
-      doc.setDrawColor(30,58,95);doc.setLineWidth(1.2);doc.line(margin,90,pageW-margin,90)
-      doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(30,41,59)
-      doc.text(titleData,pageW/2,108,{align:'center'})
+      // the shared report letterhead (reportKit.js)
+      const top=pdfLetterhead(doc,{title:titleData,margin})
       doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(100,116,139)
-      doc.text(filterSummaryData,pageW/2,121,{align:'center',maxWidth:pageW-2*margin})
+      doc.text(filterSummaryData,margin,top+4,{maxWidth:pageW-2*margin-160})
       doc.setFontSize(8)
-      doc.text(`Printed on: ${printDate}`,pageW-margin,121,{align:'right'})
-      let y=134
+      doc.text(`Printed on: ${printDate}`,pageW-margin,top+4,{align:'right'})
+      let y=top+16
 
       // summary cards — colored boxes instead of a plain table for a more
       // "dashboard" feel
@@ -1885,9 +1877,8 @@ function Accounts({role,userId}){
         startY:y,
         head:[['#','Date','Type','Category','Account','Mode','Voucher Head','Particulars / Note','Entered By','Receipt','Status','Amount']],
         body:entriesData.map((e,i)=>[i+1,e.entry_date,e.type,e.category,e.account_type||'Cash A/c',e.payment_mode,e.voucher_head||'-',e.note||'-',e.added_by||e.edited_by||'admin',e.receipt_url?'Yes':'No',e.status||'Confirmed',`${e.type==='Income'?'+':'-'} ${fmtPdf(e.amount)}`]),
-        headStyles:{fillColor:[30,58,95],textColor:255,fontSize:8},
-        bodyStyles:{fontSize:7.5},
-        alternateRowStyles:{fillColor:[248,250,252]},
+        ...PDF_TABLE_STYLES,
+        bodyStyles:{...PDF_TABLE_STYLES.bodyStyles,fontSize:7.5},
         columnStyles:{0:{cellWidth:20},7:{cellWidth:110},11:{halign:'right'}},
         margin:{left:margin,right:margin,bottom:70},
         didParseCell:(data)=>{
@@ -1898,11 +1889,6 @@ function Accounts({role,userId}){
           if(data.section==='body'&&data.column.index===9){
             data.cell.styles.textColor=data.cell.raw==='Yes'?[22,163,74]:[148,163,184]
           }
-        },
-        didDrawPage:(data)=>{
-          doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(148,163,184)
-          doc.text(`Page ${data.pageNumber}`,pageW-margin,pageH-20,{align:'right'})
-          doc.text(`${INSTITUTE_INFO.name} · GNSI Portal`,margin,pageH-20)
         },
       })
 
@@ -1919,6 +1905,7 @@ function Accounts({role,userId}){
       doc.text(`Date: ${getToday()}`,margin,sigY+27)
       doc.text(`Date: ${getToday()}`,pageW-margin-180,sigY+27)
 
+      pdfFooters(doc,{margin})
       doc.save(`GNSI-${titleData.replace(/\s+/g,'-')}-${getToday()}.pdf`)
       logReportExport('PDF',{logLabel:opts.logLabel,dateFrom:opts.dateFrom,dateTo:opts.dateTo,rowCount:entriesData.length})
     }catch(err){
@@ -2334,7 +2321,7 @@ function Accounts({role,userId}){
     const groups=groupByDate(weeklyEntries)
     const w=window.open('','_blank');if(!w)return
     let rowNum=0
-    w.document.write(`<html><head><title>Weekly Report — GNSI Portal</title><style>
+    w.document.write(rebrandReport(`<html><head><title>Weekly Report — GNSI Portal</title><style>
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
@@ -2373,7 +2360,7 @@ function Accounts({role,userId}){
     <h1 style="font-size:14px">By Category</h1>
     <table><tr><th>Category</th><th>Type</th><th>Entries</th><th style="text-align:right">Total</th></tr>
     ${weeklyByCategory.map(c=>`<tr><td>${c.category}</td><td class="${c.type==='Income'?'type-income':'type-expense'}">${c.type}</td><td>${c.count}</td><td class="amt">${fmt(c.total)}</td></tr>`).join('')}
-    </table></body></html>`)
+    </table></body></html>`, { title: 'Weekly Income & Expenditure Report', drop: ["h1"] }))
     w.document.close();w.print()
   }
 
@@ -2553,7 +2540,7 @@ function Accounts({role,userId}){
     const groups=groupByDate(filtered)
     const totalAmt=filtered.reduce((s,e)=>s+Number(e.amount),0)
     const win=window.open('','_blank')
-    win.document.write(`<html><head><title>Daily Expenditure Register</title><style>
+    win.document.write(rebrandReport(`<html><head><title>Daily Expenditure Register</title><style>
       body{font-family:Arial,sans-serif;padding:24px;color:#14213d}
       h1{font-size:16px;color:#1e3a6e;margin-bottom:2px}
       p{font-size:11px;color:#5d6b82;margin:2px 0}
@@ -2578,7 +2565,7 @@ function Accounts({role,userId}){
       return`<tr><td colspan="6" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
     <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(expenditureCashAmt)} | Bank/UPI/Card: ${fmt(expenditureBankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
-    </table></body></html>`)
+    </table></body></html>`, { title: 'Daily Expenditure Register', drop: ["h1", "h1 + p"] }))
     win.document.close();win.focus();win.print()
   }
 

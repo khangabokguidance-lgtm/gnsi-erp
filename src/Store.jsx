@@ -5,6 +5,7 @@ import { getActiveStudents } from './studentQueries'
 import { isAdminRole } from './roles'
 import { gccStr } from './feeEngine'
 import { printStoreBill } from './premiumReceipt'
+import { reportLetterhead, REPORT_CSS, REPORT_FONTS } from './reportKit'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GNSI Store — counter POS, inventory, online orders, sales, purchases, reports.
@@ -84,8 +85,8 @@ function parseCSV(text) {
 const waPhone = ph => { const d = String(ph || '').replace(/\D/g, ''); return d.length === 10 ? '91' + d : d }
 const waLink = (ph, text) => `https://wa.me/${waPhone(ph)}?text=${encodeURIComponent(text)}`
 function openPrint(title, body, extraHead = '', width = 820) {
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(title)}</title>${extraHead}<style>
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;padding:18px}
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(title)}</title><link rel="stylesheet" href="${REPORT_FONTS}">${extraHead}<style>${REPORT_CSS}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans','Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;padding:18px;background:#fff}.rk-top{padding:0 0 10px}.rk-accent{margin-bottom:12px}
 h1{font-size:17px;color:${NAVY}}h2{font-size:13px;color:${NAVY};margin:14px 0 6px}.s{font-size:10.5px;color:#64748b;margin-top:2px}
 table{width:100%;border-collapse:collapse;margin-top:6px}th{font-size:10.5px;text-align:left;background:#f1f5f9;border:1px solid #cbd5e1;padding:5px}
 td{border:1px solid #e2e8f0;padding:5px;vertical-align:top}.r{text-align:right}.b{font-weight:800}.np{margin-bottom:12px}
@@ -95,7 +96,8 @@ button{padding:8px 18px;background:${NAVY};color:white;border:none;border-radius
   if (!win) { alert('Pop-up blocked — allow pop-ups to print.'); return }
   win.document.write(html); win.document.close()
 }
-const HEADER_HTML = sub => `<h1>Guidance Navodaya &amp; Sainik Institute — GNSI Store</h1><div class="s">Khangabok, Thoubal, Manipur – 795 131${sub ? ' · ' + esc(sub) : ''}</div>`
+// The shared report letterhead (reportKit.js) with the document's name in the navy band.
+const HEADER_HTML = sub => reportLetterhead(sub ? `GNSI Store · ${sub}` : 'GNSI Store')
 
 const Modal = ({ children, onClose, width = 560, busy }) => (
   <div data-store-modal="1" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => !busy && onClose()}>

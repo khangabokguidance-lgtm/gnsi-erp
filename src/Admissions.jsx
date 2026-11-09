@@ -40,6 +40,7 @@ import AdmissionPortalAdmin from './AdmissionPortalAdmin'
 import ExamRegistrationAdmin from './ExamRegistrationAdmin'
 import { printAdmissionConfirmation } from './admissionConfirmation'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
+import { rebrandReport } from './reportKit'
 // A batch in its standard name; unknown names ("Class 6") stay as typed.
 const stdBatch = v => canonicalBatch(v)
 
@@ -1972,7 +1973,7 @@ function printBulkList(apps) {
   const rows = apps.map(a =>
     `<tr><td>${a.gcc}</td><td>${a.admNo||'—'}</td><td>${a.name}</td><td>${a.course||'—'}</td><td>${a.cls||'—'}</td><td>${a.house||'—'}</td><td>${a.hostel_type}</td><td>${a.status}</td><td>${a.phone||'—'}</td></tr>`
   ).join('')
-  win.document.write(`<!DOCTYPE html><html><head><title>GNSI Admissions List</title>
+  win.document.write(rebrandReport(`<!DOCTYPE html><html><head><title>GNSI Admissions List</title>
   <style>body{font-family:system-ui;padding:24px;font-size:12px}h2{color:#1E1B4B;margin-bottom:16px}
   table{width:100%;border-collapse:collapse}th{background:#EEF2FF;color:#3730A3;font-size:11px;padding:7px 8px;text-align:left;border-bottom:2px solid #C7D2FE}
   td{padding:6px 8px;border-bottom:1px solid #E2E8F0}tr:nth-child(even){background:#F8FAFC}
@@ -1980,7 +1981,7 @@ function printBulkList(apps) {
   <h2>GNSI – Admissions List (${apps.length} records) · ${new Date().toLocaleDateString('en-IN')}</h2>
   <table><thead><tr><th>GCC</th><th>Adm No</th><th>Name</th><th>Course</th><th>Class</th><th>House</th><th>Hostel</th><th>Status</th><th>Phone</th></tr></thead>
   <tbody>${rows}</tbody></table>
-  <script>window.onload=()=>window.print()</script></body></html>`)
+  <script>window.onload=()=>window.print()</script></body></html>`, { title: 'Admissions List', drop: ["h2"] }))
   win.document.close()
 }
 

@@ -2,6 +2,7 @@
 //  GNSI Portal — Attendance Module (Premium v4 · Redesigned)
 // ============================================================
 
+import { rebrandReport } from './reportKit'
 import { authFetch } from './apiFetch'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
@@ -2319,7 +2320,7 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
     const html = buildReportHTML({ students, absentStudents, records, sessionInfo, counts })
     const win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes')
     if (!win) { alert('Allow pop-ups to generate the PDF report'); return }
-    win.document.write(html)
+    win.document.write(rebrandReport(html, { title: 'Attendance Report', drop: ['.hdr', '.np'] }))
     win.document.close()
   }
 

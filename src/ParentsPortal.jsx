@@ -10,6 +10,7 @@ import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razor
 import { examKeyFor } from './examBatchKey'
 import { canonicalBatch } from './courseMap'
 import { notifyHousemasterByHouse } from './notifications'
+import { rebrandReport } from './reportKit'
 
 // Escapes text before it is placed inside HTML strings (receipts, report
 // cards, progress reports). Names/addresses/remarks come from the database
@@ -1234,7 +1235,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         : '<p>Fee summary not loaded — open the Fee Dues tab first for a complete report.</p>';
 
       const win = window.open('', '_blank');
-      win.document.write(`
+      win.document.write(rebrandReport(`
         <html><head><title>Progress Report — ${esc(student.name)}</title>
         <style>
           body { font-family: Georgia, serif; padding: 30px; color: #1a1a1a; }
@@ -1252,7 +1253,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         ${feesHtml}
         <script>window.onload = () => window.print();</script>
         </body></html>
-      `);
+      `, { title: `Progress Report — ${student.name}`, drop: ["h1"] }));
       win.document.close();
     } catch (e) {
       console.error('Export failed:', e);

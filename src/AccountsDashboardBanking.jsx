@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo, useState } from 'react'
+import { rebrandReport } from './reportKit'
 
 // ── Type system ────────────────────────────────────────────────────────────
 // Fraunces (a characterful, slightly ink-trapped serif) carries the "private
@@ -198,7 +199,7 @@ export const AccountsDashboardBanking = ({
           `<tr><td>${i + 1}</td><td style="font-size:11px;color:#888">${e.entry_date}</td><td style="color:${e.type === 'Income' ? '#16a34a' : '#dc2626'};font-weight:600">${e.type}</td><td>${e.category || '—'}</td><td>${(e.note || '').replace(/</g, '&lt;')}</td><td>${e.payment_mode || ''}</td><td style="text-align:right;font-weight:600">${fmt(e.amount)}</td></tr>`
       )
       .join('')
-    w.document.write(`<html><head><title>Last 7 Days — GNSI Portal</title><style>
+    w.document.write(rebrandReport(`<html><head><title>Last 7 Days — GNSI Portal</title><style>
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
@@ -223,7 +224,7 @@ export const AccountsDashboardBanking = ({
     <table><tr><th>#</th><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount</th></tr>
     ${rows}
     <tr class="grand"><td colspan="6">NET (7 days)</td><td style="text-align:right">${fmt(last7Stats.net)}</td></tr>
-    </table></body></html>`)
+    </table></body></html>`, { title: 'Last 7 Days — Income & Expenditure', drop: ["h1"] }))
     w.document.close()
     w.print()
   }
