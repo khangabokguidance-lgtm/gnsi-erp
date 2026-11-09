@@ -2227,7 +2227,7 @@ window.submitGrievance = async () => {
   </nav>
   <StaffFlashCard onLogin={onLogin} />
   <CbtFlashBar flash={site.cbtFlash} />
-  <CbtOpenNote flash={site.cbtFlash} />
+  <CbtOpenNote flash={site.cbtFlash} suppress={isPortalOpen || isFeeOpen || receiptCheckOpen} />
   <AdmissionsBanner site={site} />
   {/* TICKER */}
   <div className="ticker-wrap">
