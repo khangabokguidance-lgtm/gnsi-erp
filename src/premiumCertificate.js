@@ -433,7 +433,7 @@ export async function drawFormalCertificate(opts) {
   if (opts.subtitle) { g.fillStyle = NAVY; fit(g, opts.subtitle.toUpperCase(), 1400, 36, F_HEAD, '700'); spaced(g, opts.subtitle.toUpperCase(), cx, y, 4); y += 46 }
   if (opts.detail) { g.fillStyle = '#8C6A22'; fit(g, opts.detail, 1400, 32, F_BODY, 'italic 700'); g.fillText(opts.detail, cx, y); y += 44 }
   g.fillStyle = INK
-  for (const line of opts.body || []) { fit(g, line, 1400, 28, F_BODY, 'italic 400'); g.fillText(line, cx, y); y += 38 }
+  for (const [i, raw] of (opts.body || []).entries()) { const line = i === 0 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw; fit(g, line, 1400, 28, F_BODY, 'italic 400'); g.fillText(line, cx, y); y += 38 }
 
   // signatures, with the gold seal between them
   const sigY = 1170, sigs = opts.signatures || [{ title: 'Principal' }, { title: 'Head of the Institution' }]
@@ -443,7 +443,7 @@ export async function drawFormalCertificate(opts) {
     g.fillStyle = NAVY; fit(g, sgn.title.toUpperCase(), 400, 26, F_HEAD, '700'); spaced(g, sgn.title.toUpperCase(), sx, sigY + 42, 3)
     if (sgn.name) { g.fillStyle = '#5B6678'; g.font = `italic 400 25px ${F_BODY}`; g.fillText(sgn.name, sx, sigY + 78) }
   })
-  goldSeal(g, cx, 1100, 72, 'GNSI', opts.seal?.label || 'AWARD')
+  goldSeal(g, cx, 1100, 72, 'GNSI', opts.seal ? `${opts.seal.label} ${opts.seal.value}`.trim() : 'AWARD')
 
   // issue line and micro-text security border
   const issued = issuedDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
