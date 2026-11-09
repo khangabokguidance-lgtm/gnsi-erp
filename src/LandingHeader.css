@@ -1,0 +1,130 @@
+/* LandingHeader.css — majestic header: slim utility bar · royal navy main bar with
+   Cinzel wordmark and gold details · centre links · gold-edged "What's New" strip.
+   Loaded after GovTheme so it wins; the fonts are declared in LandingFooter.css. */
+
+:root{--hd-gold:#E9C46A;--hd-gold2:#C9A24B;--hd-navy:#0A1B45;--hd-navy2:#06122e;--hd-display:'Cinzel','Trajan Pro',Georgia,serif}
+
+/* ═══ Utility bar ═══ */
+.gov-stripe{display:flex!important;height:4px}
+.hd-util{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 clamp(1rem,3vw,2.6rem);min-height:38px;
+  background:linear-gradient(180deg,#040b1f,#06122e)!important;border-bottom:1px solid rgba(233,196,106,.2)!important;font:500 .74rem/1 'Inter',system-ui,sans-serif;color:rgba(255,255,255,.82)}
+.hd-util-l,.hd-util-r{display:flex;align-items:center;gap:1.1rem;min-width:0}
+.hd-u{display:inline-flex;align-items:center;gap:.45rem;color:rgba(255,255,255,.82);text-decoration:none;white-space:nowrap;transition:color .2s}
+.hd-u svg{color:var(--hd-gold);flex:none}
+a.hd-u:hover{color:var(--hd-gold)}
+.hd-sep{width:1px;height:16px;background:rgba(255,255,255,.18)}
+.hd-util .gov-skip{display:none}
+body.lp-gov .hd-util .gov-skip{display:inline;position:absolute;left:-9999px}
+.hd-util .gov-skip:focus{position:static;left:auto;color:var(--hd-gold)}
+.hd-util .gov-a11y{display:inline-flex;gap:.25rem}
+.hd-util .gov-a11y button{min-width:26px;height:24px;padding:0 .3rem;border:1px solid rgba(233,196,106,.35);border-radius:6px;background:transparent;color:var(--hd-gold);font:700 .68rem Inter,sans-serif;cursor:pointer;transition:.2s}
+.hd-util .gov-a11y button:hover,.hd-util .gov-a11y button[aria-pressed=true]{background:var(--hd-gold);color:#1a1206}
+.hd-lang{display:inline-flex;gap:.25rem}
+.hd-util .lang-btn{display:inline-flex;align-items:center;height:24px;padding:0 .6rem;border-radius:6px;border:1px solid rgba(255,255,255,.2)!important;background:transparent!important;color:rgba(255,255,255,.85)!important;font:600 .68rem Inter,sans-serif;letter-spacing:.06em;cursor:pointer;text-decoration:none;transition:.2s}
+.hd-util .lang-btn:hover{border-color:var(--hd-gold)!important;color:var(--hd-gold)!important}
+.hd-util .lang-btn.active{background:var(--hd-gold)!important;border-color:var(--hd-gold)!important;color:#1a1206!important}
+.hd-util .lx-lang-mni{font-family:'Noto Sans Meetei Mayek',Inter,sans-serif}
+/* the old contact strip is replaced by the utility bar */
+.top-bar{display:none!important}
+
+/* ═══ Main bar ═══ */
+:is(body.lp-gov,body) .lp-nav{background:linear-gradient(180deg,#0B1E4D 0%,#08163a 100%)!important;border-bottom:0!important;box-shadow:0 18px 40px -22px rgba(0,0,0,.7);position:sticky;top:0;transition:box-shadow .3s}
+:is(body.lp-gov,body) .lp-nav::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--hd-gold2) 20%,var(--hd-gold) 50%,var(--hd-gold2) 80%,transparent)}
+:is(body.lp-gov,body) .lp-nav::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(600px 120px at 12% 0,rgba(233,196,106,.14),transparent 70%),repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 64px)}
+:is(body.lp-gov,body) .lp-nav .nav-inner{height:80px;transition:height .3s;position:relative;width:min(1320px,97%)}
+:is(body.lp-gov,body) .lp-nav.is-scrolled .nav-inner{height:62px}
+:is(body.lp-gov,body) .lp-nav.is-scrolled{box-shadow:0 22px 44px -20px rgba(0,0,0,.85)}
+
+:is(body.lp-gov,body) .lp-nav .brand{display:flex;align-items:center;gap:.85rem;text-decoration:none}
+:is(body.lp-gov,body) .lp-nav .nv-crest{width:54px;height:54px;border-radius:50%;background:#fff;display:grid;place-items:center;padding:0;box-shadow:0 0 0 2px var(--hd-gold),0 0 0 6px rgba(233,196,106,.18),0 12px 24px -10px rgba(0,0,0,.7);transition:width .3s,height .3s}
+:is(body.lp-gov,body) .lp-nav .nv-crest img{width:42px;height:42px;object-fit:contain}
+:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest{width:44px;height:44px}
+:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest img{width:34px;height:34px}
+:is(body.lp-gov,body) .lp-nav .brand-text h2{font:800 clamp(1.15rem,2.2vw,1.5rem)/1 var(--hd-display)!important;letter-spacing:.16em;text-transform:uppercase;margin:0;
+  background:linear-gradient(180deg,#fff 20%,var(--hd-gold));-webkit-background-clip:text;background-clip:text;color:transparent!important}
+:is(body.lp-gov,body) .lp-nav .brand-text small{display:block;margin-top:.35rem;font:500 .6rem/1 var(--hd-display)!important;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.7)!important}
+
+/* centre links */
+.hd-links{display:none;list-style:none;gap:clamp(1rem,2vw,2rem);margin:0 auto;padding:0}
+.hd-links a{position:relative;display:block;padding:.6rem .1rem;font:600 .74rem var(--hd-display);letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.85);text-decoration:none;transition:color .25s}
+.hd-links a::after{content:'';position:absolute;left:50%;bottom:.15rem;width:0;height:2px;background:linear-gradient(90deg,transparent,var(--hd-gold),transparent);transform:translateX(-50%);transition:width .3s}
+.hd-links a:hover,.hd-links a.on{color:var(--hd-gold)}
+.hd-links a:hover::after,.hd-links a.on::after{width:100%}
+@media(min-width:1100px){.hd-links{display:flex}}
+
+/* actions */
+:is(body.lp-gov,body) .lp-nav .nav-fixed-actions{gap:.6rem}
+:is(body.lp-gov,body) .lp-nav .lx-nav-search{width:42px;height:42px;border-radius:50%;border:1px solid rgba(233,196,106,.5)!important;background:rgba(255,255,255,.06)!important;color:var(--hd-gold)!important;transition:.25s}
+:is(body.lp-gov,body) .lp-nav .lx-nav-search:hover{background:var(--hd-gold)!important;color:#1a1206!important}
+:is(body.lp-gov,body) .lp-nav .nv-btn{height:42px;border-radius:999px;font:700 .72rem var(--hd-display);letter-spacing:.14em;text-transform:uppercase;padding:0 1.15rem;transition:transform .25s,box-shadow .25s,background .25s}
+:is(body.lp-gov,body) .lp-nav .nv-primary{background:linear-gradient(135deg,#F6D98B,#C9A24B)!important;color:#1a1206!important;border:0!important;box-shadow:0 12px 26px -12px rgba(233,196,106,.9)}
+:is(body.lp-gov,body) .lp-nav .nv-primary:hover{transform:translateY(-2px);box-shadow:0 18px 30px -12px rgba(233,196,106,1)}
+:is(body.lp-gov,body) .lp-nav .nv-ghost{background:transparent!important;color:#fff!important;border:1px solid rgba(255,255,255,.4)!important}
+:is(body.lp-gov,body) .lp-nav .nv-ghost:hover{border-color:var(--hd-gold)!important;color:var(--hd-gold)!important}
+:is(body.lp-gov,body) .lp-nav .mm-burger{height:42px;background:rgba(255,255,255,.08);border:1px solid rgba(233,196,106,.6);color:#fff;font-family:var(--hd-display);box-shadow:none}
+:is(body.lp-gov,body) .lp-nav .mm-burger:hover{background:rgba(233,196,106,.16);box-shadow:0 10px 24px -12px rgba(233,196,106,.8)}
+:is(body.lp-gov,body) .lp-nav .mm-burger .mm-burger-lines i:nth-child(2){background:var(--hd-gold)}
+
+/* ═══ What's New strip ═══ */
+:is(body.lp-gov,body) .ticker-wrap{background:linear-gradient(180deg,#071333,#050d26)!important;border-bottom:1px solid rgba(233,196,106,.25)!important;border-top:0}
+:is(body.lp-gov,body) .ticker-label{background:linear-gradient(135deg,#F6D98B,#C9A24B)!important;color:#1a1206!important;font:800 .7rem var(--hd-display)!important;letter-spacing:.18em;text-transform:uppercase;clip-path:polygon(0 0,100% 0,calc(100% - 14px) 100%,0 100%);padding-right:1.6rem}
+:is(body.lp-gov,body) .ticker-scroll{mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+:is(body.lp-gov,body) .ticker-track{color:#F3E3B3!important;font:600 .78rem 'Inter',sans-serif!important;letter-spacing:.1em}
+:is(body.lp-gov,body) .ticker-wrap:hover .ticker-track{animation-play-state:paused}
+
+/* ═══ Responsive ═══ */
+@media(max-width:900px){.hd-u-md,.hd-u-lg{display:none}.hd-util{justify-content:space-between}}
+@media(max-width:640px){
+  .hd-util{padding:0 .8rem}.hd-util-r{gap:.6rem}.hd-sep{display:none}
+  :is(body.lp-gov,body) .lp-nav .nav-inner{height:68px}:is(body.lp-gov,body) .lp-nav.is-scrolled .nav-inner{height:58px}
+  :is(body.lp-gov,body) .lp-nav .nv-crest{width:44px;height:44px}:is(body.lp-gov,body) .lp-nav .nv-crest img{width:34px;height:34px}
+  :is(body.lp-gov,body) .lp-nav .brand-text small{display:none}
+  :is(body.lp-gov,body) .lp-nav .nv-parents{display:none}
+  :is(body.lp-gov,body) .lp-nav .nv-btn{padding:0 .9rem}
+}
+@media(prefers-reduced-motion:reduce){:is(body.lp-gov,body) .lp-nav .nav-inner,:is(body.lp-gov,body) .lp-nav .nv-crest{transition:none}}
+
+/* keep the wordmark whole */
+:is(body.lp-gov,body) .lp-nav .brand{flex:none}
+:is(body.lp-gov,body) .lp-nav .brand-text{min-width:max-content;overflow:visible}
+:is(body.lp-gov,body) .lp-nav .brand-text h2{overflow:visible;text-overflow:clip;white-space:nowrap}
+
+/* fit the bar at laptop widths */
+:is(body.lp-gov,body) .lp-nav .brand-text small{letter-spacing:.17em;font-size:.56rem!important}
+@media(max-width:1500px){
+  .hd-links li:nth-child(5){display:none}
+  :is(body.lp-gov,body) .lp-nav .nv-lbl-full{display:none!important}
+  :is(body.lp-gov,body) .lp-nav .nv-lbl-short{display:inline!important}
+  .hd-links{gap:1.3rem}
+}
+
+/* html + body both had overflow-x:hidden, which turns body into a scroll container and
+   silently disables position:sticky. `clip` hides sideways overflow without that side effect. */
+body.lp-page{overflow-x:clip!important}
+
+/* phones: everything must fit — hide the Parents button (it lives in the menu), centre the utility rows */
+@media(max-width:640px){
+  :is(body.lp-gov,body) .lp-nav .nv-parents{display:none!important}
+  :is(body.lp-gov,body) .lp-nav .nav-fixed-actions{gap:.45rem}
+  :is(body.lp-gov,body) .lp-nav .nv-btn{padding:0 .85rem}
+  .hd-util{flex-wrap:wrap;justify-content:center;padding:.35rem .6rem;row-gap:.35rem}
+  .hd-util-l,.hd-util-r{justify-content:center;flex-wrap:wrap;gap:.5rem}
+  :is(body.lp-gov,body) .lp-nav .nav-inner{gap:.4rem}
+}
+
+/* ═══ New logo artwork: no circles ═══ */
+/* header mark */
+:is(body.lp-gov,body) .lp-nav .nv-crest{width:auto;height:auto;border-radius:0;background:none!important;box-shadow:none!important;padding:0;display:block}
+:is(body.lp-gov,body) .lp-nav .nv-crest img.hd-mark{width:auto;height:54px;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.55));transition:height .3s}
+:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest img.hd-mark{height:42px;width:auto}
+@media(max-width:640px){:is(body.lp-gov,body) .lp-nav .nv-crest img.hd-mark,:is(body.lp-gov,body) .lp-nav.is-scrolled .nv-crest img.hd-mark{height:42px;width:auto}}
+
+/* top banner: logo + "Celebrating 10 Years" side by side on the brand blue */
+.ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}
+.ten-years-banner .tyb-frame{max-width:1100px;display:flex;align-items:center;justify-content:center;gap:clamp(1rem,4vw,4rem);padding:clamp(1.4rem,3vw,2.6rem) clamp(1rem,4vw,2rem);line-height:normal}
+.ten-years-banner .tyb-frame img{width:auto}
+.ten-years-banner .tyb-frame img.tyb-logo{height:clamp(190px,30vw,400px);filter:drop-shadow(0 18px 30px rgba(0,0,0,.4))}
+.ten-years-banner .tyb-frame img.tyb-celebrate{height:clamp(110px,17vw,230px);filter:drop-shadow(0 14px 24px rgba(0,0,0,.4))}
+@media(max-width:640px){.ten-years-banner .tyb-frame{flex-direction:column;gap:.4rem}.ten-years-banner .tyb-frame img.tyb-logo{height:230px}.ten-years-banner .tyb-frame img.tyb-celebrate{height:120px}}
+:is(body.lp-gov,body) .ten-years-banner .tyb-frame{background:none!important}
+:is(body.lp-gov,body) .ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}

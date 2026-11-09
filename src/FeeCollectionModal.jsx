@@ -1,6 +1,7 @@
 // FeeCollectionModal.jsx
 
 import { logHostelOverride } from './hostelFeeCheck'
+import { loggedInName } from './lib/collector'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
@@ -308,7 +309,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // Now auto-fills from the authenticated session's username. Still
   // editable (not locked) in case session data is ever missing or a
   // different staff member genuinely collected the payment in person.
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const collectedBy = loggedInName(currentUser)
   // ✦ Stable staff identifier for audit trail attribution, separate from
   // `collectedBy` (which stays a free-text, editable display name field —
   // see the comment above). staffId is the logged-in session's own
@@ -737,7 +739,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   //    or cheque with no number can't be reconciled in Accounts.
   //  • A month closed in Accounts blocks collections dated in it.
   const preflight = async ({ hostelCheck = true } = {}) => {
-    if (!collectedBy.trim()) { alert('Collected By is required — enter the name of the staff collecting this payment.'); return false }
+    if (!collectedBy.trim()) { alert('Collected By is required and is filled in from your login — sign out and in again.'); return false }
     if (payMode !== 'Cash' && !txnRef.trim()) { alert(`${payMode === 'UPI' ? 'UPI Txn / UTR No.' : 'Transaction / cheque reference'} is required for ${payMode} payments.`); return false }
     // Wrong hostel-type fee: charging at a type other than the student's record
     // (the bed auto-correction to Boarder excepted), or a Boarder with no bed.
@@ -1121,6 +1123,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       <strong style={{ color: hasOverride ? C.violet : C.emerald }}>
                         ₹{fmt(feeRates.flatFee).replace('₹','')}/month
                       </strong>
+                      {feeRates.addonFee > 0 && !hasOverride && <span style={{ color:'#7a4a00', fontWeight:600 }}>(includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on)</span>}
                       {hasOverride && (
                         <span style={{ fontSize:9, fontWeight:800, background:'#ede9fe', color:C.violet, padding:'1px 6px', borderRadius:4, border:'1px solid #c4b5fd', letterSpacing:'.04em' }}>
                           OVERRIDE
@@ -1132,10 +1135,18 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         ✏️ {overrideMode ? 'Cancel' : 'Change'}
                       </button>
                     </span>
-                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong></span>
+                    <span>📚 Course fee: <strong style={{ color:C.violet }}>₹{fmt(feeRates.courseFee).replace('₹','')}/month</strong>{feeRates.addonFee > 0 && <span style={{ color:'#7a4a00', fontWeight:600 }}> (includes ₹{fmt(feeRates.addonFee).replace('₹','')} Combined add-on{feeRates.addonReason === 'exam' ? ' — appears in the Exam Combined papers' : ''})</span>}</span>
                   </>
               }
             </div>
+
+            {/* Rates not configured → these amounts are built-in defaults, not what Fee Setup says */}
+            {!ratesLoading && feeRates.usingFallbackRates && (
+              <div role="alert" style={{ marginTop:8, background:'#fff9ec', border:'1px solid #eadbb2', borderRadius:8, padding:'8px 12px', fontSize:11.5, color:'#7a4a00', lineHeight:1.5 }}>
+                ⚠ <strong>Default rates in use.</strong> Fee Setup has no rate for {course || 'this course'}{batch && batch !== '—' ? ` · ${batch}` : ''} · {hostelType} in {sessionYear}.
+                The amounts above (flat ₹{fmt(feeRates.flatFee).replace('₹','')}, course ₹{fmt(feeRates.courseFee).replace('₹','')}) are the old built-in values — set the real rate in Fee Setup before collecting.
+              </div>
+            )}
 
             {/* ── Inline override editor ── */}
             {overrideMode && (
@@ -1682,12 +1693,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               </div>
               <div>
                 <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
-                  Collected by
-                  {(currentUser?.userName || currentUser?.name) && collectedBy === (currentUser?.userName || currentUser?.name) && (
-                    <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>
-                  )}
+                  Collected by * <span style={{ fontWeight:500, opacity:.7 }}>(automatic — you)</span>
+                  {collectedBy && <span style={{ color:C.emerald, fontWeight:700 }}> ✓ verified</span>}
                 </label>
-                <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={inp} />
+                <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" style={{ ...inp, background:'#f4f1e8', cursor:'not-allowed' }} />
               </div>
             </div>
           </div>

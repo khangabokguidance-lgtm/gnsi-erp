@@ -5,6 +5,7 @@ import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } fr
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents } from './studentQueries'
+import { useAddonResolver } from './useAddonResolver'
 import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
 import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
 import { monthlyOwed, writeOffShares } from './lib/monthwiseDues'
@@ -56,8 +57,12 @@ import FeeTabShell from './FeeTabShell'
 import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
+import FeeWaivers from './FeeWaivers'
+import FeeDetector from './FeeDetector'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
+import FeeMonthlyCheck from './FeeMonthlyCheck'
+import { loggedInName } from './lib/collector'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
@@ -1293,6 +1298,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
 
 // ── Student Ledger Tab ────────────────────────────────────────────────────────
 function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect,initialSelected,initialCardTab,adminCount}){
+  const addonWho=useAddonResolver()   // marks Combined students (they pay the monthly add-on)
   const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[selected,setSelected]=useState(null)
   // Land directly on a specific student (and their Revert/Fix tab) when
   // navigated here from elsewhere — e.g. the Month-wise Dues "Fix" button —
@@ -1326,7 +1332,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':s.liveStatus==='Underpaid'?'#c2410c':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':s.liveStatus==='Underpaid'?'#ffedd5':'#fee2e2';return(
               <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #faf8f3',background:isSel?'#eef2f9':'white',borderLeft:isSel?'3px solid #1e3a6e':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#faf8f3'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}{addonWho.eligible(s)&&<span title={addonWho.eligible(s)==='exam'?'Combined add-on fee applies — appears in the Exam Combined papers':'Combined add-on fee applies'} style={{fontSize:8,fontWeight:800,color:'#5b21b6',background:'#f5f3ff',padding:'1px 4px',borderRadius:2,border:'1px solid #ddd6fe'}}>{addonWho.eligible(s)==='exam'?'COMBINED·EXAM':'COMBINED'}</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
                   <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:13,fontWeight:900,color:s.grandTotal>0?'#16a34a':'#8a93a6'}}>{s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}</div><span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,background:sb,color:sc,marginTop:3,display:'inline-block'}}>{s.liveStatus}</span></div>
                 </div>
               </div>
@@ -2946,7 +2952,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
   const [txnRef,      setTxnRef]      = useState('')
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const [collectedBy, setCollectedBy] = useState(() => loggedInName(currentUser))
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null)
   // Populated right after a successful collectFee() — drives the "Send
@@ -3022,9 +3029,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // backfill collectedBy once it's available if the field is still empty,
   // without ever overwriting something staff already typed in.
   useEffect(() => {
-    const authName = currentUser?.userName || currentUser?.name
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the name once sign-in resolves, never overwriting typed text
-    if (authName) setCollectedBy(c => c || authName)
+    const authName = loggedInName(currentUser)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the signed-in user (also after sign-in resolves or the user changes)
+    setCollectedBy(authName)
   }, [currentUser])
 
   // Flat months priced at the hostel type in effect that month.
@@ -3515,7 +3522,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     // transaction reference for non-cash modes, since a UPI/bank/cheque
     // payment with no ref number can't be reconciled or looked up later.
     if (!collectedBy.trim()) {
-      showToast('Collected By is required — enter the name of the staff collecting this payment.', '#dc2626')
+      showToast('Collected By is required and is filled in from your login — sign out and in again.', '#dc2626')
       return
     }
     if (payMode !== 'Cash' && !txnRef.trim()) {
@@ -4361,8 +4368,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
                 <div><span className="fp-lbl">Payment date</span><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} aria-label="Payment date" style={inp} /></div>
                 <div>
-                  <span className="fp-lbl">Collected by *</span>
-                  <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : inp} />
+                  <span className="fp-lbl">Collected by * <span style={{ fontWeight: 500, opacity: .7 }}>(automatic — you)</span></span>
+                  <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : { ...inp, background: '#f4f1e8', cursor: 'not-allowed' }} />
                 </div>
               </div>
               <div style={{ marginTop: 10 }}>
@@ -4854,43 +4861,58 @@ export default function Fees() {
     if (hit) goCollect(hit)
   }, [students]) // eslint-disable-line react-hooks/exhaustive-deps
   const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
-  const TABS = [
-    // Non-admin staff only get what they need at the counter: Fee Payment,
-    // Student Ledger and Verify Receipt. Everything else is admin-only.
-    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
-    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
-    // ✦ Security fix: this tab exposes every student's full fee/payment
-    // history (GCC, amounts, payment mode, Collected By) with a one-click
-    // export, but had no role gate at all — any logged-in staff account,
-    // not just admin/accounts, could open and export it. Restricted the
-    // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'lateEntries', label: 'Late Entries', short: 'Late Entries', icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
-    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
-    // Day closing is for every cashier: it lists the day's collections of all users.
-    { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
-    { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
-    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'feeControls', label: 'Fee Controls', short: 'Controls', icon: 'shield', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
+  // ── Tab registry ────────────────────────────────────────────────────────────
+  // ONE place that defines every Fees tab. Counter tabs are for all staff; the Admin Fee
+  // Panel is admin-only and is described section → tile → optional sub-tabs. The nav, the
+  // sub-tab bar, merged-tab aliases and the access check are all derived from this.
+  // A tile with `subs` opens its first sub-tab; every sub-tab id still works as a deep link.
+  // Security: Reports & Export exposes every student's payment history, so it is admin-only.
+  const COUNTER_TABS = [
+    { id: 'payment',  label: 'Fee Payment',    icon: 'card',             group: 'collect' },
+    { id: 'ledger',   label: 'Student Ledger', icon: 'studentfeeledger', group: 'collect' },
   ]
+  // Day closing is for every cashier: it lists the day's collections of all users.
+  const COUNTER_TOOLS = [
+    { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
+    { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
+  ]
+  const ADMIN_PANEL = !isAdmin ? [] : [
+    { title: 'Overview', tiles: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ] },
+    { title: 'Needs your approval', tiles: [
+      { id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', badge: pendingApprovalCount },
+      { id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', badge: lowFeePending },
+      { id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', badge: hostelIssueCount },
+    ] },
+    { title: 'Discounts, refunds & follow-up', tiles: [
+      { label: 'Discounts & Waivers', short: 'Discounts', icon: 'scholar', subs: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
+      { id: 'refunds', label: 'Refunds & Transfers', short: 'Refunds', icon: 'refund' },
+      { label: 'Dues Follow-up', short: 'Follow-up', icon: 'remind', subs: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
+    ] },
+    { title: 'Records & reports', tiles: [
+      { id: 'admin', label: 'Admin View', icon: 'shield' },
+      { id: 'reports', label: 'Reports & Export', short: 'Reports', icon: 'export' },
+      { label: 'Activity & Audit', short: 'Activity', icon: 'history', subs: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
+    ] },
+    { title: 'Checks & setup', tiles: [
+      { label: 'Fee Health Checks', short: 'Checks', icon: 'rupeeSearch', subs: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
+      { id: 'rollover', label: 'Session Rollover', short: 'Rollover', icon: 'rollover' },
+    ] },
+  ].map(sec => ({ ...sec, tiles: sec.tiles.map(t => ({ ...t, id: t.id || t.subs[0][0], group: 'adminFee' })) }))
+  const ADMIN_TILES = ADMIN_PANEL.flatMap(sec => sec.tiles)
+  // Merged tiles (tiles with sub-tabs); old tab ids still resolve to their tile.
+  const MERGES = ADMIN_TILES.filter(t => t.subs).map(t => ({ id: t.id, label: t.label, short: t.short, members: t.subs }))
+  const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
+  const NAV_TABS = [...ADMIN_TILES.filter(t => t.id === 'dashboard'), ...COUNTER_TABS, ...ADMIN_TILES.filter(t => t.id !== 'dashboard'), ...COUNTER_TOOLS]
+  const TABS = [...NAV_TABS, ...MERGES.flatMap(m => m.members.map(([id, label]) => ({ id, label })))]
   // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
   useEffect(() => {
     if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
   }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
-    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
+    .map(([id, title]) => ({ id, title, items: NAV_TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  const ADMIN_SUBS = ADMIN_PANEL.map(sec => [sec.title, sec.tiles.map(t => t.id)])
 
   // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
@@ -5026,8 +5048,8 @@ export default function Fees() {
           const full = tab === 'dashboard' || hubOpen
           const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
           const tile = t => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
-              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+            <button key={t.id} type="button" role="tab" aria-selected={(mergeOf(tab)?.id || tab) === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + ((mergeOf(tab)?.id || tab) === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
               <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
               <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
@@ -5037,13 +5059,22 @@ export default function Fees() {
               {TAB_GROUPS.map(g => (
                 <section key={g.id} className="fh-g">
                   <h2>{g.title}</h2>
-                  <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>
+                  {g.id === 'adminFee' ? ADMIN_SUBS.map(([title, ids]) => {
+                    const items = ids.map(id => g.items.find(t => t.id === id)).filter(Boolean)
+                    const due = items.reduce((n, t) => n + (t.badge || 0), 0)
+                    return items.length > 0 && (
+                      <div key={title} style={{ marginTop: 10 }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#5d6b82' }}>{title}{due > 0 && <span style={{ marginLeft: 6, background: '#dc2626', color: '#fff', borderRadius: 99, padding: '1px 7px', fontSize: 10 }}>{due} to review</span>}</h3>
+                        <div className="fh-grid" style={{ '--fh-n': 5 }}>{items.map(tile)}</div>
+                      </div>
+                    )
+                  }) : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
                 </section>
               ))}
             </nav>
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
-              {TABS.map(tile)}
+              {NAV_TABS.map(tile)}
               {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
               </button>}
@@ -5054,6 +5085,16 @@ export default function Fees() {
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
       </div>
+
+      {isAdmin && mergeOf(tab) && (
+        <div role="tablist" aria-label={mergeOf(tab).label} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 14px' }}>
+          <span style={{ alignSelf: 'center', fontSize: 12, fontWeight: 800, color: '#1e3a6e', marginRight: 4 }}>{mergeOf(tab).label}</span>
+          {mergeOf(tab).members.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+              style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid ' + (tab === id ? '#1e3a6e' : '#e8e3d8'), background: tab === id ? '#1e3a6e' : '#fff', color: tab === id ? '#fff' : '#1e3a6e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <FeeDashboardTab
@@ -5420,11 +5461,14 @@ export default function Fees() {
       {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
       {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
+      {tab === 'detector' && isAdmin && <FeeTabShell><FeeDetector students={students} /></FeeTabShell>}
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} onChanged={loadAll} /></FeeTabShell>}
       {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (

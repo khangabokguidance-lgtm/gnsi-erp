@@ -36,6 +36,7 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
@@ -47,6 +48,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "jszip": "^3.10.1",
+    "pdfjs-dist": "^4.10.38",
     "pptxgenjs": "^3.12.0",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.8",

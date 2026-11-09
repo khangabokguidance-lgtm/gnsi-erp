@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { visionChain, buildRequest, readWithChain, clearBusy, DEFAULT_GEMINI_MODELS, DEFAULT_GROQ_MODELS, DEFAULT_OPENROUTER_MODELS, resolveChain, clearDiscovered, pickGemini, pickGroq, pickOpenRouter } from '../api/_gemini/visionModels.js'
+import { visionChain, buildRequest, claudeParams, readWithChain, clearBusy, DEFAULT_ANTHROPIC_MODELS, DEFAULT_GEMINI_MODELS, DEFAULT_GROQ_MODELS, DEFAULT_OPENROUTER_MODELS, resolveChain, clearDiscovered, pickGemini, pickGroq, pickOpenRouter } from '../api/_gemini/visionModels.js'
 
 const page = { mimeType: 'image/jpeg', data: 'QUJD' }
 const json = (status, body, headers = {}) => ({ ok: status < 400, status, json: async () => body, headers: { get: (k) => headers[k.toLowerCase()] ?? null } })
@@ -146,4 +146,50 @@ test('reasons name the whole model, and a gone model says what the provider said
   const r = await readWithChain({ chain: [{ provider: 'openrouter', model: 'qwen/qwen2.5-vl-72b-instruct:free' }], env, prompt: 'p', images: [page], fetchFn: async () => json(404, { error: { message: 'No endpoints found for qwen/qwen2.5-vl-72b-instruct:free.' } }) })
   assert.equal(r.details[0].name, 'openrouter qwen2.5-vl-72b-instruct:free')
   assert.match(r.details[0].why, /^model not available \(No endpoints found/)
+})
+
+// Claude answers through the Anthropic SDK, which reads a real Response from fetch.
+const claudeRes = (status, body, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
+const claudeMsg = (text, stop = 'end_turn') => claudeRes(200, { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', content: text ? [{ type: 'text', text }] : [], stop_reason: stop, usage: { input_tokens: 10, output_tokens: 5 } })
+
+test('with ANTHROPIC_API_KEY, Claude is tried first and the free models stay as the backup', async () => {
+  const env = { ANTHROPIC_API_KEY: 'a', GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1' }
+  assert.deepEqual(visionChain(env).map((e) => `${e.provider}:${e.model}`), [...DEFAULT_ANTHROPIC_MODELS.map((m) => `anthropic:${m}`), 'gemini:m1'])
+  assert.deepEqual((await resolveChain({ ...env, ANTHROPIC_VISION_MODEL: 'claude-haiku-5-5' }, { fetchFn: async () => { throw new Error('no lookup') } })).map((e) => e.model), ['claude-haiku-5-5', 'm1'])
+  const p = claudeParams({ provider: 'anthropic', model: 'claude-sonnet-5-5' }, { ANTHROPIC_EFFORT: 'medium' }, 'read', [page])
+  assert.equal(p.output_config.effort, 'medium')
+  assert.equal(p.fallbacks, 'default')
+  assert.deepEqual(p.messages[0].content.map((b) => b.type), ['image', 'text'])
+  assert.equal(p.messages[0].content[0].source.data, 'QUJD')
+  assert.equal(claudeParams({ provider: 'anthropic', model: 'x' }, { ANTHROPIC_EFFORT: 'silly' }, 'p', []).output_config.effort, 'low')
+})
+
+test('Claude reads the page; when it is busy or declines, Gemini takes over', async () => {
+  clearBusy()
+  const env = { ANTHROPIC_API_KEY: 'a', GEMINI_API_KEY: 'g', GEMINI_VISION_MODELS: 'm1' }
+  const sent = []
+  const ok = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn: async (url, init) => { sent.push([String(url), init.headers]); return claudeMsg('{"questions":[]}') } })
+  assert.deepEqual(ok, { ok: true, text: '{"questions":[]}', model: 'anthropic:claude-sonnet-5-5' })
+  assert.match(sent[0][0], /api\.anthropic\.com\/v1\/messages/)
+  clearBusy()
+  const calls = []
+  const busy = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn: async (url) => {
+    calls.push(String(url).includes('anthropic') ? 'claude' : 'gemini')
+    return String(url).includes('anthropic') ? claudeRes(429, { type: 'error', error: { type: 'rate_limit_error', message: 'rate limited' } }, { 'retry-after': '25' }) : geminiOk('{"items":[]}')
+  } })
+  assert.equal(busy.model, 'gemini:m1'); assert.deepEqual(calls, ['claude', 'gemini'])
+  clearBusy()
+  const declined = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn: async (url) => String(url).includes('anthropic') ? claudeMsg('', 'refusal') : geminiOk('{"items":[2]}') })
+  assert.equal(declined.model, 'gemini:m1')
+})
+
+test('an empty Claude account is reported as needing credit, and is skipped for later pages', async () => {
+  clearBusy()
+  const env = { ANTHROPIC_API_KEY: 'a' }
+  const fetchFn = async () => claudeRes(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } })
+  const r = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn })
+  assert.equal(r.status, 503)
+  assert.equal(r.details[0].why, 'needs credit on this account')
+  const again = await readWithChain({ chain: visionChain(env), env, prompt: 'p', images: [page], fetchFn: async () => { throw new Error('not called') } })
+  assert.equal(again.details[0].why, 'needs credit on this account')
 })

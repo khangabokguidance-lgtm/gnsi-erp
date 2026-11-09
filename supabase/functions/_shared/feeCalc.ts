@@ -33,16 +33,21 @@ export function computeFeeAmountPaise(admission: {
   scholarship_pct?: number | null
   concession_amt?: number | null
 }, feeType: string = ADMISSION_FEE_TYPE): number {
-  const base = BASE_FEES[admission.hostel_type] ?? BASE_FEES['Day Scholar']
-
-  let amountRupees = base
-
-  if (admission.scholarship_pct && admission.scholarship_pct > 0) {
-    amountRupees = Math.round(base * (1 - admission.scholarship_pct / 100))
+  // Never guess a rate: an unknown/blank hostel type used to fall back to the
+  // Day Scholar rate, silently undercharging a Boarder by Rs 3,500. Callers
+  // run inside try/catch and report this as a failed request.
+  const base = BASE_FEES[admission.hostel_type]
+  if (base === undefined) {
+    throw new Error(`Unknown hostel_type "${admission.hostel_type ?? ''}" — cannot compute the fee`)
   }
-  if (admission.concession_amt && admission.concession_amt > 0) {
-    amountRupees = Math.max(0, amountRupees - admission.concession_amt)
-  }
+
+  const pct = Number(admission.scholarship_pct) || 0
+  if (pct < 0 || pct > 100) throw new Error(`Invalid scholarship_pct ${pct}`)
+  const concession = Number(admission.concession_amt) || 0
+  if (concession < 0) throw new Error(`Invalid concession_amt ${concession}`)
+
+  let amountRupees = pct > 0 ? Math.round(base * (1 - pct / 100)) : base
+  amountRupees = Math.max(0, amountRupees - concession)
 
   // Razorpay amounts are always integers in the smallest currency unit (paise for INR)
   return Math.round(amountRupees * 100)

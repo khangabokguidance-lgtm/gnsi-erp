@@ -31,7 +31,7 @@ import ModuleHub from './ModuleHub'
 import CommandPalette from './CommandPalette'
 import { openPalette } from './paletteEvents'
 import { MODULE_HUBS, HUB_BY_ID, HUB_OF, visibleHubTabs } from './moduleHubs'
-import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
+import { HUB_ID, HUB_TABS, isHubTab, canSeeHub, hubTabAllowed } from './learningHubTabs'
 import { NavIcon, AppIcon } from './navIcons'
 import TabIcons from './TabIcons'
 import MultiLoginWatch from './MultiLoginWatch'
@@ -40,9 +40,11 @@ import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
 import Teaching           from './Teaching'
 import Attendance         from './Attendance'
-import Exams              from './Exams'
+// Exams is the largest module — load it only when someone opens it.
+const Exams = React.lazy(() => import('./Exams'))
 import Cbt                from './Cbt'
 import CbtPublic          from './CbtPublic'
+import ResponsiveTables   from './ResponsiveTables'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import ConstructionMaintenance from './ConstructionMaintenance'
@@ -66,6 +68,8 @@ import FaceAttendance     from './FaceAttendance'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
 import { ADMIN_ROLES, isAdminRole } from './roles'
+import ReadOnlyShield from './ReadOnlyShield'
+import { hasWriteRights } from './lib/readOnlyShield'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -173,7 +177,7 @@ function addContainers(set) {
   MODULE_HUBS.forEach(h => { if (visibleHubTabs(h, k => set.has(k), false).length) set.add(h.id) })
   return set
 }
-const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets' }
+const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets', setmaker: 'Model Set Maker', classmaterial: 'Class Material' }
 const readRecents = () => { try { return JSON.parse(localStorage.getItem('gnsi_nav_recents') || '[]') } catch { return [] } }
 const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
@@ -446,7 +450,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
     return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
@@ -559,7 +563,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
     return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
@@ -753,7 +757,8 @@ export default function App() {
   const [railOverride, setRailOverride] = useState(null)
   useEffect(() => { setRailOverride(null) }, [inModule])
   const railCollapsed = railOverride ?? (inModule ? true : sidebarCollapsed)
-  const [showLogin,        setShowLogin]        = useState(false)
+  // /staff-login opens the staff sign-in screen directly (linked from the landing header, menu and pop-up)
+  const [showLogin,        setShowLogin]        = useState(() => window.location.pathname.replace(/^\/+|\/+$/g, '') === 'staff-login')
   const [permMap,          setPermMap]          = useState({})
   const [permLoading,      setPermLoading]      = useState(false)
   const isMobile = useIsMobile()
@@ -1039,13 +1044,18 @@ export default function App() {
     // the component itself only exposes enrollment management to admins.
     if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
-    if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
+    if (key === HUB_ID) return canSeeHub(k => hubTabAllowed(k, permMap[k]))
+    // Learning Hub tabs: staff get view tabs on read access; tabs that create / run things need edit-type rights too
+    if (isHubTab(key)) return hubTabAllowed(key, permMap[key])
     if (key === 'hr') return ['hr', ...Object.keys(HR_SECTIONS)].some(k => permMap[k]?.read === true)
     if (HUB_BY_ID[key]) return visibleHubTabs(HUB_BY_ID[key], k => permMap[k]?.read === true, false).length > 0
     return permMap[key]?.read === true
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
+  // Older modules never read their `perms` prop, so "read" used to mean full edit rights there. For the sensitive ones,
+  // a non-admin without add / edit / delete rights now gets a view-only screen.
+  const viewOnly = (key, label, node) => (!isAdmin && !hasWriteRights(permMap[key]) ? <ReadOnlyShield label={label}>{node}</ReadOnlyShield> : node)
   const moduleMap = {
     // onNavigate: Students is edit-only now — its "New Admission" button sends staff to Admissions.
     students:          <Students          currentUser={currentUser} perms={perms('students')} onNavigate={setActive} />,
@@ -1056,12 +1066,12 @@ export default function App() {
     bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}     />,
     fees:              <Fees              currentUser={currentUser} perms={perms('fees')}              />,
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-    salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    salary:            viewOnly('salary', 'Salary', <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />),
     staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
     hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection}
                           staffDirectory={<Staff currentUser={currentUser} perms={perms('staff')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />} />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
-    awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
+    awards:            viewOnly('awards', 'Awards', <Awards            currentUser={currentUser} perms={perms('awards')}            />),
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null}
                           onNavigate={setActive} onLogout={handleLogout} onStaffChange={fetchSharedStaff} />,
@@ -1079,11 +1089,11 @@ export default function App() {
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')} onNavigate={navigateTo} />,
     // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
-    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
+    exams:             <React.Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: '#5d6b82', fontFamily: 'inherit' }}>Opening Exams…</div>}><Exams currentUser={currentUser} perms={perms('exams')} /></React.Suspense>,
     cbt:               <Cbt               currentUser={currentUser} perms={perms('cbt')}               />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
-    construction:      <ConstructionMaintenance />,
+    construction:      viewOnly('construction', 'Construction', <ConstructionMaintenance />),
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
@@ -1109,16 +1119,17 @@ export default function App() {
     if (active === 'student-leave') return <StudentSelfService />
     if (active === 'verify')        return <GatePassVerifyPage />
     if (active === 'cast-receiver') return <CastReceiver />
-    if (active === 'dashboard') return isAdmin
+    // Every table in every module becomes stacked cards on phones (see ResponsiveTables)
+    if (active === 'dashboard') return <ResponsiveTables>{isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />}</ResponsiveTables>
     if (!canAccess(active)) return <AccessDenied />
-    return moduleMap[active] || (
+    return <ResponsiveTables>{moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
         <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
       </div>
-    )
+    )}</ResponsiveTables>
   }
 
   // Command palette (Ctrl+K): modules, sections inside hubs, and everyday actions this user may open

@@ -8,6 +8,7 @@ import { getSessionYear } from './feeEngine'
 import { loadAllFeeRows, buildAllLedgers } from './feeLedgerBulk'
 import { fmt, shortSession } from './feeLedgerModel'
 import { rateFrom } from './hostelFeeCheck'
+import { useAddonResolver } from './useAddonResolver'
 import { detectWaivers, waiverTags, SOURCE_LABEL } from './lib/waiverDetect'
 import { printWaivers, exportWaiversExcel } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
@@ -37,6 +38,7 @@ export default function FeeWaivers({ students }) {
   const [kind, setKind] = useState('all')
   const [q, setQ] = useState('')
 
+  const addon = useAddonResolver()   // Combined students pay the monthly add-on on top of the standard rate
   const pool = useMemo(() => (students || []).filter(s => !s.deleted_at && s.gcc_no), [students])
 
   useEffect(() => {
@@ -64,10 +66,10 @@ export default function FeeWaivers({ students }) {
 
   const detected = useMemo(() => {
     if (!ready) return []
-    const rateOf = a => rateFrom(structures, a)
+    const rateOf = a => { const b = rateFrom(structures, a); return b > 0 && a.student ? b + addon.amount(a.student, a.session) : b }
     return built.items.filter(x => (who === 'all' || isActive(x.student)) && (course === 'All' || crs(x.student) === course) && (batch === 'All' || canonicalBatch(x.student.batch) === batch) && (hostel === 'All' || x.student.hostel_type === hostel))
       .map(x => detectWaivers(x, rateOf)).filter(Boolean)
-  }, [ready, built, structures, who, course, batch, hostel])
+  }, [ready, built, structures, who, course, batch, hostel, addon])
 
   const list = useMemo(() => {
     const t = q.trim().toLowerCase()

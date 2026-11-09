@@ -12,6 +12,9 @@ import { PublishModal, OnlineTab } from './CbtOnline'
 import { CbtCertificateTool } from './CbtCertificate'
 import CbtIntegrity, { RiskTag } from './CbtIntegrity'
 import { integrityReport } from './lib/cbtIntegrity'
+import ResponsiveTables from './ResponsiveTables'
+import CbtLive from './CbtLive'
+import CbtAnalysis from './CbtAnalysis'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -21,8 +24,8 @@ const download = (name, blob) => {
 const fileSafe = s => String(s || 'test').replace(/[^\w.-]+/g, '-')
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 
-export default function Cbt({ perms, currentUser }) {
-  const canEdit = perms ? !!(perms.add && perms.edit) : true
+function CbtInner({ perms, currentUser }) {
+  const canEdit = !!(perms && perms.add && perms.edit)
   const [tab, setTab] = useState('tests')
   const [tests, setTests] = useState(null)
   const [builder, setBuilder] = useState(null)     // null | 'new' | test
@@ -106,7 +109,7 @@ export default function Cbt({ perms, currentUser }) {
             <p>Computer based tests in the SSC / TCS style: colour-coded palette, review marking, countdown timer, English and Meitei Mayek. Works on desktop, tablet and phone.</p>
           </div>
           <div className="cbt-tabs" role="tablist">
-            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['live', '🔴 Live'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
           </div>
         </div>
       </div>
@@ -153,6 +156,8 @@ export default function Cbt({ perms, currentUser }) {
 
       {pub && <PublishModal test={pub} row={online?.find(o => o.id === pub.id) || null} by={currentUser?.name || currentUser?.username || ''} onClose={() => setPub(null)} onChanged={loadOnline} flash={flash} />}
 
+      {tab === 'live' && <CbtLive online={online} canEdit={canEdit} flash={flash} />}
+
       {tab === 'results' && <>
         <div className="card">
           <label><span className="lbl">Test</span>
@@ -163,6 +168,7 @@ export default function Cbt({ perms, currentUser }) {
             </select></label>
         </div>
         {test && report && <CbtIntegrity report={report} />}
+        {test && <CbtAnalysis key={`an-${test.id}`} test={test} rows={rows} attempts={attempts} canEdit={canEdit} flash={flash} onChanged={() => { setResTest(''); setTimeout(() => setResTest(test.id), 0) }} />}
         {test && <CbtCertificateTool key={test.id} test={test} rows={rows} flash={flash} />}
         {test && (
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
@@ -171,12 +177,12 @@ export default function Cbt({ perms, currentUser }) {
               <button className="btn gold" disabled={!rows.length} onClick={() => download(`${fileSafe(test.name)}-results.csv`, new Blob([resultsCSV(test, attempts)], { type: 'text/csv;charset=utf-8' }))}>📊 Export CSV</button>
             </div>
             <div className="tbl"><table>
-              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>GCC</th><th>Parent no.</th><th>Where</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th>Camera / shield</th><th>Risk</th><th /></tr></thead>
+              <thead><tr><th>Rank</th><th>Candidate</th><th>Roll</th><th>GCC</th><th>District</th><th>Gender</th><th>Category</th><th>Parent no.</th><th>Where</th><th>Status</th><th>Started</th><th className="num">Min</th><th className="num">Marks</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">Left screen</th><th>Camera / shield</th><th>Risk</th><th /></tr></thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={16} className="muted">No attempts yet.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={19} className="muted">No attempts yet.</td></tr>}
                 {rows.map(({ attempt: a, g, submitted, took, rank }) => (
                   <tr key={a.id}>
-                    <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b></td><td>{a.candidate.roll || '—'}</td><td>{a.gcc || '—'}{a.gcc && !a.erpMatch ? ' ⚠' : ''}</td><td>{a.parentPhone || a.phone || '—'}</td>
+                    <td>{rank ?? '—'}</td><td><b>{a.candidate.name}</b>{a.dobEntered ? <span className="tag" title={`Date of birth was missing in the ERP — the candidate entered ${a.dobEntered} (saved to the student record). Check it in Students.`} style={{ background: '#fff4dc', color: '#9a5b00', marginLeft: 6 }}>DOB added</span> : null}</td><td>{a.candidate.roll || '—'}</td><td>{a.gcc || '—'}{a.gcc && !a.erpMatch ? ' ⚠' : ''}</td><td>{a.district || '—'}</td><td>{a.gender || '—'}</td><td>{a.caste || '—'}</td><td>{a.parentPhone || a.phone || '—'}</td>
                     <td><span className="tag" style={{ background: a.source === 'online' ? '#eef2f9' : '#f1f5f9', color: a.source === 'online' ? '#1e3a6e' : '#64748b' }}>{a.source === 'online' ? '🌐 Online' : 'This computer'}</span></td>
                     <td><span className="tag" style={{ background: submitted ? '#e7f6ec' : '#fff4dc', color: submitted ? '#146c3a' : '#9a5b00' }}>{submitted ? 'Submitted' : 'In progress'}</span></td>
                     <td>{when(a.startedAt)}</td><td className="num">{took ?? '—'}</td>
@@ -210,4 +216,8 @@ export default function Cbt({ perms, currentUser }) {
       )}
     </div>
   )
+}
+
+export default function Cbt(props) {
+  return <ResponsiveTables><CbtInner {...props} /></ResponsiveTables>
 }

@@ -68,7 +68,7 @@ export function neighbour(test, no, dir = 1) {
 }
 
 // ── Clock ────────────────────────────────────────────────────────────────────
-export const secondsLeft = (a, test, now = Date.now()) => Math.max(0, Math.round((a.startedAt + test.durationMin * 60000 - now) / 1000))
+export const secondsLeft = (a, test, now = Date.now()) => Math.max(0, Math.round((a.startedAt + test.durationMin * 60000 + (a.extraSeconds || 0) * 1000 - now) / 1000))
 export function clock(sec) {
   const s = Math.max(0, Math.floor(sec)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
@@ -165,10 +165,10 @@ export function resultRows(test, attempts) {
 // A name typed into the public exam form must not turn into a spreadsheet formula (=, +, -, @ at the start).
 const csvCell = v => { let t = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = `'${t}`; return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t }
 export function resultsCSV(test, attempts) {
-  const head = ['Rank', 'Name', 'Roll no.', 'GCC no.', 'Parent no.', 'Status', 'Started', 'Submitted', 'Minutes', 'Marks', 'Out of', 'Correct', 'Wrong', 'Not answered', 'Accuracy %', ...test.sections.map(s => `${s.label || s.title} marks`), 'Left screen', 'Camera / shield flags', 'Integrity risk', 'Integrity notes']
+  const head = ['Rank', 'Name', 'Roll no.', 'GCC no.', 'District', 'Gender', 'Category', 'Parent no.', 'Status', 'Started', 'Submitted', 'Minutes', 'Marks', 'Out of', 'Correct', 'Wrong', 'Not answered', 'Accuracy %', ...test.sections.map(s => `${s.label || s.title} marks`), 'Left screen', 'Camera / shield flags', 'Integrity risk', 'Integrity notes']
   const all = resultRows(test, attempts), risk = new Map(integrityReport(test, all).entries.map(e => [e.row.attempt.id, e]))
   const rows = all.map(({ attempt: a, g, submitted, took, rank }) => [
-    rank ?? '', a.candidate.name, a.candidate.roll, a.gcc || '', a.parentPhone || a.phone || '', submitted ? 'Submitted' : 'In progress', new Date(a.startedAt).toLocaleString('en-IN'), a.submittedAt ? new Date(a.submittedAt).toLocaleString('en-IN') : '',
+    rank ?? '', a.candidate.name, a.candidate.roll, a.gcc || '', a.district || '', a.gender || '', a.caste || '', a.parentPhone || a.phone || '', submitted ? 'Submitted' : 'In progress', new Date(a.startedAt).toLocaleString('en-IN'), a.submittedAt ? new Date(a.submittedAt).toLocaleString('en-IN') : '',
     took ?? '', g.marks, g.max, g.correct, g.wrong, g.skipped, g.accuracy, ...g.sections.map(s => s.marks), a.switches || 0, flagText(a.proctor), submitted ? risk.get(a.id)?.level || '' : '', submitted ? (risk.get(a.id)?.reasons || []).join('; ') : ''])
   return '﻿' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n')
 }

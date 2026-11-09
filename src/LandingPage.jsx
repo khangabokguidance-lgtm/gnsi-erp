@@ -17,6 +17,12 @@ import { receiptCheckParams } from './lib/receiptCheckParams';
 // and the browser caches it separately from the JS, and normal CSS tooling can
 // read it. Place LandingPage.css next to this file.
 import './LandingPage.css';
+import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
+import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
+import MegaMenu, { MenuButton } from './LandingMenu';
+import MajesticFooter from './LandingFooter';
+import { UtilityBar, HeaderLinks } from './LandingHeader';
+import './LandingFinale.css';
 // Programme logos (Home admissions panel), embedded as small WebP images so
 // no separate image files are needed in src/.
 const logoNvs = 'data:image/webp;base64,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';
@@ -45,7 +51,6 @@ const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/p
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
 // bucket's existing "banners" folder (same bucket as EMBLEM_URL above).
-const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner-2400.jpg";
 
 // Latest result/achievement poster — shown as a popup 10s after page load,
 // then collapses into a small sticky corner badge. Swap this URL (or the
@@ -89,6 +94,13 @@ const SITE_FALLBACK = {
   founderQuote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
   batchStart: '20 Dec 2026',
 };
+// "2026-06-30T23:59:59" / "2026-07-01" → "30 Jun 2026"; anything else is shown as typed.
+function prettyDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || '');
+  if (!m) return v;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
 function buildSite(cfg) {
   const text = (k, fb = '') => {
     const v = cfg && cfg[k];
@@ -121,10 +133,36 @@ function buildSite(cfg) {
     reviewUrl: url('google_review_url', SITE_FALLBACK.reviewUrl),
     founderQuote: text('founder_quote', SITE_FALLBACK.founderQuote).replace(/^["“]+|["”]+$/g, ''),
     founderBio: text('founder_bio', ''),
-    batchStart: text('batch_start_date', SITE_FALLBACK.batchStart),
-    admissionDeadline: text('admission_deadline', ''),
+    batchStart: prettyDate(text('batch_start_date', SITE_FALLBACK.batchStart)),
+    admissionDeadline: prettyDate(text('admission_deadline', '')),
     reviewScore: text('google_review_score', ''),
     reviewCount: text('google_review_count', ''),
+    admissionsOpen: ['yes', 'true', 'open', '1'].includes(text('admissions_open').toLowerCase()),
+    sectionsStyle: text('sections_style', 'light').toLowerCase(),
+    theme: text('site_theme', 'gov').toLowerCase(),
+    creative: text('creative_effects', 'on').toLowerCase() !== 'off',
+    stats: [
+      [text('selected_current_year', '66'), (() => { const l = text('selected_current_year_label', 'Selections in 2025–26'); return /^\d{4}/.test(l) ? 'Selections ' + l : l; })()],
+      [text('years_of_excellence', '10+'), 'Years of results'],
+      [text('students_selected'), 'Students selected overall'],
+      [text('students_trained'), 'Students trained'],
+      [text('selection_rate'), 'Selection rate'],
+    ].filter(([v]) => v).map(([value, label]) => ({ value: /^\d+$/.test(value) && /rate/i.test(label) ? value + '%' : value, label })),
+    admissionBanner: text('admission_banner_text', 'Admissions open for the new batch'),
+    mapQuery: text('map_query', 'GNSI Khangabok, Thoubal, Manipur'),
+    seats: [
+      ['Navodaya (NVS)', 'nvs'], ['Sainik School', 'sainik'], ['RMS', 'rms'], ['Foundation', 'foundation'],
+    ].map(([label, k]) => ({ label, total: parseInt(text('seats_' + k + '_total'), 10), left: parseInt(text('seats_' + k + '_left'), 10) }))
+      .filter((r) => Number.isFinite(r.total) && r.total > 0 && Number.isFinite(r.left)),
+    hostel: {
+      intro: text('hostel_intro', 'A safe, disciplined residential campus where students live, study and grow together under experienced housemasters.'),
+      rooms: text('hostel_rooms', 'Dormitory-style rooms with a bed, locker and study table for every student. Separate blocks by age group.'),
+      meals: text('hostel_meals', 'Nutritious vegetarian and non-vegetarian meals, four times a day, prepared in our own hygienic kitchen.'),
+      routine: text('hostel_routine', 'Morning PT, supervised self-study, classes, evening games and prep hours — a structured day from wake-up to lights-out.'),
+      safety: text('hostel_safety', 'Round-the-clock warden supervision, controlled gate entry and a gate-pass system for every outing.'),
+      visits: text('hostel_visits', 'Parents can meet students on scheduled visiting days and track attendance, results and fees in the Parents Portal.'),
+      medical: text('hostel_medical', 'First-aid on campus and tie-ups with nearby doctors and clinics. Parents are informed immediately in any emergency.'),
+    },
   };
 }
 // Student result card (right column, below Admin Block photo). Upload
@@ -280,7 +318,7 @@ const TAB_IDS = new Set([
   'faculty', 'facilities', 'videos', 'notices', 'blog', 'gallery', 'events',
   'scholarship', 'mock-tests', 'question-papers', 'syllabus', 'exam-calendar',
   'important-dates', 'faq', 'enquiry', 'fee-payment', 'app-download', 'helpdesk',
-  'admit-card', 'online-exam',
+  'admit-card', 'online-exam', 'hostel', 'alumni', 'careers',
 ]);
 function hashToTab(hash) {
   const id = decodeURIComponent((hash || '').replace(/^#/, '')).trim();
@@ -768,6 +806,37 @@ function hydrateTabSections(setFeePaymentInfo) {
 
 }
 
+// One-time-per-visit pop-up pointing staff to the sign-in screen (dismissed with Not now / Esc; remembered for the browser session).
+function StaffFlashCard({ onLogin }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    let seen = false
+    try { seen = sessionStorage.getItem('gnsi_staff_flash') === '1' } catch { /* storage blocked — just show it once per page load */ }
+    if (seen) return undefined
+    const t = setTimeout(() => setOpen(true), 2500)
+    return () => clearTimeout(t)
+  }, [])
+  const close = () => { setOpen(false); try { sessionStorage.setItem('gnsi_staff_flash', '1') } catch { /* ignore */ } }
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+  if (!open) return null
+  return (
+    <aside className="sfc" role="dialog" aria-label="Staff login">
+      <button type="button" className="sfc-x" aria-label="Close" onClick={close}>×</button>
+      <div className="sfc-ic" aria-hidden="true">🔐</div>
+      <div className="sfc-tx"><strong>Staff? Sign in here</strong><span>Teachers &amp; office staff — open your dashboard.</span></div>
+      <div className="sfc-btns">
+        <button type="button" className="sfc-go" onClick={() => { close(); onLogin?.() }}>Staff Login →</button>
+        <button type="button" className="sfc-no" onClick={close}>Not now</button>
+      </div>
+    </aside>
+  )
+}
+
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
   const [expandedCat, setExpandedCat] = useState(null);
@@ -800,8 +869,23 @@ export default function LandingPage({ onLogin }) {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
+  const [fontStep, setFontStep] = useState(0);
+  const [hiContrast, setHiContrast] = useState(false);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+
+  // Government-portal style theme (set Website → Settings → "Site Theme" to `classic` to turn off).
+  useEffect(() => {
+    const cls = document.body.classList;
+    cls.add('lp-page');
+    cls.toggle('lp-gov', site.theme !== 'classic');
+    cls.toggle('lp-contrast', hiContrast);
+    document.documentElement.style.fontSize = fontStep ? `${100 + fontStep * 8}%` : '';
+    return () => { cls.remove('lp-page', 'lp-gov', 'lp-contrast'); document.documentElement.style.fontSize = ''; };
+  }, [site.theme, hiContrast, fontStep]);
   const [enqType, setEnqType] = useState('general');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [navScrolled, setNavScrolled] = useState(false);
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -825,7 +909,6 @@ export default function LandingPage({ onLogin }) {
   }, []);
   // If the emblem image fails to load, show a "GNSI" monogram in the nav
   // crest instead of an empty white box.
-  const [emblemFailed, setEmblemFailed] = useState(false);
   const [progDetail, setProgDetail] = useState(null); // key of PROGRAMMES shown in the details panel
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'home';
@@ -1123,66 +1206,7 @@ export default function LandingPage({ onLogin }) {
 
   // Hamburger menu, grouped into collapsible categories (one open at a time).
   // A category with a single link renders as a direct clickable item.
-  const navCategories = [
-    {
-      label: 'Admissions', icon: '📋',
-      links: [
-        { label: 'Apply / Enquire', href: '#enquiry' },
-        { label: 'Courses', href: '#courses' },
-        { label: 'Scholarship / Free Test', href: '#scholarship' },
-        { label: 'Fee Payment', href: '#fee-payment' },
-        { label: 'Important Dates', href: '#important-dates' },
-      ]
-    },
-    {
-      label: 'Academics', icon: '📚',
-      links: [
-        { label: 'Syllabus', href: '#syllabus' },
-        { label: 'Question Papers', href: '#question-papers' },
-        { label: 'Mock Tests', href: '#mock-tests' },
-        { label: 'Exam Calendar', href: '#exam-calendar' },
-        { label: 'Admit Card / Result', href: '#admit-card' },
-      ]
-    },
-    {
-      label: 'Results', icon: '🏆',
-      links: [
-        { label: 'Results', href: '#results' },
-        { label: "Toppers' Wall", href: '#rankers' },
-        { label: 'Student Reviews', href: '#reviews' },
-      ]
-    },
-    {
-      label: 'Campus', icon: '🏫',
-      links: [
-        { label: 'About GNSI', href: '#about' },
-        { label: 'Head of the Institute', href: '#head-institute' },
-        { label: 'Faculty', href: '#faculty' },
-        { label: 'Facilities', href: '#facilities' },
-        { label: 'Gallery', href: '#gallery' },
-        { label: 'Videos', href: '#videos' },
-        { label: 'Events', href: '#events' },
-      ]
-    },
-    {
-      label: 'Updates', icon: '📢',
-      links: [
-        { label: 'Notices', href: '#notices' },
-        { label: 'Blog & News', href: '#blog' },
-      ]
-    },
-    {
-      label: 'Support', icon: '🛟',
-      links: [
-        { label: 'Contact', href: '#contact' },
-        { label: 'FAQ', href: '#faq' },
-        { label: 'Helpdesk / Grievance', href: '#helpdesk' },
-        { label: 'Download App', href: '#app-download' },
-      ]
-    },
-  ];
 
-  const toggleCat = (idx) => setExpandedCat(expandedCat === idx ? null : idx);
   const closeCats = () => setExpandedCat(null);
   const closeMobile = () => { setMobileOpen(false); setExpandedCat(null); };
 
@@ -1279,7 +1303,7 @@ export default function LandingPage({ onLogin }) {
       if (!(e.target instanceof Element) || !e.target.isConnected) return;
       if (tabContentRef.current && tabContentRef.current.contains(e.target)) return;
       if (e.target.closest(
-        '.sec-grid-wrap, .hero, nav, .mob-menu, .lb-overlay, ' +
+        '.sec-grid-wrap, .hero, .lx-services, .lx-search-ov, nav, .mob-menu, .lb-overlay, ' +
         '.pd-overlay, .poster-overlay, .poster-badge, footer, .cta-block, ' +
         '#stickyBar, [role="dialog"], [aria-modal="true"]'
       )) return;
@@ -1316,15 +1340,6 @@ export default function LandingPage({ onLogin }) {
     return () => tabRevealObserver.disconnect();
   }, [activeTab]);
 
-  // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
-  // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
-  // own, so it maps to the enquiry tab and then scrolls to #contact.
-  const goToHash = (href) => {
-    const hashId = (href || '').replace('#', '');
-    if (!hashId) return;
-    if (hashId === 'contact') { goToTab('enquiry', 'contact'); return; }
-    goToTab(hashId);
-  };
 
   // cat drives each section tile's accent colour (see .sec-tile.cat-* in the grid styles):
   // gold = core/home, blue = institute info, green = results & community,
@@ -1337,6 +1352,7 @@ export default function LandingPage({ onLogin }) {
     'mock-tests': '📝', 'question-papers': '📄', syllabus: '📘',
     'exam-calendar': '🗓️', 'important-dates': '⏰', faq: '❓', enquiry: '✉️',
     'fee-payment': '💳', 'admit-card': '🪪', 'online-exam': '💻', 'app-download': '📱', helpdesk: '🛟',
+    hostel: '🛏️', alumni: '🎓', careers: '💼',
   };
   const tabList = [
     { id: 'home', label: 'Home', cat: 'gold' },
@@ -1366,7 +1382,52 @@ export default function LandingPage({ onLogin }) {
     { id: 'online-exam', label: 'Online Exam', cat: 'red' },
     { id: 'app-download', label: 'App Download', cat: 'purple' },
     { id: 'helpdesk', label: 'Helpdesk', cat: 'purple' },
+    { id: 'hostel', label: 'Hostel Life', cat: 'blue' },
+    { id: 'alumni', label: 'Alumni & TC', cat: 'purple' },
+    { id: 'careers', label: 'Careers', cat: 'purple' },
   ];
+
+  const searchEntries = useMemo(() => [
+    ...tabList.map((t) => ({ id: t.id, label: t.label, icon: TAB_ICONS[t.id] || '🔹' })),
+    { href: '/apply', label: 'Apply online (admission form)', icon: '📝', keywords: 'admission application register' },
+    { href: '/apply-status', label: 'Check application status', icon: '🔎', keywords: 'track' },
+    { href: '/exam-registration', label: 'Exam registration / admit card', icon: '🪪' },
+    { id: '__verify', label: 'Verify a fee receipt', icon: '🧾', keywords: 'check authenticity genuine' },
+    { href: '/store', label: 'GNSI Store', icon: '🛍️', keywords: 'uniform books shop' },
+    { href: '/student-leave', label: 'Student leave application', icon: '🏖️', keywords: 'parent leave' },
+  ], []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Header compacts once the page is scrolled.
+  useEffect(() => {
+    const on = () => setNavScrolled(window.scrollY > 120);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
+
+  // "/" opens site search (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.isContentEditable) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Auto-load the map when the Enquire tab opens (no extra click needed).
+  useEffect(() => {
+    if (activeTab !== 'enquiry') return;
+    const id = setTimeout(() => {
+      const wrap = document.getElementById('mapWrap');
+      if (wrap && !wrap.querySelector('iframe')) {
+        wrap.innerHTML = '<iframe class="map-frame" title="GNSI Khangabok on Google Maps" src="https://maps.google.com/maps?q=' + encodeURIComponent(site.mapQuery) + '&output=embed" allowfullscreen loading="lazy"></iframe>';
+      }
+    }, 150);
+    return () => clearTimeout(id);
+  }, [activeTab, site.mapQuery]);
 
   // Click-to-open nav dropdowns (not hover) close on an outside click,
   // since there's no mouseleave handler doing that anymore.
@@ -1698,7 +1759,7 @@ window.submitGrievance = async () => {
     window.loadMap = () => {
       const wrap = document.getElementById('mapWrap');
       if (wrap) {
-        wrap.innerHTML = '<iframe class="map-frame" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d14540.0!2d93.95!3d24.65!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x374927b!2sKhangabok%2C%20Manipur!5e0!3m2!1sen!2sin!4v1" allowfullscreen loading="lazy"></iframe>';
+        wrap.innerHTML = '<iframe class="map-frame" title="GNSI Khangabok on Google Maps" src="https://maps.google.com/maps?q=GNSI%20Khangabok%2C%20Thoubal%2C%20Manipur&output=embed" allowfullscreen loading="lazy"></iframe>';
       }
     };
 
@@ -2069,6 +2130,17 @@ window.submitGrievance = async () => {
   />
   <meta name="theme-color" content="#0A0A0A" />
   <link rel="canonical" href="https://guidancekhangabok.in" />
+  <script type="application/ld+json">{JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'EducationalOrganization',
+    name: 'Guidance Navodaya & Sainik Institute (GNSI)',
+    url: 'https://guidancekhangabok.in',
+    foundingDate: '2016',
+    telephone: site.phone,
+    email: site.email,
+    address: { '@type': 'PostalAddress', streetAddress: 'Khangabok', addressRegion: 'Manipur', addressCountry: 'IN' },
+    sameAs: [site.facebook, site.youtube, site.instagram].filter(Boolean),
+  })}</script>
   <link rel="icon" type="image/png" href={EMBLEM_URL} />
   <link rel="apple-touch-icon" href={EMBLEM_URL} />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -2079,92 +2151,7 @@ window.submitGrievance = async () => {
   />
   <div id="sp" />
   {/* LANGUAGE BAR */}
-  <div id="langBar">
-    <span
-      style={{
-        color: "rgba(230,230,230,.85)",
-        fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
-        fontSize: ".65rem",
-        letterSpacing: ".1em",
-        textTransform: "uppercase"
-      }}
-    >
-      Language:
-    </span>
-    <button className="lang-btn active" onClick={(e) => window.setLang('en', e.currentTarget)}>
-      English
-    </button>
-    <button className="lang-btn" onClick={(e) => window.setLang('hi', e.currentTarget)}>
-      हिंदी
-    </button>
-  </div>
-  {/* ① TOP CONTACT BAR */}
-  <div className="top-bar">
-    <div className="top-bar-left">
-      <a href={site.tel} className="top-bar-item">
-        <span>📞</span>
-        <span data-en="">{site.phone}</span>
-        <span data-hi="">{site.phone}</span>
-      </a>
-      <a href={'mailto:' + site.email} className="top-bar-item">
-        <span>✉</span> {site.email}
-      </a>
-      <span className="top-bar-item">
-        <span>📍</span>
-        <span data-en="">{site.address}</span>
-        <span data-hi="">खंगाबोक, थौबल, मणिपुर</span>
-      </span>
-    </div>
-    <div className="top-bar-right">
-      <span className="top-bar-hours">
-        <span data-en="">Mon–Sat: 08:30–17:00</span>
-        <span data-hi="">सोम–शनि: 08:30–17:00</span>
-      </span>
-      <div className="top-bar-social">
-        <a
-          className="top-bar-soc"
-          href={site.facebook}
-          target="_blank"
-          title="Facebook"
-        >
-          f
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.youtube}
-          target="_blank"
-          title="YouTube"
-        >
-          ▶
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.instagram}
-          target="_blank"
-          title="Instagram"
-        >
-          ◉
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.wa}
-          target="_blank"
-          title="WhatsApp"
-          style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
-        >
-          W
-        </a>
-        <a
-          className="top-bar-soc"
-          href={site.appLink}
-          target="_blank"
-          title="Play Store"
-        >
-          ▲
-        </a>
-      </div>
-    </div>
-  </div>
+  <UtilityBar site={site} fontStep={fontStep} setFontStep={setFontStep} hiContrast={hiContrast} setHiContrast={setHiContrast} />
   {/* STICKY APPLY BAR */}
   <div id="stickyBar">
     <div className="sb-inner">
@@ -2205,11 +2192,41 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </div>
-  {/* ALERT strip removed — no active admissions messaging (admissions closed Feb) */}
+  {/* NAV */}
+  <nav className={"lp-nav" + (navScrolled ? " is-scrolled" : "")}>
+    <div className="nav-inner">
+      <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+        <span className="nv-crest"><img className="hd-mark" src="/gnsi-mark.webp" alt="GNSI emblem" width={50} height={51} /></span>
+        <div className="brand-text">
+          <h2><span className="brand-full">Guidance</span><span className="brand-short">GNSI</span></h2>
+          <small>Navodaya &amp; Sainik Institute</small>
+        </div>
+      </a>
+      <HeaderLinks active={activeTab} goToTab={goToTab} />
+      <div className="nav-fixed-actions">
+        <button type="button" className="lx-nav-search" aria-label="Search the site (press /)" onClick={() => setSearchOpen(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button type="button" onClick={() => setIsFeeOpen(true)} className="nv-btn nv-primary">
+          Pay Fee
+        </button>
+        {/* Visible at every width; label shortens to "Parents" on small phones. */}
+        <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
+          <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
+        </button>
+        <button type="button" onClick={onLogin} className="nv-btn nv-ghost nv-staff">
+          <span className="nv-lbl-full">Staff Login</span><span className="nv-lbl-short">Staff</span>
+        </button>
+        <MenuButton open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
+      </div>
+    </div>
+  </nav>
+  <StaffFlashCard onLogin={onLogin} />
+  <AdmissionsBanner site={site} />
   {/* TICKER */}
   <div className="ticker-wrap">
     <div className="ticker-inner">
-      <div className="ticker-label">Latest</div>
+      <div className="ticker-label">What&apos;s New</div>
       <div className="ticker-scroll">
         <div className="ticker-track">
           {(() => {
@@ -2239,155 +2256,20 @@ window.submitGrievance = async () => {
       .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
   <div className="ten-years-banner">
     <div className="tyb-frame">
-      <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
+      <img className="tyb-logo" src="/gnsi-logo-top.webp" alt="Guidance Navodaya & Sainik Institute" width={640} height={928} fetchPriority="high" />
+      <img className="tyb-celebrate" src="/gnsi-celebrate.webp" alt="Celebrating 10 years of success" width={760} height={334} fetchPriority="high" />
     </div>
   </div>
-  {/* NAV */}
-  <nav className="lp-nav">
-    <div className="nav-inner">
-      <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-        <span className="nv-crest">
-          {!emblemFailed ? (
-            <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
-          ) : (
-            <span
-              aria-label="GNSI"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: '100%', height: '100%', color: 'var(--navy, #0f1f3d)',
-                fontWeight: 800, fontSize: '.95rem', letterSpacing: '.04em',
-                fontFamily: 'Georgia, "Times New Roman", serif'
-              }}
-            >
-              GNSI
-            </span>
-          )}
-        </span>
-        <div className="brand-text">
-          <h2><span className="brand-full">Guidance Navodaya &amp; Sainik Institute</span><span className="brand-short">GNSI</span></h2>
-          <small>Khangabok, Manipur · Est. 2016</small>
-        </div>
-      </a>
-      {/* Full nav (Admissions, Results, Courses, etc.) now lives only inside
-          the hamburger menu at every screen size — collapsed until the user
-          opens it. Only the logo (left, above) and these two frequent
-          actions plus the menu toggle stay fixed in the bar. */}
-      <div className="nav-fixed-actions">
-        <button type="button" onClick={() => setIsFeeOpen(true)} className="nv-btn nv-primary">
-          Pay Fee
-        </button>
-        <a href={site.apk} download="" className="nv-btn nv-ghost nv-hide-sm">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          Get App
-        </a>
-        {/* Visible at every width; label shortens to "Parents" on small phones. */}
-        <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
-          <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
-        </button>
-        <button type="button" onClick={onLogin} className="nv-btn nv-link">
-          Staff Login
-        </button>
-        <button
-          className={"hamburger" + (mobileOpen ? " open" : "")}
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
-          aria-expanded={mobileOpen}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
-      </div>
-    </div>
-  </nav>
-  <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
-    <div className="mob-menu-hd">
-      <div className="mob-menu-brand">
-        {!emblemFailed && (
-          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
-        )}
-        <span>GNSI</span>
-      </div>
-      <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
-        ✕
-      </button>
-    </div>
-    <div className="mob-menu-scroll">
-      <a
-        href="#home"
-        onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('home'); }}
-        className="mob-cat-link-flat"
-      >
-        🏠 Home
-      </a>
-      {navCategories.map((cat, idx) => (
-        cat.links.length === 1 ? (
-          <a
-            key={cat.label}
-            href={cat.links[0].href}
-            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(cat.links[0].href); }}
-            className="mob-cat-link-flat"
-          >
-            {cat.icon} {cat.label}
-          </a>
-        ) : (
-          <div className="mob-cat" key={cat.label}>
-            <button
-              type="button"
-              className={"mob-cat-btn" + (expandedCat === idx ? " expanded" : "")}
-              onClick={() => toggleCat(idx)}
-            >
-              <span>{cat.icon} {cat.label}</span>
-              <span className="mob-cat-arrow">▾</span>
-            </button>
-            {expandedCat === idx && (
-              <div className="mob-cat-links">
-                {cat.links.map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="mob-sub-link"
-                    onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
-                  >
-                    {link.label}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      ))}
-      <a
-        href="#"
-        onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); closeMobile(); }}
-        className="mob-par"
-      >
-        Parents Portal →
-      </a>
-      <a
-        href={site.apk}
-        download=""
-        className="mob-par"
-        onClick={closeMobile}
-      >
-        📱 Get Android App →
-      </a>
-      <button
-        onClick={() => { onLogin(); closeMobile(); }}
-        className="mob-staff"
-      >
-        Staff Login →
-      </button>
-    </div>
-    <div className="mob-menu-bottom">
-      <button onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="mmb-fee">
-        💳 Pay Fee
-      </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
-        Apply Now →
-      </a>
-    </div>
-  </div>
+  <MegaMenu
+    open={mobileOpen}
+    onClose={closeMobile}
+    tabs={tabList}
+    icons={TAB_ICONS}
+    active={activeTab}
+    goToTab={goToTab}
+    site={{ ...site, emblem: '/gnsi-mark.webp' }}
+    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
+  />
   {/* HERO */}
   <section className="hero">
     <div className="hero-pattern" />
@@ -2405,7 +2287,7 @@ window.submitGrievance = async () => {
             alt="GNSI AISSEE 2026 results — 10 students as state toppers, 25+ in top 10,000 All India Rank, 80+ qualified for the written test"
             width={1182}
             height={1280}
-            fetchpriority="high"
+            fetchPriority="high"
             style={{ display: "block", width: "100%", height: "auto", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,.18)" }}
           />
         </div>
@@ -2418,6 +2300,9 @@ window.submitGrievance = async () => {
             <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="adm-btn adm-btn-primary">
               Enquire for Admission
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+            <a href="/apply" className="adm-btn adm-btn-secondary">
+              Apply Online
             </a>
             <button type="button" onClick={() => setIsFeeOpen(true)} className="adm-btn adm-btn-secondary">
               Pay Fee Online
@@ -2521,6 +2406,11 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
+  <div id="main-content" tabIndex={-1} />
+  {site.creative && <CreativeFX />}
+  {site.creative && <BackToTop />}
+  <QuickServices goToTab={goToTab} openFee={() => setIsFeeOpen(true)} openPortal={() => setIsPortalOpen(true)} openVerify={() => setVerifyOpen(true)} />
+  {site.creative && activeTab === 'home' && <LegacySection site={site} goToTab={goToTab} />}
   {/* STAFF PHOTO — replaces the old stats ribbon. Shown whole at the
       photo's own 3:2 proportion (no cropping). */}
   <div className="ribbon ribbon-photo">
@@ -2554,47 +2444,6 @@ window.submitGrievance = async () => {
           <div className="ps-count">{photoIdx + 1} / {photoSlides.length}</div>
         </>
       )}
-    </div>
-  </div>
-  {/* ALL SECTIONS GRID — replaces the old horizontally-scrolling tab
-      strip: every section (except Home — the logo and "Back to Home"
-      cover that) is visible at once as a tile, no scrolling. Uses the same tabList,
-      so a new tab added there shows up here automatically. */}
-  <style>{`
-    .sec-grid-wrap{background:#f6f3ea;padding:1.1rem 0 1.25rem;border-bottom:1px solid rgba(15,31,61,.08)}
-    .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
-    .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
-    .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
-    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
-    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
-    .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
-    .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{font-size:1.35rem;line-height:1}
-    .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
-    .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
-    .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
-    @media (max-width:1024px){.sec-grid{--per:7}}
-    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
-    @media (max-width:340px){.sec-grid{--per:4}}
-  `}</style>
-  <div className="sec-grid-wrap">
-    <div className="container">
-      <p className="sec-grid-title">Explore GNSI · All Sections</p>
-      <div className="sec-grid" role="list">
-        {tabList.filter((t) => t.id !== 'home').map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="listitem"
-            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
-            aria-current={activeTab === t.id ? 'page' : undefined}
-            onClick={() => goToTab(t.id)}
-          >
-            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
-            <span className="sec-tile-lb">{t.label}</span>
-          </button>
-        ))}
-      </div>
     </div>
   </div>
   {/* TAB CONTENT WRAPPER — used by the outside-click auto-close handler.
@@ -3333,7 +3182,7 @@ window.submitGrievance = async () => {
           href={site.reviewUrl}
           target="_blank"
           className="google-badge"
-        >
+         rel="noopener noreferrer">
           ⭐ Write a Review on Google · View All Reviews →
         </a>
       </div>
@@ -3747,7 +3596,7 @@ window.submitGrievance = async () => {
                 borderColor: "rgba(255,0,0,.5)",
                 color: "#c53030"
               }}
-            >
+             rel="noopener noreferrer">
               ▶ View All Videos on YouTube →
             </a>
           </div>
@@ -3975,21 +3824,21 @@ window.submitGrievance = async () => {
           className="soc-btn soc-fb"
           href={site.facebook}
           target="_blank"
-        >
+         rel="noopener noreferrer">
           f Facebook
         </a>
         <a
           className="soc-btn soc-yt"
           href={site.youtube}
           target="_blank"
-        >
+         rel="noopener noreferrer">
           ▶ YouTube
         </a>
         <a
           className="soc-btn soc-ig"
           href={site.instagram}
           target="_blank"
-        >
+         rel="noopener noreferrer">
           ◉ Instagram
         </a>
       </div>
@@ -4122,7 +3971,7 @@ window.submitGrievance = async () => {
           className="btn btn-gold"
           target="_blank"
           style={{ display: "inline-flex" }}
-        >
+         rel="noopener noreferrer">
           📲 Register via WhatsApp →
         </a>
       </div>
@@ -4404,7 +4253,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">JNVST Class 6 — 18 Jan 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4413,7 +4262,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">JNVST Class 6 — 12 Apr 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4422,7 +4271,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">JNVST Class 6 — 13 Dec 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4431,7 +4280,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">JNVST Class 6 — 2024</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4453,7 +4302,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">AISSEE Class 6 — 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4462,7 +4311,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">AISSEE Class 6 — 2024</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4471,7 +4320,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">AISSEE Class 6 — 2023</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4491,7 +4340,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">RMS CET Class 6 — 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4500,7 +4349,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">RMS CET Class 6 — 2024</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4509,7 +4358,7 @@ window.submitGrievance = async () => {
             className="paper-link"
             target="_blank"
             download=""
-          >
+           rel="noopener noreferrer">
             <span className="paper-name">RMS CET Class 6 — 2023</span>
             <span className="paper-dl">⬇</span>
           </a>
@@ -4630,7 +4479,7 @@ window.submitGrievance = async () => {
           className="syl-download"
           target="_blank"
           download=""
-        >
+         rel="noopener noreferrer">
           📥 Download NVS Class 6 Syllabus PDF
         </a>
       </div>
@@ -4700,7 +4549,7 @@ window.submitGrievance = async () => {
           className="syl-download"
           target="_blank"
           download=""
-        >
+         rel="noopener noreferrer">
           📥 Download Sainik Class 6 Syllabus PDF
         </a>
       </div>
@@ -4774,7 +4623,7 @@ window.submitGrievance = async () => {
           className="syl-download"
           target="_blank"
           download=""
-        >
+         rel="noopener noreferrer">
           📥 Download RMS Syllabus PDF
         </a>
       </div>
@@ -4960,7 +4809,7 @@ window.submitGrievance = async () => {
         className="cal-download"
         target="_blank"
         download=""
-      >
+       rel="noopener noreferrer">
         📥 <span data-en="">Download Full Exam Calendar PDF</span>
         <span data-hi="">पूर्ण परीक्षा कैलेंडर PDF डाउनलोड करें</span>
       </a>
@@ -5260,6 +5109,10 @@ window.submitGrievance = async () => {
           Send your details and our team will respond regarding courses, hostel
           availability, and the admission process.
         </p>
+        <p className="reveal enq-lead">
+          Ready to apply? <a href="/apply"><b>Apply online</b></a> or{' '}
+          <a href="/apply-status">check your application status</a>.
+        </p>
         <ul className="enq-trust reveal">
           <li><b>66</b><span>selections in 2025–26</span></li>
           <li><b>2016</b><span>established, Khangabok</span></li>
@@ -5290,6 +5143,7 @@ window.submitGrievance = async () => {
           </div>
           {enqType !== 'general' && (
             <div className="enq-app-note">
+              <a href="/apply" className="btn btn-gold" style={{ display: 'inline-block', marginBottom: '.6rem' }}>Apply Online Instead →</a><br />
               {enqType === 'navodaya'
                 ? 'Coaching admission form for JNVST preparation. Our office will call to confirm the seat and fees.'
                 : 'Coaching admission form for AISSEE (Sainik School) preparation. Our office will call to confirm the seat and fees.'}
@@ -5533,7 +5387,7 @@ window.submitGrievance = async () => {
               href={site.wa}
               style={{ color: "var(--wa)" }}
               target="_blank"
-            >
+             rel="noopener noreferrer">
               Chat with us →
             </a>
           </p>
@@ -5553,21 +5407,21 @@ window.submitGrievance = async () => {
               className="soc-btn soc-fb"
               href={site.facebook}
               target="_blank"
-            >
+             rel="noopener noreferrer">
               f Facebook
             </a>
             <a
               className="soc-btn soc-yt"
               href={site.youtube}
               target="_blank"
-            >
+             rel="noopener noreferrer">
               ▶ YouTube
             </a>
             <a
               className="soc-btn soc-ig"
               href={site.instagram}
               target="_blank"
-            >
+             rel="noopener noreferrer">
               ◉ Instagram
             </a>
           </div>
@@ -6068,6 +5922,9 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
+  {activeTab === 'hostel' && <HostelTab site={site} goToTab={goToTab} />}
+  {activeTab === 'alumni' && <AlumniTab site={site} />}
+  {activeTab === 'careers' && <CareersTab site={site} />}
   {activeTab === 'helpdesk' && (
   <section className="helpdesk-section" id="helpdesk">
     <div className="container">
@@ -6112,7 +5969,7 @@ window.submitGrievance = async () => {
               <div>
                 <span className="hc-label">WhatsApp Support</span>
                 <span className="hc-val">
-                  <a href={site.wa} target="_blank">
+                  <a href={site.wa} target="_blank" rel="noopener noreferrer">
                     Chat on WhatsApp →
                   </a>
                 </span>
@@ -6250,16 +6107,11 @@ window.submitGrievance = async () => {
   )}
   </div>
   {/* CTA — premium closing block: emblem, headline, proof chips, action cards */}
+  {site.creative && activeTab === 'home' && <JourneySection goToTab={goToTab} />}
   <section className="cta-pro">
     <div className="cta-pro-glow" aria-hidden="true" />
     <div className="cta-pro-inner">
-      <div className="cta-pro-crest">
-        {!emblemFailed ? (
-          <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
-        ) : (
-          <span>GNSI</span>
-        )}
-      </div>
+      <img className="cta-pro-logo" src="/gnsi-logo-10y.webp" alt="Guidance Navodaya & Sainik Institute — celebrating 10 years of success" width={684} height={1100} loading="lazy" />
       <div className="cta-pro-eyebrow">Admissions · Guidance Navodaya &amp; Sainik Institute</div>
       <h2>Begin the Journey</h2>
       <p className="cta-pro-lead">
@@ -6310,169 +6162,25 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
+  <SiteSearch
+    open={searchOpen}
+    onClose={() => setSearchOpen(false)}
+    entries={searchEntries}
+    onPick={(r) => { setSearchOpen(false); if (r.id === '__verify') { setVerifyOpen(true); } else if (r.href) { window.location.href = r.href; } else { goToTab(r.id); } }}
+  />
   {/* FOOTER */}
-  <footer>
-    <div className="footer-grid">
-      <div>
-        <h4>GNSI — Guidance Navodaya &amp; Sainik Institute</h4>
-        <p
-          style={{
-            color: "rgba(230,230,230,.85)",
-            lineHeight: "1.85",
-            fontSize: "clamp(0.82rem,2.2vw,0.88rem)",
-            maxWidth: 320,
-            marginBottom: "1rem"
-          }}
-        >
-          Residential coaching institution in Khangabok, Thoubal, Manipur —
-          focused on NVS, Sainik School, and RMS entrance preparation.
-          Established 2016.
-        </p>
-        <div className="footer-tricolor">
-          <div />
-          <div />
-          <div />
-        </div>
-        <div className="foot-social" style={{ marginTop: ".9rem" }}>
-          <a
-            className="foot-soc-icon"
-            href={site.facebook}
-            target="_blank"
-            aria-label="Facebook"
-          >
-            <svg viewBox="0 0 24 24"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.13 8.44 9.94v-7.03H7.9v-2.91h2.54V9.41c0-2.51 1.49-3.89 3.78-3.89 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.78-1.63 1.57v1.88h2.78l-.44 2.91h-2.34V22c4.78-.81 8.44-4.94 8.44-9.94Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.youtube}
-            target="_blank"
-            aria-label="YouTube"
-          >
-            <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.instagram}
-            target="_blank"
-            aria-label="Instagram"
-          >
-            <svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.6 0 4.85.07 1.17.05 1.97.24 2.43.4a4.9 4.9 0 0 1 1.77 1.15 4.9 4.9 0 0 1 1.15 1.77c.16.46.35 1.26.4 2.43.07 1.25.07 1.65.07 4.85s0 3.6-.07 4.85c-.05 1.17-.24 1.97-.4 2.43a4.9 4.9 0 0 1-1.15 1.77 4.9 4.9 0 0 1-1.77 1.15c-.46.16-1.26.35-2.43.4-1.25.07-1.65.07-4.85.07s-3.6 0-4.85-.07c-1.17-.05-1.97-.24-2.43-.4a4.9 4.9 0 0 1-1.77-1.15 4.9 4.9 0 0 1-1.15-1.77c-.16-.46-.35-1.26-.4-2.43C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.85c.05-1.17.24-1.97.4-2.43a4.9 4.9 0 0 1 1.15-1.77A4.9 4.9 0 0 1 5.6 1.8c.46-.16 1.26-.35 2.43-.4C9.27 2.2 9.67 2.2 12 2.2Zm0 1.8c-3.16 0-3.53 0-4.77.07-.96.04-1.48.2-1.82.34-.46.18-.78.39-1.13.73-.34.35-.55.67-.73 1.13-.13.34-.3.86-.34 1.82C3.14 8.83 3.14 9.2 3.14 12s0 3.17.07 4.41c.04.96.2 1.48.34 1.82.18.46.39.78.73 1.13.35.34.67.55 1.13.73.34.13.86.3 1.82.34 1.24.07 1.61.07 4.77.07s3.53 0 4.77-.07c.96-.04 1.48-.2 1.82-.34.46-.18.78-.39 1.13-.73.34-.35.55-.67.73-1.13.13-.34.3-.86.34-1.82.07-1.24.07-1.61.07-4.41s0-3.17-.07-4.41c-.04-.96-.2-1.48-.34-1.82a2.9 2.9 0 0 0-.73-1.13 2.9 2.9 0 0 0-1.13-.73c-.34-.13-.86-.3-1.82-.34C15.53 3.84 15.16 3.84 12 3.84Zm0 3.3a4.86 4.86 0 1 1 0 9.72 4.86 4.86 0 0 1 0-9.72Zm0 1.8a3.06 3.06 0 1 0 0 6.12 3.06 3.06 0 0 0 0-6.12Zm5.5-3.18a1.13 1.13 0 1 1 0 2.27 1.13 1.13 0 0 1 0-2.27Z"/></svg>
-          </a>
-          <a
-            className="foot-soc-icon"
-            href={site.wa}
-            target="_blank"
-            aria-label="WhatsApp"
-            style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.47-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.07.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.42-.07-.12-.27-.2-.57-.35M12.05 21.78h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26C2.16 6.45 6.6 2 12.05 2c2.64 0 5.12 1.03 6.99 2.9a9.83 9.83 0 0 1 2.89 6.99c0 5.45-4.44 9.89-9.88 9.89Z"/></svg>
-          </a>
-          {site.whatsappChannel && (
-            <a
-              className="foot-soc-icon"
-              href={site.whatsappChannel}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="WhatsApp Channel"
-              title="WhatsApp Channel"
-              style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)", fontSize: ".7rem", fontWeight: 700 }}
-            >
-              CH
-            </a>
-          )}
-        </div>
-      </div>
-      <div>
-        <h4>Navigate</h4>
-        <a href="#notices" onClick={(e) => { e.preventDefault(); goToTab('notices'); }}>Notice Board</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Courses</a>
-        <a href="#results" onClick={(e) => { e.preventDefault(); goToTab('results'); }}>Results</a>
-        <a href="#rankers" onClick={(e) => { e.preventDefault(); goToTab('rankers'); }}>Ranker Wall</a>
-        <a href="#facilities" onClick={(e) => { e.preventDefault(); goToTab('facilities'); }}>Facilities</a>
-        <a href="#faculty" onClick={(e) => { e.preventDefault(); goToTab('faculty'); }}>Faculty</a>
-        <a href="#blog" onClick={(e) => { e.preventDefault(); goToTab('blog'); }}>News &amp; Blog</a>
-        <a href="#gallery" onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}>Gallery</a>
-      </div>
-      <div>
-        <h4>Admissions</h4>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Sainik School Prep</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Navodaya Prep</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Foundation Programme</a>
-        <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Combined Course</a>
-        <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Apply Now</a>
-        <a
-          href={site.brochure}
-          target="_blank"
-          download=""
-        >
-          📄 Download Brochure
-        </a>
-      </div>
-      <div>
-        <h4>Contact</h4>
-        <a href={site.tel}>{site.phone}</a>
-        <a
-          href={site.wa}
-          target="_blank"
-          style={{ color: "#4AE382" }}
-        >
-          WhatsApp
-        </a>
-        <button
-          onClick={() => setIsFeeOpen(true)}
-          style={{ color: "var(--goldL)", background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", display: "block", marginBottom: ".6rem", textAlign: "left" }}
-        >
-          💳 Pay Fee Online
-        </button>
-        <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Admission Enquiry</a>
-        <a
-          href="#"
-          onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); }}
-          style={{ color: "#4AE382" }}
-        >
-          Parents Portal
-        </a>
-        <a
-          href={site.apk}
-          download=""
-          style={{ color: "#4AE382" }}
-        >
-          📱 Download Android App
-        </a>
-        <button
-          onClick={onLogin}
-          style={{
-            display: "block",
-            marginBottom: ".55rem",
-            color: "rgba(230,230,230,.85)",
-            fontSize: "clamp(0.82rem,2.2vw,0.88rem)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            textAlign: "left",
-            padding: 0,
-            fontFamily: "inherit",
-            transition: ".2s"
-          }}
-        >
-          Staff Login
-        </button>
-      </div>
-    </div>
-    <div className="footer-bottom">
-      <span>
-        © 2026 Guidance Navodaya &amp; Sainik Institute, Khangabok, Thoubal,
-        Manipur
-      </span>
-      <span>Established 2016 · guidancekhangabok.in</span>
-    </div>
-  </footer>
+  <MajesticFooter
+    site={site}
+    emblem="/gnsi-mark.webp"
+    goToTab={goToTab}
+    actions={{ openFee: () => setIsFeeOpen(true), openPortal: () => setIsPortalOpen(true), openVerify: () => setVerifyOpen(true), onLogin }}
+  />
   {/* WA FLOAT */}
   <a
     id="waFloat"
     href={site.wa + '?text=Hello%20GNSI%2C%20I%20am%20interested%20in%20admissions.'}
     target="_blank"
-  >
+   rel="noopener noreferrer">
     <div className="wa-tooltip">Chat with us on WhatsApp</div>
     <svg viewBox="0 0 24 24">
       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
@@ -6588,6 +6296,21 @@ window.submitGrievance = async () => {
     );
   })()}
   <PublicFeeLookup isOpen={isFeeOpen} onClose={() => setIsFeeOpen(false)} upi={feePaymentInfo} />
+  <ReceiptVerifyForm
+    open={verifyOpen}
+    onClose={() => setVerifyOpen(false)}
+    onSubmit={({ receipt, gcc, amt }) => {
+      // Reuse the QR flow: put the same query on the URL, then open the checker.
+      try {
+        const u = new URL(window.location.href);
+        u.search = '?' + new URLSearchParams({ verifyReceipt: receipt, gcc, ...(amt ? { amt } : {}) }).toString();
+        window.history.replaceState(window.history.state, '', u.toString());
+      } catch { /* history unavailable */ }
+      setVerifyOpen(false);
+      setReceiptCheckOpen(false);
+      setTimeout(() => setReceiptCheckOpen(true), 0);
+    }}
+  />
   {receiptCheckOpen && <PublicReceiptCheck onClose={() => setReceiptCheckOpen(false)} />}
 </>  );
 }

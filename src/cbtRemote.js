@@ -19,6 +19,25 @@ export async function publishOnline(test, { code = '', opensAt = null, closesAt 
   if (k.error) throw new Error(friendly(k.error))
 }
 
+// Readiness probes (staff): is each migration in this database? A column / key that is missing means it was not run.
+export async function probeSchema(testId) {
+  const col = async (table, c) => !(await supabase.from(table).select(c).limit(1)).error
+  const info = await supabase.rpc('cbt_exam_info', { p_test: testId })
+  return {
+    extra: await col('cbt_attempts', 'extra_seconds'),
+    district: await col('cbt_attempts', 'district,gender,caste'),
+    dobEntered: await col('cbt_attempts', 'dob_entered'),
+    studentDistrict: await col('students', 'district,caste'),
+    guestsInfo: !!info.data && Object.prototype.hasOwnProperty.call(info.data, 'guests'),
+  }
+}
+// The students the readiness check looks at (only the columns it needs).
+export async function loadStudentsForReadiness() {
+  const { data, error } = await supabase.from('students').select('id,status,deleted_at,parent_phone,father_phone,mother_phone,guardian_phone,guardian_mobile,dob').limit(5000)
+  if (error) return null
+  return data || []
+}
+
 export async function listOnline() {
   const { data, error } = await supabase.from('cbt_tests').select('id, name, status, access_code, opens_at, closes_at, duration_min, updated_at, created_at').order('created_at', { ascending: false })
   if (error) throw new Error(friendly(error))
@@ -37,6 +56,15 @@ export async function setOnline(id, patch) {
   if (error) throw new Error(friendly(error))
 }
 export async function deleteOnline(id) { const { error } = await supabase.from('cbt_tests').delete().eq('id', id); if (error) throw new Error(friendly(error)) }
+// Give one attempt extra time (staff). Adds to what it already has; capped at 2 hours by the database.
+export async function extendOnlineAttempt(id, seconds) {
+  const cur = await supabase.from('cbt_attempts').select('extra_seconds').eq('id', id).maybeSingle()
+  if (cur.error) throw new Error(friendly(cur.error))
+  const next = Math.min(7200, Math.max(0, (cur.data?.extra_seconds || 0) + seconds))
+  const { error } = await supabase.from('cbt_attempts').update({ extra_seconds: next }).eq('id', id)
+  if (error) throw new Error(friendly(error))
+  return next
+}
 export async function deleteOnlineAttempt(id) { const { error } = await supabase.from('cbt_attempts').delete().eq('id', id); if (error) throw new Error(friendly(error)) }
 // A published test with its key, as a test this computer can show results for.
 export async function fetchOnlineTest(id) {
@@ -52,10 +80,26 @@ export async function fetchOnlineTest(id) {
 const fail = raw => { const e = new Error(friendly(raw)); e.code = /EXAM-([A-Z0-9]+)/.exec(String(raw?.message || raw))?.[1] || ''; return e }   // e.code: 'SESSION', 'EARLY', …
 const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw fail(error); if (data && !Array.isArray(data) && typeof data.error === 'string') throw fail(data.error); return data }
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
-export const startExam = (id, code, gcc, parent, phone) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null })
+export const startExam = (id, code, gcc, parent, phone, dob) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null, ...(dob ? { p_dob: dob } : {}) })
+// A guest (not in the ERP) — only when the test allows guests. One attempt per mobile number.
+export const startGuest = (id, code, name, phone, district, gender, caste) => rpc('cbt_start_guest', { p_test: id, p_code: code || '', p_name: name, p_phone: phone, ...(district ? { p_district: district } : {}), ...(gender ? { p_gender: gender } : {}), ...(caste ? { p_caste: caste } : {}) })
 // A GCC no. is matched exactly (no name search). With `parent` it also checks that number against the ERP record: verified true / false / null (none on file).
-export const lookupStudent = (id, code, gcc, parent) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: gcc, ...(parent ? { p_parent: parent } : {}) })
+export const lookupStudent = (id, code, gcc, parent, dob) => rpc('cbt_lookup', { p_test: id, p_code: code || '', p_q: gcc, ...(parent ? { p_parent: parent } : {}), ...(dob ? { p_dob: dob } : {}) })
 export const resumeExam = (attempt, token, session) => rpc('cbt_resume', { p_attempt: attempt, p_token: token, p_session: session || null })
 export const saveExam = (attempt, token, a, session) => rpc('cbt_save', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_current: a.current, p_lang: a.lang, p_switches: a.switches || 0, p_session: session || null })
 export const submitExam = (attempt, token, a, session) => rpc('cbt_submit', { p_attempt: attempt, p_token: token, p_answers: a.answers, p_marked: packMarks(a.marked, a.visited, a.proctor, a), p_switches: a.switches || 0, p_session: session || null })
 
+
+// Re-evaluation (staff): write the new score of each changed attempt. The old marks are kept inside the score so the
+// change can always be traced. plan = rescorePlan(...).changes
+export async function applyRescore(changes) {
+  const at = new Date().toISOString()
+  let done = 0
+  for (const c of changes) {
+    const score = { ...c.now, rescored: { at, wasMarks: c.was?.marks ?? null, wasCorrect: c.was?.correct ?? null } }
+    const { error } = await supabase.from('cbt_attempts').update({ score }).eq('id', c.attempt.id)
+    if (error) throw new Error(`${done} of ${changes.length} updated, then: ${friendly(error)}`)
+    done++
+  }
+  return done
+}

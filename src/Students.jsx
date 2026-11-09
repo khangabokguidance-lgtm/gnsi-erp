@@ -4,6 +4,7 @@
 // Only the visual layer is replaced.
 
 import { printFeeReceipt } from './premiumReceipt'
+import { DISTRICT_OPTIONS, CASTES } from './lib/studentFields'
 import { CertificateDialog } from './certificateKit'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
@@ -22,6 +23,12 @@ import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, ha
 import { openStudentLedger } from './ledgerLink'
 import { useLiveCourseBatches } from './useLiveCourseBatches'
 import { rebrandReport } from './reportKit'
+import StudentCourseCheck from './StudentCourseCheck'
+import StudentsDesk from './StudentsDesk'
+import ExamDialogHost from './ExamDialogs'
+import { pushRecentStudent } from './studentsRecent'
+import { askConfirm, askInput } from './examShared'
+import { auditStudents, KEY_TRACK } from './examCourseAudit'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -1741,7 +1748,7 @@ function BulkOperationsModal({ students, selectedIds, can, onClose, onRefresh, s
     if(!selected.length){showToast('No students selected',T.red);return}
     if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk action`,T.red);return}
     try{RateLimiter.check('students_bulk_'+action,8,60000)}catch(e){showToast(e.message,T.red);return}
-    if(action==='delete'&&!window.confirm(`Archive ${selected.length} students?`))return
+    if(action==='delete'&&!(await askConfirm(`Archive ${selected.length} students?`,{confirmLabel:'Archive',danger:true})))return
     setProcessing(true)
     const ids=selected.map(s=>s.id)
     try{
@@ -1899,7 +1906,7 @@ function BulkFeeModal({ students, selectedIds, can, currentUser, isAdmin, onClos
     if(!monthFor){showToast('Enter month/description',T.red);return}
     if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk fee action`,T.red);return}
     try{RateLimiter.check('students_bulk_fee',5,60000)}catch(e){showToast(e.message,T.red);return}
-    if(!window.confirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`))return
+    if(!(await askConfirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`,{confirmLabel:'Collect'})))return
     const payDate=new Date().toISOString().slice(0,10)
     // FLOW FIX: a closed Accounts month must also stop fee collections dated in it.
     if(!(await confirmFeeMonthOpen(payDate,{isAdmin})))return
@@ -1978,7 +1985,7 @@ function MergeDuplicatesModal({ students, can, onClose, onRefresh, showToast }) 
     if(!can.write){showToast('No permission',T.red);return}
     if(!primaryId||!mergeIds.length){showToast('Select records',T.red);return}
     try{RateLimiter.check('students_merge',5,60000)}catch(e){showToast(e.message,T.red);return}
-    if(!window.confirm(`Merge ${mergeIds.length} duplicate record(s) into the selected primary? Fee, attendance, exam, and document history will move to the primary; the duplicates will be archived.`))return
+    if(!(await askConfirm(`Merge ${mergeIds.length} duplicate record(s) into the selected primary? Fee, attendance, exam, and document history will move to the primary; the duplicates will be archived.`,{confirmLabel:'Merge',danger:true})))return
     setProcessing(true)
     try{
       for(const tbl of['attendance','fee_collections','exam_scores','student_documents'])
@@ -2822,6 +2829,8 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:8}}>
                 {[
   ['Gender',    student.gender],
+  ['District',  student.district],
+  ['Caste',     student.caste],
   ['DOB',       fmtD(student.dob)],
   ...(can.viewPII ? [
     ['Phone',     student.phone],
@@ -3005,7 +3014,7 @@ function PhotoField({ currentUrl, value, onChange }) {
 }
 
 function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
-  const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
+  const blank={name:'',gcc_no:'',dob:'',gender:'Male',district:'',caste:'',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
   // Batch in its standard name ("UDAAN" / old "Elite" → Udaan) and a blank
@@ -3017,6 +3026,22 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const [draftSaved,setDraftSaved]=useState(false)
   const [photo,setPhoto]=useState(null)   // { file, note } — compressed, uploaded on save
   const set=(k,v)=>setForm(f=>({...f,[k]:v}))
+  // Changing the course also fixes the batch: a batch from another course would put the
+  // student in the wrong exam list, and Combined Course has no batch ("—").
+  const setCourse=v=>setForm(f=>({...f,course:v,batch:v==='Combined Course'?'—':((COURSE_STRUCTURE[v]?.subtypes||[]).includes(f.batch)?f.batch:'')}))
+  // Unsaved-changes guard
+  const [startJson]=useState(()=>JSON.stringify(form))
+  const dirty=!!photo||JSON.stringify(form)!==startJson
+  const requestClose=async()=>{
+    if(dirty&&!(await askConfirm('You have unsaved changes to this student. Close without saving?',{confirmLabel:'Discard changes',danger:true})))return
+    onCancel()
+  }
+  useEffect(()=>{
+    if(!dirty)return
+    const h=e=>{e.preventDefault();e.returnValue=''}
+    window.addEventListener('beforeunload',h)
+    return()=>window.removeEventListener('beforeunload',h)
+  },[dirty])
 
   useEffect(()=>{if(editing)return;const t=setTimeout(()=>{localStorage.setItem(DRAFT_KEY,JSON.stringify(sanitiseDraftForStorage(form)));setDraftSaved(true);setTimeout(()=>setDraftSaved(false),1500)},1000);return()=>clearTimeout(t)},[form,editing])
   // BUG FIX: this previously ran on every mount (including when opening an
@@ -3067,8 +3092,8 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const effectiveDue=Math.max(0,baseRate-Number(form.fee_waiver||0)-Number(form.scholarship||0))
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
-  const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
-  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
+  const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;if(form.status==='Active'||!form.status){if(!form.course)e.course='Choose a course';else if(form.course!=='Combined Course'&&!form.batch)e.batch='Choose a batch — a student with no batch is listed as Combined in Exams'};setErrors(e);return!Object.keys(e).length}
+  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,batch:form.course==='Combined Course'?'—':form.batch,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
 
   const INP={width:'100%',padding:'9px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:42,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
   const INP_ERR={...INP,borderColor:T.red}
@@ -3089,7 +3114,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           {!editing&&<Btn onClick={()=>{localStorage.removeItem(DRAFT_KEY);setForm(blank)}} size='sm'>Clear</Btn>}
-          <button onClick={onCancel} aria-label="Close form" style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
+          <button onClick={requestClose} aria-label="Close form" style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
         </div>
       </div>
 
@@ -3107,6 +3132,8 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
           </FieldRow>
           <FieldRow label="Date of Birth"><input type="date" style={INP} value={form.dob} onChange={e=>set('dob',e.target.value)}/></FieldRow>
           <FieldRow label="Gender"><select style={SEL} value={form.gender} onChange={e=>set('gender',e.target.value)}><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></FieldRow>
+          <FieldRow label="District (Manipur)"><select style={SEL} value={form.district||''} onChange={e=>set('district',e.target.value)}><option value="">—</option>{DISTRICT_OPTIONS.map(d=><option key={d}>{d}</option>)}{form.district&&!DISTRICT_OPTIONS.includes(form.district)&&<option>{form.district}</option>}</select></FieldRow>
+          <FieldRow label="Caste / Category"><select style={SEL} value={form.caste||''} onChange={e=>set('caste',e.target.value)}><option value="">—</option>{CASTES.map(c=><option key={c}>{c}</option>)}{form.caste&&!CASTES.includes(form.caste)&&<option>{form.caste}</option>}</select></FieldRow>
           <FieldRow label="Status"><select style={SEL} value={form.status} onChange={e=>set('status',e.target.value)}>{STATUSES.filter(s=>s!=='All').map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="Admission Date"><input type="date" style={INP} value={form.admission_date} onChange={e=>set('admission_date',e.target.value)}/></FieldRow>
           {form.status&&form.status!=='Active'&&<FieldRow label="Left Date"><input type="date" style={INP} value={form.left_date} onChange={e=>set('left_date',e.target.value)}/></FieldRow>}
@@ -3114,9 +3141,9 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 
         <Divider label="Course & Class"/>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12,marginBottom:4}}>
-          <FieldRow label="Course"><select style={SEL} value={form.course} onChange={e=>set('course',e.target.value)}><option value="">— Course —</option>{Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}</select></FieldRow>
-          <FieldRow label="Batch / Class">
-            {subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}{form.batch&&!subtypes.includes(form.batch)&&<option>{form.batch}</option>}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
+          <FieldRow label="Course" error={errors.course}><select style={errors.course?{...SEL,borderColor:T.red}:SEL} value={form.course} onChange={e=>{setCourse(e.target.value);setErrors(v=>({...v,course:'',batch:''}))}}><option value="">— Course —</option>{Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}</select></FieldRow>
+          <FieldRow label="Batch / Class" error={errors.batch}>
+            {form.course==='Combined Course'?<select style={{...SEL,opacity:.65}} value="—" disabled title="Combined Course students have no batch"><option value="—">— (none for Combined)</option></select>:subtypes.length>0?<select style={SEL} value={form.batch} onChange={e=>{set('batch',e.target.value);setErrors(v=>({...v,batch:''}))}}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}{form.batch&&!subtypes.includes(form.batch)&&<option>{form.batch}</option>}</select>:<select style={SEL} value={form.batch} onChange={e=>set('batch',e.target.value)}><option value="">—</option>{CLASSES_LIST.map(c=><option key={c}>{c}</option>)}</select>}
           </FieldRow>
           <FieldRow label="Session"><select style={SEL} value={form.session} onChange={e=>set('session',e.target.value)}><option value="">—</option>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="House / Block"><select style={SEL} value={form.house} onChange={e=>set('house',e.target.value)}><option value="">— House —</option>{(houseOptions?.length?houseOptions:HOUSES_LIST).map(h=><option key={h}>{h}</option>)}</select></FieldRow>
@@ -3160,7 +3187,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 
         <div style={{display:'flex',gap:10,paddingTop:4}}>
           <Btn onClick={handleSave} disabled={saving} variant='primary' size='lg' style={{flex:1,justifyContent:'center'}}>{saving?'Saving…':editing?'Update Student':'Add Student'}</Btn>
-          <Btn onClick={onCancel} size='lg'>Cancel</Btn>
+          <Btn onClick={requestClose} size='lg'>Cancel</Btn>
         </div>
       </div>
     </Card>
@@ -4416,8 +4443,8 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, can, showToast,
             {isAdmin && r.status === 'pending' && (
               <>
                 <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
-                <button onClick={()=>{
-                  const reason = window.prompt('Reason for rejecting (optional):')
+                <button onClick={async()=>{
+                  const reason = await askInput('Reason for rejecting (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                   if (reason === null) return
                   setPinFor({record:r,approve:false,rejectionReason:reason})
                 }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
@@ -4558,8 +4585,8 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
                     {isAdmin && status === 'pending' && (
                       <>
                         <button onClick={()=>setPinFor({batchId,batchRecords,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve all</button>
-                        <button onClick={()=>{
-                          const reason = window.prompt('Reason for rejecting the whole batch (optional):')
+                        <button onClick={async()=>{
+                          const reason = await askInput('Reason for rejecting the whole batch (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                           if (reason === null) return
                           setPinFor({batchId,batchRecords,approve:false,rejectionReason:reason})
                         }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject all</button>
@@ -4602,8 +4629,8 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
                   {isAdmin && r.status === 'pending' && (
                     <>
                       <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
-                      <button onClick={()=>{
-                        const reason = window.prompt('Reason for rejecting (optional):')
+                      <button onClick={async()=>{
+                        const reason = await askInput('Reason for rejecting (optional):',{placeholder:'Type a reason, or leave blank',confirmLabel:'Continue'})
                         if (reason === null) return
                         setPinFor({record:r,approve:false,rejectionReason:reason})
                       }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
@@ -5134,8 +5161,7 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
-  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
+  const [pageTab,setPageTab]=useState('desk')   // always opens on the Students desk
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -5372,7 +5398,7 @@ const effectiveCols = visibleCols.filter(col => {
     // exclusively by allocateStudent/vacateStudent below (which also
     // mirrors it onto students.house), so it can't race against or
     // overwrite what those helpers just wrote.
-    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
+    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null,...(obj.district?{district:obj.district}:{}),...(obj.caste?{caste:obj.caste}:{})}
     const houseChosen=obj.house||null
     // FLOW FIX: Students is edit-only. A student created here had no
     // admissions row, so Fees refused payment ("No admission record") and
@@ -5446,6 +5472,26 @@ const effectiveCols = visibleCols.filter(col => {
     await auditLog('student_quick_complete',{student_id:studentId,fields:Object.keys(fields)})
     showToast('Details saved',T.green)
     if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})
+  }
+
+  // Moves many students to course + batch in one go (used by Course Check's "Fix all Combined").
+  // Chunked writes through the same wrapper as every other update (so the admissions mirror runs),
+  // ONE audit entry that records each student's previous course/batch so the change can be reversed.
+  const handleBulkCourseFix=async(items,patch)=>{
+    if(!can.write){showToast('No permission',T.red);return 0}
+    const doneIds=new Set()
+    for(let i=0;i<items.length;i+=50){
+      const chunk=items.slice(i,i+50)
+      const{error}=await updateStudentsRows({match:{id:{in:chunk.map(x=>x.id)}},patch})
+      if(error){showToast(`Stopped after ${doneIds.size} — update failed: ${error.message}`,T.red);break}
+      chunk.forEach(x=>doneIds.add(x.id))
+    }
+    if(doneIds.size){
+      setStudents(prev=>prev.map(s=>doneIds.has(s.id)?{...s,...patch}:s))
+      await auditLog('student_bulk_course_fix',{count:doneIds.size,patch,previous:items.filter(x=>doneIds.has(x.id)).map(x=>({id:x.id,gcc:x.gcc,course:x.before.course,batch:x.before.batch}))})
+      broadcastStudentsUpdate({type:'quick_update'})
+    }
+    return doneIds.size
   }
 
   // FLOW FIX: cloning created a student with no admission record. Kept as
@@ -5532,6 +5578,16 @@ const effectiveCols = visibleCols.filter(col => {
   const clearAllFilters=()=>{setSearch('');setFilterStatus('All');setFilterCourse('All');setFilterHostel('All');setFilterHouse('All');setFilterGender('All');setFilterSession('All');setFilterBatch('All');setGccMin('');setGccMax('');setPage(1)}
   const feeDueCount=Object.values(feeData).filter(v=>v?.dues>0).length
   const longAbsentCount=students.filter(s=>attData[s.id]!=null&&attData[s.id]<50).length
+  // Course Check + desk counts
+  const courseIssueCount=useMemo(()=>auditStudents(students,Object.fromEntries(Object.keys(KEY_TRACK).map(k=>[k,[]])),{}).summary.problems,[students])
+  const deskCounts={
+    courseIssues:courseIssueCount,
+    incomplete:students.filter(s=>getMissingFieldKeys(s,can.viewPII).length>0).length,
+    highDues:students.filter(s=>(feeData[s.id]?.dues||0)>10000).length,
+    lowAtt:longAbsentCount,
+  }
+  // remember the profiles opened, for the desk's "Recently opened"
+  useEffect(()=>{if(detailPanel?.id!=null)pushRecentStudent(detailPanel.id)},[detailPanel])
 
   const KPI_ITEMS=[
     {label:'Total',value:students.length,color:T.text2,icon:'👥'},
@@ -5651,6 +5707,7 @@ const effectiveCols = visibleCols.filter(col => {
   return (
     <>
       <style>{globalCSS}</style>
+      <ExamDialogHost />
       {toast&&<Toast msg={toast.msg} color={toast.color}/>}
       {undoItem&&<UndoBanner student={undoItem} onUndo={handleUndo} onDismiss={()=>setUndoItem(null)}/>}
       {confirmModal&&<ConfirmModal title={confirmModal.title} message={confirmModal.message} confirmLabel={confirmModal.confirmLabel} danger={confirmModal.danger} onConfirm={confirmModal.onConfirm} onCancel={()=>setConfirmModal(null)}/>}
@@ -5770,7 +5827,9 @@ const effectiveCols = visibleCols.filter(col => {
         {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
           {(()=>{
-            const PAGE_TABS=[{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Home',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            const ALL_PAGE_TABS=[{key:'desk',label:'Desk',short:'Desk',icon:SIcon.search},{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Stats',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'courseCheck',label:'Course Check',short:'Check',icon:SIcon.merge,badge:courseIssueCount},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            // Phone: five slots in the bottom bar; the rest are one tap away from the Desk tiles
+            const PAGE_TABS=isMobile?ALL_PAGE_TABS.filter(t=>['desk','courses','students','courseCheck','dataQuality'].includes(t.key)):ALL_PAGE_TABS
             // Phone: payments-app style bottom navigation instead of the scrolling tab strip
             if(isMobile) return createPortal(
               <nav className="st-bottom" role="tablist" aria-label="Students sections">
@@ -5783,7 +5842,7 @@ const effectiveCols = visibleCols.filter(col => {
 .st-pad{height:76px}`}</style>
                 {PAGE_TABS.map(t=>(
                   <button key={t.key} role="tab" aria-selected={pageTab===t.key} aria-label={t.label} className={'st-nb'+(pageTab===t.key?' on':'')} onClick={()=>{setPageTab(t.key);window.scrollTo({top:0})}}>
-                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}</span>
+                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}{t.badge>0?` ·${t.badge}`:''}</span>
                   </button>
                 ))}
               </nav>,
@@ -5796,7 +5855,7 @@ const effectiveCols = visibleCols.filter(col => {
                   return (
                     <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
                       <span className="st-ti"><t.icon size={15}/></span>
-                      {t.label}
+                      {t.label}{t.badge>0&&<span style={{marginLeft:2,minWidth:18,height:18,padding:'0 5px',borderRadius:99,background:T.red,color:'#fff',fontSize:10.5,fontWeight:800,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>{t.badge}</span>}
                     </button>
                   )
                 })}
@@ -5831,6 +5890,21 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
         )}
         </div>
+
+        {pageTab==='desk'&&(
+          <StudentsDesk
+            students={students} feeData={feeData} attData={attData}
+            userName={user?.name||user?.userName||user?.username}
+            isMobile={isMobile} counts={deskCounts} canEdit={can.write}
+            onOpenDetail={setDetailPanel} onOpenFee={setFeePanel}
+            onEdit={s=>{setEditing(s);setFormOpen(true);setPageTab('students')}}
+            goTab={setPageTab}
+          />
+        )}
+
+        {pageTab==='courseCheck'&&(
+          <StudentCourseCheck students={students} onQuickSave={handleQuickSave} onBulkFix={handleBulkCourseFix} can={can} isMobile={isMobile}/>
+        )}
 
         {pageTab==='courses'&&(
           <CourseDatabase

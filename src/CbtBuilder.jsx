@@ -16,7 +16,16 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || '')
   const [durationMin, setDurationMin] = useState(initial?.durationMin ?? 120)
   const [lockAns, setLockAns] = useState(!!initial?.marking?.lock)
+  const [fullscreen, setFullscreen] = useState(initial?.marking?.proctor?.fullscreen || 'off')
+  const [maxFsExits, setMaxFsExits] = useState(initial?.marking?.proctor?.maxFsExits ?? 3)
+  const [secMins, setSecMins] = useState(() => (initial?.marking?.sectionMinutes || []).join(', '))
+  const [toolCalc, setToolCalc] = useState(!!initial?.marking?.tools?.calc)
+  const [toolRough, setToolRough] = useState(!!initial?.marking?.tools?.rough)
+  const [guests, setGuests] = useState(!!initial?.marking?.guests)
+  const [shufQ, setShufQ] = useState(!!initial?.marking?.shuffle?.questions)
+  const [shufO, setShufO] = useState(!!initial?.marking?.shuffle?.options)
   const [minMinutes, setMinMinutes] = useState(initial?.marking?.minMinutes ?? 0)
+  const sectionMinutesList = secMins.split(/[ ,]+/).filter(x => x !== '').map(x => Math.max(0, Math.floor(Number(x) || 0)))
   const [camera, setCamera] = useState(initial?.marking?.proctor?.camera || 'off')
   const [shield, setShield] = useState(!!initial?.marking?.proctor?.shield)
   const [maxStrikes, setMaxStrikes] = useState(initial?.marking?.proctor?.maxStrikes ?? 5)
@@ -59,7 +68,12 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
       const sampleRaw = rep && (forced ? rep.suspects[0] : (await paragraphsFromDocx(gData, { convertBmei: false })).map(x => x.raw).find(x => x.length > 12 && /[^ -~]|[@#$%^&*[\]{}|\\`~<>=+_]/.test(x)))
       setFonts(rep ? { rep, forced, sample: sampleRaw ? { raw: sampleRaw.slice(0, 70), uni: bmeiToUnicode(sampleRaw.slice(0, 70)) } : null } : null)
       const t = buildTest(enL, mmL)
-      if (!t.sections.length) throw new Error('No questions were found. Questions should start like "Q1." with options (A) (B) (C) (D).')
+      if (!t.sections.length) {
+        // say what was actually read, so the cause is visible (no text at all = a scanned / picture-only file or text boxes)
+        const seen = enL.map(x => x.text).filter(Boolean)
+        const sample = seen.slice(0, 6).map(x => `  • ${x.slice(0, 80)}`).join('\n')
+        throw new Error(`No questions were found.\n${seen.length ? `I read ${seen.length} line${seen.length === 1 ? '' : 's'} of text. The first ones were:\n${sample}\n` : 'I could not read any text from this file — it may be scanned pages or pictures of text. Type or paste the questions into Word as real text, then save as .docx.\n'}Questions should start like "Q1." / "1." / "1)" / "Question 1:" and have four options such as (A) (B) (C) (D), A) B) C) D) or (1) (2) (3) (4). Word's automatic numbering is supported too.`)
+      }
       const w = attachImages(t.sections, imgs)
       if (!imgs.length && !t.sections.some(s => s.questions.some(q => q.figure))) w.length = 0
       // keep the answers already entered for questions with the same number
@@ -101,7 +115,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
     if (report.counts.error && !window.confirm(`${report.counts.error} question${report.counts.error === 1 ? ' has' : 's have'} errors in the smart check (a missing picture, option or text). Save the test anyway?`)) return
     setBusy('Saving…')
     await onSave({
-      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(Number(minMinutes) > 0 ? { minMinutes: Number(minMinutes) } : {}), ...(camera !== 'off' || shield ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5) } } : {}) },
+      ...(initial || {}), id: initial?.id || newTestId(), name: name.trim(), durationMin: Number(durationMin), marking: { correct: Number(correct) || 0, wrong: Number(wrong) || 0, ...(lockAns ? { lock: true } : {}), ...(shufQ || shufO ? { shuffle: { questions: shufQ, options: shufO } } : {}), ...(sectionMinutesList.some(m => m > 0) ? { sectionMinutes: sectionMinutesList } : {}), ...(toolCalc || toolRough ? { tools: { calc: toolCalc, rough: toolRough } } : {}), ...(guests ? { guests: true } : {}), ...(Number(minMinutes) > 0 ? { minMinutes: Number(minMinutes) } : {}), ...(camera !== 'off' || shield || fullscreen !== 'off' ? { proctor: { camera, shield, maxStrikes: Math.max(1, Number(maxStrikes) || 5), ...(fullscreen !== 'off' ? { fullscreen, maxFsExits: Math.max(1, Number(maxFsExits) || 3) } : {}) } } : {}) },
       instructions, showResult, showAnswers, sections, createdAt: initial?.createdAt || Date.now(), updatedAt: Date.now(),
     })
     setBusy('')
@@ -134,6 +148,19 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
             <label><span className="lbl">Earliest submit (minutes, 0 = any time)</span><input className="in" type="number" min="0" step="1" value={minMinutes} onChange={e => setMinMinutes(e.target.value)} /></label>
             {camera === 'strict' && <label><span className="lbl">Warnings before auto-submit</span><input className="in" type="number" min="1" max="20" value={maxStrikes} onChange={e => setMaxStrikes(e.target.value)} /></label>}
           </div>
+          <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))', marginTop: 8 }}>
+            <label><span className="lbl">Full screen</span>
+              <select className="in" value={fullscreen} onChange={e => setFullscreen(e.target.value)}>
+                <option value="off">Not required</option><option value="warn">Required — warn and record each exit</option><option value="strict">Strict — hide the paper; submit after too many exits</option>
+              </select></label>
+            {fullscreen === 'strict' && <label><span className="lbl">Exits allowed before auto-submit</span><input className="in" type="number" min="1" max="20" value={maxFsExits} onChange={e => setMaxFsExits(e.target.value)} /></label>}
+            <label><span className="lbl">Minutes per section (in order, e.g. 20, 30, 25; 0 = no limit)</span><input className="in" value={secMins} onChange={e => setSecMins(e.target.value)} placeholder={`${sections.length} section${sections.length === 1 ? '' : 's'}`} /></label>
+          </div>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={guests} onChange={e => setGuests(e.target.checked)} /> Also allow guests who are not in the ERP (name + mobile number, one attempt per number; marked ⚠ in the results)</label>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={toolCalc} onChange={e => setToolCalc(e.target.checked)} /> Allow the on-screen calculator</label>
+          <label style={{ display: 'block', marginTop: 4, fontSize: 13 }}><input type="checkbox" checked={toolRough} onChange={e => setToolRough(e.target.checked)} /> Allow a rough-work pad (kept on the candidate's screen only — never saved)</label>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={shufQ} onChange={e => setShufQ(e.target.checked)} /> Shuffle question order for each candidate (questions sharing a reading passage stay together)</label>
+          <label style={{ display: 'block', marginTop: 4, fontSize: 13 }}><input type="checkbox" checked={shufO} onChange={e => setShufO(e.target.checked)} /> Shuffle the options (A–D) for each candidate — figure questions and options like "all of the above" / "both A and B" are left as they are</label>
           <label style={{ display: 'block', marginTop: 8, fontSize: 13 }}><input type="checkbox" checked={shield} onChange={e => setShield(e.target.checked)} /> Screen shield — block copy, print and developer tools; hide the paper when a screenshot key is pressed or the window is left</label>
           <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>The camera finds faces in the candidate's own browser — video is never recorded or uploaded; only the warning counts are saved. A browser cannot truly block a screenshot or a phone photo, so the shield hides and records attempts rather than guaranteeing prevention.</p>
         </div>
@@ -147,7 +174,7 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
         </div>
         <p className="muted">The English paper sets the questions, sections and figure pictures. The Meitei Mayek paper (typed in BMEI04 or Unicode) is matched to it by question number, so both languages are in one test. Figure questions (a picture with the options inside it) take the pictures in order.</p>
         <button className="btn gold" onClick={read} disabled={!!busy}>{busy || 'Read the papers'}</button>
-        {error && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{error}</p>}
+        {error && <p role="alert" style={{ color: '#b42318', fontWeight: 700, whiteSpace: 'pre-line' }}>{error}</p>}
       </div>
 
       {sections.length > 0 && (

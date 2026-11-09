@@ -14,6 +14,8 @@ import { supabase } from './supabase'
 import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
 import { canonicalBatch, normalizeCourse, courseOf } from './courseMap'
 import { detectFeeTypes } from './lib/feeTypeDetect'
+import { checkMonthlyFees } from './lib/monthlyFeeCheck'
+import { getAddonResolver } from './feeEngine'
 
 export const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HOSTEL_MISMATCH_REASON = 'Hostel type mismatch'
@@ -105,7 +107,7 @@ export function rateFrom(structures, { session, course, batch, type, field }) {
 // This session's flat/course payments made at ANOTHER hostel type's rate:
 // paid less than the student's own-type rate and exactly the rate of a cheaper
 // type. Rows already carrying a concession decision are counted as reviewed.
-export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map() }) {
+export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map(), addonOf = () => 0 }) {
   const issues = []
   let reviewed = 0
   // Per student: how many of this session's payments match their own type's
@@ -120,11 +122,14 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     const ownType = typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
     const course = (kind === 'course' ? (row.course || st.course) : st.course) || (courseOf(st) !== 'Unassigned' ? courseOf(st) : '')
     const args = { session: rateSession, course, batch: st.batch || '', field }
-    const own = rateFrom(structures, { ...args, type: ownType })
+    // Combined students pay the monthly add-on on top of every type's rate
+    const add = addonOf(st, rateSession) || 0
+    const rateAt = type => { const b = rateFrom(structures, { ...args, type }); return b > 0 ? b + add : 0 }
+    const own = rateAt(ownType)
     if (!(own > 0) || !(paid > 0)) return
     const sx = stat(st); sx.total++
     if (paid === own) { sx.own++; return }
-    const match = HOSTEL_TYPES.filter(t => t !== ownType).map(t => ({ type: t, rate: rateFrom(structures, { ...args, type: t }) })).find(x => x.rate > 0 && x.rate === paid)
+    const match = HOSTEL_TYPES.filter(t => t !== ownType).map(t => ({ type: t, rate: rateAt(t) })).find(x => x.rate > 0 && x.rate === paid)
     if (!match) return
     sx.other[match.type] = (sx.other[match.type] || 0) + 1
     if (paid >= own) return
@@ -165,9 +170,28 @@ export async function loadFeeTypeScan({ students, courseRows, flatRows }) {
   ])
   if (error) throw new Error(error.message)
   const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
-  const rateOf = ({ session, course, batch, type, field }) => rateFrom(structures || [], { session, course, batch, type, field })
+  const resolver = await getAddonResolver()
+  const rateOf = ({ session, course, batch, type, field, student }) => { const b = rateFrom(structures || [], { session, course, batch, type, field }); return b > 0 && student ? b + resolver.amount(student, session) : b }
   // A single student's bed set only holds that student, so "no bed" cannot be told from "not loaded" — treat as unknown.
   return detectFeeTypes({ students, courseRows, flatRows, rateOf, beds: ids ? (beds && beds.size ? beds : null) : beds, overrideGccs })
+}
+
+// Month-by-month check of every active student's payments against the rate for their course and the
+// hostel type in force that month (see lib/monthlyFeeCheck.js). Students with a custom flat fee have
+// their flat-fee months left out, since the standard flat rate does not apply to them.
+export async function loadMonthlyFeeScan({ students, courseRows, flatRows }) {
+  const [{ data: structures, error }, { data: ov }, { map: history }] = await Promise.all([
+    supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
+    supabase.from('student_fee_overrides').select('gcc_no'),
+    loadHostelHistory(),
+  ])
+  if (error) throw new Error(error.message)
+  const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
+  const resolver = await getAddonResolver()
+  const rateOf = ({ session, course, batch, type, field, student }) => { const b = rateFrom(structures || [], { session, course, batch, type, field }); return b > 0 && student ? b + resolver.amount(student, session) : b }
+  const typeAt = (st, month, year) => typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
+  const flat = (flatRows || []).filter(r => !overrideGccs.has(gccKey(r.adm_app_id)))
+  return checkMonthlyFees({ students, courseRows, flatRows: flat, rateOf, typeAt })
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {
@@ -178,7 +202,8 @@ export async function loadWrongRateScan({ students, courseRows, flatRows, sessio
   ])
   if (error) throw new Error(error.message)
   const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
-  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session, history })
+  const resolver = await getAddonResolver()
+  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session, history, addonOf: (st, sess) => resolver.amount(st, sess) })
 }
 
 // Pending wrong-hostel-type approvals + record/bed conflicts, for the tab badge.

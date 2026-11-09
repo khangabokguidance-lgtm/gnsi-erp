@@ -35,7 +35,7 @@ export function detectWaivers(item, rateOf) {
     const kind = r.head === 'Flat Fee' ? 'flat' : 'course'
     const approved = r0((r.paid || []).reduce((s, p) => s + (p.concession || 0), 0))
     const standing = r0(r.standingAmt || 0)
-    const std = rateOf({ session: sessionOf(r.month, r.year), course: student.course || '', batch: student.batch || '', type: r.hostelType || student.hostel_type || 'Day Scholar', field: kind === 'flat' ? 'flat_fee' : 'course_fee' })
+    const std = rateOf({ student, session: sessionOf(r.month, r.year), course: student.course || '', batch: student.batch || '', type: r.hostelType || student.hostel_type || 'Day Scholar', field: kind === 'flat' ? 'flat_fee' : 'course_fee' })
     const custom = std > 0 && r.expected > 0 && r.expected < std - 0.5 ? r0(std - r.expected) : 0
     const pending = (r.paid || []).filter(p => p.concessionStatus === 'pending').length
     if (approved || standing || custom || pending) {

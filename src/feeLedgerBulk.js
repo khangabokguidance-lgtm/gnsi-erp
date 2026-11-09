@@ -4,7 +4,8 @@
 // register (feeLedgerModel.js), so the numbers match what each ledger shows.
 import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
-import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
+import { getFeeRates, gccStr, normalizeSessionYear, getAddonStatus } from './feeEngine'
+import { applyAddon } from './feeAddon'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
 import { writtenOffFor } from './lib/refundLedger'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
@@ -73,7 +74,11 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
       const key = [sess, s.course || '', s.batch || '', type].join('|')
       if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(sess, s.course || '', s.batch || '', type))
       if (!overridesBySession.has(sess)) overridesBySession.set(sess, await loadOverrides(sess))
-      const base = rateCache.get(key), ov = overridesBySession.get(sess)
+      let base = rateCache.get(key)
+      const ov = overridesBySession.get(sess)
+      // students the Exams module tags as Combined also carry the add-on (the shared cache is per course/batch, so add it per student)
+      const ex = await getAddonStatus({ sessionYear: sess, course: s.course, batch: s.batch, gccNo: g })
+      if (ex.byExam && ex.amount > 0) base = applyAddon(base, true, ex.amount, 'exam')
       return ov.has(g) ? { ...base, flatFee: ov.get(g) } : base
     }
     const rateOf = rateOfFor(session)
