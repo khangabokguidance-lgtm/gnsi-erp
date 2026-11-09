@@ -399,6 +399,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <div className="cbt-founder-txt">
           <blockquote>&ldquo;{FOUNDER.quote}&rdquo;</blockquote>
           <div className="cbt-founder-by"><b>{FOUNDER.name}</b><span>{FOUNDER.role}</span></div>
+          <div className="cbt-founder-built"><span aria-hidden="true">💻</span><span>This exam portal was <b>designed and built by {FOUNDER.name} himself</b> — the result of much effort, made for the students of GNSI.</span></div>
           <p>Established 2016 · Khangabok, Manipur. We wish you the very best for this test.</p>
         </div>
       </div> },

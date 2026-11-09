@@ -137,6 +137,8 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-founder-pic.nophoto img{display:none}.cbt-founder-pic.nophoto span{display:grid}
 .cbt-founder-txt blockquote{margin:0 0 12px;padding-left:14px;border-left:3px solid var(--gold);font-family:'Fraunces',Georgia,serif;font-size:17px;line-height:1.55;font-style:italic;color:#1f2a44}
 .cbt-founder-by b{display:block;font-size:16px;color:var(--navy)}.cbt-founder-by span{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a6a1f;margin-top:2px}
+.cbt-founder-built{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:12px;background:#fdf6e3;border:1px solid #ecd9a4;font-size:13px;line-height:1.55;color:#5b4410}
+.cbt-founder-built>span:first-child{font-size:18px;line-height:1.2}
 .cbt-founder-txt p{margin:12px 0 0;font-size:13px;color:#64748b}
 @media (max-width:560px){.cbt-founder{grid-template-columns:1fr;justify-items:center;text-align:left}.cbt-founder-pic{width:120px;height:146px}}
 .cbt-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
