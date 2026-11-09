@@ -11,7 +11,7 @@
 //   language only or with different numbers; two options with the same text; a repeated question.
 
 const MEETEI_DIGITS = /[꯰-꯹]/g
-const toAscii = t => String(t || '').replace(MEETEI_DIGITS, c => String(c.charCodeAt(0) - 0xABF0))
+export const toAscii = t => String(t || '').replace(MEETEI_DIGITS, c => String(c.charCodeAt(0) - 0xABF0))
 export const numbersIn = t => (toAscii(t).match(/\d+(?:[.,]\d+)*/g) || []).map(x => x.replace(/,/g, '')).sort()
 const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 const norm = t => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, '')

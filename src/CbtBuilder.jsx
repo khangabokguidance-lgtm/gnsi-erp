@@ -6,6 +6,12 @@ import { bmeiToUnicode } from './mayekSegments'
 import { buildTest, attachImages } from './lib/cbtPaper'
 import { DEFAULT_INSTRUCTIONS, parseKey, keyStatus } from './lib/cbtEngine'
 import { verifyTest } from './lib/cbtVerify'
+import { compareRows, compareSummary } from './lib/cbtCompare'
+
+// The numbers found in one cell, a number with no partner in the other language shown in red.
+const CmpNums = ({ list }) => list.length === 0 ? null : (
+  <div className="cbt-nums" aria-label="Numbers in this text"><i>Numbers</i>{list.map((x, i) => <span key={i} className={`cbt-num${x.miss ? ' miss' : ''}`} title={x.miss ? 'No matching number in the other language' : undefined}>{x.n}</span>)}</div>
+)
 import { newTestId } from './cbtStore'
 
 const nice = name => String(name || '').replace(/\.docx$/i, '').replace(/^[0-9a-f]{6,}[-_]/i, '').replace(/[_-]+/g, ' ').trim()
@@ -248,20 +254,38 @@ export default function CbtBuilder({ initial, onSave, onCancel }) {
                   </div>
                 </div>
               )}
-              <div className="cbt-twin">
-                <div>
-                  <b className="lbl">English</b>
-                  <textarea className="in" rows={3} value={rq.text} onChange={e => patchQ(rq.no, { text: e.target.value })} placeholder={rq.figure ? '(no text — the picture is the question)' : 'Question text'} />
-                  {rq.options.map(o => !rq.figure && <input key={o.key} className="in" style={{ marginTop: 6 }} aria-label={`English option ${o.key}`} value={o.text} onChange={e => patchOpt(rq.no, o.key, { text: e.target.value })} placeholder={`(${o.key})`} />)}
-                  <textarea className="in" style={{ marginTop: 6 }} rows={2} value={rq.passage} onChange={e => patchQ(rq.no, { passage: e.target.value })} placeholder="Reading passage (if any)" />
-                </div>
-                <div className="mm">
-                  <b className="lbl" style={{ fontFamily: 'inherit' }}>Meitei Mayek</b>
-                  <textarea className="in mm" rows={3} value={rq.textMm} onChange={e => patchQ(rq.no, { textMm: e.target.value })} />
-                  {rq.options.map(o => !rq.figure && <input key={o.key} className="in mm" style={{ marginTop: 6 }} aria-label={`Meitei Mayek option ${o.key}`} value={o.textMm} onChange={e => patchOpt(rq.no, o.key, { textMm: e.target.value })} placeholder={`(${o.key})`} />)}
-                  <textarea className="in mm" style={{ marginTop: 6 }} rows={2} value={rq.passageMm} onChange={e => patchQ(rq.no, { passageMm: e.target.value })} />
-                </div>
-              </div>
+              {(() => {
+                const rows = compareRows(rq), sum = compareSummary(rows)
+                const opt = key => rq.options.find(x => x.key === key)
+                const enCell = r => r.id === 'q' ? <textarea className="in" rows={3} value={rq.text} onChange={e => patchQ(rq.no, { text: e.target.value })} aria-label="English question" placeholder="Question text" />
+                  : r.id === 'p' ? <textarea className="in" rows={2} value={rq.passage} onChange={e => patchQ(rq.no, { passage: e.target.value })} aria-label="English passage" placeholder="Reading passage (if any)" />
+                  : <input className="in" aria-label={`English option ${r.label}`} value={opt(r.label)?.text || ''} onChange={e => patchOpt(rq.no, r.label, { text: e.target.value })} placeholder={`(${r.label})`} />
+                const mmCell = r => r.id === 'q' ? <textarea className="in mm" rows={3} value={rq.textMm} onChange={e => patchQ(rq.no, { textMm: e.target.value })} aria-label="Meitei Mayek question" />
+                  : r.id === 'p' ? <textarea className="in mm" rows={2} value={rq.passageMm} onChange={e => patchQ(rq.no, { passageMm: e.target.value })} aria-label="Meitei Mayek passage" />
+                  : <input className="in mm" aria-label={`Meitei Mayek option ${r.label}`} value={opt(r.label)?.textMm || ''} onChange={e => patchOpt(rq.no, r.label, { textMm: e.target.value })} placeholder={`(${r.label})`} />
+                return (
+                  <div className="cbt-cmp" role="group" aria-label="English and Meitei Mayek side by side">
+                    <div className="cbt-cmp-sum">
+                      <span className="tag" style={{ background: '#eef2f9', color: '#1e3a6e' }}>English ⇄ Meitei Mayek, row by row</span>
+                      {sum.numberMismatch > 0 && <span className="tag" style={{ background: '#fff4dc', color: '#9a5b00' }}>⚠ {sum.numberMismatch} row{sum.numberMismatch === 1 ? '' : 's'} with different numbers</span>}
+                      {sum.numberMismatch === 0 && rows.some(r => r.diff.any) && <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a' }}>✓ numbers agree</span>}
+                      {sum.oneSided > 0 && <span className="tag" style={{ background: '#fff4dc', color: '#9a5b00' }}>⚠ {sum.oneSided} row{sum.oneSided === 1 ? '' : 's'} in one language only</span>}
+                    </div>
+                    {rows.length === 0 && <div className="muted">Figure question: the picture holds the problem and the options, so there is no text to compare.</div>}
+                    {rows.length > 0 && <div className="cbt-cmp-head"><span /><b>English</b><b>Meitei Mayek</b></div>}
+                    {rows.map(r => {
+                      const bad = r.diff.any && !r.diff.same
+                      return (
+                        <div key={r.id} className={`cbt-cmp-row${bad ? ' diff' : ''}`}>
+                          <div className="cbt-cmp-l" title={r.title}><b>{r.label}</b>{bad ? <span className="st" style={{ color: '#9a5b00' }} aria-label="Numbers differ">⚠</span> : r.diff.any ? <span className="st" style={{ color: '#146c3a' }} aria-label="Numbers agree">✓</span> : null}</div>
+                          <div className="cbt-cmp-c">{enCell(r)}<CmpNums list={r.diff.en} /></div>
+                          <div className="cbt-cmp-c mm">{mmCell(r)}<CmpNums list={r.diff.mm} /></div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>

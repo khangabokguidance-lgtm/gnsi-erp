@@ -4,29 +4,29 @@ import { loadSystemSettings, useSystemSettings, loginPolicy, sysValue } from './
 import './privateFiles'
 
 import Login              from './Login'
-import Students           from './Students'
-import Admissions         from './Admissions'
-import Sessions           from './Sessions'
-import AdmissionSessions  from './AdmissionSessions'
-import BulkAdmission      from './BulkAdmission'
-import Fees               from './Fees'
+const Students = React.lazy(() => import('./Students'))
+const Admissions = React.lazy(() => import('./Admissions'))
+const Sessions = React.lazy(() => import('./Sessions'))
+const AdmissionSessions = React.lazy(() => import('./AdmissionSessions'))
+const BulkAdmission = React.lazy(() => import('./BulkAdmission'))
+const Fees = React.lazy(() => import('./Fees'))
 import WhatsNewBanner     from './WhatsNewBanner'
-import HelpCenter         from './HelpCenter'
-import Accounts           from './Accounts'
-import Salary             from './Salary'
-import Staff              from './Staff'
-import HR                 from './DAILY_ATTENDANCE_TRACKER_COMPLETE'
-import Hostel             from './Hostel'
-import Reception          from './Reception'
-import Social             from './Social'
-import Connect            from './Connect'
-import Reports            from './Reports'
-import Checklist          from './Checklist'
-import SystemSettings     from './SystemSettingsPage'
-import AdminPage          from './AdminPage'
-import StudentFeeLedger   from './StudentFeeLedger'
+const HelpCenter = React.lazy(() => import('./HelpCenter'))
+const Accounts = React.lazy(() => import('./Accounts'))
+const Salary = React.lazy(() => import('./Salary'))
+const Staff = React.lazy(() => import('./Staff'))
+const HR = React.lazy(() => import('./DAILY_ATTENDANCE_TRACKER_COMPLETE'))
+const Hostel = React.lazy(() => import('./Hostel'))
+const Reception = React.lazy(() => import('./Reception'))
+const Social = React.lazy(() => import('./Social'))
+const Connect = React.lazy(() => import('./Connect'))
+const Reports = React.lazy(() => import('./Reports'))
+const Checklist = React.lazy(() => import('./Checklist'))
+const SystemSettings = React.lazy(() => import('./SystemSettingsPage'))
+const AdminPage = React.lazy(() => import('./AdminPage'))
+const StudentFeeLedger = React.lazy(() => import('./StudentFeeLedger'))
 import MobileNavHome from './MobileNavHome'
-import LearningHub from './LearningHub'
+const LearningHub = React.lazy(() => import('./LearningHub'))
 import ModuleHub from './ModuleHub'
 import CommandPalette from './CommandPalette'
 import { openPalette } from './paletteEvents'
@@ -37,35 +37,37 @@ import TabIcons from './TabIcons'
 import MultiLoginWatch from './MultiLoginWatch'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
-import Courses            from './Courses'
-import Teaching           from './Teaching'
-import Attendance         from './Attendance'
-// Exams is the largest module — load it only when someone opens it.
+const Courses = React.lazy(() => import('./Courses'))
+const Teaching = React.lazy(() => import('./Teaching'))
+const Attendance = React.lazy(() => import('./Attendance'))
+// Every module screen loads only when it is opened (keeps the first download small).
+// Exams is the largest module.
 const Exams = React.lazy(() => import('./Exams'))
-import Cbt                from './Cbt'
-import CbtPublic          from './CbtPublic'
+const Cbt = React.lazy(() => import('./Cbt'))
+const CbtPublic = React.lazy(() => import('./CbtPublic'))
 import ResponsiveTables   from './ResponsiveTables'
-import FeeSetup           from './FeeSetup'
-import Kitchen            from './Kitchen.jsx'
-import ConstructionMaintenance from './ConstructionMaintenance'
-import Store              from './Store'
-import StorePublic        from './StorePublic'
-import ExamRegistrationPublic from './ExamRegistrationPublic'
-import AdmissionPortalPublic from './AdmissionPortalPublic'
+const FeeSetup = React.lazy(() => import('./FeeSetup'))
+const Kitchen = React.lazy(() => import('./Kitchen.jsx'))
+const ConstructionMaintenance = React.lazy(() => import('./ConstructionMaintenance'))
+const Store = React.lazy(() => import('./Store'))
+const StorePublic = React.lazy(() => import('./StorePublic'))
+const ExamRegistrationPublic = React.lazy(() => import('./ExamRegistrationPublic'))
+const AdmissionPortalPublic = React.lazy(() => import('./AdmissionPortalPublic'))
 import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
-import LandingPage        from './LandingPage'
-import WebsiteTab         from './WebsiteTab'
-import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
-import AdminLinkStaff     from './AdminLinkStaff'
-import InvitationGenerator from './InvitationGenerator'
-import CertificateGenerator from './CertificateGenerator'
-import TeachersDayFrame from './TeachersDayFrame'
-import DesignStudio from './DesignStudio'
-import CastReceiver       from './CastReceiver'
-import Awards             from './Awards'
-import FaceAttendance     from './FaceAttendance'
-import Student360         from './Student360'
+const LandingPage = React.lazy(() => import('./LandingPage'))
+const WebsiteTab = React.lazy(() => import('./WebsiteTab'))
+const StudentSelfService = React.lazy(() => import('./LeaveTab').then(m => ({ default: m.StudentSelfService })))
+const GatePassVerifyPage = React.lazy(() => import('./LeaveTab').then(m => ({ default: m.GatePassVerifyPage })))
+const AdminLinkStaff = React.lazy(() => import('./AdminLinkStaff'))
+const InvitationGenerator = React.lazy(() => import('./InvitationGenerator'))
+const CertificateGenerator = React.lazy(() => import('./CertificateGenerator'))
+const TeachersDayFrame = React.lazy(() => import('./TeachersDayFrame'))
+const DesignStudio = React.lazy(() => import('./DesignStudio'))
+const CastReceiver = React.lazy(() => import('./CastReceiver'))
+const Awards = React.lazy(() => import('./Awards'))
+const FaceAttendance = React.lazy(() => import('./FaceAttendance'))
+const Student360 = React.lazy(() => import('./Student360'))
 import { useMismatchAutoScan } from './mismatchScanner'
 import { ADMIN_ROLES, isAdminRole } from './roles'
 import ReadOnlyShield from './ReadOnlyShield'
@@ -683,7 +685,7 @@ function AccessDenied() {
 // using the ERP does not extend it). Staff must log in again.
 const SESSION_MAX_MS = 24 * 60 * 60 * 1000
 
-export default function App() {
+function AppInner() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const s = localStorage.getItem('gnsi_session')
@@ -1340,5 +1342,14 @@ function UserDashboard({ onNavigate, currentUser, modules: allowed = [] }) {
       )}
       </div>
     </div>
+  )
+}
+
+// One Suspense around the whole app: any screen that loads on demand shows this while it arrives.
+export default function App() {
+  return (
+    <React.Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: '#5d6b82', fontFamily: 'inherit' }}>Loading…</div>}>
+      <AppInner />
+    </React.Suspense>
   )
 }
