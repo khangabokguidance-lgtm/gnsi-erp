@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { gccStr, correctFeeCollectionAmount, moveFeeCollectionMonth } from './feeEngine'
-import { recordConcession, decideConcession, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
+import { recordConcession, decideConcession, CONCESSION_REASONS, REASON_NOTE_PROMPT, reasonNeedsNote, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { fixHostelType, loadActiveBeds, HOSTEL_TYPES } from './hostelFeeCheck'
 import { changeHostelType, loadStudentHistory, monthStart } from './hostelHistory'
 import { confirmFeeMonthOpen } from './monthLock'
@@ -129,12 +129,13 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
   const approve = () => run('conc', async () => {
     if (conc && conc.status !== 'approved') { await decideConcession(conc, true, { by: me, note: f.note }); return }
     if (!last) throw new Error('No payment to attach the concession to — collect first.')
-    // "Other" = a manual reason: the typed text is required and kept with the request.
-    const own = f.reason === 'Other' ? f.custom.trim() : ''
-    if (f.reason === 'Other' && !own) throw new Error('Type the reason for the concession (you chose "Other").')
+    // Staff ward: the staff member's name is required and kept with the request.
+    const needsName = reasonNeedsNote(f.reason)
+    const own = needsName ? f.custom.trim() : ''
+    if (needsName && !own) throw new Error(`Enter the ${REASON_NOTE_PROMPT[f.reason].toLowerCase()} (required for ${f.reason}).`)
     const c = await recordConcession({
       replace: true, table, rowId: last.id, kind: isFlat ? 'flat' : 'course', gcc, studentName: student.name, month: sel.month, year: sel.year, course: student.course,
-      standard: sel.expected, collected: paid, reason: f.reason, note: [own, f.note].filter(Boolean).join(' — ') || 'Approved from the Fix panel', receiptNo: last.receipt_no, payDate: last.pay_date, collectedBy: last.collected_by, approvedBy: me,
+      standard: sel.expected, collected: paid, reason: f.reason, note: [own && `Staff: ${own}`, f.note].filter(Boolean).join(' — ') || 'Approved from the Fix panel', receiptNo: last.receipt_no, payDate: last.pay_date, collectedBy: last.collected_by, approvedBy: me,
     })
     if (!c) throw new Error(CONCESSIONS_SETUP_MSG)
   }, `${inr(sel?.due)} waived as a concession — ${sel?.month} is now settled.`)
@@ -267,8 +268,8 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
                         {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
                       </select>
                     )}
-                    {f.reason === 'Other' && !(conc && conc.status !== 'approved') && (
-                      <input placeholder="Type your own reason (required)" aria-label="Manual concession reason" value={f.custom} onChange={e => setF(v => ({ ...v, custom: e.target.value }))} style={{ flex: '1 1 220px' }} />
+                    {reasonNeedsNote(f.reason) && !(conc && conc.status !== 'approved') && (
+                      <input placeholder={`${REASON_NOTE_PROMPT[f.reason]} (required)`} aria-label={REASON_NOTE_PROMPT[f.reason]} value={f.custom} onChange={e => setF(v => ({ ...v, custom: e.target.value }))} style={{ flex: '1 1 220px' }} />
                     )}
                     <input placeholder="Note (optional)" aria-label="Concession note" value={f.note} onChange={e => setF(v => ({ ...v, note: e.target.value }))} style={{ flex: '1 1 180px' }} />
                     <button className="sff-b" style={btn('#146c3a')} disabled={!!busy} onClick={approve}>Approve {inr(sel.due)}</button>

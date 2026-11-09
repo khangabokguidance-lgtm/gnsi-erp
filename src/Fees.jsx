@@ -44,7 +44,7 @@ import {
 import { getDuesForStudents, getStudentDues } from './feeDues'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
-import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
+import { CONCESSION_REASONS, REASON_NOTE_PROMPT, reasonNeedsNote, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
 import { loadStanding } from './feeStanding'
@@ -3284,9 +3284,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // Shared by Save and Razorpay: low-fee reasons, and the hostel-type checks
   // that need an admin. Returns true when the payment may go ahead.
   const approvalGate = async () => {
-    const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonOf(r) === 'Other' || isWrongType(r)) && !(r.reasonNote || '').trim()))
+    const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonNeedsNote(reasonOf(r)) || isWrongType(r)) && !(r.reasonNote || '').trim()))
     if (noReason) {
-      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${typeFor(noReason.for_month)}; explain why` : `choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''}`} before saving.`, '#dc2626')
+      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${typeFor(noReason.for_month)}; explain why` : `choose a reason${reasonNeedsNote(noReason.reason) ? ` and enter the ${REASON_NOTE_PROMPT[noReason.reason].toLowerCase()}` : ''}`} before saving.`, '#dc2626')
       return false
     }
     const issues = []
@@ -3434,7 +3434,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
         const short = lowFeeGap(r)
         const typeNote = isWrongType(r) ? `Charged at ${r.hostelType} rate — student is ${typeFor(r.for_month)}` : ''
-        const why = [typeNote, (r.reasonNote || '').trim()].filter(Boolean).join('; ')
+        const why = [typeNote, reasonNeedsNote(reasonOf(r)) ? `Staff: ${(r.reasonNote || '').trim()}` : (r.reasonNote || '').trim()].filter(p => p && p !== 'Staff:').join('; ')
         items.push({
           kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt,
           ...(short > 0 ? {
@@ -4324,9 +4324,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginTop: 8 }}>
                         <select value={reasonOf(row)} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee">
                           <option value="">— Reason —</option>
-                          {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
+                          {(wrong ? [HOSTEL_MISMATCH_REASON, ...CONCESSION_REASONS] : CONCESSION_REASONS).map(x => <option key={x}>{x}</option>)}
                         </select>
-                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={reasonOf(row) === 'Other' || wrong ? 'Explain (required)' : 'Details (optional)'} />
+                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label={REASON_NOTE_PROMPT[reasonOf(row)] || 'Low fee explanation'}
+                          style={reasonNeedsNote(reasonOf(row)) && !(row.reasonNote || '').trim() ? { borderColor: '#dc2626' } : undefined}
+                          placeholder={REASON_NOTE_PROMPT[reasonOf(row)] ? `${REASON_NOTE_PROMPT[reasonOf(row)]} (required)` : wrong ? 'Explain (required)' : 'Details (optional)'} />
                       </div>
                       {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
                     </div>

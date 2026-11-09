@@ -9,16 +9,20 @@
 // Requests live in fee_concessions (migration 20260929_fee_concessions.sql).
 import { supabase } from './supabase'
 
+// The only reasons staff can choose for a low fee. 'Hostel type mismatch' is
+// added by the system (never picked) and older requests may carry the earlier
+// reasons (Sibling concession, Management decision, …) — those still display.
 export const CONCESSION_REASONS = [
-  'Sibling concession',
+  'Repeater',
+  'Fee adjustment',
+  'Approved by Founder',
+  'Approved by Vice Principal',
   'Staff ward',
   'Financial hardship',
-  'Scholarship / merit',
-  'Joined mid-month',
-  'Management decision',
-  'Hostel type mismatch',
-  'Other',
 ]
+// Reasons that must come with a name in the note field, and the question to ask.
+export const REASON_NOTE_PROMPT = { 'Staff ward': 'Name of the staff' }
+export const reasonNeedsNote = reason => !!REASON_NOTE_PROMPT[reason]
 
 // A concession above this (₹) cannot be approved by the person who raised it —
 // a second admin must decide it. Keep in step with fee_self_approve_limit() in
