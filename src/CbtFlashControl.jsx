@@ -21,6 +21,8 @@ export default function CbtFlashControl({ canEdit, openTests, rows, flash }) {
   const chosen = pick !== null ? pick : (st.test && scheduled.some(r => r.id === st.test) ? st.test : (nextScheduled(rows, now)?.id || ''))
   const row = scheduled.find(r => r.id === chosen) || null
   const sched = row ? { at: row.opens_at, end: row.closes_at, label: row.name, test: row.id } : {}
+  // the banner button opens the picked test directly; a custom link the admin typed in Website → Settings is left alone
+  const linkFor = () => (row && (st.link === '/exam' || st.link.startsWith('/exam?t=')) ? `/exam?t=${encodeURIComponent(row.id)}` : st.link === '/exam' ? '' : st.link)
   const write = async next => {
     setBusy(true)
     const { error } = await saveSettings(cbtFlashSettings(next))
@@ -39,7 +41,7 @@ export default function CbtFlashControl({ canEdit, openTests, rows, flash }) {
             {openTests != null ? ` · ${openTests} test${openTests === 1 ? '' : 's'} published online.` : ''}
           </div>
         </div>
-        {canEdit && <button className={`btn ${st.on ? '' : 'navy'}`} disabled={busy} onClick={() => write({ on: !st.on, text, link: st.link === '/exam' ? '' : st.link, ...sched })}>{st.on ? 'Switch OFF' : 'Switch ON'}</button>}
+        {canEdit && <button className={`btn ${st.on ? '' : 'navy'}`} disabled={busy} onClick={() => write({ on: !st.on, text, link: linkFor(), ...sched })}>{st.on ? 'Switch OFF' : 'Switch ON'}</button>}
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 12.5, fontWeight: 700 }}>⏱ Countdown to</label>
@@ -53,7 +55,7 @@ export default function CbtFlashControl({ canEdit, openTests, rows, flash }) {
       {canEdit && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <input className="in" style={{ flex: '1 1 260px' }} maxLength={200} value={text} placeholder={CBT_FLASH_DEFAULT_TEXT} onChange={e => setText(e.target.value)} aria-label="Flash message text" />
-          <button className="btn" disabled={busy} onClick={() => write({ on: st.on, text, link: st.link === '/exam' ? '' : st.link, ...sched })}>Save text</button>
+          <button className="btn" disabled={busy} onClick={() => write({ on: st.on, text, link: linkFor(), ...sched })}>Save text</button>
         </div>
       )}
     </div>

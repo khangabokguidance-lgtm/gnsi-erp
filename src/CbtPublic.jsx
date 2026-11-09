@@ -11,6 +11,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
+import { parseExamRef, examHref } from './lib/cbtRef'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
 const backupKey = id => `gnsi-cbt-bk:${id}`
@@ -34,6 +35,46 @@ function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemp
   return r
 }
 
+// Opened as /exam with no test in the link (e.g. from the website menu): ask for the Test ID or the full link, and
+// offer to continue an exam that was started on this device.
+function CbtFinder() {
+  const [raw, setRaw] = useState('')
+  const [msg, setMsg] = useState('')
+  const started = useMemo(() => {
+    const out = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith('gnsi-cbt-remote:')) { const v = read(k); if (v && v.attemptId) out.push({ id: k.slice('gnsi-cbt-remote:'.length), name: v.name || '' }) }
+      }
+    } catch { /* storage blocked */ }
+    return out
+  }, [])
+  const go = e => {
+    e.preventDefault()
+    const ref = parseExamRef(raw)
+    if (!ref) { setMsg('Paste the exam link or type the Test ID your teacher gave you.'); return }
+    window.location.href = examHref(ref)
+  }
+  return (
+    <>
+      {started.length > 0 && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
+        <b>Continue your exam</b>
+        <div className="muted" style={{ fontSize: 13, margin: '4px 0 8px' }}>An exam was started on this device. Open it to carry on — your answers are saved.</div>
+        {started.map(x => <a key={x.id} className="btn navy" style={{ display: 'inline-block', marginRight: 8 }} href={examHref({ id: x.id })}>Continue{x.name ? ` as ${x.name}` : ''} →</a>)}
+      </div>}
+      <form className="card" onSubmit={go}>
+        <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
+        <p className="muted" style={{ margin: '0 0 10px' }}>Your teacher gives you an exam link or a Test ID. Paste either one here.</p>
+        <label><span className="lbl">Exam link or Test ID</span><input className="in" value={raw} onChange={e => { setRaw(e.target.value); setMsg('') }} placeholder="Paste the exam link or Test ID" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></label>
+        {msg && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0' }}>{msg}</p>}
+        <div style={{ marginTop: 12 }}><button className="btn navy" type="submit">Open exam →</button></div>
+        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Do not have a link yet? Ask your teacher, or call the institute — tests are opened for each batch.</p>
+      </form>
+    </>
+  )
+}
+
 function CbtPublicInner() {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const testId = params.get('t') || ''
@@ -52,7 +93,7 @@ function CbtPublicInner() {
 
   useEffect(() => {
     let live = true
-    if (!testId) { Promise.resolve().then(() => live && setErr('This exam link is not valid.')); return }
+    if (!testId) return undefined                    // no test in the link: the finder below asks for it
     examInfo(testId).then(i => { if (live) setInfo(i) }).catch(e => { if (live) setErr(friendly(e)) })
     return () => { live = false }
   }, [testId])
@@ -154,7 +195,8 @@ function CbtPublicInner() {
         <h2>{info ? info.name : 'Online exam'}</h2>
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}
       </div>
-      {!info && !err && <div className="card muted">Loading…</div>}
+      {!testId && <CbtFinder />}
+      {testId && !info && !err && <div className="card muted">Loading…</div>}
       {info && open && !saved && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try a 4-minute practice test first — it is not counted and nothing is saved.</span> <button className="btn" style={{ marginLeft: 6 }} onClick={startDemo}>Try the practice test</button></div>}
       {err && !(info && open && !saved) && <div className="card" role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</div>}
       {info && info.state === 'closed' && <div className="card" style={{ color: '#b42318', fontWeight: 700 }}>This exam is closed.</div>}

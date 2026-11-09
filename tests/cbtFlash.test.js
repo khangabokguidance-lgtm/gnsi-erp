@@ -53,3 +53,12 @@ test('schedule round-trips through the saved settings', () => {
   const f = cbtFlashFrom(m)
   assert.equal(f.at, '2026-11-12T04:30:00.000Z'); assert.equal(f.label, 'Mock 5'); assert.equal(f.test, 't1')
 })
+
+import { parseExamRef, examHref } from '../src/lib/cbtRef.js'
+test('exam link or plain Test ID is understood', () => {
+  assert.deepEqual(parseExamRef('https://guidancekhangabok.in/exam?t=abc123&c=4455'), { id: 'abc123', code: '4455' })
+  assert.deepEqual(parseExamRef('guidancekhangabok.in/exam?t=abc123'), { id: 'abc123', code: '' })
+  assert.deepEqual(parseExamRef('  t-8f2a91  '), { id: 't-8f2a91', code: '' })
+  for (const bad of ['', '   ', 'https://x.in/exam', 'a', '<script>', 'https://x.in/exam?t=a b!']) assert.equal(parseExamRef(bad), null, bad)
+  assert.equal(examHref({ id: 'abc', code: '12 3' }), '/exam?t=abc&c=12%203')
+})
