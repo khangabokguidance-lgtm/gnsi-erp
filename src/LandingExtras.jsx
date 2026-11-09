@@ -66,6 +66,18 @@ export function QuickServices({ goToTab, openFee, openPortal, openVerify }) {
 }
 
 // ── Admissions banner (toggled from Website → Settings) ─────────────────────
+// ── CBT flash message: stays up until an admin switches it off (Website → Settings, or CBT → Flash message) ──
+export function CbtFlashBar({ flash }) {
+  if (!flash || !flash.on) return null;
+  return (
+    <div className="lx-cbtflash" role="status" aria-live="polite">
+      <span className="lx-cbtflash-badge"><i aria-hidden="true" />CBT LIVE</span>
+      <span className="lx-cbtflash-tx">{flash.text}</span>
+      <a href={flash.link} className="lx-cbtflash-cta">Take the test →</a>
+    </div>
+  );
+}
+
 export function AdmissionsBanner({ site }) {
   if (!site.admissionsOpen) return null;
   return (

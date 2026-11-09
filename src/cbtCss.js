@@ -416,5 +416,85 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-exam .cbt-act{padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
  .cbt-exam .cbt-b{min-height:46px}
 }
+
+/* ── sections on one row, compact phone header, premium passage reader ── */
+.cbt-secbar{flex-wrap:nowrap;flex-direction:row}
+.cbt-sec .sl{display:none}
+.cbt-pass{background:linear-gradient(180deg,#fffdf7,#fbf7ec);border-right:1px solid #eadfc4;font-size:inherit;line-height:inherit;padding:0;display:flex;flex-direction:column}
+.cbt-pass-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 22px;border-bottom:1px solid #eadfc4;position:sticky;top:0;background:#fffbef;z-index:1}
+.cbt-pass-tag{font-weight:800;font-size:11px;letter-spacing:.18em;color:#8c6a22;display:inline-flex;align-items:center;gap:8px}
+.cbt-pass-tag::before{content:'';width:4px;height:16px;border-radius:2px;background:linear-gradient(#e2c57e,#b8913f)}
+.cbt-pass-tools{display:inline-flex;gap:6px}
+.cbt-pass-tools button{border:1px solid #e2d6b4;background:#fff;color:#0b1e3d;border-radius:8px;min-width:34px;height:30px;font-weight:800;cursor:pointer;font-size:12px}
+.cbt-prose{font-family:Georgia,'Playfair Display','Times New Roman',serif;font-size:var(--rfs,17px);line-height:1.85;color:#1b2433;padding:18px 24px 26px;white-space:pre-wrap;overflow:auto;flex:1;min-height:0;text-align:left;hyphens:auto;max-width:72ch}
+.cbt-prose.mm{line-height:2}
+.cbt-pass .cbt-prose::first-letter{font-size:1.9em;font-weight:700;color:#8c6a22;float:left;line-height:1;margin:.04em .1em 0 0}
+.cbt-pass .cbt-prose.mm::first-letter{all:unset}
+.cbt-reader{position:absolute;inset:0;z-index:3500;background:#fffdf7;display:flex;flex-direction:column;animation:cbtstep .28s cubic-bezier(.22,1,.36,1) backwards}
+.cbt-reader-h{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:10px 12px;background:linear-gradient(95deg,#081735,#0f2552 55%,#173a74);color:#fff;position:relative}
+.cbt-reader-h::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#e2c57e 22%,#c9a24b 78%,transparent)}
+.cbt-reader-h>button{border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;border-radius:9px;height:36px;padding:0 12px;font-weight:800;cursor:pointer}
+.cbt-reader-h>span:nth-child(2){display:flex;flex-direction:column;font-weight:800;font-size:15px;line-height:1.2;min-width:0}
+.cbt-reader-h small{font-size:11px;font-weight:700;color:#e2c57e;letter-spacing:.04em}
+.cbt-reader-h .cbt-pass-tools button{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.3)}
+.cbt-reader-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;justify-content:center;background:linear-gradient(180deg,#fffdf7,#f8f2e2)}
+.cbt-reader-body .cbt-prose{padding:22px 20px 40px;max-width:68ch;overflow:visible;flex:none;width:100%}
+.cbt-reader-body .cbt-prose::first-letter{font-size:2.1em;font-weight:700;color:#8c6a22;float:left;line-height:1;margin:.04em .1em 0 0}
+.cbt-reader-body .cbt-prose.mm::first-letter{all:unset}
+.cbt-reader-f{padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #eadfc4;box-shadow:0 -6px 18px -12px rgba(0,0,0,.3)}
+.cbt-reader-f .cbt-b{width:100%}
+.cbt-passbar{display:none}
+@media (max-width:860px){
+ /* sections: ONE slim row. Inactive tabs show only their label; the open one shows its (shortened) title */
+ .cbt-exam .cbt-secbar{padding:0 8px;gap:2px;min-height:0}
+ .cbt-exam .cbt-sec{padding:8px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;flex:none;border-bottom-width:3px}
+ .cbt-exam .cbt-sec .sl{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:7px;background:#eef1f7;color:#0f2a5c;font-weight:800;font-size:11.5px;padding:0 5px}
+ .cbt-exam .cbt-sec.on .sl{background:#0f2a5c;color:#fff}
+ .cbt-exam .cbt-sec .st{display:none}
+ .cbt-exam .cbt-sec.on .st{display:inline;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .cbt-exam .cbt-sec small{margin-left:0}
+ /* header: title+timer, one tools row; the "saved" line only shows when something is wrong */
+ .cbt-exam .cbt-top{gap:6px 10px;padding:6px 10px}
+ .cbt-exam .cbt-saved.s-saved,.cbt-exam .cbt-saved.s-saving{display:none}
+ .cbt-exam .cbt-saved{grid-row:3}
+ .cbt-exam .cbt-tools{grid-row:2}
+ .cbt-exam .cbt-qhead{padding:7px 12px;flex-wrap:nowrap}
+ .cbt-exam .cbt-qno{display:inline-flex;align-items:center;gap:6px;font-size:14px;white-space:nowrap}
+ .cbt-exam .cbt-qno small{font-size:11px}
+ .cbt-exam .cbt-palbtn{margin-left:auto;padding:6px 12px;font-size:12.5px}
+ /* passage: a preview card; tapping opens the full-screen reader */
+ .cbt-exam .cbt-pass{border-right:none;border-bottom:1px solid #eadfc4;border-radius:0}
+ .cbt-exam .cbt-pass-h{display:none}
+ .cbt-exam .cbt-pass .cbt-prose{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-height:none;padding:12px 16px 4px;font-size:15px;line-height:1.7;flex:none;min-height:0}
+ .cbt-exam .cbt-pass .cbt-prose::first-letter{float:none;font-size:inherit;margin:0;color:inherit}
+ .cbt-exam .cbt-pass .cbt-prose.mm{padding-top:14px;line-height:2.1}
+ .cbt-exam .cbt-passbar{display:flex;margin:6px 12px 12px;width:auto;border-radius:10px;background:linear-gradient(95deg,#0f2552,#173a74);color:#fff;border:1px solid #c9a24b;padding:11px 14px;font-size:13px;letter-spacing:.02em;box-shadow:0 6px 14px -8px rgba(15,37,82,.7)}
+ .cbt-exam .cbt-passbar span:last-child{color:#e2c57e}
+}
+@media (min-width:861px){.cbt-exam .cbt-pass{flex:1 1 48%;max-width:760px}.cbt-exam .cbt-pass .cbt-prose{padding:20px 28px 32px}}
+.cbt-hc .cbt-pass,.cbt-hc .cbt-prose,.cbt-hc .cbt-reader,.cbt-hc .cbt-reader-body,.cbt-hc .cbt-pass-h{background:#000!important;color:#fff!important}
+
+/* comfortable tap targets + a landscape-phone layout (the short screen must still leave room for the question) */
+@media (max-width:860px){.cbt-exam .cbt-palbtn{min-height:38px;padding:7px 14px}}
+@media (max-height:500px) and (orientation:landscape) and (max-width:1000px){
+ .cbt-exam .cbt-top{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:4px 10px}
+ .cbt-exam .cbt-top .title{flex:1 1 auto;min-width:0;font-size:13px}
+ .cbt-exam .cbt-top .title .brand{width:26px;height:26px}
+ .cbt-exam .cbt-tools{order:2;grid-row:auto;flex:0 1 auto;max-width:46vw;overflow-x:auto}
+ .cbt-exam .cbt-top .cand{display:none}
+ .cbt-exam .cbt-timer{order:3;padding:2px 10px 6px;min-width:0}.cbt-exam .cbt-timer small{display:none}.cbt-exam .cbt-timer b{font-size:15px}
+ .cbt-exam .cbt-sectimer,.cbt-exam .cbt-saved{display:none}
+ .cbt-exam .cbt-sec{padding:4px 8px}.cbt-exam .cbt-sec .sl{height:20px}
+ .cbt-exam .cbt-qhead{padding:3px 12px}
+ .cbt-exam .cbt-palbtn{min-height:32px;padding:3px 12px}
+ .cbt-exam .cbt-q{padding:8px 14px 12px}
+ .cbt-exam .cbt-opt{min-height:40px;padding:8px 12px}
+ .cbt-exam .cbt-pass .cbt-prose{-webkit-line-clamp:2;padding:6px 14px 0;font-size:14px}
+ .cbt-exam .cbt-passbar{margin:4px 12px 6px;padding:7px 12px}
+ .cbt-exam .cbt-act{display:flex;gap:6px;padding:4px 10px}
+ .cbt-exam .cbt-act .sp{display:block;flex:1}
+ .cbt-exam .cbt-b,.cbt-exam .cbt-b.b-save,.cbt-exam .cbt-b.b-prev,.cbt-exam .cbt-b.b-mark,.cbt-exam .cbt-b.b-clear{order:0;min-height:36px;padding:4px 12px;font-size:12.5px;white-space:nowrap}
+ .cbt-reader-h{padding:5px 10px}.cbt-reader-body .cbt-prose{padding:12px 20px 24px}.cbt-reader-f{padding:6px 12px}
+}
 @media (prefers-reduced-motion:reduce){.cbt-exam *,.cbt-exam *::after{transition:none!important}.cbt-exam .cbt-timer.low{animation:none}}
 `

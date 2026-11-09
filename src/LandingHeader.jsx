@@ -44,16 +44,19 @@ export function UtilityBar({ site, fontStep, setFontStep, hiContrast, setHiContr
   );
 }
 
+// 5th item: the public CBT exam page (no login) — a real link to /exam so anyone can open it, even in a new tab.
 const LINKS = [
-  ['courses', 'Courses'], ['results', 'Results'], ['rankers', 'Toppers'], ['hostel', 'Hostel'], ['scholarship', 'Scholarship'], ['enquiry', 'Admissions'],
+  ['courses', 'Courses'], ['results', 'Results'], ['rankers', 'Toppers'], ['hostel', 'Hostel'], ['cbt', 'CBT Exam', '/exam'], ['scholarship', 'Scholarship'], ['enquiry', 'Admissions'],
 ];
 export function HeaderLinks({ active, goToTab }) {
   return (
     <ul className="hd-links" aria-label="Primary">
-      {LINKS.map(([id, label]) => (
-        <li key={id}>
-          <a href={'#' + id} className={active === id ? 'on' : ''} aria-current={active === id ? 'page' : undefined}
-            onClick={(e) => { e.preventDefault(); goToTab(id); }}>{label}</a>
+      {LINKS.map(([id, label, href]) => (
+        <li key={id} className={href ? 'hd-cbt' : undefined}>
+          {href
+            ? <a href={href}>{label}<span className="hd-new" aria-hidden="true">Live</span></a>
+            : <a href={'#' + id} className={active === id ? 'on' : ''} aria-current={active === id ? 'page' : undefined}
+              onClick={(e) => { e.preventDefault(); goToTab(id); }}>{label}</a>}
         </li>
       ))}
     </ul>

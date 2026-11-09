@@ -76,7 +76,24 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [agree, setAgree] = useState(false)
   const [toast, setToast] = useState('')
   const [drawer, setDrawer] = useState(false)      // phone: the question palette as a bottom sheet
-  const [passOpen, setPassOpen] = useState(true)   // phone: the reading passage can be folded away
+  const [readerNo, setReaderNo] = useState(null)   // question the full-screen passage reader was opened on
+  const [rfs, setRfs] = useState(17)                // passage text size (px)
+  const curNo = a?.current
+  const reader = readerNo !== null && readerNo === curNo   // moving to another question closes it
+  const setReader = open => setReaderNo(open ? curNo : null)
+  const readerRef = useRef(null)
+  useEffect(() => {                                    // reader: Escape closes it; focus moves in, and back to the passage button after
+    if (!reader) return undefined
+    const prev = document.activeElement
+    try { readerRef.current?.querySelector('button')?.focus({ preventScroll: true }) } catch { /* ignore */ }
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setReaderNo(null) } }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true); try { if (prev && prev.isConnected) prev.focus({ preventScroll: true }) } catch { /* ignore */ } }
+  }, [reader])
+  const secbarRef = useRef(null)
+  useEffect(() => {                                    // keep the open section's tab in view on a phone
+    try { const el = secbarRef.current?.querySelector('.cbt-sec.on'); el?.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch { /* old browser */ }
+  }, [curNo])
   const [busy, setBusy] = useState('')              // online: 'Starting…' / 'Submitting…'
   const [netErr, setNetErr] = useState('')          // online: a save that did not get through (retried)
   const [submitErr, setSubmitErr] = useState('')
@@ -545,24 +562,29 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <button className="sm" onClick={() => setModal('instructions')} aria-label="Instructions"><span className="not-sm">Instructions</span><span className="only-sm">ⓘ Info</span></button>
       </div>
     </div>
-    <div className="cbt-secbar" role="tablist" aria-label="Sections">
+    <div className="cbt-secbar" role="tablist" aria-label="Sections" ref={secbarRef}>
       {test.sections.map((s, i) => {
         const c = secCounts(s)
-        return <button key={s.id} role="tab" aria-selected={q.sectionIndex === i} className={`cbt-sec${q.sectionIndex === i ? ' on' : ''}`} disabled={curSec !== null && i !== curSec} title={curSec !== null && i !== curSec ? (i < curSec ? 'This section is closed' : 'Opens after the current section') : undefined} onClick={() => open(s.questions[0].no)}>{s.label ? `${s.label}: ` : ''}{pick(s.title, s.titleMm, lang) || `Section ${i + 1}`}<small>{c.answered + c.answeredMarked}/{s.questions.length}</small></button>
+        return <button key={s.id} role="tab" aria-selected={q.sectionIndex === i} className={`cbt-sec${q.sectionIndex === i ? ' on' : ''}`} disabled={curSec !== null && i !== curSec} title={curSec !== null && i !== curSec ? (i < curSec ? 'This section is closed' : 'Opens after the current section') : undefined} onClick={() => open(s.questions[0].no)}><span className="sl">{s.label || i + 1}</span><span className="st">{pick(s.title, s.titleMm, lang) || `Section ${i + 1}`}</span><small>{c.answered + c.answeredMarked}/{s.questions.length}</small></button>
       })}
     </div>
     <div className="cbt-body">
       <div className="cbt-main">
         <div className="cbt-qhead">
-          <span className="cbt-qno">Question No. <i>{dn(q)}</i><small>of {qs.length}</small>{sec.label ? <span className="cbt-qsec">Section {sec.label}</span> : null}</span>
+          <span className="cbt-qno"><span className="not-sm">Question No. </span><span className="only-sm">Q. </span><i>{dn(q)}</i><small>of {qs.length}</small>{sec.label ? <span className="cbt-qsec">Section {sec.label}</span> : null}</span>
           <span className="cbt-marks">Marks: <span className="p">+{marksOf.correct}</span> · <span className="n">{marksOf.wrong ? `−${marksOf.wrong}` : '0'}</span></span>
-          <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ Palette · {all.answered + all.answeredMarked}/{qs.length}</button>
+          <button className="cbt-palbtn" onClick={() => setDrawer(true)} aria-label="Open question palette">☰ <span className="not-sm">Palette · </span>{all.answered + all.answeredMarked}/{qs.length}</button>
         </div>
         <div className="cbt-qarea">
-          {q.passage && <div className={`cbt-pass${passOpen ? ' open' : ''}`}>
-            <button className="cbt-passbar" onClick={() => setPassOpen(o => !o)} aria-expanded={passOpen}><span>📖 PASSAGE</span><span>{passOpen ? 'Hide ▴' : 'Read ▾'}</span></button>
-            <h5>{/^Part\b/i.test(q.passage) ? 'DIRECTIONS' : 'PASSAGE'}</h5><div className={lang === 'mm' && q.passageMm ? 'mm' : ''}>{pick(q.passage, q.passageMm, lang)}</div>
-          </div>}
+          {q.passage && (() => {
+            const isDir = /^Part\b/i.test(q.passage), mmP = lang === 'mm' && q.passageMm
+            const body = pick(q.passage, q.passageMm, lang)
+            return <div className="cbt-pass">
+              <div className="cbt-pass-h"><span className="cbt-pass-tag">{isDir ? 'DIRECTIONS' : 'READING PASSAGE'}</span><span className="cbt-pass-tools"><button onClick={() => setRfs(f => Math.max(14, f - 1))} aria-label="Smaller passage text">A−</button><button onClick={() => setRfs(f => Math.min(30, f + 1))} aria-label="Larger passage text">A+</button></span></div>
+              <div className={`cbt-prose${mmP ? ' mm' : ''}`} style={{ '--rfs': `${rfs}px` }}>{body}</div>
+              <button className="cbt-passbar" onClick={() => setReader(true)}><span>📖 {isDir ? 'Directions' : 'Passage'} · tap to read full screen</span><span>Open ▸</span></button>
+            </div>
+          })()}
           <div className="cbt-q">
             {q.no === sec.questions[0].no && (sec.directions || sec.directionsMm) && <div className={`cbt-dir${lang === 'mm' && sec.directionsMm ? ' mm' : ''}`}><b>Directions: </b>{pick(sec.directions, sec.directionsMm, lang)}</div>}
             {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" src={src} alt={`Question ${dn(q)} figure ${i + 1}`} draggable={false} />)}
@@ -602,6 +624,11 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       </aside>
     </div>
 
+    {reader && q.passage && <div className="cbt-reader" role="dialog" aria-modal="true" aria-label="Reading passage" ref={readerRef}>
+      <div className="cbt-reader-h"><button onClick={() => setReader(false)} aria-label="Back to the question">‹ Back</button><span>{/^Part\b/i.test(q.passage) ? 'Directions' : 'Reading passage'}<small>Question {dn(q)} of {qs.length}</small></span><span className="cbt-pass-tools"><button onClick={() => setRfs(f => Math.max(14, f - 1))} aria-label="Smaller text">A−</button><button onClick={() => setRfs(f => Math.min(30, f + 1))} aria-label="Larger text">A+</button></span></div>
+      <div className="cbt-reader-body"><article className={`cbt-prose${lang === 'mm' && q.passageMm ? ' mm' : ''}`} style={{ '--rfs': `${rfs + 2}px` }}>{pick(q.passage, q.passageMm, lang)}</article></div>
+      <div className="cbt-reader-f"><button className="cbt-b save" onClick={() => setReader(false)}>Answer Question {dn(q)} ›</button></div>
+    </div>}
     {modal === 'instructions' && <div className="cbt-modal" onClick={() => setModal(null)}><div className="box" onClick={e => e.stopPropagation()}><h3>Instructions</h3><div style={{ whiteSpace: 'pre-wrap', fontSize: 13.5, lineHeight: 1.6 }}>{test.instructions}</div><div style={{ textAlign: 'right', marginTop: 14 }}><button className="cbt-b" onClick={() => setModal(null)}>Close</button></div></div></div>}
     {modal === 'summary' && <div className="cbt-modal"><div className="box">
       <h3 style={{ textAlign: 'center' }}>Exam Summary</h3>

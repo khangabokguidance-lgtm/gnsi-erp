@@ -14,6 +14,7 @@ const GROUPS = [
 
 // Public ERP pages (full-page links)
 const SERVICES = [
+  { href: '/exam', icon: '💻', label: 'CBT Online Exam' },
   { href: '/apply', icon: '📝', label: 'Apply Online' },
   { href: '/apply-status', icon: '🔎', label: 'Application Status' },
   { href: '/exam-registration', icon: '🪪', label: 'Exam Registration' },
