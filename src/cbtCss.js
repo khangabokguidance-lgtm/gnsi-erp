@@ -71,8 +71,19 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-edit{margin-top:14px;border:1.5px solid var(--navy);border-radius:14px;padding:14px;background:#fbfcff}
 .cbt-figbox{border:1px dashed #b6c4e2;border-radius:10px;padding:10px;margin:8px 0;background:#fff}
 .cbt-figbox img{max-width:100%;max-height:220px;display:block;margin:0 auto 6px;border:1px solid var(--line);border-radius:6px}
-.cbt-twin{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.cbt-twin .mm,.cbt .in.mm{font-family:${MAYEK_STACK}}
+.cbt-cmp{margin-top:6px}
+.cbt-cmp-sum{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cbt-cmp-head,.cbt-cmp-row{display:grid;grid-template-columns:34px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.cbt-cmp-head{font-size:12.5px;color:#5d6b82;padding:0 8px 4px}
+.cbt-cmp-row{padding:8px;margin-bottom:6px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.cbt-cmp-row.diff{border-color:#e0a21b;background:#fffaf0}
+.cbt-cmp-l{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;font-weight:800;color:var(--navy)}
+.cbt-cmp-c .in{width:100%}
+.cbt-nums{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:11.5px}
+.cbt-nums i{font-style:normal;color:#64748b;margin-right:2px}
+.cbt-num{background:#eef2f9;color:#1e3a6e;border-radius:999px;padding:1px 8px;font-weight:700}
+.cbt-num.miss{background:#fde8e6;color:#b42318;outline:1px solid #f5c2bd}
+.cbt .in.mm{font-family:${MAYEK_STACK}}
 
 /* ── exam screen ── */
 .cbt-exam{position:fixed;inset:0;z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
@@ -250,7 +261,9 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-tests{grid-template-columns:1fr}
  .cbt-actions .btn,.cbt-savebar .btn{flex:1 1 calc(50% - 8px)}
  .cbt-actions .btn.red{flex:0 0 auto;padding:10px 18px}
- .cbt-twin{grid-template-columns:1fr}
+ /* the comparison stays two columns on a phone; the row label moves above them */
+ .cbt-cmp-head,.cbt-cmp-row{grid-template-columns:1fr 1fr;gap:6px}.cbt-cmp-head span{display:none}
+ .cbt-cmp-l{grid-column:1/-1;flex-direction:row;justify-content:flex-start;padding-top:0}
  .cbt-flag{flex-direction:column}.cbt-flag .btn{width:100%}
  .cbt-keygrid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .cbt-keyrow{gap:3px;padding:4px 5px;min-width:0}.cbt-keyrow b{width:22px;font-size:12px}.cbt-keyrow button{flex:1;min-width:0;width:auto;height:32px}
