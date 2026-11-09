@@ -95,6 +95,50 @@ export function CbtFlashBar({ flash }) {
   );
 }
 
+// ── Public CBT note: a pop-up shown when the website opens, while the admin has the CBT flash ON ──
+// Once per browser session (it comes back if the admin changes the message or schedule). Same switch as the banner.
+export function CbtOpenNote({ flash }) {
+  const [open, setOpen] = useState(false);
+  const [, tick] = useState(0);
+  const sig = flash ? [flash.text, flash.at, flash.label].join('|') : '';
+  const live = !!(flash && flash.on) && flashPhase(flash).phase !== 'ended';
+  useEffect(() => {
+    if (!live) return undefined;
+    let seen = false;
+    try { seen = sessionStorage.getItem('gnsi_cbt_note') === sig; } catch { /* storage blocked: show once per page load */ }
+    if (seen) return undefined;
+    const t = setTimeout(() => setOpen(true), 900);
+    return () => clearTimeout(t);
+  }, [live, sig]);
+  const close = () => { setOpen(false); try { sessionStorage.setItem('gnsi_cbt_note', sig); } catch { /* ignore */ } };
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!open || !live) return null;
+  const soon = flashPhase(flash).phase === 'upcoming';
+  return (
+    <div className="lx-cbtnote-ov" onClick={close}>
+      <div className="lx-cbtnote" role="dialog" aria-modal="true" aria-label="CBT online exam notice" onClick={(e) => e.stopPropagation()}>
+        <i className="lx-cbtnote-ring r1" aria-hidden="true" /><i className="lx-cbtnote-ring r2" aria-hidden="true" />
+        <button type="button" className="lx-cbtnote-x" aria-label="Close" onClick={close} autoFocus>×</button>
+        <div className="lx-cbtnote-crest"><img src="/gnsi-mark.webp" alt="GNSI" width="86" height="88" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div>
+        <div className="lx-cbtnote-inst">Guidance Navodaya &amp; Sainik Institute</div>
+        <span className="lx-cbtnote-pill"><i aria-hidden="true" />{soon ? 'Coming up' : 'Live now'}</span>
+        <h3>{soon ? (flash.label || 'CBT Online Exam') : 'CBT Online Exam'}</h3>
+        <div className="lx-cbtnote-rule" aria-hidden="true"><span /><b /><span /></div>
+        <p>{soon ? 'The exam opens in' : flash.text}</p>
+        {soon && <CbtCountdown to={flash.at} onDone={() => tick((n) => n + 1)} className="lx-cd lx-cd-big" />}
+        <a href={flash.link} className="lx-cbtnote-go"><span>{soon ? 'Get ready' : 'Take the test'}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></a>
+        <ul className="lx-cbtnote-pts"><li>Any phone or computer</li><li>Answers save automatically</li><li>One attempt per GCC no.</li></ul>
+        <button type="button" className="lx-cbtnote-no" onClick={close}>Maybe later</button>
+      </div>
+    </div>
+  );
+}
+
 export function AdmissionsBanner({ site }) {
   if (!site.admissionsOpen) return null;
   return (
