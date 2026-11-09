@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { fmtDate } from './premiumReceipt'
 import { loadStudents, printCbtCertificates } from './cbtCertPrint'
 import { findStudent, attemptForGcc, parentPhoneOf } from './lib/cbtCertLogic'
+import { downloadCbtFormalCertificate } from './cbtFormalCert'
 
 // Everything for one test's results: the Test ID + GCC finder, and printing for all submitted attempts.
 export function CbtCertificateTool({ test, rows, flash }) {
@@ -51,7 +52,8 @@ export function CbtCertificateTool({ test, rows, flash }) {
           <b>{st.name}</b> · GCC {st.gcc_no} · {st.course || '—'}{st.class_name ? ` (${st.class_name})` : ''}
           <div className="muted" style={{ marginTop: 4 }}>Father: {st.father_name || '—'} · Mother: {st.mother_name || '—'} · Parent contact: <b>{parentPhoneOf(st) || '— (add it in Students)'}</b>{st.hostel_type ? ` · ${st.hostel_type}` : ''}{st.dob ? ` · DOB ${fmtDate(st.dob)}` : ''}</div>
           {found.row && <div style={{ marginTop: 6 }}>Result: <b>{found.row.g.marks} / {found.row.g.max}</b>{found.row.rank ? ` · rank ${found.row.rank} of ${total}` : ''}
-            {' '}<button className="btn gold" onClick={() => printCbtCertificates([{ student: st, row: found.row, test, total }])}>🖨 Print certificate</button></div>}
+            {' '}<button className="btn gold" onClick={() => printCbtCertificates([{ student: st, row: found.row, test, total }])}>🖨 Print certificate</button>
+            {' '}<button className="btn navy" onClick={() => downloadCbtFormalCertificate({ student: st, row: found.row, test, total }).catch(e => flash?.(`Could not make the certificate: ${e.message}`))}>🏅 Formal certificate (PDF)</button></div>}
         </div>
       )}
       <div style={{ marginTop: 10 }}><button className="btn" disabled={!students || !total} onClick={printAll}>🎓 Certificates for all {total} submitted</button></div>
