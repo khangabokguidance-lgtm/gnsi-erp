@@ -114,7 +114,7 @@ function CbtInner({ perms, currentUser }) {
           </div>
         </div>
       </div>
-      {!builder && <CbtFlashControl canEdit={canEdit} openTests={online ? online.length : null} flash={flash} />}
+      {!builder && <CbtFlashControl canEdit={canEdit} openTests={online ? online.length : null} rows={online || []} flash={flash} />}
       {msg && <div role="status" style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13 }}>{msg}</div>}
 
       {tab === 'tests' && !builder && <>

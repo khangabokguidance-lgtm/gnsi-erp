@@ -4,6 +4,8 @@
 // with sensible fallbacks, so nothing renders empty.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { submitTcRequest, submitCareerApplication } from './websiteApi';
+import CbtCountdown from './CbtCountdown';
+import { flashPhase } from './lib/cbtFlash';
 import './LandingExtras.css';
 import './SectionsThemes.css';
 import './PremiumSystem.css';
@@ -68,12 +70,27 @@ export function QuickServices({ goToTab, openFee, openPortal, openVerify }) {
 // ── Admissions banner (toggled from Website → Settings) ─────────────────────
 // ── CBT flash message: stays up until an admin switches it off (Website → Settings, or CBT → Flash message) ──
 export function CbtFlashBar({ flash }) {
+  const [, tick] = useState(0);                               // re-evaluate the phase when the countdown reaches zero
+  const endMs = flash && flash.end ? Date.parse(flash.end) : NaN;
+  useEffect(() => {                                           // hide the banner by itself when the exam window closes
+    if (!Number.isFinite(endMs)) return undefined;
+    const wait = endMs - Date.now();
+    if (wait <= 0 || wait > 2147000000) return undefined;
+    const t = setTimeout(() => tick((n) => n + 1), wait + 500);
+    return () => clearTimeout(t);
+  }, [endMs]);
   if (!flash || !flash.on) return null;
+  const { phase } = flashPhase(flash);
+  if (phase === 'ended') return null;
+  const soon = phase === 'upcoming';
   return (
-    <div className="lx-cbtflash" role="status" aria-live="polite">
-      <span className="lx-cbtflash-badge"><i aria-hidden="true" />CBT LIVE</span>
-      <span className="lx-cbtflash-tx">{flash.text}</span>
-      <a href={flash.link} className="lx-cbtflash-cta">Take the test →</a>
+    <div className={'lx-cbtflash' + (soon ? ' soon' : '')} role="status" aria-live="polite">
+      <span className="lx-cbtflash-badge"><i aria-hidden="true" />{soon ? 'COMING UP' : 'CBT LIVE'}</span>
+      <span className="lx-cbtflash-tx">
+        {soon && flash.label ? <b>{flash.label} · </b> : null}{soon ? 'starts in' : flash.text}
+      </span>
+      {soon && <CbtCountdown to={flash.at} onDone={() => tick((n) => n + 1)} className="lx-cd" />}
+      <a href={flash.link} className="lx-cbtflash-cta">{soon ? 'Get ready →' : 'Take the test →'}</a>
     </div>
   );
 }

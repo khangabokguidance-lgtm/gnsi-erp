@@ -496,5 +496,9 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-exam .cbt-b,.cbt-exam .cbt-b.b-save,.cbt-exam .cbt-b.b-prev,.cbt-exam .cbt-b.b-mark,.cbt-exam .cbt-b.b-clear{order:0;min-height:36px;padding:4px 12px;font-size:12.5px;white-space:nowrap}
  .cbt-reader-h{padding:5px 10px}.cbt-reader-body .cbt-prose{padding:12px 20px 24px}.cbt-reader-f{padding:6px 12px}
 }
+.cbt-cd{display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.cbt-cd-c{display:inline-flex;flex-direction:column;align-items:center;min-width:58px;padding:8px 10px;border-radius:12px;background:#0f2a5c;color:#fff;border:1px solid #c9a24b}
+.cbt-cd-c b{font:800 22px/1 'Inter',system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.cbt-cd-c small{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#e2c57e;margin-top:3px}
 @media (prefers-reduced-motion:reduce){.cbt-exam *,.cbt-exam *::after{transition:none!important}.cbt-exam .cbt-timer.low{animation:none}}
 `
