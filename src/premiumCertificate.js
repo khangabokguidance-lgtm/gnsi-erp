@@ -312,7 +312,7 @@ const F_SCRIPT = '"Pinyon Script", "Great Vibes", "Brush Script MT", Georgia, se
 // Gold foil: a diagonal multi-stop gradient with bright highlights.
 function foil(g, x0, y0, x1, y1) {
   const gr = g.createLinearGradient(x0, y0, x1, y1)
-  ;[[0, '#7A5714'], [0.18, '#C9A24D'], [0.34, '#F7E7B0'], [0.5, '#B88A2C'], [0.66, '#F1D789'], [0.84, '#C9A24D'], [1, '#6E4E10']].forEach(([o, c]) => gr.addColorStop(o, c))
+  ;[[0, '#5E410A'], [0.2, '#A87A1E'], [0.36, '#D9AE4A'], [0.5, '#8C6416'], [0.66, '#CFA23C'], [0.84, '#A87A1E'], [1, '#5A3E09']].forEach(([o, c]) => gr.addColorStop(o, c))
   return gr
 }
 // Guilloche rosette: interlaced loops plus fine concentric rings.
@@ -370,7 +370,7 @@ export async function drawFormalCertificate(opts) {
   const g = c.getContext('2d')
   const logo = await loadImage(`data:image/png;base64,${LOGO_BASE64}`)
   const issuedDate = opts.issued || new Date()
-  const NAVY = '#0F2A5C', INK = '#1B2433'
+  const NAVY = '#0F2A5C'
   const gold = foil(g, 0, 0, W, H)
 
   // navy frame with engraved gold hatch
@@ -386,10 +386,13 @@ export async function drawFormalCertificate(opts) {
   const paper = g.createLinearGradient(PX, PY, PX + PW, PY + PH); paper.addColorStop(0, '#FFFEF8'); paper.addColorStop(0.5, '#FBF6E6'); paper.addColorStop(1, '#F3EAD0')
   g.fillStyle = paper; g.fillRect(PX, PY, PW, PH)
   g.save(); g.beginPath(); g.rect(PX, PY, PW, PH); g.clip()
-  rosette(g, cx, H / 2 + 40, 700, NAVY, 0.07, 60)
-  rosette(g, cx, H / 2 + 40, 430, '#B88A2C', 0.10, 40)
+  rosette(g, cx, H / 2 + 40, 700, NAVY, 0.035, 60)
+  rosette(g, cx, H / 2 + 40, 430, '#B88A2C', 0.05, 40)
   ;[[PX, PY], [PX + PW, PY], [PX, PY + PH], [PX + PW, PY + PH]].forEach(([x, y]) => { rosette(g, x, y, 260, NAVY, 0.22, 48); rosette(g, x, y, 170, '#B88A2C', 0.45, 32) })
-  if (logo) { g.globalAlpha = 0.045; g.drawImage(logo, cx - 300, H / 2 - 250, 600, 600); g.globalAlpha = 1 }
+  // soft ivory plate behind the wording so it always reads cleanly over the rosettes
+  { g.save(); g.translate(cx, 850); g.scale(2.1, 1)
+    const pl = g.createRadialGradient(0, 0, 30, 0, 0, 360); pl.addColorStop(0, 'rgba(255,254,248,.97)'); pl.addColorStop(0.7, 'rgba(255,254,248,.9)'); pl.addColorStop(1, 'rgba(255,254,248,0)')
+    g.fillStyle = pl; g.fillRect(-360, -330, 720, 660); g.restore() }
   g.restore()
   g.strokeStyle = gold; g.lineWidth = 7; g.strokeRect(PX + 22, PY + 22, PW - 44, PH - 44)
   g.lineWidth = 2; g.strokeRect(PX + 40, PY + 40, PW - 80, PH - 80)
@@ -410,7 +413,7 @@ export async function drawFormalCertificate(opts) {
   // letterhead
   g.textAlign = 'center'
   g.fillStyle = NAVY; fit(g, inst.name.toUpperCase(), 1300, 44, F_HEAD, '800'); spaced(g, inst.name.toUpperCase(), cx, 306, 5)
-  g.fillStyle = '#5B6678'; g.font = `italic 400 27px ${F_BODY}`; g.fillText(inst.address, cx, 346)
+  g.fillStyle = '#2F3A4E'; g.font = `italic 700 28px ${F_BODY}`; g.fillText(inst.address, cx, 346)
   // slim tricolour ribbon between gold rules
   ;[['#FF9933', 0], ['#FFFFFF', 1], ['#138808', 2]].forEach(([col, k]) => { g.fillStyle = col; g.fillRect(cx - 105 + k * 70, 366, 70, 7) })
   g.strokeStyle = 'rgba(15,42,92,.35)'; g.lineWidth = 1; g.strokeRect(cx - 105, 366, 210, 7)
@@ -424,16 +427,16 @@ export async function drawFormalCertificate(opts) {
   flourish(g, cx, 598, 420, gold)
 
   // wording
-  g.fillStyle = '#3B4556'; g.font = `italic 400 34px ${F_BODY}`
+  g.fillStyle = '#1B2433'; g.font = `italic 700 36px ${F_BODY}`
   g.fillText(opts.presented || 'This certificate is proudly presented to', cx, 660)
   g.save(); g.shadowColor = 'rgba(15,42,92,.18)'; g.shadowOffsetY = 4; g.shadowBlur = 6
-  g.fillStyle = '#0B1B3F'; fit(g, opts.name || '', 1350, 150, F_SCRIPT, '400'); g.fillText(opts.name || '', cx, 782); g.restore()
+  g.fillStyle = '#071433'; fit(g, opts.name || '', 1350, 150, F_SCRIPT, '400'); g.fillText(opts.name || '', cx, 782); g.restore()
   flourish(g, cx, 836, 520, gold)
   let y = 892
-  if (opts.subtitle) { g.fillStyle = NAVY; fit(g, opts.subtitle.toUpperCase(), 1400, 36, F_HEAD, '700'); spaced(g, opts.subtitle.toUpperCase(), cx, y, 4); y += 46 }
-  if (opts.detail) { g.fillStyle = '#8C6A22'; fit(g, opts.detail, 1400, 32, F_BODY, 'italic 700'); g.fillText(opts.detail, cx, y); y += 44 }
-  g.fillStyle = INK
-  for (const [i, raw] of (opts.body || []).entries()) { const line = i === 0 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw; fit(g, line, 1400, 28, F_BODY, 'italic 400'); g.fillText(line, cx, y); y += 38 }
+  if (opts.subtitle) { g.fillStyle = NAVY; fit(g, opts.subtitle.toUpperCase(), 1400, 40, F_HEAD, '800'); spaced(g, opts.subtitle.toUpperCase(), cx, y, 4); y += 50 }
+  if (opts.detail) { g.fillStyle = '#6B4A0E'; fit(g, opts.detail, 1400, 36, F_BODY, 'italic 700'); g.fillText(opts.detail, cx, y); y += 48 }
+  g.fillStyle = '#111827'
+  for (const [i, raw] of (opts.body || []).entries()) { const line = i === 0 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw; fit(g, line, 1400, 32, F_BODY, 'italic 700'); g.fillText(line, cx, y); y += 42 }
 
   // signatures, with the gold seal between them
   const sigY = 1170, sigs = opts.signatures || [{ title: 'Principal' }, { title: 'Head of the Institution' }]
@@ -441,13 +444,13 @@ export async function drawFormalCertificate(opts) {
     if (!sgn) return
     g.strokeStyle = gold; g.lineWidth = 3; g.beginPath(); g.moveTo(sx - 210, sigY); g.lineTo(sx + 210, sigY); g.stroke()
     g.fillStyle = NAVY; fit(g, sgn.title.toUpperCase(), 400, 26, F_HEAD, '700'); spaced(g, sgn.title.toUpperCase(), sx, sigY + 42, 3)
-    if (sgn.name) { g.fillStyle = '#5B6678'; g.font = `italic 400 25px ${F_BODY}`; g.fillText(sgn.name, sx, sigY + 78) }
+    if (sgn.name) { g.fillStyle = '#1B2433'; g.font = `italic 700 27px ${F_BODY}`; g.fillText(sgn.name, sx, sigY + 78) }
   })
-  goldSeal(g, cx, 1100, 72, 'GNSI', opts.seal ? `${opts.seal.label} ${opts.seal.value}`.trim() : 'AWARD')
+  goldSeal(g, cx, 1112, 68, 'GNSI', opts.seal ? `${opts.seal.label} ${opts.seal.value}`.trim() : 'AWARD')
 
   // issue line and micro-text security border
   const issued = issuedDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
-  g.fillStyle = '#5B6678'; g.font = `600 19px ${F_HEAD}`
+  g.fillStyle = '#1B2433'; g.font = `700 20px ${F_HEAD}`
   spaced(g, `ISSUED ${issued.toUpperCase()}${opts.certNo ? `   ·   NO. ${opts.certNo}` : ''}`, cx, H - 150, 3)
   g.save(); g.fillStyle = 'rgba(15,42,92,.42)'; g.font = `600 11px ${F_HEAD}`
   const micro = `${inst.name.toUpperCase()} · AUTHENTIC · `.repeat(14)
