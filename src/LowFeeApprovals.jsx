@@ -20,15 +20,33 @@ const inp = { border: '1px solid #d8dfec', borderRadius: 8, padding: '7px 10px',
 const btn = (bg, color = '#fff') => ({ padding: '6px 12px', borderRadius: 8, border: 'none', background: bg, color, fontWeight: 800, fontSize: 12, cursor: 'pointer' })
 
 function Breakdown({ title, rows, label }) {
+  const [open, setOpen] = useState(true)      // whole card: collapse / expand
+  const [all, setAll] = useState(false)       // list: top 5 / every row
+  const LIMIT = 5
+  const shown = all ? rows : rows.slice(0, LIMIT)
   return (
     <div style={{ ...card, margin: 0, padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc' }}>{title}</div>
-      {rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : rows.slice(0, 8).map(r => (
-        <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5 }}>
-          <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
-          <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#5d6b82', background: '#f8fafc', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+        <span>{title}{rows.length ? ` (${rows.length})` : ''}</span>
+        <span aria-hidden="true" style={{ fontSize: 12, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+      {open && (rows.length === 0 ? <div style={{ padding: 14, color: '#98a2b3', fontSize: 12.5 }}>Nothing yet.</div> : <>
+        <div style={all ? { maxHeight: 360, overflowY: 'auto' } : undefined}>
+          {shown.map(r => (
+            <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5 }}>
+              <span>{label ? label(r) : r.key} <span style={{ color: '#98a2b3' }}>· {r.count}{r.pending ? ` · ${r.pending} pending` : ''}</span></span>
+              <b style={{ color: '#b42318', whiteSpace: 'nowrap' }}>{inr(r.total)}</b>
+            </div>
+          ))}
         </div>
-      ))}
+        {rows.length > LIMIT && (
+          <button type="button" onClick={() => setAll(a => !a)}
+            style={{ width: '100%', padding: '8px 14px', border: 'none', borderTop: '1px solid #f1f5f9', background: '#fff', color: '#1e3a6e', fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {all ? 'Show less' : `Show all ${rows.length}`}
+          </button>
+        )}
+      </>)}
     </div>
   )
 }
