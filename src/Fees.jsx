@@ -1,14 +1,28 @@
+import { authFetch } from './apiFetch'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } from './systemSettings'
 import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
-import { getActiveStudents, getAllStudents } from './studentQueries'
+import { getActiveStudents } from './studentQueries'
+import { useAddonResolver } from './useAddonResolver'
+import { courseOf, courseStructure, takeFeesHandoff } from './courseMap'
+import { monthlyCollection, keepRow, admissionMonth } from './lib/reportMath'
+import { monthlyOwed, writeOffShares } from './lib/monthwiseDues'
+import { instituteNow } from './lib/feeMath'
+
+// Course to show for a student: the resolved course (a blank course on a
+// Udaan / Pragati batch counts as Foundation), else what is saved.
+const courseLabel = st => { const c = st ? courseOf(st) : ''; return (c && c !== 'Unassigned' ? c : st?.course) || '—' }
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
 import { printFeeReceipt } from './premiumReceipt'
+import { useFeeCollectionPresence } from './feePresence'
+import FeeClashBanner from './FeeClashBanner'
+import FeeRequestsPanel from './FeeRequestsPanel'
+import { countPendingFeeRequests } from './feeRequests'
 import {
   today, gccStr, rcptNo,
   collectFee,
@@ -38,15 +52,23 @@ import { useVerifiedAdmin } from './useVerifiedAdmin'
 import FeeReminders from './FeeReminders'
 import FeeInstallments from './FeeInstallments'
 import FeeDayClose from './FeeDayClose'
+import FeeLateEntries from './FeeLateEntries'
+import FeeTabShell from './FeeTabShell'
+import FeeControls from './FeeControls'
 import FeeRefunds from './FeeRefunds'
 import FeeConcessionRegister from './FeeConcessionRegister'
+import FeeWaivers from './FeeWaivers'
+import FeeDetector from './FeeDetector'
 import FeeDigest from './FeeDigest'
 import DataHealth from './DataHealth'
+import FeeMonthlyCheck from './FeeMonthlyCheck'
+import { loggedInName } from './lib/collector'
 import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
-import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
+import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -104,6 +126,18 @@ async function fileFeeActionRequest({ actionType, table, id, reason, currentUser
 // resolves when it's ready. Safe to call from multiple components/renders —
 // subsequent calls reuse the same in-flight/resolved promise.
 let _razorpayScriptPromise = null
+// An amount that shrinks to fit the card it sits in (CSS container units), so
+// a large total like ₹1,03,28,050 is never cut off — on a phone or in a narrow
+// desktop column. `base` is the largest size; the floor is 12px.
+function FitAmount({ children, base = 24, color, style }) {
+  const len = Math.max(String(children ?? '').length, 4)
+  return (
+    <div style={{ containerType: 'inline-size', minWidth: 0, flex: '1 1 auto' }}>
+      <div style={{ fontSize: `max(12px, min(${base}px, ${(100 / (len * 0.6)).toFixed(2)}cqw))`, color, whiteSpace: 'nowrap', ...style }}>{children}</div>
+    </div>
+  )
+}
+
 function loadRazorpayScript() {
   if (typeof window === 'undefined') return Promise.resolve(false)
   if (window.Razorpay) return Promise.resolve(true)
@@ -175,12 +209,7 @@ const DRESS_ITEMS = [
   { id: 'dk5', name: 'Track Suit Set 2', price: 600 },
 ]
 
-const COURSE_STRUCTURE = {
-  Navodaya:          { subtypes: ['Lakshya', 'Umeed'] },
-  Sainik:            { subtypes: ['Achiever', 'Leader', 'Champion'] },
-  Foundation:        { subtypes: ['Elite', 'Prime'] },
-  'Combined Course': { subtypes: [] },
-}
+const COURSE_STRUCTURE = courseStructure({}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'], includeLegacy: true })   // 'Lakshya' kept for older records
 
 const ADM_FEE_BASE   = 6000
 const PROSPECTUS_FEE = 200
@@ -317,7 +346,7 @@ function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Report Title</div><input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:600,outline:'none',background:'white',color:'#92400e'}} /></div>
-        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily:'monospace'}} /></div>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace"}} /></div>
       </div>
       <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#8a93a6':'linear-gradient(135deg,#1e3a6e,#132a4f)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
         {transactions.length===0?'No transactions — select a date range above':`Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
@@ -712,150 +741,6 @@ function ActivityLogTab({ students, isAdmin }) {
   )
 }
 
-// ── Audit Warnings Tab (admin only) ───────────────────────────────────────────
-// Focused view of just the underpayment warnings (flat_fee_underpayment,
-// course_fee_underpayment) — separate from the general Activity Log, which
-// mixes every action type together. This exists specifically so an admin
-// reviewing "who collected less than the standard rate, and why" doesn't
-// have to filter the full activity feed down every time; it's the direct
-// admin-only surface for the warnings collectFee already writes to
-// audit_log at collection time (see feeEngine.js).
-function AuditWarningsTab({ isAdmin }) {
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [reasonFilter, setReasonFilter] = useState('ALL')
-  const [staffFilter, setStaffFilter] = useState('ALL')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    if (!isAdmin) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while the log loads
-    setLoading(true)
-    supabase.from('audit_log')
-      .select('*')
-      .in('action', ['flat_fee_underpayment', 'course_fee_underpayment'])
-      .order('created_at', { ascending: false })
-      .limit(1000)
-      .then(({ data, error }) => {
-        if (!error) setEntries(data || [])
-        setLoading(false)
-      })
-  }, [isAdmin])
-
-  if (!isAdmin) {
-    return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
-  }
-
-  const parsed = entries.map(e => {
-    let v = {}
-    try { v = e.old_values ? JSON.parse(e.old_values) : {} } catch { /* malformed JSON — show without details */ }
-    return { ...e, v }
-  })
-
-  const reasons = [...new Set(parsed.map(e => e.v.reason).filter(Boolean))].sort()
-  const staffNames = [...new Set(parsed.map(e => e.v.staff_id || e.changed_by).filter(Boolean))].sort()
-
-  const filtered = parsed.filter(e => {
-    if (reasonFilter !== 'ALL' && e.v.reason !== reasonFilter) return false
-    const staffId = e.v.staff_id || e.changed_by
-    if (staffFilter !== 'ALL' && staffId !== staffFilter) return false
-    const d = (e.created_at || '').slice(0, 10)
-    if (dateFrom && d < dateFrom) return false
-    if (dateTo && d > dateTo) return false
-    if (search) {
-      const q = search.toLowerCase()
-      const hay = `${e.v.gcc || ''} ${e.v.student_name || ''} ${e.v.receipt_no || ''} ${staffId || ''}`.toLowerCase()
-      if (!hay.includes(q)) return false
-    }
-    return true
-  })
-
-  const totalShortfall = filtered.reduce((s, e) => s + Number(e.v.shortfall || 0), 0)
-
-  return (
-    <div>
-      <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: '14px 18px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#991B1B' }}>⚠️ Underpayment Warnings</div>
-          <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>Every flat/course fee payment collected below the standard rate, with the reason on record</div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#991B1B' }}>₹{Number(totalShortfall).toLocaleString('en-IN')}</div>
-          <div style={{ fontSize: 11, color: '#b91c1c' }}>total shortfall · {filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'flex-end' }}>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>Reason</label>
-          <select value={reasonFilter} onChange={e => setReasonFilter(e.target.value)} style={{ ...inp, width: 220 }}>
-            <option value="ALL">All reasons</option>
-            {reasons.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>Staff</label>
-          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={{ ...inp, width: 160 }}>
-            <option value="ALL">All staff</option>
-            {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>From</label>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inp, width: 150 }} />
-        </div>
-        <div>
-          <label style={{ ...lbl, fontSize: 11 }}>To</label>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inp, width: 150 }} />
-        </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <label style={{ ...lbl, fontSize: 11 }}>Search</label>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Student, GCC, receipt no…" style={inp} />
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 48, color: '#5d6b82' }}>⏳ Loading…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 48, color: '#8a93a6' }}>No underpayment warnings for the current filters</div>
-      ) : (
-        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
-                {['Type', 'GCC', 'Student', 'Period', 'Standard', 'Collected', 'Shortfall', 'Reason', 'Staff', 'Time'].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(e => {
-                const v = e.v
-                const feeLabel = e.action === 'flat_fee_underpayment' ? 'Flat Fee' : 'Course Fee'
-                return (
-                  <tr key={e.id} style={{ borderBottom: '1px solid #f3f0e8' }}>
-                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{v.student_name || '—'}</td>
-                    <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870' }}>₹{Number(v.collected_amount || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 800, color: '#dc2626' }}>₹{Number(v.shortfall || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '9px 12px', color: '#4b5870', fontSize: 12, maxWidth: 220 }}>{v.reason || '—'}</td>
-                    <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 11 }}>{v.staff_id || e.changed_by || 'Unknown'}</td>
-                    <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ✦ Dual-control approval queue. Any admin can file a revert/delete request
 // (see fileFeeActionRequest above), but it only takes effect once a
@@ -978,7 +863,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
                     </td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                       {r.snap?.student_name || '—'}
-                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: 'monospace' }}>{r.table_name} · {r.record_id}</div>
+                      <div style={{ fontSize: 11, color: '#8a93a6', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>{r.table_name} · {r.record_id}</div>
                     </td>
                     <td style={{ padding: '9px 12px', color: '#4b5870' }}>{amt != null ? `₹${Number(amt).toLocaleString('en-IN')}` : '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#4b5870', fontSize: 12, maxWidth: 220 }}>{r.reason}</td>
@@ -1073,7 +958,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
   const critCount=cnt('CRITICAL'),highCount=cnt('HIGH'),medCount=cnt('MEDIUM'),lowCount=cnt('LOW')
   const pendingCount=flags.filter(f=>(reviews[f.id]?.verdict||'pending')==='pending').length
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:40}}>{critCount>0?'🚨':highCount>0?'⚠️':'✅'}</div>
@@ -1281,8 +1166,8 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
     setSaving(true)
     try{
       let aRef=null,aType=null
-      if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
-      if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
+      if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc, row.month, row.year, row.id)}
+      if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc, row.for_month, row.year, row.id)}
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';aRef=row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null}
       await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null})
       showToast(`📅 Date corrected to ${newDate}`,'#1e3a6e');onRefresh()
@@ -1315,7 +1200,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['#','Type','Description','Amount','Date','Mode','Ref','By'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily:'monospace',fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
+                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#faf8f3'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#8a93a6',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#8a93a6',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#5d6b82',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
                 <tfoot><tr style={{background:'#1e3a6e'}}><td colSpan={3} style={{padding:'10px 12px',fontWeight:800,color:'white',fontSize:12}}>Total Paid</td><td style={{padding:'10px 12px',fontWeight:900,color:'#6ee7b7',fontSize:13}}>₹{n(grandTotal)}</td><td colSpan={4}/></tr></tfoot>
               </table>
             </div>
@@ -1400,7 +1285,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['Type','Description','Amount','Date','Mode','Actions'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
+                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
               </table>
             </div>
           )}
@@ -1412,6 +1297,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
 
 // ── Student Ledger Tab ────────────────────────────────────────────────────────
 function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect,initialSelected,initialCardTab,adminCount}){
+  const addonWho=useAddonResolver()   // marks Combined students (they pay the monthly add-on)
   const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[selected,setSelected]=useState(null)
   // Land directly on a specific student (and their Revert/Fix tab) when
   // navigated here from elsewhere — e.g. the Month-wise Dues "Fix" button —
@@ -1424,7 +1310,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[initialSelected])
   const n=v=>Number(v||0).toLocaleString('en-IN')
-  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF])
+  const filtered=useMemo(()=>{const q=search.toLowerCase();return liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return[s.name,s.gcc_no,s.class_name,s.batch,s.course].some(v=>(v||'').toString().toLowerCase().includes(q))})},[liveRows,search,courseF,hostelF,statusF])
   const inp2={width:'100%',padding:'8px 12px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:13,outline:'none',background:'white'}
   return(
     <div style={{display:'flex',gap:20,alignItems:'flex-start',flexWrap:'wrap'}}>
@@ -1434,7 +1320,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             <div style={{fontWeight:800,fontSize:13,color:'#1e3a6e',marginBottom:10}}>👨‍🎓 Select Student</div>
             <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2}/>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginTop:8}}>
-              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select>
+              <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=><option key={c}>{c}</option>)}</select>
               <select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Hostel</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select>
               <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option></select>
             </div>
@@ -1445,7 +1331,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
             {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':s.liveStatus==='Underpaid'?'#c2410c':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':s.liveStatus==='Underpaid'?'#ffedd5':'#fee2e2';return(
               <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #faf8f3',background:isSel?'#eef2f9':'white',borderLeft:isSel?'3px solid #1e3a6e':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#faf8f3'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#14213d',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}{addonWho.eligible(s)&&<span title={addonWho.eligible(s)==='exam'?'Combined add-on fee applies — appears in the Exam Combined papers':'Combined add-on fee applies'} style={{fontSize:8,fontWeight:800,color:'#5b21b6',background:'#f5f3ff',padding:'1px 4px',borderRadius:2,border:'1px solid #ddd6fe'}}>{addonWho.eligible(s)==='exam'?'COMBINED·EXAM':'COMBINED'}</span>}</div><div style={{fontSize:10,color:'#5d6b82',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#8a93a6',marginTop:1}}>{s.hostel_type||'—'}</div></div>
                   <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:13,fontWeight:900,color:s.grandTotal>0?'#16a34a':'#8a93a6'}}>{s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}</div><span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,background:sb,color:sc,marginTop:3,display:'inline-block'}}>{s.liveStatus}</span></div>
                 </div>
               </div>
@@ -1464,19 +1350,21 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
 
 
 // ── Reports Export Tab ────────────────────────────────────────────────────────
-function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo}){
+function buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,todayStr,afDateFrom,afDateTo,scopeGccs=null}){
   const stu=gcc=>students.find(s=>String(s.gcc_no)===String(gcc))
+  // Course / hostel / status filters and the date range apply to every register and summary.
+  // scopeGccs = set of GCC numbers kept by the filters (null = no filter).
+  const keep=keepRow({scope:scopeGccs,from:afDateFrom||'',to:afDateTo||''})
+  adm_flat_fees=adm_flat_fees.filter(r=>r.paid&&!r.reverted&&keep(r))
+  adm_course_fees=adm_course_fees.filter(r=>!r.reverted&&keep(r))
+  adm_fee_collections=adm_fee_collections.filter(r=>!r.reverted&&keep(r))
   const feeStatusRows=liveRows.map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Admission Fee':s.admTotal||0,'Flat Fees':s.flatTotal||0,'Course Fees':s.crsfTotal||0,'Total Paid':s.grandTotal,'Status':s.liveStatus,'Repeater':s.is_repeater?'Yes':'No'}))
-  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'Pending'}))
+  const pendingRows=liveRows.filter(s=>s.grandTotal===0).map(s=>({'GCC No':`GCC-${s.gcc_no}`,'Student Name':s.name||'—','Batch/Class':s.class_name||s.batch||'—','Course':s.course||'—','Hostel Type':s.hostel_type||'—','Status':'No payment yet','Note':s.is_repeater?'Repeater (admission waived)':(s.admission_date&&sessionOfDate(s.admission_date)===getSessionYear()&&new Date(s.admission_date).getMonth()!==3?`Late entry — joined ${String(s.admission_date).slice(0,10)}`:'')}))
   const flatRows=adm_flat_fees.filter(r=>r.paid).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Hostel Type':s?.hostel_type||'—','Month':r.month||'—','Year':r.year||'—','Amount':r.amount||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const crsfRows=adm_course_fees.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':r.course||'—','Hostel Type':s?.hostel_type||'—','For Month':r.for_month||'—','Year':r.year||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
   const admRows=adm_fee_collections.filter(r=>!r.reverted).map(r=>{const s=stu(r.adm_app_id);return{'GCC No':`GCC-${r.adm_app_id}`,'Student Name':s?.name||'—','Course':s?.course||'—','Fee Type':r.fee_type||'—','Description':r.description||'—','Amount Paid':Number(r.amount_paid)||0,'Pay Date':r.pay_date||'—','Pay Mode':r.pay_mode||'—','Txn Ref':r.txn_ref||'—','Collected By':r.collected_by||'—'}}).sort((a,b)=>b['Pay Date'].localeCompare(a['Pay Date']))
-  const courseRows=['Sainik','Navodaya','Foundation','Combined Course'].map(c=>{const ss=liveRows.filter(s=>s.course===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
-  const monthMap={};const addToMonth=(mk,type,amt)=>{if(!monthMap[mk])monthMap[mk]={'Month':mk,'Flat Fee':0,'Course Fee':0,'Admission Fee':0};monthMap[mk][type]=(monthMap[mk][type]||0)+amt}
-  adm_flat_fees.forEach(r=>{if(r.month&&r.year)addToMonth(`${r.month} ${r.year}`,'Flat Fee',r.amount||0)})
-  adm_course_fees.forEach(r=>{if(r.for_month&&r.year)addToMonth(`${r.for_month} ${r.year}`,'Course Fee',Number(r.amount_paid)||0)})
-  adm_fee_collections.forEach(r=>{if(r.pay_date){const d=new Date(r.pay_date+'T00:00:00');addToMonth(`${d.toLocaleString('default',{month:'long'})} ${d.getFullYear()}`,'Admission Fee',Number(r.amount_paid)||0)}})
-  const monthlyRows=Object.values(monthMap).map(m=>({...m,'Total':(m['Flat Fee']||0)+(m['Course Fee']||0)+(m['Admission Fee']||0)}))
+  const courseRows=['Sainik','Navodaya','Foundation','Combined Course','Unassigned'].map(c=>{const ss=liveRows.filter(s=>courseOf(s)===c);return{'Course':c,'Total Students':ss.length,'Boarders':ss.filter(s=>s.hostel_type==='Boarder').length,'Day Boarders':ss.filter(s=>s.hostel_type==='Day Boarder').length,'Day Scholars':ss.filter(s=>s.hostel_type==='Day Scholar').length,'Total Adm Fees':ss.reduce((t,s)=>t+s.admTotal,0),'Total Flat Fees':ss.reduce((t,s)=>t+s.flatTotal,0),'Total Course Fees':ss.reduce((t,s)=>t+s.crsfTotal,0),'Grand Total':ss.reduce((t,s)=>t+s.grandTotal,0)}}).filter(r=>r['Total Students']>0)
+  const monthlyRows=monthlyCollection({flat:adm_flat_fees,course:adm_course_fees,adm:adm_fee_collections})   // collected per month, by payment date
   const from=afDateFrom||'2020-01-01',to=afDateTo||todayStr,inRange=d=>d&&d>=from&&d<=to
   const dailyRows=[
     ...adm_flat_fees.filter(r=>r.paid && inRange(r.pay_date)).map(r=>{const s=stu(r.adm_app_id);return{'Date':r.pay_date||'—','GCC No':`GCC-${r.adm_app_id}`,'Student':s?.name||'—','Course':s?.course||'—','Hostel':s?.hostel_type||'—','Fee Type':'Flat Fee','Description':`${r.month} ${r.year}`,'Amount':r.amount||0,'Mode':r.pay_mode||'—','Ref':r.txn_ref||'—','By':r.collected_by||'—'}}),
@@ -1489,19 +1377,23 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const w=useWindowWidth(),isMobile=w<768,todayStr=new Date().toLocaleDateString('en-CA')
   const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[lastExport,setLastExport]=useState(null)
   const n=v=>Number(v||0).toLocaleString('en-IN')
-  const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
-  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
+  const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&courseOf(s)!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
+  const filtersOn=courseF!=='All'||hostelF!=='All'||statusF!=='All'
+  const scopeGccs=useMemo(()=>filtersOn?new Set(filteredLive.map(s=>String(parseInt(s.gcc_no)||0))):null,[filtersOn,filteredLive])
+  const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo,scopeGccs}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr,scopeGccs])
   // Month-wise dues (same figures as the Fee Dashboard card) for the two Dues Reports below.
   const { monthwiseDues } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
   const duesLoading = monthwiseDues.some(m => m.loading)
   const dueSummaryRows = useMemo(() => duesSummaryRows(monthwiseDues), [monthwiseDues])
-  const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || st.course === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
-  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || courseOf(st) === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
+  // Header tiles and report totals follow the filters: they are summed from the same rows the reports export.
+  const sumOf=(rows,k)=>rows.reduce((t,r)=>t+(Number(r[k])||0),0)
+  const admTotal=sumOf(reports.admRows,'Amount Paid'),flatTotal=sumOf(reports.flatRows,'Amount'),crsfTotal=sumOf(reports.crsfRows,'Amount Paid'),grandTotal=admTotal+flatTotal+crsfTotal
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
     {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a6e',reports:[
-      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':students.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
-      {id:'pending',name:'Pending Fee Students',desc:'Students who have not made any payment yet',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
+      {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':filteredLive.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
+      {id:'pending',name:'Students With No Payment Yet',desc:'Students who have paid nothing so far (includes repeaters and late entries — see the Note column). For who owes money, use the Dues Reports below.',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
     ]},
     {group:'Collection Registers',icon:'📋',color:'#166534',reports:[
       {id:'flat_register',name:'Flat Fee Register',desc:'All monthly flat fee payments with dates, mode and reference',rows:()=>reports.flatRows,meta:()=>({'Total Records':reports.flatRows.length,'Total Amount':`₹${n(flatTotal)}`,'Generated':todayStr})},
@@ -1523,12 +1415,12 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const doExport=(report,format)=>{const rows=report.rows(),meta=report.meta();if(!rows?.length){alert('No data to export for this report.');return};const filename=`GNSI_${report.id}_${todayStr}`,title=`${report.name} — GNSI`;if(format==='csv'){exportCSV(rows,filename);setLastExport(`✅ ${report.name} CSV exported`)}if(format==='tsv'){exportTSV(rows,filename);setLastExport(`✅ ${report.name} TSV exported`)}if(format==='json'){exportJSON(rows,filename);setLastExport(`✅ ${report.name} JSON exported`)}if(format==='xls'){exportXLS(rows,filename,report.name);setLastExport(`✅ ${report.name} XLS exported`)}if(format==='print'){exportPrintHTML(rows,filename,title,meta);setLastExport(`✅ ${report.name} Print opened`)}}
   const FmtBtn=({label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
   return(
-    <div style={{fontFamily:'system-ui,sans-serif'}}>
+    <div style={{fontFamily: "'Inter','Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:36}}>📤</div>
           <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Reports &amp; Export Centre</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div></div>
-          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:students.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{l:'Students',v:filteredLive.length,icon:'👨‍🎓'},{l:'Total',v:'₹'+n(grandTotal),icon:'💰'},{l:'Flat',v:'₹'+n(flatTotal),icon:'📅'},{l:'Course',v:'₹'+n(crsfTotal),icon:'📚'}].map(c=>(<div key={c.l} style={{background:'rgba(255,255,255,.15)',border:'1px solid rgba(255,255,255,.2)',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:80}}><div style={{fontSize:11,opacity:.8}}>{c.icon} {c.l}</div><div style={{fontSize:14,fontWeight:900,marginTop:2}}>{c.v}</div></div>))}</div>
         </div>
       </div>
       <div style={{background:'#faf8f3',border:'1px solid #e8e3d8',borderRadius:12,padding:'14px 18px',marginBottom:20}}>
@@ -1540,6 +1432,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date From</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp3}/></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#5d6b82',marginBottom:4,textTransform:'uppercase'}}>Date To</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3}/></div>
         </div>
+        <div style={{fontSize:11,color:'#5d6b82',marginTop:10}}>Course, hostel type and status limit every report below, and the date range limits every payment register and summary (by payment date). The two Dues Reports use the course and hostel filters only — dues are not date-based.</div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
           <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Today</button>
           <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #d1fae5',background:'#ecfdf5',color:'#059669',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 This Month</button>
@@ -1702,10 +1595,10 @@ const FEES_CSS = `
 .fh-g h2{font:800 16.5px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#141a26;margin:0 10px 14px;letter-spacing:-.01em}
 .fh-grid{display:grid;grid-template-columns:repeat(var(--fh-n,4),minmax(0,1fr));gap:14px 4px}
 .fh-t{display:flex;flex-direction:column;align-items:center;gap:8px;background:none!important;border:none;cursor:pointer;padding:4px 2px;border-radius:14px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#2b3445;-webkit-tap-highlight-color:transparent;min-width:0}
-.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 8px 16px -10px rgba(19,42,79,.55)}
+.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 10px 18px -8px rgba(11,30,61,.85)}
 .fh-t:active .fh-i{transform:scale(.94)}
-.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#1d3f7a;background:#eef3fb;transition:transform .12s,box-shadow .12s}
-.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
+.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7);transition:transform .12s,box-shadow .12s}
+.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 6px #c9a24b}
 .fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:min(92px,100%);min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
 .fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
@@ -1716,15 +1609,15 @@ const FEES_CSS = `
 .fe-nb.on .fe-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .fe-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
 .fe-nb .fh-b{position:absolute;top:0;right:calc(50% - 26px);min-width:16px;height:16px;border-radius:99px;background:#b42318;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
-.fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.fh-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:14px 4px;overflow:visible;background:#fff;border-radius:20px;padding:14px 10px 12px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
 .fh-row::-webkit-scrollbar{display:none}
-.fh-row .fh-t{flex:0 0 70px}
+.fh-row .fh-t{flex:none;min-width:0}
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
-.fh-all .fh-i{background:#f6efdc;color:#8a6d2b}
-@media(max-width:1600px){.fh{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+.fh-all .fh-i{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
+@media(max-width:1600px){.fh:not(.fh-row){grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:700px){.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
+@media(max-width:700px){.fh-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px 2px;padding:12px 6px 10px}.fh-row .fh-l{font-size:10.5px}.fh:not(.fh-row){grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -1803,18 +1696,15 @@ function StudentSearch({ students, onSelect, placeholder }) {
 // Every month of the current April–March session so far (April → this month).
 // Shared by the Fee Dashboard's Month-wise Dues card (and its export menu) and
 // the Reports & Export Centre, so every number comes from one place.
-// Does this student's admission fee fall in month `m`? It is charged on the
-// admission date (or the first admission payment, else the session start), never
-// before the session starts — the same rule the student's own ledger uses.
-function admissionFallsIn(student, reg, m) {
-  const sessStart = new Date(Number(String(m.session).slice(0, 4)), 3, 1)
-  const raw = student.admission_date || reg.admission?.paid?.[0]?.date
-  let d = raw ? new Date(String(raw).slice(0, 10) + 'T00:00:00') : sessStart
-  if (Number.isNaN(d.getTime()) || d < sessStart) d = sessStart
-  return d.getFullYear() === Number(m.year) && d.toLocaleString('default', { month: 'long' }) === m.fullMon
+// Does this student's admission fee fall in month `m`? It is counted in the month of the admission
+// date (a student admitted in January shows in January, even if the fee is still unpaid), not pushed to
+// April; see admissionMonth in lib/reportMath.js. `a` = { student, adm: reg.admission, start: session start year }.
+function admissionFallsIn(a, m, rangeStart) {
+  const w = admissionMonth({ admissionDate: a.student.admission_date, firstPaymentDate: a.adm.paid?.[0]?.date, sessionStartYear: a.start, rangeStart })
+  return w.year === Number(m.year) && w.month === new Date(`${m.fullMon} 1, 2000`).getMonth()
 }
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
-  const [now] = useState(() => new Date())
+  const [now] = useState(() => instituteNow())
   // Every month from January of the year the current session started, up to this
   // month. Jan–Mar belong to the previous April–March fee session in the ledger,
   // so each month carries its own session.
@@ -1857,19 +1747,33 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
   }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
 
   const monthwiseDues = useMemo(() => duesMonths.map(m => {
+    // Each student's admission fee lives in one session's register; find it once, whichever session that is.
+    const admByGcc = new Map()
+    for (const items of Object.values(duesLedgers || {})) for (const { student, reg } of items) {
+      const g = gccStr(student.gcc_no)
+      if (reg.admission && reg.admission.expected > 0 && !admByGcc.has(g)) admByGcc.set(g, { student, adm: reg.admission, start: reg.start, reg })
+    }
+    const rangeStart = new Date(duesMonths[0].year, 0, 1)
     const perStudent = []
+    const writeOffs = new Map()
     let head = null
     for (const { student, reg } of duesLedgers?.[m.session] || []) {
       // Monthly part: the flat / course fee for this month.
       const r = reg.rows.find(x => x.month === m.fullMon && Number(x.year) === m.year)
-      const monthly = r && r.status !== 'before' && r.status !== 'upcoming' && r.expected > 0
-        ? { expected: r.expected, paid: r.paidAmt, due: r.status === 'due' ? r.due : r.status === 'short' ? r.shortBy : 0 }
-        : null
+      // Expected is net of any approved concession / standing scholarship
+      // (r.waived), so expected = collected + due holds for every month. A part
+      // advance whose month has now started still owes its shortfall.
+      const base = monthlyOwed(r)
+      // Dues written off in Refunds & Transfers lower what is owed, oldest month first.
+      const wo = writeOffs.get(student.gcc_no) || writeOffs.set(student.gcc_no, writeOffShares(reg, reg.writtenOff)).get(student.gcc_no)
+      const cut = base ? (wo.byMonth.get(`${r.month}|${r.year}`) || 0) : 0
+      const monthly = base ? { expected: base.expected - cut, paid: base.paid, due: base.due - cut } : null
       if (monthly) head = head || r.head
       // Admission part: charged in the month the student was admitted (the same
       // date the student's own ledger charges it on), whether unpaid or part-paid.
-      const adm = reg.admission && reg.admission.expected > 0 && admissionFallsIn(student, reg, m)
-        ? { expected: reg.admission.expected, paid: reg.admission.paidAmt, due: reg.admission.due }
+      const a = admByGcc.get(gccStr(student.gcc_no))
+      const adm = a && admissionFallsIn(a, m, rangeStart)
+        ? (cut => ({ expected: a.adm.expected - cut, paid: a.adm.paidAmt, due: a.adm.due - cut }))(a.reg ? writeOffShares(a.reg, a.reg.writtenOff).adm : 0)
         : null
       if (!monthly && !adm) continue
       perStudent.push({
@@ -1877,7 +1781,7 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
         expected: (monthly?.expected || 0) + (adm?.expected || 0),
         paid: (monthly?.paid || 0) + (adm?.paid || 0),
         due: (monthly?.due || 0) + (adm?.due || 0),
-        monthlyExpected: monthly?.expected || 0, monthlyPaid: monthly?.paid || 0,
+        monthlyExpected: monthly?.expected || 0, monthlyPaid: monthly?.paid || 0, monthlyDue: monthly?.due || 0,
         admExpected: adm?.expected || 0, admPaid: adm?.paid || 0, admDue: adm?.due || 0,
       })
     }
@@ -1887,6 +1791,13 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
     const collectedTotal = perStudent.reduce((s, x) => s + Math.min(x.monthlyPaid, x.monthlyExpected) + Math.min(x.admPaid, x.admExpected), 0)
     const defaulters = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
     const admExpectedTotal = perStudent.reduce((s, x) => s + x.admExpected, 0)
+    // The monthly fee and the admission fee are reported separately: each has its own expected / collected / due
+    // and its own list of students, so one can never hide inside the other.
+    const sumOf = (f) => perStudent.reduce((s, x) => s + f(x), 0)
+    const monthExpectedTotal = sumOf(x => x.monthlyExpected)
+    const monthCollectedTotal = sumOf(x => Math.min(x.monthlyPaid, x.monthlyExpected))
+    const monthDefaulters = perStudent.filter(x => x.monthlyDue > 0).map(x => ({ ...x, expected: x.monthlyExpected, paid: x.monthlyPaid, due: x.monthlyDue, admDue: 0 })).sort((a, b) => b.due - a.due)
+    const admDefaulters = perStudent.filter(x => x.admDue > 0).map(x => ({ ...x, expected: x.admExpected, paid: x.admPaid, due: x.admDue, admDue: 0 })).sort((a, b) => b.due - a.due)
     const monthHead = head || (/^(February|March)$/.test(m.fullMon) ? 'Flat Fee' : 'Course Fee')
     return {
       ...m, year: String(m.year), dayOfMonth: now.getDate(), loading: !duesLedgers,
@@ -1894,6 +1805,8 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       hasAdmission: admExpectedTotal > 0, feeLabel: monthHead + (admExpectedTotal > 0 ? ' + Admission' : ''),
       expectedTotal, collectedTotal, dueTotal: defaulters.reduce((s, x) => s + x.due, 0),
       admDueTotal: defaulters.reduce((s, x) => s + x.admDue, 0),
+      monthExpectedTotal, monthCollectedTotal, monthDueTotal: monthDefaulters.reduce((s, x) => s + x.due, 0), monthDefaulters,
+      admExpectedTotal, admCollectedTotal: sumOf(x => Math.min(x.admPaid, x.admExpected)), admDefaulters,
       defaulterCount: defaulters.length, defaulters,
     }
   }), [duesMonths, duesLedgers, now, duesPlans])
@@ -1911,8 +1824,13 @@ function duesSummaryRows(months) {
     'Expected (₹)': m.expectedTotal,
     'Collected (₹)': m.collectedTotal,
     'Outstanding (₹)': m.dueTotal,
-    'of which Admission Fee (₹)': m.admDueTotal,
-    'Collected %': m.expectedTotal > 0 ? Math.min(100, Math.round((m.collectedTotal / m.expectedTotal) * 100)) : 0,
+    'Monthly Fee Expected (₹)': m.monthExpectedTotal,
+    'Monthly Fee Collected (₹)': m.monthCollectedTotal,
+    'Monthly Fee Due (₹)': m.monthDueTotal,
+    'Admission Fee Expected (₹)': m.admExpectedTotal,
+    'Admission Fee Collected (₹)': m.admCollectedTotal,
+    'Admission Fee Due (₹)': m.admDueTotal,
+    'Collected %': m.expectedTotal > 0 ? (m.dueTotal > 0 ? Math.min(99, Math.floor((m.collectedTotal / m.expectedTotal) * 100)) : 100) : 0,
   }))
 }
 // … and one row per student who still owes for a month (biggest due first).
@@ -1929,7 +1847,8 @@ function duesDefaulterRows(months, keep = () => true) {
     'Expected (₹)': x.expected,
     'Paid (₹)': x.paid,
     'Due (₹)': x.due,
-    'of which Admission Fee (₹)': x.admDue,
+    'Monthly Fee Due (₹)': x.monthlyDue,
+    'Admission Fee Due (₹)': x.admDue,
     'Status': x.paid > 0 ? 'Partial payment' : 'No payment',
     'Instalment Plan': x.plan ? (x.plan.overdue ? `Overdue since ${x.plan.nextDue}` : `Next due ${x.plan.nextDue || '—'}`) : '',
   })))
@@ -2135,7 +2054,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const stuRows = (list, extra) => list.map(s => ({
     'GCC No': `GCC-${s.gcc_no}`, 'Student': s.name, 'Course': s.course || '', 'Batch': s.batch || '',
     'Hostel': s.hostel_type || '', 'Status': s.liveStatus || '',
-    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': Number(s.totalDue) || 0, ...(extra ? extra(s) : {}),
+    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': s.totalDue == null ? '' : (Number(s.totalDue) || 0), ...(extra ? extra(s) : {}),
   }))
   const rptUnderpaid = stuRows(underpaidStudents)
   const rptZero      = stuRows(zeroPayment)
@@ -2183,7 +2102,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     'Hostel': r.st.hostel_type || '', 'Stage': PROG_STAGES[progStage].short, 'Status': r.status,
     'Concession (₹)': r.conc ? r.conc.amt : '', 'Concession Status': r.conc ? r.conc.status : '', 'Note': r.note,
   }))
-  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 4 }
+  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 4 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2213,7 +2132,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
             <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
             <div style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</div>
+            <FitAmount base={24} color={c.color} style={{ fontWeight: 600, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</FitAmount>
             <div style={{ fontSize: 11, color: '#98a2b3', marginTop: 6 }}>{c.sub}{c.onClick ? (c.open ? ' ▲' : ' ▼') : ''}</div>
           </div>
         ))}
@@ -2224,9 +2143,9 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       {/* ── Underpaid Students drilldown — toggled by the stat card above ── */}
       {isAdmin && showUnderpaid && (
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fdba74', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fdba74' }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid #fdba74' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', flex: '1 1 220px', minWidth: 0 }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
               <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
               <ExportBar rows={rptUnderpaid} filename={`GNSI_Underpaid_${todayStr}`} compact />
             </div>
@@ -2235,19 +2154,19 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             {underpaidStudents.length === 0
               ? <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No underpaid students right now</div>
               : underpaidStudents.map(s => (
-                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
-                  <div style={{ minWidth: 0 }}>
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px 14px', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
+                  <div style={{ minWidth: 0, flex: '1 1 170px' }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginLeft: 'auto' }}>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 8.5, fontWeight: 700, color: '#8a93a6', textTransform: 'uppercase', letterSpacing: '.04em' }}>Paid</div>
                       <div style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}>₹{n(s.grandTotal)}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 8.5, fontWeight: 700, color: '#8a93a6', textTransform: 'uppercase', letterSpacing: '.04em' }}>Short By</div>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(s.totalDue)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }} title={s.totalDue == null ? 'Could not be worked out — tap Fix to see the dues' : undefined}>{s.totalDue == null ? '—' : `₹${n(s.totalDue)}`}</div>
                     </div>
                     <button onClick={() => onCollect(s)}
                       style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: 'none', background: '#c2410c', color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -2275,11 +2194,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           { icon: '📚', label: 'Course Fees', value: `₹${n(crsfTotal)}`, color: '#a7771f', bg: '#fbf3e0' },
           { icon: '✅', label: 'Fully Paid', value: fullyPaid.length, color: '#059669', bg: '#dcfce7', sub: 'flat + course both paid' },
         ].map(c => (
-          <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '13px 16px', boxShadow: '0 1px 2px rgba(19,42,79,.05)', minWidth: 0 }}>
+          <div key={c.label} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 8 : 12, background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '13px 16px', boxShadow: '0 1px 2px rgba(19,42,79,.05)', minWidth: 0 }}>
             <div style={{ width: 38, height: 38, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>{c.icon}</div>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: isMobile ? 'none' : 1, width: isMobile ? '100%' : 'auto' }}>
               <div style={{ fontSize: 10.5, color: '#5d6b82', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{c.value}</div>
+              <div style={{ marginTop: 2, display: 'flex' }}><FitAmount base={20} color={c.color} style={{ fontWeight: 600, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums' }}>{c.value}</FitAmount></div>
               {c.sub && <div style={{ fontSize: 10.5, color: '#98a2b3', marginTop: 2 }}>{c.sub}</div>}
             </div>
           </div>
@@ -2381,11 +2300,6 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                       {x.plan.overdue ? 'PLAN OVERDUE' : 'ON PLAN'}
                     </span>
                   )}
-                  {x.admDue > 0 && (
-                    <span title="Includes the admission fee, charged in the month of admission" style={{ fontSize: 8.5, fontWeight: 800, color: '#6d28d9', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4, border: '1px solid #ddd6fe', letterSpacing: '.03em' }}>
-                      + ADMISSION ₹{n(x.admDue)}
-                    </span>
-                  )}
                 </div>
                 <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 2 }}>
                   GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'}
@@ -2427,7 +2341,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
           const renderDefaulterList = (defaulters, md) => {
             if (defaulters.length === 0) {
-              return <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No dues for this month</div>
+              return <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No dues</div>
             }
             const partial = defaulters.filter(x => x.paid > 0)
             const noPayment = defaulters.filter(x => x.paid === 0)
@@ -2461,6 +2375,25 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             )
           }
 
+          // Two clearly separate lists: the monthly (flat / course) fee, and the admission fee.
+          const renderSplitDues = md => {
+            const part = (title, colour, bg, total, list) => (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: bg, borderBottom: `1px solid ${colour}33` }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: colour }}>{title} · {list.length} student{list.length !== 1 ? 's' : ''}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: colour }}>₹{n(total)} due</span>
+                </div>
+                {renderDefaulterList(list, md)}
+              </div>
+            )
+            return (
+              <>
+                {part(`${md.headlineType} (monthly)`, '#a7771f', '#fffbeb', md.monthDueTotal, md.monthDefaulters)}
+                {md.admExpectedTotal > 0 && part('Admission Fee', '#6d28d9', '#f5f3ff', md.admDueTotal, md.admDefaulters)}
+              </>
+            )
+          }
+
           return (
             <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
@@ -2482,7 +2415,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(92px, 1fr))' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
-            const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
+            const pctRaw   = m.expectedTotal > 0 ? (m.dueTotal > 0 ? Math.min(99, Math.floor((m.collectedTotal / m.expectedTotal) * 100)) : 100) : null
             // Clamp for display: collected can legitimately exceed the
             // "expected" estimate (advances, or a rate mismatch for a
             // student who changed course/hostel mid-year) — showing 101%+
@@ -2510,6 +2443,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 2 }}>
                   {m.loading ? '…' : m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
                 </div>
+                {!m.loading && m.expectedTotal > 0 && (
+                  <div style={{ fontSize: 9.5, marginTop: 2, lineHeight: 1.45 }}>
+                    <div style={{ color: m.monthDueTotal > 0 ? '#dc2626' : '#059669' }}>Month ₹{n(m.monthDueTotal)}</div>
+                    {m.admExpectedTotal > 0 && <div style={{ color: m.admDueTotal > 0 ? '#6d28d9' : '#059669' }}>Admission ₹{n(m.admDueTotal)}</div>}
+                  </div>
+                )}
                 <div style={{ fontSize: 9.5, color: '#8a93a6', marginTop: 2 }}>
                   {m.loading ? 'working out dues…' : m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no fee due'}
                 </div>
@@ -2533,11 +2472,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     {md.fullMon} {md.year} — {md.defaulterCount} student{md.defaulterCount !== 1 ? 's' : ''} due
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: md.dueTotal > 0 ? '#dc2626' : '#059669' }}>
-                    ₹{n(md.dueTotal)} outstanding
+                    ₹{n(md.dueTotal)} outstanding · Month ₹{n(md.monthDueTotal)}{md.admExpectedTotal > 0 ? ` · Admission ₹${n(md.admDueTotal)}` : ''}
                   </div>
                 </div>
                 <div style={{ borderRadius: 8, border: '1px solid #f3f0e8', overflow: 'hidden' }}>
-                  {renderDefaulterList(md.defaulters, md)}
+                  {renderSplitDues(md)}
                 </div>
               </div>
             ))}
@@ -2549,11 +2488,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 {selectedDues.fullMon} {selectedDues.year} — {selectedDues.defaulterCount} student{selectedDues.defaulterCount !== 1 ? 's' : ''} due
               </div>
               <div style={{ fontSize: 12, fontWeight: 800, color: selectedDues.dueTotal > 0 ? '#dc2626' : '#059669' }}>
-                ₹{n(selectedDues.dueTotal)} outstanding
+                ₹{n(selectedDues.dueTotal)} outstanding · Month ₹{n(selectedDues.monthDueTotal)}{selectedDues.admExpectedTotal > 0 ? ` · Admission ₹${n(selectedDues.admDueTotal)}` : ''}
               </div>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #f3f0e8' }}>
-              {renderDefaulterList(selectedDues.defaulters, selectedDues)}
+              {renderSplitDues(selectedDues)}
             </div>
           </div>
         )}
@@ -3007,11 +2946,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [step,    setStep]    = useState('select')
   const [student, setStudent] = useState(null)
   const [admRec,  setAdmRec]  = useState(null)
+  const clashOthers = useFeeCollectionPresence(student?.gcc_no, currentUser)   // who else has this student open
 
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
   const [txnRef,      setTxnRef]      = useState('')
-  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // Collected By is automatic: always the signed-in user, and cannot be edited.
+  const [collectedBy, setCollectedBy] = useState(() => loggedInName(currentUser))
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null)
   // Populated right after a successful collectFee() — drives the "Send
@@ -3087,9 +3028,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // backfill collectedBy once it's available if the field is still empty,
   // without ever overwriting something staff already typed in.
   useEffect(() => {
-    const authName = currentUser?.userName || currentUser?.name
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the name once sign-in resolves, never overwriting typed text
-    if (authName) setCollectedBy(c => c || authName)
+    const authName = loggedInName(currentUser)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the signed-in user (also after sign-in resolves or the user changes)
+    setCollectedBy(authName)
   }, [currentUser])
 
   // Flat months priced at the hostel type in effect that month.
@@ -3272,11 +3213,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const handleRevertFlat = (month, year) => {
     const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
-    doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee' })
+    doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year, r.id), accountSourceType: 'flat_fee' })
   }
 
   const handleRevertCourseFee = (r) => {
-    doRevert({ table: 'adm_course_fees', id: r.id, label: `${r.course} ${r.for_month} course fee — ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee' })
+    doRevert({ table: 'adm_course_fees', id: r.id, label: `${r.course} ${r.for_month} course fee — ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year, r.id), accountSourceType: 'course_fee' })
   }
 
   // ── Admin-only: fix a mistakenly-entered payment date (without reverting) ──
@@ -3317,11 +3258,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const handleFixFlatDate = (month, year) => {
     const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
-    handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
+    handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year, r.id), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
   }
 
   const handleFixCourseDate = (r) => {
-    handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
+    handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year, r.id), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
   }
 
   // Builds the pending-charge line items from current form state — shared by
@@ -3360,7 +3301,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     }
     if (lowFeeRows.length && !isAdmin) {
       const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
-      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return false
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis low fee will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`)) return false
     }
     return true
   }
@@ -3514,18 +3455,19 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // Cash/Bank dropdown selection for the Razorpay case.
   const finalizeCollection = async (items, { mode, ref } = {}) => {
     const receiptNo = rcptNo('FEE')
-    const { sections, total } = await collectFee({
+    const { sections, total, receiptSerial } = await collectFee({
       gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
       className: student.batch || '', course: student.course || '',
       hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
-      studentId: student.id, receiptNo, items,
+      studentId: student.id, receiptNo, items, isRepeater,
+      skipHold: !!(mode || ref),   // online / already-received money is never held back
     })
 
     // Premium hospital-style receipt (premiumReceipt.js) — same design as the
     // Student Fee Ledger. Falls back to the old receipt if anything fails.
     try {
       printFeeReceipt({
-        receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
+        receipt_no: receiptNo, receipt_serial: receiptSerial, pay_date: payDate, pay_mode: mode || payMode,
         txn_ref: ref ?? txnRef, collected_by: collectedBy,
         student_name: student.name, adm_no: admRec?.adm_no || '--',
         gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
@@ -3542,7 +3484,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       })
     }
 
-    showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
+    showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}${receiptSerial ? ' · ' + receiptSerial : ''}`, '#16a34a')
     setPayDate(today())   // next payment defaults to the real current date (page may be open past midnight)
     setLastPayment({ studentName: student.name, gcc, receiptNo, total, payDate, items })
     setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
@@ -3579,7 +3521,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     // transaction reference for non-cash modes, since a UPI/bank/cheque
     // payment with no ref number can't be reconciled or looked up later.
     if (!collectedBy.trim()) {
-      showToast('Collected By is required — enter the name of the staff collecting this payment.', '#dc2626')
+      showToast('Collected By is required and is filled in from your login — sign out and in again.', '#dc2626')
       return
     }
     if (payMode !== 'Cash' && !txnRef.trim()) {
@@ -3597,7 +3539,17 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     try {
       await finalizeCollection(itemsToSave)
     } catch (err) {
-      showToast('Save failed: ' + err.message, '#dc2626')
+      if (err.held) {
+        // Low fee filed for admin approval — nothing was recorded or printed.
+        showToast(err.message, '#b8923a')
+        if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked — use the WhatsApp button on the request */ } }
+        setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
+        setAdvAmt(''); setAdvFor(''); setFlatChecked(flatFees.map(() => false)); setTxnRef('')
+        setStep('select'); setStudent(null)
+      } else if (/row-level security|permission denied/i.test(err.message || '')) {
+        // the database did not recognise this login as staff (see the banner at the top)
+        showToast('Save failed: the database did not accept this login as staff, so nothing was saved. Use “Sign in again” (log out and log back in), then save again. (' + err.message + ')', '#dc2626')
+      } else showToast('Save failed: ' + err.message, '#dc2626')
     }
     setSaving(false)
   }
@@ -3643,7 +3595,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       // amount charged is whatever the backend computes from `items`, not
       // whatever the browser sends, so a tampered client request can't
       // under-charge or mismatch the ledger.
-      const orderRes = await fetch(RAZORPAY_CREATE_ORDER_URL, {
+      const orderRes = await authFetch(RAZORPAY_CREATE_ORDER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3866,9 +3818,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   }
 
   // ── Select screen ─────────────────────────────────────────────────────────
-  if (step === 'select') return (
+  if (step === 'select') return (<>
+    <FeeRequestsPanel currentUser={currentUser} isAdmin={isAdmin} onDone={onRefresh} />
     <CollectionDesk students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onSelect={handleSelect} isMobile={isMobile} />
-  )
+  </>)
 
   // Where the cashier is in the flow — drives the step tracker.
   const flowStep = grandThis === 0 ? 2 : (!collectedBy.trim() || (payMode !== 'Cash' && !txnRef.trim())) ? 3 : 4
@@ -3878,6 +3831,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     <div className="fp">
       <style>{FEE_PAY_CSS}</style>
       <FeeFlowSteps current={flowStep} />
+      <FeeClashBanner others={clashOthers} />
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: '1px solid #e8e3d8', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 320, color: '#14213d' }}>
           {toast.msg}
@@ -4413,8 +4367,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
                 <div><span className="fp-lbl">Payment date</span><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} aria-label="Payment date" style={inp} /></div>
                 <div>
-                  <span className="fp-lbl">Collected by *</span>
-                  <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : inp} />
+                  <span className="fp-lbl">Collected by * <span style={{ fontWeight: 500, opacity: .7 }}>(automatic — you)</span></span>
+                  <input value={collectedBy} readOnly title="Filled in automatically from the signed-in user" placeholder="Sign in again — no user name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : { ...inp, background: '#f4f1e8', cursor: 'not-allowed' }} />
                 </div>
               </div>
               <div style={{ marginTop: 10 }}>
@@ -4474,131 +4428,34 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 // ─── Root: Fees page ──────────────────────────────────────────────────────────
 
 
-// ════════════════════════════════════════════════════════════════════════════
-// PAST STUDENTS — DUES  (FLOW FIX)
-// The main Fees views are active-only by design, so once a student was
-// marked Dropout / Inactive / Withdrawn / Passed Out, anything they still
-// owed vanished from every screen. This admin tab lists exactly those
-// students with an outstanding balance, using the same dues engine as the
-// active roster, capped at their Left Date so no dues keep piling up for
-// months after they left. Collect → opens the normal Fee Payment screen,
-// so the money still goes through collectFee() → Accounts like any other.
-// ════════════════════════════════════════════════════════════════════════════
-const MONTH_IDX = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 }
-function ymOf(item) {
-  const m = MONTH_IDX[String(item?.month || '').slice(0, 3).toLowerCase()]
-  const y = Number(item?.year)
-  return m && y ? y * 100 + m : null
-}
-function capDuesAtLeftDate(dues, leftDate) {
-  if (!dues) return null
-  const cap = /^\d{4}-\d{2}/.test(leftDate || '') ? Number(leftDate.slice(0, 4)) * 100 + Number(leftDate.slice(5, 7)) : null
-  const owed = items => (items || []).filter(i => !i.paid && (cap == null || (ymOf(i) ?? 0) <= cap))
-  const balanceOf = i => Number(i.due ?? i.expected) || 0   // part-paid months owe only the balance
-  const flatOwed = owed(dues.flatFee?.items)
-  const crsOwed  = owed(dues.courseFee?.items)
-  const sum = arr => arr.reduce((t, i) => t + balanceOf(i), 0)
-  // Without a left date we can't cap months, so fall back to the engine's own totals.
-  const flatDue = cap == null ? Number(dues.flatFee?.due || 0) : sum(flatOwed)
-  const crsDue  = cap == null ? Number(dues.courseFee?.due || 0) : sum(crsOwed)
-  const admDue  = Number(dues.admission?.due || 0)
-  const arrears = Number(dues.arrears) || 0   // earlier sessions (before the left date by definition)
-  return { admDue, flatDue, crsDue, arrears, totalDue: admDue + flatDue + crsDue + arrears, months: flatOwed.length + crsOwed.length, partial: !!dues.failedSources?.length }
-}
 
-function PastStudentDuesTab({ isAdmin, onCollect }) {
-  const n = v => Number(v || 0).toLocaleString('en-IN')
-  const [rows, setRows] = useState(null)
-  const [err, setErr] = useState('')
-  const [q, setQ] = useState('')
-  const [statusF, setStatusF] = useState('All')
-
-  const load = async () => {
-    setRows(null); setErr('')
-    try {
-      const all = await getAllStudents('*')
-      const past = (all || []).filter(s => s.status && s.status !== 'Active' && !s.deleted_at && gccStr(s.gcc_no))
-      if (!past.length) { setRows([]); return }
-      const results = await getDuesForStudents(past, getSessionYear())
-      const list = results
-        .map(({ student, dues }) => ({ student, d: capDuesAtLeftDate(dues, student.left_date) }))
-        .filter(r => r.d && r.d.totalDue > 0)
-        .sort((a, b) => b.d.totalDue - a.d.totalDue)
-      setRows(list)
-    } catch (e) {
-      setErr(e?.message || String(e)); setRows([])
+// The three payment tables are already in memory, so the dues engine can be
+// handed each student's rows instead of re-reading them (see getStudentDues).
+// The hostel-type history for everyone comes in one read; if that read fails it
+// is left out so each student asks for their own. → preload(student) for
+// getDuesForStudents.
+async function buildDuesPreload({ adm, flat, course }) {
+  const byGcc = (rows, field) => {
+    const m = new Map()
+    for (const r of rows || []) { const g = gccStr(r[field]); if (!m.has(g)) m.set(g, []); m.get(g).push(r) }
+    return m
+  }
+  const admIdx = byGcc(adm, 'adm_app_id')
+  const flatIdx = byGcc(flat, 'adm_app_id')
+  const crsIdx = byGcc(course, 'adm_app_id')
+  const hist = await loadHostelHistory()
+  return s => {
+    const g = gccStr(s.gcc_no)
+    return {
+      adm: admIdx.get(g) || [], flat: flatIdx.get(g) || [], course: crsIdx.get(g) || [],
+      ...(hist.failed ? {} : { history: hist.map.get(String(parseInt(s.gcc_no) || 0)) || [] }),
     }
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the past-student dues when an admin opens the tab
-  useEffect(() => { if (isAdmin) load() }, [isAdmin])
-
-  if (!isAdmin) return <div style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
-
-  const statuses = ['All', ...Array.from(new Set((rows || []).map(r => r.student.status))).sort()]
-  const shown = (rows || []).filter(r => {
-    if (statusF !== 'All' && r.student.status !== statusF) return false
-    const t = q.trim().toLowerCase()
-    return !t || [r.student.name, r.student.gcc_no, r.student.batch, r.student.course].some(v => String(v || '').toLowerCase().includes(t))
-  })
-  const total = shown.reduce((t, r) => t + r.d.totalDue, 0)
-  const cell = { padding: '9px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-  const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
-
-  return (
-    <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #e8e3d8', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a6e' }}>🚪 Past students with dues</div>
-          <div style={{ fontSize: 11.5, color: '#5d6b82', marginTop: 2 }}>Dropout · Inactive · Withdrawn · Passed Out — counted up to each student's Left Date</div>
-        </div>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" style={{ padding: '7px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 12.5, minWidth: 160 }} />
-        <select value={statusF} onChange={e => setStatusF(e.target.value)} style={{ padding: '7px 8px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 12.5 }}>
-          {statuses.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <button onClick={load} style={{ padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>↻ Refresh</button>
-        {rows && rows.length > 0 && <ExportBar rows={shown.map(r => ({ gcc_no: r.student.gcc_no, name: r.student.name, status: r.student.status, left_date: r.student.left_date || '', batch: r.student.batch || '', course: r.student.course || '', admission_due: r.d.admDue, flat_due: r.d.flatDue, course_due: r.d.crsDue, total_due: r.d.totalDue }))} filename="past_student_dues" />}
-      </div>
-      {rows === null ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#5d6b82', fontSize: 13 }}>Calculating dues for past students…</div>
-      ) : err ? (
-        <div style={{ padding: 24, color: '#b91c1c', fontSize: 13 }}>Could not load past-student dues: {err}</div>
-      ) : shown.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: '#16a34a', fontSize: 13, fontWeight: 700 }}>✓ No past student owes anything.</div>
-      ) : (
-        <>
-          <div style={{ padding: '10px 16px', background: '#fef2f2', borderBottom: '1px solid #fecaca', fontSize: 13, fontWeight: 800, color: '#991b1b' }}>
-            {shown.length} student{shown.length > 1 ? 's' : ''} · ₹{Number(total).toLocaleString('en-IN')} outstanding
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['GCC', 'Name', 'Status', 'Left date', 'Admission', 'Flat fee', 'Course fee', 'Total due', ''].map(h => <th key={h} style={{ ...head, textAlign: ['Admission', 'Flat fee', 'Course fee', 'Total due'].includes(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-              <tbody>
-                {shown.map(({ student: s, d }) => (
-                  <tr key={s.id}>
-                    <td style={{ ...cell, fontWeight: 700 }}>{s.gcc_no}</td>
-                    <td style={cell}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
-                    <td style={cell}><span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#f3f0e8', color: '#4b5870' }}>{s.status}</span></td>
-                    <td style={{ ...cell, color: s.left_date ? '#14213d' : '#b45309' }}>{s.left_date || 'not set'}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.admDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.flatDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.crsDue)}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontWeight: 900, color: '#dc2626' }}>₹{n(d.totalDue)}</td>
-                    <td style={cell}><button onClick={() => onCollect?.(s)} style={{ padding: '5px 12px', border: 'none', borderRadius: 7, background: '#16a34a', color: 'white', fontWeight: 800, fontSize: 11.5, cursor: 'pointer' }}>Collect</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '10px 16px', fontSize: 11, color: '#5d6b82', borderTop: '1px solid #f3f0e8' }}>
-            "not set" = no Left Date on the student record, so dues are counted up to today. Set it in Students → Edit to cap them.
-          </div>
-        </>
-      )}
-    </div>
-  )
 }
 
+
 export default function Fees() {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   useSystemSettings() // Razorpay / WhatsApp switches apply as soon as they're saved
   const w        = useWindowWidth()
   const isMobile = w < 768
@@ -4618,8 +4475,8 @@ export default function Fees() {
   // isAdminRole() helper every other module checks against.
   const localIsAdmin = isAdminRole(currentUser?.role)
   const isAdmin = useVerifiedAdmin(localIsAdmin)   // the database must agree the login really is an admin
-  const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
+  const feesHandoff = useRef(takeFeesHandoff())   // e.g. Admissions → "Collect fee" for one student
   const [admissions,          setAdmissions]    = useState([])
   const [adm_fee_collections, setAdmFeeCols]    = useState([])
   const [adm_flat_fees,       setAdmFlatFees]   = useState([])
@@ -4636,7 +4493,7 @@ export default function Fees() {
   const [tab, setTab] = useState(() => {
     // The "What's new" banner can ask for a specific tab to be opened.
     try { const t = sessionStorage.getItem('gnsi_fees_open_tab'); if (t) { sessionStorage.removeItem('gnsi_fees_open_tab'); return t } } catch { /* storage unavailable */ }
-    return 'dashboard'
+    return isAdmin ? 'dashboard' : 'payment'
   })
   useEffect(() => {
     const h = e => { if (e?.detail) { setTab(e.detail); try { sessionStorage.removeItem('gnsi_fees_open_tab') } catch { /* storage unavailable */ } } }
@@ -4686,7 +4543,7 @@ export default function Fees() {
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
   // Low fees waiting for an admin (fee_concessions); refreshed after each decision.
   const [lowFeePending, setLowFeePending] = useState(0)
-  const refreshLowFeePending = useCallback(() => { countPendingConcessions().then(setLowFeePending) }, [])
+  const refreshLowFeePending = useCallback(() => { Promise.all([countPendingConcessions(), countPendingFeeRequests()]).then(([a, b]) => setLowFeePending(a + b)) }, [])
   useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
   // Open hostel-type issues (record ≠ hostel bed + pending wrong-type approvals).
   const [hostelIssueCount, setHostelIssueCount] = useState(0)
@@ -4711,10 +4568,9 @@ export default function Fees() {
     // this trades away visibility into dues owed by students who already
     // left — if that's needed later, add a separate getAllStudents() pull
     // for a dedicated "past students" ledger view instead of reverting this.
-    let fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_
+    let students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_
     try {
-    ;[fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
-      fetchAllRows('fees', { orderCol: 'created_at', ascending: false }),
+    ;[students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
       getActiveStudents('*'),
       fetchAllRows('admissions'),
       fetchAllRows('adm_fee_collections', { filters: [['reverted', 'eq', false]] }),
@@ -4727,7 +4583,6 @@ export default function Fees() {
       alert('⚠️ Fee data could not be loaded completely, so totals are NOT shown.\n\n' + err.message + '\n\nCheck your connection and press refresh.')
       return
     }
-    setFees(fees_)
     setStudents(students_)
     setAdmissions(admissions_)
     setAdmFeeCols(admFeeCols_)
@@ -4865,8 +4720,26 @@ export default function Fees() {
     if (studentsNeedingDues.length === 0) return
 
     setDuesLoading(true)
-    getDuesForStudents(studentsNeedingDues, getSessionYear())
-      .then(results => {
+    const sessionYearNow = getSessionYear()
+    // The payment tables are already in memory (loadAll), so give the dues
+    // engine each student's rows rather than letting it re-read them — that
+    // was ~18 database reads per student every time this page opened.
+    buildDuesPreload({ adm: adm_fee_collections, flat: adm_flat_fees, course: adm_course_fees }).then(preload => {
+      return getDuesForStudents(studentsNeedingDues, sessionYearNow, { preload })
+      .then(async firstPass => {
+        // A student whose dues failed (a dropped connection, say) is skipped
+        // by getDuesForStudents. Without a retry they stay on the rough
+        // fallback check — "Underpaid" with no amount — until the page is
+        // reloaded. Try those once more, a couple at a time.
+        let results = firstPass
+        const got = new Set(firstPass.map(r => gccStr(r.student.gcc_no)))
+        const missing = studentsNeedingDues.filter(st => !got.has(gccStr(st.gcc_no)))
+        if (missing.length && !cancelled) {
+          const again = await getDuesForStudents(missing, sessionYearNow, { batchSize: 2, preload })
+          results = [...firstPass, ...again]
+          const still = missing.filter(st => !again.some(r => gccStr(r.student.gcc_no) === gccStr(st.gcc_no)))
+          if (still.length) console.warn('Fees.jsx: dues could not be worked out for', still.map(st => `${st.name} (GCC-${st.gcc_no})`).join(', '))
+        }
         if (cancelled) return
         setDuesByGcc(prevMap => {
           const next = { ...prevMap }
@@ -4874,6 +4747,7 @@ export default function Fees() {
           return next
         })
       })
+    })
       .catch(e => console.error('Fees.jsx: getDuesForStudents failed —', e.message))
       .finally(() => { if (!cancelled) setDuesLoading(false) })
     return () => { cancelled = true }
@@ -4969,66 +4843,82 @@ export default function Fees() {
 
   const liveTtl = liveRows.reduce((a, s) => a + s.grandTotal, 0)
   const liveP   = liveRows.filter(s => s.liveStatus === 'Pending').length
-  const liveP2  = liveRows.filter(s => s.liveStatus === 'Paid').length
-  // Genuinely underpaid relative to their hostel_type's expected flat fee —
-  // this is the count that was previously invisible entirely.
-  const liveUnderpaid = liveRows.filter(s => s.liveStatus === 'Underpaid').length
 
-
-  const handleSync = async s => {
-    const live = getLiveFees(s); if (!live.hasFees) return
-    const ex = fees.find(f => gccStr(f.gcc_no) === gccStr(s.gcc_no))
-    const p = { gcc_no: gccStr(s.gcc_no), name: s.name, class_name: s.class_name || s.batch || '', course: s.course || '', amount: live.grandTotal, paid: live.grandTotal, status: 'Paid' }
-    if (ex) await supabase.from('fees').update(p).eq('id', ex.id)
-    else    await supabase.from('fees').insert([p])
-    loadAll()
-  }
 
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
   // Fees hub — a payments-app style icon grid, grouped. Admin-only entries
   // are hidden from other staff (the security gates noted below still apply).
   const [hubOpen, setHubOpen] = useState(false)
-  const TABS = [
-    { id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' },
-    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' },
-    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    { id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' },
-    // ✦ Security fix: this tab exposes every student's full fee/payment
-    // history (GCC, amounts, payment mode, Collected By) with a one-click
-    // export, but had no role gate at all — any logged-in staff account,
-    // not just admin/accounts, could open and export it. Restricted the
-    // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'warnings', label: 'Audit Warnings', short: 'Warnings', icon: 'warning', group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
-    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' }] : []),
-    { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
-    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
-    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
+  // Shared jumps so every tab that names a student can lead to the next action.
+  const goCollect = st => { setPresetCollectStudent(st); setTab('payment') }
+  useEffect(() => {
+    const h = feesHandoff.current
+    if (!h || !students.length) return
+    feesHandoff.current = null
+    const hit = students.find(x => String(parseInt(x.gcc_no) || 0) === String(parseInt(h.gcc) || 0))
+    if (hit) goCollect(hit)
+  }, [students]) // eslint-disable-line react-hooks/exhaustive-deps
+  const goLedger = st => { setPresetFixStudent({ ...st, _cardTab: 'history' }); setTab('ledger') }
+  // ── Tab registry ────────────────────────────────────────────────────────────
+  // ONE place that defines every Fees tab. Counter tabs are for all staff; the Admin Fee
+  // Panel is admin-only and is described section → tile → optional sub-tabs. The nav, the
+  // sub-tab bar, merged-tab aliases and the access check are all derived from this.
+  // A tile with `subs` opens its first sub-tab; every sub-tab id still works as a deep link.
+  // Security: Reports & Export exposes every student's payment history, so it is admin-only.
+  const COUNTER_TABS = [
+    { id: 'payment',  label: 'Fee Payment',    icon: 'card',             group: 'collect' },
+    { id: 'ledger',   label: 'Student Ledger', icon: 'studentfeeledger', group: 'collect' },
   ]
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
-    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  // Day closing is for every cashier: it lists the day's collections of all users.
+  const COUNTER_TOOLS = [
+    { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
+    { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
+  ]
+  const ADMIN_PANEL = !isAdmin ? [] : [
+    { title: 'Overview', tiles: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ] },
+    { title: 'Needs your approval', tiles: [
+      { id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', badge: pendingApprovalCount },
+      { id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', badge: lowFeePending },
+      { id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', badge: hostelIssueCount },
+    ] },
+    { title: 'Discounts, refunds & follow-up', tiles: [
+      { label: 'Discounts & Waivers', short: 'Discounts', icon: 'scholar', subs: [['waivers', 'Waiver / repeater report'], ['concessionRegister', 'Concession register'], ['detector', 'Repeater & low-fee detector']] },
+      { id: 'refunds', label: 'Refunds & Transfers', short: 'Refunds', icon: 'refund' },
+      { label: 'Dues Follow-up', short: 'Follow-up', icon: 'remind', subs: [['reminders', 'Reminders'], ['installments', 'Instalment plans']] },
+    ] },
+    { title: 'Records & reports', tiles: [
+      { id: 'admin', label: 'Admin View', icon: 'shield' },
+      { id: 'reports', label: 'Reports & Export', short: 'Reports', icon: 'export' },
+      { label: 'Activity & Audit', short: 'Activity', icon: 'history', subs: [['activity', 'Activity log'], ['digest', 'Weekly digest'], ['lateEntries', 'Late entries']] },
+    ] },
+    { title: 'Checks & setup', tiles: [
+      { label: 'Fee Health Checks', short: 'Checks', icon: 'rupeeSearch', subs: [['monthlyCheck', 'Monthly fee check'], ['anomaly', 'Anomalies'], ['dataHealth', 'Student data'], ['feeControls', 'Accounting controls']] },
+      { id: 'rollover', label: 'Session Rollover', short: 'Rollover', icon: 'rollover' },
+    ] },
+  ].map(sec => ({ ...sec, tiles: sec.tiles.map(t => ({ ...t, id: t.id || t.subs[0][0], group: 'adminFee' })) }))
+  const ADMIN_TILES = ADMIN_PANEL.flatMap(sec => sec.tiles)
+  // Merged tiles (tiles with sub-tabs); old tab ids still resolve to their tile.
+  const MERGES = ADMIN_TILES.filter(t => t.subs).map(t => ({ id: t.id, label: t.label, short: t.short, members: t.subs }))
+  const mergeOf = id => MERGES.find(m => m.members.some(x => x[0] === id))
+  const NAV_TABS = [...ADMIN_TILES.filter(t => t.id === 'dashboard'), ...COUNTER_TABS, ...ADMIN_TILES.filter(t => t.id !== 'dashboard'), ...COUNTER_TOOLS]
+  const TABS = [...NAV_TABS, ...MERGES.flatMap(m => m.members.map(([id, label]) => ({ id, label })))]
+  // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
+  useEffect(() => {
+    if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
+  }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['tools', 'Tools & planning'], ['adminFee', 'Admin Fee Panel']]
+    .map(([id, title]) => ({ id, title, items: NAV_TABS.filter(t => t.group === id) })).filter(g => g.items.length)
+  const ADMIN_SUBS = ADMIN_PANEL.map(sec => [sec.title, sec.tiles.map(t => t.id)])
 
-  // ── Advanced filter state (shared across live + admin tabs) ──────────────
+  // ── Advanced filter state (Admin tab) ─────────────────────────────────────
   const [afCourse,      setAfCourse]      = useState('All')
   const [afHostel,      setAfHostel]      = useState('All')
   const [afBatch,       setAfBatch]       = useState('All')
-  const [afStatus,      setAfStatus]      = useState('All')
   const [afDateFrom,    setAfDateFrom]    = useState('')
   const [afDateTo,      setAfDateTo]      = useState('')
-  const [afShowFilters, setAfShowFilters] = useState(false)
 
   const todayStr = new Date().toLocaleDateString('en-CA')
 
@@ -5038,18 +4928,17 @@ export default function Fees() {
     return ['All', ...Array.from(s).sort()]
   }, [students])
 
-  // Advanced filtered live rows (used in both live tab and admin tab)
+  // Advanced filtered live rows (Admin tab)
   const advFilteredLive = useMemo(() => {
     const q = search.toLowerCase()
     return liveRows.filter(s => {
-      if (afCourse !== 'All' && s.course !== afCourse) return false
+      if (afCourse !== 'All' && courseOf(s) !== afCourse) return false
       if (afHostel !== 'All' && s.hostel_type !== afHostel) return false
       if (afBatch  !== 'All' && (s.class_name || s.batch || '') !== afBatch) return false
-      if (afStatus !== 'All' && s.liveStatus !== afStatus) return false
       if (![s.name, s.gcc_no, s.class_name, s.batch, s.course].some(v => (v||'').toString().toLowerCase().includes(q))) return false
       return true
     })
-  }, [liveRows, search, afCourse, afHostel, afBatch, afStatus])
+  }, [liveRows, search, afCourse, afHostel, afBatch])
 
   // Today's transactions for admin daily view
   const todayTransactions = useMemo(() => {
@@ -5057,19 +4946,19 @@ export default function Fees() {
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsfToday = adm_course_fees
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const admToday = adm_fee_collections
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     return [...admToday, ...flatToday, ...crsfToday].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   }, [adm_fee_collections, adm_flat_fees, adm_course_fees, students, todayStr])
@@ -5083,19 +4972,19 @@ export default function Fees() {
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsf = adm_course_fees
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const adm = adm_fee_collections
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: courseLabel(stu), hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Admission Fee', description: r.description || r.fee_type || '—', amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     return [...adm, ...flat, ...crsf].sort((a, b) => (b.pay_date || '').localeCompare(a.pay_date || ''))
   }, [adm_fee_collections, adm_flat_fees, adm_course_fees, students, afDateFrom, afDateTo, todayStr])
@@ -5143,7 +5032,7 @@ export default function Fees() {
             ].map(h => (
               <div key={h.l} className="fe-hstat">
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.l}</div>
-                <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: isMobile ? 20 : 26, fontWeight: 600, color: h.tone, marginTop: 6, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.v}</div>
+                <div style={{ marginTop: 6, display: 'flex' }}><FitAmount base={isMobile ? 20 : 26} color={h.tone} style={{ fontFamily: "'Fraunces',Georgia,serif", fontWeight: 600, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' }}>{h.v}</FitAmount></div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.sub}</div>
               </div>
             ))
@@ -5158,8 +5047,8 @@ export default function Fees() {
           const full = tab === 'dashboard' || hubOpen
           const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
           const tile = t => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
-              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+            <button key={t.id} type="button" role="tab" aria-selected={(mergeOf(tab)?.id || tab) === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + ((mergeOf(tab)?.id || tab) === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
               <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
               <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
@@ -5169,28 +5058,42 @@ export default function Fees() {
               {TAB_GROUPS.map(g => (
                 <section key={g.id} className="fh-g">
                   <h2>{g.title}</h2>
-                  <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>
+                  {g.id === 'adminFee' ? ADMIN_SUBS.map(([title, ids]) => {
+                    const items = ids.map(id => g.items.find(t => t.id === id)).filter(Boolean)
+                    const due = items.reduce((n, t) => n + (t.badge || 0), 0)
+                    return items.length > 0 && (
+                      <div key={title} style={{ marginTop: 10 }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#5d6b82' }}>{title}{due > 0 && <span style={{ marginLeft: 6, background: '#dc2626', color: '#fff', borderRadius: 99, padding: '1px 7px', fontSize: 10 }}>{due} to review</span>}</h3>
+                        <div className="fh-grid" style={{ '--fh-n': 5 }}>{items.map(tile)}</div>
+                      </div>
+                    )
+                  }) : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
                 </section>
               ))}
             </nav>
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
-              {TABS.map(tile)}
-              <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
+              {NAV_TABS.map(tile)}
+              {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
-              </button>
+              </button>}
             </nav>
           )
         })()}
-        {tab === 'live' && (
-          <ExportBar
-            rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name || s.batch || '', course: s.course || '', hostel_type: s.hostel_type || '', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
-            filename={`GNSI_Live_Fees_${todayStr}`} label="Live" />
-        )}
         {tab === 'admin' && (
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
       </div>
+
+      {isAdmin && mergeOf(tab) && (
+        <div role="tablist" aria-label={mergeOf(tab).label} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 14px' }}>
+          <span style={{ alignSelf: 'center', fontSize: 12, fontWeight: 800, color: '#1e3a6e', marginRight: 4 }}>{mergeOf(tab).label}</span>
+          {mergeOf(tab).members.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+              style={{ padding: '6px 14px', borderRadius: 99, border: '1px solid ' + (tab === id ? '#1e3a6e' : '#e8e3d8'), background: tab === id ? '#1e3a6e' : '#fff', color: tab === id ? '#fff' : '#1e3a6e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <FeeDashboardTab
@@ -5219,120 +5122,6 @@ export default function Fees() {
         />
       )}
 
-      {tab === 'live' && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
-            {[
-              // Clicking a card sets afStatus to the matching liveStatus value —
-              // the search/filter row and table right below already filter on
-              // afStatus, so this reuses that existing mechanism instead of
-              // building a separate drilldown view. "Total students" and
-              // "Total collected" have no single matching status, so they
-              // just reset the filter to show everyone.
-              { label: 'Total students',  value: students.length,  color: '#1e3a6e', bg: '#eef2f9', icon: '👨‍🎓', status: 'All' },
-              { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅', status: 'All' },
-              { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️', status: 'Pending' },
-              { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠', status: 'Underpaid' },
-              { label: 'Fully paid',      value: liveP2,           color: '#a7771f', bg: '#fbf3e0', icon: '🎉', status: 'Paid' },
-            ].map(c => (
-              <div key={c.label} className="fe-kpi fe-anim" role="button" tabIndex={0} onClick={() => setAfStatus(c.status)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAfStatus(c.status) } }}
-                style={{ borderColor: afStatus === c.status && c.status !== 'All' ? c.color : undefined, boxShadow: afStatus === c.status && c.status !== 'All' ? `0 0 0 3px ${c.color}22` : undefined }}>
-                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
-                <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
-                <p style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</p>
-                <h2 style={{ fontSize: 26, fontWeight: 600, color: c.color, margin: '6px 0 0', fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</h2>
-                <p style={{ fontSize: 10.5, color: '#98a2b3', margin: '6px 0 0' }}>Tap to filter below</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: afShowFilters ? 8 : 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 200 }} />
-            <select value={afStatus} onChange={e => setAfStatus(e.target.value)} style={{ ...inp, width: 'auto' }}>
-              <option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option>
-            </select>
-            <button onClick={() => setAfShowFilters(f => !f)}
-              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e8e3d8', background: afShowFilters ? '#1e3a6e' : 'white', color: afShowFilters ? 'white' : '#5d6b82', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-              ⚙ Filters {(afCourse!=='All'||afHostel!=='All'||afBatch!=='All') ? '●' : ''}
-            </button>
-          </div>
-          {afShowFilters && (
-            <div style={{ background: '#faf8f3', border: '1px solid #e8e3d8', borderRadius: 10, padding: '14px 16px', marginBottom: 16, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>COURSE</div>
-                <select value={afCourse} onChange={e => setAfCourse(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  <option value="All">All Courses</option>
-                  {['Sainik','Navodaya','Foundation','Combined Course'].map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>HOSTEL TYPE</div>
-                <select value={afHostel} onChange={e => setAfHostel(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  <option value="All">All Types</option>
-                  {['Boarder','Day Boarder','Day Scholar'].map(h => <option key={h}>{h}</option>)}
-                </select>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 4 }}>BATCH / CLASS</div>
-                <select value={afBatch} onChange={e => setAfBatch(e.target.value)} style={{ ...inp, fontSize: 12, padding: '6px 10px' }}>
-                  {allBatches.map(b => <option key={b}>{b}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <button onClick={() => { setAfCourse('All'); setAfHostel('All'); setAfBatch('All'); setAfStatus('All') }}
-                  style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #fca5a5', background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-                  ✕ Clear filters
-                </button>
-              </div>
-            </div>
-          )}
-          {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#5d6b82' }}>⏳ Loading…</div> : (
-            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
-              <div style={{ padding: '10px 16px', background: '#faf8f3', borderBottom: '1px solid #e8e3d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#5d6b82', fontWeight: 600 }}>{advFilteredLive.length} students</span>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
-                <thead>
-                  <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
-                    {['#','GCC','Student','Class','Course','Hostel','Adm fee','Flat','Course','Total','Status','Sync'].map(h => (
-                      <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {advFilteredLive.map((s, i) => (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #f3f0e8' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#faf8f3'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                      <td style={{ padding: '10px 14px', color: '#8a93a6', fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
-                          {s.is_repeater && (
-                            <span style={{ fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 3, border: '1px solid #fcd34d', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>🔁 RPT</span>
-                          )}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: '#5d6b82' }}>{s.class_name || s.batch || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#5d6b82' }}>{s.course || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}><HostelBadge type={s.hostel_type} /></td>
-                      <td style={{ padding: '10px 14px', color: '#1e3a6e', fontWeight: 600 }}>{s.admTotal  > 0 ? `₹${n(s.admTotal)}`  : '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#059669', fontWeight: 600 }}>{s.flatTotal > 0 ? `₹${n(s.flatTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#a7771f', fontWeight: 600 }}>{s.crsfTotal > 0 ? `₹${n(s.crsfTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 800, color: s.grandTotal > 0 ? '#16a34a' : '#8a93a6' }}>{s.grandTotal > 0 ? `₹${n(s.grandTotal)}` : '—'}</td>
-                      <td style={{ padding: '10px 14px' }}><span style={sStyle(s.liveStatus)}>{s.liveStatus}</span></td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {s.hasFees && <button onClick={() => handleSync(s)} style={{ background: '#eef2f9', color: '#1e3a6e', border: '1px solid #c9d5ea', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>⇄</button>}
-                      </td>
-                    </tr>
-                  ))}
-                  {advFilteredLive.length === 0 && <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>No students found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
 
       {tab === 'admin' && (
         <>
@@ -5457,7 +5246,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#fbf6e8'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5517,7 +5306,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
@@ -5573,7 +5362,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background='#faf8f3'}
                       onMouseLeave={e => e.currentTarget.style.background='white'}>
                       <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
-                      <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
+                      <td style={{ padding: '9px 12px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
                         <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}
@@ -5621,7 +5410,7 @@ export default function Fees() {
           onRefresh={loadAll}
           onCollect={() => { setTab('payment') }}
           initialSelected={presetFixStudent}
-          initialCardTab={presetFixStudent ? 'revert' : undefined}
+          initialCardTab={presetFixStudent ? (presetFixStudent._cardTab || 'revert') : undefined}
           adminCount={adminCount}
         />
       )}
@@ -5657,12 +5446,6 @@ export default function Fees() {
       {tab === 'activity' && (
         <ActivityLogTab students={students} isAdmin={isAdmin} />
       )}
-      {tab === 'pastDues' && (
-        <PastStudentDuesTab isAdmin={isAdmin} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />
-      )}
-      {tab === 'warnings' && (
-        <AuditWarningsTab isAdmin={isAdmin} />
-      )}
       {tab === 'lowFee' && (
         <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshLowFeePending(); loadAll() }} />
@@ -5673,15 +5456,20 @@ export default function Fees() {
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
           onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
-      {tab === 'reminders' && isAdmin && <FeeReminders students={students} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'dayClose' && isAdmin && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'reminders' && isAdmin && <FeeTabShell><FeeReminders students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
+      {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
+      {tab === 'detector' && isAdmin && <FeeTabShell><FeeDetector students={students} /></FeeTabShell>}
+      {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
-      {tab === 'digest' && isAdmin && <FeeDigest students={students} isAdmin={isAdmin} />}
-      {tab === 'dataHealth' && isAdmin && <DataHealth students={students} isAdmin={isAdmin} />}
-      {tab === 'rollover' && isAdmin && <SessionRollover students={students} liveRows={liveRows} isAdmin={isAdmin} />}
+      {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
+      {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} onChanged={loadAll} /></FeeTabShell>}
+      {tab === 'dataHealth' && isAdmin && <FeeTabShell><DataHealth students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
+      {tab === 'rollover' && isAdmin && <FeeTabShell><SessionRollover students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'hostelIssues' && (
         <HostelIssues students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshHostelIssues(); refreshLowFeePending(); loadAll() }} />
@@ -5692,21 +5480,23 @@ export default function Fees() {
 
       {/* Phone: payments-app style bottom navigation (the four main sections + the full grid) */}
       {isMobile && (() => {
-        const main = [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+        const main = isAdmin
+          ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger']]
+          : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
         const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
         return (
-          <nav className="fe-bottom" aria-label="Fees navigation">
+          <nav className="fe-bottom" aria-label="Fees navigation" style={isAdmin ? undefined : { gridTemplateColumns: `repeat(${main.length},1fr)` }}>
             {main.map(([id, label, icon]) => (
               <button key={id} type="button" className={'fe-nb' + (tab === id ? ' on' : '')} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined}>
                 <span className="fe-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
               </button>
             ))}
-            <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
+            {isAdmin && <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
               <span className="fe-bi"><NavIcon id="grid" size={20} /></span><span>All</span>
               {isAdmin && pending > 0 && <span className="fh-b">{pending > 99 ? '99+' : pending}</span>}
-            </button>
+            </button>}
           </nav>
         )
       })()}

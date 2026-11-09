@@ -4,8 +4,10 @@
 // register (feeLedgerModel.js), so the numbers match what each ledger shows.
 import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
-import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
+import { getFeeRates, gccStr, normalizeSessionYear, getAddonStatus } from './feeEngine'
+import { applyAddon } from './feeAddon'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
+import { writtenOffFor } from './lib/refundLedger'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
 import { loadStanding } from './feeStanding'
 import { instNameHTML, instAddressHTML } from './systemSettings'
@@ -38,13 +40,18 @@ async function loadOverrides(session) {
 // Earlier sessions' unpaid dues, each at that session's own rates (and hostel
 // type timeline) — brought forward so a continuing student's old dues never
 // disappear. rateOfFor(sess) → (type) → Promise<rates>.
-export async function computeArrears(student, session, entries, changes, rateOfFor) {
+export async function computeArrears(student, session, entries, changes, rateOfFor, standingAll = null) {
+  // Each earlier session is worked out exactly as that session's own register is: with the student's standing
+  // concessions and the dues written off in it, so a settled amount is not brought forward as owing.
+  const st = standingAll || await loadStanding()
+  const gk = gccStr(student.gcc_no)
+  const conc = st.conc.get(gk) || [], refunds = st.refunds.get(gk) || []
   const first = normalizeSessionYear(student.session) || sessionOfDate(student.admission_date)
   const startY = Number(String(first || '').slice(0, 4)), curY = Number(String(session).slice(0, 4))
   const bySession = []
   for (let y = Math.max(startY, curY - 6); startY && y < curY; y++) {
     const sess = `${y}-${y + 1}`
-    const reg = buildRegister(student, entries, sess, await sessionRates(student, sess, changes, rateOfFor(sess)))
+    const reg = buildRegister(student, entries, sess, await sessionRates(student, sess, changes, rateOfFor(sess)), undefined, conc, writtenOffFor(gk, refunds, sess, sessionOfDate))
     if (reg.totalDue > 0) bySession.push({ session: sess, due: reg.totalDue, months: reg.rows.filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)} ${r.year}`) })
   }
   return { arrears: bySession.reduce((t, a) => t + a.due, 0), bySession }
@@ -67,7 +74,11 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
       const key = [sess, s.course || '', s.batch || '', type].join('|')
       if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(sess, s.course || '', s.batch || '', type))
       if (!overridesBySession.has(sess)) overridesBySession.set(sess, await loadOverrides(sess))
-      const base = rateCache.get(key), ov = overridesBySession.get(sess)
+      let base = rateCache.get(key)
+      const ov = overridesBySession.get(sess)
+      // students the Exams module tags as Combined also carry the add-on (the shared cache is per course/batch, so add it per student)
+      const ex = await getAddonStatus({ sessionYear: sess, course: s.course, batch: s.batch, gccNo: g })
+      if (ex.byExam && ex.amount > 0) base = applyAddon(base, true, ex.amount, 'exam')
       return ov.has(g) ? { ...base, flatFee: ov.get(g) } : base
     }
     const rateOf = rateOfFor(session)
@@ -75,8 +86,9 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
     const byMonth = await sessionRates(s, session, history.get(g), rateOf)
     const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    const reg = buildRegister(s, entries, session, byMonth, new Date(), standingAll.conc.get(g) || [])
-    const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor)
+    const reg = buildRegister(s, entries, session, byMonth, undefined, standingAll.conc.get(g) || [],
+      writtenOffFor(g, standingAll.refunds.get(g) || [], session, sessionOfDate))
+    const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor, standingAll)
     // balance = this session's dues + earlier sessions' dues brought forward
     out.push({ student: s, entries, rates, reg, arrears, arrearsBySession: bySession, balance: reg.totalDue + arrears })
   }

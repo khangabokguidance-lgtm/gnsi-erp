@@ -10,7 +10,7 @@
 import { supabase } from './supabase'
 import { parentSupabase } from './parentSupabase'
 
-export const PRIVATE_BUCKETS = ['hr-attachments', 'kitchen-receipts', 'staff-locker-files', 'student-photos', 'teaching-evidence']
+export const PRIVATE_BUCKETS = ['hr-attachments', 'kitchen-receipts', 'staff-locker-files', 'student-photos', 'teaching-evidence', 'teacher-materials']
 
 const RX = new RegExp('/storage/v1/object/(?:public|sign)/(' + PRIVATE_BUCKETS.map(b => b.replace(/[-]/g, '\\-')).join('|') + ')/([^?#]+)')
 const TTL = 60 * 60            // seconds a signed link stays valid

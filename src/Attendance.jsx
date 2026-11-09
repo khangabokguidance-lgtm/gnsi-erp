@@ -2,11 +2,14 @@
 //  GNSI Portal — Attendance Module (Premium v4 · Redesigned)
 // ============================================================
 
+import { authFetch } from './apiFetch'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { StaffAvatar } from './staffPhotos'
 import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
-import { courseOf, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { courseOf, canonicalBatch, courseBatchLists, takeAttendanceHandoff, handoffToStudents } from './courseMap'
+import { drawPremiumCertificate, certificatePdf } from './premiumCertificate'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
@@ -15,12 +18,7 @@ import {
 
 // ─── COURSE STRUCTURE ────────────────────────────────────────
 
-const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Prime', 'Elite'],
-  'Combined Course': ['—'],
-}
+const COURSE_STRUCTURE = courseBatchLists()
 const COURSES      = Object.keys(COURSE_STRUCTURE)
 const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 
@@ -311,6 +309,26 @@ function ConsoleCard({ children, style = {}, padded = true, className = '' }) {
   )
 }
 
+// The teacher taking the class: the Staff-module photo (initials when there is none), name and designation.
+function TeacherChip({ name, id, designation, size = 36 }) {
+  if (!name) return null
+  const initials = String(name).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <StaffAvatar name={name} id={id}
+        style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 700, color: C.indigo, background: C.indigoSoft, border: `2px solid ${C.border}` }}>
+        {initials}
+      </StaffAvatar>
+      <span style={{ minWidth: 0, lineHeight: 1.25 }}>
+        <span style={{ display: 'block', fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: C.inkMuted }}>Teacher</span>
+        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 650, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+        {designation && <span style={{ display: 'block', fontSize: 11.5, color: C.inkMuted }}>{designation}</span>}
+      </span>
+    </span>
+  )
+}
+
 function ConsoleCardHeader({ title, subtitle, right, icon }) {
   return (
     <div style={{
@@ -481,7 +499,7 @@ function openWhatsApp(phone, message) {
 async function sendPushToStaffId(staffId, title, body, url = '/attendance') {
   if (!staffId) return
   try {
-    await fetch('/api/send-push', {
+    await authFetch('/api/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, url, staffId }),
@@ -1467,13 +1485,22 @@ function TabMark({ staff, prefill }) {
     // `course` column dropped every student whose course was blank (older
     // records only have `batch`), so they were in Students but never on the
     // roll call. Batch is filtered server-side; course is resolved here.
-    let q = supabase.from('students')
-      .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
-      .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
-    if (form.subtype)   q = q.eq('batch', form.subtype)
-    if (form.class_name) q = q.eq('class_name', form.class_name)
-    const { data: raw } = await q.order('name')
-    const data = (raw || []).filter(s => courseOf(s) === form.course)
+    // Paged — without a batch filter the list can pass Supabase's 1000-row cap.
+    const raw = []
+    for (let from = 0; ; from += 1000) {
+      let q = supabase.from('students')
+        .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
+        .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
+      if (form.class_name) q = q.eq('class_name', form.class_name)
+      const { data: page, error } = await q.order('name').order('id').range(from, from + 999)
+      if (error) { console.error('Roster load failed:', error); break }
+      raw.push(...(page || []))
+      if (!page || page.length < 1000) break
+    }
+    // Batch matched here, not with .eq('batch', …): "UDAAN", "Udaan — ENG"
+    // and the old "Elite"/"Prime" all belong on the Udaan/Pragati register.
+    const inBatch = s => !form.subtype || canonicalBatch(s.batch || s.class_name) === canonicalBatch(form.subtype)
+    const data = raw.filter(s => courseOf(s) === form.course && inBatch(s))
     // Map to the field names the rest of this component (and the save/
     // WhatsApp-report/notify code below) already expects, so nothing
     // downstream needs to change: student_id/student_name/gcc_no/hostel_type.
@@ -1727,6 +1754,12 @@ function TabMark({ staff, prefill }) {
                 <option value="">Select teacher…</option>
                 {batchStaff.map(s => <option key={s.id} value={s.name}>{s.name}{s.designation ? ` — ${s.designation}` : ''}</option>)}
               </ConsoleSelect>
+              {form.teacher_name && (
+                <div style={{ marginTop: 8 }}>
+                  <TeacherChip name={form.teacher_name} id={form.staff_id || undefined}
+                    designation={staff.find(s => String(s.id) === String(form.staff_id) || s.name === form.teacher_name)?.designation} />
+                </div>
+              )}
             </div>
             <div>
               <ConsoleLabel>Session type</ConsoleLabel>
@@ -1755,6 +1788,15 @@ function TabMark({ staff, prefill }) {
               </>
             }
           />
+          {form.teacher_name && (
+            <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}`, background: '#FAFAF7' }}>
+              <TeacherChip name={form.teacher_name} id={form.staff_id || undefined}
+                designation={staff.find(s => String(s.id) === String(form.staff_id) || s.name === form.teacher_name)?.designation} />
+              {(form.subject_name || form.period_number) && (
+                <span style={{ fontSize: 12.5, color: C.inkMuted }}>{[form.subject_name, form.period_number && `Period ${form.period_number}`].filter(Boolean).join(' · ')}</span>
+              )}
+            </div>
+          )}
           <div style={{ padding: '12px 20px', display: 'flex', gap: 8, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
             {STATUSES.map(s => {
               const tone = STATUS_TONE[s]
@@ -2306,7 +2348,7 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
           padding: '18px 22px 16px', textAlign: 'center', color: '#fff', position: 'relative',
         }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.15em', opacity: .8, marginBottom: 3 }}>GNSI · OFFICIAL</div>
-          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: 'Georgia, serif', letterSpacing: '.01em' }}>Attendance Receipt</div>
+          <div style={{ fontSize: 17, fontWeight: 900, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: '.01em' }}>Attendance Receipt</div>
           <div style={{ fontSize: 11.5, opacity: .85, marginTop: 4, fontWeight: 600 }}>
             {fmtDate(sessionInfo.session_date)}{sessionInfo.class_name ? ` · ${sessionInfo.class_name}` : ''}
           </div>
@@ -2774,8 +2816,9 @@ function TabReport() {
       }
       if (sess?.session_date) map[r.student_name].byDate[sess.session_date] = r.status
       if (sess) {
-        const bkey = `${sess.course}||${sess.subtype||'—'}||${sess.session_date}`
-        if (!batchMap[bkey]) batchMap[bkey] = { course: sess.course, batch: sess.subtype||'—', date: sess.session_date, Present:0, total:0 }
+        const sub = canonicalBatch(sess.subtype) || '—' // old "Elite"/"Prime" sessions join Udaan/Pragati
+        const bkey = `${sess.course}||${sub}||${sess.session_date}`
+        if (!batchMap[bkey]) batchMap[bkey] = { course: sess.course, batch: sub, date: sess.session_date, Present:0, total:0 }
         if (r.status==='Present') batchMap[bkey].Present++
         batchMap[bkey].total++
       }
@@ -3484,7 +3527,6 @@ function TabLeave({ staff, currentUser, isAdmin }) {
 // same attendance_sessions / attendance_records tables TabHome uses.
 
 const CERT_BORDER = '#C9A24B' // brass gold, matches portal design language
-const CERT_NAVY    = '#0B1E3D'
 
 function monthOptions(count = 6) {
   const out = []
@@ -3498,113 +3540,35 @@ function monthOptions(count = 6) {
   return out
 }
 
-function drawAwardCertificateToCanvas({ studentName, gcc, course, className, monthLabel, pct, scopeLabel }) {
-  const W = 1200, H = 850
-  const canvas = document.createElement('canvas')
-  canvas.width = W; canvas.height = H
-  const ctx = canvas.getContext('2d')
-
-  ctx.fillStyle = '#fffdf8'
-  ctx.fillRect(0, 0, W, H)
-
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 10
-  ctx.strokeRect(24, 24, W - 48, H - 48)
-  ctx.lineWidth = 2
-  ctx.strokeRect(42, 42, W - 84, H - 84)
-
-  const corners = [[42,42],[W-42,42],[42,H-42],[W-42,H-42]]
-  corners.forEach(([x,y]) => {
-    ctx.fillStyle = CERT_BORDER
-    ctx.beginPath()
-    ctx.moveTo(x, y-14); ctx.lineTo(x+14, y); ctx.lineTo(x, y+14); ctx.lineTo(x-14, y)
-    ctx.closePath(); ctx.fill()
-  })
-
-  ctx.textAlign = 'center'
-  ctx.fillStyle = CERT_NAVY
-  ctx.font = '700 20px Georgia, serif'
-  ctx.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W/2, 118)
-  ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#5d6b82'
-  ctx.fillText('Khangabok · Thoubal · Manipur', W/2, 140)
-
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 1.5
-  ctx.beginPath(); ctx.moveTo(W/2 - 90, 158); ctx.lineTo(W/2 + 90, 158); ctx.stroke()
-
-  ctx.font = '700 46px Georgia, serif'
-  ctx.fillStyle = CERT_NAVY
-  ctx.fillText('Certificate of Excellence', W/2, 230)
-
-  ctx.font = '400 17px Georgia, serif'
-  ctx.fillStyle = '#4b5870'
-  ctx.fillText('Best Student of the Month — Attendance', W/2, 262)
-
-  ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  ctx.fillText('This is to certify that', W/2, 330)
-
-  ctx.font = '700 44px Georgia, serif'
-  ctx.fillStyle = CERT_NAVY
-  ctx.fillText(studentName, W/2, 390)
-  ctx.strokeStyle = CERT_BORDER
-  ctx.lineWidth = 1.5
-  const nameW = ctx.measureText(studentName).width
-  ctx.beginPath(); ctx.moveTo(W/2 - nameW/2 - 10, 402); ctx.lineTo(W/2 + nameW/2 + 10, 402); ctx.stroke()
-
-  ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  const bodyLines = [
-    `${gcc ? `GCC No. ${gcc} · ` : ''}${[course, className].filter(Boolean).join(' · ') || scopeLabel}`,
-    `has achieved an outstanding attendance record of ${pct}% for ${monthLabel},`,
-    `recognised as the ${scopeLabel} for the month.`,
-  ]
-  bodyLines.forEach((line, i) => ctx.fillText(line, W/2, 440 + i * 28))
-
-  ctx.beginPath()
-  ctx.fillStyle = '#f0fdf4'
-  ctx.arc(W/2, 580, 56, 0, Math.PI*2)
-  ctx.fill()
-  ctx.strokeStyle = '#16a34a'
-  ctx.lineWidth = 3
-  ctx.stroke()
-  ctx.fillStyle = '#15803d'
-  ctx.font = '700 30px Georgia, serif'
-  ctx.fillText(`${pct}%`, W/2, 592)
-
-  ctx.textAlign = 'left'
-  ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#5d6b82'
-  ctx.fillText(`Issued: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}`, 90, H - 100)
-
-  ctx.strokeStyle = '#8a93a6'
-  ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(W - 340, H - 110); ctx.lineTo(W - 90, H - 110); ctx.stroke()
-  ctx.textAlign = 'center'
-  ctx.font = '600 13px Georgia, serif'
-  ctx.fillStyle = '#2e3b52'
-  ctx.fillText('Principal, GNSI', W - 215, H - 90)
-
-  return canvas
-}
-
 function AwardCertificateModal({ award, onClose }) {
   const isMobile = useIsMobile()
-  const canvasEl = useMemo(() => drawAwardCertificateToCanvas({
-    studentName: award.student_name,
-    gcc: award.gcc_no,
-    course: award.course,
-    className: award.class_name,
-    monthLabel: fmtMonth(award.month),
-    pct: award.attendance_pct,
-    scopeLabel: award.scope === 'overall' ? 'Overall Best Student' : `Best Student · ${award.scope}`,
-  }), [award])
+  // The premium certificate (premiumCertificate.js), drawn once per award.
+  const [canvasEl, setCanvasEl] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const scopeLabel = award.scope === 'overall' ? 'Overall Best Student' : `Best Student · ${award.scope}`
+    drawPremiumCertificate({
+      kind: 'Excellence',
+      subtitle: 'Best Student of the Month · Attendance',
+      name: award.student_name,
+      detail: [award.gcc_no ? `GCC No. ${award.gcc_no}` : '', award.course, award.class_name].filter(Boolean).join(' · ') || scopeLabel,
+      body: [
+        `for an outstanding attendance record of ${award.attendance_pct}% in ${fmtMonth(award.month)},`,
+        `recognised as the ${scopeLabel} of the Month.`,
+      ],
+      seal: { value: `${award.attendance_pct}%`, label: 'ATTENDANCE' },
+      signatures: [{ title: 'Principal' }, { title: 'Head of the Institution' }],
+      certNo: `GNSI/ATT/${award.month}/${award.gcc_no || award.id || ''}`.replace(/\/$/, ''),
+    }).then(c => { if (alive) setCanvasEl(c) })
+    return () => { alive = false }
+  }, [award])
+  const fileBase = `Certificate_${award.student_name.replace(/\s+/g,'_')}_${award.month}`
 
   const download = () => {
-    const dataUrl = canvasEl.toDataURL('image/jpeg', 0.95)
-    downloadDataUrl(dataUrl, `Certificate_${award.student_name.replace(/\s+/g,'_')}_${award.month}.jpg`)
+    if (!canvasEl) return
+    downloadDataUrl(canvasEl.toDataURL('image/jpeg', 0.95), `${fileBase}.jpg`)
   }
+  const downloadPdf = () => { if (canvasEl) certificatePdf(canvasEl, `${fileBase}.pdf`) }
 
   return (
     <div onClick={onClose} style={{
@@ -3614,13 +3578,16 @@ function AwardCertificateModal({ award, onClose }) {
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#fff', borderRadius: 14, overflow: 'hidden',
-        maxWidth: isMobile ? '100%' : 720, width: '100%',
+        maxWidth: isMobile ? '100%' : 900, width: '100%',
         boxShadow: '0 24px 60px rgba(0,0,0,.35)',
       }}>
-        <img src={canvasEl.toDataURL('image/jpeg', 0.92)} alt="Certificate" style={{ width: '100%', display: 'block' }} />
-        <div style={{ padding: 16, display: 'flex', gap: 10, borderTop: `1.5px solid ${T.gray150}` }}>
+        {canvasEl
+          ? <img src={canvasEl.toDataURL('image/jpeg', 0.92)} alt="Certificate" style={{ width: '100%', display: 'block' }} />
+          : <div style={{ aspectRatio: '1.414', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FBF7EE', color: '#8C6A22', fontWeight: 700 }}>Preparing certificate…</div>}
+        <div style={{ padding: 16, display: 'flex', gap: 10, borderTop: `1.5px solid ${T.gray150}`, flexWrap: 'wrap' }}>
           <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Close</Btn>
-          <Btn variant="primary" onClick={download} style={{ flex: 1, justifyContent: 'center' }}>⬇ Download</Btn>
+          <Btn variant="ghost" onClick={download} disabled={!canvasEl} style={{ flex: 1, justifyContent: 'center' }}>⬇ Image</Btn>
+          <Btn variant="primary" onClick={downloadPdf} disabled={!canvasEl} style={{ flex: 1, justifyContent: 'center' }}>⬇ PDF (A4)</Btn>
         </div>
       </div>
     </div>
@@ -5147,8 +5114,8 @@ function TabStudentDB({ isAdmin }) {
   }, [courseFilter])
 
   const filtered = visibleStudents.filter(s => {
-    if (courseFilter !== 'all' && s.course !== courseFilter) return false
-    if (batchFilter !== 'all' && s.batch !== batchFilter) return false
+    if (courseFilter !== 'all' && courseOf(s) !== courseFilter) return false
+    if (batchFilter !== 'all' && canonicalBatch(s.batch) !== canonicalBatch(batchFilter)) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     // Phone is masked for non-admins (see render below), so it also

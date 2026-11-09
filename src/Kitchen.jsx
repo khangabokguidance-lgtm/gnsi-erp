@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
+import { compressImage } from './lib/imageCompress'
 import { isAdminRole } from './App'
 import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
 
@@ -1186,9 +1187,10 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, defaultMealType, ki
   const addCustomItem = () => { if (!customItem.trim()) return; addItem(customItem.trim()); setCustomItem('') }
 
   const handleFileUpload = async e => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const picked = e.target.files?.[0]
+    if (!picked) return
     setUploading(true)
+    const file = (await compressImage(picked, { maxDim: 1800, quality: 0.9, targetKB: 300 })).file
     const path = `receipts/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
     const { data, error } = await supabase.storage.from('kitchen-receipts').upload(path, file, { upsert:true })
     if (!error && data) {

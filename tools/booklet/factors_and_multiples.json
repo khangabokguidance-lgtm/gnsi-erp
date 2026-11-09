@@ -1,0 +1,258 @@
+{
+  "source": "4-Factors_and_Multiples.docx",
+  "output": "Factors_and_Multiples_GNSI.docx",
+  "title": "Factors and Multiples",
+  "title_mm": "feKtr AmsuZ mLtipL",
+  "label": "Mathematics  ·  Chapter 4",
+  "groups": [
+    {
+      "code": "A",
+      "name": "Prime Factorisation",
+      "questions": [
+        1,
+        2,
+        15,
+        17,
+        45,
+        46,
+        47,
+        49,
+        50,
+        51
+      ]
+    },
+    {
+      "code": "B",
+      "name": "Factors of a Number",
+      "questions": [
+        10,
+        11,
+        12,
+        13,
+        18,
+        19,
+        54,
+        55,
+        61
+      ]
+    },
+    {
+      "code": "C",
+      "name": "Multiples of a Number",
+      "questions": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        20,
+        21,
+        22,
+        39,
+        40
+      ]
+    },
+    {
+      "code": "D",
+      "name": "Counting Multiples in a Range",
+      "questions": [
+        8,
+        14,
+        16,
+        48,
+        52
+      ]
+    },
+    {
+      "code": "E",
+      "name": "Prime and Composite Numbers",
+      "questions": [
+        9,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        41,
+        53,
+        58,
+        59,
+        60
+      ]
+    },
+    {
+      "code": "F",
+      "name": "Common Factors and Co-primes",
+      "questions": [
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        42,
+        57
+      ]
+    },
+    {
+      "code": "G",
+      "name": "Common Multiples",
+      "questions": [
+        43,
+        44,
+        56
+      ]
+    },
+    {
+      "code": "H",
+      "name": "Concepts and Statements",
+      "questions": [
+        31,
+        38
+      ]
+    }
+  ],
+  "answers": {
+    "14": "C",
+    "18": "C",
+    "35": "D",
+    "36": "B",
+    "51": "A",
+    "52": "C",
+    "56": "B"
+  },
+  "set_english": {
+    "11": "The factors of 20 are:",
+    "22": "Which of the following numbers is a multiple of 35?",
+    "23": "Which of the following numbers is a composite number?",
+    "28": "Two consecutive prime numbers whose difference is 2 are called:",
+    "42": "Which of the following pairs of numbers is co-prime?",
+    "48": "What is the number of multiples of 8 from 50 to 150?",
+    "53": "What is the sum of the prime numbers among the following?  2, 6, 11, 14, 17, 27, 31, 39, 41, 47, 49",
+    "60": "How many composite numbers are there from 1 to 20?",
+    "61": "A number ‘n’ is called a perfect number if the sum of all its factors (excluding ‘n’ itself) is equal to n. An example of a perfect number is:"
+  },
+  "replace_english": {
+    "5": [
+      [
+        "different",
+        "difference"
+      ]
+    ],
+    "15": [
+      [
+        "657",
+        "675"
+      ]
+    ]
+  },
+  "set_options": {
+    "28": [
+      "even numbers",
+      "twin primes",
+      "co-primes",
+      "composite numbers"
+    ],
+    "51": [
+      "2",
+      "3",
+      "6",
+      "7"
+    ]
+  },
+  "set_option": {
+    "17": {
+      "A": "2 x 2 x 3 x 7 x 11"
+    },
+    "47": {
+      "C": "7 x 5 x 3 x 3 x 2 x 2"
+    }
+  },
+  "replace_manipuri": {
+    "15": [
+      [
+        "657",
+        "675"
+      ]
+    ],
+    "22": [
+      [
+        "mLtipL nTtb",
+        "mLtipL AoIb"
+      ]
+    ],
+    "56": [
+      [
+        "3",
+        "5",
+        2
+      ]
+    ]
+  },
+  "solutions": {
+    "1": "360 = 2³ × 3² × 5",
+    "2": "540 = 2² × 3³ × 5",
+    "3": "9 × (1+2+3+4+5) = 9 × 15 = 135",
+    "4": "7 × (1+2+…+7) = 7 × 28 = 196",
+    "5": "8 × (13 − 6) = 56",
+    "6": "15 × (11 − 1) = 150",
+    "7": "171 = 19 × 9",
+    "8": "Multiples of 14 up to 100: 14, 28, …, 98 → 7",
+    "9": "4 is the smallest number with more than two factors",
+    "10": "60 = 2² × 3 × 5 → 3 × 2 × 2 = 12",
+    "11": "1, 2, 4, 5, 10, 20",
+    "12": "121 = 11² → 1, 11, 121",
+    "13": "25 = 5² → 1, 5, 25",
+    "14": "Multiples of 21 up to 250: 21 × 11 = 231 → 11",
+    "15": "675 = 3³ × 5²",
+    "16": "Multiples of 15 between 100 and 300: 105 to 285 → 13",
+    "17": "36036 = 2² × 3² × 7 × 11 × 13",
+    "18": "150 = 2 × 3 × 5² → 2 × 2 × 3 = 12",
+    "19": "1, 2, 4, 5, 7, 10, 14, 20, 28, 35, 70, 140",
+    "20": "17 × 11 = 187, 17 × 12 = 204, so 194 is not a multiple",
+    "21": "31 × 15 = 465, 31 × 16 = 496, so 471 is not a multiple",
+    "22": "455 = 35 × 13",
+    "23": "91 = 7 × 13",
+    "24": "1 has only one factor",
+    "25": "2 is even, so 3 is the smallest odd prime",
+    "26": "9 = 3 × 3",
+    "27": "97 is prime; 98 and 99 are not",
+    "28": "e.g. (11, 13), (17, 19)",
+    "29": "(3,5), (5,7), (11,13), (17,19), (29,31), (41,43) → 6",
+    "30": "71, 73, 79, 83, 89, 97 → 6",
+    "31": "143 = 11 × 13, so it is not prime",
+    "32": "9 does not divide 24",
+    "33": "15 does not divide 54",
+    "34": "HCF = 6 → 1, 2, 3, 6",
+    "35": "HCF = 8 → 1, 2, 4, 8",
+    "36": "Two different primes share only the factor 1",
+    "37": "Always 1; also the prime itself if it divides the composite (3 and 6)",
+    "38": "56 = 8 × 7, so 56 is a multiple of 8",
+    "39": "36 × 26 = 936",
+    "40": "43 × 35 = 1505",
+    "41": "More than two factors → composite",
+    "42": "111 = 3 × 37 shares no factor with 11",
+    "43": "LCM of 12 and 18 = 36",
+    "44": "LCM of 8 and 12 = 24; 216 = 24 × 9",
+    "45": "13 × 17 × 19 = 4199",
+    "46": "2 × 2 × 3 × 5 = 60, not 180",
+    "47": "3 × 2 × 3 × 2 × 7 = 252, not 1260",
+    "48": "56 to 144 → (144 − 56) ÷ 8 + 1 = 12",
+    "49": "56 = 2³ × 7 → prime factors 2 and 7",
+    "50": "720 = 2⁴ × 3² × 5 → 2, 3, 5",
+    "51": "16 × 28 = 2⁶ × 7 → prime factors 2 and 7",
+    "52": "7 × 21 = 147 < 150 → 21",
+    "53": "2 + 11 + 17 + 31 + 41 + 47 = 149",
+    "54": "Sum of factors of 96 = 252 → units digit 2",
+    "55": "152 − 1 = 151",
+    "56": "15 + 30 + 45 + 60 + 75 = 225",
+    "57": "Only 1 and 2 divide all three",
+    "58": "41, 43, 47, 53, 59, 61, 67 → 7",
+    "59": "81 to 99 = 19 numbers, minus primes 83, 89, 97 → 16",
+    "60": "4, 6, 8, 9, 10, 12, 14, 15, 16, 18, 20 → 11",
+    "61": "1 + 2 + 3 = 6"
+  }
+}

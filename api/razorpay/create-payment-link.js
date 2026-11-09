@@ -12,6 +12,9 @@
 // Env vars required: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET (server-only)
 
 import Razorpay from 'razorpay'
+import { getUser, isStaff, rateLimit, service } from '../_guard/guard.js'
+
+const MAX_LINK_PAISE = 100_000 * 100 // ₹1,00,000 per link
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -24,16 +27,39 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // This endpoint is public on purpose (the public fee-lookup page lets a parent pay without logging
+  // in), so it is rate limited per caller and capped. Razorpay's own SMS to a phone number is only sent
+  // for signed-in staff, otherwise anyone could use it to text arbitrary numbers.
+  const user = await getUser(req)
+  const staff = user ? await isStaff(user) : false
+  if (!rateLimit(req, res, { key: 'rzp-link', max: staff ? 60 : 8, id: user?.id })) return
+
   try {
-    const { gcc, studentName, amount, kind, for_month, year, course, subtype, parentPhone } = req.body || {}
+    const { gcc, amount, kind, for_month, year, course, subtype } = req.body || {}
+    const parentPhone = staff ? req.body?.parentPhone : ''
 
     if (!gcc || !amount) {
       return res.status(400).json({ error: 'gcc and amount are required' })
     }
+    if (!/^[A-Za-z0-9\-_/ ]{1,30}$/.test(String(gcc))) {
+      return res.status(400).json({ error: 'Invalid gcc' })
+    }
     const amountPaise = Math.round(Number(amount) * 100)
-    if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0 || amountPaise > MAX_LINK_PAISE) {
       return res.status(400).json({ error: 'Invalid amount' })
     }
+
+    // The GCC must belong to a real active student; the name used in the link comes from the database,
+    // not from the (possibly anonymous) request.
+    const { data: stu, error: stuErr } = await service()
+      .from('students').select('gcc_no, name, status').eq('gcc_no', String(gcc).trim()).maybeSingle()
+    if (stuErr) {
+      console.error('razorpay create-payment-link student lookup failed:', stuErr)
+      return res.status(503).json({ error: 'Could not verify the student. Try again.' })
+    }
+    if (!stu) return res.status(400).json({ error: 'Student not found for this GCC' })
+    if (stu.status && stu.status !== 'Active') return res.status(400).json({ error: 'Student is not active' })
+    const studentName = stu.name || ''
 
     const link = await razorpay.paymentLink.create({
       amount: amountPaise,
@@ -50,6 +76,7 @@ export default async function handler(req, res) {
       // the `items` kind shape used in Fees.jsx.
       notes: {
         gcc: String(gcc),
+        studentName: String(studentName || '').slice(0, 80),
         kind: kind || 'course',
         for_month: for_month || '',
         year: year ? String(year) : '',

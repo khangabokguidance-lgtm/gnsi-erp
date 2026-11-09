@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
 import { PremiumStyles, PremiumHero } from "./premiumUI";
+import ChecklistToday from "./ChecklistToday";
 
 const ROLE_MAP = {
   admin:"admin", administrator:"admin", "super admin":"admin", superadmin:"admin",
@@ -1161,6 +1162,7 @@ function TopNav({ currentUser, activeTab, setActiveTab, onRefresh, users, setCur
   const eventPending = events.filter(c=>{const steps=EVENT_STEPS[c.event_type]||[];const ok=currentUser.role==="admin"||c.department===currentUser.department;return ok&&steps.some(s=>c.step_data?.[s.key]?.status==="submitted");}).length;
   const totalPending = examPending+eventPending;
   const tabs = [
+    { id:"today",     label:"Today",     icon:"🗓️" },
     { id:"dashboard", label:"Dashboard", icon:"🏠" },
     { id:"exams",     label:"Exams",     icon:"📋", badge:examPending },
     { id:"events",    label:"Events",    icon:"📅", badge:eventPending },
@@ -1202,6 +1204,7 @@ function TopNav({ currentUser, activeTab, setActiveTab, onRefresh, users, setCur
 
 function BottomNav({ currentUser, activeTab, setActiveTab }) {
   const items = [
+    { id:"today",     label:"Today",   icon:"🗓️" },
     { id:"dashboard", label:"Home",    icon:"🏠" },
     { id:"exams",     label:"Exams",   icon:"📋" },
     { id:"events",    label:"Events",  icon:"📅" },
@@ -1229,7 +1232,7 @@ export default function Checklist({ currentUser: portalUser }) {
   const [events,        setEvents]        = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [authError,     setAuthError]     = useState(null);
-  const [activeTab,     setActiveTab]     = useState("dashboard");
+  const [activeTab,     setActiveTab]     = useState("today");
   const [toast,         setToast]         = useState({ msg:"", type:"success" });
   const [openItem,      setOpenItem]      = useState(null);
 
@@ -1272,7 +1275,7 @@ export default function Checklist({ currentUser: portalUser }) {
 
   const prevUserIdRef = useRef(null);
   useEffect(()=>{
-    if(currentUser?.id!==undefined&&currentUser.id!==prevUserIdRef.current) { prevUserIdRef.current=currentUser.id; setActiveTab("dashboard"); }
+    if(currentUser?.id!==undefined&&currentUser.id!==prevUserIdRef.current) { prevUserIdRef.current=currentUser.id; setActiveTab("today"); }
   },[currentUser?.id]);
 
   const handleSwitchUser = useCallback((user)=>{
@@ -1329,6 +1332,7 @@ export default function Checklist({ currentUser: portalUser }) {
   const renderTab = () => {
     if(loading) return <Spinner />;
     switch(activeTab) {
+      case "today":     return <ChecklistToday userName={activeUser.name} canSeeAll={activeUser.role==="admin"||activeUser.role==="incharge"} />;
       case "dashboard": return <DashboardView {...viewProps} />;
       case "exams":     return <ExamsView {...viewProps} />;
       case "events":    return <EventsView {...viewProps} />;
@@ -1347,7 +1351,7 @@ export default function Checklist({ currentUser: portalUser }) {
         <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
           <div style={{ padding:"12px 12px 0" }}>
             <PremiumStyles />
-            <PremiumHero isMobile eyebrow="GNSI · Checklist" title={{dashboard:"Dashboard",exams:"Exams",events:"Events",records:"Records",monitor:"Monitor"}[activeTab]||"Dashboard"}
+            <PremiumHero isMobile eyebrow="GNSI · Checklist" title={{today:"Today",dashboard:"Dashboard",exams:"Exams",events:"Events",records:"Records",monitor:"Monitor"}[activeTab]||"Dashboard"}
               icon={<span style={{ fontSize:20 }}>🏫</span>}
               actions={<>
                 <Avatar name={activeUser.name} role={activeUser.role} size={30} />

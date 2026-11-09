@@ -17,18 +17,31 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { NavIcon } from './navIcons'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import { compressImage, sizeNote } from './lib/imageCompress'
+import { admissionLinks, LINK_LABEL, patchFromStudent } from './lib/admStudentMatch'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
-import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
+import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity, getHouseOccupancy } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 import { staffDB } from './staffDB'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { printApplicationReceipt as printApplicationReceiptDoc } from './applicationReceipt'
 import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
+import { canonicalBatch, courseStructure, handoffToStudents, handoffToFees, handoffToAttendance, takeAdmissionsHandoff } from './courseMap'
+import { openStudentLedger } from './ledgerLink'
+import { allocateStudent } from './hostelAllocation'
+import { concessionRowsFor, newConcessionRows } from './lib/admissionConcessions'
+import StudentLocker from './StudentLocker'
+import AdmissionPortalAdmin from './AdmissionPortalAdmin'
+import ExamRegistrationAdmin from './ExamRegistrationAdmin'
+import { printAdmissionConfirmation } from './admissionConfirmation'
+import { useLiveCourseBatches } from './useLiveCourseBatches'
+// A batch in its standard name; unknown names ("Class 6") stay as typed.
+const stdBatch = v => canonicalBatch(v)
 
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
@@ -226,7 +239,7 @@ function validateApplicationData(obj) {
   }
   if (!obj.gender)                                   errors.gender = 'Gender is required'
   if (!obj.course)                                   errors.course = 'Course is required'
-  if (!obj.cls)                                      errors.cls = 'Class/Batch is required'
+  if (!obj.cls && obj.course !== 'Combined Course')  errors.cls = 'Class/Batch is required'   // Combined Course has no batch — stored as '—'
   if (!obj.house)                                    errors.house = 'House is required'
   if (!obj.father?.trim())                           errors.father = "Father's Name is required"
   if (!obj.mother?.trim())                           errors.mother = "Mother's Name is required"
@@ -447,6 +460,142 @@ const N = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ADM_STATUSES = ['Applied','Under Review','Admitted','Enrolled','Rejected','Waitlisted']
+// ─── Premium clinical theme for the Applications screen (calm white surfaces, teal + navy, hairline borders) ───
+const P = { page:'var(--p-page)', card:'var(--p-card)', line:'var(--p-line)', soft:'var(--p-soft)', ink:'var(--p-ink)', sub:'var(--p-sub)', mute:'var(--p-mute)',
+  teal:'var(--p-accent)', tealDark:'var(--p-accent-dark)', tealSoft:'var(--p-accent-soft)', navy:'var(--p-navy)', total:'var(--p-total)', serif:"'Source Serif 4','Playfair Display',Georgia,serif" }
+// Two looks for the same screen, switched with the Design button. Clinical = white + teal; Executive = ivory + navy + gold.
+const THEMES = {
+  clinical:  { label:'Clinical',  vars:{ '--p-page':'#F4F7FA', '--p-card':'#FFFFFF', '--p-line':'#E3E9F0', '--p-soft':'#F8FAFC', '--p-ink':'#0E1B2C', '--p-sub':'#5A6B7F', '--p-mute':'#8A97A8',
+                '--p-accent':'#0E7C86', '--p-accent-dark':'#0A5F68', '--p-accent-soft':'#E6F4F5', '--p-navy':'#0B2545', '--p-total':'#0B2545' } },
+  executive: { label:'Executive', vars:{ '--p-page':'#FAF7F2', '--p-card':'#FFFFFF', '--p-line':'#E8DFCC', '--p-soft':'#FBF8F1', '--p-ink':'#14213D', '--p-sub':'#5E6477', '--p-mute':'#9A9382',
+                '--p-accent':'#B8915A', '--p-accent-dark':'#8F6D38', '--p-accent-soft':'#F6EEDC', '--p-navy':'#0B1B3A', '--p-total':'#E2C57E' } },
+  // Government-portal look (in the spirit of national exam-agency sites): tricolour rule, deep-blue band, orange call-to-action,
+  // square-cornered bordered tables, an announcements strip.
+  portal:    { label:'Portal',    vars:{ '--p-page':'#F2F5F9', '--p-card':'#FFFFFF', '--p-line':'#CBD5E3', '--p-soft':'#F3F6FA', '--p-ink':'#1B2A41', '--p-sub':'#4A5B73', '--p-mute':'#7B8AA0',
+                '--p-accent':'#1D4F91', '--p-accent-dark':'#143A6B', '--p-accent-soft':'#E6EEF8', '--p-navy':'#17375E', '--p-total':'#17375E' } },
+}
+const THEME_ORDER = ['clinical', 'executive', 'portal']
+const PRO_CSS = `
+.pro-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:6px 2px 18px}
+.pro-eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:${P.teal}}
+.pro-title{font-family:${P.serif};font-size:32px;line-height:1.1;font-weight:600;color:${P.navy};margin:4px 0 4px;letter-spacing:-.01em}
+.pro-sub{font-size:13px;color:${P.sub}}
+.pro-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pro-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${P.line};background:#fff;color:${P.ink};font:600 12.5px/1 inherit;font-family:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+.pro-btn:hover{border-color:${P.teal};box-shadow:0 2px 10px color-mix(in srgb,${P.teal} 15%,transparent)}
+.pro-btn.on{background:${P.tealSoft};border-color:${P.teal};color:${P.tealDark}}
+.pro-btn.primary{background:${P.teal};border-color:${P.teal};color:#fff;padding:10px 18px;box-shadow:0 4px 14px color-mix(in srgb,${P.teal} 30%,transparent)}
+.pro-btn.primary:hover{background:${P.tealDark};border-color:${P.tealDark}}
+.pro-seg{display:inline-flex;border:1px solid ${P.line};border-radius:10px;background:#fff;padding:3px;gap:2px}
+.pro-seg button{border:0;background:transparent;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:14px}
+.pro-seg button.on{background:${P.tealSoft};box-shadow:inset 0 0 0 1px color-mix(in srgb,${P.teal} 33%,transparent)}
+.pro-session{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:${P.card};border:1px solid ${P.line};border-radius:14px;padding:10px 16px;margin-bottom:14px;font-size:12.5px;color:${P.sub}}
+.pro-session select{font:600 12.5px inherit;font-family:inherit;padding:5px 10px;border-radius:8px;border:1px solid ${P.line};background:#fff;color:${P.ink}}
+.pro-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pro-kpis{display:grid;gap:12px;margin-bottom:12px}
+.pro-kpi{position:relative;text-align:left;background:${P.card};border:1px solid ${P.line};border-radius:16px;padding:14px 16px 12px;cursor:pointer;font-family:inherit;transition:transform .15s,box-shadow .15s,border-color .15s;overflow:hidden}
+.pro-kpi:hover{transform:translateY(-2px);box-shadow:0 10px 26px -14px rgba(11,37,69,.35)}
+.pro-kpi.on{border-color:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 22%,transparent)}
+.pro-kpi .k-label{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${P.mute}}
+.pro-kpi .k-num{font-family:${P.serif};font-size:30px;font-weight:600;color:${P.ink};line-height:1.1;margin-top:6px;font-variant-numeric:tabular-nums}
+.pro-kpi .k-sub{font-size:11.5px;color:${P.sub};margin-top:2px}
+.pro-kpi .k-bar{height:4px;border-radius:99px;background:${P.line};margin-top:10px;overflow:hidden}
+.pro-kpi .k-bar>i{display:block;height:100%;border-radius:99px;background:var(--c)}
+.pro-dist{display:flex;height:8px;border-radius:99px;overflow:hidden;background:${P.line};margin-bottom:18px;gap:2px}
+.pro-dist>span{min-width:0;transition:flex .4s}
+.pro-panel{background:${P.card};border:1px solid ${P.line};border-radius:18px;padding:16px 18px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px}
+.pro-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;border:1px solid ${P.line};background:#fff;color:${P.sub};font:600 11.5px/1 inherit;font-family:inherit;cursor:pointer;transition:all .12s;white-space:nowrap}
+.pro-chip:hover{border-color:${P.teal};color:${P.tealDark}}
+.pro-chip.on{background:${P.tealSoft};border-color:${P.teal};color:${P.tealDark}}
+.pro-chip em{font-style:normal;font-size:10px;font-weight:700;background:${P.soft};border-radius:99px;padding:1px 6px;color:${P.mute}}
+.pro-chip.on em{background:#fff;color:${P.tealDark}}
+.pro-label{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:${P.mute};min-width:54px}
+.pro-table{width:100%;border-collapse:collapse;font-size:13px}
+.pro-table th{padding:12px 14px!important;background:${P.soft}!important;color:${P.sub}!important;font-size:10.5px!important;font-weight:700!important;letter-spacing:.1em!important;text-transform:uppercase;border-bottom:1px solid ${P.line};position:sticky;top:0;white-space:nowrap}
+.pro-table td{padding:12px 14px!important;border-bottom:1px solid ${P.soft}}
+.pro-table tbody tr{transition:background .12s}
+.pro-table tbody tr:hover{background:color-mix(in srgb,${P.tealSoft} 35%,transparent)!important}
+.pro-card{background:${P.card};border:1px solid ${P.line};border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative;min-width:0;width:100%;transition:transform .15s,box-shadow .15s,border-color .15s}
+.pro-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(11,37,69,.4);border-color:color-mix(in srgb,${P.teal} 40%,transparent)}
+.pro-card.sel{border-color:${P.teal};box-shadow:0 0 0 2px color-mix(in srgb,${P.teal} 20%,transparent)}
+.pro-mini{padding:7px 4px;border-radius:9px;border:1px solid ${P.line};background:#fff;font:700 11px/1 inherit;font-family:inherit;cursor:pointer;text-align:center;width:100%;transition:all .12s}
+.pro-mini:hover{border-color:currentColor;background:${P.soft}}
+.pro-hero{display:contents}
+.pro-theme.executive .pro-hero{display:block;background:radial-gradient(120% 140% at 100% 0%,#1C3A6B 0%,#10264A 45%,#0B1B3A 85%);border-radius:24px;padding:26px 28px 22px;margin-bottom:18px;position:relative;overflow:hidden;box-shadow:0 18px 40px -22px rgba(11,27,58,.7)}
+.pro-theme.executive .pro-hero::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,#B8915A,#E2C57E,#B8915A)}
+.pro-theme.executive .pro-eyebrow{color:#E2C57E;letter-spacing:.22em}
+.pro-theme.executive .pro-title{color:#fff;font-size:36px}
+.pro-theme.executive .pro-sub,.pro-theme.executive .pro-hero kbd{color:rgba(255,255,255,.72)!important}
+.pro-theme.executive .pro-sub strong{color:#fff!important}
+.pro-theme.executive .pro-hero kbd{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.18)!important}
+.pro-theme.executive .pro-hero .pro-head>div:first-child>div:last-child{color:rgba(255,255,255,.5)!important}
+.pro-theme.executive .pro-btn{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16);color:#fff}
+.pro-theme.executive .pro-btn:hover{border-color:#E2C57E;background:rgba(255,255,255,.12);box-shadow:none}
+.pro-theme.executive .pro-btn.on{background:rgba(226,197,126,.18);border-color:#E2C57E;color:#F3DDA6}
+.pro-theme.executive .pro-btn.primary{background:linear-gradient(135deg,#E2C57E,#B8915A);border-color:#B8915A;color:#1A1406;box-shadow:0 6px 18px rgba(184,145,90,.4)}
+.pro-theme.executive .pro-seg{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+.pro-theme.executive .pro-seg button.on{background:rgba(226,197,126,.22);box-shadow:inset 0 0 0 1px #E2C57E88}
+.pro-theme.executive .pro-session{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.7)}
+.pro-theme.executive .pro-session strong{color:#8FE0B0!important}
+.pro-theme.executive .pro-session select{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff}
+.pro-theme.executive .pro-session select option{color:#14213D}
+.pro-theme.executive .pro-kpi{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.pro-theme.executive .pro-kpi:hover{background:rgba(255,255,255,.1);box-shadow:0 12px 28px -16px rgba(0,0,0,.6)}
+.pro-theme.executive .pro-kpi.on{border-color:#E2C57E;box-shadow:0 0 0 2px rgba(226,197,126,.3)}
+.pro-theme.executive .pro-kpi .k-label{color:rgba(255,255,255,.55)}
+.pro-theme.executive .pro-kpi .k-num{color:#fff}
+.pro-theme.executive .pro-kpi .k-sub{color:rgba(255,255,255,.62)}
+.pro-theme.executive .pro-kpi .k-bar{background:rgba(255,255,255,.14)}
+.pro-theme.executive .pro-dist{background:rgba(255,255,255,.14);margin-bottom:0}
+.pro-theme.executive .pro-kpis{margin-bottom:14px}
+.pro-theme.executive .pro-table th{background:#14213D!important;color:#E2C57E!important}
+.pro-theme.executive .pro-panel,.pro-theme.executive .pro-card{box-shadow:0 10px 26px -20px rgba(20,33,61,.5)}
+.pro-notice{display:none}
+.pro-theme.portal{font-family:'Noto Sans','Open Sans',Inter,'Segoe UI',system-ui,sans-serif}
+.pro-theme.portal .pro-hero{display:block;background:#17375E;border-radius:6px;padding:0;margin-bottom:16px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(23,55,94,.25)}
+.pro-theme.portal .pro-hero::before{content:'';display:block;height:6px;background:linear-gradient(90deg,#FF9933 0 33.3%,#FFFFFF 33.3% 66.6%,#138808 66.6% 100%)}
+.pro-theme.portal .pro-hero>*:not(.pro-notice):not(:first-child){margin-left:22px;margin-right:22px}
+.pro-theme.portal .pro-head{padding:18px 22px 14px}
+.pro-theme.portal .pro-eyebrow{color:#FFB366;letter-spacing:.18em}
+.pro-theme.portal .pro-title{font-family:inherit;color:#fff;font-size:26px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.pro-theme.portal .pro-sub,.pro-theme.portal .pro-hero kbd{color:rgba(255,255,255,.8)!important}
+.pro-theme.portal .pro-sub strong{color:#fff!important}
+.pro-theme.portal .pro-hero kbd{background:rgba(255,255,255,.1)!important;border-color:rgba(255,255,255,.25)!important;border-radius:3px!important}
+.pro-theme.portal .pro-hero .pro-head>div:first-child>div:last-child{color:rgba(255,255,255,.6)!important}
+.pro-theme.portal .pro-btn{border-radius:4px;background:#fff;border-color:#fff;color:#17375E}
+.pro-theme.portal .pro-btn:hover{background:#E6EEF8;border-color:#E6EEF8;box-shadow:none}
+.pro-theme.portal .pro-btn.on{background:#FFB366;border-color:#FFB366;color:#3A1D00}
+.pro-theme.portal .pro-btn.primary{background:#E8731A;border-color:#E8731A;color:#fff;box-shadow:none;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.pro-theme.portal .pro-btn.primary:hover{background:#C75F10;border-color:#C75F10}
+.pro-theme.portal .pro-seg{border-radius:4px;background:#fff;border-color:#fff}
+.pro-theme.portal .pro-seg button{border-radius:3px}
+.pro-theme.portal .pro-seg button.on{background:#E6EEF8;box-shadow:inset 0 0 0 1px #1D4F91}
+.pro-theme.portal .pro-session{border-radius:4px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.8)}
+.pro-theme.portal .pro-session strong{color:#9FE6B0!important}
+.pro-theme.portal .pro-session select{border-radius:4px;background:#fff;color:#17375E}
+.pro-theme.portal .pro-notice{display:flex;align-items:center;gap:12px;background:#FFF4E5;border-bottom:1px solid #FFD8A8;border-top:1px solid #FFD8A8;color:#7A3E00;font-size:12.5px;padding:9px 22px;margin:14px 0 0!important;overflow:hidden}
+.pro-theme.portal .pro-notice b{background:#E8731A;color:#fff;border-radius:3px;padding:2px 8px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;flex-shrink:0}
+.pro-theme.portal .pro-notice span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pro-theme.portal .pro-kpis{margin-bottom:14px}
+.pro-theme.portal div:has(>.pro-table){border-radius:4px!important}
+.pro-theme.portal .pro-kpi{background:#fff;border:1px solid #fff;border-top:4px solid var(--c);border-radius:4px;padding:12px 14px 10px}
+.pro-theme.portal .pro-kpi:hover{transform:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.pro-theme.portal .pro-kpi.on{box-shadow:0 0 0 3px #FFB366}
+.pro-theme.portal .pro-kpi .k-num{font-family:inherit;font-size:28px;font-weight:700;color:#17375E}
+.pro-theme.portal .pro-kpi .k-label{color:#4A5B73}
+.pro-theme.portal .pro-dist{height:6px;border-radius:0;gap:0;margin-bottom:0;background:rgba(255,255,255,.2)}
+.pro-theme.portal .pro-panel{border-radius:4px;border-top:3px solid #17375E}
+.pro-theme.portal .pro-chip{border-radius:4px;font-weight:600}
+.pro-theme.portal .pro-chip.on{background:#1D4F91;border-color:#1D4F91;color:#fff}
+.pro-theme.portal .pro-chip.on em{background:#fff;color:#1D4F91}
+.pro-theme.portal .pro-table th{background:#17375E!important;color:#fff!important;border:1px solid #2C4F80!important;border-radius:0}
+.pro-theme.portal .pro-table td{border:1px solid #DCE4EF}
+.pro-theme.portal .pro-table tbody tr:nth-child(even){background:#F6F9FC!important}
+.pro-theme.portal .pro-card{border-radius:4px;border-left:4px solid #17375E}
+.pro-theme.portal .pro-mini{border-radius:3px}
+.pro-field{font-size:10px;font-weight:700;color:${P.mute};text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
+@media (max-width:640px){.pro-title{font-size:26px}.pro-actions{width:100%}.pro-btn.primary{order:-1;width:100%;justify-content:center}.pro-btn{padding:8px 11px}}
+`
 const STAT_META = {
   'Applied':      { color:T.indigo[600], bg:T.indigo[50],  icon:'◎' },
   'Under Review': { color:T.amber[600],  bg:T.amber[50],   icon:'◐' },
@@ -461,13 +610,13 @@ const RELIGIONS = ['--','Hindu','Muslim','Christian','Meitei Sanamahism','Buddhi
 const MOTHER_TONGUES = ['--','Meitei','Bengali','Nepali','Hindi','Tangkul','Thadou','Other']
 const QUOTA_TYPES = ['--','Open','Sports','Defence Ward','Staff Ward','NRI','Other']
 const REFERRAL_SOURCES = ['--','Social Media','Newspaper Ad','Alumni','Walk-in','Teacher Referral','Parent Referral','Other']
-const COURSE_STRUCTURE = {
-  Navodaya:          { subtypes:['Lakshya','Umeed'],              color:T.indigo[600], bg:T.indigo[50]  },
-  Sainik:            { subtypes:['Achiever','Leader','Champion'],  color:T.emerald[600],bg:T.emerald[50] },
-  Foundation:        { subtypes:['Elite','Prime'],                 color:T.violet[600], bg:T.violet[50]  },
-  'Combined Course': { subtypes:[],                               color:T.amber[600],  bg:T.amber[50]   },
-}
-const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya','Umeed','Elite','Prime','Class 6','Class 7','Class 8','Class 9','Class 10']
+const COURSE_STRUCTURE = courseStructure({
+  Navodaya:          { color:T.indigo[600], bg:T.indigo[50]  },
+  Sainik:            { color:T.emerald[600],bg:T.emerald[50] },
+  Foundation:        { color:T.violet[600], bg:T.violet[50]  },
+  'Combined Course': { color:T.amber[600],  bg:T.amber[50]   },
+}, { order: ['Navodaya', 'Sainik', 'Foundation', 'Combined Course'] })   // batches come from courseMap's one standard list
+const CLASSES_LIST = ['Achiever','Leader','Champion','Lakshya A','Lakshya B','Lakshya','Umeed','Udaan','Pragati','Class 6','Class 7','Class 8','Class 9','Class 10']
 const HOSTEL_TYPES = ['Day Scholar','Boarder','Day Boarder']
 const HOSTEL_STYLES = {
   'Boarder':     { bg:T.emerald[50], color:T.emerald[700], border:T.emerald[300], icon:'🏠' },
@@ -476,10 +625,6 @@ const HOSTEL_STYLES = {
 }
 const HOUSES_LIST        = ['Kombirei','Shiroi','Loktak','Singgarei','Koubru','Kangla','Sangai','Takhelei','Block-B','Day Scholar']
 const DAY_SCHOLAR_HOUSES = ['Day Scholar']
-const HOUSE_CAPACITIES = {
-  'Kombirei':40,'Shiroi':40,'Loktak':40,'Singgarei':40,'Koubru':40,
-  'Kangla':40,'Sangai':40,'Takhelei':40,'Block-B':30,'Day Scholar':999,
-}
 // 🔗 WARDEN_CONTACTS hardcoded object removed — warden/housemaster info now
 // comes from the real `housemasters` table (the same one Hostel.jsx's
 // HousemasterTab manages) via the useActiveHousemasters() hook below.
@@ -858,11 +1003,13 @@ async function uploadPhotoToGoogleDrive(file, gccNo) {
   if (!uploadData.id) throw new Error('Upload to Google Drive failed')
 
   // Make the file link-viewable so it works as a direct image URL.
-  await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
+  const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadData.id}/permissions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ role: 'reader', type: 'anyone' }),
   })
+  // A file that is not shared stays private: the saved link then shows a broken image to everyone but the uploader.
+  if (!permRes.ok) throw new Error('The photo uploaded but Google Drive would not make it viewable, so it would show as blank. Please try again.')
 
   // Drive's direct-image-embed URL format (works in <img src>, unlike the
   // normal "view" link which opens Drive's viewer page instead of the raw image).
@@ -987,8 +1134,9 @@ function mapToDB(app) {
     emergency_contact_rel:  app.emergencyRel   || null,
     sibling_gcc:     app.siblingGcc    ? parseInt(app.siblingGcc) : null,
     course:          app.course        || null,
-    subtype:         app.subtype       || null,
-    batch:           app.cls           || null,
+    // Standard batch names ("ELITE" / "Udaan — ENG" → Udaan); anything else as typed.
+    subtype:         stdBatch(app.subtype) || null,
+    batch:           stdBatch(app.cls)     || null,
     house:           app.house         || null,
     session:         app.session       || null,
     hostel_type:     hostelType,
@@ -1069,21 +1217,14 @@ function mapFromDB(row) {
 }
 
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
-const sbApps = {
-  fetch: async () => {
-    const data = await fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false })
-    return data.map(mapFromDB)
-  },
-}
-
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = {
   inp: {
     width:'100%', padding:'10px 14px', borderRadius:10,
-    border:`1px solid ${N.border}`, fontSize:13,
+    border:`1px solid ${P.line}`, fontSize:13,
     outline:'none', boxSizing:'border-box',
     backgroundColor:'#FFFFFF',
-    color:N.text, fontFamily:'system-ui,sans-serif',
+    color:N.text, fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
     boxShadow:'none',
     transition:'box-shadow .15s, border-color .15s',
   },
@@ -1112,9 +1253,13 @@ function useKeyboardShortcuts({ onNew, onSearch, onEscape, onToggleView, onToggl
 }
 
 // ─── Shared UI ─────────────────────────────────────────────────────────────────
-function Avatar({ name, size=36, photoUrl }) {
-  if (photoUrl) return (
-    <img src={photoUrl} alt={name}
+// Tries the application's own photo, then the linked student's photo, then the placeholder — a link that fails to
+// load (private Drive file, expired link) no longer leaves a broken-image icon.
+function Avatar({ name, size=36, photoUrl, altUrl }) {
+  const [broken, setBroken] = useState([])
+  const url = [photoUrl, altUrl].find(u => u && !broken.includes(u))
+  if (url) return (
+    <img src={url} alt={name} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(b => [...b, url])}
       style={{ width:size, height:size, borderRadius:'50%', objectFit:'cover', flexShrink:0, border:`2px solid ${T.slate[200]}` }} />
   )
   // Generic photo-placeholder icon (rounded square, mountain/sun graphic) —
@@ -1130,6 +1275,42 @@ function Avatar({ name, size=36, photoUrl }) {
       </svg>
     </div>
   )
+}
+
+// Jump from an application to the same person in every student-side module. Only shown once a student record exists.
+function StudentModuleLinks({ a, link, onNavigate, onOpenLocker, onPrintConfirmation }) {
+  if (!onNavigate || !link || link.state === 'noStudent') return null
+  const gcc = parseInt(a.gcc)
+  const go = (fn, module) => () => { fn?.(); onNavigate(module) }
+  const items = [
+    ...(onPrintConfirmation && a.status === 'Enrolled' ? [['🖨 Admission form', onPrintConfirmation]] : []),
+    ...(onOpenLocker ? [['🔐 Document locker', onOpenLocker]] : []),
+    ['🎓 Student profile', go(() => handoffToStudents({ gcc }), 'students')],
+    ['📒 Fee ledger', () => { openStudentLedger(gcc) }],
+    ['💳 Collect fee', go(() => handoffToFees({ gcc }), 'fees')],
+    ['🗓 Attendance', go(() => handoffToAttendance({ page: 'student360', gcc }), 'attendance')],
+    ...(a.hostel_type && a.hostel_type !== 'Day Scholar' ? [['🏠 Hostel', () => onNavigate('hostel')]] : []),
+  ]
+  return (
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+      <span style={{ fontSize:10, fontWeight:800, color:T.slate[400], textTransform:'uppercase', letterSpacing:'.08em' }}>Open in</span>
+      {items.map(([label, fn]) => (
+        <button key={label} type="button" onClick={fn}
+          style={{ padding:'5px 11px', borderRadius:99, border:`1px solid ${T.indigo[200]}`, background:T.indigo[50], color:T.indigo[700], fontSize:11.5, fontWeight:700, cursor:'pointer' }}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
+const LINK_TONE = { ok: ['#047857', '#ecfdf5'], noStudent: ['#b42318', '#fef3f2'], notEnrolled: ['#9a5b00', '#fffaeb'], status: ['#9a5b00', '#fffaeb'], diff: ['#9a5b00', '#fffaeb'], dup: ['#b42318', '#fef3f2'] }
+// Small "is this application in step with its Students record?" pill. Open applications with no student show nothing.
+function StudentLinkBadge({ link }) {
+  if (!link) return null
+  const [fg, bg] = LINK_TONE[link.state] || LINK_TONE.ok
+  const tip = link.state === 'diff' ? link.diffs.map(d => `${d.field}: Admissions "${d.adm || '—'}" vs Students "${d.stu || '—'}"`).join('\n') : (link.note || 'Admission and student record agree')
+  return <span title={tip} style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:99, color:fg, background:bg, border:`1px solid ${fg}33`, whiteSpace:'nowrap' }}>
+    {link.state === 'ok' ? '🎓 ' : '⚠ '}{LINK_LABEL[link.state]}{link.state === 'diff' ? ` (${link.diffs.length})` : ''}
+  </span>
 }
 
 function StatusBadge({ status }) {
@@ -1194,18 +1375,14 @@ function PillStrip({ label, options, value, onChange, colorFn, countFn }) {
   const isMobile = useMobile()
   return (
     <div style={{ display:'flex', alignItems:'center', gap:isMobile?6:8, flexWrap:'wrap' }}>
-      <span style={{ fontSize:9, fontWeight:800, color:N.muted, textTransform:'uppercase', letterSpacing:'.12em', whiteSpace:'nowrap', minWidth:isMobile?40:52 }}>{label}</span>
+      <span className="pro-label">{label}</span>
       {['All', ...options].map(opt => {
         const active = value === opt
-        const accent = colorFn ? colorFn(opt) : N.indigo
         const count  = countFn ? countFn(opt) : null
         return (
-          <button key={opt} onClick={() => onChange(active ? 'All' : opt)} className="neo-pill"
-            style={{ padding:'5px 13px', borderRadius:99, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', background:N.bg, boxShadow:active?N.inset('sm'):N.shadow('sm'), color:active?accent:N.muted2, transition:'all .15s', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}>
+          <button key={opt} type="button" onClick={() => onChange(active ? 'All' : opt)} className={'pro-chip' + (active ? ' on' : '')}>
             {opt}
-            {count !== null && opt !== 'All' && (
-              <span style={{ fontSize:9, background:active?accent+'20':N.bg2, color:active?accent:N.muted, borderRadius:99, padding:'0 5px', fontWeight:800, boxShadow:active?'none':N.shadow('sm') }}>{count}</span>
-            )}
+            {count !== null && opt !== 'All' && <em>{count}</em>}
           </button>
         )
       })}
@@ -1240,7 +1417,20 @@ function FunnelBar({ label, value, total, color }) {
   )
 }
 
+// Live seats per house — capacity from the real `houses` table (Hostel → Houses), seats = current students
+// + Admitted applicants not yet enrolled. Returns null while loading / if it could not be read.
+function useHouseFill() {
+  const [fill, setFill] = useState(null)
+  useEffect(() => {
+    let live = true
+    getHouseOccupancy().then(r => { if (live) setFill(r.filter(h => !DAY_SCHOLAR_HOUSES.includes(h.name))) }).catch(e => console.warn('House fill unavailable:', e?.message || e))
+    return () => { live = false }
+  }, [])
+  return fill
+}
+
 function AnalyticsDashboard({ apps, cols, darkMode }) {
+  const houseFillLive = useHouseFill()
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[700] : T.slate[200]
   const tx = darkMode ? T.slate[100] : T.slate[800]
@@ -1340,9 +1530,8 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
       </>)}
 
       {card('House Fill Rate', <>
-        {HOUSES_LIST.filter(h=>h!=='Day Scholar').map(h => {
-          const count = apps.filter(a=>a.house===h).length
-          const cap   = HOUSE_CAPACITIES[h] || 40
+        {!houseFillLive && <div style={{ fontSize:11, color:T.slate[400] }}>Loading live house capacity…</div>}
+        {(houseFillLive || []).map(({ name: h, occupied: count, capacity: cap }) => {
           const pct   = Math.round((count/cap)*100)
           return (
             <div key={h} style={{ marginBottom:6 }}>
@@ -1361,7 +1550,7 @@ function AnalyticsDashboard({ apps, cols, darkMode }) {
 }
 
 // ─── Detail Panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
+function DetailPanel({ a, link, onNavigate, onSyncFromStudent, onOpenLocker, onPrintConfirmation, onClose, onAddNote, darkMode, role, housemastersByHouse={} }) {
   const [noteText, setNoteText] = useState('')
   const bg = darkMode ? T.slate[800] : '#fff'
   const bd = darkMode ? T.slate[600] : T.slate[200]
@@ -1399,6 +1588,25 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
         <div style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:11.5, fontWeight:700, color:T.emerald[700], background:T.emerald[50], border:`1px solid ${T.emerald[200]}`, borderRadius:8, padding:'5px 12px', marginBottom:14 }}>
           🎓 Enrolled — current student status: {linkedStudent.status}
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
+        </div>
+      )}
+      <StudentModuleLinks a={a} link={link} onNavigate={onNavigate} onOpenLocker={onOpenLocker} onPrintConfirmation={onPrintConfirmation} />
+      {link && link.state !== 'ok' && (
+        <div style={{ border:`1px solid ${T.amber[200]}`, background:T.amber[50], borderRadius:10, padding:'10px 14px', marginBottom:12 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:T.amber[700], marginBottom:4 }}>⚠ Not in step with the Students module — {LINK_LABEL[link.state]}</div>
+          {link.note && <div style={{ fontSize:12, color:T.slate[600] }}>{link.note}</div>}
+          {onSyncFromStudent && patchFromStudent(link.diffs) && (
+            <button type="button" onClick={() => onSyncFromStudent(a.gcc)}
+              style={{ margin:'6px 0 2px', padding:'6px 12px', borderRadius:8, border:`1px solid ${T.amber[300] || T.amber[200]}`, background:'#fff', color:T.amber[700], fontSize:11.5, fontWeight:800, cursor:'pointer' }}>
+              ⬆ Update this application from Students
+            </button>
+          )}
+          {link.diffs?.length > 0 && (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, marginTop:4 }}>
+              <thead><tr>{['Field','Admissions','Students'].map(h => <th key={h} style={{ textAlign:'left', padding:'3px 6px', fontSize:10, textTransform:'uppercase', color:T.slate[500] }}>{h}</th>)}</tr></thead>
+              <tbody>{link.diffs.map(d => <tr key={d.field}><td style={{ padding:'3px 6px', fontWeight:700 }}>{d.field}</td><td style={{ padding:'3px 6px' }}>{String(d.adm || '—')}</td><td style={{ padding:'3px 6px' }}>{String(d.stu || '—')}</td></tr>)}</tbody>
+            </table>
+          )}
         </div>
       )}
       {(() => {
@@ -1696,7 +1904,7 @@ function WABlastModal({ apps, onClose }) {
             <option value="fee_due">Fee Due Reminder</option>
           </select>
         </div>
-        <div style={{ padding:'12px 14px', background:'#DCF8C6', borderRadius:10, fontSize:12, color:'#128C7E', fontFamily:'monospace', whiteSpace:'pre-wrap', marginBottom:14, maxHeight:180, overflowY:'auto' }}>
+        <div style={{ padding:'12px 14px', background:'#DCF8C6', borderRadius:10, fontSize:12, color:'#128C7E', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", whiteSpace:'pre-wrap', marginBottom:14, maxHeight:180, overflowY:'auto' }}>
           {previewMsg}
         </div>
         <div style={{ fontSize:12, color:T.slate[500], marginBottom:12 }}>
@@ -2182,7 +2390,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     entranceScore:def('entranceScore'), interviewScore:def('interviewScore'), interviewDate:def('interviewDate'),
     followupDate:def('followupDate'), bedNumber:def('bedNumber'),
     emergencyName:def('emergencyName'), emergencyPhone:def('emergencyPhone'), emergencyRel:def('emergencyRel'),
-    siblingGcc:def('siblingGcc'), course:def('course'), subtype:def('subtype'), cls:def('cls'), house:def('house'),
+    siblingGcc:def('siblingGcc'), course:def('course'), subtype:def('course')==='Combined Course'?'':stdBatch(def('subtype')), cls:def('course')==='Combined Course'?'—':stdBatch(def('cls')), house:def('house'),
     session:defaultSession, hostel_type:def('hostel_type','Day Scholar'), status:def('status','Applied'),
     father:def('father'), mother:def('mother'), phone:def('phone'), whatsapp:def('whatsapp'),
     prevSchool:def('prevSchool'), address:def('address'), remarks:def('remarks'), photoUrl:def('photoUrl'),
@@ -2318,8 +2526,8 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     if (!form.gcc) { setPhotoUploadError('Enter GCC No. first — the photo is filed by GCC No.'); return }
     setPhotoUploading(true); setPhotoUploadError(''); setPhotoNote('')
     try {
-      // shrink the photo first (phone photos are several MB; ~250 KB is plenty for a passport photo)
-      const info = await compressImage(file, { maxDim: 1000, targetKB: 250 })
+      // shrink the photo first (phone photos are several MB; ~300 KB is plenty for a passport photo)
+      const info = await compressImage(file, { maxDim: 1200, quality: 0.9, targetKB: 300 })
       const { url } = await Promise.race([
         uploadPhotoToGoogleDrive(info.file, form.gcc),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Upload timed out. Please check your connection and try again.')), 60000)),
@@ -2528,7 +2736,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                       {Object.keys(COURSE_STRUCTURE).map(c => {
                         const on = form.course === c, ex = EXAM_BY_COURSE[c] || []
                         return (
-                          <button type="button" key={c} onClick={() => { set('course', c); if (!COURSE_STRUCTURE[c].subtypes.includes(form.subtype)) set('subtype','') }}
+                          <button type="button" key={c} onClick={() => { set('course', c); if (!COURSE_STRUCTURE[c].subtypes.includes(form.subtype)) set('subtype',''); if (c === 'Combined Course') set('cls', '—'); else if (form.cls === '—') set('cls', '') }}
                             style={{ textAlign:'left', padding:'14px 14px', borderRadius:14, cursor:'pointer', fontFamily:AF.sans,
                               border:`1.5px solid ${on ? AF.gold : AF.line}`, background: on ? AF.goldBg : AF.paper,
                               boxShadow: on ? '0 10px 24px -16px rgba(201,162,75,.9)' : 'none', transition:'all .15s' }}>
@@ -2540,14 +2748,18 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                     </div>
                   </AfField>
                   <AfField label="Subtype / batch" required={subtypes.length > 0} error={err('subtype','programme')}>
-                    {subtypes.length > 0
-                      ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}</select>
+                    {form.course === 'Combined Course'
+                      ? <select {...I('subtype')} value="" disabled style={{ opacity:.65 }} title="Combined Course has no batch"><option value="">— (none for Combined)</option></select>
+                      : subtypes.length > 0
+                      ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}{form.subtype && !subtypes.includes(form.subtype) && <option>{form.subtype}</option>}</select>
                       : <input {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)} placeholder="Optional" />}
                   </AfField>
                   <AfField label="Class / batch" required error={err('cls','programme')}>
-                    <select {...I('cls')} value={form.cls} onChange={e => set('cls', e.target.value)}>
+                    {form.course === 'Combined Course'
+                    ? <select {...I('cls')} value="—" disabled style={{ opacity:.65 }} title="Combined Course has no batch"><option value="—">— (none for Combined)</option></select>
+                    : <select {...I('cls')} value={form.cls} onChange={e => set('cls', e.target.value)}>
                       <option value="">— Class —</option>{CLASSES_LIST.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                    </select>}
                   </AfField>
                   <AfField label="Session" required error={err('session','programme')}>
                     <select {...I('session')} value={allSessions.includes(form.session) ? form.session : '__other__'}
@@ -3012,7 +3224,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 }
 
 // ─── Application Card ──────────────────────────────────────────────────────────
-function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
+function AppCard({ a, link, onLocker, onConfirm, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
   const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission' && !col.reverted)
   const cs      = COURSE_STRUCTURE[a.course]
@@ -3039,7 +3251,10 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
     actionBtn = (
       <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
         <span style={{ fontSize:11, color:T.emerald[600], fontWeight:700 }}>✓ Enrolled</span>
-        <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          <button onClick={e=>{e.stopPropagation();onOpenFee(a)}} style={{ padding:'4px 10px', borderRadius:6, background:T.emerald[50], color:T.emerald[700], border:`1px solid ${T.emerald[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>+ Fee</button>
+          {onConfirm && <button onClick={e=>{e.stopPropagation();onConfirm(a)}} title="Print the admission confirmation & registration form" style={{ padding:'4px 10px', borderRadius:6, background:'#fff', color:T.slate[700], border:`1px solid ${T.slate[300]}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Admission form</button>}
+        </div>
       </div>
     )
   }
@@ -3047,22 +3262,26 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
   // ── Table row mode ──────────────────────────────────────────────────────────
   if (tableMode) {
     return (
-      <tr style={{ background:selected?T.indigo[50]:bg, borderBottom:`1px solid ${bd}`, fontSize:12 }}>
+      <tr style={{ background:selected?P.tealSoft:'#fff', fontSize:13 }}>
         <td style={{ padding:'8px 10px' }}><input type="checkbox" checked={!!selected} onChange={()=>onSelect(a.id)} style={{ cursor:'pointer' }} /></td>
-        <td style={{ padding:'8px 10px', fontFamily:'monospace', color:T.indigo[600] }}>{a.gcc}</td>
-        <td style={{ padding:'8px 10px', fontFamily:'monospace', color:T.slate[400] }}>{a.admNo||'—'}</td>
-        <td style={{ padding:'8px 10px', fontWeight:700, color:T.slate[800] }}>{a.name}</td>
+        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:P.teal, fontWeight:600 }}>{a.gcc}</td>
+        <td style={{ padding:'8px 10px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color:T.slate[400] }}>{a.admNo||'—'}</td>
+        <td style={{ padding:'8px 10px', fontWeight:700, color:P.ink, cursor:'pointer' }} onClick={()=>onDetail(a)}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}><Avatar name={a.name} size={30} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} /><span>{a.name}</span></div>
+        </td>
         <td style={{ padding:'8px 10px' }}>{a.course||'—'}{a.subtype?` · ${a.subtype}`:''}</td>
         <td style={{ padding:'8px 10px' }}>{a.cls||'—'}</td>
         <td style={{ padding:'8px 10px' }}>{a.house||'—'}</td>
         <td style={{ padding:'8px 10px' }}><HostelTypeBadge type={a.hostel_type} /></td>
         <td style={{ padding:'8px 10px' }}>{a.session||'—'}</td>
-        <td style={{ padding:'8px 10px' }}><StatusBadge status={a.status} /></td>
+        <td style={{ padding:'8px 10px' }}><div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'flex-start' }}><StatusBadge status={a.status} /><StudentLinkBadge link={link} /></div></td>
         <td style={{ padding:'8px 10px' }}>{a.phone||'—'}</td>
         <td style={{ padding:'8px 6px' }}>
           <div style={{ display:'flex', gap:'4px' }}>
-            <button onClick={()=>onDetail(a)} style={{ padding:'3px 8px', borderRadius:5, background:T.sky[50], color:T.sky[600], border:`1px solid ${T.sky[200]}`, fontSize:10, fontWeight:700, cursor:'pointer' }}>View</button>
-            <button onClick={()=>onEdit(a)}   style={{ padding:'3px 8px', borderRadius:5, background:T.slate[50], color:T.slate[600], border:`1px solid ${T.slate[200]}`, fontSize:10, fontWeight:700, cursor:'pointer' }}>Edit</button>
+            <button onClick={()=>onDetail(a)} style={{ padding:'5px 12px', borderRadius:8, background:P.tealSoft, color:P.tealDark, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>View</button>
+            <button onClick={()=>onEdit(a)}   style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>Edit</button>
+            {onConfirm && a.status === 'Enrolled' && <button onClick={()=>onConfirm(a)} title="Print the admission confirmation & registration form" style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.sub, border:`1px solid ${P.line}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🖨 Form</button>}
+            {onLocker && <button onClick={()=>onLocker(a)} title="Open this student's document locker" style={{ padding:'5px 12px', borderRadius:8, background:'#fff', color:P.teal, border:`1px solid ${P.teal}`, fontSize:11, fontWeight:700, cursor:'pointer' }}>🔐 Locker</button>}
           </div>
         </td>
       </tr>
@@ -3071,22 +3290,8 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
 
   // ── Grid card mode ──────────────────────────────────────────────────────────
   return (
-    <div style={{
-      background: N.bg,
-      borderRadius: 22,
-      overflow: 'hidden',
-      boxShadow: selected ? N.inset('md') : N.shadow('lg'),
-      transition: 'box-shadow .2s, transform .2s',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'relative',
-      minWidth: 0,
-      width: '100%',
-    }}
-      onMouseEnter={e => { if(!selected){ e.currentTarget.style.boxShadow='8px 8px 20px rgba(174,179,208,0.7), -8px -8px 20px rgba(255,255,255,0.95)'; e.currentTarget.style.transform='translateY(-4px)' } }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}
-    >
-      <div style={{ height:4, background: STAT_META[a.status]?.color || N.muted, borderRadius:'22px 22px 0 0' }} />
+    <div className={'pro-card' + (selected ? ' sel' : '')}>
+      <div style={{ height:3, background: STAT_META[a.status]?.color || P.mute }} />
 
       {/* Card body */}
       <div style={{ padding:'14px 14px', display:'flex', flexDirection:'column', gap:10, flex:1, minWidth:0 }}>
@@ -3095,40 +3300,40 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth:0 }}>
           <input type="checkbox" checked={!!selected} onChange={() => onSelect(a.id)}
             style={{ cursor: 'pointer', flexShrink: 0, marginTop: 4 }} onClick={e => e.stopPropagation()} />
-          <Avatar name={a.name} size={42} photoUrl={a.photoUrl} />
+          <Avatar name={a.name} size={42} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
           <div style={{ flex: 1, minWidth: 0, cursor: 'pointer', overflow:'hidden' }} onClick={() => onDetail(a)}>
-  <div style={{ fontWeight: 800, fontSize: 13, color: T.slate[900], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+  <div style={{ fontWeight: 700, fontSize: 14.5, color: P.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily:P.serif }}>
               {a.name}
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-              {a.gcc   && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.indigo[500], fontWeight: 700 }}>#{a.gcc}</span>}
-              {a.admNo && <span style={{ fontFamily: 'monospace', fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
+              {a.gcc   && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: P.teal, fontWeight: 700 }}>#{a.gcc}</span>}
+              {a.admNo && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 11, color: T.slate[400] }}>{a.admNo}</span>}
               {a.scholarshipPct > 0 && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.emerald[50], color: T.emerald[700], fontWeight: 700 }}>🎓 {a.scholarshipPct}%</span>}
               {a.disabilityFlag   && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.amber[50],   color: T.amber[700],   fontWeight: 700 }}>♿</span>}
               {a.siblingGcc       && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: T.violet[50],  color: T.violet[700],  fontWeight: 700 }}>👫</span>}
             </div>
           </div>
-          <StatusBadge status={a.status} />
+          <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-end' }}><StatusBadge status={a.status} /><StudentLinkBadge link={link} /></div>
         </div>
 
         {/* Row 2: info grid 2×2 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: T.slate[600] }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Course</div>
+            <div className="pro-field">Course</div>
             <div style={{ fontWeight: 600, color: COURSE_STRUCTURE[a.course]?.color || T.slate[700], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {a.course || '—'}{a.subtype ? ` · ${a.subtype}` : ''}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Class</div>
+            <div className="pro-field">Class</div>
             <div style={{ fontWeight: 600 }}>{a.cls || '—'}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>House</div>
+            <div className="pro-field">House</div>
             <div style={{ fontWeight: 600 }}>{a.house || '—'}{a.bedNumber ? ` · ${a.bedNumber}` : ''}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 }}>Session</div>
+            <div className="pro-field">Session</div>
             <div style={{ fontWeight: 600 }}>{a.session || '—'}</div>
           </div>
         </div>
@@ -3149,23 +3354,19 @@ function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnr
 
         {/* Row 4: action row */}
     
-<div style={{ borderTop:`2px solid ${N.bg2}`, paddingTop:8 }}>
+<div style={{ borderTop:`1px solid ${P.line}`, paddingTop:10 }}>
   {actionBtn && (
-    <div style={{ marginBottom:6 }}>{actionBtn}</div>
+    <div style={{ marginBottom:8 }}>{actionBtn}</div>
   )}
-  <div style={{ display:'grid', gridTemplateColumns:canDelete?'repeat(5,1fr)':'repeat(4,1fr)', gap:5 }}>
+  <div style={{ display:'grid', gridTemplateColumns:canDelete?'repeat(5,1fr)':'repeat(4,1fr)', gap:6 }}>
     {[
-      { label:'View',  color:N.sky,    fn:e=>{e.stopPropagation();onDetail(a)} },
-      { label:'QEdit', color:N.amber,  fn:e=>{e.stopPropagation();onQuickEdit(a)} },
-      { label:'Edit',  color:N.text2,  fn:e=>{e.stopPropagation();onEdit(a)} },
-      { label:'WA',    color:'#059669',fn:e=>{e.stopPropagation();onWAMsg(a)} },
-      ...(canDelete ? [{ label:'Del', color:N.rose, fn:e=>{e.stopPropagation();onDelete(a.id)} }] : []),
+      { label:'View',  color:P.teal,    fn:e=>{e.stopPropagation();onDetail(a)} },
+      { label:'Quick', color:'#B45309', fn:e=>{e.stopPropagation();onQuickEdit(a)} },
+      { label:'Edit',  color:P.sub,     fn:e=>{e.stopPropagation();onEdit(a)} },
+      { label:'WhatsApp', color:'#15803D', fn:e=>{e.stopPropagation();onWAMsg(a)} },
+      ...(canDelete ? [{ label:'Delete', color:'#B42318', fn:e=>{e.stopPropagation();onDelete(a.id)} }] : []),
     ].map(b=>(
-      <button key={b.label} onClick={b.fn}
-        style={{ padding:'6px 4px', borderRadius:8, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:b.color, fontSize:10, fontWeight:700, cursor:'pointer', textAlign:'center', transition:'box-shadow .12s', width:'100%' }}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-        onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
-      >{b.label}</button>
+      <button key={b.label} onClick={b.fn} className="pro-mini" style={{ color:b.color }}>{b.label}</button>
     ))}
   </div>
 </div>
@@ -3248,7 +3449,7 @@ function CSVImportModal({ onClose, onImport }) {
         <div style={{ fontSize:12, color:T.slate[500], marginBottom:8 }}>
           Paste CSV with headers: name, gcc_no, gender, dob, course, batch, house, hostel_type, session, phone, father_name, status
         </div>
-        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} style={{ ...styles.inp, fontFamily:'monospace', fontSize:11 }} placeholder="Paste CSV here…" />
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} style={{ ...styles.inp, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:11 }} placeholder="Paste CSV here…" />
         {error && <div style={{ color:T.rose[600], fontSize:12, marginTop:4 }}>{error}</div>}
         <div style={{ display:'flex', gap:10, marginTop:10 }}>
           <button onClick={()=>parseCSV(raw)} style={{ padding:'9px 18px', borderRadius:9, background:T.indigo[600], color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer' }}>Parse</button>
@@ -3311,12 +3512,17 @@ function SortControl({ sortBy, sortDir, onChange }) {
   )
 }
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
+// YYYY-MM-DD in this computer's time zone (toISOString() is UTC, a day
+// behind in India until 5:30 am).
+const localDay = d => d.toLocaleDateString('en-CA')
+
 function Dashboard({ apps, cols, darkMode }) {
+  const houseFillLive = useHouseFill()
   const [activeTab, setActiveTab] = useState('overview')
   const bg   = darkMode ? T.slate[800] : '#fff'
   const bd   = darkMode ? T.slate[700] : T.slate[200]
   const tx   = darkMode ? T.slate[100] : T.slate[800]
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDay(new Date())
 
   const byStatus = s => apps.filter(a => a.status === s).length
   const total    = apps.length
@@ -3333,18 +3539,17 @@ function Dashboard({ apps, cols, darkMode }) {
     const d = new Date(); d.setDate(d.getDate() - 6 + i); return d
   })
   const dayCounts = days.map(d =>
-    apps.filter(a => a.created_at?.slice(0, 10) === d.toISOString().slice(0, 10)).length
+    apps.filter(a => a.created_at && localDay(new Date(a.created_at)) === localDay(d)).length
   )
 
-  const houseFill = HOUSES_LIST.filter(h => h !== 'Day Scholar').map(h => ({
-    name: h,
-    count: apps.filter(a => a.house === h).length,
-    cap: HOUSE_CAPACITIES[h] || 40,
-  }))
+  const houseFill = (houseFillLive || []).map(h => ({ name: h.name, count: h.occupied, cap: h.capacity }))
 
-  const overdue  = apps.filter(a => a.followupDate && a.followupDate < today)
+  const weekAheadDate = new Date(); weekAheadDate.setDate(weekAheadDate.getDate() + 7)
+  const weekAhead = localDay(weekAheadDate)
+  const byFollowup = (x, y) => x.followupDate.localeCompare(y.followupDate)
+  const overdue  = apps.filter(a => a.followupDate && a.followupDate < today).sort(byFollowup)
   const dueToday = apps.filter(a => a.followupDate === today)
-  const upcoming = apps.filter(a => a.followupDate && a.followupDate > today)
+  const upcoming = apps.filter(a => a.followupDate && a.followupDate > today && a.followupDate <= weekAhead).sort(byFollowup)
 
   const metric = (label, value, accent, sub) => (
     <div style={{ background: darkMode ? T.slate[700] : T.slate[50], borderRadius: 8, padding: '14px 16px' }}>
@@ -3429,7 +3634,7 @@ function Dashboard({ apps, cols, darkMode }) {
       </div>}
 
       {/* ── Hostel & House ── */}
-      {activeTab === 'hostelhouseandhouse' && <>
+      {activeTab === 'hostelhouse' && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap: 12, marginBottom: 14 }}>
           {HOSTEL_TYPES.map(h => {
             const count = apps.filter(a => a.hostel_type === h).length
@@ -3445,6 +3650,7 @@ function Dashboard({ apps, cols, darkMode }) {
           })}
         </div>
         <div style={{ fontSize: 11, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', marginBottom: 8 }}>House Fill Rate</div>
+        {!houseFillLive && <div style={{ fontSize: 11, color: T.slate[400] }}>Loading live house capacity…</div>}
         {houseFill.map(({ name, count, cap }) => {
           const pct = Math.round(count / cap * 100)
           const col = pct >= 90 ? T.rose[500] : pct >= 70 ? T.amber[500] : T.emerald[500]
@@ -3464,17 +3670,17 @@ function Dashboard({ apps, cols, darkMode }) {
       {/* ── Follow-ups ── */}
       {activeTab === 'followups' && <>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {[[`${overdue.length} Overdue`, T.rose[600], T.rose[50]], [`${dueToday.length} Today`, T.amber[600], T.amber[50]], [`${upcoming.length} Upcoming`, T.sky[600], T.sky[50]]].map(([l, c, bg]) => (
+          {[[`${overdue.length} Overdue`, T.rose[600], T.rose[50]], [`${dueToday.length} Today`, T.amber[600], T.amber[50]], [`${upcoming.length} in 7 days`, T.sky[600], T.sky[50]]].map(([l, c, bg]) => (
             <span key={l} style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: c, background: bg }}>{l}</span>
           ))}
         </div>
-        {[['Overdue', overdue, T.rose[600]], ['Due Today', dueToday, T.amber[600]], ['Upcoming (7 days)', upcoming.slice(0,7), T.sky[600]]].map(([heading, list, accent]) => (
+        {[['Overdue', overdue, T.rose[600]], ['Due Today', dueToday, T.amber[600]], ['Upcoming (7 days)', upcoming, T.sky[600]]].map(([heading, list, accent]) => (
           <div key={heading} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: T.slate[400], textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>{heading}</div>
             {list.length === 0
               ? <div style={{ fontSize: 12, color: T.slate[300] }}>None</div>
               : list.map(a => (
-                <div key={a.gcc} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: T.slate[50], borderRadius: 7, marginBottom: 4, fontSize: 12 }}>
+                <div key={a.id ?? a.gcc} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: T.slate[50], borderRadius: 7, marginBottom: 4, fontSize: 12 }}>
                   <span style={{ fontWeight: 700, flex: 1, color: tx }}>{a.name}</span>
                   <StatusBadge status={a.status} />
                   <span style={{ color: accent, fontWeight: 700 }}>{dateFmt(a.followupDate)}</span>
@@ -3542,7 +3748,7 @@ function KanbanBoard({ apps, cols, onAdmit, onEnroll, onOpenFee, onDetail, isMob
                     onMouseEnter={e=>e.currentTarget.style.boxShadow=N.shadow('md')}
                     onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                      <Avatar name={a.name} size={28} photoUrl={a.photoUrl} />
+                      <Avatar name={a.name} size={28} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:T.slate[900], whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.name}</div>
                         <div style={{ fontSize:10, color:T.slate[400] }}>GCC-{a.gcc} · {a.course}{a.subtype?` · ${a.subtype}`:''}</div>
@@ -3595,7 +3801,7 @@ function GalleryCard({ a, onDetail, onSelect, selected }) {
       onMouseLeave={e=>{ e.currentTarget.style.boxShadow=selected?N.inset('md'):N.shadow('lg'); e.currentTarget.style.transform='translateY(0)' }}>
       <div style={{ position:'relative', paddingTop:'100%', background:`linear-gradient(135deg,${meta.color}15,${meta.color}05)` }}>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <Avatar name={a.name} size={72} photoUrl={a.photoUrl} />
+          <Avatar name={a.name} size={72} photoUrl={a.photoUrl} altUrl={a.studentPhotoUrl} />
         </div>
         <input type="checkbox" checked={!!selected} onChange={e=>{e.stopPropagation();onSelect(a.id)}} onClick={e=>e.stopPropagation()}
           style={{ position:'absolute', top:8, left:8, cursor:'pointer' }} />
@@ -3631,7 +3837,13 @@ function GalleryGrid({ apps, onDetail, onSelect, selectedIds, isMobile, isTablet
 // with zero or two active sessions from a normal click.
 // ═════════════════════════════════════════════════════════════════════════════
 
-function SessionManager({ onChanged, darkMode }) {
+function SessionManager({ onChanged, darkMode, apps = [] }) {
+  // Seats used per session, from the applications themselves (the seat total alone never showed how full a session was).
+  const usage = useMemo(() => {
+    const m = {}
+    for (const a of apps) { const k = a.session || '—'; const u = m[k] || (m[k] = { total: 0, filled: 0 }); u.total++; if (a.status === 'Admitted' || a.status === 'Enrolled') u.filled++ }
+    return m
+  }, [apps])
   const [sessions, setSessions] = useState([])
   const [loading, setLoading]   = useState(true)
   const [creating, setCreating] = useState(false)
@@ -3682,19 +3894,22 @@ function SessionManager({ onChanged, darkMode }) {
     if (session.is_active) return
     if (!confirm(`Make "${session.session_name}" the active session? This affects the whole app, not just Admissions.`)) return
     setBusyId(session.id)
-    // Deactivate whichever session currently holds is_active, then activate
-    // the chosen one — kept as two sequential calls (not a single bulk
-    // update) so a failure on the second step leaves at most the OLD
-        // session active rather than none, never leaving zero active sessions
-    // silently.
+    // Switch the current session off, then the chosen one on (in that
+    // order, in case the database allows only one active session). If the
+    // second step fails, the old session is switched back on, so the app is
+    // never left with no active session.
     const currentActive = sessions.find(s => s.is_active)
     if (currentActive && currentActive.id !== session.id) {
       const { error: deactErr } = await supabase.from('admission_sessions').update({ is_active: false }).eq('id', currentActive.id)
       if (deactErr) { setBusyId(null); setErr('Failed to deactivate current session: ' + deactErr.message); return }
     }
     const { error: actErr } = await supabase.from('admission_sessions').update({ is_active: true }).eq('id', session.id)
+    if (actErr) {
+      if (currentActive && currentActive.id !== session.id)
+        await supabase.from('admission_sessions').update({ is_active: true }).eq('id', currentActive.id)
+      setBusyId(null); setErr('Failed to activate session: ' + actErr.message); await load(); return
+    }
     setBusyId(null)
-    if (actErr) { setErr('Failed to activate session: ' + actErr.message); return }
     await load()
     onChanged?.()
   }
@@ -3768,7 +3983,7 @@ function SessionManager({ onChanged, darkMode }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
               <tr style={{ background:N.bg2 }}>
-                {['Session','Label','Dates','Seats','Status','Actions'].map(h => (
+                {['Session','Label','Dates','Applications','Seats filled','Status','Actions'].map(h => (
                   <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:700, color:N.muted2, fontSize:11, textTransform:'uppercase', letterSpacing:'.04em' }}>{h}</th>
                 ))}
               </tr>
@@ -3781,7 +3996,14 @@ function SessionManager({ onChanged, darkMode }) {
                   <td style={{ padding:'12px 14px', color:N.muted, fontSize:12 }}>
                     {s.start_date || s.end_date ? `${s.start_date||'?'} → ${s.end_date||'?'}` : '—'}
                   </td>
-                  <td style={{ padding:'12px 14px', color:N.muted }}>{s.total_seats ?? '—'}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>{usage[s.session_name]?.total ?? 0}</td>
+                  <td style={{ padding:'12px 14px', color:N.muted }}>
+                    {(() => {
+                      const f = usage[s.session_name]?.filled ?? 0
+                      const over = s.total_seats != null && f > s.total_seats
+                      return <span style={{ fontWeight:700, color: over ? T.rose[600] : N.muted }}>{f}{s.total_seats != null ? ` / ${s.total_seats}` : ''}{over ? ' — over' : ''}</span>
+                    })()}
+                  </td>
                   <td style={{ padding:'12px 14px' }}>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                       {s.is_active && (
@@ -3855,7 +4077,7 @@ function StudentLedgerView({ apps, darkMode }) {
       const [{ data: stu }, admRes, flatRes, crsfRes] = await Promise.all([
         supabase.from('students').select('*').eq('gcc_no', String(gccInt)).maybeSingle(),
         supabase.from('adm_fee_collections').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
-        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
+        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', String(gccInt)).eq('paid', true).eq('reverted', false),
         supabase.from('adm_course_fees').select('*').eq('adm_app_id', String(gccInt)).eq('reverted', false),
       ])
       if (cancelled) return
@@ -3931,8 +4153,9 @@ function StudentLedgerView({ apps, darkMode }) {
               <div>
                 <div style={{ fontSize:18, fontWeight:800 }}>{selectedApp.name}</div>
                 <div style={{ fontSize:12, color:'rgba(255,255,255,.7)', marginTop:2 }}>
-                  GCC-{selectedApp.gcc} · {selectedApp.course}{selectedApp.subtype?` · ${selectedApp.subtype}`:''} · {selectedApp.hostel_type}
+                  GCC-{selectedApp.gcc} · {(student?.course || selectedApp.course) || '—'}{(student ? student.batch : selectedApp.subtype) ? ` · ${student ? student.batch : selectedApp.subtype}` : ''} · {student?.hostel_type || selectedApp.hostel_type}{student?.house ? ` · ${student.house}` : ''}
                 </div>
+                {student && <div style={{ fontSize:11, color:'rgba(255,255,255,.55)', marginTop:2 }}>Showing the live student record{student.status && student.status !== 'Active' ? ` · status: ${student.status}` : ''}</div>}
               </div>
               <div style={{ textAlign:'right' }}>
                 <div style={{ fontSize:22, fontWeight:800, fontFamily:"'Courier New',monospace" }}>₹{totalPaid.toLocaleString('en-IN')}</div>
@@ -4010,7 +4233,8 @@ function StudentLedgerView({ apps, darkMode }) {
 }
 
 
-export default function Admissions() {
+export default function Admissions({ onNavigate } = {}) {
+  useLiveCourseBatches(COURSE_STRUCTURE)   // batches created in Courses
   const isMobile = useMobile()
   const isTablet = useTablet()
   const [moduleView,     setModuleView]    = useState('newApplication') // 'newApplication' | 'applications' | 'ledger'
@@ -4024,6 +4248,17 @@ export default function Admissions() {
   const [filterSubtype,  setSubtype]       = useState('All')
   const [filterHostel,   setHostel]        = useState('All')
   const [filterHouse,    setFilterHouse]   = useState('All')
+  const [filterLink,     setFilterLink]    = useState('All')
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
+  const [filterPhoto, setFilterPhoto] = useState('All')
+  const [lockerFor, setLockerFor] = useState(null)   // { student, app }
+  const [justEnrolled, setJustEnrolled] = useState(null)   // application just enrolled → offer the admission form (+ the new parent PIN, shown once)
+  const [concRows, setConcRows] = useState([])               // active rows of the Fee Concession Register
+  const [proTheme, setProThemeState] = useState(() => { try { const t = localStorage.getItem('gnsi_adm_theme'); return THEMES[t] ? t : 'clinical' } catch { return 'clinical' } })
+  const toggleProTheme = () => setProThemeState(t => { const n = THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length]; try { localStorage.setItem('gnsi_adm_theme', n) } catch { /* storage blocked */ } return n })
+  const [showInsights,   setShowInsights]  = useState(false)   // the status/course/follow-up overview, collapsed so the registry comes first
+  const [rawAdm, setRawAdm] = useState([])
+  const [stuRows, setStuRows] = useState([])
   const [advFilters,     setAdvFilters]    = useState({})
   const [sortBy,         setSortBy]        = useState('gcc')
   const [sortDir,        setSortDir]       = useState('desc')
@@ -4032,6 +4267,14 @@ export default function Admissions() {
   const [feePanel,       setFeePanel]      = useState(null)
   const [toast,          setToast]         = useState(null)
   const [selectedIds,    setSelectedIds]   = useState(new Set())
+  // Deletes wait 5 s so they can be undone. Closing the tab inside that window would silently cancel them
+  // (the rows come back), so warn instead while any are pending.
+  const pendingDeletes = useRef(0)
+  useEffect(() => {
+    const warn = e => { if (pendingDeletes.current > 0) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
   const [showAnalytics,  setShowAnalytics] = useState(false)
   const [showReports,    setShowReports]   = useState(false)
   const [showAdvSearch,  setShowAdvSearch] = useState(false)
@@ -4094,16 +4337,51 @@ export default function Admissions() {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [appsData, colsRows] = await Promise.all([
-      sbApps.fetch(),
+    const [admRows, colsRows, stuData] = await Promise.all([
+      fetchAllRows('admissions', { orderCol: 'gcc_no', ascending: false }),
       fetchAllRows('adm_fee_collections', { orderCol: 'created_at', ascending: false }),
+      fetchAllRows('students', { select: 'id, gcc_no, name, dob, gender, blood_group, course, batch, class_name, house, hostel_type, session, father_name, mother_name, phone, parent_phone, address, prev_school, status, deleted_at, photo_url, photo_path, admission_date' }),
     ])
-    if (appsData) setApps(appsData)
+    // The Students module keeps photos in private storage (photo_path) or as a link (photo_url); show whichever the
+    // linked student has when the application has none. Viewing links are temporary and are never saved.
+    const photoByGcc = new Map(), permanent = new Set()
+    const stored = []
+    for (const s of stuData) {
+      const g = String(parseInt(s.gcc_no) || '')
+      if (!g || s.deleted_at) continue
+      if (s.photo_url) { photoByGcc.set(g, s.photo_url); permanent.add(g) }
+      else if (s.photo_path) stored.push([g, s.photo_path])
+    }
+    for (let i = 0; i < stored.length; i += 200) {
+      try {
+        const part = stored.slice(i, i + 200)
+        const { data } = await supabase.storage.from('gnsi').createSignedUrls(part.map(x => x[1]), 86400)
+        const byPath = new Map((data || []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
+        for (const [g, path] of part) if (byPath.get(path)) photoByGcc.set(g, byPath.get(path))
+      } catch { /* photos are a nicety; the list still loads */ }
+    }
+    try {
+      const { data: reg, error: regErr } = await supabase.from('fee_concession_register').select('gcc, kind, basis, value, status').eq('status', 'active').limit(5000)
+      setConcRows(regErr ? [] : (reg || []))
+    } catch { setConcRows([]) }   // register table not created yet → treated as empty
+    setRawAdm(admRows)
+    setApps(admRows.map(mapFromDB).map(a => ({ ...a, studentPhotoUrl: photoByGcc.get(String(parseInt(a.gcc) || '')) || '', studentPhotoSaved: permanent.has(String(parseInt(a.gcc) || '')) })))
+    setStuRows(stuData)
     setCols(colsRows)
     setLoading(false)
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // Hand-off from another module ("View admission" in a student's profile) → open that application's detail.
+  const admHandoff = useRef(takeAdmissionsHandoff())
+  useEffect(() => {
+    const h = admHandoff.current
+    if (!h || !apps.length) return
+    admHandoff.current = null
+    const hit = apps.find(x => String(parseInt(x.gcc)) === String(parseInt(h.gcc)))
+    if (hit) { setViewChosen?.(true); setDetailApp(hit) } else showToast(`No admission record for GCC ${h.gcc}`, T.amber[600])
+  }, [apps]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live cross-module sync — subscribe to Postgres changes on students
   // and admissions so this view refreshes automatically when the OTHER
@@ -4141,7 +4419,7 @@ export default function Admissions() {
   const courseOptions  = useMemo(() => [...new Set(apps.map(a=>a.course).filter(Boolean))].sort(), [apps])
   const subtypeOptions = useMemo(() => {
     const src = filterCourse !== 'All' ? apps.filter(a=>a.course===filterCourse) : apps
-    return [...new Set(src.map(a=>a.subtype).filter(Boolean))].sort()
+    return [...new Set(src.map(a=>canonicalBatch(a.subtype)).filter(Boolean))].sort()
   }, [apps, filterCourse])
 
   useEffect(() => { setSubtype('All') }, [filterCourse])
@@ -4170,6 +4448,20 @@ export default function Admissions() {
     return c
   }, [apps])
 
+  // Admissions ↔ Students: one state per GCC (see lib/admStudentMatch.js) for the badges and the filter below.
+  const studentLinks = useMemo(() => admissionLinks({ admissions: rawAdm, students: stuRows }), [rawAdm, stuRows])
+  const linkCounts = useMemo(() => {
+    const c = { issues: 0, ok: 0 }
+    for (const l of studentLinks.values()) { if (l.state === 'ok') c.ok++; else c.issues++; c[l.state] = (c[l.state] || 0) + 1 }
+    return c
+  }, [studentLinks])
+  const matchLink = useCallback(a => {
+    if (filterLink === 'All') return true
+    const l = studentLinks.get(String(parseInt(a.gcc)))
+    if (filterLink === 'Any issue') return !!l && l.state !== 'ok'
+    return !!l && LINK_LABEL[l.state] === filterLink
+  }, [filterLink, studentLinks])
+
   const today = new Date().toISOString().slice(0,10)
 
   const filtered = useMemo(() => {
@@ -4178,9 +4470,12 @@ export default function Admissions() {
       const matchStatus  = filterStatus  === 'All' || a.status      === filterStatus
       const matchSession = filterSession === 'All' || a.session     === filterSession
       const matchCourse  = filterCourse  === 'All' || a.course      === filterCourse
-      const matchSubtype = filterSubtype === 'All' || a.subtype     === filterSubtype
+      const matchSubtype = filterSubtype === 'All' || canonicalBatch(a.subtype) === filterSubtype
       const matchHostel  = filterHostel  === 'All' || a.hostel_type === filterHostel
       const matchHouse   = filterHouse   === 'All' || a.house       === filterHouse
+      const matchLinkSt  = matchLink(a)
+      const hasPhoto     = !!(a.photoUrl || a.studentPhotoUrl)
+      const matchPhotoSt = filterPhoto === 'All' || (filterPhoto === 'Missing' ? !hasPhoto : hasPhoto)
       const matchSearch  = !q || [a.name,a.phone,a.admNo,a.gcc,a.cls,a.house,a.father,a.course,a.subtype,a.session,a.hostel_type,a.whatsapp,a.mother,a.prevSchool]
         .some(f => f?.toString().toLowerCase().includes(q))
 
@@ -4212,7 +4507,7 @@ export default function Admissions() {
         return af.feeStatus==='paid' ? paid : !paid
       })()
 
-      return matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
+      return matchPhotoSt&&matchLinkSt&&matchStatus&&matchSession&&matchCourse&&matchSubtype&&matchHostel&&matchHouse&&matchSearch&&matchGender&&matchCategory&&matchReligion&&matchQuota&&matchHouseAdv&&matchDobFrom&&matchDobTo&&matchDis&&matchSchol&&matchFollowup&&matchDocStatus&&matchFeeStatus
     })
 
     list = [...list].sort((a,b) => {
@@ -4223,10 +4518,10 @@ export default function Admissions() {
       return 0
     })
     return list
-  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today])
+  }, [apps, search, filterStatus, filterSession, filterCourse, filterSubtype, filterHostel, filterHouse, advFilters, sortBy, sortDir, cols, today, matchLink, filterPhoto])
 
-  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
-  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setAdvFilters({});setSearch('') }
+  const activeFilters = [filterStatus,filterSession,filterCourse,filterSubtype,filterHostel,filterHouse,filterLink,filterPhoto].filter(f=>f!=='All').length + Object.keys(advFilters).filter(k=>advFilters[k]).length
+  const clearAll = () => { setFilter('All');setSession('All');setCourse('All');setSubtype('All');setHostel('All');setFilterHouse('All');setFilterLink('All');setFilterPhoto('All');setAdvFilters({});setSearch('') }
 
   const toggleSelect = id => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -4328,6 +4623,7 @@ export default function Admissions() {
   }
 
   const handleAdmit = async id => {
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
     if (!confirm('Mark as Admitted?')) return
     const { error } = await supabase.from('admissions').update({ status:'Admitted' }).eq('gcc_no', parseInt(id))
     if (error) { showToast('Update failed: '+error.message, T.rose[600]); return }
@@ -4340,6 +4636,7 @@ export default function Admissions() {
   const handleEnroll = async id => {
     const a = apps.find(x => String(x.id)===String(id))
     if (!a) return
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
     // FLOW FIX: `cols` holds every adm_fee_collections row, reverted ones
     // included — a reverted (refunded/undone) admission fee still counted as
     // "paid" and let the student be enrolled without an admission fee on the books.
@@ -4357,10 +4654,21 @@ export default function Admissions() {
       // the status flip first (the old order) would have left a record
       // marked "Enrolled" with no student row and no seat — a worse,
       // harder-to-spot inconsistency than just stopping early.
-      const { created, houseWarning } = await promoteToStudent(a)
+      const { created, houseWarning, id: studentId } = await promoteToStudent(a)
 
-      const { error: admErr } = await supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
-      if (admErr) throw admErr
+      // The student row now exists, so the admission must end up Enrolled too. Retry once; if it still fails,
+      // remove the student row we just created (never one that already existed) so the two stay in step.
+      const markEnrolled = () => supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
+      let { error: admErr } = await markEnrolled()
+      if (admErr) ({ error: admErr } = await markEnrolled())
+      if (admErr) {
+        if (created) {
+          const { error: undoErr } = await supabase.from('students').delete().eq('gcc_no', parseInt(a.gcc))
+          if (undoErr) throw new Error(`Student record was created but the admission could not be marked Enrolled (${admErr.message}), and the student could not be removed (${undoErr.message}). Check GCC ${a.gcc} in Admissions ↔ Students.`)
+          throw new Error(`Could not mark the admission Enrolled (${admErr.message}). The new student record was removed — nothing changed, please try again.`)
+        }
+        throw admErr
+      }
 
       // FLOW FIX: Students → Fees. Fees refuses to collect anything until the
       // student has an Admission Date, and a freshly enrolled student often
@@ -4373,7 +4681,42 @@ export default function Admissions() {
           .eq('gcc_no', parseInt(a.gcc)).is('admission_date', null)
       } catch (e) { console.warn('Enroll: could not set admission_date —', e?.message || e) }
 
+      // Hostel: a boarder needs a real allocation record (promoteToStudent only copies the house name onto the student),
+      // exactly as the Students module does when it saves a house. Best effort — the room is filled in from the Hostel module.
+      let hostelNote = ''
+      if (created && studentId && a.house && !DAY_SCHOLAR_HOUSES.includes(a.house)) {
+        try { await allocateStudent({ id: studentId, name: a.name, gcc_no: a.gcc, class_name: a.cls }, { hostelName: a.house, roomNumber: 'TBD', bedNumber: a.bedNumber || null }) }
+        catch (e) { hostelNote = `Enrolled, but the hostel allocation could not be created (${e.message || 'unknown error'}) — allocate ${a.house} in the Hostel module.`; console.warn('Enroll: hostel allocation failed —', e?.message || e) }
+      }
+      // Fees: scholarship % / concession ₹ promised on the application go into the Fee Concession Register, which is what
+      // dues and receipts read. The register is admin-only by design, so for anyone else this is left as a note.
+      const notes = []
+      const promisedRows = concessionRowsFor(a, { validFrom: (admFeeRow?.pay_date && String(admFeeRow.pay_date).slice(0, 10)) || new Date().toLocaleDateString('en-CA'), approvedBy: getSessionInfo().userName })
+      if (promisedRows.length) {
+        if (isAdminRole(userRole)) {
+          const fresh = newConcessionRows(promisedRows, concRows)
+          if (fresh.length) {
+            const { error: cErr } = await supabase.from('fee_concession_register').insert(fresh)
+            if (cErr) notes.push(`Concession could not be added to Fees (${cErr.message}) — add it in Fees → Concession Register.`)
+            else { notes.push(`Added to Fees → Concession Register: ${fresh.map(r => r.basis === 'percent' ? `${r.value}% scholarship` : `₹${r.value}/month`).join(' + ')} (course fee).`); setConcRows(prev => [...prev, ...fresh]) }
+          }
+        } else notes.push('A scholarship / concession is recorded on this application. An admin must apply it in Fees → Concession Register (or here, from the Applications tab).')
+      }
+      if (a.siblingGcc) notes.push(`Sibling at GNSI (GCC-${a.siblingGcc}): the sibling discount is not applied automatically — add it in Fees → Concession Register if one applies.`)
+      if (a.instalmentPlan && a.instalmentPlan !== 'monthly') notes.push(`Instalment plan "${a.instalmentPlan}" is recorded on the application only — create the schedule in Fees → Instalment Plans.`)
+      // Parent portal: issue the login PIN now (shown once, here and on the admission form).
+      let pin = ''
+      if (created && studentId) {
+        const a32 = new Uint32Array(1); crypto.getRandomValues(a32)
+        const candidate = String(a32[0] % 1000000).padStart(6, '0')
+        try {
+          const { error: pErr } = await supabase.rpc('set_parent_pin', { p_student_id: String(studentId), p_pin: candidate })
+          if (pErr) notes.push(`The parent portal PIN could not be issued (${pErr.message}) — issue it from the dashboard's PIN tool.`); else pin = candidate
+        } catch (e) { notes.push(`The parent portal PIN could not be issued (${e.message || 'error'}).`) }
+      }
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
+      if (hostelNote) showToast(`⚠ ${hostelNote}`, T.amber[600])
+      setJustEnrolled({ ...a, status:'Enrolled', pin, notes })
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
       sendStatusNotification({ ...a, status:'Enrolled' }, 'Enrolled')
@@ -4398,16 +4741,23 @@ export default function Admissions() {
         : '🚫 Fees already collected — revert them in Fees first, or set status to Rejected.', T.rose[600])
       return
     }
+    // A student record can exist for this GCC without the admission being Enrolled (direct add, or an
+    // enrolment that half-finished) — deleting the admission would orphan it.
+    const { data: stuRows, error: stuErr } = await supabase.from('students').select('id').eq('gcc_no', parseInt(a?.gcc ?? id)).limit(1)
+    if (stuErr) { showToast('Could not check for a student record: '+stuErr.message, T.rose[600]); return }
+    if (stuRows?.length) { showToast('🚫 A student record exists for this GCC — remove or fix it in Students first.', T.rose[600]); return }
     if (!confirm(`Delete admission for ${a?.name}?`)) return
     const snapshot = { ...a }
     setApps(prev => prev.filter(x => String(x.id)!==String(id)))
 
     let deleted = false
+    pendingDeletes.current += 1
     showToast(`Deleted ${a?.name}`, T.rose[600], () => {
       deleted = true
       setApps(prev => [snapshot, ...prev])
     })
     setTimeout(async () => {
+      pendingDeletes.current -= 1
       if (!deleted) {
         const { error } = await supabase.from('admissions').delete().eq('gcc_no', parseInt(id))
         if (error) { setApps(prev => [snapshot, ...prev]); showToast('Delete failed: '+error.message, T.rose[600]) }
@@ -4490,22 +4840,100 @@ export default function Admissions() {
       showToast(`🚫 ${blocked.length} selected ${blocked.length > 1 ? 'are' : 'is'} enrolled or already paid fees (${blocked.slice(0, 3).map(b => b.name).join(', ')}${blocked.length > 3 ? '…' : ''}) — untick them first.`, T.rose[600])
       return
     }
+    const { data: stuRows, error: stuErr } = await supabase.from('students').select('gcc_no').in('gcc_no', [...selectedIds].map(Number))
+    if (stuErr) { showToast('Could not check for student records: '+stuErr.message, T.rose[600]); return }
+    if (stuRows?.length) { showToast(`🚫 ${stuRows.length} selected already ${stuRows.length > 1 ? 'have' : 'has'} a student record (GCC ${stuRows.slice(0, 3).map(r => r.gcc_no).join(', ')}${stuRows.length > 3 ? '…' : ''}) — untick them first.`, T.rose[600]); return }
     if (!confirm(`Delete ${selectedIds.size} selected applicants? You will have 5 seconds to undo.`)) return
     const ids = [...selectedIds]
     const snapshots = apps.filter(a => selectedIds.has(a.id))
     setApps(prev => prev.filter(a => !selectedIds.has(a.id)))
     clearSelection()
     let cancelled = false
+    pendingDeletes.current += 1
     showToast(`${ids.length} records deleted`, T.rose[600], () => {
       cancelled = true
       setApps(prev => [...snapshots, ...prev])
     })
     setTimeout(async () => {
+      pendingDeletes.current -= 1
       if (cancelled) return
       const { error } = await supabase.from('admissions').delete().in('gcc_no', ids.map(Number))
       if (error) { setApps(prev => [...snapshots, ...prev]); showToast('Bulk delete failed: '+error.message, T.rose[600]) }
       else logAudit('BULK_DELETE', null, { ids, names: snapshots.map(s=>s.name) }, userRole)
     }, 5000)
+  }
+
+  // Once someone is enrolled, other modules (Attendance, Hostel, Exams, …) edit the STUDENT record directly, so the
+  // application drifts out of date. This brings the shared fields of the chosen applications back in line with their
+  // student (only fields the student has filled; status is never touched).
+  const handleSyncFromStudents = async gccs => {
+    if (!checkPermission(userRole, 'update')) { showToast('🚫 You do not have permission to edit applications', T.rose[600]); return }
+    if (activeSession?.is_locked) { showToast('🔒 Session locked. No changes allowed.', T.rose[600]); return }
+    const jobs = gccs.map(g => ({ g, patch: patchFromStudent(studentLinks.get(String(parseInt(g)))?.diffs) })).filter(j => j.patch)
+    if (!jobs.length) { showToast('Nothing to update — the students have no newer values.', T.amber[600]); return }
+    const fields = new Set(jobs.flatMap(j => Object.keys(j.patch))).size
+    if (!confirm(`Update ${jobs.length} application${jobs.length > 1 ? 's' : ''} from their Students record (${fields} field type${fields > 1 ? 's' : ''})?\n\nThe student's values replace the application's. Status is not changed.`)) return
+    let ok = 0, fail = 0
+    for (const { g, patch } of jobs) {
+      const { error } = await supabase.from('admissions').update(patch).eq('gcc_no', parseInt(g))
+      if (error) fail++; else ok++
+    }
+    logAudit('SYNC_FROM_STUDENTS', null, { count: ok, gccs: jobs.map(j => j.g) }, userRole)
+    await loadAll()
+    showToast(`Updated ${ok} application${ok === 1 ? '' : 's'} from Students${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
+  }
+
+  // Enrolled students whose application promised a scholarship / concession that the Fee Concession Register does not hold yet.
+  const pendingConcessions = () => {
+    if (!isAdminRole(userRole)) return []
+    return scopedApps.filter(x => x.status === 'Enrolled').flatMap(x => {
+      const stu = stuRows.find(s => String(parseInt(s.gcc_no) || '') === String(parseInt(x.gcc) || '') && !s.deleted_at)
+      return newConcessionRows(concessionRowsFor(x, { validFrom: stu?.admission_date, approvedBy: getSessionInfo().userName }), concRows)
+    })
+  }
+  const handleApplyConcessions = async () => {
+    const rows = pendingConcessions()
+    if (!rows.length) { showToast('Nothing to apply.', T.amber[600]); return }
+    const people = new Set(rows.map(r => r.gcc)).size
+    if (!confirm(`Add ${rows.length} concession${rows.length > 1 ? 's' : ''} for ${people} student${people > 1 ? 's' : ''} to Fees → Concession Register?\n\nEach starts on the student's admission date and applies to the course fee, so it also reduces dues already worked out. Revoke any of them in the register if it is wrong.`)) return
+    const { error } = await supabase.from('fee_concession_register').insert(rows)
+    if (error) { showToast('Could not add them: ' + error.message, T.rose[600]); return }
+    logAudit('APPLY_CONCESSIONS', null, { count: rows.length, gccs: [...new Set(rows.map(r => r.gcc))] }, userRole)
+    setConcRows(prev => [...prev, ...rows])
+    showToast(`Added ${rows.length} concession${rows.length > 1 ? 's' : ''} to the Fee Concession Register`, T.emerald[600])
+  }
+
+  // The Students module can clear students.photo_url when it moves a photo to private storage, and (before this fix) that
+  // blank was copied onto the application. Where the student still has a saved photo link, put it back on the application.
+  const handleRestorePhotos = async () => {
+    if (!checkPermission(userRole, 'update')) { showToast('🚫 You do not have permission to edit applications', T.rose[600]); return }
+    const list = scopedApps.filter(x => !x.photoUrl && x.studentPhotoUrl && x.studentPhotoSaved)
+    if (!list.length) { showToast('No photos to restore.', T.amber[600]); return }
+    if (!confirm(`Restore ${list.length} photo${list.length > 1 ? 's' : ''} onto the applications from their student record?`)) return
+    let ok = 0, fail = 0
+    for (const x of list) {
+      const { error } = await supabase.from('admissions').update({ photo_url: x.studentPhotoUrl }).eq('gcc_no', parseInt(x.gcc))
+      if (error) fail++; else ok++
+    }
+    logAudit('RESTORE_PHOTOS', null, { count: ok }, userRole)
+    await loadAll()
+    showToast(`Restored ${ok} photo${ok === 1 ? '' : 's'}${fail ? `, ${fail} failed` : ''}`, fail ? T.amber[600] : T.emerald[600])
+  }
+
+  // The admission confirmation & registration form. Call from a click so the print window is allowed to open.
+  const printConfirmation = (app, { parentPin = '' } = {}) => {
+    const gccN = String(parseInt(app.gcc) || '')
+    const student = stuRows.find(x => String(parseInt(x.gcc_no) || '') === gccN && !x.deleted_at)
+    const fees = cols.filter(c => String(parseInt(c.adm_app_id) || '') === gccN && !c.reverted)
+    const rates = getFeeRates(app.session || getSessionYear(), app.course, app.cls, app.hostel_type, app.gcc).then(r => ({ flatFee: r.flatFee, courseFee: r.courseFee }))
+    printAdmissionConfirmation({ app, student, fees, photo: app.photoUrl || app.studentPhotoUrl || '', parentPin }, rates)
+  }
+
+  // The locker belongs to the student record (documents are saved against students.id), so it opens once one exists.
+  const openLocker = app => {
+    const stu = stuRows.find(x => String(parseInt(x.gcc_no) || '') === String(parseInt(app.gcc) || '') && !x.deleted_at)
+    if (!stu) { showToast('The locker opens once the student record exists — enrol this application first.', T.amber[600]); return }
+    setLockerFor({ student: stu, app })
   }
 
   const handleCSVImport = async rows => {
@@ -4571,9 +4999,12 @@ export default function Admissions() {
     printBulkList(appsToPrint)
   }
 
+  // Header card + KPI strip count the session being viewed, so their numbers match the list under them
+  // (they used to count every session while the list was already filtered to one).
+  const scopedApps = filterSession === 'All' ? apps : apps.filter(a => a.session === filterSession)
   const byStatus = {}
   ADM_STATUSES.forEach(s => byStatus[s]=0)
-  apps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
+  scopedApps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
 
   // 🔗 Live revenue — sourced from fee_structures via getFeeRates, not the
   // hardcoded legacy getFlatFeeAmtSync fallback (same class of bug fixed
@@ -4586,7 +5017,7 @@ export default function Admissions() {
   // combination rather than once per student — getFeeRates already caches
   // internally, but batching the distinct combos here avoids firing 400
   // near-identical requests when the roster loads.
-  const enrolledApps = apps.filter(a => a.status === 'Enrolled')
+  const enrolledApps = scopedApps.filter(a => a.status === 'Enrolled')
   const [monthlyRevenue, setMonthlyRevenue] = useState(() =>
     enrolledApps.reduce((s, a) => s + getFlatFeeAmtSync(a.hostel_type, a.course), 0)
   )
@@ -4597,10 +5028,10 @@ export default function Admissions() {
       let total = 0
       for (const a of enrolledApps) {
         const sessionYear = a.session || getSessionYear()
-        const key = `${sessionYear}|${a.course}|${a.batch}|${a.hostel_type}`
+        const key = `${sessionYear}|${a.course}|${a.cls}|${a.hostel_type}|${a.gcc}`
         if (!rateCache.has(key)) {
           try {
-            const rates = await getFeeRates(sessionYear, a.course, a.batch, a.hostel_type, a.gcc_no || null)
+            const rates = await getFeeRates(sessionYear, a.course, a.cls, a.hostel_type, a.gcc || null)
             rateCache.set(key, rates.flatFee)
           } catch {
             rateCache.set(key, getFlatFeeAmtSync(a.hostel_type, a.course))
@@ -4612,14 +5043,14 @@ export default function Admissions() {
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apps])
+  }, [apps, filterSession])
 
   const bg   = darkMode ? T.slate[900] : T.slate[50]
   const card = darkMode ? T.slate[800] : '#fff'
   const tx   = darkMode ? T.slate[100] : T.slate[900]
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily:'system-ui,sans-serif' }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:14, color:T.slate[500], fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
       <div style={{ width:22, height:22, border:`2.5px solid ${T.slate[200]}`, borderTopColor:T.indigo[600], borderRadius:'50%', animation:'spin .7s linear infinite' }} />
       <span style={{ fontWeight:600 }}>Loading admissions…</span>
     </div>
@@ -4652,29 +5083,22 @@ export default function Admissions() {
 
         {toast && <Toast msg={toast.msg} color={toast.color} onUndo={toast.undoFn} />}
 
-        {/* ── Identity header (matches Accounts module banking style) ── */}
-        <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-            <div style={{
-              width:44, height:44, borderRadius:'12px',
-              background:'linear-gradient(145deg, #1C3A6B 0%, #0B1E3D 100%)',
-              boxShadow:'inset 0 0 0 1px rgba(226,197,126,.45), 0 8px 18px -10px rgba(11,30,61,.8)',
-              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-            }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#E2C57E" strokeWidth="2" style={{ width:21, height:21 }}>
-                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <div>
-              <p style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.18em', textTransform:'uppercase', margin:0, color:'#A87A1F' }}>AISSEE · JNVST · Foundation</p>
-              <p style={{ fontSize:21, fontWeight:700, lineHeight:1.2, margin:'1px 0 1px', color: darkMode ? '#fff' : '#0B1E3D', fontFamily:"'Playfair Display',Georgia,serif" }}>GNSI Admissions</p>
-              <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
-                {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
-                  : moduleView==='newApplication' ? 'New applicant admission form'
-                  : 'Application management & enrollment'}
-              </p>
-            </div>
-          </div>
+        {/* ── Header: the portal's premium hero, with the application pipeline at a glance ── */}
+        <div style={{ paddingTop: isMobile ? 12 : 16 }}>
+          <PremiumStyles />
+          <PremiumHero isMobile={isMobile} eyebrow="GNSI · Admissions · AISSEE · JNVST · Foundation" title="Admissions"
+            subtitle={moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
+              : moduleView==='newApplication' ? 'Admission portal — online applications, counter form, public link'
+              : moduleView==='exam' ? 'Entrance exam registration and admit cards'
+              : moduleView==='sessions' ? 'Admission sessions — create, activate, lock'
+              : 'Application management & enrollment'}
+            icon={<NavIcon id="admissions" size={24} />}
+            stats={[
+              { label: 'Applications', value: apps.length, sub: filterSession !== 'All' ? filterSession : 'All sessions', onClick: () => setModuleView('applications') },
+              { label: 'To review', value: apps.filter(a => a.status === 'Applied' || a.status === 'Under Review').length, sub: 'Applied · under review', onClick: () => setModuleView('applications') },
+              { label: 'Admitted', value: apps.filter(a => a.status === 'Admitted').length, sub: 'Awaiting enrolment', onClick: () => setModuleView('applications') },
+              { label: 'Enrolled', value: apps.filter(a => a.status === 'Enrolled').length, sub: 'Now students', tone: '#86efac', onClick: () => setModuleView('ledger') },
+            ]} />
           {isMobile ? createPortal(
             <nav className="adm-bottom" role="tablist" aria-label="Admissions sections">
               <style>{`.adm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
@@ -4683,7 +5107,7 @@ export default function Admissions() {
 .adm-nb.on{color:#fff;font-weight:800}
 .adm-nb.on .adm-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .adm-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
-              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+              {[['newApplication','Portal','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['exam','Exam reg.','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
                 <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'adm-nb'+(moduleView===key?' on':'')} onClick={()=>{setModuleView(key);window.scrollTo({top:0})}}>
                   <span className="adm-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
                 </button>
@@ -4691,205 +5115,151 @@ export default function Admissions() {
             </nav>,
             document.body
           ) : null}
-          {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
-            {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
-              <button key={key} onClick={()=>setModuleView(key)}
-                style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
-                  background: moduleView===key ? '#0B1E3D' : 'transparent',
-                  color: moduleView===key ? '#fff' : N.muted,
-                  boxShadow: moduleView===key ? 'inset 0 -2px 0 #C9A24B, 0 6px 14px -8px rgba(11,30,61,.7)' : 'none' }}>
-                {label}
-              </button>
-            ))}
-          </div>}
+          {!isMobile && (
+            <nav className="px-tabs" role="tablist" aria-label="Admissions sections">
+              {[['newApplication','Admission Portal','admissions'],['applications','Applications','students'],['ledger','Student Ledger','studentfeeledger'],['exam','Exam Registration','exams'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+                <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'px-tab' + (moduleView===key ? ' on' : '')} onClick={()=>setModuleView(key)}>
+                  <NavIcon id={icon} size={15} />{label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
 
         {moduleView === 'newApplication' ? (
-          <AdmForm
-            onSave={async (eid, data) => { const ok = await handleSave(eid, data); if (ok) setModuleView('applications') }}
-            onCancel={()=>setModuleView('applications')}
-            editing={null}
-            activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
-            housemastersByHouse={housemastersByHouse}
-            sessionOptions={sessionOptions}
+          <AdmissionPortalAdmin
+            canWrite={checkPermission(userRole, 'create')}
+            isAdmin={isAdminRole(userRole)}
+            onChanged={loadAll}
+            counterForm={
+              <AdmForm
+                onSave={async (eid, data) => { const ok = await handleSave(eid, data); if (ok) setModuleView('applications') }}
+                onCancel={()=>setModuleView('applications')}
+                editing={null}
+                activeSession={filterSession !== 'All' ? { ...activeSession, session_name: filterSession } : activeSession}
+                housemastersByHouse={housemastersByHouse}
+                sessionOptions={sessionOptions}
+              />
+            }
           />
         ) : moduleView === 'ledger' ? (
           <StudentLedgerView apps={apps} darkMode={darkMode} />
+        ) : moduleView === 'exam' ? (
+          <ExamRegistrationAdmin canWrite={checkPermission(userRole, 'create')} />
         ) : moduleView === 'sessions' ? (
-          <SessionManager darkMode={darkMode} onChanged={loadAll} />
+          <SessionManager darkMode={darkMode} onChanged={loadAll} apps={apps} />
         ) : (
-        <>
-        {/* ── Dark gradient stats card (Accounts-style treasury card) ── */}
-        <div style={{
-          position:'relative', borderRadius:16, padding:isMobile?'16px':'20px 24px', marginBottom:18,
-          color:'#fff', overflow:'hidden',
-          background:'radial-gradient(120% 140% at 100% 0%, #1C3A6B 0%, #132B52 42%, #0B1E3D 80%)',
-          boxShadow:'0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10)',
-        }}>
-          <div style={{ position:'absolute', left:0, right:0, top:0, height:3, background:'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
-          <div style={{ position:'absolute', top:'-60%', right:'-20%', width:'60%', height:'220%', pointerEvents:'none',
-            background:'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)', transform:'rotate(8deg)' }} />
-          <div style={{ position:'relative', zIndex:1 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
-              <div>
-                <p style={{ fontSize:10, fontWeight:500, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:0, marginBottom:2 }}>Total Applications</p>
-                <p style={{ fontSize:12, fontWeight:500, color:'rgba(255,255,255,.8)', margin:0 }}>
-                  {activeSession ? `Session ${activeSession.session_name}` : 'All sessions'}
-                </p>
-              </div>
-              <div style={{ width:32, height:20, borderRadius:4, background:'linear-gradient(135deg,#D4AF6A 0%,#B8915A 100%)', boxShadow:'0 2px 8px rgba(212,175,106,.25)', flexShrink:0 }} />
-            </div>
-
-            <p style={{ fontSize:isMobile?24:32, fontWeight:600, margin:'8px 0 12px 0', fontFamily:"'Courier New',monospace", lineHeight:1.1 }}>
-              {apps.length}
-            </p>
-
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:isMobile?10:16 }}>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Admitted</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Admitted']||0}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Enrolled</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#6FDB9A' }}>{byStatus['Enrolled']||0}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Pending</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'#FF8A8A' }}>{(byStatus['Applied']||0)+(byStatus['Under Review']||0)}</p>
-              </div>
-              <div>
-                <p style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', color:'rgba(255,255,255,.5)', margin:'0 0 4px 0', fontWeight:500 }}>Revenue/mo</p>
-                <p style={{ fontSize:13, fontWeight:600, margin:0, fontFamily:"'Courier New',monospace", color:'rgba(255,255,255,.9)' }}>₹{fmt(monthlyRevenue)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Header */}
-        <div style={{ padding: isMobile?'0 0 12px':'0 0 18px', display:'flex', flexDirection:isMobile?'column':'row', alignItems:isMobile?'stretch':'flex-start', justifyContent:'space-between', gap:isMobile?12:14 }}>
+        <div className={'pro-theme ' + proTheme} style={THEMES[proTheme].vars}>
+        <style>{PRO_CSS}</style>
+        <div className="pro-hero">
+        {/* ── Registry header ── */}
+        <div className="pro-head">
           <div>
-            <div style={{ fontSize:13, color:T.slate[500], display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-              {['Applied','Under Review','Admitted','Fee Collection','Enrolled → Student'].map((s,i,arr) => (
-                <span key={s} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontWeight:600, color:[T.indigo[600],T.amber[600],T.violet[600],T.amber[500],T.emerald[600]][i] }}>{s}</span>
-                  {i < arr.length-1 && <span style={{ color:T.slate[300] }}>›</span>}
-                </span>
-              ))}
+            <div className="pro-eyebrow">Admissions registry</div>
+            <h1 className="pro-title">Applications</h1>
+            <div className="pro-sub">
+              {filterSession === 'All' ? 'All sessions' : `Session ${filterSession}`} · {scopedApps.length} application{scopedApps.length === 1 ? '' : 's'}
+              {' · '}<span title="Monthly flat-fee revenue of enrolled students">₹{fmt(monthlyRevenue)}/mo enrolled</span>
+              {' · '}Role: <strong style={{ color:P.ink }}>{userRole}</strong>
             </div>
-            <div style={{ marginTop:6, display:'flex', gap:12, fontSize:11, color:T.slate[400], flexWrap:'wrap' }}>
-              <span>🏠 Boarder: <strong style={{ color:T.emerald[600] }}>₹5,500/mo</strong></span>
-              <span>🌅 Day Boarder: <strong style={{ color:T.amber[600] }}>₹4,000/mo</strong></span>
-              <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
-              <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
-            </div>
-            {!isMobile && <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
-              Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>/</kbd> Search &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>V</kbd> Toggle view &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>D</kbd> Dark mode &nbsp;
-              <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
+            {!isMobile && <div style={{ marginTop:6, fontSize:11, color:P.mute }}>
+              Shortcuts: <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>N</kbd> new ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>/</kbd> search ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>V</kbd> view ·{' '}
+              <kbd style={{ background:P.soft, border:`1px solid ${P.line}`, padding:'0 5px', borderRadius:4, fontSize:10 }}>Esc</kbd> close
             </div>}
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(7,auto)', gap:8, alignItems:'center' }}>
-           <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), fontSize:14, cursor:'pointer', color:N.text2, transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->{darkMode?'☀️':'🌙'}</button>
-
-<div style={{ display:'flex', gap:2, background:N.bg2, borderRadius:12, padding:3, boxShadow: viewChosen ? 'none' : `0 0 0 2px ${T.sky[400]}`, transition:'box-shadow .2s' }} title={viewChosen ? "Toggle view (V)" : "Pick a view before opening a record (V)"}>
-  {[['card','🃏'],['table','📋'],['kanban','🗂️'],['gallery','🖼️']].map(([key,icon]) => (
-    <button key={key} onClick={()=>chooseLayout(key)}
-      style={{ padding:'7px 10px', borderRadius:9, border:'none', background: layoutMode===key?N.bg:'transparent',
-        boxShadow: layoutMode===key?N.shadow('sm'):'none', fontSize:14, cursor:'pointer', color:N.text2, transition:'all .15s' }}>
-      {icon}
-    </button>
-  ))}
-</div>
-
-
-<button onClick={()=>setShowAnalytics(v=>!v)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showAnalytics?N.inset('sm'):N.shadow('sm'), color:showAnalytics?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
-  📊 Analytics
-</button>
-
-<button onClick={()=>setShowReports(v=>!v)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:showReports?N.inset('sm'):N.shadow('sm'), color:showReports?N.indigo:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s' }}>
-  📑 Reports
-</button>
-
-{checkPermission(userRole,'create') && (
-<button onClick={()=>setShowCSVImport(true)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->📥 Import</button>
-)}
-
-{checkPermission(userRole,'export') && (
-<button onClick={()=>secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->📤 Export</button>
-)}
-
-{checkPermission(userRole,'bulk') && (
-<button onClick={handleAutoAssignHouse}
-  style={{ padding:'9px 14px', borderRadius:12, border:'none', background:N.bg, boxShadow:N.shadow('sm'), color:N.text2, fontSize:12, fontWeight:700, cursor:'pointer', transition:'box-shadow .15s' }}
-  onMouseEnter={e=>e.currentTarget.style.boxShadow=N.inset('sm')}
-  onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
->🏠 Auto-Assign</button>
-)}
-
-{checkPermission(userRole,'create') && (
-<button onClick={()=>{ setEditing(null); setFormOpen(true) }}
-  style={{ padding:'10px 22px', borderRadius:13, background:`linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', border:'none', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:8, boxShadow:'0 4px 14px rgba(29,29,31,.25)', transition:'all .2s' }}
-  onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 6px 20px rgba(29,29,31,.32)'; e.currentTarget.style.transform='translateY(-2px)' }}
-  onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 4px 14px rgba(29,29,31,.25)'; e.currentTarget.style.transform='translateY(0)' }}
->
-  <span style={{ fontSize:18, lineHeight:1 }}>+</span> New Application
-</button>
-)}
+          <div className="pro-actions">
+            <div className="pro-seg" title={viewChosen ? 'Change layout' : 'Pick a layout to open records'} style={viewChosen ? undefined : { boxShadow:`0 0 0 2px ${P.teal}` }}>
+              {[['card','🃏','Cards'],['table','📋','Table'],['kanban','🗂️','Board'],['gallery','🖼️','Gallery']].map(([key, icon, t]) => (
+                <button key={key} type="button" title={t} className={layoutMode === key ? 'on' : ''} onClick={() => chooseLayout(key)}>{icon}</button>
+              ))}
+            </div>
+            <button type="button" className={'pro-btn' + (showInsights ? ' on' : '')} onClick={() => setShowInsights(v => !v)}>📈 Insights</button>
+            <button type="button" className={'pro-btn' + (showAnalytics ? ' on' : '')} onClick={() => setShowAnalytics(v => !v)}>📊 Analytics</button>
+            <button type="button" className={'pro-btn' + (showReports ? ' on' : '')} onClick={() => setShowReports(v => !v)}>📑 Reports</button>
+            {checkPermission(userRole,'create') && <button type="button" className="pro-btn" onClick={() => setShowCSVImport(true)}>📥 Import</button>}
+            {checkPermission(userRole,'export') && <button type="button" className="pro-btn" onClick={() => secureExport(filtered, `GNSI_Admissions_${new Date().toISOString().slice(0,10)}.csv`)}>📤 Export</button>}
+            {checkPermission(userRole,'bulk') && <button type="button" className="pro-btn" onClick={handleAutoAssignHouse}>🏠 Auto-assign</button>}
+            <button type="button" className="pro-btn" title="Switch the screen design" onClick={toggleProTheme}>🎨 {THEMES[THEME_ORDER[(THEME_ORDER.indexOf(proTheme) + 1) % THEME_ORDER.length]].label}</button>
+            <button type="button" className="pro-btn" title="Toggle dark mode (D)" onClick={() => setDarkMode(v => !v)}>{darkMode ? '☀️' : '🌙'}</button>
+            {checkPermission(userRole,'create') && <button type="button" className="pro-btn primary" onClick={() => { setEditing(null); setFormOpen(true) }}>＋ New application</button>}
           </div>
         </div>
 
-        {/* Active session banner */}
-       {activeSession && (
-  <div style={{ marginBottom:18, padding:'12px 20px', borderRadius:16, background:N.bg, boxShadow:N.shadow('sm'), display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-      <div style={{ width:9, height:9, borderRadius:'50%', background:activeSession.is_locked?N.rose:N.emerald, boxShadow:`0 0 0 3px ${activeSession.is_locked?'rgba(225,29,72,.18)':'rgba(5,150,105,.18)'}`, animation:'pulse 2s ease-in-out infinite', flexShrink:0 }} />
-      <span style={{ fontSize:13, fontWeight:700, color:activeSession.is_locked?N.rose:N.emerald }}>
-        {activeSession.is_locked?'Session Locked':'Active Session'}: <strong>{activeSession.session_name}</strong>
-      </span>
+        {/* Session bar */}
+        {activeSession && (
+          <div className="pro-session">
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+              <span className="pro-dot" style={{ background: activeSession.is_locked ? '#B42318' : '#15803D', boxShadow:`0 0 0 4px ${activeSession.is_locked ? '#B4231822' : '#15803D22'}` }} />
+              <strong style={{ color: activeSession.is_locked ? '#B42318' : '#15803D' }}>{activeSession.is_locked ? 'Session locked' : 'Active session'}: {activeSession.session_name}</strong>
+              <span style={{ color:P.mute }}>Viewing</span>
+              <select value={filterSession} onChange={e => setSession(e.target.value)}
+                title="Change which session this view is filtered to (Admissions only — does not affect other modules)">
+                <option value="All">All sessions</option>
+                {sessionOptions.includes(activeSession.session_name) ? null : <option value={activeSession.session_name}>{activeSession.session_name} (active)</option>}
+                {sessionOptions.map(x => <option key={x} value={x}>{x}{x === activeSession.session_name ? ' (active)' : ''}</option>)}
+              </select>
+            </div>
+            {activeSession.is_locked && <span style={{ color:'#B42318', fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>}
+          </div>
+        )}
 
-      {/* Session changer — switches which session THIS view (Admissions
-          module only) is filtered to and defaults new applications into.
-          Does not touch the global active session used by other modules. */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginLeft:4 }}>
-        <span style={{ fontSize:11, color:N.muted }}>Viewing:</span>
-        <select
-          value={filterSession}
-          onChange={e => setSession(e.target.value)}
-          title="Change which session this view is filtered to (Admissions only — does not affect other modules)"
-          style={{ fontSize:12, fontWeight:700, padding:'4px 10px', borderRadius:8, border:`1px solid ${N.border}`, background:'#fff', color:N.text, cursor:'pointer' }}
-        >
-          <option value="All">All sessions</option>
-          {sessionOptions.includes(activeSession.session_name)
-            ? null
-            : <option value={activeSession.session_name}>{activeSession.session_name} (active)</option>}
-          {sessionOptions.map(s => (
-            <option key={s} value={s}>{s}{s === activeSession.session_name ? ' (active)' : ''}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-    {activeSession.is_locked
-      ? <span style={{ fontSize:12, color:N.rose, fontWeight:600 }}>New applications are blocked. Go to Sessions to unlock.</span>
-      : <span style={{ fontSize:12, color:N.muted }}>Revenue (enrolled): <strong style={{ color:N.emerald }}>₹{fmt(monthlyRevenue)}/mo</strong></span>
-    }
-  </div>
-)}
+        {/* Live numbers — only what the data actually has (a status nobody is in is not shown) */}
+        {(() => {
+          const n = scopedApps.length
+          const share = v => (n ? Math.round((v / n) * 100) : 0)
+          const gccOf = x => String(parseInt(x.gcc) || '')
+          const scopedSet = new Set(scopedApps.map(gccOf))
+          const paidRows = cols.filter(c => c.fee_type === 'admission' && !c.reverted && scopedSet.has(String(parseInt(c.adm_app_id) || '')))
+          const paidSet = new Set(paidRows.map(c => String(parseInt(c.adm_app_id) || '')))
+          const paidCount = scopedApps.filter(x => paidSet.has(gccOf(x))).length
+          const paidAmt = paidRows.reduce((t, c) => t + (Number(c.amount_paid) || 0), 0)
+          const withPhoto = scopedApps.filter(x => x.photoUrl || x.studentPhotoUrl).length
+          const toggle = (cur, val, set) => () => set(cur === val ? 'All' : val)
+          const courseCounts = Object.entries(scopedApps.reduce((m, x) => { if (x.course) m[x.course] = (m[x.course] || 0) + 1; return m }, {})).sort((x, y) => y[1] - x[1])
+          const cards = [
+            { key:'total', label:'Total applications', value:n, sub:`₹${fmt(monthlyRevenue)}/mo from enrolled`, color:P.total, on:filterStatus === 'All', go:() => setFilter('All'), bar:100 },
+            ...ADM_STATUSES.filter(st => byStatus[st]).map(st => ({ key:st, label:st, value:byStatus[st], sub:`${share(byStatus[st])}% of total`, color:STAT_META[st]?.color || P.mute, on:filterStatus === st, go:toggle(filterStatus, st, setFilter), bar:share(byStatus[st]) })),
+            ...HOSTEL_TYPES.map(h => ({ key:h, v:scopedApps.filter(x => x.hostel_type === h).length })).filter(h => h.v).map(h => ({ key:h.key, label:h.key, value:h.v, sub:`${share(h.v)}% of total`, color:HOSTEL_STYLES[h.key]?.color || P.mute, on:filterHostel === h.key, go:toggle(filterHostel, h.key, setHostel), bar:share(h.v) })),
+            ...courseCounts.slice(0, 4).map(([c, v]) => ({ key:'c-' + c, label:c, value:v, sub:`${share(v)}% of total`, color:COURSE_STRUCTURE[c]?.color || P.mute, on:filterCourse === c, go:toggle(filterCourse, c, setCourse), bar:share(v) })),
+            { key:'fee', label:'Admission fee paid', value:paidCount, sub:`₹${fmt(paidAmt)} collected · ${n - paidCount} unpaid`, color:'#15803D', on:advFilters.feeStatus === 'paid', go:() => setAdvFilters(f => ({ ...f, feeStatus: f.feeStatus === 'paid' ? '' : 'paid' })), bar:share(paidCount) },
+            { key:'photo', label:'Photo on file', value:withPhoto, sub:`${n - withPhoto} missing`, color:P.teal, on:filterPhoto === 'Missing', go:() => setFilterPhoto(filterPhoto === 'Missing' ? 'All' : 'Missing'), bar:share(withPhoto) },
+            ...(linkCounts.issues ? [{ key:'check', label:'To check vs Students', value:linkCounts.issues, sub:'differs from the student record', color:'#B42318', on:filterLink === 'Any issue', go:toggle(filterLink, 'Any issue', setFilterLink), bar:share(linkCounts.issues) }] : []),
+          ]
+          return (
+            <>
+              <div className="pro-kpis" style={{ gridTemplateColumns:isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fit,minmax(176px,1fr))' }}>
+                {cards.map(k => (
+                  <button key={k.key} type="button" className={'pro-kpi' + (k.on ? ' on' : '')} style={{ '--c':k.color }} onClick={k.go}>
+                    <div className="k-label">{k.label}</div>
+                    <div className="k-num">{k.value}</div>
+                    <div className="k-sub">{k.sub}</div>
+                    <div className="k-bar"><i style={{ width:`${k.bar}%` }} /></div>
+                  </button>
+                ))}
+              </div>
+              {courseCounts.length > 0 && (
+                <div className="pro-dist" title="Share of applications by course">
+                  {courseCounts.map(([c, v]) => <span key={c} style={{ flex:v, background:COURSE_STRUCTURE[c]?.color || P.mute }} title={`${c}: ${v}`} />)}
+                </div>
+              )}
+            </>
+          )
+        })()}
+        {proTheme === 'portal' && (() => {
+          const pending = (byStatus['Applied']||0) + (byStatus['Under Review']||0)
+          const overdue = scopedApps.filter(x => x.followupDate && x.followupDate < today).length
+          return (
+            <div className="pro-notice" role="status">
+              <b>Notice</b>
+              <span>{pending} application{pending === 1 ? '' : 's'} awaiting review · {overdue} follow-up{overdue === 1 ? '' : 's'} overdue · {linkCounts.issues} record{linkCounts.issues === 1 ? '' : 's'} need a check against Students · {byStatus['Admitted']||0} admitted, fee/enrolment pending</span>
+            </div>
+          )
+        })()}
+
+
+        </div>
 
         {/* Analytics Dashboard */}
         {showAnalytics && <AnalyticsDashboard apps={apps} cols={cols} darkMode={darkMode} />}
@@ -4898,43 +5268,46 @@ export default function Admissions() {
         {showReports && <ReportGenerator apps={apps} cols={cols} sessionOptions={sessionOptions} courseOptions={courseOptions} />}
 
         {/* Dashboard — default view */}
-        <Dashboard apps={apps} cols={cols} darkMode={darkMode} />
-
-        {/* KPI Strip */}
-        <div style={{ display:'grid', gridTemplateColumns:isMobile?'repeat(2,1fr)':isTablet?'repeat(4,1fr)':'repeat(7,1fr)', gap:isMobile?10:12, marginBottom:18 }}>
-  {[
-    { label:'Total', value:apps.length, color:N.text, accent:`linear-gradient(90deg,${N.gold},${N.goldDark})`, filter:'All', sub:`₹${fmt(monthlyRevenue)}/mo` },
-    { label:'Applied',      value:byStatus['Applied']||0,      color:'#6366f1', accent:'#6366f1', filter:'Applied' },
-    { label:'Under Review', value:byStatus['Under Review']||0, color:N.amber,   accent:N.amber,   filter:'Under Review' },
-    { label:'Admitted',     value:byStatus['Admitted']||0,     color:N.violet,  accent:N.violet,  filter:'Admitted' },
-    { label:'Enrolled',     value:byStatus['Enrolled']||0,     color:N.emerald, accent:N.emerald, filter:'Enrolled' },
-    { label:'Rejected',     value:byStatus['Rejected']||0,     color:N.rose,    accent:N.rose,    filter:'Rejected' },
-    { label:'Waitlisted',   value:byStatus['Waitlisted']||0,   color:N.muted2,  accent:N.muted2,  filter:'Waitlisted' },
-  ].map(k => {
-    const isActive = filterStatus === k.filter
-    return (
-      <div key={k.label} onClick={()=>setFilter(isActive?'All':k.filter)}
-        style={{ borderRadius:18, padding:'14px 14px 12px', background:N.bg, boxShadow:isActive?N.inset('md'):N.shadow('md'), cursor:'pointer', transition:'all .2s', position:'relative', overflow:'hidden' }}
-        onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.boxShadow=N.shadow('lg') }}
-        onMouseLeave={e=>{ e.currentTarget.style.boxShadow=isActive?N.inset('md'):N.shadow('md') }}
-      >
-        <div style={{ position:'absolute', top:0, left:'14px', right:'14px', height:'3px', borderRadius:'0 0 3px 3px', background:k.accent }} />
-        <div style={{ fontSize:24, fontWeight:900, color:k.color, lineHeight:1, marginTop:4, marginBottom:4 }}>{k.value}</div>
-        <div style={{ fontSize:9, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>{k.label}</div>
-        {k.sub && <div style={{ fontSize:10, color:N.muted2, marginTop:3 }}>{k.sub}</div>}
-      </div>
-    )
-  })}
-</div>
+        {showInsights && <Dashboard apps={apps} cols={cols} darkMode={darkMode} />}
 
         {/* Form */}
         {formOpen && (
           <AdmForm onSave={handleSave} onCancel={()=>{ setFormOpen(false); setEditing(null) }} editing={editing} activeSession={activeSession} housemastersByHouse={housemastersByHouse} sessionOptions={sessionOptions} />
         )}
 
+        {justEnrolled && createPortal(
+          <div onClick={() => setJustEnrolled(null)} style={{ position:'fixed', inset:0, background:'rgba(11,30,61,.55)', zIndex:99998, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:18, padding:'26px 28px', width:'min(440px,100%)', textAlign:'center', boxShadow:'0 30px 80px -20px rgba(0,0,0,.5)', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
+              <div style={{ width:56, height:56, borderRadius:'50%', background:'#E8F7EE', color:'#15803D', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, margin:'0 auto 12px' }}>✓</div>
+              <div style={{ fontSize:19, fontWeight:700, color:'#0B1E3D' }}>Admission confirmed</div>
+              <div style={{ fontSize:13, color:'#475569', margin:'6px 0 18px', lineHeight:1.5 }}><b>{justEnrolled.name}</b> (GCC-{justEnrolled.gcc}) is now a student. Print the admission confirmation & registration form for the family to sign and keep.</div>
+              {justEnrolled.pin && (
+                <div style={{ background:'#F3F6FA', border:'1px solid #CBD5E3', borderRadius:10, padding:'10px 14px', margin:'0 0 14px', textAlign:'left' }}>
+                  <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.1em', color:'#64748B' }}>PARENT PORTAL LOGIN</div>
+                  <div style={{ fontSize:13, color:'#0B1E3D', marginTop:2 }}>GCC-{justEnrolled.gcc} · PIN <b className="mono" style={{ fontSize:18, letterSpacing:'.14em' }}>{justEnrolled.pin}</b></div>
+                  <div style={{ fontSize:11, color:'#7B8AA0', marginTop:2 }}>Shown only now and on the printed form — it is stored hashed and cannot be looked up later.</div>
+                </div>)}
+              {justEnrolled.notes?.length > 0 && (
+                <ul style={{ textAlign:'left', fontSize:12, color:'#8A4B08', background:'#FFF8EC', border:'1px solid #F2D9A8', borderRadius:10, padding:'8px 12px 8px 28px', margin:'0 0 14px' }}>
+                  {justEnrolled.notes.map((n, i) => <li key={i} style={{ marginBottom:3 }}>{n}</li>)}
+                </ul>)}
+              <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+                <button type="button" onClick={() => { printConfirmation(justEnrolled, { parentPin: justEnrolled.pin }); setJustEnrolled(null) }} style={{ padding:'11px 22px', borderRadius:10, border:0, background:'#0B1E3D', color:'#fff', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>🖨 Print admission form</button>
+                <button type="button" onClick={() => setJustEnrolled(null)} style={{ padding:'11px 20px', borderRadius:10, border:'1px solid #CBD5E3', background:'#fff', color:'#475569', fontWeight:700, fontSize:13.5, cursor:'pointer' }}>Later</button>
+              </div>
+              <div style={{ fontSize:11, color:'#7B8AA0', marginTop:12 }}>You can reprint it any time from the application's Detail panel.</div>
+            </div>
+          </div>, document.body)}
+
+        {lockerFor && (
+          <StudentLocker student={lockerFor.student} app={lockerFor.app} userName={getSessionInfo().userName}
+            canWrite={checkPermission(userRole, 'update')} canVerify={checkPermission(userRole, 'update')} canDelete={checkPermission(userRole, 'delete')}
+            onClose={() => setLockerFor(null)} onPrintApplication={a => printApplicationReceipt(a)} onOpenLedger={g => { setLockerFor(null); openStudentLedger(g) }} />
+        )}
+
         {/* Detail panel */}
         {detailApp && (
-          <DetailPanel a={detailApp} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
+          <DetailPanel a={detailApp} link={studentLinks.get(String(parseInt(detailApp.gcc)))} onNavigate={onNavigate} onSyncFromStudent={g => handleSyncFromStudents([g]).then(() => setDetailApp(null))} onOpenLocker={() => openLocker(detailApp)} onPrintConfirmation={() => printConfirmation(detailApp)} onClose={()=>setDetailApp(null)} onAddNote={handleAddNote} darkMode={darkMode} role={userRole} housemastersByHouse={housemastersByHouse} />
         )}
 
         {/* Quick-edit row */}
@@ -4948,19 +5321,69 @@ export default function Admissions() {
         )}
 
         {/* Filter Panel */}
-        <div style={{ background:N.bg, borderRadius:isMobile?14:20, boxShadow:N.shadow('md'), padding:isMobile?'12px 14px':'16px 20px', marginBottom:16, display:'flex', flexDirection:'column', gap:isMobile?8:12 }}>
+        <div className="pro-panel" style={isMobile ? { padding:'12px 14px' } : undefined}>
           {sessionOptions.length > 0 && (
             <PillStrip label="Session" options={sessionOptions} value={filterSession} onChange={setSession} colorFn={()=>T.indigo[600]} />
           )}
           {courseOptions.length > 0 && (
             <PillStrip label="Course" options={courseOptions} value={filterCourse} onChange={setCourse} colorFn={c=>COURSE_STRUCTURE[c]?.color||T.slate[500]} />
           )}
+          <PillStrip label="Students" options={['Any issue', ...['No student record','Student not Enrolled','Status differs','Fields differ','Duplicate GCC'].filter(l => Object.entries(LINK_LABEL).some(([k, v]) => v === l && linkCounts[k]))]} value={filterLink} onChange={setFilterLink}
+            colorFn={o => o === 'Any issue' ? T.rose[600] : T.amber[600]}
+            countFn={o => o === 'Any issue' ? linkCounts.issues : (linkCounts[Object.keys(LINK_LABEL).find(k => LINK_LABEL[k] === o)] || 0)} />
+          {linkCounts.diff > 0 && checkPermission(userRole, 'update') && (
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+              <span>{linkCounts.diff} application{linkCounts.diff > 1 ? 's' : ''} are out of date with their student record.</span>
+              <button type="button" onClick={() => handleSyncFromStudents(filtered.filter(x => studentLinks.get(String(parseInt(x.gcc)))?.state === 'diff').map(x => x.gcc))}
+                style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                ⬆ Update the {filtered.filter(x => studentLinks.get(String(parseInt(x.gcc)))?.state === 'diff').length} shown from Students
+              </button>
+            </div>
+          )}
+          {(() => {
+            const pc = pendingConcessions()
+            return pc.length > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+                <span>{new Set(pc.map(r => r.gcc)).size} enrolled student{new Set(pc.map(r => r.gcc)).size > 1 ? 's have' : ' has'} a scholarship / concession on the application that Fees does not apply yet.</span>
+                <button type="button" onClick={handleApplyConcessions}
+                  style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                  ⬆ Apply {pc.length} to Fees (admin)
+                </button>
+              </div>)
+          })()}
+          {(() => {
+            const missing = scopedApps.filter(x => !x.photoUrl && !x.studentPhotoUrl).length
+            const restorable = scopedApps.filter(x => !x.photoUrl && x.studentPhotoUrl && x.studentPhotoSaved).length
+            return (
+              <>
+                <PillStrip label="Photo" options={['Missing', 'Has photo']} value={filterPhoto} onChange={setFilterPhoto}
+                  countFn={o => o === 'Missing' ? missing : scopedApps.length - missing} />
+                {restorable > 0 && checkPermission(userRole, 'update') && (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:11.5, color:T.slate[600] }}>
+                    <span>{restorable} application{restorable > 1 ? 's have' : ' has'} no photo, but the linked student does.</span>
+                    <button type="button" onClick={handleRestorePhotos}
+                      style={{ padding:'4px 12px', borderRadius:99, border:`1px solid ${T.amber[200]}`, background:T.amber[50], color:T.amber[700], fontSize:11, fontWeight:800, cursor:'pointer' }}>
+                      ⬆ Restore {restorable} photo{restorable > 1 ? 's' : ''} from Students
+                    </button>
+                  </div>
+                )}
+              </>
+            )
+          })()}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <button type="button" className={'pro-chip' + (showMoreFilters ? ' on' : '')} onClick={() => setShowMoreFilters(v => !v)}>
+              {showMoreFilters ? '▾' : '▸'} More filters{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length > 0 && <em>{[filterSubtype, filterHostel, filterHouse].filter(f => f !== 'All').length}</em>}
+            </button>
+            <span style={{ fontSize:11, color:P.mute }}>Batch · Hostel · House</span>
+          </div>
+          {showMoreFilters && (<>
           {subtypeOptions.length > 0 && (
             <PillStrip label="Batch" options={subtypeOptions} value={filterSubtype} onChange={setSubtype} colorFn={()=>T.violet[600]} />
           )}
           <PillStrip label="Hostel" options={HOSTEL_TYPES} value={filterHostel} onChange={setHostel} colorFn={h=>HOSTEL_STYLES[h]?.color||T.slate[500]} />
           <PillStrip label="House" options={HOUSES_LIST} value={filterHouse} onChange={setFilterHouse} colorFn={()=>T.sky[600]}
             countFn={h => houseCounts[h]||0} />
+          </>)}
 
           <div style={{ display:'flex', flexDirection:isMobile?'column':'row', gap:isMobile?8:10, alignItems:isMobile?'stretch':'center', flexWrap:isMobile?'nowrap':'wrap' }}>
             <div style={{ flex:1, minWidth:200, position:'relative' }}>
@@ -5055,10 +5478,10 @@ export default function Admissions() {
         {/* List / Table */}
         {filtered.length > 0 ? (
           layoutMode === 'table' ? (
-            <div style={{ background:N.bg, borderRadius:16, boxShadow:N.shadow('md'), overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <div style={{ background:P.card, border:`1px solid ${P.line}`, borderRadius:18, overflow:'auto', maxHeight:'72vh', WebkitOverflowScrolling:'touch' }}>
+              <table className="pro-table">
                 <thead>
-                  <tr style={{ background:darkMode?T.slate[700]:T.slate[50] }}>
+                  <tr>
                     <th style={{ padding:'10px 10px', textAlign:'left', color:T.slate[400], fontSize:11 }}>
                       <input type="checkbox" checked={selectedIds.size===filtered.length} onChange={toggleSelectAll} style={{ cursor:'pointer' }} />
                     </th>
@@ -5069,7 +5492,7 @@ export default function Admissions() {
                 </thead>
                 <tbody>
                   {filtered.map(a => (
-                    <AppCard key={a.id} a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                    <AppCard key={a.id} a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} onConfirm={printConfirmation} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                       onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
@@ -5095,7 +5518,7 @@ export default function Admissions() {
                   {a.status==='Waitlisted' && waitlistPositions[a.gcc] && (
                     <div style={{ fontSize:11, color:T.slate[500], fontWeight:700, marginBottom:2 }}>Waitlist #{waitlistPositions[a.gcc]}</div>
                   )}
-                  <AppCard a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
+                  <AppCard a={a} link={studentLinks.get(String(parseInt(a.gcc)))} onLocker={openLocker} onConfirm={printConfirmation} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
                     onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />
@@ -5120,7 +5543,7 @@ export default function Admissions() {
             Showing all {filtered.length} records · Switch to Table View for better performance with large lists
           </div>
         )}
-        </>
+        </div>
         )}
       </div>
     </>

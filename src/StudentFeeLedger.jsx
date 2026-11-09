@@ -10,6 +10,13 @@ import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
 import FeeDayBook from './FeeDayBook'
 import FeeMonthlyLedger from './FeeMonthlyLedger'
+import FeeMonthCollection from './FeeMonthCollection'
+import FeeMonthDue from './FeeMonthDue'
+import FeeWaivers from './FeeWaivers'
+import ResponsiveTables from './ResponsiveTables'
+import FeeAmountFinder from './FeeAmountFinder'
+import FeePayAmounts from './FeePayAmounts'
+import { loadFeeTypeScan } from './hostelFeeCheck'
 import ExpenseDayBook from './ExpenseDayBook'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
@@ -274,7 +281,7 @@ function StudentSearch({ students, onSelect, mobile }) {
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{s.name}</div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {s.gcc_no && <span style={{ fontWeight: 700, color: '#0B1E3D', fontFamily: 'monospace' }}>GCC-{s.gcc_no}</span>}
+                  {s.gcc_no && <span style={{ fontWeight: 700, color: '#0B1E3D', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>GCC-{s.gcc_no}</span>}
                   {s.batch && <span>{s.batch}</span>}
                   {s.course && <span>{s.course}</span>}
                   {s.hostel_type && <HostelTypeBadge type={s.hostel_type} />}
@@ -321,7 +328,7 @@ function LedgerSection({ title, icon, color, bg, rows, columns, emptyMsg, total,
               <div style={{ fontSize: 11, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span>{fmtDate(row.pay_date)}</span>
                 {row.pay_mode && <span>{row.pay_mode}</span>}
-                {row.receipt_no && <span style={{ fontFamily: 'monospace', color }}>{row.receipt_no}</span>}
+                {row.receipt_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", color }}>{row.receipt_no}</span>}
                 {row.hostel_type && <HostelTypeBadge type={row.hostel_type} />}
                 {row.course && <span>{row.course}</span>}
               </div>
@@ -387,12 +394,14 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const [admRows, setAdmRows] = useState([])
   const [flatRows, setFlatRows] = useState([])
   const [crsRows, setCrsRows] = useState([])
+  const [typeCheck, setTypeCheck] = useState(null)   // auto-detected fee type mismatch for the open student
 
   const [view, setView] = useState('register') // 'register' | 'types'
   const [printAll, setPrintAll] = useState(false)
   const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
   const [notFound, setNotFound] = useState('')
-  const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly'
+  const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly' | 'monthwise' | 'monthdue' | 'waivers'
+  const [finderPick, setFinderPick] = useState(null) // amount chosen on 'Who pays how much' → opens 'Who pays ₹?'
 
   useEffect(() => {
     // Every student, paged past the 1000-row cap so none are missing from search.
@@ -422,6 +431,9 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
     setLoadError(failed ? `Could not load this ledger completely: ${failed.error.message}. Please retry.` : '')
     setAdmRows(failed ? [] : a.data || []); setFlatRows(failed ? [] : f.data || []); setCrsRows(failed ? [] : c.data || [])
     setLoading(false)
+    // Does what they paid agree with the hostel type on their record? (best effort — never blocks the ledger)
+    setTypeCheck(null)
+    if (!failed) loadFeeTypeScan({ students: [student], courseRows: c.data || [], flatRows: f.data || [] }).then(r => setTypeCheck(r.mismatches[0] || null)).catch(() => {})
   }
 
   // Open the student a ledger link asked for, once the student list has loaded.
@@ -454,7 +466,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
         ]} />
 
       <div role="tablist" aria-label="Fee ledger books" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 16, background: '#fff', borderRadius: 999, border: '1px solid #e6dcc3', boxShadow: '0 8px 24px -18px rgba(11,30,61,.4)', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }}>
-        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'],
+        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'], ['monthwise', '🧾 Month-wise Collection'], ['monthdue', '⚠️ Month-wise Dues'], ['waivers', '🎓 Waivers & Concessions'], ['payamounts', '💰 Who pays how much'], ['amounts', '🔎 Who pays ₹?'],
           // Expenditure lives in Accounts — only shown to users who can open Accounts.
           ...(canSeeAccounts ? [['expense', '💸 Expenditure Day Book'], ['register', '⚖️ Income & Expenditure']] : [])].map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
@@ -466,8 +478,15 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
       </div>
 
       {certOpen && selected && <CertificateDialog student={selected} onClose={() => setCertOpen(false)} />}
+      <ResponsiveTables>
       {tab === 'daybook' && <FeeDayBook students={students} />}
       {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
+      {tab === 'monthwise' && <FeeMonthCollection students={students} />}
+      {tab === 'monthdue' && <FeeMonthDue students={students} />}
+      {tab === 'waivers' && <FeeWaivers students={students} />}
+      </ResponsiveTables>
+      {tab === 'payamounts' && <FeePayAmounts students={students} onPickAmount={p => { setFinderPick(p); setTab('amounts') }} />}
+      {tab === 'amounts' && <FeeAmountFinder key={finderPick ? `${finderPick.amount}|${finderPick.kind}|${finderPick.session}` : 'x'} students={students} initial={finderPick} />}
       {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
       {tab === 'register' && canSeeAccounts && <IncomeExpenditureRegister />}
 
@@ -494,6 +513,12 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
 
       {selected && !loading && !loadError && (
         <>
+          {typeCheck && (
+            <div role="alert" style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fff4dc', border: '1px solid #f3d38a', color: '#7a4a00', fontSize: 13, lineHeight: 1.5 }}>
+              <b>⚠️ Fee type check:</b> recorded as <b>{typeCheck.recorded}</b>, but the payments point to <b>{typeCheck.detected}</b> ({typeCheck.confidence} confidence). {typeCheck.evidence.join('; ')}.
+              {' '}A wrong type means a wrong fee. An admin can correct it in <b>Fees → Hostel Issues</b>.
+            </div>
+          )}
           {/* Student card */}
           <div className="gp-in" style={{ background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 85%)', borderRadius: 18, boxShadow: '0 18px 40px rgba(11,30,61,.22), inset 0 0 0 1px rgba(226,197,126,.22)', padding: mobile ? '16px' : '22px 26px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -501,7 +526,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
               <div>
                 <div className="gp-serif" style={{ fontSize: mobile ? 18 : 24, fontWeight: 700, color: 'white' }}>{selected.name}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {selected.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#C9A24B' }}>GCC-{selected.gcc_no}</span>}
+                  {selected.gcc_no && <span style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontWeight: 700, color: '#C9A24B' }}>GCC-{selected.gcc_no}</span>}
                   {selected.batch && <span>{selected.batch}</span>}
                   {selected.course && <span>{selected.course}</span>}
                   {selected.hostel_type && <HostelTypeBadge type={selected.hostel_type} />}

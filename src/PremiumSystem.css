@@ -1,0 +1,98 @@
+/* PremiumSystem.css — one visual language for every landing-page section.
+   Tokens → section frame → header → cards → buttons → tables/chips → FAQ.
+   Loaded after LandingPage.css so it refines rather than replaces it. */
+
+:root{
+  --px-ivory:#FBF9F4; --px-ivory2:#F4F0E6; --px-line:rgba(11,30,61,.09);
+  --px-r:18px; --px-r-sm:12px;
+  --px-sh1:0 1px 2px rgba(11,30,61,.05),0 10px 26px -14px rgba(11,30,61,.20);
+  --px-sh2:0 2px 4px rgba(11,30,61,.06),0 26px 44px -18px rgba(11,30,61,.30);
+  --px-gold-grad:linear-gradient(135deg,#D9B65E,#B8913F);
+  --px-navy-grad:linear-gradient(150deg,#0B1E3D,#1b3a6b);
+}
+
+/* ── 1. Section frame: alternating ivory / white with hairline dividers ── */
+.pad,.pad-alt,.papers-section,.syllabus-section,.calendar-section,.timeline-section,.helpdesk-section,
+.ranker-section,.video-section,.reviews-section,.portal-section,.fee-section,.app-section{position:relative}
+.pad-alt,.syllabus-section,.calendar-section,.helpdesk-section,.video-section,.reviews-section{background:linear-gradient(180deg,var(--px-ivory),var(--px-ivory2))}
+.pad,.papers-section,.timeline-section,.ranker-section,.portal-section,.fee-section,.app-section,.testi-section{background:#fff}
+.pad::before,.pad-alt::before,.papers-section::before,.syllabus-section::before,.calendar-section::before,.timeline-section::before,
+.helpdesk-section::before,.ranker-section::before,.video-section::before,.reviews-section::before,.portal-section::before,.fee-section::before{
+  content:'';position:absolute;left:50%;top:0;width:min(1200px,92%);height:1px;transform:translateX(-50%);
+  background:linear-gradient(90deg,transparent,rgba(184,145,63,.45),transparent)}
+.scholar-section,.mocktest-section{background:radial-gradient(900px 360px at 50% -10%,rgba(201,162,75,.18),transparent 60%),var(--px-navy-grad)!important}
+
+/* ── 2. Section header: centred pill eyebrow · serif title · gold rule · lead ── */
+section > .container > .eyebrow,.container > .eyebrow.reveal{
+  display:flex;width:fit-content;margin:0 auto .9rem;padding:.38rem .95rem;border-radius:999px;
+  background:rgba(201,162,75,.12);border:1px solid rgba(184,145,63,.28);
+  font-size:.7rem!important;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--goldD,#8A6A24)!important}
+section > .container > .eyebrow::before{display:none}
+section > .container > .st,.container > h2.st{text-align:center;font-size:clamp(1.7rem,3.8vw,2.6rem);letter-spacing:-.02em;line-height:1.15;color:var(--navy,#0B1E3D);margin-bottom:.7rem}
+section > .container > .rule{justify-content:center;margin-bottom:1.3rem}
+section > .container > .rule .rule-line:first-child{flex:0 0 56px;height:3px;border-radius:3px;background:var(--px-gold-grad)}
+section > .container > .rule + p,.container > .st ~ .lead{max-width:680px;margin-left:auto;margin-right:auto;text-align:center;color:var(--mist,#4A5466);line-height:1.8}
+.scholar-section .st,.mocktest-section .st{color:#fff!important}
+.scholar-section .eyebrow,.mocktest-section .eyebrow{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:var(--goldLL,#E2C57E)!important}
+/* two-column sections keep their heading with the copy, left-aligned */
+.enquiry-grid .eyebrow,.fee-grid .eyebrow,.about-grid .eyebrow,.head-institute-grid .eyebrow,.app-grid .eyebrow,.helpdesk-grid .eyebrow,.scholar-grid .eyebrow,.portal-grid .eyebrow{margin-left:0}
+.enquiry-grid .st,.fee-grid .st,.about-grid .st,.head-institute-grid .st,.app-grid .st,.helpdesk-grid .st,.scholar-grid .st,.portal-grid .st{text-align:left}
+
+/* ── 3. One card recipe ── */
+.course-card,.papers-card,.mock-card,.syl-card,.testi-card,.ranker-card,.test-date-card,.home-video-card,.blog-card,
+.video-card,.facility-card,.event-card,.notice-card,.cta-card,.faq-pro .faq-item,.lx-card{
+  background:#fff;border:1px solid var(--px-line);border-radius:var(--px-r);box-shadow:var(--px-sh1);
+  transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s,border-color .28s}
+.course-card:hover,.papers-card:hover,.mock-card:hover,.syl-card:hover,.testi-card:hover,.ranker-card:hover,.home-video-card:hover,
+.blog-card:hover,.video-card:hover,.facility-card:hover,.event-card:hover,.notice-card:hover,.cta-card:hover{
+  transform:translateY(-5px);box-shadow:var(--px-sh2);border-color:rgba(184,145,63,.4)}
+.course-card,.papers-card{border-top:1px solid var(--px-line)!important;overflow:hidden}
+.course-card::before,.papers-card::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--px-gold-grad)}
+.course-card,.papers-card,.blog-card{position:relative}
+.faculty-card,.gal-item,.gallery-item{border-radius:var(--px-r)!important;box-shadow:var(--px-sh1)}
+.faculty-card:hover{box-shadow:var(--px-sh2)}
+/* on navy sections cards go glass */
+.scholar-section .mock-card,.mocktest-section .mock-card{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);backdrop-filter:blur(8px);box-shadow:0 18px 36px -18px rgba(0,0,0,.6)}
+
+/* ── 4. Buttons ── */
+.btn,.course-enquire,.admit-download,.scholar-btn,.grv-btn,.blog-read,.mock-dl{
+  border-radius:999px;font-weight:650;letter-spacing:.01em;transition:transform .2s,box-shadow .2s,background .2s,color .2s}
+.btn:hover,.course-enquire:hover,.admit-download:hover,.scholar-btn:hover,.grv-btn:hover{transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(11,30,61,.45)}
+.btn-gold,.scholar-btn{background:var(--px-gold-grad)!important;color:#111!important;border:none}
+.btn-out{border:1.5px solid var(--navy,#0B1E3D);background:transparent;color:var(--navy,#0B1E3D)}
+.btn-out:hover{background:var(--navy,#0B1E3D);color:#fff}
+
+/* ── 5. Tables, chips, form panels ── */
+table{border-collapse:separate;border-spacing:0;border-radius:var(--px-r-sm);overflow:hidden;box-shadow:var(--px-sh1)}
+table th{background:var(--px-navy-grad)!important;color:#fff!important;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase}
+table tbody tr:nth-child(even) td{background:rgba(244,240,230,.55)}
+table tbody tr:hover td{background:rgba(201,162,75,.12)}
+.form-panel,.grv-box,.scholar-form{border-radius:var(--px-r);box-shadow:var(--px-sh2);border:1px solid var(--px-line)}
+.ff,.form-panel input,.form-panel select,.form-panel textarea{border-radius:12px}
+.ff:focus,.form-panel input:focus,.form-panel select:focus,.form-panel textarea:focus{outline:2px solid var(--goldL,#C9A24B);outline-offset:1px;border-color:transparent}
+.enq-type-btn.on{background:var(--px-navy-grad);color:#fff}
+
+/* ── 6. FAQ accordion ── */
+.faq-pro .faq-item,.faq .faq-item{margin-bottom:.7rem}
+.faq-pro .faq-item.open,.faq .faq-item.open{border-color:rgba(184,145,63,.5);box-shadow:var(--px-sh2)}
+
+/* ── 7. Images & media: consistent rounding ── */
+.gallery-grid img,.gal-grid img,.video-embed,.map-frame,.hero-side-photo img{border-radius:var(--px-r)}
+.map-wrap{border-radius:var(--px-r);overflow:hidden;box-shadow:var(--px-sh1)}
+
+@media (max-width:640px){
+  :root{--px-r:14px}
+  section > .container > .st{font-size:clamp(1.5rem,7vw,1.9rem)}
+}
+
+/* navy sections: glass cards + readable text, compact eyebrow pill */
+.scholar-section .test-date-card,.mocktest-section .test-date-card,.scholar-section .syl-card{background:rgba(255,255,255,.07)!important;border:1px solid rgba(255,255,255,.16)!important;box-shadow:none;color:#fff}
+.scholar-section .eyebrow,.mocktest-section .eyebrow{display:flex;width:fit-content;padding:.38rem .95rem;border-radius:999px}
+
+/* ── Home bands: one palette (white ↔ ivory, gold accent) instead of per-section tints ── */
+#home>.container:nth-of-type(n){--band:#fff;--acc:#A87A1F}
+#home>.container:nth-of-type(even){--band:#FBF9F4}
+
+/* outline buttons on navy / photo bands read as white */
+.promo-banner .btn-out,.cta-pro .btn-out,.scholar-section .btn-out,.mocktest-section .btn-out,.app-section .btn-out{color:#fff!important;border-color:rgba(255,255,255,.55)!important;background:transparent!important}
+.promo-banner .btn-out:hover,.cta-pro .btn-out:hover,.scholar-section .btn-out:hover,.mocktest-section .btn-out:hover{background:#fff!important;color:var(--navy,#0B1E3D)!important}

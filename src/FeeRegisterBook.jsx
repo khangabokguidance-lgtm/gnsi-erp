@@ -6,6 +6,7 @@
 // Uses the same rules as the dues engine (feeDues.js): fee months follow the
 // April–March session, Feb/Mar are flat-fee months, a month isn't due until it
 // starts, and months before admission aren't charged.
+import { rowExcess, registerExcess } from './lib/registerExcess'
 import { loadStudentHistory, sessionRates, timeline } from './hostelHistory'
 import { computeArrears } from './feeLedgerBulk'
 import { loadStanding } from './feeStanding'
@@ -18,9 +19,11 @@ import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './fee
 import { printFeeReceipt } from './premiumReceipt'
 import { instNameHTML, instAddressHTML, getInstitute, whatsappEnabled } from './systemSettings'
 import { ledgerUrl } from './ledgerLink'
-import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
+import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText, sessionOfDate } from './feeLedgerModel'
 import { StatementView, InsightsView } from './FeeLedgerTools'
+import ResponsiveTables from './ResponsiveTables'
 import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
+import { refundStatementLines, writtenOffFor } from './lib/refundLedger'
 
 // Reprint one receipt with every line that was paid on it.
 function reprintReceipt(student, entries, receiptNo) {
@@ -143,13 +146,16 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   const curRates = typeof rates === 'function' ? rates.current : rates
   // Standing concessions (Concession Register) reduce what this ledger shows as due.
   const [standingEntries, setStandingEntries] = useState([])
+  const [refundRows, setRefundRows] = useState([])
   useEffect(() => {
     let live = true
-    loadStanding().then(st => { if (live) setStandingEntries(st.conc.get(String(parseInt(student.gcc_no) || 0)) || []) }).catch(() => {})
+    loadStanding().then(st => { if (!live) return; const k = String(parseInt(student.gcc_no) || 0); setStandingEntries(st.conc.get(k) || []); setRefundRows(st.refunds.get(k) || []) }).catch(() => {})
     return () => { live = false }
   }, [student.gcc_no])
-  const reg = useMemo(() => buildRegister(student, entries, session, rates, new Date(), standingEntries), [student, entries, session, rates, standingEntries])
-  const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
+  const writtenOff = useMemo(() => writtenOffFor(student.gcc_no, refundRows, session, sessionOfDate), [student.gcc_no, refundRows, session])
+  const refundLines = useMemo(() => refundStatementLines(student.gcc_no, refundRows), [student.gcc_no, refundRows])
+  const reg = useMemo(() => buildRegister(student, entries, session, rates, undefined, standingEntries, writtenOff), [student, entries, session, rates, standingEntries, writtenOff])
+  const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance, extraLines: refundLines }), [student, entries, session, reg, openingBalance, refundLines])
   const q = bookQuery.trim().toLowerCase()
   const book = (bookScope === 'all' ? entries : entries.filter(x => x.session === session))
     .filter(x => !q || [x.receipt, x.particulars, x.period, x.mode, x.by, x.ref, String(x.amount), fmtDate(x.date)].some(v => String(v || '').toLowerCase().includes(q)))
@@ -220,6 +226,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
         <div className="frb-sum">
           <div className="frb-sumc"><b>Paid this session</b><span style={{ color: '#146c3a' }}>₹{fmt(reg.totalPaid)}</span></div>
           <div className="frb-sumc"><b>Balance due now</b><span style={{ color: reg.totalDue + openingBalance ? '#b42318' : '#146c3a' }}>{rates ? `₹${fmt(reg.totalDue + openingBalance)}` : '…'}</span>{openingBalance > 0 && <small title={arrearsBySession.map(a => `${shortSession(a.session)}: ₹${fmt(a.due)} (${a.months.join(', ')})`).join('\n')} style={{ display: 'block', fontSize: 11, color: '#9a3412', marginTop: 2 }}>incl. ₹{fmt(openingBalance)} from {arrearsBySession.map(a => shortSession(a.session)).join(', ')}</small>}</div>
+          {registerExcess(reg).total > 0 && <div className="frb-sumc"><b>Collected above due</b><span style={{ color: '#9a5b00' }}>₹{fmt(registerExcess(reg).total)}</span><small>{registerExcess(reg).months} month{registerExcess(reg).months > 1 ? 's' : ''} paid more than the due</small></div>}
           <div className="frb-sumc"><b>Months due</b><span style={{ color: reg.dueMonths ? '#b42318' : '#146c3a' }}>{rates ? reg.dueMonths : '…'}</span></div>
           <div className="frb-sumc"><b>Monthly rate{changes.length ? ` (${student.hostel_type || 'Day Scholar'})` : ''}</b><span style={{ color: '#1d3a78', fontSize: 15 }}>{curRates ? `₹${fmt(curRates.courseFee)} course · ₹${fmt(curRates.flatFee)} flat` : '…'}</span></div>
         </div>
@@ -228,6 +235,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
             🏠 <b>Hostel type changed:</b> {timeline(student, changes).map((seg, i) => <span key={i}>{i ? ' → ' : ''}<b>{seg.type}</b>{seg.to ? ` until ${fmtMonthBefore(seg.to)}` : seg.from ? ` from ${fmtMonth(seg.from)}` : ''}</span>)}. Each month is charged at the type in effect that month; earlier payments are unchanged.
           </div>
         )}
+        {curRates?.addonFee > 0 && <div style={{ margin: '10px 16px 0 66px', color: '#7a4a00', fontSize: 12.5 }}>➕ Monthly rate <b>includes the ₹{fmt(curRates.addonFee)} Combined add-on</b>{curRates.addonReason === 'exam' ? ' (appears in the Exam Combined papers)' : ''}: course fee ₹{fmt(curRates.courseFee - curRates.addonFee)} + ₹{fmt(curRates.addonFee)}.</div>}
         {ratesError && <div style={{ margin: '10px 16px 0 66px', color: '#b42318', fontSize: 12.5, fontWeight: 600 }}>⚠️ {ratesError} — amounts due can't be shown.</div>}
         {curRates?.usingFallbackRates && <div style={{ margin: '10px 16px 0 66px', color: '#9a5b00', fontSize: 12 }}>Fee Setup has no rate for this course/batch/hostel in {shortSession(session)} — showing the default rates.</div>}
 
@@ -237,8 +245,8 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           ))}
         </div>
 
-        {pane === 'statement' && <StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} />}
-        {pane === 'insights' && <InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} />}
+        {pane === 'statement' && <ResponsiveTables><StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} extraLines={refundLines} /></ResponsiveTables>}
+        {pane === 'insights' && <ResponsiveTables><InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} /></ResponsiveTables>}
 
         {pane === 'register' && <>
         {/* ── Month-wise register ── */}
@@ -273,7 +281,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
                     <td>{r.paid[0] ? fmtDate(r.paid[0].date) : <span className="muted">—</span>}</td>
                     <td>{r.paid.length ? r.paid.map((x, i) => <span key={i}>{i ? ', ' : ''}{receiptBtn(x.receipt)}</span>) : <span className="muted">—</span>}</td>
                     <td>{r.paid[0]?.mode || <span className="muted">—</span>}</td>
-                    <td><Stamp s={r.status} extra={r.status === 'due' && rates ? `₹${fmt(r.due)}` : r.status === 'short' ? `₹${fmt(r.expected - r.paidAmt)} short` : ''} /></td>
+                    <td><Stamp s={r.status} extra={r.status === 'due' && rates ? `₹${fmt(r.due)}` : r.status === 'short' ? `₹${fmt(r.expected - r.paidAmt)} short` : rowExcess(r) ? `+₹${fmt(rowExcess(r))} extra` : ''} tone={rowExcess(r) ? '#9a5b00' : undefined} /></td>
                   </tr>
                 ))}
                 {reg.other.map((x, i) => (
@@ -340,13 +348,13 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   )
 }
 
-function Stamp({ s, extra }) {
+function Stamp({ s, extra, tone }) {
   const st = STATUS[s] || STATUS.upcoming
   const stamped = ['paid', 'advance', 'short', 'due'].includes(s)
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: st.ink }}>
       {stamped ? <span className="frb-stamp">{st.label}</span> : <span style={{ fontSize: 11.5, fontStyle: 'italic' }}>{st.label}</span>}
-      {extra && <span style={{ fontSize: 11.5, fontWeight: 700 }}>{extra}</span>}
+      {extra && <span style={{ fontSize: 11.5, fontWeight: 700, color: tone }} title={tone ? 'Collected above the due for this month' : undefined}>{extra}</span>}
     </span>
   )
 }
@@ -356,7 +364,7 @@ function printRegister(student, reg, bookRows, session, bookScope) {
   const row = cells => `<tr>${cells.map(c => `<td${c.r ? ' class="num"' : ''}>${c.v}</td>`).join('')}</tr>`
   const mRows = [
     ...(reg.admission ? [row([{ v: 'Admission' }, { v: 'Admission Fee' }, { v: fmt(reg.admission.expected), r: 1 }, { v: reg.admission.paidAmt ? fmt(reg.admission.paidAmt) : '—', r: 1 }, { v: escH(reg.admission.paid[0] ? fmtDate(reg.admission.paid[0].date) : '—') }, { v: escH(reg.admission.paid.map(x => x.receipt).filter(Boolean).join(', ') || '—') }, { v: reg.admission.due ? `DUE ₹${fmt(reg.admission.due)}` : 'PAID' }])] : []),
-    ...reg.rows.map(r => row([{ v: `${r.month.slice(0, 3)} ${r.year}` }, { v: r.head }, { v: fmt(r.expected), r: 1 }, { v: r.paidAmt ? fmt(r.paidAmt) : '—', r: 1 }, { v: escH(r.paid[0] ? fmtDate(r.paid[0].date) : '—') }, { v: escH(r.paid.map(x => x.receipt).filter(Boolean).join(', ') || '—') }, { v: STATUS[r.status].label + (r.status === 'due' ? ` ₹${fmt(r.due)}` : '') }])),
+    ...reg.rows.map(r => row([{ v: `${r.month.slice(0, 3)} ${r.year}` }, { v: r.head }, { v: fmt(r.expected), r: 1 }, { v: r.paidAmt ? fmt(r.paidAmt) : '—', r: 1 }, { v: escH(r.paid[0] ? fmtDate(r.paid[0].date) : '—') }, { v: escH(r.paid.map(x => x.receipt).filter(Boolean).join(', ') || '—') }, { v: STATUS[r.status].label + (r.status === 'due' ? ` ₹${fmt(r.due)}` : rowExcess(r) ? ` +₹${fmt(rowExcess(r))} extra` : '') }])),
     ...reg.other.map(x => row([{ v: x.kind === 'advance' ? 'Advance' : 'Kit' }, { v: escH(x.particulars) }, { v: '—', r: 1 }, { v: fmt(x.amount), r: 1 }, { v: escH(fmtDate(x.date)) }, { v: escH(x.receipt || '—') }, { v: 'PAID' }])),
   ].join('')
   const bRows = bookRows.map((x, i) => row([{ v: i + 1 }, { v: escH(fmtDate(x.date)) }, { v: escH(x.receipt || '—') }, { v: escH(x.particulars) }, { v: escH(x.period) }, { v: escH(x.mode || '—') }, { v: escH(x.by || '—') }, { v: fmt(x.amount), r: 1 }, { v: fmt(x.running), r: 1 }])).join('')

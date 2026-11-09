@@ -10,6 +10,7 @@
  *  4. All other column references verified correct against live schema
  */
 
+import { authFetch } from './apiFetch'
 import React, {
   useEffect, useState, useRef, useCallback, useMemo, Component,
 } from 'react'
@@ -1044,7 +1045,7 @@ function usePushSubscription(currentStaff, isAdmin) {
       await navigator.serviceWorker.ready
       const existing = await reg.pushManager.getSubscription()
       if (existing) { subscriptionRef.current = existing; return }
-      const res = await fetch('/api/vapid-key')
+      const res = await fetch('/api/subscribe')
       const { publicKey } = await res.json()
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') return
@@ -1053,7 +1054,7 @@ function usePushSubscription(currentStaff, isAdmin) {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
       subscriptionRef.current = sub
-      await fetch('/api/subscribe', {
+      await authFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1070,7 +1071,7 @@ function usePushSubscription(currentStaff, isAdmin) {
   const unsubscribe = useCallback(async () => {
     if (!subscriptionRef.current) return
     try {
-      await fetch('/api/subscribe', {
+      await authFetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: subscriptionRef.current.endpoint }),
@@ -1523,7 +1524,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       try { await supabase.rpc('detect_dead_sessions') } catch (e) { console.warn('Dead session sweep:', e?.message) }
     }
     sweep()
-    deadSessionRef.current = setInterval(sweep, DEAD_SESSION_MS)
+    deadSessionRef.current = setInterval(() => { if (document.visibilityState === 'visible') sweep() }, DEAD_SESSION_MS)
     return () => clearInterval(deadSessionRef.current)
   }, [isAdmin])
 
@@ -1656,6 +1657,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
   // ── Interval ping (with offline queue) ───────────────────────────────────
 
+  const pingRoundRef = useRef(0)
   useEffect(() => {
     if (trackRef.current) clearInterval(trackRef.current)
     if (!activeTracking.length) return
@@ -1721,7 +1723,11 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   }
         } catch { enqueuePing(payload) }
       }
-      await fetchMyLogs()
+      // Every ping used to re-download the last 30 attendance rows. Events that
+      // change the logs (auto check-out, shift end) already refresh above, so
+      // a plain ping only refreshes every few rounds.
+      pingRoundRef.current += 1
+      if (pingRoundRef.current % 5 === 0) await fetchMyLogs()
     }, TRACK_INTERVAL_MS)
     return () => clearInterval(trackRef.current)
   }, [activeTracking, campus, currentStaff?.id, showToast, fetchMyLogs])

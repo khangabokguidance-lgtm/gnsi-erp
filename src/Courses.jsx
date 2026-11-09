@@ -6,6 +6,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
 import { isAdminRole } from "./roles";
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from "./premiumUI";
+import CourseFeeRates from "./CourseFeeRates";
+import CourseRoster from "./CourseRoster";
+import { courseOf, batchOf } from "./courseMap";
 
 // ─── Breakpoint Hook ──────────────────────────────────────────
 function useBreakpoint() {
@@ -62,7 +65,6 @@ const HOSTEL_COLORS = {
   "Day Boarder": { bg: "#FFF7ED", color: "#EA580C", border: "#FED7AA" },
   "Day Scholar": { bg: "#F0FDF4", color: "#16A34A", border: "#BBF7D0" },
 };
-const FEE_TYPES = ["Monthly", "Quarterly", "Half-Yearly", "Annual", "One-Time"];
 const COURSE_COLORS = {
   Navodaya:          { color: "#1E3A6E", bg: "#E9EEF8", border: "#C9D5EA" },
   Sainik:            { color: "#1F6F4A", bg: "#E8F5EE", border: "#BFE3CF" },
@@ -72,8 +74,8 @@ const COURSE_COLORS = {
 const NAV_TABS = [
   { id: "overview",    icon: PIcon.chart,  label: "Overview",    desc: "Courses, batches and how full they are" },
   { id: "batches",     icon: PIcon.layers, label: "Batches",     desc: "Create and manage course batches — the single source of truth" },
-  { id: "enrollments", icon: PIcon.users,  label: "Enrollments", desc: "Which student is in which batch" },
-  { id: "fees",        icon: PIcon.rupee,  label: "Fees",        desc: "Fee structure per course, batch and hostel type" },
+  { id: "enrollments", icon: PIcon.users,  label: "Enrollments", desc: "Active students by course and batch, from the Students module" },
+  { id: "fees",        icon: PIcon.rupee,  label: "Fees",        desc: "The fee rates the Fees module charges, per course, batch and hostel type" },
 ];
 
 // ─── Shared UI ────────────────────────────────────────────────
@@ -202,45 +204,6 @@ export function CoursePicker({ form, setForm, courseData, required = false }) {
   );
 }
 
-// ─── Student Search Box ───────────────────────────────────────
-function StudentSearchBox({ students, onSelect }) {
-  const [q, setQ] = useState("");
-  const hits = useMemo(() =>
-    q.length < 1 ? [] : students.filter(s =>
-      (s.name || "").toLowerCase().includes(q.toLowerCase()) ||
-      String(s.gcc_no || "").includes(q)
-    ).slice(0, 8),
-  [q, students]);
-
-  return (
-    <div style={{ position: "relative" }}>
-      <label style={S.lbl}>🔍 Student — name or GCC No.</label>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={S.inp()} />
-      {hits.length > 0 && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "white", border: "1px solid #d9d2c2", borderRadius: 8, zIndex: 400, boxShadow: "0 6px 20px rgba(0,0,0,0.13)", maxHeight: 220, overflowY: "auto" }}>
-          {hits.map(s => (
-            <div key={s.id} onClick={() => { onSelect(s); setQ(""); }}
-              style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f3f0e8", display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: "#e4ebf6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#1e3a6e", flexShrink: 0 }}>
-                {(s.name || "?")[0].toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: "#0f1b2e" }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: "#5d6b82", display: "flex", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
-                  {s.gcc_no && <span style={{ fontWeight: 700, color: "#1e3a6e" }}>GCC-{s.gcc_no}</span>}
-                  {s.class_name && <span>{s.class_name}</span>}
-                  {s.hostel_type && <HostelBadge type={s.hostel_type} />}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Scroll Filter Bar (mobile-friendly) ─────────────────────
 function FilterBar({ items, active, onSelect, colorMap }) {
   return (
     <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
@@ -278,26 +241,18 @@ function OverviewSection({ courseData, isMobile }) {
   useEffect(() => {
     if (!courses.length) return;
     (async () => {
-      const [{ count: totalBatches }, { count: totalEnrollments }, { count: activeEnrollments }, { data: rec }] = await Promise.all([
+      const [{ count: totalBatches }, { data: stu }] = await Promise.all([
         supabase.from("course_batches").select("*", { count: "exact", head: true }),
-        supabase.from("course_enrollments").select("*", { count: "exact", head: true }),
-        supabase.from("course_enrollments").select("*", { count: "exact", head: true }).eq("status", "Active"),
-        supabase.from("course_enrollments").select("id,student_name,gcc_no,course,subtype,class_name,hostel_type,enrolled_at").order("enrolled_at", { ascending: false }).limit(6),
+        supabase.from("students").select("id,name,gcc_no,course,batch,class_name,hostel_type,status,admission_date,created_at"),
       ]);
-      setStats({ totalBatches, totalEnrollments, activeEnrollments });
-      setRecent(rec || []);
-
-      const cc = await Promise.all(courses.map(async course => {
-        const { count } = await supabase.from("course_enrollments").select("*", { count: "exact", head: true }).eq("course", course).eq("status", "Active");
-        return { course, count: count ?? 0 };
-      }));
-      setCounts(cc);
-
-      const hc = await Promise.all(HOSTEL_TYPES.map(async ht => {
-        const { count } = await supabase.from("course_enrollments").select("*", { count: "exact", head: true }).eq("hostel_type", ht).eq("status", "Active");
-        return { type: ht, count: count ?? 0 };
-      }));
-      setHostelCounts(hc);
+      // Headline numbers come from the Students table (the real roster), not a separate enrollment list.
+      const all = stu || [];
+      const active = all.filter(s => !s.status || s.status === "Active");
+      setStats({ totalBatches, totalEnrollments: all.length, activeEnrollments: active.length });
+      setRecent([...active].sort((a, b) => String(b.admission_date || b.created_at || "").localeCompare(String(a.admission_date || a.created_at || ""))).slice(0, 6)
+        .map(s => ({ id: s.id, student_name: s.name, gcc_no: s.gcc_no, course: courseOf(s), subtype: batchOf(s), class_name: s.class_name, hostel_type: s.hostel_type, enrolled_at: s.admission_date || s.created_at })));
+      setCounts(courses.map(course => ({ course, count: active.filter(s => courseOf(s) === course).length })));
+      setHostelCounts(HOSTEL_TYPES.map(ht => ({ type: ht, count: active.filter(s => s.hostel_type === ht).length })));
       setLoading(false);
     })();
   }, [courses]);
@@ -310,7 +265,7 @@ function OverviewSection({ courseData, isMobile }) {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: isMobile ? 10 : 14, marginBottom: 16 }}>
         <StatCard label="Courses"     value={courses.length}               icon="📚" color="#1e3a6e" bg="#eef2f9" small={isMobile} />
         <StatCard label="Batches"     value={stats?.totalBatches ?? 0}     icon="🕐" color="#a7771f" bg="#fbf3e0" small={isMobile} />
-        <StatCard label="Enrollments" value={stats?.totalEnrollments ?? 0} icon="👨‍🎓" color="#EA580C" bg="#FFF7ED" small={isMobile} />
+        <StatCard label="Students"    value={stats?.totalEnrollments ?? 0} icon="👨‍🎓" color="#EA580C" bg="#FFF7ED" small={isMobile} />
         <StatCard label="Active"      value={stats?.activeEnrollments ?? 0}icon="✅" color="#16A34A" bg="#F0FDF4" small={isMobile} />
       </div>
 
@@ -325,7 +280,7 @@ function OverviewSection({ courseData, isMobile }) {
       {/* Charts + Recent — stack on mobile */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 24 }}>
         <div style={{ background: "white", border: "1px solid #e8e3d8", borderRadius: 12, padding: isMobile ? 16 : 22 }}>
-          <h3 style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#2e3b52" }}>📊 Enrollments by Course</h3>
+          <h3 style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#2e3b52" }}>📊 Students by Course</h3>
           {counts.map(({ course, count }) => {
             const c   = COURSE_COLORS[course] || { color: "#2e3b52" };
             const max = Math.max(...counts.map(x => x.count), 1);
@@ -555,475 +510,6 @@ function BatchesSection({ courseData, isMobile, isAdmin }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. ENROLLMENTS
-// ─────────────────────────────────────────────────────────────
-function EnrollmentsSection({ courseData, isMobile, isAdmin }) {
-  const { batches, courses, subtypesFor, batchIdFor } = courseData;
-  const [enrollments,  setEnrollments]  = useState([]);
-  const [students,     setStudents]     = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [showModal,    setShowModal]    = useState(false);
-  const [editing,      setEditing]      = useState(null);
-  const [saving,       setSaving]       = useState(false);
-  const [err,          setErr]          = useState(null);
-  const [filter,       setFilter]       = useState("All");
-  const [hostelFilter, setHostelFilter] = useState("All");
-  const [search,       setSearch]       = useState("");
-
-  const emptyForm = { student_name: "", student_id: "", gcc_no: "", hostel_type: "", course: "", subtype: "", class_name: "", batch_id: "", session_year: "2025-2026", enrolled_at: new Date().toISOString().slice(0, 10), status: "Active", notes: "" };
-  const [form, setForm] = useState(emptyForm);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [{ data: enr }, { data: stu }] = await Promise.all([
-      supabase.from("course_enrollments").select("*").order("enrolled_at", { ascending: false }),
-      supabase.from("students").select("id,name,gcc_no,class_name,batch,course,hostel_type,session,status").order("name"),
-    ]);
-    setEnrollments(enr || []);
-    setStudents(stu || []);
-    setLoading(false);
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  const openAdd  = () => { setEditing(null); setForm(emptyForm); setErr(null); setShowModal(true); };
-  const openEdit = e  => { setEditing(e); setForm({ ...emptyForm, ...e, enrolled_at: e.enrolled_at?.slice(0, 10) || "" }); setErr(null); setShowModal(true); };
-  const del      = async id => { if (!window.confirm("Remove enrollment?")) return; await supabase.from("course_enrollments").delete().eq("id", id); load(); };
-
-  const handlePick = s => {
-    const batch_id = batchIdFor(s.course || "", s.batch || "", s.class_name || "");
-    setForm(f => ({ ...f, student_name: s.name, student_id: String(s.id), gcc_no: s.gcc_no || "", class_name: s.class_name || s.batch || "", course: s.course || f.course, subtype: s.batch || f.subtype, hostel_type: s.hostel_type || "", session_year: s.session || f.session_year, batch_id }));
-  };
-
-  const save = async () => {
-    if (!form.student_name || !form.course) { setErr("Student name and course required."); return; }
-    // Guard against the duplicate-active-enrollment bug found in production:
-    // several students (all created within the same 41-minute window on
-    // 2026-06-23) ended up with two simultaneous Active course_enrollments
-    // rows for the same gcc_no — one Boarder, one Day Scholar — because
-    // nothing here checked for an existing active enrollment before
-    // inserting a new one. A second bulk-edit style save (or a double
-    // submit) silently created a conflicting duplicate instead of updating
-    // the original. This check runs for both new enrollments and edits
-    // (excluding the row being edited itself via .neq) so it can't be
-    // bypassed either way.
-    if (form.status === "Active" && form.gcc_no) {
-      const { data: existingActive } = await supabase
-        .from("course_enrollments")
-        .select("id, hostel_type, course, subtype")
-        .eq("gcc_no", form.gcc_no)
-        .eq("status", "Active")
-        .neq("id", editing?.id ?? -1);
-      if (existingActive && existingActive.length > 0) {
-        const conflict = existingActive[0];
-        const differs = conflict.hostel_type !== form.hostel_type || conflict.course !== form.course;
-        const proceed = window.confirm(
-          `This student already has an active enrollment` +
-          (differs ? ` (${conflict.course || "—"}${conflict.subtype ? " " + conflict.subtype : ""}, ${conflict.hostel_type || "no hostel type set"})` : "") +
-          `.\n\nSaving this will create a SECOND active enrollment for the same student, which can cause conflicting hostel type / fee records like the one this check was added to catch.\n\nDo you want to continue anyway? (Usually you should edit the existing enrollment instead of creating a new one.)`
-        );
-        if (!proceed) return;
-      }
-    }
-    // Soft warning (not blocking) when the hostel type chosen here doesn't
-    // match the hostel type already on the student's own record — this is
-    // the field that handlePick() auto-fills from `students.hostel_type`,
-    // so a mismatch here usually means it was manually overridden after
-    // picking the student, which is the same override pattern that caused
-    // the production duplicates.
-    const pickedStudent = students.find(s => String(s.id) === String(form.student_id));
-    if (pickedStudent && pickedStudent.hostel_type && form.hostel_type && pickedStudent.hostel_type !== form.hostel_type) {
-      const proceed = window.confirm(
-        `This student's own record has hostel type "${pickedStudent.hostel_type}", but "${form.hostel_type}" is selected here.\n\nIf this student's hostel type genuinely changed, update it on the Students page first so it stays consistent everywhere. Continue saving with "${form.hostel_type}" anyway?`
-      );
-      if (!proceed) return;
-    }
-    setSaving(true); setErr(null);
-    const payload = { student_name: form.student_name, student_id: form.student_id || null, gcc_no: form.gcc_no || null, hostel_type: form.hostel_type || null, course: form.course, subtype: form.subtype || null, class_name: form.class_name || null, batch_id: form.batch_id || null, session_year: form.session_year || null, enrolled_at: form.enrolled_at || null, status: form.status, notes: form.notes || null };
-    const { error } = editing
-      ? await supabase.from("course_enrollments").update(payload).eq("id", editing.id)
-      : await supabase.from("course_enrollments").insert(payload);
-    if (error) { setErr(error.message); setSaving(false); return; }
-    setSaving(false); setShowModal(false); load();
-  };
-
-  const batchName = id => batches.find(b => b.id === id)?.batch_name || "—";
-  const subtypes = form.course ? subtypesFor(form.course) : [];
-  const filteredBatches = batches.filter(b => b.course === form.course && (!b.hostel_type || !form.hostel_type || b.hostel_type === form.hostel_type));
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return enrollments.filter(e =>
-      (filter       === "All" || e.course      === filter) &&
-      (hostelFilter === "All" || e.hostel_type === hostelFilter) &&
-      (!search || e.student_name?.toLowerCase().includes(q) || String(e.gcc_no || "").includes(q))
-    );
-  }, [enrollments, filter, hostelFilter, search]);
-
-  if (loading) return <Spinner />;
-
-  const formContent = (
-    <>
-      {err && <ErrBox msg={err} />}
-      <div style={{ marginBottom: 14 }}>
-        <StudentSearchBox students={students} onSelect={handlePick} />
-      </div>
-      {form.student_id && (
-        <div style={{ marginBottom: 14, padding: "10px 14px", background: "#eef2f9", border: "1px solid #c9d5ea", borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 13, flexWrap: "wrap" }}>
-          <span>✅</span>
-          <span style={{ color: "#1e3a6e", fontWeight: 600 }}>Student linked</span>
-          {form.gcc_no && <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#1e3a6e" }}>GCC-{form.gcc_no}</span>}
-          {form.hostel_type && <HostelBadge type={form.hostel_type} />}
-          <button onClick={() => setForm(f => ({ ...f, student_id: "", gcc_no: "", student_name: "", hostel_type: "", batch_id: "" }))}
-            style={{ marginLeft: "auto", background: "none", border: "none", color: "#8a93a6", cursor: "pointer", fontSize: 18 }}>×</button>
-        </div>
-      )}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-        <div>
-          <label style={S.lbl}>GCC No.</label>
-          <input value={form.gcc_no} onChange={e => setForm(f => ({ ...f, gcc_no: e.target.value }))} style={S.inp({ fontFamily: "monospace", fontWeight: form.gcc_no ? 700 : 400, color: form.gcc_no ? "#1e3a6e" : "#2e3b52" })} />
-        </div>
-        <div>
-          <label style={S.lbl}>Student Name *</label>
-          <input value={form.student_name} onChange={e => setForm(f => ({ ...f, student_name: e.target.value }))} style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Course *</label>
-          <select value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value, subtype: "", class_name: "", batch_id: "" }))} style={S.inp()}>
-            <option value="">Select</option>
-            {courses.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Subtype</label>
-          {subtypes.length > 0
-            ? <select value={form.subtype} onChange={e => setForm(f => ({ ...f, subtype: e.target.value, batch_id: "" }))} style={S.inp()}><option value="">— Select —</option>{subtypes.map(s => <option key={s} value={s}>{s}</option>)}</select>
-            : <input value={form.subtype} onChange={e => setForm(f => ({ ...f, subtype: e.target.value }))} style={S.inp()} />
-          }
-        </div>
-        <div>
-          <label style={S.lbl}>Class Name</label>
-          <input value={form.class_name} onChange={e => { const batch_id = batchIdFor(form.course, form.subtype, e.target.value); setForm(f => ({ ...f, class_name: e.target.value, batch_id })); }} style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Hostel Type</label>
-          <select value={form.hostel_type} onChange={e => setForm(f => ({ ...f, hostel_type: e.target.value, batch_id: "" }))} style={S.inp({ background: form.hostel_type ? HOSTEL_COLORS[form.hostel_type]?.bg : "white", color: form.hostel_type ? HOSTEL_COLORS[form.hostel_type]?.color : "#2e3b52", fontWeight: form.hostel_type ? 600 : 400 })}>
-            <option value="">— Select —</option>
-            {HOSTEL_TYPES.map(h => <option key={h} value={h}>{h}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Batch (filtered)</label>
-          <select value={form.batch_id} onChange={e => setForm(f => ({ ...f, batch_id: e.target.value }))} style={S.inp()}>
-            <option value="">— No Batch —</option>
-            {filteredBatches.map(b => <option key={b.id} value={b.id}>{b.batch_name}{b.session_year ? ` (${b.session_year})` : ""}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Session Year</label>
-          <input value={form.session_year} onChange={e => setForm(f => ({ ...f, session_year: e.target.value }))} style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Enrolled Date</label>
-          <input type="date" value={form.enrolled_at} onChange={e => setForm(f => ({ ...f, enrolled_at: e.target.value }))} style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Status</label>
-          <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={S.inp()}>
-            <option>Active</option><option>Completed</option><option>Dropped</option><option>On Hold</option>
-          </select>
-        </div>
-        <div style={{ gridColumn: "1/-1" }}>
-          <label style={S.lbl}>Notes</label>
-          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...S.inp(), resize: "vertical" }} />
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-        <button onClick={() => setShowModal(false)} style={S.btn("#f3f0e8", "#2e3b52")}>Cancel</button>
-        <button onClick={save} disabled={saving} style={S.btn(saving ? "#b7c6e0" : "#1e3a6e")}>{saving ? "Saving…" : editing ? "Update" : "Enroll"}</button>
-      </div>
-    </>
-  );
-
-  return (
-    <div>
-      {showModal && <Modal title={editing ? "Edit Enrollment" : "Enroll Student"} onClose={() => setShowModal(false)} wide isMobile={isMobile}>{formContent}</Modal>}
-
-      {/* Filters */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-        <FilterBar items={["All", ...courses]} active={filter} onSelect={setFilter} colorMap={COURSE_COLORS} />
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <FilterBar items={["All", ...HOSTEL_TYPES]} active={hostelFilter} onSelect={setHostelFilter} colorMap={HOSTEL_COLORS} />
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Name or GCC…" style={{ ...S.inp(), flex: 1 }} />
-          {isAdmin && <button onClick={openAdd} style={{ ...S.btn(), flexShrink: 0, padding: "9px 14px", fontSize: 13 }}>+ Enroll</button>}
-        </div>
-      </div>
-
-      <div style={{ fontSize: 12, color: "#5d6b82", marginBottom: 10 }}>{filtered.length} record{filtered.length !== 1 ? "s" : ""}</div>
-
-      {/* Mobile: cards / Desktop: table */}
-      {isMobile ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filtered.length === 0
-            ? <div style={{ padding: 40, textAlign: "center", color: "#8a93a6" }}>No enrollments found.</div>
-            : filtered.map(e => (
-              <div key={e.id} style={{ background: "white", border: "1px solid #e8e3d8", borderRadius: 12, padding: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#e4ebf6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#1e3a6e", flexShrink: 0 }}>
-                    {(e.student_name || "?")[0].toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: "#0f1b2e" }}>{e.student_name}</div>
-                    {e.gcc_no && <div style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: "#1e3a6e" }}>GCC-{e.gcc_no}</div>}
-                  </div>
-                  <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 20, fontWeight: 600, background: e.status === "Active" ? "#F0FDF4" : e.status === "Dropped" ? "#FEF2F2" : "#f3f0e8", color: e.status === "Active" ? "#16A34A" : e.status === "Dropped" ? "#DC2626" : "#5d6b82" }}>{e.status}</span>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                  <CourseBadge course={e.course} />
-                  {e.subtype    && <span style={{ fontSize: 11, color: "#5d6b82", padding: "2px 6px", background: "#f3f0e8", borderRadius: 4 }}>{e.subtype}</span>}
-                  {e.class_name && <span style={{ fontSize: 11, color: "#5d6b82", padding: "2px 6px", background: "#f3f0e8", borderRadius: 4 }}>{e.class_name}</span>}
-                  {e.hostel_type && <HostelBadge type={e.hostel_type} />}
-                </div>
-                <div style={{ fontSize: 11, color: "#8a93a6", marginBottom: 10 }}>
-                  {e.session_year && <span>📅 {e.session_year}</span>}
-                  {e.batch_id && <span style={{ marginLeft: 8 }}>📋 {batchName(e.batch_id)}</span>}
-                </div>
-                {isAdmin && <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => openEdit(e)} style={S.btn("#f3f0e8", "#2e3b52", { padding: "6px 14px", fontSize: 12, flex: 1 })}>Edit</button>
-                  <button onClick={() => del(e.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "6px 14px", fontSize: 12 })}>✕</button>
-                </div>}
-              </div>
-            ))
-          }
-        </div>
-      ) : (
-        <div style={{ border: "1px solid #e8e3d8", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#faf8f3", borderBottom: "1px solid #e8e3d8" }}>
-                  {["Student", "GCC", "Course", "Subtype", "Class", "Hostel", "Session", "Batch", "Status", "Actions"].map(h => (
-                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "#5d6b82", fontSize: 12, whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((e, i) => (
-                  <tr key={e.id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid #f3f0e8" : "none" }}>
-                    <td style={{ padding: "11px 14px", fontWeight: 500, color: "#0f1b2e" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#e4ebf6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#1e3a6e", flexShrink: 0 }}>{(e.student_name || "?")[0].toUpperCase()}</div>
-                        {e.student_name}
-                      </div>
-                    </td>
-                    <td style={{ padding: "11px 14px", fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: e.gcc_no ? "#1e3a6e" : "#8a93a6" }}>{e.gcc_no ? `GCC-${e.gcc_no}` : "—"}</td>
-                    <td style={{ padding: "11px 14px" }}><CourseBadge course={e.course} /></td>
-                    <td style={{ padding: "11px 14px", color: "#5d6b82" }}>{e.subtype || "—"}</td>
-                    <td style={{ padding: "11px 14px", color: "#5d6b82" }}>{e.class_name || "—"}</td>
-                    <td style={{ padding: "11px 14px" }}>{e.hostel_type ? <HostelBadge type={e.hostel_type} /> : <span style={{ color: "#8a93a6" }}>—</span>}</td>
-                    <td style={{ padding: "11px 14px", color: "#8a93a6", fontSize: 12 }}>{e.session_year || "—"}</td>
-                    <td style={{ padding: "11px 14px", color: "#5d6b82", fontSize: 12 }}>{e.batch_id ? batchName(e.batch_id) : "—"}</td>
-                    <td style={{ padding: "11px 14px" }}>
-                      <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 20, fontWeight: 600, background: e.status === "Active" ? "#F0FDF4" : e.status === "Dropped" ? "#FEF2F2" : "#f3f0e8", color: e.status === "Active" ? "#16A34A" : e.status === "Dropped" ? "#DC2626" : "#5d6b82" }}>{e.status}</span>
-                    </td>
-                    <td style={{ padding: "11px 14px" }}>
-                      {isAdmin && <div style={{ display: "flex", gap: 5 }}>
-                        <button onClick={() => openEdit(e)} style={S.btn("#f3f0e8", "#2e3b52", { padding: "4px 10px", fontSize: 12 })}>Edit</button>
-                        <button onClick={() => del(e.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "4px 10px", fontSize: 12 })}>✕</button>
-                      </div>}
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#8a93a6" }}>No enrollments found.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 4. FEE STRUCTURE
-// ─────────────────────────────────────────────────────────────
-function FeesSection({ courseData, isMobile, isAdmin }) {
-  const { courses, subtypesFor } = courseData;
-  const [fees,      setFees]      = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editing,   setEditing]   = useState(null);
-  const [saving,    setSaving]    = useState(false);
-  const [err,       setErr]       = useState(null);
-
-  const emptyForm = { course: "", subtype: "", hostel_type: "", class_name: "", fee_type: "Monthly", amount: "", due_day: "", discount_percent: "", notes: "", session_year: "2025-2026" };
-  const [form, setForm] = useState(emptyForm);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase.from("course_fees").select("*").order("course").order("subtype").order("hostel_type");
-    setFees(data || []);
-    setLoading(false);
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  const openAdd  = () => { setEditing(null); setForm(emptyForm); setErr(null); setShowModal(true); };
-  const openEdit = f  => { setEditing(f); setForm({ ...emptyForm, ...f }); setErr(null); setShowModal(true); };
-  const del      = async id => { if (!window.confirm("Delete fee entry?")) return; await supabase.from("course_fees").delete().eq("id", id); load(); };
-
-  const save = async () => {
-    if (!form.course || !form.amount) { setErr("Course and amount required."); return; }
-    setSaving(true); setErr(null);
-    const payload = { course: form.course, subtype: form.subtype || null, hostel_type: form.hostel_type || null, class_name: form.class_name || null, fee_type: form.fee_type, amount: parseFloat(form.amount), due_day: form.due_day ? parseInt(form.due_day) : null, discount_percent: form.discount_percent ? parseFloat(form.discount_percent) : null, notes: form.notes || null, session_year: form.session_year };
-    const { error } = editing
-      ? await supabase.from("course_fees").update(payload).eq("id", editing.id)
-      : await supabase.from("course_fees").insert(payload);
-    if (error) { setErr(error.message); setSaving(false); return; }
-    setSaving(false); setShowModal(false); load();
-  };
-
-  const subtypes = form.course ? subtypesFor(form.course) : [];
-
-  const grouped = {};
-  fees.forEach(f => {
-    const ck = f.course;
-    const sk = f.subtype     || "—";
-    const hk = f.hostel_type || "All";
-    if (!grouped[ck])         grouped[ck]         = {};
-    if (!grouped[ck][sk])     grouped[ck][sk]     = {};
-    if (!grouped[ck][sk][hk]) grouped[ck][sk][hk] = [];
-    grouped[ck][sk][hk].push(f);
-  });
-
-  if (loading) return <Spinner />;
-
-  const formContent = (
-    <>
-      {err && <ErrBox msg={err} />}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-        <div>
-          <label style={S.lbl}>Course *</label>
-          <select value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value, subtype: "" }))} style={S.inp()}>
-            <option value="">Select</option>
-            {courses.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Subtype</label>
-          {subtypes.length > 0
-            ? <select value={form.subtype} onChange={e => setForm(f => ({ ...f, subtype: e.target.value }))} style={S.inp()}><option value="">All Subtypes</option>{subtypes.map(s => <option key={s} value={s}>{s}</option>)}</select>
-            : <input value={form.subtype} onChange={e => setForm(f => ({ ...f, subtype: e.target.value }))} placeholder="Optional" style={S.inp()} />
-          }
-        </div>
-        <div>
-          <label style={S.lbl}>Hostel Type</label>
-          <select value={form.hostel_type} onChange={e => setForm(f => ({ ...f, hostel_type: e.target.value }))} style={S.inp({ background: form.hostel_type ? HOSTEL_COLORS[form.hostel_type]?.bg : "white", color: form.hostel_type ? HOSTEL_COLORS[form.hostel_type]?.color : "#2e3b52", fontWeight: form.hostel_type ? 700 : 400 })}>
-            <option value="">— All Types —</option>
-            {HOSTEL_TYPES.map(h => <option key={h} value={h}>{h}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Fee Type</label>
-          <select value={form.fee_type} onChange={e => setForm(f => ({ ...f, fee_type: e.target.value }))} style={S.inp()}>
-            {FEE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={S.lbl}>Amount (₹) *</label>
-          <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="3500" style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Due Day</label>
-          <input type="number" value={form.due_day} onChange={e => setForm(f => ({ ...f, due_day: e.target.value }))} placeholder="10" min="1" max="31" style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Discount (%)</label>
-          <input type="number" value={form.discount_percent} onChange={e => setForm(f => ({ ...f, discount_percent: e.target.value }))} placeholder="0" style={S.inp()} />
-        </div>
-        <div>
-          <label style={S.lbl}>Session Year</label>
-          <input value={form.session_year} onChange={e => setForm(f => ({ ...f, session_year: e.target.value }))} style={S.inp()} />
-        </div>
-        <div style={{ gridColumn: "1/-1" }}>
-          <label style={S.lbl}>Notes</label>
-          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...S.inp(), resize: "vertical" }} />
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-        <button onClick={() => setShowModal(false)} style={S.btn("#f3f0e8", "#2e3b52")}>Cancel</button>
-        <button onClick={save} disabled={saving} style={S.btn(saving ? "#b7c6e0" : "#1e3a6e")}>{saving ? "Saving…" : editing ? "Update" : "Add Fee"}</button>
-      </div>
-    </>
-  );
-
-  return (
-    <div>
-      {showModal && <Modal title={editing ? "Edit Fee" : "Add Fee Structure"} onClose={() => setShowModal(false)} isMobile={isMobile}>{formContent}</Modal>}
-
-      {isAdmin && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-        <button onClick={openAdd} style={S.btn()}>+ Add Fee</button>
-      </div>}
-
-      {courses.map(courseName => {
-        const c      = COURSE_COLORS[courseName] || { color: "#2e3b52", bg: "#faf8f3", border: "#e8e3d8" };
-        const cGroup = grouped[courseName];
-        return (
-          <div key={courseName} style={{ marginBottom: 24 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "10px 14px", background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10 }}>
-              <span style={{ fontWeight: 800, fontSize: 14, color: c.color }}>{courseName}</span>
-              {cGroup
-                ? <span style={{ fontSize: 12, color: c.color, opacity: 0.7 }}>{Object.values(cGroup).flatMap(sg => Object.values(sg).flat()).length} entries</span>
-                : <span style={{ fontSize: 12, color: "#8a93a6" }}>No fees configured</span>
-              }
-            </div>
-            {!cGroup ? null : Object.entries(cGroup).map(([subtype, hostelGroups]) => (
-              <div key={subtype} style={{ marginBottom: 14, marginLeft: isMobile ? 0 : 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#2e3b52", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.color, display: "inline-block", flexShrink: 0 }} />
-                  {subtype === "—" ? "All Subtypes" : subtype}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(220px,1fr))", gap: 10, marginLeft: isMobile ? 0 : 14 }}>
-                  {Object.entries(hostelGroups).map(([hostelType, entries]) => {
-                    const hc   = HOSTEL_COLORS[hostelType] || { bg: "#faf8f3", color: "#2e3b52", border: "#e8e3d8" };
-                    const icon = hostelType === "Boarder" ? "🛏️" : hostelType === "Day Boarder" ? "🌅" : hostelType === "Day Scholar" ? "🚶" : "🏫";
-                    return (
-                      <div key={hostelType} style={{ background: "white", border: `1.5px solid ${hc.border}`, borderRadius: 10, overflow: "hidden" }}>
-                        <div style={{ background: hc.bg, padding: "8px 12px", borderBottom: `1px solid ${hc.border}` }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: hc.color }}>{icon} {hostelType === "All" ? "All Types" : hostelType}</span>
-                        </div>
-                        {entries.map(f => (
-                          <div key={f.id} style={{ padding: "10px 12px", borderBottom: "1px solid #f3f0e8", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 18, fontWeight: 800, color: "#16A34A" }}>₹{f.amount?.toLocaleString("en-IN")}</div>
-                              <div style={{ fontSize: 11, color: "#5d6b82", marginTop: 2 }}>
-                                {f.fee_type}
-                                {f.session_year     && ` · ${f.session_year}`}
-                                {f.due_day          && ` · Due: ${f.due_day}th`}
-                                {f.discount_percent && ` · ${f.discount_percent}% off`}
-                              </div>
-                              {f.notes && <div style={{ fontSize: 11, color: "#8a93a6", fontStyle: "italic" }}>{f.notes}</div>}
-                            </div>
-                            {isAdmin && <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                              <button onClick={() => openEdit(f)} style={S.btn("#f3f0e8", "#2e3b52", { padding: "3px 8px", fontSize: 11 })}>Edit</button>
-                              <button onClick={() => del(f.id)}   style={S.btn("white", "#DC2626", { border: "1px solid #FECACA", padding: "3px 8px", fontSize: 11 })}>✕</button>
-                            </div>}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────
 export default function CoursePage({ currentUser, perms }) {
@@ -1038,8 +524,8 @@ export default function CoursePage({ currentUser, perms }) {
   const sectionMap = {
     overview:    <OverviewSection    {...sectionProps} />,
     batches:     <BatchesSection     {...sectionProps} />,
-    enrollments: <EnrollmentsSection {...sectionProps} />,
-    fees:        <FeesSection        {...sectionProps} />,
+    enrollments: <CourseRoster isMobile={isMobile} />,
+    fees:        <CourseFeeRates isMobile={isMobile} />,
   };
 
   const tab = NAV_TABS.find(t => t.id === activeTab);

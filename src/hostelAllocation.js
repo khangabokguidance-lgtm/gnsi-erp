@@ -20,6 +20,12 @@
 
 import { supabase } from './supabase'
 
+// A list of ids goes into the request URL (.in('id', [...])). Past a few
+// hundred ids that URL is too long for the server and the whole request fails,
+// so bulk writes go through in chunks.
+const ID_CHUNK = 100
+const chunk = (arr, n = ID_CHUNK) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out }
+
 function todayStr() {
   return new Date().toLocaleDateString('en-CA')   // YYYY-MM-DD, local timezone
 }
@@ -126,7 +132,7 @@ export async function vacateStudent(studentId) {
  * row (reassignment → update) vs not (new → insert), so this fetches
  * existing rows for the batch first.
  */
-export async function bulkAllocateStudents(students, hostelName) {
+export async function bulkAllocateStudents(students, hostelName, roomNumber = 'TBD') {
   if (!hostelName) throw new Error('bulkAllocateStudents: hostelName is required')
   if (!students?.length) return { ok: true, count: 0 }
 
@@ -137,19 +143,25 @@ export async function bulkAllocateStudents(students, hostelName) {
     // this action is for filling actual hostel houses — but handled for
     // consistency with allocateStudent): no allocation rows, just remove
     // any existing ones and mirror the house value.
-    const { error: delErr } = await supabase.from('hostel_allocations').delete().in('student_id', ids)
-    if (delErr) throw delErr
-    const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).in('id', ids)
-    if (mirrorErr) throw mirrorErr
+    for (const part of chunk(ids)) {
+      const { error: delErr } = await supabase.from('hostel_allocations').delete().in('student_id', part)
+      if (delErr) throw delErr
+      const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).in('id', part)
+      if (mirrorErr) throw mirrorErr
+    }
     return { ok: true, count: students.length, allocated: false }
   }
 
-  const { data: existingRows, error: selErr } = await supabase
-    .from('hostel_allocations')
-    .select('id, student_id')
-    .in('student_id', ids)
-  if (selErr) throw selErr
-  const existingByStudent = new Map((existingRows || []).map(r => [r.student_id, r.id]))
+  const existingRows = []
+  for (const part of chunk(ids)) {
+    const { data, error: selErr } = await supabase
+      .from('hostel_allocations')
+      .select('id, student_id')
+      .in('student_id', part)
+    if (selErr) throw selErr
+    existingRows.push(...(data || []))
+  }
+  const existingByStudent = new Map(existingRows.map(r => [r.student_id, r.id]))
 
   const toInsert = []
   const updates = []
@@ -161,7 +173,7 @@ export async function bulkAllocateStudents(students, hostelName) {
       gcc_no: s.gcc_no ? String(s.gcc_no) : null,
       class_name: s.class_name || null,
       hostel_name: hostelName,
-      room_number: 'TBD',
+      room_number: roomNumber || 'TBD',
       bed_number: null,
       allotment_date: today,
       status: 'Active',
@@ -171,8 +183,8 @@ export async function bulkAllocateStudents(students, hostelName) {
     else toInsert.push(base)
   }
 
-  if (toInsert.length) {
-    const { error } = await supabase.from('hostel_allocations').insert(toInsert)
+  for (const part of chunk(toInsert, 200)) {
+    const { error } = await supabase.from('hostel_allocations').insert(part)
     if (error) throw error
   }
   // Updates still go one at a time — Supabase has no bulk-update-with-
@@ -187,8 +199,10 @@ export async function bulkAllocateStudents(students, hostelName) {
     if (error) throw error
   }
 
-  const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).in('id', ids)
-  if (mirrorErr) throw mirrorErr
+  for (const part of chunk(ids)) {
+    const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).in('id', part)
+    if (mirrorErr) throw mirrorErr
+  }
 
   return { ok: true, count: students.length }
 }
@@ -273,4 +287,29 @@ export async function cleanupNonBoardingAllocations() {
     .in('id', data.map(r => r.id))
   if (delErr) throw delErr
   return { ok: true, removed: data.length }
+}
+
+/**
+ * Clear the hostel allocation of many students at once (chunked), mirroring
+ * students.house = null. Used when students are marked Dropout.
+ */
+export async function bulkVacateStudents(studentIds) {
+  const ids = (studentIds || []).filter(Boolean)
+  for (const part of chunk(ids)) {
+    const { error: delErr } = await supabase.from('hostel_allocations').delete().in('student_id', part)
+    if (delErr) throw delErr
+    const { error: mirrorErr } = await supabase.from('students').update({ house: null }).in('id', part)
+    if (mirrorErr) throw mirrorErr
+  }
+  return { ok: true, count: ids.length }
+}
+
+/** Set students.status (e.g. 'Dropout' or 'Active') for many students, chunked. */
+export async function setStudentsStatus(studentIds, status) {
+  const ids = (studentIds || []).filter(Boolean)
+  for (const part of chunk(ids)) {
+    const { error } = await supabase.from('students').update({ status }).in('id', part)
+    if (error) throw error
+  }
+  return { ok: true, count: ids.length }
 }

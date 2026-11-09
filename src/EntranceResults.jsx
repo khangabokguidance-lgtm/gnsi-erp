@@ -1,7 +1,9 @@
 // EntranceResults.jsx — Entrance stages 6-8: OMR evaluation, results &
 // merit, admission (seat allocation, waitlist, offer letters).
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from './supabase'
+import { applicationFromCandidate, candidateKey } from './lib/candidateToApplication'
 import QRCode from 'qrcode'
 import { PX, PremiumCard, PIcon } from './premiumUI'
 import {
@@ -454,6 +456,15 @@ export function AdmissionTab({ exam, cands, resMap, sections, can, reload, notif
   const [reportBy, setReportBy] = useState('')
   const [fee, setFee] = useState('')
   const [view, setView] = useState('')
+  const [appMap, setAppMap] = useState({})   // name|dob → GCC of an application that already exists in Admissions
+  const [appTick, setAppTick] = useState(0)
+  useEffect(() => {
+    let live = true
+    supabase.from('admissions').select('gcc_no, applicant_name, dob').limit(10000).then(({ data }) => {
+      if (live) setAppMap(Object.fromEntries((data || []).map(a => [candidateKey(a.applicant_name, a.dob), a.gcc_no])))
+    })
+    return () => { live = false }
+  }, [appTick])
   const qualified = merit.filter(r => r.qualified)
   const admitted = merit.filter(r => r.result_status === 'Admitted')
   const waitlist = merit.filter(r => r.result_status === 'Waitlist')
@@ -461,6 +472,24 @@ export function AdmissionTab({ exam, cands, resMap, sections, can, reload, notif
   const quotaSeats = Object.fromEntries(RESERVED.map(c => [c, Math.floor((seats * (Number(quotas[c]) || 0)) / 100)]))
   const openSeats = seats - Object.values(quotaSeats).reduce((a, b) => a + b, 0)
 
+  // Admitted here → an application in Admissions (status Admitted), so admission fee → Enroll can follow without retyping.
+  const makeApplications = async list => {
+    const todo = list.filter(r => !appMap[candidateKey(r.student_name, r.dob)])
+    if (!todo.length) return notify('Every admitted candidate already has an application', 'ok')
+    if (!window.confirm(`Create ${todo.length} admission application${todo.length > 1 ? 's' : ''} (status Admitted) in the Admissions module?\n\nEach gets the next free GCC number and the active admission session.`)) return
+    setBusy(true)
+    const { data: last } = await supabase.from('admissions').select('gcc_no').order('gcc_no', { ascending: false }).limit(1)
+    const { data: ses } = await supabase.from('admission_sessions').select('session_name').eq('is_active', true).limit(1)
+    let gcc = (parseInt(last?.[0]?.gcc_no) || 0) + 1, made = 0, firstErr = ''
+    for (const r of todo) {
+      const { error } = await supabase.from('admissions').insert(applicationFromCandidate({ ...r, rank: r.rank, quota: r.quota }, exam, { gcc, session: ses?.[0]?.session_name }))
+      if (error) { firstErr ||= error.message; continue }
+      made++; gcc++
+    }
+    setBusy(false); setAppTick(t => t + 1)
+    audit('application_create', user, null, { exam: exam.exam_name, made })
+    notify(made ? `${made} application${made > 1 ? 's' : ''} created in Admissions${firstErr ? ` — ${todo.length - made} failed: ${firstErr}` : ''}` : `No application created: ${firstErr}`, made && !firstErr ? 'ok' : 'warn')
+  }
   const propose = () => {
     if (!seats) return notify('Set the number of seats in the exam set-up first', 'warn')
     const alloc = allocateSeats(qualified, { seats, quotas })
@@ -527,6 +556,7 @@ export function AdmissionTab({ exam, cands, resMap, sections, can, reload, notif
 
       <PremiumCard title="Admission decisions" subtitle={`${list.length} candidates`}
         right={<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {can.edit && admitted.some(r => !appMap[candidateKey(r.student_name, r.dob)]) && <button className="px-btn ex-btn-sm" disabled={busy} onClick={() => makeApplications(admitted)}>→ Create applications ({admitted.filter(r => !appMap[candidateKey(r.student_name, r.dob)]).length})</button>}
           <button className="px-btn ghost ex-btn-sm" onClick={() => printList(admitted, 'ADMISSION LIST')}><PIcon.print size={13} />Admitted</button>
           <button className="px-btn ghost ex-btn-sm" onClick={() => printList(waitlist, 'WAITLIST')}><PIcon.print size={13} />Waitlist</button>
           <button className="px-btn ghost ex-btn-sm" onClick={() => downloadText(`${exam.exam_name}-admissions.csv`, toCSV(admitted, [
@@ -555,6 +585,9 @@ export function AdmissionTab({ exam, cands, resMap, sections, can, reload, notif
                   <button className="px-btn ghost ex-btn-sm" disabled={r.result_status === 'Waitlist'} onClick={() => decide(r, 'Waitlist')}>Waitlist</button>{' '}
                   <button className="px-btn ghost ex-btn-sm" style={{ color: PX.bad }} disabled={r.result_status === 'Rejected'} onClick={() => decide(r, 'Rejected')}>Decline</button>{' '}
                 </>}
+                  {r.result_status === 'Admitted' && (appMap[candidateKey(r.student_name, r.dob)]
+                    ? <span title="Application exists in Admissions" style={{ fontSize: 11.5, fontWeight: 700, color: PX.ok || '#15803D' }}>GCC-{appMap[candidateKey(r.student_name, r.dob)]} ✓</span>
+                    : can.edit && <button className="px-btn ghost ex-btn-sm" disabled={busy} onClick={() => makeApplications([r])}>→ Application</button>)}{' '}
                   {r.result_status === 'Admitted' && <button className="px-btn ghost ex-btn-sm" onClick={() => offers([r])} aria-label="Offer letter"><PIcon.print size={13} /></button>}
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import { authFetch } from './apiFetch'
 import { useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 
@@ -36,7 +37,7 @@ const S = {
 // ─── Gemini API calls ─────────────────────────────────────────────────────────
 
 async function callGemini(prompt) {
-  const res = await fetch('/api/gemini', {
+  const res = await authFetch('/api/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
@@ -47,7 +48,7 @@ async function callGemini(prompt) {
 }
 
 async function callGeminiJSON(prompt) {
-  const res = await fetch('/api/gemini', {
+  const res = await authFetch('/api/gemini', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, jsonMode: true }),
@@ -140,7 +141,7 @@ function SourceCard({ source, onExtract, onDelete, extracting }) {
         </div>
       </div>
       {expanded && source.content && (
-        <div style={{ marginTop: '12px', padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#374151', fontFamily: 'monospace', lineHeight: '1.7', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div style={{ marginTop: '12px', padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', color: '#374151', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", lineHeight: '1.7', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {source.content.slice(0, 3000)}{source.content.length > 3000 ? '\n\n... [truncated]' : ''}
         </div>
       )}

@@ -44,7 +44,7 @@ export default {
         'Keep going until every student is marked (100 percent).',
         'When the house reaches 100 percent, a House Report opens with absent, late, on leave and sickbay students. You can press "🖨️ Print Report".',
       ],
-      tip: 'Deadlines: Morning roll call by 7:00 AM. Night roll call by 8:00 PM. You get 15 minutes extra.',
+      tip: 'Roll call closes at 7:30 AM (morning) and 10:00 PM (night). After that it is blocked for the day, and you must request the admin to unlock it.',
     },
     {
       title: 'Understand the roll call rules',
@@ -72,12 +72,12 @@ export default {
       tip: 'Skipping with a reason or "Nothing to report" does not erase the gap. Admin still sees it in the Neglect Report.',
     },
     {
-      title: 'Do the 3 daily compliance slots',
+      title: 'Do the 2 daily compliance checks',
       body: [
-        'On the Roll Call tab, open "📋 Mandatory 3x-Daily Compliance".',
-        'There are three slots: 🌅 Morning (12 AM to 8 AM), ☀️ Afternoon (8 AM to 4 PM) and 🌙 Night (4 PM to midnight).',
-        'A slot is locked until the matching roll call is 100 percent. Morning and Afternoon need the Morning roll call. Night needs the Night roll call.',
-        'When it unlocks, the same six checks are run. Use "✓ Complete" to add a record or "⏭ Skip" with a proper reason.',
+        'On the Roll Call tab, find "📋 Mandatory 2x-Daily Compliance".',
+        'There are two checks a day, matching the two roll calls: 🌅 Morning (12 AM to 12 noon) and 🌙 Night (12 noon to midnight).',
+        'A check is locked until its roll call is 100 percent. Morning needs the Morning roll call. Night needs the Night roll call.',
+        'When it is due, tap it on the house card to run the six checks. Use "✓ Complete" to add a record or "⏭ Skip" with a proper reason.',
         'If gaps are found, a message is prepared for the compliance WhatsApp group and the mandatory number. Copy and send it.',
       ],
     },

@@ -4,6 +4,8 @@
 // this answers 501 { fallback: true } and the browser uses /api/gemini.
 // POST { segments: string[], from: 'auto'|code, to: code }
 //   -> { segments: string[], detected: code|null, engine: 'google' }
+import { requireStaff, rateLimit } from './_guard/guard.js'
+
 const GOOGLE_LANGS = new Set(['en', 'hi', 'bn', 'mni-Mtei'])
 const MAX_SEGMENTS = 400
 const MAX_CHARS = 60000
@@ -12,6 +14,11 @@ const BATCH_CHARS = 20000
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
+
+  // Paid API key: staff only and rate limited.
+  const user = await requireStaff(req, res)
+  if (!user) return
+  if (!rateLimit(req, res, { key: 'translate', max: 30, id: user.id })) return
 
   const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY
   if (!apiKey) return res.status(501).json({ error: 'GOOGLE_TRANSLATE_API_KEY not set', fallback: true })

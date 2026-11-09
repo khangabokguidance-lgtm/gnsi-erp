@@ -87,7 +87,7 @@ export const PARTS = [
         'Each receipt has a QR code. Anyone can scan it to check it is genuine; staff can also use Fees → Verify.',
       ] },
       { h: 'Hostel discipline rules', ul: [
-        'Morning roll call is due by 7:00 AM and night roll call by 8:00 PM. A pre-deadline reminder is sent at about 5:30 AM and 6:30 PM.',
+        'Morning roll call closes at 7:30 AM and night roll call at 10:00 PM. After that it is blocked for the day and the housemaster must request the admin to unlock it.',
         'The six mandatory tabs must be logged every day.',
         'A missed roll call or unlogged tab is recorded automatically (the next morning) and flagged to the housemaster and all admins; it carries the same penalty notice as a late roll call.',
         'Housemasters on approved leave are skipped.',
@@ -115,7 +115,7 @@ export const PARTS = [
         'Apply for leave in Leave when needed.',
       ] },
       { h: 'Housemasters / wardens — every day', ol: [
-        'Complete the morning roll call before 7:00 AM and the night roll call before 8:00 PM.',
+        'Complete the morning roll call before 7:30 AM and the night roll call before 10:00 PM.',
         'Log Discipline, Sickbay, Repairs, Journal, Mess Duty and Activities.',
         'Check the house report that appears when roll call reaches 100%.',
       ] },

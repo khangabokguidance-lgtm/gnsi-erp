@@ -5,6 +5,7 @@
 // session, Feb/Mar are flat-fee months, a month isn't due until it starts, and
 // months before admission aren't charged.
 import { standingWaiver } from './lib/standingMath'
+import { instituteNow, admRowKind, excludeRepeaterFees } from './lib/feeMath'
 import { getInstitute, feeDueDay, ordinal, sysValue } from './systemSettings'
 import {
   MONTHS_LIST, isFlatFeeMonth, feeMonthYearForSession, sessionStartYear,
@@ -34,7 +35,7 @@ export const sessionOfDate = d => {
 }
 export const shortSession = s => { const m = String(s || '').match(/^(\d{4})-(\d{4})$/); return m ? `${m[1]}-${m[2].slice(2)}` : s }
 export const prevSession = s => { const st = sessionStartYear(s); return `${st - 1}-${st}` }
-export const monthStarted = (month, year, now = new Date()) => new Date(Number(year), monthIdx(month), 1) <= now
+export const monthStarted = (month, year, now = instituteNow()) => new Date(Number(year), monthIdx(month), 1) <= now
 
 // Low-fee concession recorded on a flat/course fee row (see feeConcessions.js):
 // only an APPROVED concession counts towards the month; pending/rejected don't.
@@ -48,9 +49,9 @@ const concessionOf = r => ({
 export function toEntries(student, admRows, flatRows, crsRows) {
   const e = []
   for (const r of admRows) e.push({
-    kind: r.fee_type === 'advance' ? 'advance' : r.fee_type === 'item' ? 'item' : 'admission',
+    kind: admRowKind(r),
     date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount_paid) || 0, mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by,
-    particulars: r.description || (r.fee_type === 'admission' ? 'Admission Fee' : 'Admission / Kit'),
+    particulars: r.description || (admRowKind(r) === 'admission' ? 'Admission Fee' : 'Admission / Kit'),
     period: 'One-time', category: 'Admission & Kit', session: sessionOfDate(r.pay_date),
   })
   for (const r of flatRows) e.push({
@@ -72,7 +73,7 @@ export function toEntries(student, admRows, flatRows, crsRows) {
 // rates: the session's rates object, or a function (month, year) → rates when
 // the student's hostel type changed mid-session (see hostelHistory.js), so each
 // month is expected at the type in effect that month.
-export function buildRegister(student, entries, session, rates, now = new Date(), standing = []) {
+export function buildRegister(student, entries, session, rates, now = instituteNow(), standing = [], writtenOff = 0) {
   const rateAt = (month, year) => (typeof rates === 'function' ? rates(month, year) : rates)
   const start = sessionStartYear(session)
   const admissionDate = student.admission_date || null
@@ -88,7 +89,11 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     const waived = paid.reduce((s, x) => s + (x.concession || 0), 0) + standingAmt   // approved low-fee concession
     const concessionPending = paid.some(x => x.concessionStatus === 'pending')
     let status
-    if (paid.length) status = paid.some(x => x.advance) ? 'advance' : paidAmt + waived + 0.5 < expected ? 'short' : 'paid'
+    // A part-paid month is short — advance or not — once the month has begun.
+    if (paid.length) {
+      const underpaid = paidAmt + waived + 0.5 < expected
+      status = underpaid && monthStarted(month, year, now) ? 'short' : paid.some(x => x.advance) ? 'advance' : underpaid ? 'short' : 'paid'
+    }
     else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
@@ -104,15 +109,19 @@ export function buildRegister(student, entries, session, rates, now = new Date()
   const admEntries = entries.filter(x => x.kind === 'admission')
   const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
   // A repeater's admission fee is waived.
-  const admExpected = student.is_repeater ? 0 : Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
+  const admExpected = Number(excludeRepeaterFees(student.is_repeater, [{ kind: 'admission', amount: Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE) }]).items[0]?.amount ?? 0)
   const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
   const admission = admSession === session
     ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }
     : null
   const other = entries.filter(x => (x.kind === 'item' || x.kind === 'advance') && x.session === session)
-  const totalPaid = rows.reduce((s, r) => s + r.paidAmt, 0) + (admission?.paidAmt || 0) + other.reduce((s, x) => s + x.amount, 0)
-  const totalDue = rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0)
-  return { start, rows, admission, other, totalPaid, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
+  // Money held as an advance is not fee settled against any charge, so it is
+  // reported on its own rather than inside totalPaid.
+  const advancePaid = other.filter(x => x.kind === 'advance').reduce((s, x) => s + x.amount, 0)
+  const totalPaid = rows.reduce((s, r) => s + r.paidAmt, 0) + (admission?.paidAmt || 0) + other.reduce((s, x) => s + x.amount, 0) - advancePaid
+  // Dues the institute has written off (Refunds & Transfers) lower the balance, never below 0.
+  const totalDue = Math.max(0, rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0) - (Number(writtenOff) || 0))
+  return { start, rows, admission, other, totalPaid, advancePaid, writtenOff: Number(writtenOff) || 0, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
 }
 
 // ── Account statement (Dr/Cr) ───────────────────────────────────────────────
@@ -121,22 +130,32 @@ export function buildRegister(student, entries, session, rates, now = new Date()
 // admission date; every payment is a credit. Kit/advance payments are
 // charged and paid in the same line. Opening balance = the previous session's
 // unpaid dues brought forward.
-export function buildStatement(student, entries, session, reg, { openingBalance = 0, from = null, to = null } = {}) {
+export function buildStatement(student, entries, session, reg, { openingBalance = 0, from = null, to = null, extraLines = [] } = {}) {
   const lines = []
   const sessStart = `${sessionStartYear(session)}-04-01`
+  const sessEnd = `${sessionStartYear(session) + 1}-04-01`
   if (reg.admission) {
     const date = student.admission_date || reg.admission.paid[0]?.date || sessStart
     lines.push({ date: iso(date) < sessStart ? sessStart : iso(date), kind: 'charge', particulars: 'Admission fee charged', debit: reg.admission.expected, credit: 0 })
   }
   for (const r of reg.rows) {
     if (r.status === 'before' || r.status === 'upcoming') continue
-    lines.push({ date: iso(new Date(r.year, monthIdx(r.month), 1)), kind: 'charge', particulars: `${r.head} — ${r.month} ${r.year}${r.status === 'advance' ? ' (advance)' : ''}`, debit: r.expected, credit: 0, month: r.month, year: r.year })
+    const date = iso(new Date(r.year, monthIdx(r.month), 1))
+    // A month paid ahead is charged only for what was paid (the rest is charged when the month starts), so a part-paid
+    // advance month does not leave a balance the register does not show.
+    const covered = r.paidAmt + (r.waived || 0)
+    const debit = r.status === 'advance' && covered + 0.5 < r.expected ? covered : r.expected
+    lines.push({ date, kind: 'charge', particulars: `${r.head} — ${r.month} ${r.year}${r.status === 'advance' ? ' (advance)' : ''}`, debit, credit: 0, month: r.month, year: r.year })
+    // A standing scholarship / concession (Fees → Register) settles part of the month, as it does in the register.
+    if (r.standingAmt > 0) lines.push({ date, kind: 'payment', particulars: `Standing concession — ${r.month} ${r.year}`, debit: 0, credit: r.standingAmt, month: r.month, year: r.year, note: 'Concession Register' })
   }
   for (const x of reg.other) lines.push({ date: iso(x.date), kind: 'charge', particulars: `${x.particulars} charged`, debit: x.amount, credit: 0 })
   const paidIn = entries.filter(x => x.session === session)
   for (const x of paidIn) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Received — ${x.particulars}${x.period && x.period !== 'One-time' ? ` (${x.period})` : ''}`, debit: 0, credit: x.amount, receipt: x.receipt, mode: x.mode, note: x.note })
   // An approved low-fee concession settles the rest of that month's charge.
   for (const x of paidIn.filter(p => p.concession > 0)) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Concession approved — ${x.particulars} (${x.period})`, debit: 0, credit: x.concession, receipt: x.receipt, note: 'Low-fee concession approved by admin' })
+  // Refunds / transfers / write-offs recorded in Refunds & Transfers, dated inside this session.
+  for (const x of extraLines) if (x.date >= sessStart && x.date < sessEnd) lines.push(x)
   // Charges before payments on the same day, then by date.
   lines.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === 'charge' ? -1 : 1))
 
@@ -153,7 +172,7 @@ export function buildStatement(student, entries, session, reg, { openingBalance 
 }
 
 // ── Insights ─────────────────────────────────────────────────────────────────
-export function computeInsights(student, entries, reg, now = new Date()) {
+export function computeInsights(student, entries, reg, now = instituteNow()) {
   // Timeliness for the session on screen: the monthly payments in its register.
   const monthly = reg.rows.flatMap(r => r.paid)
   // Delay = days from the 1st of the fee month to the payment date (advance
@@ -214,7 +233,7 @@ export function reminderText(student, reg, session, arrears = []) {
 // 'Month|year' keys (any course-fee row counts, the same rule collectFee uses
 // to refuse a second payment for a month). With nothing due, `next` is the
 // first unpaid month still to come (an advance).
-export function courseMonthsDue({ session, paid, admissionDate = null, now = new Date() }) {
+export function courseMonthsDue({ session, paid, admissionDate = null, now = instituteNow() }) {
   const months = MONTHS_LIST.filter(m => !isFlatFeeMonth(m)).map(month => ({ month, year: feeMonthYearForSession(month, session) }))
     .filter(x => !paid.has(`${x.month}|${x.year}`) && !isPreAdmissionMonth(x.month, x.year, admissionDate))
   const due = months.filter(x => monthStarted(x.month, x.year, now))

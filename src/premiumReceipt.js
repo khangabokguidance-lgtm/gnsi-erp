@@ -5,6 +5,7 @@
 //  bill · gross / concession / NET PAID · amount in words · PAID stamp.
 // ════════════════════════════════════════════════════════════════════════
 import QRCode from 'qrcode'
+import { denyPrint } from './lib/printGuard.js'
 import { getInstitute } from './systemSettings'
 
 const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
@@ -223,13 +224,14 @@ export function receiptDocument(title, sheets, { extraCss = '', extraHead = '', 
 
 // Open a print window synchronously (inside the click, so pop-up blockers
 // allow it) and fill it with html — or a promise of html.
-export function openReceiptWindow(title, html, { autoPrint = true } = {}) {
+export function openReceiptWindow(title, html, { autoPrint = true, held = null } = {}) {
+  if (denyPrint()) return
   const pw = window.open('', '_blank', 'width=860,height=1000,scrollbars=yes')
   if (pw) pw.document.write(`<p style="font:600 14px system-ui;color:#475569;padding:40px;text-align:center">Preparing ${escH(title)}…</p>`)
-  Promise.resolve(html).then(h => {
+  Promise.all([html, held]).then(([h, isHeld]) => {
     if (!pw) { window.open(URL.createObjectURL(new Blob([h], { type: 'text/html' })), '_blank'); return }
     pw.document.open(); pw.document.write(h); pw.document.close(); pw.document.title = title
-    if (autoPrint) setTimeout(() => { try { pw.focus(); pw.print() } catch { /* window closed */ } }, 900)
+    if (autoPrint && !isHeld) setTimeout(() => { try { pw.focus(); pw.print() } catch { /* window closed */ } }, 900)
   })
 }
 
@@ -242,11 +244,12 @@ function feeReceiptSheet(d, hist) {
   const rno = d.receipt_no || '—'
   const cell = (l, v, extra = '') => `<td class="c"${extra}><div class="l">${l}</div><div class="v">${v}</div></td>`
   const bodyRows = rows.map((r, i) => `<tr><td>${i + 1}</td><td style="font-weight:700">${escH(r.particulars)}</td><td>${escH(r.period)}</td><td>${escH(r.category)}</td><td class="r mono" style="font-weight:700">${money(r.amount)}</td></tr>`).join('')
-  const by = d.collected_by ? escH(d.collected_by) : '—'
+  const roleTag = d.collector_role ? ` <span style="font-weight:700;color:#8a6d2b">(${escH(d.collector_role)})</span>` : ''
+  const by = d.collected_by ? escH(d.collected_by) + roleTag : '—'
   return receiptSheet(receiptHeader('FEE RECEIPT', 'ORIGINAL · PAID') + `
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
-        <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div></div>
+        <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div>${d.receipt_serial ? `<div class="mono" style="font-size:11px;font-weight:700;color:#8a6d2b;margin-top:2px">Serial ${escH(d.receipt_serial)}</div>` : ''}</div>
         <div style="text-align:center;display:flex;align-items:center;gap:10px">${receiptQrSVG(`${typeof location !== 'undefined' ? location.origin : ''}/?verifyReceipt=${encodeURIComponent(rno)}&gcc=${encodeURIComponent(d.gcc_no || '')}&amt=${net}`)}<div>${barcodeSVG(rno)}<div class="mono" style="font-size:8.5px;color:#64748B;margin-top:1px;letter-spacing:.2em">${escH(rno)}</div></div></div>
         <div style="text-align:right"><div class="l">Receipt Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${escH(fmtDate(d.pay_date))}</div></div>
       </div>
@@ -280,6 +283,36 @@ function feeReceiptSheet(d, hist) {
 `, undefined, `Thank you — wishing ${escH(d.student_name)} every success.`)
 }
 
+// Adds the collector's auth role (Admin / Accountant / Staff …) so every fee
+// receipt can print "Name (Role)". An explicit d.collector_role wins.
+const withRole = d => d.collector_role !== undefined || !d.collected_by ? Promise.resolve(d)
+  : import('./collectorRole')
+    .then(m => m.collectorRoleFor(d.collected_by))
+    .then(r => ({ ...d, collector_role: r || '' }))
+    .catch(() => d)
+
+// A receipt must not be printed while a low-fee (below-standard) concession on
+// it is still waiting for an admin. Fails open: if the check can't run, print.
+async function isOnHold(receiptNo) {
+  if (!receiptNo) return false
+  try {
+    const { supabase } = await import('./supabase')
+    for (const table of ['adm_flat_fees', 'adm_course_fees']) {
+      const { data, error } = await supabase.from(table).select('id').eq('receipt_no', receiptNo).eq('concession_status', 'pending').limit(1)
+      if (!error && data && data.length) return true
+    }
+  } catch { /* fail open */ }
+  return false
+}
+const holdPage = (rnos = []) => `<!doctype html><html><head><meta charset="utf-8"><title>Receipt on hold</title></head>
+<body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f7f5f0;display:flex;align-items:center;justify-content:center;min-height:100vh">
+<div style="max-width:440px;text-align:center;background:#fff;border:1px solid #e8e3d8;border-radius:22px;padding:34px 28px;box-shadow:0 24px 40px -24px rgba(19,42,79,.45)">
+<div style="font-size:42px">⏳</div>
+<h2 style="margin:10px 0 6px;color:#0e203f">Receipt on hold</h2>
+<p style="color:#5d6b82;font-size:14px;line-height:1.55;margin:0 0 14px">This fee was collected below the standard rate, so it needs <b>admin approval</b> first. The receipt${rnos.length ? ' (' + rnos.map(escH).join(', ') + ')' : ''} can be printed once an admin approves it in <b>Fees → Low Fees</b>.</p>
+<p style="color:#8a6d2b;font-size:12px;font-weight:700;margin:0">Ask an admin to approve, then print again.</p>
+</div></body></html>`
+
 const withHistory = d => d.history !== undefined ? Promise.resolve(d.history)
   : import('./receiptHistory')
     .then(m => Promise.race([m.loadReceiptHistory(d), new Promise(r => setTimeout(() => r(null), 8000))]))
@@ -296,14 +329,23 @@ const withHistory = d => d.history !== undefined ? Promise.resolve(d.history)
  */
 export function printFeeReceipt(d) {
   const title = 'Receipt ' + (d.receipt_no || '—')
-  openReceiptWindow(title, withHistory(d).then(h => receiptDocument(title, feeReceiptSheet(d, h), { printLabel: '🖨 Print receipt' })))
+  const doc = isOnHold(d.receipt_no).then(held => held ? { hold: true, html: holdPage([d.receipt_no]) }
+    : withRole(d).then(dr => withHistory(dr).then(h => ({ hold: false, html: receiptDocument(title, feeReceiptSheet(dr, h), { printLabel: '🖨 Print receipt' }) }))))
+  // The window opens immediately (popup-safe); a held receipt shows the hold notice and never auto-prints.
+  openReceiptWindow(title, doc.then(x => x.html), { autoPrint: true, held: doc.then(x => x.hold) })
 }
 
 // Several fee receipts in one print job, one A4 page each (e.g. Bulk Admission).
 export function printFeeReceipts(list, title = 'Fee receipts') {
   if (!list?.length) return
-  openReceiptWindow(title, Promise.all(list.map(d => withHistory(d).then(h => feeReceiptSheet(d, h))))
-    .then(sheets => receiptDocument(title, sheets.join(''), { printLabel: `🖨 Print ${list.length} receipt${list.length === 1 ? '' : 's'}` })))
+  const doc = Promise.all(list.map(d => isOnHold(d.receipt_no))).then(flags => {
+    const ready = list.filter((_, i) => !flags[i])
+    const heldNos = list.filter((_, i) => flags[i]).map(d => d.receipt_no)
+    if (!ready.length) return { hold: true, html: holdPage(heldNos) }
+    return Promise.all(ready.map(d => withRole(d).then(dr => withHistory(dr).then(h => feeReceiptSheet(dr, h)))))
+      .then(sheets => ({ hold: false, html: receiptDocument(title, sheets.join(''), { printLabel: `🖨 Print ${ready.length} receipt${ready.length === 1 ? '' : 's'}` }) }))
+  })
+  openReceiptWindow(title, doc.then(x => x.html), { held: doc.then(x => x.hold) })
 }
 
 // Convert the fee engine's receipt sections ({title, items:[{label, amount}]})

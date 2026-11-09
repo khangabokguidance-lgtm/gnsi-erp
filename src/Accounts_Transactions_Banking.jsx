@@ -30,6 +30,8 @@ export const TransactionsViewBanking = ({
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
   openEdit = () => {},
   handleDelete = () => {},
+  vendors = [],
+  payers = [],
   printReceiptMemo = () => {},
   isMobile = false,
   runningBalance = null,
@@ -103,333 +105,154 @@ export const TransactionsViewBanking = ({
     return icons[mode] || '💰'
   }
 
+  // Premium palette (matches the Accounts screen: navy / gold / ivory)
+  const P = { navy: '#132a4f', navy2: '#1e3a6e', gold: '#b8923a', goldSoft: '#f6efdc', line: '#e8e3d8', ink: '#0f1b2e', muted: '#5d6b82', faint: '#8a93a6', ivory: '#faf8f3' }
+  const SERIF = "'Fraunces',Georgia,serif"
+  const SANS = "'Plus Jakarta Sans',system-ui,sans-serif"
+
   // Transaction card component
   const TransactionCard = ({ item, balance, isFlagged }) => {
     const modeIcon = getPaymentModeIcon(item.payment_mode)
     // Superseded (a duplicate/deactivated entry, e.g. from the
-    // auto-recurring cleanup) is a settled state, not something awaiting
-    // approval — previously it fell through to the same "else Pending"
-    // branch as a genuinely unconfirmed entry, showing an hourglass and
-    // amber "PENDING" label on a row that isn't actually pending anything.
+    // auto-recurring cleanup) is a settled state, not something awaiting approval.
     const isSuperseded = item.status === 'Superseded'
     const isOk = item.status == null || item.status === '' || item.status === 'Confirmed' // blank = fee/legacy postings, confirmed
-    const statusIcon = isFlagged ? '⚠️' : isOk ? '✓' : isSuperseded ? '⊘' : '⏳'
-    const statusColor = isFlagged ? '#d97706' : isOk ? '#16a34a' : isSuperseded ? '#6b7280' : '#f59e0b'
-    const statusLabel = isFlagged ? 'FLAGGED' : isOk ? 'CONFIRMED' : isSuperseded ? 'SUPERSEDED' : 'PENDING'
+    const statusColor = isFlagged ? '#b45309' : isOk ? '#15803d' : isSuperseded ? '#64748b' : '#b45309'
+    const statusBg = isFlagged ? '#fef3c7' : isOk ? '#dcfce7' : isSuperseded ? '#f1f5f9' : '#fef3c7'
+    const statusLabel = isFlagged ? 'Flagged' : isOk ? 'Confirmed' : isSuperseded ? 'Superseded' : 'Pending'
+    const isInc = item.type === 'Income'
+    const accent = isInc ? '#15803d' : '#b91c1c'
+    const vendorName = item.vendor_id ? (vendors.find((v) => String(v.id) === String(item.vendor_id))?.name || '') : ''
+    const payerName = item.payer_id ? (payers.find((v) => String(v.id) === String(item.payer_id))?.name || '') : ''
+    const when = (t) => {
+      if (!t) return ''
+      const d = new Date(t)
+      return isNaN(d) ? String(t) : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    }
+    const sections = [
+      ['Entry', [
+        ['Entry date', formatDate(item.entry_date)],
+        ['Payment date', item.payment_date && item.payment_date !== item.entry_date ? formatDate(item.payment_date) : ''],
+        ['Category', item.category],
+        ['Sub-category', item.sub_category],
+        [isInc ? 'Payer / source' : 'Paid to', isInc ? payerName : vendorName],
+        ['Voucher head', item.voucher_head],
+      ]],
+      ['Payment', [
+        ['Mode', item.payment_mode],
+        ['Account', item.account_type || 'Cash A/c'],
+        ['Nature', item.expense_nature],
+        ['Txn ref / UTR', item.txn_ref],
+        ['Voucher no.', item.voucher_no],
+        ['Bill id', item.bill_id],
+        ['Recurring', item.is_recurring ? 'Yes' + (item.recurring_period ? ` (${item.recurring_period})` : '') : ''],
+        ['Source', [item.source_type, item.source_ref].filter(Boolean).join(' · ')],
+      ]],
+      ['Record', [
+        ['Entered by', item.added_by],
+        ['Entered on', when(item.created_at)],
+        ['Last edited by', item.edited_by],
+        ['Last edited on', when(item.edited_at)],
+        ['Delete reason', item.delete_reason],
+      ]],
+    ].map(([t, rows]) => [t, rows.filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')]).filter(([, rows]) => rows.length)
+
+    const chip = (bg, color, text, key) => (
+      <span key={key} style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 11px', backgroundColor: bg, color, border: `1px solid ${color}22`, borderRadius: 999, fontWeight: 700, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{text}</span>
+    )
+    const iconBtn = { width: 40, height: 40, borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 15, background: '#fff', border: `1px solid ${P.line}` }
 
     return (
       <div
         style={{
-          backgroundColor: isFlagged ? '#fffbf0' : '#ffffff',
-          border: isFlagged ? '1.5px solid #fed7aa' : '1px solid #e5e7eb',
-          borderRadius: 12,
-          padding: isMobile ? '12px 14px' : '14px 16px',
-          marginBottom: 10,
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-          transition: 'all 0.2s ease',
-          boxShadow: isFlagged
-            ? '0 1px 3px rgba(251, 146, 60, 0.1), 0 0 0 2px rgba(251, 191, 36, 0.05)'
-            : '0 1px 2px rgba(0, 0, 0, 0.04)',
-          cursor: canWrite ? 'pointer' : 'default',
-          ':hover': {
-            boxShadow: isFlagged
-              ? '0 2px 8px rgba(251, 146, 60, 0.15)'
-              : '0 4px 12px rgba(0, 0, 0, 0.08)',
-          },
+          position: 'relative',
+          background: isFlagged ? '#fffbf0' : 'linear-gradient(180deg,#ffffff 0%,#fdfbf6 100%)',
+          border: `1px solid ${isFlagged ? '#fed7aa' : P.line}`,
+          fontFamily: SANS,
+          WebkitFontSmoothing: 'antialiased',
+          borderRadius: 20,
+          padding: isMobile ? '16px 16px 14px 20px' : '20px 24px 18px 28px',
+          marginBottom: 14,
+          overflow: 'hidden',
+          boxShadow: '0 1px 1px rgba(19,42,79,.04), 0 2px 4px rgba(19,42,79,.04), 0 18px 40px -20px rgba(19,42,79,.28)',
         }}
       >
-        {/* Icon + Status Badge */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 6,
-            minWidth: 48,
-            paddingTop: 2,
-          }}
-        >
-          <span style={{ fontSize: 20 }}>{modeIcon}</span>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: statusColor,
-              textTransform: 'uppercase',
-              letterSpacing: '0.4px',
-              height: 16,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            {statusIcon}
-          </span>
-        </div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${P.gold}88, transparent)` }} />
+        {/* type accent */}
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(180deg, ${accent}, ${accent}99)` }} />
 
-        {/* Main Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Description Row */}
-          <div style={{ marginBottom: 8 }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: isMobile ? 13 : 14,
-                fontWeight: 600,
-                color: '#1a2535',
-                wordBreak: 'break-word',
-                lineHeight: 1.4,
-              }}
-            >
+        {/* header: icon, title + chips, amount */}
+        <div style={{ display: 'flex', gap: isMobile ? 12 : 16, alignItems: 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, background: 'linear-gradient(145deg,#fbf6e8,#f1e4bf)', border: `1px solid #e3cf98`, boxShadow: 'inset 0 1px 0 #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+            {modeIcon}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: isMobile ? 16.5 : 18.5, fontWeight: 600, color: P.navy, wordBreak: 'break-word', lineHeight: 1.35, fontFamily: SERIF, letterSpacing: '-0.015em' }}>
               {item.note || item.category || '—'}
             </p>
-          </div>
-
-          {/* Metadata Badges Row */}
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              fontSize: 11,
-              color: '#6b7280',
-            }}
-          >
-            {/* Account Type Badge */}
-            {item.account_type && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                  color: '#4b5563',
-                }}
-              >
-                {item.account_type}
-              </span>
-            )}
-
-            {/* Voucher Head Badge */}
-            {item.voucher_head && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#ede9fe',
-                  color: '#7c3aed',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                }}
-              >
-                {item.voucher_head}
-              </span>
-            )}
-
-            {/* Payment Mode Badge */}
-            {item.payment_mode && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                }}
-              >
-                {item.payment_mode}
-              </span>
-            )}
-
-            {/* Date Mismatch Indicator */}
-            {dailyIsIncome &&
-              item.payment_date &&
-              item.entry_date &&
-              item.payment_date !== item.entry_date && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: '#f59e0b',
-                    fontWeight: 600,
-                  }}
-                >
-                  {dailyDateMode === 'payment'
-                    ? `Entry: ${item.entry_date}`
-                    : `Paid: ${item.payment_date}`}
-                </span>
-              )}
-          </div>
-
-          {/* Fraud Alert Box */}
-          {isFlagged && fraudFlags?.[item.id] && Array.isArray(fraudFlags[item.id]) && (
-            <div style={{ marginTop: 10 }}>
-              {fraudFlags[item.id].map((alert, idx) => (
-                <div
-                  key={`fraud-${item.id}-${idx}`}
-                  style={{
-                    display: 'flex',
-                    gap: 6,
-                    alignItems: 'flex-start',
-                    padding: '6px 8px',
-                    backgroundColor: '#fef3c7',
-                    borderRadius: 5,
-                    fontSize: 11,
-                    color: '#92400e',
-                    marginBottom: idx < fraudFlags[item.id].length - 1 ? 4 : 0,
-                    fontWeight: 500,
-                  }}
-                >
-                  <span style={{ marginTop: '-1px' }}>⚠️</span>
-                  <span>{alert?.label || 'Fraud flag detected'}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+              {chip(statusBg, statusColor, `● ${statusLabel}`, 's')}
+              {item.account_type && chip('#eef2f9', P.navy2, item.account_type, 'a')}
+              {item.payment_mode && chip('#f0f9ff', '#0369a1', item.payment_mode, 'm')}
+              {item.voucher_head && chip('#ede9fe', '#6d28d9', item.voucher_head, 'v')}
+              {dailyIsIncome && item.payment_date && item.entry_date && item.payment_date !== item.entry_date && chip('#fef3c7', '#92400e', dailyDateMode === 'payment' ? `Entry: ${item.entry_date}` : `Paid: ${item.payment_date}`, 'd')}
             </div>
-          )}
+          </div>
+          <div style={{ textAlign: 'right', marginLeft: 'auto', flexShrink: 0 }}>
+            <div style={{ fontSize: isMobile ? 23 : 29, fontWeight: 600, fontFamily: SERIF, fontVariantNumeric: 'lining-nums tabular-nums', color: dailyAmtColor || accent, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+              <span style={{ fontSize: '0.55em', fontWeight: 600, opacity: 0.7, marginRight: 3, verticalAlign: '0.35em' }}>{isInc ? '+' : '−'}</span>{fmt(item.amount || 0)}
+            </div>
+            {balance !== undefined && (
+              <div style={{ fontSize: 10.5, color: P.faint, marginTop: 6, fontVariantNumeric: 'tabular-nums', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>Balance {fmt(balance)}</div>
+            )}
+          </div>
         </div>
 
-        {/* Amount + Balance Column */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: 5,
-            minWidth: isMobile ? 100 : 120,
-            textAlign: 'right',
-            paddingLeft: 8,
-          }}
-        >
-          {/* Amount */}
-          <div
-            style={{
-              fontSize: isMobile ? 14 : 16,
-              fontWeight: 700,
-              fontFamily: "'Courier New', monospace",
-              color: dailyAmtColor || '#0a8042',
-              lineHeight: 1.2,
-            }}
-          >
-            {fmt(item.amount || 0)}
+        {/* fraud alerts */}
+        {isFlagged && fraudFlags?.[item.id] && Array.isArray(fraudFlags[item.id]) && (
+          <div style={{ marginTop: 12 }}>
+            {fraudFlags[item.id].map((alert, idx) => (
+              <div key={`fraud-${item.id}-${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '7px 10px', backgroundColor: '#fef3c7', borderRadius: 8, fontSize: 11.5, color: '#92400e', marginBottom: idx < fraudFlags[item.id].length - 1 ? 4 : 0, fontWeight: 500 }}>
+                <span>⚠️</span>
+                <span>{alert?.label || 'Fraud flag detected'}</span>
+              </div>
+            ))}
           </div>
+        )}
 
-          {/* Running Balance */}
-          {balance !== undefined && (
-            <div
-              style={{
-                fontSize: 10,
-                color: '#6b7280',
-                fontFamily: "'Courier New', monospace",
-                fontWeight: 500,
-                lineHeight: 1.2,
-              }}
-            >
-              Bal: {fmt(balance)}
+        {/* details, grouped */}
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px dashed ${P.line}`, display: 'grid', gap: 14 }}>
+          {sections.map(([title, rows]) => (
+            <div key={title}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.2em', textTransform: 'uppercase', color: P.gold, whiteSpace: 'nowrap' }}>{title}</span><span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${P.line}, transparent)` }} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px 18px' }}>
+                {rows.map(([k, v]) => (
+                  <div key={k} style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10, color: P.faint, fontWeight: 600, marginBottom: 3, letterSpacing: '.1em', textTransform: 'uppercase' }}>{k}</div>
+                    <div style={{ fontSize: 14, color: P.ink, fontWeight: 600, wordBreak: 'break-word', letterSpacing: '-0.005em' }}>{String(v)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
 
-        {/* Action Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 6,
-            marginLeft: 4,
-            flexShrink: 0,
-          }}
-        >
-          <style>{`
-            .txn-edit-btn {
-              background: #eff6ff;
-              border: 1px solid #bfdbfe;
-              color: #1e3a5f;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-edit-btn:hover {
-              background: #dbeafe;
-              border-color: #93c5fd;
-            }
-            .txn-edit-btn:active {
-              background: #bfdbfe;
-            }
-
-            .txn-memo-btn {
-              background: #f0fdf4;
-              border: 1px solid #bbf7d0;
-              color: #16a34a;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-memo-btn:hover {
-              background: #dcfce7;
-              border-color: #86efac;
-            }
-            .txn-memo-btn:active {
-              background: #bbf7d0;
-            }
-
-            .txn-delete-btn {
-              background: #fee2e2;
-              border: 1px solid #fecaca;
-              color: #dc2626;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-delete-btn:hover {
-              background: #fecaca;
-              border-color: #fca5a5;
-            }
-            .txn-delete-btn:active {
-              background: #fca5a5;
-            }
-          `}</style>
-          <button
-            onClick={() => printReceiptMemo(item)}
-            className="txn-memo-btn"
-            aria-label="Print receipt memo"
-            title="Print Receipt Memo"
-          >
-            🧾
-          </button>
-          {(canWrite || (canEdit && item.type === 'Expense')) && (
-            <button
-              onClick={() => openEdit(item)}
-              className="txn-edit-btn"
-              aria-label="Edit transaction"
-              title="Edit"
-            >
-              ✏️
-            </button>
-          )}
-          {canWrite && (
-            <button
-              onClick={() => handleDelete(item.id)}
-              className="txn-delete-btn"
-              aria-label="Delete transaction"
-              title="Delete"
-            >
-              🗑
-            </button>
-          )}
+        {/* footer: receipt + actions */}
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>
+            {item.receipt_url
+              ? <a href={item.receipt_url} target="_blank" rel="noreferrer" style={{ color: P.navy2, textDecoration: 'none', background: '#eef2f9', padding: '6px 12px', borderRadius: 999 }}>📎 View receipt</a>
+              : <span style={{ color: P.faint }}>No receipt attached</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => printReceiptMemo(item)} style={{ ...iconBtn, color: '#15803d' }} aria-label="Print receipt memo" title="Print Receipt Memo">🧾</button>
+            {(canWrite || (canEdit && item.type === 'Expense')) && (
+              <button onClick={() => openEdit(item)} style={{ ...iconBtn, color: P.navy2 }} aria-label="Edit transaction" title="Edit">✏️</button>
+            )}
+            {canWrite && (
+              <button onClick={() => handleDelete(item.id)} style={{ ...iconBtn, color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }} aria-label="Delete transaction" title="Delete">🗑</button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -528,17 +351,17 @@ export const TransactionsViewBanking = ({
                 alignItems: 'baseline',
                 marginBottom: 12,
                 paddingBottom: 10,
-                borderBottom: '1px solid #e5e7eb',
+                borderBottom: '2px solid #e9d9b0',
               }}
             >
               <h3
                 style={{
                   margin: 0,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#374151',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
+                  fontSize: isMobile ? 17 : 20,
+                  fontWeight: 600,
+                  color: '#132a4f',
+                  fontFamily: "'Fraunces',Georgia,serif",
+                  letterSpacing: '-0.01em',
                 }}
               >
                 {formatDate(dateKey)}
@@ -586,7 +409,7 @@ export const TransactionsViewBanking = ({
       {dayRows && dayRows.length > 0 && (
         <div
           style={{
-            backgroundColor: '#1a2535',
+            background: 'linear-gradient(135deg,#132a4f,#1e3a6e)',
             borderRadius: 14,
             padding: isMobile ? '16px' : '20px 28px',
             marginTop: 28,

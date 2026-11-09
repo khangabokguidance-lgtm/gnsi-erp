@@ -16,10 +16,17 @@ const P = {
   courses: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M2 13l10 5 10-5"/></>,
   questionbank: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></>,
   questionbankviewer: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
+  modelsets: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6"/><circle cx="9" cy="12" r="1.3"/><circle cx="9" cy="16.5" r="1.3"/><path d="M12.5 12h3M12.5 16.5h3"/></>,
+  setmaker: <><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/><path d="M10 17.5h4"/></>,
   entrance: <><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0z"/><path d="M7 6H4a3 3 0 003 4M17 6h3a3 3 0 01-3 4"/></>,
   studymaterial: <><path d="M4 19V5a2 2 0 012-2h12v14H6a2 2 0 00-2 2zm0 0a2 2 0 002 2h12"/><path d="M9 7h6"/></>,
   teachingaids: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>,
   learninghub: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 8v6"/><path d="M12 13v4"/></>,
+  studentshub: <><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/></>,
+  feeshub: <><path d="M7 5h10M7 9h10"/><path d="M9 5c4 0 5 2 5 4s-2 4-5 4H7l8 7"/></>,
+  examshub: <><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/><path d="M8 14l2 2 4-4"/></>,
+  commshub: <><path d="M3 11v2a1 1 0 001 1h3l6 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></>,
+  adminhub: <><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></>,
   studylockers: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M8 10v2M16 10v2"/></>,
   kitchen: <><path d="M5 3v7a2 2 0 002 2h0a2 2 0 002-2V3M7 12v9"/><path d="M17 21V3c-2 1-3 4-3 7h3"/></>,
   staff: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.6.3 4.5 2.4 4.5 5"/></>,
@@ -42,6 +49,15 @@ const P = {
   student360: <><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/><path d="M8 11h6M11 8v6"/></>,
   system: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></>,
   adminlink: <><circle cx="8" cy="8" r="3.5"/><path d="M2 20c0-3.3 2.7-6 6-6 1.3 0 2.5.4 3.5 1"/><path d="M15 17h6M18 14v6"/></>,
+  help: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></>,
+  overview: <><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></>,
+  intel: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/></>,
+  dropout: <><path d="M22 17l-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/></>,
+  batches: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M2 13l10 5 10-5"/><path d="M2 17.5l10 5 10-5"/></>,
+  doubts: <><path d="M21 12a8 8 0 01-11.8 7L4 20l1.2-4.6A8 8 0 1121 12z"/><path d="M9 11h6M9 14h3"/></>,
+  parents: <><circle cx="8" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 15c3 .2 5.5 2 5.5 5"/></>,
+  syllabus: <><path d="M3 17L17 3l4 4L7 21H3z"/><path d="M13 7l4 4M6 14l2 2"/></>,
+  expenses: <><path d="M22 17l-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></>,
   close: <><path d="M6 6l12 12M18 6L6 18"/></>,
   chevron: <><path d="M9 6l6 6-6 6"/></>,
@@ -68,6 +84,8 @@ const P = {
   warning: <><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></>,
   stamp: <><path d="M9 12V8a3 3 0 016 0v4"/><path d="M5 12h14v4H5z"/><path d="M4 20h16"/></>,
   rupeeSearch: <><circle cx="10.5" cy="10.5" r="7"/><path d="M21 21l-5.5-5.5"/><path d="M8 7.5h5M8 10h5M9.5 7.5c2 0 2.5 1 2.5 2.5s-1 2.5-2.5 2.5H8l4 3"/></>,
+  designstudio: <><path d="M12 3a9 9 0 100 18c1.4 0 2-1 1.6-2.2-.4-1.2.3-2.3 1.6-2.3H17a4 4 0 004-4c0-5-4-9.5-9-9.5z"/><circle cx="7.5" cy="11" r=".9"/><circle cx="10" cy="7" r=".9"/><circle cx="14.5" cy="7" r=".9"/></>,
+  teachersday: <><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/></>,
   grid: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
 }
 
@@ -76,6 +94,40 @@ export function NavIcon({ id, size = 24, stroke = 1.8 }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {body}
+    </svg>
+  )
+}
+
+
+// ── App-style icons (rounded colour tile + white glyph, like WhatsApp / phone home screens) ──
+const C = {
+  dashboard: ['#818cf8', '#4f46e5'], students: ['#fbbf24', '#d97706'], admissions: ['#38bdf8', '#0369a1'], bulkadmission: ['#22d3ee', '#0e7490'],
+  fees: ['#4ade80', '#15803d'], accounts: ['#2dd4bf', '#0f766e'], studentfeeledger: ['#a3e635', '#4d7c0f'], feesetup: ['#94a3b8', '#475569'],
+  construction: ['#fb923c', '#c2410c'], attendance: ['#34d399', '#047857'], exams: ['#f87171', '#b91c1c'], timetable: ['#a78bfa', '#6d28d9'],
+  teaching: ['#f472b6', '#be185d'], courses: ['#60a5fa', '#1d4ed8'], learninghub: ['#c084fc', '#7e22ce'], studylockers: ['#facc15', '#a16207'],
+  kitchen: ['#fdba74', '#ea580c'], staff: ['#38bdf8', '#0284c7'], hr: ['#818cf8', '#4338ca'], leave: ['#f9a8d4', '#db2777'], hostel: ['#22d3ee', '#0891b2'],
+  awards: ['#fcd34d', '#b45309'], faceattendance: ['#67e8f9', '#0e7490'], reception: ['#6ee7b7', '#059669'], notice: ['#fb7185', '#be123c'],
+  social: ['#e879f9', '#a21caf'], connect: ['#4ade80', '#128c7e'], website: ['#60a5fa', '#2563eb'], store: ['#fb923c', '#ea580c'],
+  reports: ['#a78bfa', '#7c3aed'], checklist: ['#2dd4bf', '#0d9488'], invitation: ['#fb7185', '#e11d48'], certificate: ['#fbbf24', '#d97706'],
+  teachersday: ['#fbbf24', '#b45309'], designstudio: ['#f472b6', '#7c3aed'], admin: ['#64748b', '#1e293b'], student360: ['#38bdf8', '#0369a1'],
+  system: ['#94a3b8', '#334155'], adminlink: ['#a78bfa', '#6d28d9'], help: ['#38bdf8', '#0284c7'], questionbank: ['#c084fc', '#7e22ce'],
+  studymaterial: ['#fbbf24', '#b45309'], teachingaids: ['#60a5fa', '#1d4ed8'], entrance: ['#fcd34d', '#b45309'],
+  modelsets: ['#5eead4', '#0f766e'], setmaker: ['#67e8f9', '#0f5f66'], classmaterial: ['#fbbf24', '#b45309'],
+  studentshub: ['#fbbf24', '#d97706'], feeshub: ['#4ade80', '#15803d'], examshub: ['#f87171', '#b91c1c'], commshub: ['#e879f9', '#a21caf'], adminhub: ['#64748b', '#1e293b'],
+}
+const FALLBACK = [['#60a5fa', '#2563eb'], ['#34d399', '#059669'], ['#f472b6', '#db2777'], ['#fbbf24', '#d97706'], ['#a78bfa', '#7c3aed'], ['#fb923c', '#ea580c']]
+const pick = id => C[id] || FALLBACK[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % FALLBACK.length]
+
+export function AppIcon({ id, size = 28 }) {
+  const [a, b] = pick(id)
+  const body = P[id] || <><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 12h6"/></>
+  const gid = 'ai-' + id
+  return (
+    <svg viewBox="0 0 40 40" width={size} height={size} aria-hidden="true" style={{ display: 'block', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.35))' }}>
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a}/><stop offset="1" stopColor={b}/></linearGradient></defs>
+      <rect width="40" height="40" rx="11" fill={`url(#${gid})`}/>
+      <path d="M0 14C0 6 5 0 14 0h12c9 0 14 6 14 14v2C28 10 12 10 0 16z" fill="#fff" opacity=".14"/>
+      <g transform="translate(8 8)" fill="rgba(255,255,255,.22)" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{body}</g>
     </svg>
   )
 }

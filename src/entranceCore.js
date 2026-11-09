@@ -14,10 +14,7 @@ import { supabase } from './supabase'
 // ── Taxonomy links ────────────────────────────────────────────────────────────
 // exam_type values are kept exactly as before (GNSIDashboard groups by them).
 export const EXAM_TYPES = ['Sainik School', 'Navodaya (JNV)', 'RMS (Military School)', 'Foundation', 'Combined']
-export const EXAM_TYPE_COURSE = {
-  'Sainik School': 'sainik', 'Navodaya (JNV)': 'navodaya', 'RMS (Military School)': 'rms', 'Foundation': 'foundation', 'Combined': '',
-}
-export const COURSE_CODE = { sainik: 'SA', navodaya: 'NV', rms: 'RM', foundation: 'FD' }
+export { EXAM_TYPE_COURSE, COURSE_CODE, hallTicketNo, nextRoll, applicationNo, nextApplicationSeq } from './lib/entranceNumbers.js'
 
 export const EXAM_STATUS = ['Scheduled', 'Ongoing', 'Completed', 'Cancelled']
 export const CANDIDATE_STATUS = ['Registered', 'Hall Ticket Issued', 'Appeared', 'Absent', 'Disqualified']
@@ -77,27 +74,6 @@ export function parseJson(v, fallback = null) {
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 export const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-
-// Same format tickets have always carried, so already-printed ones still match.
-export const hallTicketNo = (examId, roll) => `GNSI/${examId?.toString().slice(-4).toUpperCase() || 'XXXX'}/${String(roll ?? 0).padStart(4, '0')}`
-
-export function nextRoll(cands, examId) {
-  return cands.filter(c => c.exam_id === examId).reduce((m, c) => Math.max(m, Number(c.roll_number) || 0), 0) + 1
-}
-
-// SA260001 — course code, 2-digit exam year, running number within the exam.
-export function applicationNo(exam, seq) {
-  const code = COURSE_CODE[exam?.course || EXAM_TYPE_COURSE[exam?.exam_type]] || 'GN'
-  const yy = String(exam?.exam_date ? new Date(exam.exam_date).getFullYear() : new Date().getFullYear()).slice(-2)
-  return `${code}${yy}${String(seq).padStart(4, '0')}`
-}
-
-export function nextApplicationSeq(cands, examId) {
-  return cands.filter(c => c.exam_id === examId).reduce((m, c) => {
-    const n = Number(String(c.application_no || '').slice(-4))
-    return Math.max(m, Number.isFinite(n) ? n : 0)
-  }, 0) + 1
-}
 
 // Latest result row per candidate (older databases can hold duplicates).
 export function resultByCandidate(results) {

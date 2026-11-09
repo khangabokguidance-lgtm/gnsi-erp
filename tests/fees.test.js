@@ -48,3 +48,455 @@ test('instalment plan state', () => {
   assert.equal(planState({ ...plan, status: 'cancelled' }, '2026-10-03'), null)
   assert.equal(planState({ ...plan, installments: plan.installments.map(i => ({ ...i, paid_amount: i.amount })) }, '2026-10-03'), null)
 })
+
+import { admRowKind, balanceRowId, balanceSuffix, isBalanceRowId, instituteNow } from '../src/lib/feeMath.js'
+
+test('admission rows: one rule for dues and ledger', () => {
+  assert.equal(admRowKind({ fee_type: 'admission' }), 'admission')
+  assert.equal(admRowKind({ fee_type: null, description: 'Admission Fee' }), 'admission')
+  assert.equal(admRowKind({ fee_type: 'advance' }), 'advance')
+  assert.equal(admRowKind({ fee_type: 'item', description: 'Prospectus' }), 'item')
+  assert.equal(admRowKind({ fee_type: null, description: 'Dress Kit — Shirt' }), 'item')   // legacy unknown row is not admission
+})
+
+test('balance rows: ids and account refs', () => {
+  const id = balanceRowId('12_course_aug_2026', 1)
+  assert.equal(id, '12_course_aug_2026_b1')
+  assert.ok(isBalanceRowId(id)); assert.ok(!isBalanceRowId('12_course_aug_2026'))
+  assert.equal(balanceSuffix(id), '_b1'); assert.equal(balanceSuffix('12_course_aug_2026'), '')
+})
+
+test('institute clock reads as IST whatever the device zone', () => {
+  const n = instituteNow(new Date('2026-03-31T20:00:00Z'))   // 01:30 IST on 1 April
+  assert.equal(n.getMonth(), 3); assert.equal(n.getDate(), 1)
+})
+
+import { excludeRepeaterFees, repeaterWaivedTotal } from '../src/lib/feeMath.js'
+
+test('repeater: admission and items excluded, monthly fees kept', () => {
+  const items = [{ kind: 'admission', amount: 6000 }, { kind: 'item', amount: 3000 }, { kind: 'flat', amount: 100 }, { kind: 'course', amount: 50 }, { kind: 'advance', amount: 10 }]
+  const r = excludeRepeaterFees(true, items)
+  assert.deepEqual(r.items.map(i => i.kind), ['flat', 'course', 'advance'])
+  assert.equal(repeaterWaivedTotal(items), 9000)
+  assert.equal(excludeRepeaterFees(false, items).items.length, 5)
+})
+
+import { detectLateEntryStudents } from '../src/lib/lateEntry.js'
+
+test('late entry: joined mid-session, fees start from the joining month', () => {
+  const students = [
+    { gcc_no: 1, name: 'Early', admission_date: '2026-04-10' },
+    { gcc_no: 2, name: 'Late paid', admission_date: '2026-08-12' },
+    { gcc_no: 3, name: 'Late none', admission_date: '2026-09-02' },
+    { gcc_no: 4, name: 'Last session', admission_date: '2025-08-01' },
+    { gcc_no: 5, name: 'Late skipped', admission_date: '2026-06-20' },
+  ]
+  const course = [
+    { adm_app_id: '2', for_month: 'August', year: 2026, amount_paid: 5000, reverted: false },
+    { adm_app_id: '5', for_month: 'August', year: 2026, amount_paid: 5000, reverted: false },
+    { adm_app_id: '5', for_month: 'June', year: 2026, amount_paid: 5000, reverted: true },
+  ]
+  const r = detectLateEntryStudents(students, course, [], '2026-2027')
+  assert.deepEqual(r.map(x => x.gcc_no), [3, 5, 2])         // not-started first
+  const by = Object.fromEntries(r.map(x => [x.gcc_no, x]))
+  assert.equal(by[2].firstFeeMonth, 'August 2026'); assert.equal(by[2].started, true); assert.equal(by[2].skippedJoiningMonth, false)
+  assert.equal(by[2].monthsNotCharged.length, 4)
+  assert.equal(by[3].started, false)
+  assert.equal(by[5].skippedJoiningMonth, true)             // joined June, first paid August
+})
+
+import { applyPaymentToPlan, removePaymentFromPlan, planDone } from '../src/lib/planPayments.js'
+import { refundStatementLines, writtenOffFor } from '../src/lib/refundLedger.js'
+
+const mkPlan = () => [1, 2, 3].map(no => ({ no, due_date: `2026-0${no + 5}-10`, amount: 1000, paid_amount: 0, paid_date: null, receipt_no: null }))
+
+test('plan: payments fill the oldest instalment first, partial and spill-over', () => {
+  let r = applyPaymentToPlan(mkPlan(), { ref: 'a', amount: 1500, date: '2026-06-01', receipt: 'R1' })
+  assert.equal(r.applied, 1500)
+  assert.deepEqual(r.installments.map(i => i.paid_amount), [1000, 500, 0])
+  r = applyPaymentToPlan(r.installments, { ref: 'b', amount: 5000, date: '2026-07-01', receipt: 'R2' })
+  assert.equal(r.applied, 1500)                       // only 1500 was still owed
+  assert.ok(planDone(r.installments))
+})
+
+test('plan: the same fee row is never applied twice; revert takes it back', () => {
+  const once = applyPaymentToPlan(mkPlan(), { ref: 'a', amount: 800, date: '2026-06-01', receipt: 'R1' })
+  const twice = applyPaymentToPlan(once.installments, { ref: 'a', amount: 800, date: '2026-06-01', receipt: 'R1' })
+  assert.equal(twice.applied, 0)
+  const back = removePaymentFromPlan(twice.installments, 'a')
+  assert.equal(back.removed, 800)
+  assert.deepEqual(back.installments.map(i => i.paid_amount), [0, 0, 0])
+  assert.ok(!planDone(back.installments))
+})
+
+test('refunds on the ledger: refund, sibling transfer both ways, write-off, carry-credit ignored', () => {
+  const rows = [
+    { kind: 'Refund to parent', status: 'paid', gcc: '5', amount: 2000, decided_at: '2026-08-01T10:00:00Z', reason: 'left' },
+    { kind: 'Refund to parent', status: 'approved', gcc: '5', amount: 900, decided_at: '2026-08-02T10:00:00Z' },   // not paid yet
+    { kind: 'Adjust to sibling GCC', status: 'approved', gcc: '5', target_gcc: '9', amount: 700, decided_at: '2026-08-03T10:00:00Z' },
+    { kind: 'Write-off dues', status: 'approved', gcc: '5', amount: 300, decided_at: '2026-09-01T10:00:00Z' },
+    { kind: 'Carry credit to next session', status: 'approved', gcc: '5', amount: 100, decided_at: '2026-09-02T10:00:00Z' },
+  ]
+  const src = refundStatementLines(5, rows)
+  assert.deepEqual(src.map(l => [l.debit, l.credit]), [[2000, 0], [700, 0], [0, 300]])
+  assert.deepEqual(refundStatementLines('09', rows).map(l => [l.debit, l.credit]), [[0, 700]])
+  const sessionOf = d => (d >= '2026-04-01' ? '2026-2027' : '2025-2026')
+  assert.equal(writtenOffFor(5, rows, '2026-2027', sessionOf), 300)
+  assert.equal(writtenOffFor(5, rows, '2025-2026', sessionOf), 0)
+})
+
+import { monthlyCollection, keepRow } from '../src/lib/reportMath.js'
+
+test('monthly collection: by payment date, oldest first, locale-free names', () => {
+  const rows = monthlyCollection({
+    flat: [{ month: 'February', year: 2027, amount: 47000, pay_date: '2026-12-20' }],       // paid in advance in December
+    course: [{ for_month: 'August', year: 2026, amount_paid: 5000, pay_date: '2026-08-05' }, { for_month: 'September', year: 2026, amount_paid: 5000 }],  // no pay_date → fee month
+    adm: [{ amount_paid: 6000, pay_date: '2026-08-02' }],
+  })
+  assert.deepEqual(rows.map(r => r.Month), ['August 2026', 'September 2026', 'December 2026'])
+  assert.equal(rows[0]['Course Fee'], 5000); assert.equal(rows[0]['Admission Fee'], 6000); assert.equal(rows[0].Total, 11000)
+  assert.equal(rows[2]['Flat Fee'], 47000)
+})
+
+test('report filters: scope by student and by payment date', () => {
+  const keep = keepRow({ scope: new Set(['5']), from: '2026-08-01', to: '2026-08-31' })
+  assert.ok(keep({ adm_app_id: '05', pay_date: '2026-08-10' }))
+  assert.ok(!keep({ adm_app_id: '6', pay_date: '2026-08-10' }))     // other student
+  assert.ok(!keep({ adm_app_id: '5', pay_date: '2026-09-01' }))     // outside range
+  assert.ok(!keep({ adm_app_id: '5' }))                             // no date while a range is set
+  assert.ok(keepRow()({ adm_app_id: '9' }))                         // no filters keeps everything
+})
+
+import { mergeLiveBatches } from '../src/lib/courseCatalog.js'
+
+test('course batches: new Active batches are added to the standard lists, nothing removed', () => {
+  const s = { Sainik: { subtypes: ['Achiever', 'Leader'] }, 'Combined Course': ['—'], Foundation: ['Udaan'] }
+  const rows = [
+    { course: 'Sainik', subtype: 'Champion', status: 'Active' },
+    { course: 'Sainik', subtype: 'Leader', status: 'Active' },            // already there
+    { course: 'Sainik', subtype: 'Old batch', status: 'Closed' },          // not active
+    { course: 'Combined Course', subtype: 'Combo A', status: 'Active' },   // replaces the placeholder
+    { course: 'Mystery', subtype: 'X', status: 'Active' },                 // unknown course is ignored
+  ]
+  assert.equal(mergeLiveBatches(s, rows), true)
+  assert.deepEqual(s.Sainik.subtypes, ['Achiever', 'Leader', 'Champion'])
+  assert.deepEqual(s['Combined Course'], ['Combo A'])
+  assert.deepEqual(s.Foundation, ['Udaan'])
+  assert.equal(mergeLiveBatches(s, rows), false)                          // second run changes nothing
+})
+
+import { admissionMonth } from '../src/lib/reportMath.js'
+
+test('month-wise dues: admission counts in the month of the admission date', () => {
+  const rangeStart = new Date(2026, 0, 1)   // card starts January 2026
+  const w = (admissionDate, extra = {}) => admissionMonth({ admissionDate, sessionStartYear: 2026, rangeStart, ...extra })
+  assert.deepEqual(w('2026-01-20'), { year: 2026, month: 0 })      // admitted in January for the coming session: January, not April
+  assert.deepEqual(w('2026-02-03'), { year: 2026, month: 1 })
+  assert.deepEqual(w('2026-05-12'), { year: 2026, month: 4 })      // a genuine May admission
+  assert.deepEqual(w('2025-08-01'), { year: 2026, month: 3 })      // before the card's range → April of the session
+  assert.deepEqual(w(null), { year: 2026, month: 3 })              // no date at all → April
+  assert.deepEqual(w(null, { firstPaymentDate: '2026-02-10' }), { year: 2026, month: 1 })   // no admission date, but a payment date
+})
+
+import { crossModuleChecks } from '../src/lib/crossChecks.js'
+
+test('cross-module checks: each link reports the records that do not line up', () => {
+  const helpers = {
+    courseOf: s => s.course || 'Unassigned', batchOf: s => s.batch || 'No batch', canonicalBatch: b => b,
+    sourceRef: { flatFee: (g, m, y, id) => `flat_${g}_${m}_${y}`, courseFee: (g, m, y, id) => `course_${g}_${m}_${y}`, admission: g => `adm_${g}` },
+  }
+  const students = [
+    { id: 1, gcc_no: 10, name: 'A', course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder', admission_date: '2026-04-02' },
+    { id: 2, gcc_no: 11, name: 'B', course: 'Sainik', batch: 'Leader', hostel_type: 'Day Scholar' },                 // no rate, no admission date
+    { id: 3, gcc_no: 12, name: 'C', hostel_type: 'Boarder', admission_date: '2026-04-02' },                         // no course; boarder, no bed
+    { id: 4, gcc_no: 13, name: 'D', course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder', status: 'Left' },  // not active: ignored
+  ]
+  const r = crossModuleChecks({
+    ...helpers, students,
+    admissions: [{ id: 'a1', gcc_no: 99, applicant_name: 'Z', status: 'Enrolled' }, { id: 'a2', gcc_no: 10, applicant_name: 'A', status: 'Enrolled' }, { id: 'a3', gcc_no: 98, status: 'Admitted' }],
+    feeStructures: [{ course: 'Sainik', batch: 'Achiever', hostel_type: 'Boarder' }],
+    allocations: [{ student_id: 1, status: 'Active' }],
+    courseRows: [{ id: 'c1', adm_app_id: 10, for_month: 'August', year: 2026, amount_paid: 5000, pay_date: '2026-08-05' },
+                 { id: 'c2', adm_app_id: 10, for_month: 'September', year: 2026, amount_paid: 5000, pay_date: '2026-09-05' }],
+    accountRefs: new Set(['course_10_August_2026|course_fee']), sessionStart: '2026-04-01',
+  })
+  const by = Object.fromEntries(r.map(c => [c.key, c.items.map(i => i.id)]))
+  assert.deepEqual(by.adm_no_student, ['a1'])          // Enrolled but no student; 'Admitted' is not expected to have one yet
+  assert.deepEqual(by.stu_no_course, [3])
+  assert.deepEqual(by.stu_no_rate, [2])                // C has no course so it is reported once, under "no course"
+  assert.deepEqual(by.stu_no_admdate, [2])
+  assert.deepEqual(by.boarder_no_bed, [3])
+  assert.deepEqual(by.pay_no_account, ['c2'])
+})
+
+import { reconcileIncomeCollection } from '../src/lib/incomeCollection.js'
+test('income vs collection: explains each kind of gap by receipt', () => {
+  const acc = (id, amt, receipt, extra = {}) => ({ id, type: 'Income', amount: amt, source_type: 'course_fee', entry_date: '2026-10-05', payment_date: '2026-10-05', note: `Oct · ${receipt}`, ...extra })
+  const fee = (receipt, amt, date = '2026-10-05') => ({ amount: amt, receipt_no: receipt, pay_date: date, student_name: receipt })
+  const r = reconcileIncomeCollection({
+    from: '2026-10-01', to: '2026-10-31',
+    accounts: [
+      acc(1, 1000, 'GNSI-1'),
+      acc(2, 500, 'GNSI-2'),                                   // fee says 700 → mismatch
+      acc(3, 800, 'GNSI-3', { is_soft_deleted: true }),       // deleted
+      acc(4, 900, 'GNSI-4', { status: 'Pending' }),           // awaiting approval
+      acc(5, 600, 'GNSI-5', { payment_date: '2026-11-02' }),  // dated outside period
+      acc(6, 300, 'GNSI-9'),                                   // orphan
+      { id: 7, type: 'Income', amount: 250, source_type: 'store_sale', entry_date: '2026-10-06' },
+    ],
+    feePayments: [fee('GNSI-1', 1000), fee('GNSI-2', 700), fee('GNSI-3', 800), fee('GNSI-4', 900), fee('GNSI-5', 600), fee('GNSI-6', 400), { amount: 100, pay_date: '2026-10-07' }],
+  })
+  assert.equal(r.accountsFee, 1800)
+  assert.equal(r.split.store, 250)
+  assert.equal(r.accountsTotal, 2050)
+  assert.equal(r.feeTotal, 4500)
+  assert.equal(r.gap, 2700)
+  assert.deepEqual([r.missing, r.deleted, r.pending, r.moved, r.mismatch, r.orphan].map(x => x.length), [1, 1, 1, 1, 1, 1])
+  assert.equal(r.mismatch[0].diff, -200)
+  assert.equal(r.noReceipt.total, 100)
+  // The gap is fully explained: missing+deleted+pending+moved+no-receipt − mismatch(diff) − orphan
+  const explained = r.totals.missing + r.totals.deleted + r.totals.pending + r.totals.moved + r.noReceipt.total - r.totals.mismatch - r.totals.orphan
+  assert.equal(explained, r.gap)
+})
+
+import { matchAdmissionsStudents } from '../src/lib/admStudentMatch.js'
+test('admissions vs students: one-sided records, duplicates and field differences', () => {
+  const r = matchAdmissionsStudents({
+    admissions: [
+      { gcc_no: '101', applicant_name: 'Asha Devi', status: 'Enrolled', phone: '98620-12345', course: 'NVS', batch: 'A', dob: '2014-03-02' },
+      { gcc_no: '102', applicant_name: 'Ravi', status: 'Enrolled' },                       // no student
+      { gcc_no: '103', applicant_name: 'Meena', status: 'Applied' },                        // student exists, not Enrolled
+      { gcc_no: '104', applicant_name: 'Dup', status: 'Enrolled' }, { gcc_no: '104', applicant_name: 'Dup', status: 'Enrolled' },
+    ],
+    students: [
+      { gcc_no: 101, name: 'asha  devi', status: 'Active', phone: '9862012345', course: 'NVS', batch: 'B', dob: '2014-03-02T00:00:00' },
+      { gcc_no: 103, name: 'Meena', status: 'Active' },
+      { gcc_no: 104, name: 'Dup', status: 'Dropout' },
+      { gcc_no: 105, name: 'Direct add', status: 'Active' },                               // no admission
+      { gcc_no: 106, name: 'Gone', status: 'Active', deleted_at: '2026-01-01' },           // ignored
+    ],
+  })
+  assert.deepEqual(r.enrolledNoStudent.map(x => x.gcc), ['102'])
+  assert.deepEqual(r.studentNoAdmission.map(x => x.gcc), ['105'])
+  assert.deepEqual(r.studentButNotEnrolled.map(x => x.gcc), ['103'])
+  assert.deepEqual(r.duplicates.map(x => x.gcc), ['104'])
+  assert.deepEqual(r.statusDiff.map(x => x.gcc), ['104'])
+  assert.deepEqual(r.fieldDiffs.map(x => `${x.gcc}:${x.field}`), ['101:Batch'])   // name/phone/dob formatting differences are not mismatches
+})
+
+import { admissionLinks } from '../src/lib/admStudentMatch.js'
+test('admission links: per-GCC state for badges', () => {
+  const l = admissionLinks({
+    admissions: [{ gcc_no: 1, applicant_name: 'A', status: 'Enrolled', course: 'NVS' }, { gcc_no: 2, status: 'Enrolled' }, { gcc_no: 3, status: 'Applied' }, { gcc_no: 4, status: 'Applied' }],
+    students: [{ gcc_no: 1, name: 'A', status: 'Active', course: 'Sainik' }, { gcc_no: 4, name: 'D', status: 'Active' }],
+  })
+  assert.equal(l.get('1').state, 'diff')
+  assert.equal(l.get('1').diffs[0].field, 'Course')
+  assert.equal(l.get('2').state, 'noStudent')
+  assert.equal(l.has('3'), false)
+  assert.equal(l.get('4').state, 'notEnrolled')
+})
+
+import { countHouseOccupancy } from '../src/lib/houseOccupancy.js'
+test('house occupancy: no double count of enrolled, inactive students take no seat', () => {
+  const r = countHouseOccupancy({
+    houses: [{ name: 'Loktak', capacity: 3 }, { name: 'Block-B' }],
+    students: [
+      { gcc_no: 1, house: 'Loktak', status: 'Active' }, { gcc_no: 2, house: 'loktak ', status: 'Active' },
+      { gcc_no: 3, house: 'Loktak', status: 'Dropout' }, { gcc_no: 4, house: 'Loktak', status: 'Active', deleted_at: '2026-01-01' },
+    ],
+    admissions: [
+      { gcc_no: 1, house: 'Loktak', status: 'Enrolled' },   // has a student row already
+      { gcc_no: 5, house: 'Loktak', status: 'Admitted' },   // waiting seat
+      { gcc_no: 6, house: 'Loktak', status: 'Applied' }, { gcc_no: 7, house: 'Loktak', status: 'Rejected' },
+    ],
+  })
+  assert.equal(r[0].occupied, 3); assert.equal(r[0].studentCount, 2); assert.equal(r[0].applicantCount, 1)
+  assert.equal(r[0].isFull, true); assert.equal(r[1].capacity, 40)
+  assert.equal(countHouseOccupancy({ houses: [{ name: 'Loktak', capacity: 3 }], students: [], admissions: [{ gcc_no: 5, house: 'Loktak', status: 'Admitted' }], excludeGcc: '5' })[0].occupied, 0)
+})
+
+import { patchFromStudent } from '../src/lib/admStudentMatch.js'
+test('patch from student: copies filled student values, never blanks an application field', () => {
+  const l = admissionLinks({
+    admissions: [{ gcc_no: 1, applicant_name: 'A', status: 'Enrolled', course: 'NVS', batch: 'Old', house: 'Loktak', phone: '9862012345' }],
+    students: [{ gcc_no: 1, name: 'A', status: 'Active', course: 'Sainik', batch: 'New', house: '', phone: '9862012345' }],
+  })
+  assert.deepEqual(patchFromStudent(l.get('1').diffs), { course: 'Sainik', batch: 'New' })   // house blank on student → not even reported
+  assert.equal(patchFromStudent([]), null)
+})
+
+import { planSessionMove } from '../src/lib/sessionMove.js'
+test('session move: only current students not already in the target move', () => {
+  const p = planSessionMove([
+    { id: 1, gcc_no: 12, name: 'A', status: 'Active', session: '2025-26' },
+    { id: 2, gcc_no: 11, name: 'B', session: null },                       // no status, no session → moves
+    { id: 3, gcc_no: 13, name: 'C', status: 'Active', session: ' 2026-27 ' },  // already there
+    { id: 4, gcc_no: 14, name: 'D', status: 'Dropout', session: '2025-26' },
+    { id: 5, gcc_no: 15, name: 'E', status: 'Active', session: '2025-26', deleted_at: '2026-01-01' },
+  ], '2026-27')
+  assert.deepEqual(p.moves.map(m => m.id), [2, 1])
+  assert.deepEqual(p.bySource, { '(none)': 1, '2025-26': 1 })
+  assert.equal(p.alreadyThere, 1); assert.equal(p.notCurrent, 2)
+})
+
+import { buildLocker, lockerType } from '../src/lib/locker.js'
+test('locker: maps the Students module names, newest document is current, counts required ones', () => {
+  assert.equal(lockerType('Aadhaar'), 'Aadhaar Card'); assert.equal(lockerType('photo'), 'Passport Photo'); assert.equal(lockerType('Weird'), 'Other')
+  const l = buildLocker([
+    { id: 1, doc_type: 'Birth Certificate', created_at: '2026-01-01', status: 'Verified' },
+    { id: 2, doc_type: 'Birth Certificate', created_at: '2026-03-01' },
+    { id: 3, doc_type: 'Aadhaar', created_at: '2026-02-01' },
+    { id: 4, doc_type: 'Medical Certificate', created_at: '2026-02-02' },
+  ])
+  assert.equal(l.slots.find(s => s.type === 'Birth Certificate').current.id, 2)
+  assert.deepEqual(l.counts, { required: 5, haveRequired: 2, verifiedRequired: 0, total: 4 })   // newest birth cert is unverified
+})
+
+import { registrationWindow, validateRegistration, candidatePayload, admitCardState, feeFor, sameDob } from '../src/lib/entranceReg.js'
+test('entrance registration: window, validation, payload, admit-card state', () => {
+  const exam = { status: 'Scheduled', app_open: '2026-11-01', app_close: '2026-12-15', application_fee: 500 }
+  assert.equal(registrationWindow(exam, '2026-10-30').open, false)
+  assert.equal(registrationWindow(exam, '2026-11-20').open, true)
+  assert.match(registrationWindow(exam, '2026-12-16').reason, /closed/)
+  assert.equal(registrationWindow({ ...exam, status: 'Cancelled' }, '2026-11-20').open, false)
+  assert.equal(feeFor(exam), 500); assert.equal(feeFor({}), 0)
+
+  const good = { student_name: 'Asha Devi', dob: '2014-05-10', gender: 'Girl', category: 'General', father_name: 'R Singh', mother_name: 'M Devi', phone: '98620 12345',
+    email: 'a@b.in', address: 'Khangabok Makhong', state: 'Manipur', district: 'Thoubal', pincode: '795146', class_studying: 'Class 5→6', school: 'Govt School', declared: true }
+  assert.deepEqual(validateRegistration(good, exam, { today: '2026-11-20', assets: { photo: true, signature: true } }), {})
+  const bad = validateRegistration({ ...good, phone: '12345', pincode: '12', dob: '2026-11-20', declared: false }, exam, { today: '2026-11-20' })
+  assert.deepEqual(Object.keys(bad).sort(), ['declared', 'dob', 'phone', 'photo', 'pincode', 'signature'])
+  const p = candidatePayload(good)
+  assert.equal(p.phone, '9862012345'); assert.equal(p.address, 'Khangabok Makhong, Thoubal, Manipur, 795146'); assert.equal(p.reg_details.nationality, 'Indian')
+
+  assert.equal(admitCardState({ fee_status: 'Unpaid' }, exam).state, 'pay')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Registered' }, exam).state, 'slip')
+  assert.equal(admitCardState({ fee_status: 'Paid', status: 'Hall Ticket Issued' }, exam).state, 'admit')
+  assert.equal(admitCardState({ fee_status: 'Unpaid', status: 'Registered' }, { application_fee: 0 }).state, 'slip')
+  assert.equal(sameDob('2014-05-10T00:00:00Z', '2014-05-10'), true); assert.equal(sameDob('', ''), false)
+})
+
+test('cross checks: promised concessions, instalment plans, admission fee, photos, entrance → application', () => {
+  const ids = { courseOf: () => 'Navodaya', batchOf: () => 'Umeed', canonicalBatch: b => b, sourceRef: { flatFee: () => 'x', courseFee: () => 'y', admission: g => `adm_${g}` } }
+  const checks = crossModuleChecks({
+    students: [{ gcc_no: 1, status: 'Active' }, { gcc_no: 2, status: 'Active', photo_path: 'p.jpg' }, { gcc_no: 3, status: 'Active' }],
+    admissions: [
+      { gcc_no: 1, status: 'Enrolled', applicant_name: 'A', scholarship_pct: 25 },
+      { gcc_no: 2, status: 'Enrolled', applicant_name: 'B', sibling_gcc: 9, instalment_plan: 'quarterly' },
+      { gcc_no: 3, status: 'Enrolled', applicant_name: 'C', photo_url: 'x', concession_amt: 500 },
+      { gcc_no: 4, status: 'Applied', applicant_name: 'D', dob: '2015-01-01' },
+    ],
+    admRows: [{ adm_app_id: 1, fee_type: 'admission', reverted: false }, { adm_app_id: 2, fee_type: 'admission', reverted: true }],
+    concessionGccs: new Set(['3']), planGccs: new Set(),
+    entranceAdmitted: [{ id: 'e1', student_name: 'D', dob: '2015-01-01' }, { id: 'e2', student_name: 'Z', dob: '2015-02-02', application_no: 'SA260009' }],
+    ...ids,
+  })
+  const by = k => checks.find(c => c.key === k).items.map(i => i.id)
+  assert.deepEqual(by('enrolled_no_admfee'), [2, 3])
+  assert.deepEqual(by('adm_concession_not_in_fees'), [1, 2])      // 3 has one in Fees
+  assert.deepEqual(by('adm_plan_not_set'), [2])
+  assert.deepEqual(by('enrolled_no_photo'), [1])                  // 2 has a student photo, 3 an application photo
+  assert.deepEqual(by('ent_no_application'), ['e2'])              // D already has an application
+})
+
+import { concessionRowsFor, newConcessionRows } from '../src/lib/admissionConcessions.js'
+import { applicationFromCandidate, candidateKey } from '../src/lib/candidateToApplication.js'
+test('admission concessions become register rows, skipping ones already there', () => {
+  const rows = concessionRowsFor({ gcc: '77', name: 'Asha', scholarshipPct: '25', concessionAmt: 500, siblingGcc: '9' }, { validFrom: '2026-04-02', approvedBy: 'Admin' })
+  assert.deepEqual(rows.map(r => [r.kind, r.basis, r.value, r.applies_to]), [['Scholarship-merit', 'percent', 25, 'course'], ['Other', 'fixed_per_month', 500, 'course']])
+  assert.equal(rows[0].gcc, '77'); assert.equal(rows[0].valid_from, '2026-04-02')
+  assert.deepEqual(concessionRowsFor({ gcc: '77', scholarshipPct: 150 }), [])           // >100% is not a valid percent
+  assert.equal(newConcessionRows(rows, [{ gcc: '77', kind: 'Scholarship-merit', basis: 'percent', value: 25, status: 'active' }]).length, 1)
+  assert.equal(newConcessionRows(rows, [{ gcc: '77', kind: 'Scholarship-merit', basis: 'percent', value: 25, status: 'revoked' }]).length, 2)
+})
+test('entrance candidate → admission application row', () => {
+  const row = applicationFromCandidate({ student_name: ' Asha Devi ', dob: '2015-03-01', gender: 'Girl', category: 'OBC', father_name: 'R', phone: '9862012345', school: 'GPS', application_no: 'SA270001', rank: 3, quota: 'OBC' },
+    { exam_name: 'Sainik 2027', course: 'sainik' }, { gcc: '1500', session: '2027-2028' })
+  assert.equal(row.gcc_no, 1500); assert.equal(row.applicant_name, 'Asha Devi'); assert.equal(row.gender, 'Female'); assert.equal(row.course, 'Sainik'); assert.equal(row.status, 'Admitted')
+  assert.match(row.remarks, /Sainik 2027.*SA270001.*rank 3.*OBC quota/)
+  assert.equal(applicationFromCandidate({ student_name: 'X' }, { course: 'rms' }, { gcc: 1 }).course, null)
+  assert.equal(candidateKey(' Asha Devi ', '2015-03-01T00:00:00Z'), candidateKey('asha devi', '2015-03-01'))
+})
+
+import { readFileSync } from 'node:fs'
+test('api/_entrance keeps byte-identical copies of the shared rule files in src/lib', () => {
+  for (const f of ['entranceReg.js', 'entranceNumbers.js']) {
+    assert.equal(readFileSync(new URL(`../api/_entrance/${f}`, import.meta.url), 'utf8'), readFileSync(new URL(`../src/lib/${f}`, import.meta.url), 'utf8'), `${f} differs — copy src/lib/${f} to api/_entrance/${f}`)
+  }
+})
+
+// ── Online admission portal ────────────────────────────────────────────────
+import * as portal from '../src/lib/portalApply.js'
+import { applicationRowFromPortal, feeFromPortal } from '../src/lib/portalToApplication.js'
+
+test('api/_admission keeps a byte-identical copy of portalApply.js', () => {
+  assert.equal(readFileSync(new URL('../api/_admission/portalApply.js', import.meta.url), 'utf8'), readFileSync(new URL('../src/lib/portalApply.js', import.meta.url), 'utf8'), 'copy src/lib/portalApply.js to api/_admission/portalApply.js')
+})
+
+const PORTAL_OPTS = [{ course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', admission_fee: 6000 }, { course: 'Navodaya', batch: 'Udaan', hostel_type: 'Day Scholar', admission_fee: 4000 }]
+const goodForm = { student_name: 'Rohan Singh', dob: '2014-05-01', gender: 'Boy', category: 'General', father_name: 'A Singh', mother_name: 'B Singh', phone: '98765 43210', address: 'Khangabok Bazar, Thoubal',
+  state: 'Manipur', district: 'Thoubal', pincode: '795138', prev_school: 'XYZ School', course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', declared: true }
+
+test('portal: a complete form passes; each missing piece is reported', () => {
+  assert.deepEqual(portal.validateApplication(goodForm, PORTAL_OPTS, { hasPhoto: true, today: '2026-10-22' }), {})
+  const e = portal.validateApplication({ ...goodForm, phone: '12345', pincode: '12', declared: false, student_name: '' }, PORTAL_OPTS, { hasPhoto: false, today: '2026-10-22' })
+  for (const k of ['phone', 'pincode', 'declared', 'student_name', 'photo']) assert.ok(e[k], k)
+})
+test('portal: a course / batch / hostel nobody priced is refused, and the fee comes from the matching option', () => {
+  assert.ok(portal.validateApplication({ ...goodForm, hostel_type: 'Day Boarder' }, PORTAL_OPTS, { hasPhoto: true, today: '2026-10-22' }).course)
+  assert.equal(portal.portalFee(PORTAL_OPTS, goodForm), 6000)
+  assert.equal(portal.portalFee(PORTAL_OPTS, { ...goodForm, hostel_type: 'Day Scholar' }), 4000)
+  assert.equal(portal.portalFee(PORTAL_OPTS, { ...goodForm, batch: 'Nope' }), 0)
+})
+test('portal: reference numbers run on and the form snapshot keeps only the last 4 Aadhaar digits', () => {
+  assert.equal(portal.referenceNo(2026, 7), 'AP26-0007')
+  assert.equal(portal.nextReferenceSeq([{ reference_no: 'AP26-0009' }, { reference_no: 'AP26-0012' }, { reference_no: 'AP25-0100' }], 2026), 13)
+  assert.equal(portal.nextReferenceSeq([], 2026), 1)
+  const snap = portal.formSnapshot({ ...goodForm, aadhaar: '1234 5678 9012' })
+  assert.equal(snap.aadhaar_last4, '9012'); assert.equal(snap.aadhaar, undefined); assert.equal(snap.phone, '9876543210')
+})
+test('portal: approval waits for the fee and for verified required documents; documents alone can be overridden', () => {
+  const app = { status: 'Submitted', fee_status: 'Unpaid', fee_amount: 6000 }
+  const docs = [{ doc_type: 'birth_proof', status: 'Verified' }, { doc_type: 'marksheet', status: 'Uploaded' }]
+  let s = portal.approvalState(app, docs)
+  assert.deepEqual(s.hard, ['Admission fee not paid']); assert.equal(s.docs.length, 1)
+  s = portal.approvalState({ ...app, fee_status: 'Paid' }, [...docs.slice(0, 1), { doc_type: 'marksheet', status: 'Verified' }])
+  assert.deepEqual(s, { hard: [], docs: [] })
+  assert.ok(portal.approvalState({ ...app, fee_status: 'Paid', status: 'Rejected' }, []).hard.length)
+  assert.equal(portal.approvalState({ ...app, fee_status: 'Waived' }, []).hard.length, 0)
+})
+test('portal: what the applicant sees follows payment, documents and the decision', () => {
+  const docsOk = [{ doc_type: 'birth_proof', status: 'Verified' }, { doc_type: 'marksheet', status: 'Uploaded' }]
+  assert.equal(portal.applicantStage({ status: 'Submitted', fee_status: 'Unpaid', fee_amount: 6000 }, docsOk).key, 'pay')
+  assert.equal(portal.applicantStage({ status: 'Submitted', fee_status: 'Paid', fee_amount: 6000 }, []).key, 'docs')
+  assert.equal(portal.applicantStage({ status: 'Under review', fee_status: 'Paid', fee_amount: 6000 }, docsOk).key, 'review')
+  assert.equal(portal.applicantStage({ status: 'Approved', promoted_gcc: 1234 }, []).key, 'approved')
+  assert.equal(portal.applicantStage({ status: 'Rejected', rejection_reason: 'Seats full' }, []).next, 'Seats full')
+})
+test('portal: an approved application becomes an Admitted admissions row; the online payment becomes the ledger fee', () => {
+  const p = { reference_no: 'AP26-0001', student_name: 'Rohan Singh', dob: '2014-05-01', phone: '9876543210', course: 'Navodaya', batch: 'Udaan', hostel_type: 'Boarder', session: '2026-2027', fee_amount: 6000, fee_status: 'Paid', fee_paid_on: '2026-10-20', payment_mode: 'Online', payment_id: 'pay_X1',
+    form: { gender: 'Girl', father_name: 'A', address: 'Road 1', district: 'Thoubal', state: 'Manipur', pincode: '795138', prev_school: 'XYZ' } }
+  const row = applicationRowFromPortal(p, { gcc: '2750' })
+  assert.equal(row.gcc_no, 2750); assert.equal(row.status, 'Admitted'); assert.equal(row.gender, 'Female'); assert.equal(row.batch, 'Udaan'); assert.match(row.remarks, /AP26-0001/); assert.equal(row.address, 'Road 1, Thoubal, Manipur, 795138')
+  assert.deepEqual(feeFromPortal(p), { amount: 6000, payDate: '2026-10-20', payMode: 'Online (Razorpay)', txnRef: 'pay_X1' })
+})
+
+import { netRows, monthlyOwed } from '../src/lib/monthwiseDues.js'
+
+test('netRows: write-offs come off oldest month first and concessions come off the fee', () => {
+  const row = (month, o) => ({ month, year: 2026, expected: 5500, waived: 0, paidAmt: 0, due: 5500, status: 'due', ...o })
+  const reg = { writtenOff: 7000, rows: [row('April'), row('May'), row('June', { waived: 2500, paidAmt: 3000, due: 0, status: 'paid' })] }
+  const n = netRows(reg)
+  assert.deepEqual(n.map(r => r.due), [0, 4000, 0])
+  assert.equal(n[2].expected, 3000)
+  // the sum of the net months equals the ledger's own balance (total due less write-offs)
+  assert.equal(n.reduce((s, r) => s + r.due, 0), 11000 - 7000)
+  // nothing written off → rows unchanged for dues
+  assert.deepEqual(netRows({ rows: [row('April')] }).map(r => r.due), [5500])
+})
+
+test('monthlyOwed matches the register for a part-paid started month', () => {
+  const r = { status: 'short', expected: 5500, paidAmt: 2000, waived: 0, due: 3500 }
+  assert.equal(monthlyOwed(r).due, r.due)
+})

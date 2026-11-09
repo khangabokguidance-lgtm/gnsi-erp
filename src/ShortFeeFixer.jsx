@@ -5,6 +5,7 @@
 // fix for each cause: correct the hostel type, approve/refuse the shortfall,
 // correct a wrongly entered amount, move a payment to the right month, fix the
 // date / revert, or collect the balance. Every change is audited.
+import { useAddonResolver } from './useAddonResolver'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { buildAllLedgers } from './feeLedgerBulk'
@@ -22,7 +23,7 @@ const CSS = `
 .sff-bg{position:fixed;inset:0;background:rgba(11,30,61,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto}
 .sff{width:100%;max-width:820px;background:#faf8f3;border-radius:22px;box-shadow:0 30px 70px -20px rgba(0,0,0,.5);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1f2a44;overflow:hidden}
 .sff-hd{padding:18px 20px;color:#fff;background:radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 45%,#0B1E3D 85%);display:flex;gap:12px;align-items:flex-start}
-.sff-hd h2{margin:0;font:700 21px 'Fraunces',Georgia,serif}
+.sff-hd h2{margin:0;font:700 21px 'Fraunces',Georgia,serif;color:#fff}
 .sff-x{margin-left:auto;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:16px}
 .sff-body{padding:16px;display:grid;gap:12px}
 .sff-card{background:#fff;border:1px solid #ece6d6;border-radius:16px;padding:14px 16px}
@@ -47,6 +48,7 @@ const CSS = `
 const btn = (bg, color = '#fff', border = 'none') => ({ background: bg, color, border })
 
 export default function ShortFeeFixer({ student, session, month: initialMonth, year: initialYear, adm_fee_collections = [], adm_flat_fees = [], adm_course_fees = [], currentUser, onClose, onChanged, onCollect, onOpenRevert }) {
+  const addon = useAddonResolver()
   const me = currentUser?.name || currentUser?.userName || 'Admin'
   const gcc = gccStr(student.gcc_no)
   const [led, setLed] = useState(null)          // { reg, rates }
@@ -91,7 +93,8 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
   const rateOf = (sess, course, batch, t) => {
     const same = r => r.session_year === sess && r.course === course && r.hostel_type === t
     const hit = structures.find(r => same(r) && (r.batch || '') === (batch || '')) || structures.find(same)
-    return hit ? Number(hit[field]) || 0 : 0
+    const base = hit ? Number(hit[field]) || 0 : 0
+    return base > 0 ? base + addon.amount(student, sess) : 0   // Combined students also pay the monthly add-on
   }
   const matches = []
   if (sel && paid > 0 && paid !== sel.expected) {

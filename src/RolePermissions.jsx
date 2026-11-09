@@ -16,6 +16,7 @@ const ALL_MODULES = [
   { group: 'ACADEMIC',    items: [
     { id: 'attendance', label: 'Attendance' },
     { id: 'exams',      label: 'Exams' },
+    { id: 'cbt',        label: 'CBT Exam' },
     { id: 'timetable',  label: 'Timetable' },
     { id: 'teaching',   label: 'Teaching' },
     { id: 'courses',    label: 'Courses' },

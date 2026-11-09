@@ -12,15 +12,20 @@
 // 5. TabManualAdd / TabBulkPaste: StudyMaterialsRefPanel + emit QUESTION_SAVED
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank, openChapterIn, useChapterFocus } from './StudyMaterialBridge'
+import { applyBankPatch } from './qbankPatch'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 // Course → subject → chapter taxonomy (shared with QuestionBankViewer.jsx).
 import { COURSES, COURSE_LIST } from './qbankTaxonomy'
 import { T, heroStyle, optionStyle } from './qbankTheme'
 import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
+import { IconTabs } from './premiumUI'
+// Loaded on first use: it brings the Word-file library and the logo.
+const MayekDocTranslator = lazy(() => import('./MayekDocTranslator'))
+const BookletBuilder = lazy(() => import('./BookletBuilder'))
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -43,10 +48,13 @@ import {
 // Tool tab below — separate from the auto-detect-on-paste system above,
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
-import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+import { romanToMeetei, meeteiToRoman, getAllCharacters, fixApunOrder } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
-import { LANGS, langLabel, ENGINE_LABELS, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
+import { LANGS, langLabel, ENGINE_LABELS, offlineEnabled, setOfflineEnabled, offlineRunning, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, OFFLINE_DRAFT_SOURCE, DRAFT_BY, reviewedSource, offlineToMayek, saveTranslationDrafts, needsMayek, translateQuestionsOffline, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
+import { BmeiKeyboardToggle, BmeiKeyPad } from './BmeiKeyboard'
+import { useBmeiKeyboard } from './useBmeiKeyboard'
+import { planMayekRepair, applyMayekRepair } from './mayekRepair'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
   seedWordlist, getUnfilledEntries, getNeedsReviewEntries, findCoverageGaps,
@@ -576,7 +584,7 @@ function CastButton({ url, presentTargetId, showToast, small }) {
 // Mayek (which the viewer's machine needs installed to display it).
 function slideMayekUnicode(text, fontTag) {
   if (!text) return ''
-  return fontTag === 'bmei04' ? bmeiToUnicode(text) : text
+  return fontTag === 'bmei04' ? bmeiToUnicode(text) : fixApunOrder(text)
 }
 
 
@@ -1356,7 +1364,7 @@ function StudyMaterialsRefPanel({ course, subject, chapter, onNavigate }) {
 // TAB 1: QUESTION BANK
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin, canEdit = isAdmin, onNavigate }) {
+function TabBank({ questions, loading, refetch, patchBank, showToast, initialFilter, isAdmin, canEdit = isAdmin, onNavigate }) {
   const [filterCourse,     setFilterCourse]     = useState('All')
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
@@ -1486,7 +1494,9 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else {
       if (row?.diagram_url) removeDiagrams([row.diagram_url])
       setSelected(prev => { const n = new Set(prev); n.delete(id); return n })
-      showToast('Deleted ✓', C.rose); refetch(true)
+      showToast('Deleted ✓', C.rose)
+      // Drop it from the list on screen instead of re-downloading the whole bank.
+      if (patchBank) patchBank({ remove: [id] }); else refetch(true)
     }
   }
 
@@ -1498,11 +1508,16 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     // Diagram images are kept on bulk delete (not removed from storage)
     // so the backup's diagram_url links stay restorable.
     const rowsToDelete = questions.filter(q => selected.has(q.id))
+    const idsToDelete = [...selected]
     downloadQuestionsBackup(rowsToDelete, `bulk_${selected.size}`)
-    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).in('id', [...selected])
+    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).in('id', idsToDelete)
     if (error) showToast('Bulk delete failed: ' + error.message, C.rose)
     else if (!count) showToast('Nothing was deleted — you may lack permission', C.amber)
-    else { showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
+    else {
+      showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set())
+      // Only when every selected row really went; otherwise reload to see which.
+      if (patchBank && count === idsToDelete.length) patchBank({ remove: idsToDelete }); else refetch(true)
+    }
   }
 
   // One-click repair for a question whose options were merged on paste.
@@ -1510,7 +1525,40 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     const { data, error } = await supabase.from('qbank_questions').update(patch).eq('id', q.id).select('id')
     if (error) showToast('Fix failed: ' + error.message, C.rose)
     else if (!data?.length) showToast('Nothing was updated — you may lack permission', C.amber)
-    else { showToast('Options split ✓', C.green); refetch(true) }
+    else { showToast('Options split ✓', C.green); if (patchBank) patchBank({ update: [{ id: q.id, ...patch }] }); else refetch(true) }
+  }
+
+  // Offline translator: fill in Meetei Mayek for the questions now shown
+  // (filters and search) that have none yet, and save it straight away.
+  const TRANSLATE_LIMIT = 200
+  const toTranslate = useMemo(() => filtered.filter(needsMayek), [filtered])
+  const [translating, setTranslating] = useState('')
+  const translateShown = async () => {
+    if (translating || !toTranslate.length) return
+    if (!offlineEnabled()) { showToast('Tick "Use the offline translator on this computer" first', C.amber); return }
+    const todo = toTranslate.slice(0, TRANSLATE_LIMIT)
+    if (!confirm(`Translate ${todo.length} question${todo.length === 1 ? '' : 's'} into Meetei Mayek with the offline translator and save ${todo.length === 1 ? 'it' : 'them'}?\n\nThis is machine translation: check the questions afterwards.`)) return
+    setTranslating('Starting…')
+    try {
+      const res = await translateQuestionsOffline(todo, (n, total) => setTranslating(`Translating ${n}/${total}…`))
+      if (!res) { showToast('The offline translator is not running — start start-translator.bat', C.rose); return }
+      let saved = 0, refused = 0
+      for (let i = 0; i < res.patches.length; i += 10) {
+        setTranslating(`Saving ${Math.min(i + 10, res.patches.length)}/${res.patches.length}…`)
+        const done = await Promise.all(res.patches.slice(i, i + 10).map(({ id, patch }) =>
+          supabase.from('qbank_questions').update(patch).eq('id', id).select('id')))
+        done.forEach(({ data, error }) => { if (!error && data?.length) saved++; else refused++ })
+      }
+      const more = toTranslate.length - todo.length
+      showToast(`Translated and saved ${saved} question${saved === 1 ? '' : 's'}` +
+        (res.failed + refused ? ` · ${res.failed + refused} not done` : '') + (more > 0 ? ` · ${more} more: click again` : ''),
+        saved ? C.green : C.amber)
+      if (saved) refetch(true)
+    } catch (err) {
+      showToast('Translation failed: ' + err.message, C.rose)
+    } finally {
+      setTranslating('')
+    }
   }
 
   const startEdit = (q) => setEditQ({ ...q, _savedDiagramUrl: q.diagram_url || '' })
@@ -1538,7 +1586,8 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else if (!data?.length) showToast('Nothing was updated — the question no longer exists, or you lack permission', C.amber)
     else {
       if (_savedDiagramUrl && _savedDiagramUrl !== payload.diagram_url) removeDiagrams([_savedDiagramUrl])
-      showToast('Updated ✓', C.green); setEditQ(null); refetch(true)
+      showToast('Updated ✓', C.green); setEditQ(null)
+      if (patchBank) patchBank({ update: [{ id, ...payload }] }); else refetch(true)
     }
   }
 
@@ -1659,9 +1708,20 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
               style={{ ...btnSm('transparent', T.indigo), border:'none', padding:'4px 6px' }}>Reset filters</button>
           )}
         </div>
-        {isAdmin && selected.size > 0 && (
-          <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
-        )}
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          {canEdit && !loading && toTranslate.length > 0 && (
+            <>
+              <OfflineToggle recheck={!!translating} />
+              <button onClick={translateShown} disabled={!!translating} style={btnSm(C.violet)}
+                title="Translates the questions shown here that have no Meetei Mayek yet, with the offline translator on this computer, and saves them">
+                {translating || `🌐 Translate ${Math.min(toTranslate.length, TRANSLATE_LIMIT)} to Meetei Mayek`}
+              </button>
+            </>
+          )}
+          {isAdmin && selected.size > 0 && (
+            <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
+          )}
+        </div>
       </div>
 
       {/* Edit inline panel — teaching staff and admins; delete stays admin-only */}
@@ -1950,7 +2010,7 @@ const emptyRow = () => ({
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
 })
 
-function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
+function TabManualAdd({ questions, refetch, patchBank, showToast, onNavigate }) {
   const [rows,   setRows]   = useState([emptyRow()])
   const [saving, setSaving] = useState(false)
 
@@ -1997,12 +2057,14 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
       ...r,
       subsection: r.subsection || detectSubsection(r.question, r.subject),
     }))
-    const { error } = await supabase.from('qbank_questions').insert(payload)
+    const { data: inserted, error } = await supabase.from('qbank_questions').insert(payload).select()
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
     showToast(`✅ ${rows.length} question(s) saved!`, C.green)
     // ── PATCH: notify StudyMaterial badges (one event per chapter saved) ──
     emitQuestionsSaved(rows)
-    setRows([emptyRow()]); refetch(true)
+    // Add the saved rows to the list on screen; reload only if they didn't come back.
+    setRows([emptyRow()])
+    if (patchBank && inserted?.length === payload.length) patchBank({ add: inserted }); else refetch(true)
     setSaving(false)
   }
 
@@ -2318,7 +2380,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
 
           <label style={lS}>Paste Question Paper Text *</label>
           <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={14}
-            style={{ ...iS, resize:'vertical', fontFamily:'monospace', fontSize:12, marginBottom:14 }}
+            style={{ ...iS, resize:'vertical', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:14 }}
             placeholder={`Supported formats — any of these work:
 
 1. Which of the following is an improper fraction?
@@ -2375,7 +2437,7 @@ Answer: B`} />
                   </span>
                 </label>
                 <textarea value={answerKeyText} onChange={e => setAnswerKeyText(e.target.value)} rows={4}
-                  style={{ ...iS, fontFamily:'monospace', fontSize:12, marginBottom:8 }}
+                  style={{ ...iS, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, marginBottom:8 }}
                   placeholder="1-b, 2-c, 3-d, 4-a, 5-b..." />
                 <button onClick={applyAnswerKey} style={btn(C.green)}>✓ Apply Answer Key</button>
               </div>
@@ -3002,23 +3064,31 @@ function MayekTranslator({ showToast, currentStaffId }) {
   const [showKeys, setShowKeys] = useState(false)
   const [last, setLast] = useState(null) // what the engine returned, to spot staff edits
   const [saving, setSaving] = useState(false)
+  const [translated, setTranslated] = useState(0) // re-checks the offline translator after each run
+  const [autoSaved, setAutoSaved] = useState(0) // lines of the last translation added to the dictionary
   const run = useRef(0)
+  const { areaRef: kbArea, kb } = useBmeiKeyboard() // BMEI04 typing in the result box (Meetei Mayek only)
 
   const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
   const doTranslate = async () => {
     if (!input.trim() || busy) return
     if (from === to) { setOutput(input); return }
     const id = ++run.current
-    setBusy('Translating…'); setWarnings([]); setDetected(''); setLast(null)
+    setBusy('Translating…'); setWarnings([]); setDetected(''); setLast(null); setAutoSaved(0)
     try {
-      const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating part ${i} of ${n}…`) })
+      const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating… ${i} of ${n} parts done`) })
       if (id !== run.current) return
       setOutput(r.text); setDetected(r.detected); setWarnings(r.warnings)
       setLast({ source: r.source, machine: r.text, from: r.from, to, engine: r.engine, dictLines: r.dictLines })
+      // Every new line is kept in the dictionary as a draft for a teacher to approve.
+      saveTranslationDrafts(r.pairs, r.engine, currentStaffId)
+        .then(n => { if (id === run.current) setAutoSaved(n) })
+        .catch(() => { /* the dictionary is a bonus; the translation is already shown */ })
     } catch (e) {
       if (id === run.current) showToast('Translation failed: ' + e.message, C.rose)
     } finally {
       if (id === run.current) setBusy('')
+      setTranslated(n => n + 1)
     }
   }
   const swap = () => {
@@ -3050,7 +3120,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
     fontSize:15, lineHeight:1.8, resize:'vertical', boxSizing:'border-box' }
 
   return (
-    <div>
+    <div ref={kbArea}>
       <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:10 }}>
         <select aria-label="Translate from" value={from} onChange={e => setFrom(e.target.value)} style={sel}>
           {LANGS.filter(l => l.source).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
@@ -3059,6 +3129,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
         <select aria-label="Translate to" value={to} onChange={e => setTo(e.target.value)} style={sel}>
           {LANGS.filter(l => l.target).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
         </select>
+        <OfflineToggle recheck={translated} />
       </div>
 
       <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
@@ -3073,13 +3144,20 @@ function MayekTranslator({ showToast, currentStaffId }) {
         <div>
           <label style={lS}>{langLabel(to)}{last?.engine ? ` — ${ENGINE_LABELS[last.engine]}` : ''}{last?.dictLines && last.engine !== 'dictionary' ? ` + ${last.dictLines} line${last.dictLines === 1 ? '' : 's'} from your dictionary` : ''}</label>
           <textarea value={output} onChange={e => setOutput(e.target.value)} rows={9} aria-label="Translation"
-            placeholder={busy || 'Translation will appear here — you can edit it'}
+            data-bmei={to === 'mni-Mtei' ? '' : undefined}
+            placeholder={busy || (to === 'mni-Mtei' && kb.on ? 'Translation will appear here — edit it with BMEI04 keys' : 'Translation will appear here — you can edit it')}
             style={{ ...box, background:'#f8fafc', fontFamily: mayekFont(to), fontSize: to === 'mni-Mtei' ? 19 : 15 }} />
+          {to === 'mni-Mtei' && (
+            <div style={{ marginTop:6 }}>
+              <BmeiKeyboardToggle kb={kb} />
+              <BmeiKeyPad kb={kb} />
+            </div>
+          )}
           {keys && (
             <div style={{ marginTop:8 }}>
               <label style={lS}>BMEI04 keystrokes (to type in Word with the Bmei04 font)</label>
               <div style={{ padding:'8px 12px', borderRadius:7, background:'#f8fafc', border:'1px solid '+C.border,
-                fontFamily:'monospace', fontSize:13, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{keys}</div>
+                fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:13, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{keys}</div>
             </div>
           )}
         </div>
@@ -3090,6 +3168,11 @@ function MayekTranslator({ showToast, currentStaffId }) {
           {last.from === 'en' && last.to === 'mni-Mtei' || last.from === 'mni-Mtei' && last.to === 'en'
             ? 'To save corrections to the dictionary, keep the same number of lines as the original.'
             : 'Corrections can be saved to the dictionary only for English ↔ Manipuri (Meetei Mayek).'}
+        </div>
+      )}
+      {autoSaved > 0 && (
+        <div style={{ marginTop:10, fontSize:12, color:C.slate }}>
+          ✓ {autoSaved} new line{autoSaved === 1 ? '' : 's'} saved to the Dictionary as draft{autoSaved === 1 ? '' : 's'} — approve them under Dictionary → Coverage → Needs Review.
         </div>
       )}
       {warnings.map(w => (
@@ -3112,7 +3195,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
 
       <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
         border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
-        Lines already in your Dictionary are used exactly; the rest is machine translation (Bhashini or Google Translate when set up, otherwise Gemini AI) —
+        Lines already in your Dictionary are used exactly; the rest is machine translation (the offline translator when switched on above, else Bhashini or Google Translate when set up, otherwise Gemini AI) —
         check it before putting it in a question paper. If a line is wrong, fix it in the result box and press
         <b> Save corrections to Dictionary</b>: the next translation of that line will use your wording.
         For exact letter-by-letter conversion of BMEI04 text, use the two keystroke modes instead.
@@ -3196,7 +3279,7 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
           <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
           <textarea value={input} onChange={e => setInput(e.target.value)} rows={8}
             style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-              fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }}
+              fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }}
             placeholder={mode === 'toMayek' ? 'BMEI04 keystrokes, e.g. AepL (apple), mnipur (Manipur)' : 'Meetei Mayek text'} />
         </div>
         <div>
@@ -3251,7 +3334,60 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
         Lowercase <code>a</code> is the Atap vowel sign (&ldquo;aa&rdquo;), not the vowel letter &mdash; that's capital <code>A</code>.
         The Save button converts a saved BMEI04 question_mayek to real Unicode — paste that question's full Mayek line exactly as stored.
       </div>
+      <MayekRepairPanel questions={questions} refetch={refetch} showToast={showToast} />
       </>)}
+    </div>
+  )
+}
+
+// Repairs Meetei Mayek already saved as Unicode: imported questions converted
+// with the old key table, and APUN IYEK saved in typing order (mayekRepair.js).
+// Shows what would change first; nothing is written until Repair is pressed.
+function MayekRepairPanel({ questions, refetch, showToast }) {
+  const [plan, setPlan] = useState(null)
+  const [busy, setBusy] = useState('')
+
+  const check = async () => {
+    setBusy('Checking…')
+    try { setPlan(await planMayekRepair(questions)) }
+    catch (e) { showToast('Check failed: ' + e.message, C.rose) }
+    setBusy('')
+  }
+  const repair = async () => {
+    if (!plan?.length) return
+    if (!window.confirm(`Repair the Meetei Mayek of ${plan.length} question${plan.length === 1 ? '' : 's'}?`)) return
+    const { saved, failed } = await applyMayekRepair(plan, (n, total) => setBusy(`Repairing ${n} of ${total}…`))
+    setBusy('')
+    setPlan(null)
+    showToast(failed ? `Repaired ${saved}; ${failed} could not be saved (sign in as staff?)` : `Repaired ${saved} question${saved === 1 ? '' : 's'}`, failed ? C.amber : C.green)
+    refetch && refetch(true)
+  }
+
+  return (
+    <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid '+C.border }}>
+      <div style={{ fontSize:13, fontWeight:800, color:C.navy, marginBottom:4 }}>Repair saved Meetei Mayek</div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:10, lineHeight:1.6 }}>
+        Finds questions whose Unicode Meetei Mayek was saved wrongly — Apun Iyek in the wrong place (ꯈꯋ꯭ꯥ instead of ꯈ꯭ꯋꯥ),
+        or imported with the old key table (ꯍꯋ꯭ꯥꯤꯗꯒꯤ instead of ꯈ꯭ꯋꯥꯏꯗꯒꯤ) — and shows the fix before saving anything.
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+        <button onClick={check} disabled={!!busy} style={btn(C.navy, !!busy)}>Check questions</button>
+        {plan?.length > 0 && <button onClick={repair} disabled={!!busy} style={btn(C.green, !!busy)}>Repair {plan.length} question{plan.length === 1 ? '' : 's'}</button>}
+        {busy && <span style={{ fontSize:12, color:C.slate }}>{busy}</span>}
+        {plan && !plan.length && !busy && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>Nothing to repair.</span>}
+      </div>
+      {plan?.length > 0 && (
+        <div style={{ marginTop:10, maxHeight:280, overflowY:'auto', border:'1px solid '+C.border, borderRadius:8 }}>
+          {plan.slice(0, 50).map(row => Object.entries(row.updates).map(([f, { before, after }]) => (
+            <div key={row.id + f} style={{ padding:'8px 12px', borderBottom:'1px solid '+C.border, fontSize:12 }}>
+              <div style={{ color:C.slate, marginBottom:2 }}>{row.question || '(no English text)'}{f !== 'question_mayek' ? ` — option ${f[7].toUpperCase()}` : ''}</div>
+              <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:15, color:'#b91c1c' }}>{before}</div>
+              <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:15, color:'#15803d' }}>{after}</div>
+            </div>
+          )))}
+          {plan.length > 50 && <div style={{ padding:'8px 12px', fontSize:12, color:C.slate }}>…and {plan.length - 50} more</div>}
+        </div>
+      )}
     </div>
   )
 }
@@ -3264,6 +3400,33 @@ function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
 // real English words/sentences to Meetei Mayek, using a Supabase table
 // (mayek_dictionary) that grows as entries are added — never machine-translated,
 // so a missing word is shown as [?word?] rather than guessed.
+// "Use the offline translator on this computer" tick box with a running /
+// not-running status. The setting is per browser (see mayekTranslate.js);
+// the status is re-checked whenever `recheck` changes.
+function OfflineToggle({ recheck = 0 }) {
+  const [offline, setOffline] = useState(offlineEnabled)
+  const [offlineUp, setOfflineUp] = useState(null) // null = not checked yet
+  useEffect(() => {
+    if (!offline) return
+    let live = true
+    offlineRunning().then(ok => { if (live) setOfflineUp(ok) })
+    return () => { live = false }
+  }, [offline, recheck])
+  const toggle = on => { setOfflineEnabled(on); setOfflineUp(null); setOffline(on) }
+  return (
+    <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:C.slate, cursor:'pointer' }}
+      title="Translates English on this computer with no internet. Needs the offline translator program running here.">
+      <input type="checkbox" checked={offline} onChange={e => toggle(e.target.checked)} />
+      Use the offline translator on this computer
+      {offline && (
+        <b style={{ color: offlineUp ? C.green : offlineUp === false ? C.rose : C.slate }}>
+          {offlineUp ? '— running' : offlineUp === false ? '— not running (start start-translator.bat)' : '— checking…'}
+        </b>
+      )}
+    </label>
+  )
+}
+
 function TabDictionary({ showToast, currentStaffId, questions, isAdmin }) {
   const [subView, setSubView] = useState('translate') // translate | add | bulk | wordlist | coverage | browse
 
@@ -3272,8 +3435,11 @@ function TabDictionary({ showToast, currentStaffId, questions, isAdmin }) {
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>
         Dictionary - English to Meetei Mayek
       </div>
-      <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:8 }}>
         Dictionary lookup for known words/sentences, with BMEI04 keystrokes. Unknown words are flagged, never guessed.
+      </div>
+      <div style={{ marginBottom:16 }}>
+        <OfflineToggle recheck={subView} />
       </div>
 
       <div style={{ display:'flex', gap:6, marginBottom:16, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content', flexWrap:'wrap' }}>
@@ -3342,7 +3508,7 @@ function DictSeedWordlistPanel({ showToast, currentStaffId }) {
       <textarea value={text} onChange={e => setText(e.target.value)} rows={10}
         placeholder={'apple\nball\ncat\ndog\n... or: apple, ball, cat, dog'}
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <label style={{ ...lS, marginTop:12 }}>Category (optional, applies to all seeded words)</label>
       <input value={category} onChange={e => setCategory(e.target.value)}
         placeholder="e.g. math, general, grammar" style={iS} />
@@ -3384,7 +3550,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
   const [phrases, setPhrases] = useState([])
   const [loadingQueues, setLoadingQueues] = useState(true)
   const [fillDrafts, setFillDrafts] = useState({}) // id -> bmei04 text being typed
-  const [drafting, setDrafting] = useState('') // progress text while Gemini fills entries
+  const [drafting, setDrafting] = useState('') // progress text while entries are auto-filled
   const [sentScan, setSentScan] = useState(null) // Question Bank sentence coverage
   const [sentBusy, setSentBusy] = useState('')
 
@@ -3429,7 +3595,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     try {
       await saveDictionaryEntry({
         entryType: row.entry_type, english: row.english, bmei04,
-        category: row.category, source: row.source === AI_DRAFT_SOURCE ? 'gemini_reviewed' : row.source,
+        category: row.category, source: reviewedSource(row.source),
         createdBy: currentStaffId || null,
       })
       showToast('Saved', C.green)
@@ -3440,16 +3606,19 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     }
   }
 
-  // Gemini fills blank entries as drafts (needs_review) for a teacher to check.
+  // Blank entries are filled as drafts (needs_review) for a teacher to check:
+  // by the offline translator where it is switched on and running, else Gemini.
   const DRAFT_LIMIT = 200
   const runDraft = async (rows) => {
     if (drafting || !rows.length) return
     const todo = rows.slice(0, DRAFT_LIMIT)
-    setDrafting('Asking Gemini…')
+    setDrafting('Translating…')
     try {
-      const { filled, failed } = await aiDraftEntries(todo, (n, total) => setDrafting(`Asking Gemini… ${n}/${total}`))
+      const { filled, offline, gemini, failed } = await aiDraftEntries(todo,
+        (n, total, engine) => setDrafting(`${engine === 'indictrans' ? 'Offline translator' : 'Asking Gemini'}… ${n}/${total}`))
       const more = rows.length - todo.length
-      showToast(`Gemini drafted ${filled} entr${filled === 1 ? 'y' : 'ies'} — check them under Needs Review` +
+      const by = [offline && `${offline} by the offline translator`, gemini && `${gemini} by Gemini`].filter(Boolean).join(', ')
+      showToast(`Drafted ${filled} entr${filled === 1 ? 'y' : 'ies'}${by ? ` (${by})` : ''} — check them under Needs Review` +
         (failed.length ? ` · ${failed.length} skipped` : '') + (more > 0 ? ` · ${more} more: click again` : ''), filled ? C.green : C.amber)
       loadQueues()
     } catch (err) {
@@ -3558,7 +3727,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginTop:8 }}>
                   <button onClick={draftMissing} disabled={!!drafting} style={btnSm(C.violet)}>
-                    {drafting || `✨ Add these & auto-fill with Gemini`}
+                    {drafting || `✨ Add these & auto-fill`}
                   </button>
                   <span style={{ fontSize:11, color:'#991b1b' }}>
                     Or copy them into <strong>Seed Wordlist</strong> to fill by hand.
@@ -3605,7 +3774,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
               )}
               {sentScan.missingEnglish.length > 0 && (
                 <button onClick={addEnglishSentences} disabled={!!sentBusy || !!drafting} style={btnSm(C.violet)}>
-                  {drafting || `✨ Add ${sentScan.missingEnglish.length} English sentence${sentScan.missingEnglish.length === 1 ? '' : 's'} & auto-fill with Gemini`}
+                  {drafting || `✨ Add ${sentScan.missingEnglish.length} English sentence${sentScan.missingEnglish.length === 1 ? '' : 's'} & auto-fill`}
                 </button>
               )}
             </div>
@@ -3621,8 +3790,8 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
           </div>
           {unfilled.length > 0 && (
             <button onClick={() => runDraft(unfilled)} disabled={!!drafting} style={btnSm(C.violet)}
-              title="Gemini suggests each word; they're saved as drafts for a teacher to approve">
-              {drafting || `✨ Auto-fill ${Math.min(unfilled.length, DRAFT_LIMIT)} with Gemini`}
+              title="The offline translator (when ticked above and running) or Gemini suggests each entry; they're saved as drafts for a teacher to approve">
+              {drafting || `✨ Auto-fill ${Math.min(unfilled.length, DRAFT_LIMIT)}`}
             </button>
           )}
         </div>
@@ -3637,7 +3806,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 borderBottom:'1px solid '+C.border }}>
                 <div style={{ width: row.entry_type === 'sentence' ? 'min(40%, 360px)' : 140, flexShrink:0, fontWeight:700, fontSize:13, color:C.navy }}>{row.english}</div>
                 <input value={fillDrafts[row.id] || ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                  placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily:'monospace', fontSize:12 }} />
+                  placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }} />
                 <div style={{ minWidth:60, fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>
                   {fillDrafts[row.id] ? romanToMeetei(fillDrafts[row.id]) : ''}
                 </div>
@@ -3655,7 +3824,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
             Needs Review ({needsReview.length}) — AI drafts and entries flagged during entry
           </div>
           {aiDrafts.length > 1 && (
-            <button onClick={() => { if (window.confirm(`Approve all ${aiDrafts.length} drafts (Gemini and Question Bank) without checking each one? The translator will start using them.`)) approve(aiDrafts.map(r => r.id)) }}
+            <button onClick={() => { if (window.confirm(`Approve all ${aiDrafts.length} drafts (machine translations and Question Bank) without checking each one? The translator will start using them.`)) approve(aiDrafts.map(r => r.id)) }}
               style={btnSm('#fff', C.navy)}>Approve all {aiDrafts.length} drafts</button>
           )}
         </div>
@@ -3670,21 +3839,21 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
                   <div style={{ fontWeight:700, fontSize:13, color:C.navy, width: row.entry_type === 'sentence' ? 'min(100%, 420px)' : 140, flexShrink:0 }}>{row.english}</div>
                   <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>{row.mayek_unicode}</div>
-                  <div style={{ fontFamily:'monospace', fontSize:11, color:C.slate }}>{row.bmei04}</div>
+                  <div style={{ fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:11, color:C.slate }}>{row.bmei04}</div>
                   {REVIEWABLE_SOURCES.has(row.source) && (
-                    <span style={{ fontSize:10, fontWeight:700, color: row.source === QB_SOURCE ? C.teal : C.violet, background: row.source === QB_SOURCE ? '#ecfeff' : '#f3e8ff', borderRadius:5, padding:'2px 6px' }}>
-                      {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : 'AI DRAFT'}
+                    <span style={{ fontSize:10, fontWeight:700, color: row.source === AI_DRAFT_SOURCE ? C.violet : C.teal, background: row.source === AI_DRAFT_SOURCE ? '#f3e8ff' : '#ecfeff', borderRadius:5, padding:'2px 6px' }}>
+                      {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : row.source === AI_DRAFT_SOURCE ? 'AI DRAFT' : DRAFT_BY[row.source].replace(/^the /, '').toUpperCase()}
                     </span>
                   )}
                 </div>
                 {REVIEWABLE_SOURCES.has(row.source) ? (
                   <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6, flexWrap:'wrap' }}>
                     <span style={{ fontSize:11, color:C.slate }}>
-                      {row.source === QB_SOURCE ? 'Taken from a question written in both scripts — approve if it is a true translation' : 'Suggested by Gemini — approve if right'}, or type the correct BMEI04 keystrokes:
+                      {row.source === QB_SOURCE ? 'Taken from a question written in both scripts — approve if it is a true translation' : `Suggested by ${DRAFT_BY[row.source]} — approve if right`}, or type the correct BMEI04 keystrokes:
                     </span>
                     <button onClick={() => approve([row.id])} style={btnSm(C.green)}>✓ Approve</button>
                     <input value={fillDrafts[row.id] ?? ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
-                      placeholder="Correct BMEI04…" style={{ ...iS, width:180, fontFamily:'monospace', fontSize:12, padding:'5px 8px' }} />
+                      placeholder="Correct BMEI04…" style={{ ...iS, width:180, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12, padding:'5px 8px' }} />
                     {fillDrafts[row.id] && <span style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:16 }}>{romanToMeetei(fillDrafts[row.id])}</span>}
                     {fillDrafts[row.id] && <button onClick={() => handleFillSave(row)} style={btnSm(C.navy)}>Save correction</button>}
                   </div>
@@ -3763,7 +3932,7 @@ function DictTranslatePanel({ showToast }) {
       <textarea value={input} onChange={e => setInput(e.target.value)} rows={4}
         placeholder="Type an English word or sentence..."
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:13, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <button onClick={handleTranslate} disabled={loading} style={{ ...btn(C.navy), marginTop:10 }}>
         {loading ? 'Translating...' : 'Translate'}
       </button>
@@ -3823,8 +3992,25 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
   const [bmei04, setBmei04] = useState('')
   const [category, setCategory] = useState('')
   const [saving, setSaving] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggested, setSuggested] = useState('') // keystrokes the offline translator gave, to record the source
 
   const preview = useMemo(() => { try { return romanToMeetei(bmei04) } catch { return '' } }, [bmei04])
+
+  const suggest = async () => {
+    if (!english.trim() || suggesting) return
+    if (!offlineEnabled()) { showToast('Tick "Use the offline translator on this computer" above first', C.amber); return }
+    setSuggesting(true)
+    try {
+      const out = await offlineToMayek([english.trim()])
+      if (!out) { showToast('The offline translator is not running — start start-translator.bat', C.rose); return }
+      if (!out[0]) { showToast('The offline translator gave no Meetei Mayek for this — type it in', C.amber); return }
+      const keys = meeteiToRoman(out[0])
+      setBmei04(keys); setSuggested(keys)
+    } finally {
+      setSuggesting(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!english.trim() || !bmei04.trim()) {
@@ -3835,10 +4021,11 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
       await saveDictionaryEntry({
         entryType, english, bmei04,
         category: category.trim() || null,
+        source: suggested && bmei04.trim() === suggested ? reviewedSource(OFFLINE_DRAFT_SOURCE) : null,
         createdBy: currentStaffId || null,
       })
       showToast('Saved to dictionary', C.green)
-      setEnglish(''); setBmei04('')
+      setEnglish(''); setBmei04(''); setSuggested('')
     } catch (err) {
       showToast('Save failed: ' + err.message, C.rose)
     } finally {
@@ -3865,8 +4052,17 @@ function DictAddEntryPanel({ showToast, currentStaffId }) {
         placeholder={entryType === 'word' ? 'e.g. apple' : 'e.g. find the value of x'} style={iS} />
 
       <label style={{ ...lS, marginTop:12 }}>BMEI04 Keystrokes</label>
-      <input value={bmei04} onChange={e => setBmei04(e.target.value)}
-        placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, fontFamily:'monospace' }} />
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={bmei04} onChange={e => setBmei04(e.target.value)}
+          placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, flex:1, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }} />
+        <button onClick={suggest} disabled={!english.trim() || suggesting} style={btnSm(C.violet)}
+          title="Fills this in with the offline translator on this computer. Check it before saving.">
+          {suggesting ? 'Translating…' : '✨ Translate'}
+        </button>
+      </div>
+      {suggested && bmei04.trim() === suggested && (
+        <div style={{ fontSize:11, color:C.slate, marginTop:4 }}>From the offline translator — check it, correct it if needed, then save.</div>
+      )}
 
       <label style={{ ...lS, marginTop:12 }}>Category (optional)</label>
       <input value={category} onChange={e => setCategory(e.target.value)}
@@ -3928,7 +4124,7 @@ function DictBulkImportPanel({ showToast, currentStaffId }) {
       <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={9}
         placeholder={'entry_type,english,bmei04,category\nword,apple,AepL,general\nsentence,find the value of x,...,math'}
         style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
-          fontSize:12, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+          fontSize:12, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", resize:'vertical', boxSizing:'border-box' }} />
       <button onClick={handleImport} disabled={importing} style={{ ...btn(C.navy), marginTop:10 }}>
         {importing ? 'Importing...' : 'Import CSV'}
       </button>
@@ -4037,7 +4233,7 @@ function DictBrowsePanel({ showToast, isAdmin }) {
                 </div>
                 {editingId === row.id ? (
                   <input value={editBmei04} onChange={e => setEditBmei04(e.target.value)}
-                    style={{ ...iS, marginTop:4, fontFamily:'monospace', fontSize:12 }} />
+                    style={{ ...iS, marginTop:4, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize:12 }} />
                 ) : (
                   <div style={{ fontSize:18, marginTop:2, fontFamily:'Noto Sans Meetei Mayek, sans-serif' }}>{row.mayek_unicode}</div>
                 )}
@@ -5448,7 +5644,12 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
   // isAdmin, and row-level security enforces delete on the server).
   const isStaffAllowed = !!currentUser
 
-  const [tabState,      setTab]           = useState('bank')
+  const [tabState,      setTabState]      = useState('bank')
+  // The page opens on an icon grid of its sections; any switch to a tab
+  // (a tile, a deep link from another module) leaves the grid.
+  const [onGrid,        setOnGrid]        = useState(!initialFilterProp)
+  const [showMore,      setShowMore]      = useState(false)
+  const setTab = useCallback(key => { setTabState(key); setOnGrid(false) }, [])
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState(null)
@@ -5516,6 +5717,17 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     setLoading(false)
   }, [isStaffAllowed])
 
+  // Apply a known change to the list on screen (and to the 5-minute cache)
+  // instead of re-downloading all ~10,000 questions after every edit, delete or
+  // single add. Anything not covered here still uses refetch(true).
+  const patchBank = useCallback(({ remove = [], update = [], add = [] }) => {
+    setQuestions(prev => {
+      const next = applyBankPatch(prev, { remove, update, add })
+      if (_qbankCache) _qbankCache = { data: next, fetchedAt: _qbankCache.fetchedAt }
+      return next
+    })
+  }, [])
+
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the bank from the server on open
   useEffect(() => { refetch() }, [refetch])
 
@@ -5532,7 +5744,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       }
     })
     return unsub
-  }, [])
+  }, [setTab])
 
   // Chapter focus (StudyMaterialBridge.openChapterIn) — works even when this
   // page wasn't mounted yet at the moment of the click, which the
@@ -5579,21 +5791,28 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     )
   }
 
-  // group: 'bank' = content management, 'tools' = language tools,
-  // 'deliver' = papers/tests/slides/analytics (admin). Groups are separated
-  // by a divider in the tab bar.
+  // Sections, grouped on the icon grid: questions, language tools,
+  // papers & tests and reports (the last two admin-only).
   const ALL_TABS = [
-    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length, group:'bank' },
-    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null, group:'bank' },
-    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank' },
-    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools' },
-    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools' },
-    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver' },
-    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver' },
-    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver' },
-    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true, group:'deliver' },
+    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length, group:'bank', hint:'Browse, search and edit' },
+    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null, group:'bank', hint:'Type in questions one by one' },
+    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank', hint:'Paste many questions at once' },
+    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools', hint:'Convert and translate Meetei Mayek' },
+    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools', hint:'English ↔ Meetei Mayek words' },
+    { key:'doctranslate',icon:'📑', label:'Document Translator', count: null, group:'tools', hint:'English paper → Meetei Mayek Word file' },
+    { key:'booklet', icon:'📘', label:'Booklet Builder', count: null, group:'deliver', hint:'Chapter file → premium booklet (Word)' },
+    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver', hint:'Build a printable question paper' },
+    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver', hint:'Run a test on screen' },
+    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver', hint:'Questions as slides for class' },
+    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true, group:'reports', hint:'Bank coverage and numbers' },
   ]
   const TABS = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly)
+  const TAB_GROUPS = [
+    { id:'bank', label:'Questions', color:'#185FA5' },
+    { id:'tools', label:'Language tools', color:'#7c3aed' },
+    { id:'deliver', label:'Papers & tests', color:'#a7771f' },
+    { id:'reports', label:'Reports', color:'#0f766e' },
+  ].filter(g => g.id === 'bank' || showMore || g.id === TABS.find(t => t.key === tab)?.group).map(g => ({ ...g, tabs: TABS.filter(t => t.group === g.id).map(t => ({ id:t.key, label:t.label, icon:t.icon, hint:t.hint, count:t.count })) }))
   const fmt = n => n.toLocaleString('en-IN')
 
   return (
@@ -5630,45 +5849,37 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
 
       </>)}
 
-      {/* ── Tab bar ── */}
-      <div role="tablist" aria-label="Question Bank sections" className="qb-tabs"
-        style={{ position:'sticky', top:0, zIndex:60, display:'flex', alignItems:'center', gap:4, overflowX:'auto',
-          padding:6, marginBottom:20, background:'rgba(255,255,255,.92)', backdropFilter:'blur(8px)',
-          border:`1px solid ${T.border}`, borderRadius:14, boxShadow:T.shadow }}>
-        {TABS.map((t, i) => {
-          const active = tab === t.key
-          const newGroup = i > 0 && TABS[i - 1].group !== t.group
-          return (
-            <React.Fragment key={t.key}>
-              {newGroup && <span aria-hidden style={{ width:1, alignSelf:'stretch', margin:'6px 4px', background:T.border, flexShrink:0 }} />}
-              <button role="tab" aria-selected={active} onClick={() => setTab(t.key)}
-                style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'9px 14px', borderRadius:10, flexShrink:0,
-                  border:'none', background: active ? T.navy : 'transparent',
-                  color: active ? '#fff' : T.muted, boxShadow: active ? '0 2px 8px rgba(14,42,71,.25)' : 'none',
-                  fontSize:13, fontWeight: active ? 600 : 500, cursor:'pointer', whiteSpace:'nowrap' }}>
-                <span style={{ fontSize:14, filter: active ? 'none' : 'grayscale(.35)' }}>{t.icon}</span>
-                {t.label}
-                {t.count !== null && t.count > 0 && (
-                  <span style={{ padding:'1px 7px', borderRadius:99, fontSize:10.5, fontWeight:700, fontVariantNumeric:'tabular-nums',
-                    background: active ? 'rgba(255,255,255,.18)' : T.navySoft, color: active ? '#fff' : T.navy }}>
-                    {fmt(t.count)}
-                  </span>
-                )}
-              </button>
-            </React.Fragment>
-          )
-        })}
-      </div>
+      {/* ── Sections: icon grid, or a bar with the open section ── */}
+      {onGrid && TABS.some(t => t.group !== 'bank') && (
+        <button type="button" onClick={() => setShowMore(v => !v)} aria-expanded={showMore}
+          style={{ margin:'0 0 10px', height:34, padding:'0 14px', border:`1px solid ${C.border || '#e5e7eb'}`, borderRadius:10, background:'#fff', color:C.navy, font:'700 12.5px system-ui', cursor:'pointer' }}>
+          {showMore ? '▾ Hide more tools' : '▸ More tools (language, papers, tests, reports)'}
+        </button>
+      )}
+      <IconTabs groups={TAB_GROUPS} active={tab} open={!onGrid} onOpen={setTab} onHome={() => setOnGrid(true)}
+        homeLabel="All Question Bank sections" sticky ariaLabel="Question Bank sections" />
 
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
-      {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {!onGrid && (<>
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} patchBank={patchBank} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
+      {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} patchBank={patchBank} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
+      {tab === 'doctranslate' && (
+        <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
+          <MayekDocTranslator showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />
+        </Suspense>
+      )}
+      {tab === 'booklet' && (
+        <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
+          <BookletBuilder showToast={showToast} />
+        </Suspense>
+      )}
       {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'stats'  && <TabStats  questions={questions} refetch={refetch} showToast={showToast} isAdmin={isAdmin} onNavigate={onNavigate} />}
+      </>)}
     </div>
   )
 }

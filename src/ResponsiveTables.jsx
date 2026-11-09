@@ -33,6 +33,9 @@ function enhance(root) {
       const text = (c.textContent || '').replace(/\s+/g, ' ').trim();
       for (let i = 0; i < (c.colSpan || 1); i += 1) labels.push(text);
     });
+    // Matrix-style tables (timetables, attendance grids …) read worse as cards:
+    // keep them as tables and let them scroll sideways inside their own box.
+    if (labels.length > 10) { setAttr(table, 'data-rt-wide', ''); return; }
     setAttr(table, 'data-rt-table', '');
 
     const rows = [];
@@ -61,6 +64,7 @@ export const RESPONSIVE_TABLES_CSS = `
 @media screen and (max-width: 767px) {
   div:has(> table[data-rt-table]) { overflow: visible !important; max-height: none !important; border: 0 !important; box-shadow: none !important; background: transparent !important; border-radius: 0 !important; }
   table[data-rt-table] { display: block; width: 100% !important; min-width: 0 !important; max-width: 100%; border: 0 !important; background: transparent !important; font-size: 13px !important; }
+  table[data-rt-wide] { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table[data-rt-table] > colgroup { display: none; }
   table[data-rt-table] > thead { position: absolute !important; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   table[data-rt-table] > tbody, table[data-rt-table] > tfoot { display: block; }

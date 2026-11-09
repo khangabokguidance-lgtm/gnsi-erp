@@ -1,1 +1,16 @@
 @import "tailwindcss";
+/* Premium type system (portal kit, premiumUI.jsx): Plus Jakarta Sans for text, Fraunces for titles.
+   Families are loaded in index.html. */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'calt';
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button, input, select, textarea { font-family: inherit; }
+/* Aligned digits so money and counts line up in tables and cards. */
+table, td, th, input[type="number"] { font-variant-numeric: tabular-nums; }
+code, kbd, pre, samp { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; }

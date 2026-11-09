@@ -3,11 +3,20 @@
 //  SINGLE SOURCE OF TRUTH for all fee logic across GNSI Portal
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { validateFeeCollection, revertReasonError } from './lib/feeControls'
+import { countHouseOccupancy } from './lib/houseOccupancy'
 import { MAX_FEE_AMOUNT, assertSaneAmount, assertSanePayDate } from './lib/feeValidation'
+import { balanceSuffix, balanceRowId, excludeRepeaterFees } from './lib/feeMath'
+import { applyPaymentToPlan, removePaymentFromPlan, planDone } from './lib/planPayments'
 import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
+import { canonicalBatch, normalizeCourse, courseOf, courseBatchLists, BATCH_ALIASES } from './courseMap'
+import { batchKeysFor, pickFeeRow } from './feeRateLookup'
+import { ADDON_SETTING_KEY, parseAddonMap, addonFor, withAddon, applyAddon, isCombinedByRecord, isCombinedTag } from './feeAddon'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
+import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
+import { fileFeeRequest, openRequestsFor, requestKeys, isMissingRequestsTable, REQUESTS_SETUP_MSG, lowFeeWaUrl, notifyAdminAuto } from './feeRequests'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -75,12 +84,7 @@ export const CURRENT_YEAR = (() => {
   return m >= 4 ? y : y - 1
 })()
 
-export const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Prime', 'Elite'],
-  'Combined Course': ['—'],
-}
+export const COURSE_STRUCTURE = courseBatchLists()   // one standard list, in courseMap.js
 
 // ✦ Session-year format normalizer — canonicalizes to "YYYY-YYYY".
 //   Some older student/admission records store session as "2026-27"
@@ -126,6 +130,20 @@ export const fmtMonth = m => {
 export const today = () => new Date().toLocaleDateString('en-CA')
 
 export const gccStr = v => String(parseInt(v) || 0)
+
+// ── Accounting controls (migration 20261032) ────────────────────────────────
+// null = the migration has not been run yet: nothing below changes behaviour. Cached for a minute.
+let _feeControls = { at: 0, value: undefined }
+export const getFeeControls = async (force = false) => {
+  if (!force && _feeControls.value !== undefined && Date.now() - _feeControls.at < 60_000) return _feeControls.value
+  let value = null
+  try {
+    const { data, error } = await supabase.from('fee_controls').select('*').eq('id', 1).maybeSingle()
+    if (!error && data) value = data
+  } catch { /* table not there yet */ }
+  _feeControls = { at: Date.now(), value }
+  return value
+}
 
 export const rcptNo = (prefix = 'INV') => {
   const d = new Date()
@@ -180,13 +198,93 @@ const writeAuditOrThrow = async (entry) => {
 const RATE_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const _rateCache     = {}   // key = session__course__batch__hostel -> { ...rates, _cachedAt }
 const _overrideCache = {}   // key = gcc__session -> { value, _cachedAt }
+const _overrideSessions = {} // session -> { at, promise } — every override of that session, loaded in one go
 
 const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cachedAt) < RATE_CACHE_TTL_MS
 
+// ─── Combined Course monthly add-on (see feeAddon.js) ─────────────────────────
+let _addonCache = { at: 0, map: null }
+const _loadAddonMap = async () => {
+  if (_addonCache.map && _isFresh(_addonCache.at)) return _addonCache.map
+  let map = {}
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+    map = parseAddonMap(data?.value)
+  } catch { /* no setting / no access → no add-on */ }
+  _addonCache = { at: Date.now(), map }
+  return map
+}
+// Students the Exams module files under a Combined tag (student_secondary_batches) — e.g. a Sainik or Navodaya
+// student who also sits the other course's papers. Keyed by GCC number; loaded once and cached.
+let _taggedCache = { at: 0, set: null, list: [] }
+const _gccKey = g => { const n = parseInt(String(g ?? '').replace(/\D/g, ''), 10); return Number.isFinite(n) ? String(n) : '' }
+const _loadCombinedTagged = async () => {
+  if (_taggedCache.set && _isFresh(_taggedCache.at)) return _taggedCache
+  let list = []
+  try {
+    const { data: tags } = await supabase.from('student_secondary_batches').select('student_id, batch')
+    const ids = [...new Set((tags || []).filter(t => isCombinedTag(t.batch)).map(t => t.student_id))]
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data: studs } = await supabase.from('students').select('id, name, gcc_no, course, batch, status').in('id', ids.slice(i, i + 100))
+      list.push(...(studs || []))
+    }
+  } catch { /* no access / table missing → nobody tagged */ }
+  _taggedCache = { at: Date.now(), set: new Set(list.map(s => _gccKey(s.gcc_no)).filter(Boolean)), list }
+  return _taggedCache
+}
+
+/**
+ * Is this student charged the Combined add-on, and why? Automatic — nobody is ticked by hand:
+ *   'course' → their record says Combined (course field, or a batch naming the Combined course)
+ *   'exam'   → the Exams module tags them as appearing in the Combined papers
+ */
+export const getAddonStatus = async ({ sessionYear, course, batch, gccNo }) => {
+  const byRecord = isCombinedByRecord(course, batch)
+  const byExam = !byRecord && !!gccNo && (await _loadCombinedTagged()).set.has(_gccKey(gccNo))
+  const eligible = byRecord || byExam
+  return { eligible, byRecord, byExam, reason: byRecord ? 'course' : 'exam', amount: eligible ? await getCombinedAddonFee(sessionYear) : 0 }
+}
+
+/**
+ * Synchronous add-on lookup for screens that handle many students (checks, fixers, lists).
+ * Loads the amounts and the Exam tags once; then eligible(student) → 'course' | 'exam' | '' and
+ * amount(student, session) → ₹ per month. Same rules as getAddonStatus / getFeeRates.
+ */
+export const getAddonResolver = async () => {
+  const [map, tagged] = await Promise.all([_loadAddonMap(), _loadCombinedTagged()])
+  const eligible = s => isCombinedByRecord(s?.course, s?.batch) ? 'course' : (tagged.set.has(_gccKey(s?.gcc_no)) ? 'exam' : '')
+  return { eligible, amount: (s, session) => eligible(s) ? addonFor(map, normalizeSessionYear(session)) : 0 }
+}
+
+/** Everyone currently charged the add-on (for the Fee Setup card): by record and by Exams tag. */
+export const listAddonStudents = async (students) => {
+  const tagged = (await _loadCombinedTagged()).list
+  const byRecord = (students || []).filter(s => isCombinedByRecord(s.course, s.batch))
+  const have = new Set(byRecord.map(s => _gccKey(s.gcc_no)))
+  const byExam = tagged.filter(s => !have.has(_gccKey(s.gcc_no)) && !/dropout/i.test(s.status || ''))
+  return { byRecord, byExam }
+}
+
+/** Monthly add-on (₹) charged to Combined Course students in this session; 0 if none is set. */
+export const getCombinedAddonFee = async (sessionYear) => addonFor(await _loadAddonMap(), normalizeSessionYear(sessionYear))
+/** Admin: set (or clear with 0) the add-on for a session. Reads the stored map fresh and refuses to overwrite it if that read fails. */
+export const saveCombinedAddonFee = async (sessionYear, amount) => {
+  const session = normalizeSessionYear(sessionYear)
+  const { data, error: readErr } = await supabase.from('system_settings').select('value').eq('key', ADDON_SETTING_KEY).maybeSingle()
+  if (readErr) return { error: readErr }
+  const next = withAddon(parseAddonMap(data?.value), session, amount)
+  const { error } = await supabase.from('system_settings').upsert({ key: ADDON_SETTING_KEY, value: JSON.stringify(next) }, { onConflict: 'key' })
+  if (!error) clearFeeRateCache()
+  return { error: error || null, map: next }
+}
+
 /** Clear both caches (call after saving fee_structures or student_fee_overrides) */
 export const clearFeeRateCache = () => {
+  _addonCache = { at: 0, map: null }
+  _taggedCache = { at: 0, set: null, list: [] }
   Object.keys(_rateCache).forEach(k => delete _rateCache[k])
   Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
+  Object.keys(_overrideSessions).forEach(k => delete _overrideSessions[k])
 }
 
 // ─── 4a. Per-student flat fee override ───────────────────────────────────────
@@ -201,14 +299,41 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
   const cached = _overrideCache[key]
   if (cached !== undefined && _isFresh(cached._cachedAt)) return cached.value
 
-  const { data } = await supabase
-    .from(TABLES.studentFeeOverrides)
-    .select('flat_fee_override, reason, updated_by, updated_at')
-    .eq('gcc_no', gccNo)
-    .eq('session_year', sessionYear)
-    .maybeSingle()
-
-  const result = data ?? null
+  // Overrides are few (only students with a special flat fee), but screens ask
+  // for every student one by one. Load all of the session's overrides in one
+  // request and answer each student from that, instead of one request each.
+  const loaded = _overrideSessions[sessionYear]
+  if (!loaded || !_isFresh(loaded.at)) {
+    const promise = (async () => {
+      const rows = []
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from(TABLES.studentFeeOverrides)
+          .select('gcc_no, flat_fee_override, reason, updated_by, updated_at')
+          .eq('session_year', sessionYear)
+          .order('gcc_no')
+          .range(from, from + 999)
+        if (error) return null
+        rows.push(...(data || []))
+        if (!data || data.length < 1000) break
+      }
+      return new Map(rows.map(r => [String(r.gcc_no), { flat_fee_override: r.flat_fee_override, reason: r.reason, updated_by: r.updated_by, updated_at: r.updated_at }]))
+    })()
+    _overrideSessions[sessionYear] = { at: Date.now(), promise }
+  }
+  const map = await _overrideSessions[sessionYear].promise
+  if (!map) {
+    // The bulk load failed — drop it and ask for this one student directly.
+    delete _overrideSessions[sessionYear]
+    const { data } = await supabase
+      .from(TABLES.studentFeeOverrides)
+      .select('flat_fee_override, reason, updated_by, updated_at')
+      .eq('gcc_no', gccNo)
+      .eq('session_year', sessionYear)
+      .maybeSingle()
+    return data ?? null
+  }
+  const result = map.get(String(gccNo)) ?? null
   _overrideCache[key] = { value: result, _cachedAt: Date.now() }
   return result
 }
@@ -235,8 +360,9 @@ export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOver
       )
     if (error) throw error
   }
-  // Bust override cache for this student
+  // Bust the override caches for this student and this session's bulk copy
   delete _overrideCache[`${gccNo}__${sessionYear}`]
+  delete _overrideSessions[sessionYear]
 }
 
 // ─── 4b. Structural rates ─────────────────────────────────────────────────────
@@ -266,19 +392,29 @@ export const getFeeRates = async (
   gccNo       = null,   // ← NEW optional param
 ) => {
   sessionYear = normalizeSessionYear(sessionYear)
+  // Standard names, so "UDAAN", "Udaan — ENG" or the old "Elite" / "Prime"
+  // (and a blank course on a Foundation batch) find the Udaan / Pragati rows
+  // in Fee Setup instead of falling back to the old hardcoded rates.
+  const rawCourse = course, rawBatch = batch
+  batch = canonicalBatch(batch)
+  const batchCourse = courseOf({ batch })
+  course = normalizeCourse(course) || (batchCourse !== 'Unassigned' ? batchCourse : String(course || '').trim())
   const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
 
   // Fetch structural rates (cached, subject to RATE_CACHE_TTL_MS — see cache
   // declaration above for why this isn't a permanent cache)
   if (!_rateCache[structKey] || !_isFresh(_rateCache[structKey]._cachedAt)) {
-    let { data } = await supabase
+    const courseKeys = [...new Set([course, rawCourse].filter(v => v != null))]
+    const batchKeys = batchKeysFor({ course, batch, rawBatch, aliases: BATCH_ALIASES[batch] || [] })
+    const { data: matches } = await supabase
       .from(TABLES.feeStructures)
-      .select('flat_fee, course_fee, admission_fee')
+      .select('flat_fee, course_fee, admission_fee, course, batch')
       .eq('session_year', sessionYear)
-      .eq('course',       course)
-      .eq('batch',        batch)
+      .in('course',       courseKeys.length ? courseKeys : [''])
+      .in('batch',        batchKeys.length ? batchKeys : [''])
       .eq('hostel_type',  hostelType)
-      .maybeSingle()
+    // Prefer the row saved under the standard names.
+    let data = pickFeeRow(matches, { course, batch })
 
     // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
     //   batch assigned yet), the exact match above can never succeed because
@@ -333,6 +469,12 @@ export const getFeeRates = async (
   // that spread/serialize this object (e.g. into React state, JSON, or a
   // fee_structures upsert) shouldn't see or persist it.
   const { _cachedAt, ...rates } = _rateCache[structKey]
+
+  // ✦ Combined Course add-on: added to the monthly amounts (before any per-student override)
+  {
+    const a = await getAddonStatus({ sessionYear, course, batch: rawBatch, gccNo })
+    if (a.eligible) Object.assign(rates, applyAddon(rates, true, a.amount, a.reason))
+  }
 
   // ✦ Apply per-student flat fee override if gcc supplied
   if (gccNo) {
@@ -471,8 +613,8 @@ export const getSessionYear = () => `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 export const sourceRef = {
   admission:  (gcc)                    => `adm_${gcc}`,
   admItem:    (gcc, itemName)          => `adm_item_${gcc}_${itemName.toLowerCase().replace(/\s+/g, '_')}`,
-  flatFee:    (gcc, month, year)       => `flat_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}`,
-  courseFee:  (gcc, month, year)       => `course_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}`,
+  flatFee:    (gcc, month, year, rowId) => `flat_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}${balanceSuffix(rowId)}`,
+  courseFee:  (gcc, month, year, rowId) => `course_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}${balanceSuffix(rowId)}`,
   advance:    (gcc, ts)                => `adv_${gcc}_${ts}`,
   invoice:    (gcc, feeType, invMonth) => `${gcc}_${feeType.toLowerCase().replace(/\s+/g, '_')}_${invMonth}`,
 }
@@ -491,6 +633,20 @@ const _anyRow = async (query, what) => {
   if (error) throw new Error(`Could not check whether ${what} is already paid: ${error.message}`)
   return (data || []).length > 0
 }
+
+// Non-reverted rows already holding a month's fee (primary + any balance rows),
+// with the amount paid and approved concession — used to take a balance payment.
+export const monthFeeRows = async (table, gcc, monthCol, month, year, amtCol) => {
+  let q = supabase.from(table).select(`id, ${amtCol}, concession_status, concession_amount`)
+    .eq('adm_app_id', gcc).eq(monthCol, month).eq('year', year).eq('reverted', false)
+  if (table === TABLES.admFlatFees) q = q.eq('paid', true)
+  const { data, error } = await q
+  if (error) throw new Error(`Could not read the existing ${month} ${year} payment: ${error.message}`)
+  return data || []
+}
+// Amount still owed on a month (standard − paid − approved concession), never below 0.
+const monthBalance = (rows, amtCol, standard) => Math.max(0, Number(standard) - rows.reduce((t, r) =>
+  t + (Number(r[amtCol]) || 0) + (r.concession_status === 'approved' ? Number(r.concession_amount) || 0 : 0), 0))
 
 export const checkFlatFeeExists = async (gcc, month, year) =>
   _anyRow(supabase
@@ -605,6 +761,29 @@ export const mirrorToFeeInvoice = async ({
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8a. INSTALMENT PLAN SYNC — a fee payment ticks off the student's plan
+// ═══════════════════════════════════════════════════════════════════════════
+// Best-effort and never blocks a payment: if the plan table is missing or the
+// update fails the payment stands and the plan can still be edited by hand.
+// `add` = [{ ref, amount, date, receipt }] (ref = fee row id); `removeRef` takes a
+// reverted row's money back off the plan.
+export const syncInstallmentPlan = async (gcc, { add = [], removeRef = null } = {}) => {
+  try {
+    const keys = [...new Set([String(gcc), gccStr(gcc)])]
+    const { data, error } = await supabase.from('fee_installment_plans').select('*').in('gcc', keys).in('status', ['active', 'completed']).order('created_at', { ascending: false })
+    if (error || !data?.length) return
+    const plan = (add.length ? data.find(p => p.status === 'active') : data.find(p => (p.installments || []).some(i => (i.payments || []).some(x => x.ref === removeRef)))) || null
+    if (!plan) return
+    let inst = plan.installments || [], changed = false
+    for (const a of add) { const r = applyPaymentToPlan(inst, a); if (r.applied > 0) { inst = r.installments; changed = true } }
+    if (removeRef) { const r = removePaymentFromPlan(inst, removeRef); if (r.removed > 0) { inst = r.installments; changed = true } }
+    if (!changed) return
+    await supabase.from('fee_installment_plans').update({ installments: inst, status: planDone(inst) ? 'completed' : 'active' }).eq('id', plan.id)
+  } catch (e) { console.warn('syncInstallmentPlan failed (payment is unaffected):', e?.message || e) }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 8b. REVERT FEE COLLECTION — admin-only undo of a single collected item
 // ═══════════════════════════════════════════════════════════════════════════
@@ -632,6 +811,8 @@ export const revertFeeCollection = async ({
   revertedBy = 'Admin', staffId = null, reason = '',
 }) => {
   if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
+  const reasonProblem = revertReasonError(reason, await getFeeControls())
+  if (reasonProblem) throw new Error(reasonProblem)
 
   // ✦ staff_id + explicit timestamp on this action, same as collectFee.
   // revertedBy is a display name (kept for backward compatibility with the
@@ -676,6 +857,7 @@ export const revertFeeCollection = async ({
 
   const { error } = await supabase.from(table).update(updates).eq('id', id)
   if (error) throw error
+  if ((table === TABLES.admFlatFees || table === TABLES.admCourseFees) && originalRow?.adm_app_id) await syncInstallmentPlan(originalRow.adm_app_id, { removeRef: id })
 
   // ✦ Fix: previously this audit_log write only ran INSIDE the
   // `if (accountSourceRef && accountSourceType)` block below — a revert
@@ -754,6 +936,7 @@ export const requestFeeActionRequest = async ({
   if (!['revert', 'delete'].includes(actionType)) throw new Error('requestFeeActionRequest: actionType must be "revert" or "delete"')
   if (!table || !id) throw new Error('requestFeeActionRequest: table and id are required')
   if (!reason || !reason.trim()) throw new Error('requestFeeActionRequest: a reason is required')
+  if (actionType === 'revert') { const rp = revertReasonError(reason, await getFeeControls()); if (rp) throw new Error(rp) }   // fail here, not later at approval
 
   // Snapshot the row now, at request time — so the approving admin sees
   // exactly what they're being asked to revert/delete without needing to
@@ -826,10 +1009,10 @@ const deriveAccountSource = (tableName, row) => {
     return { accountSourceRef: null, accountSourceType: null }
   }
   if (tableName === TABLES.admFlatFees) {
-    return { accountSourceRef: sourceRef.flatFee(row.adm_app_id, row.month, row.year), accountSourceType: 'flat_fee' }
+    return { accountSourceRef: sourceRef.flatFee(row.adm_app_id, row.month, row.year, row.id), accountSourceType: 'flat_fee' }
   }
   if (tableName === TABLES.admCourseFees) {
-    return { accountSourceRef: sourceRef.courseFee(row.adm_app_id, row.for_month, row.year), accountSourceType: 'course_fee' }
+    return { accountSourceRef: sourceRef.courseFee(row.adm_app_id, row.for_month, row.year, row.id), accountSourceType: 'course_fee' }
   }
   return { accountSourceRef: null, accountSourceType: null }
 }
@@ -997,22 +1180,62 @@ export const rejectFeeActionRequest = async ({ requestId, rejectedBy, rejectedBy
 //    stopped a double-charge. Now uses checkAdmItemExists the same way
 //    flat/course already used checkFlatFeeExists/checkCourseFeeExists.
 // =============================================================================
+// Upsert that survives a missing optional "note" column (older database without
+// migration 20261014_fee_row_notes.sql): retry once without that field instead of
+// failing the whole payment. The explanation is still kept in the Accounts entry,
+// the audit log and the low-fee request.
+async function upsertDroppingMissingNote(table, row, noteKey) {
+  let res = await supabase.from(table).upsert(row, { onConflict: 'id' })
+  if (res.error && noteKey in row && new RegExp(noteKey).test(res.error.message || '')) {
+    console.warn(`${table}.${noteKey} column missing — saving without it. Run supabase/migrations/20261014_fee_row_notes.sql.`)
+    const { [noteKey]: _dropped, ...rest } = row
+    res = await supabase.from(table).upsert(rest, { onConflict: 'id' })
+  }
+  return res
+}
+
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
-  txnRef = null, collectedBy = 'Admin', staffId = null,
-  studentId = null, receiptNo, items = [],
+  txnRef = null, collectedBy = '', staffId = null,
+  studentId = null, receiptNo, items = [], skipClashCheck = false,
+  isRepeater = false, // repeaters pay no admission fee or admission items — those lines are left out
+  skipHold = false,   // true for money already received (online) or an admin-approved request being collected
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
   if (!receiptNo) throw new Error('collectFee: receiptNo is required')
+  // Every collection names who collected it (the signed-in user) — there is no default name.
+  if (!String(collectedBy || '').trim()) throw new Error('collectFee: Collected By is required — sign in again so your name is on the receipt')
   if (!items.length) throw new Error('collectFee: at least one item is required')
+  const repeater = excludeRepeaterFees(isRepeater, items)
+  items = repeater.items
+  if (!items.length) {
+    if (repeater.excluded.length) return { sections: [], total: 0, skipped: repeater.excluded.map(i => i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item') + ' (repeater — waived)') }
+    throw new Error('collectFee: at least one item is required')
+  }
   assertSanePayDate(payDate)
   for (const it of items) {
     it.amount = assertSaneAmount(it.amount, `${it.label || it.kind || 'Fee'} amount`)
     if ((it.kind === 'flat' || it.kind === 'course') && (!MONTHS_LIST.includes(it.month) || !(Number(it.year) >= 2015 && Number(it.year) <= 2100))) {
       throw new Error(`${it.label || it.kind} fee has no valid month/year.`)
     }
+  }
+
+  // Accounting controls: payment reference for digital modes, and no collections on a closed day (non-admins).
+  // The database enforces the same (FEE-001 / FEE-002); this just gives the cashier a clear message first.
+  const feeControls = await getFeeControls()
+  if (feeControls) {
+    let closedStatus = null, isAdminUser = false
+    if (feeControls.lock_closed_days) {
+      try {
+        const { data: dc } = await supabase.from('fee_day_close').select('status').eq('close_date', payDate).maybeSingle()
+        closedStatus = dc?.status || null
+        if (closedStatus === 'closed') { const { data: a } = await supabase.rpc('qbank_is_admin'); isAdminUser = a === true }
+      } catch { /* day close not set up */ }
+    }
+    const problem = validateFeeCollection({ payMode, txnRef, closedStatus, isAdmin: isAdminUser, controls: feeControls, payDate })
+    if (problem) throw new Error(problem)
   }
 
   // ✦ staff_id + collected_at on every write: previously the only staff
@@ -1029,10 +1252,63 @@ export const collectFee = async ({
   // not depend on parsing a display name out of a note field.
   const resolvedStaffId = staffId || collectedBy || 'Unknown'
   const collectedAt = new Date().toISOString()
-  const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+  // collected_by is compulsory on every fee row (DB trigger fee_collected_by_required),
+  // so it travels with staffFields into the flat and course-fee inserts too.
+  const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt, collected_by: collectedBy }
+
+  // ✦ Low fee = wait for an admin BEFORE anything is recorded. A flat/course line
+  // below its standard rate that no admin has authorised at the counter is not
+  // saved: the whole payment is filed as a request (fee_payment_requests). The
+  // collector collects it after approval (Fee Payment → My low-fee requests).
+  if (!skipHold) {
+    const lowItems = items.filter(i => (i.kind === 'flat' || i.kind === 'course') && Number(i.underpaymentAmount) > 0 && !i.concessionApprovedBy && !i.isBalance)
+    if (lowItems.length) {
+      const myKeys = items.filter(i => i.kind === 'flat' || i.kind === 'course').map(i => `${i.kind}:${i.month} ${i.year}`)
+      const open = await openRequestsFor(gcc)
+      const dup = open.find(r => requestKeys(r).some(k => myKeys.includes(k)))
+      if (dup) {
+        throw Object.assign(new Error(dup.status === 'approved'
+          ? 'A request for these months is already approved — the admin is recording it; print the receipt from "My low-fee requests" on the Fee Payment screen.'
+          : 'A request for these months is already waiting for admin approval.'), { held: true })
+      }
+      const summary = {
+        months: lowItems.map(i => `${i.month} ${i.year}`),
+        standard: lowItems.reduce((t, i) => t + (Number(i.standardAmount) || 0), 0),
+        collected: lowItems.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+        shortfall: lowItems.reduce((t, i) => t + (Number(i.underpaymentAmount) || 0), 0),
+        reasons: [...new Set(lowItems.map(i => i.underpaymentReason).filter(Boolean))],
+        total: items.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+      }
+      const payload = { gcc, studentName, admNo, className, course, hostelType, payDate, payMode, txnRef, collectedBy, staffId, studentId, items }
+      const { data, error } = await fileFeeRequest({ gcc, studentName, requestedBy: staffId || collectedBy, payload, summary })
+      if (!error) {
+        // Try to message the approver automatically; if the server can't (not configured / failed)
+        // hand back the wa.me link so the collector can send it with one tap.
+        const auto = await notifyAdminAuto(data?.id, 'pending')
+        const waUrl = auto.sent ? null : lowFeeWaUrl(payload, summary, staffId || collectedBy)
+        throw Object.assign(new Error(`⏳ Sent to admin for approval${auto.sent ? ' (WhatsApp sent automatically)' : ''} — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl })
+      }
+      // Table not created yet → keep working the old way (saved; receipt held until approved).
+      if (!isMissingRequestsTable(error)) throw new Error(`Could not send the low fee for approval: ${error.message}`)
+      console.warn(REQUESTS_SETUP_MSG)
+    }
+  }
+
+  // ✦ Multi-user detection: another staff member saved a fee for this same
+  // student in the last few minutes (two counters collecting at once / a
+  // double entry). Ask before saving a second one.
+  if (typeof window !== 'undefined' && !skipClashCheck) {
+    const clashes = await findRecentOtherCollection(gcc, resolvedStaffId).catch(() => [])
+    if (clashes.length) {
+      const lines = clashes.slice(0, 4).map(c => `• ${c.by}${c.label ? ' — ' + c.label : ''} (${c.at ? new Date(c.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'just now'})`).join('\n')
+      if (!window.confirm(`⚠️ Another user already saved a fee for this student in the last ${RECENT_CLASH_MINUTES} minutes:\n\n${lines}\n\nSaving again may double-charge. Continue?`)) {
+        throw new Error('Cancelled — a fee for this student was just saved by another user. Check the ledger first.')
+      }
+    }
+  }
 
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
-  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []
+  const planPayments = [], admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = repeater.excluded.map(i => `${i.label || (i.kind === 'admission' ? 'Admission Fee' : 'Item')} (repeater — waived)`)
 
   // ✦ Admin-visible audit trail for every successful collection — not just
   // reverts/corrections/deletes/underpayments. Previously collectFee wrote
@@ -1131,15 +1407,24 @@ export const collectFee = async ({
 
     // 3. FLAT FEE
     else if (item.kind === 'flat') {
-      const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
-      if (alreadyPaid) { skipped.push(`${item.month} ${item.year} Flat Fee`); console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
-      const flatId = `${gcc}_flat_${item.month.slice(0, 3).toLowerCase()}_${item.year}`
-      const sRef   = sourceRef.flatFee(gcc, item.month, item.year)
+      let flatId = `${gcc}_flat_${item.month.slice(0, 3).toLowerCase()}_${item.year}`
+      if (item.isBalance) {
+        // Balance of a part-paid month: a separate row, never more than what is still owed.
+        const rows = await monthFeeRows(TABLES.admFlatFees, gcc, 'month', item.month, item.year, 'amount')
+        const owed = monthBalance(rows, 'amount', item.standardAmount)
+        if (!rows.length || !(owed > 0)) { skipped.push(`${item.month} ${item.year} Flat Fee balance`); continue }
+        if (item.amount > owed + 0.5) throw new Error(`${item.month} ${item.year} flat fee balance is ₹${owed.toLocaleString('en-IN')} — ₹${item.amount.toLocaleString('en-IN')} is more than is owed.`)
+        flatId = balanceRowId(flatId, rows.length)
+      } else {
+        const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
+        if (alreadyPaid) { skipped.push(`${item.month} ${item.year} Flat Fee`); console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
+      }
+      const sRef   = sourceRef.flatFee(gcc, item.month, item.year, flatId)
       // Fee-period month (e.g. "2026-02"), not the entry/pay date's month —
       // so mirrorToFeeInvoice files a backdated Feb payment under Feb, not
       // under whatever month it was actually keyed in.
       const invoiceMonth = `${item.year}-${String(new Date(`${item.month} 1, ${item.year}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admFlatFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admFlatFees, {
         id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
         amount: item.amount, hostel_type: hostelType, paid: true,
         pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
@@ -1154,7 +1439,7 @@ export const collectFee = async ({
         // fee_structures/student_fee_overrides.
         ...(item.note ? { underpayment_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'underpayment_note')
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
@@ -1175,7 +1460,7 @@ export const collectFee = async ({
       // in addition to the inline warning banner FeeCollectionModal shows
       // at collection time. Best-effort: a logging failure must never
       // block the payment itself from being recorded.
-      if (item.underpaymentAmount > 0) {
+      if (item.underpaymentAmount > 0 && !item.isBalance) {
         try {
           await supabase.from('audit_log').insert({
             action: 'flat_fee_underpayment', changed_by: resolvedStaffId, target_id: flatId,
@@ -1198,7 +1483,8 @@ export const collectFee = async ({
           receiptNo, payDate, collectedBy, approvedBy: item.concessionApprovedBy || null,
         })
       }
-      else await clearConcession(TABLES.admFlatFees, flatId)
+      else if (!item.isBalance) await clearConcession(TABLES.admFlatFees, flatId)
+      planPayments.push({ ref: flatId, amount: item.amount, date: payDate, receipt: receiptNo })
       flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
@@ -1207,13 +1493,21 @@ export const collectFee = async ({
       const yr  = item.year || CURRENT_YEAR
       const crs = item.course || course
       const sub = item.subtype || ''
-      const alreadyPaid = await checkCourseFeeExists(gcc, item.month, yr)
-      if (alreadyPaid) { skipped.push(`${item.month} ${yr} Course Fee`); console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
-      const recId = `${gcc}_course_${item.month.slice(0, 3).toLowerCase()}_${yr}`
-      const sRef  = sourceRef.courseFee(gcc, item.month, yr)
+      let recId = `${gcc}_course_${item.month.slice(0, 3).toLowerCase()}_${yr}`
+      if (item.isBalance) {
+        const rows = await monthFeeRows(TABLES.admCourseFees, gcc, 'for_month', item.month, yr, 'amount_paid')
+        const owed = monthBalance(rows, 'amount_paid', item.standardAmount)
+        if (!rows.length || !(owed > 0)) { skipped.push(`${item.month} ${yr} Course Fee balance`); continue }
+        if (item.amount > owed + 0.5) throw new Error(`${item.month} ${yr} course fee balance is ₹${owed.toLocaleString('en-IN')} — ₹${item.amount.toLocaleString('en-IN')} is more than is owed.`)
+        recId = balanceRowId(recId, rows.length)
+      } else {
+        const alreadyPaid = await checkCourseFeeExists(gcc, item.month, yr)
+        if (alreadyPaid) { skipped.push(`${item.month} ${yr} Course Fee`); console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
+      }
+      const sRef  = sourceRef.courseFee(gcc, item.month, yr, recId)
       // Fee-period month, same reasoning as the flat-fee branch above.
       const invoiceMonth = `${yr}-${String(new Date(`${item.month} 1, ${yr}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admCourseFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admCourseFees, {
         id: recId, adm_app_id: gcc, course: crs, subtype: sub,
         hostel_type: hostelType, for_month: item.month, year: yr,
         amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
@@ -1227,7 +1521,7 @@ export const collectFee = async ({
         // discoverable later by cross-referencing fee_structures.
         ...(item.note ? { override_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'override_note')
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
@@ -1248,7 +1542,7 @@ export const collectFee = async ({
       // this discrepancy only lived in the row's own override_note — no
       // separate flagged audit_log entry existed for it the way flat fee
       // now has, so it never surfaced in a dedicated warnings view either.
-      if (item.underpaymentAmount > 0) {
+      if (item.underpaymentAmount > 0 && !item.isBalance) {
         try {
           await supabase.from('audit_log').insert({
             action: 'course_fee_underpayment', changed_by: resolvedStaffId, target_id: recId,
@@ -1269,7 +1563,8 @@ export const collectFee = async ({
           receiptNo, payDate, collectedBy, approvedBy: item.concessionApprovedBy || null,
         })
       }
-      else await clearConcession(TABLES.admCourseFees, recId)
+      else if (!item.isBalance) await clearConcession(TABLES.admCourseFees, recId)
+      planPayments.push({ ref: recId, amount: item.amount, date: payDate, receipt: receiptNo })
       crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
@@ -1299,13 +1594,20 @@ export const collectFee = async ({
     }
   }
 
+  if (planPayments.length) await syncInstallmentPlan(gcc, { add: planPayments })
+
   // Build receipt sections
   if (admItems.length)  sections.unshift({ title: 'Admission Package',           color: '#4f46e5', items: admItems,  subtotal: admItems.reduce((s, i) => s + i.amount, 0) })
   if (flatItems.length) sections.push(   { title: `Monthly Flat Fees — ${hostelType}`, color: '#059669', items: flatItems, subtotal: flatItems.reduce((s, i) => s + i.amount, 0) })
   if (crsfItems.length) sections.push(   { title: 'Course Fees',                 color: '#7c3aed', items: crsfItems, subtotal: crsfItems.reduce((s, i) => s + i.amount, 0) })
 
   const total = sections.reduce((s, sec) => s + sec.subtotal, 0)
-  return { sections, total, skipped }
+  // The database numbers every receipt (R/2026-27/000123); hand it back so it can be printed.
+  let receiptSerial = null
+  if (feeControls) {
+    try { const { data } = await supabase.from('fee_receipt_serials').select('serial').eq('receipt_no', receiptNo).maybeSingle(); receiptSerial = data?.serial || null } catch { /* not available */ }
+  }
+  return { sections, total, skipped, receiptSerial }
 }
 
 // deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.
@@ -1371,8 +1673,8 @@ export const correctFeeCollectionDate = async ({
 // drops any low-fee concession filed against the old amount (the shortfall
 // changed — decide it again if still short), and audits before → after.
 const FEE_ROW = {
-  adm_flat_fees:   { amountCol: 'amount',      monthCol: 'month',     kind: 'flat_fee',   ref: (g, m, y) => sourceRef.flatFee(g, m, y) },
-  adm_course_fees: { amountCol: 'amount_paid', monthCol: 'for_month', kind: 'course_fee', ref: (g, m, y) => sourceRef.courseFee(g, m, y) },
+  adm_flat_fees:   { amountCol: 'amount',      monthCol: 'month',     kind: 'flat_fee',   ref: (g, m, y, id) => sourceRef.flatFee(g, m, y, id) },
+  adm_course_fees: { amountCol: 'amount_paid', monthCol: 'for_month', kind: 'course_fee', ref: (g, m, y, id) => sourceRef.courseFee(g, m, y, id) },
 }
 
 export const correctFeeCollectionAmount = async ({ table, id, newAmount, reason, correctedBy = 'Admin' }) => {
@@ -1393,7 +1695,7 @@ export const correctFeeCollectionAmount = async ({ table, id, newAmount, reason,
   const { error } = await supabase.from(table).update({ [cfg.amountCol]: amt }).eq('id', id)
   if (error) throw new Error(error.message)
   const { error: aErr } = await supabase.from(TABLES.accounts).update({ amount: amt })
-    .eq('source_ref', cfg.ref(gcc, row[cfg.monthCol], row.year)).eq('source_type', cfg.kind)
+    .eq('source_ref', cfg.ref(gcc, row[cfg.monthCol], row.year, row.id)).eq('source_type', cfg.kind)
   if (aErr) console.warn('correctFeeCollectionAmount: Accounts entry not updated —', aErr.message)
   if (row.concession_status) {
     await clearConcession(table, id)
@@ -1424,77 +1726,10 @@ export const moveFeeCollectionMonth = async ({ table, id, month, year, reason, c
   })
   const { error } = await supabase.from(table).update({ [cfg.monthCol]: month, year: Number(year) }).eq('id', id)
   if (error) throw new Error(error.message)
-  const oldRef = cfg.ref(gcc, row[cfg.monthCol], row.year), newRef = cfg.ref(gcc, month, year)
+  const oldRef = cfg.ref(gcc, row[cfg.monthCol], row.year, row.id), newRef = cfg.ref(gcc, month, year, row.id)
   const { error: aErr } = await supabase.from(TABLES.accounts).update({ source_ref: newRef }).eq('source_ref', oldRef).eq('source_type', cfg.kind)
   if (aErr) console.warn('moveFeeCollectionMonth: Accounts entry not re-keyed —', aErr.message)
   try { await supabase.from('fee_concessions').update({ month, year: Number(year) }).eq('fee_table', table).eq('fee_row_id', String(id)) } catch { /* table not there yet */ }
-}
-
-export const getStudentFeeSummary = async (studentId, sessionYear) => {
-  const [invRes, payRes] = await Promise.all([
-    supabase.from(TABLES.feeInvoices).select('*').eq('student_id', studentId).eq('session_year', sessionYear).order('invoice_month', { ascending: true }),
-    supabase.from(TABLES.feePayments).select('*').eq('student_id', studentId).order('paid_at', { ascending: false }),
-  ])
-  const invoices = invRes.data || []
-  const payments = payRes.data || []
-  return {
-    invoices, payment_history: payments,
-    total_expected: invoices.reduce((s, i) => s + (Number(i.total_amount) || 0), 0),
-    total_paid:     invoices.reduce((s, i) => s + (Number(i.amount_paid)  || 0), 0),
-    total_due:      invoices.reduce((s, i) => s + (Number(i.amount_due)   || 0), 0),
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 10. RECORD PAYMENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * ✦ Bug fix #7: this was the one fee-write path in the file that never
- *   touched `accounts` at all — every payment recorded here (fee_invoices +
- *   fee_payments) was completely invisible to the books, with no equivalent
- *   of the rollback-guarded upsertAccount used everywhere else in collectFee.
- *   Now inserts a matching Income row the same way collectFee does. If that
- *   accounts write fails, the fee_payments insert and the fee_invoices
- *   balance update are rolled back so this path has the same all-or-nothing
- *   guarantee as collectFee, rather than a silent books gap.
- */
-export const recordPayment = async ({ invoiceId, amount, method }) => {
-  const amt = parseFloat(amount)
-  if (!amt || amt <= 0) throw new Error('Invalid payment amount')
-  const { data: inv, error: invErr } = await supabase.from(TABLES.feeInvoices).select('*').eq('id', invoiceId).single()
-  if (invErr) throw invErr
-  const newPaid = parseFloat(inv.amount_paid || 0) + amt
-  const newDue  = Math.max(0, parseFloat(inv.total_amount || 0) - newPaid)
-  const status  = newDue <= 0 ? INVOICE_STATUS.PAID : INVOICE_STATUS.PARTIAL
-
-  const { data: payment, error: payErr } = await supabase.from(TABLES.feePayments)
-    .insert({ invoice_id: invoiceId, student_id: inv.student_id, amount: amt, method: method || 'Cash', paid_at: new Date().toISOString() })
-    .select().single()
-  if (payErr) throw payErr
-
-  const { error: updErr } = await supabase.from(TABLES.feeInvoices).update({ amount_paid: newPaid, amount_due: newDue, status, last_payment_at: new Date().toISOString() }).eq('id', invoiceId)
-  if (updErr) {
-    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
-    throw updErr
-  }
-
-  const payDate = new Date().toLocaleDateString('en-CA')
-  try {
-    await upsertAccount({
-      entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
-      amount: amt, payment_mode: method || 'Cash',
-      note: `${inv.student_name || 'Student'} · ${inv.fee_type || 'Fee'} (${inv.invoice_month || ''}) · Payment ${payment.id}`,
-      source_ref: `fee_payment_${payment.id}`, source_type: 'fee_payment',
-    })
-  } catch (err) {
-    // Roll back both writes above so this stays all-or-nothing, same as collectFee.
-    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
-    await supabase.from(TABLES.feeInvoices).update({
-      amount_paid: inv.amount_paid, amount_due: inv.amount_due, status: inv.status, last_payment_at: inv.last_payment_at,
-    }).eq('id', invoiceId)
-    throw new Error('Payment save failed while updating accounts: ' + err.message, { cause: err })
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1554,8 +1789,8 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null, ses
     throw new Error(`getHouseOccupancy: no house named "${houseName}" found in houses table`)
   }
 
-  let studentsQuery = supabase.from(TABLES.students).select('house, session').not('house', 'is', null)
-  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session').not('house', 'is', null).in('status', ['Admitted', 'Enrolled'])
+  let studentsQuery = supabase.from(TABLES.students).select('gcc_no, house, session, status, deleted_at').not('house', 'is', null)
+  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session, status').not('house', 'is', null).eq('status', 'Admitted')
   if (sessionName) {
     studentsQuery = studentsQuery.eq('session', sessionName)
     admissionsQuery = admissionsQuery.eq('session', sessionName)
@@ -1567,24 +1802,8 @@ export const getHouseOccupancy = async (houseName = null, excludeGcc = null, ses
   if (studentsErr) throw studentsErr
   if (admissionsErr) throw admissionsErr
 
-  const norm = h => (h || '').toString().trim().toLowerCase()
-
-  const result = targetHouses.map(h => {
-    const studentCount = students.filter(s => norm(s.house) === norm(h.name)).length
-    const admissionCount = admissions.filter(a =>
-      norm(a.house) === norm(h.name) &&
-      String(a.gcc_no) !== String(excludeGcc)
-    ).length
-    const occupied = studentCount + admissionCount
-    const capacity = h.capacity ?? 40
-    return {
-      name: h.name,
-      capacity,
-      occupied,
-      available: Math.max(0, capacity - occupied),
-      isFull: occupied >= capacity,
-    }
-  })
+  // Seats = current students + Admitted applicants not yet enrolled (see lib/houseOccupancy.js for why).
+  const result = countHouseOccupancy({ houses: targetHouses, students, admissions, excludeGcc })
 
   return houseName ? result[0] : result
 }
@@ -1643,12 +1862,15 @@ export const promoteToStudent = async (admission) => {
   const payload = {
     gcc_no: gccNo, name: admission.name || admission.applicant_name || '',
     dob: admission.dob || null, gender: admission.gender || null,
-    course: admission.course || null, batch: admission.cls || admission.batch || null,
+    course: admission.course || null,
+    // Combined Course has no batch; '—' is what Fee Setup, Exams and Students all expect
+    batch: normalizeCourse(admission.course) === 'Combined Course' ? '—' : (admission.cls || admission.batch || null),
     house: admission.house || null, session: admission.session || null,
     hostel_type: admission.hostel_type || 'Day Scholar', status: 'Active',
     father_name: admission.father || admission.father_name || null,
     mother_name: admission.mother || admission.mother_name || null,
     phone: admission.phone || null, address: admission.address || null,
+    photo_url: admission.photoUrl || admission.photo_url || null,
   }
   const { data, error } = await supabase.from(TABLES.students).insert(payload).select().single()
   if (error) throw error

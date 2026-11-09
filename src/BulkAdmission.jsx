@@ -26,7 +26,9 @@ import {
 } from './feeEngine'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
+import { excludeRepeaterFees } from './lib/feeMath'
 import { printFeeReceipts } from './premiumReceipt'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -224,6 +226,16 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
     const skippedAll = []
     const staffId = currentUser?.userName || currentUser?.name || null
 
+    // Repeaters pay no admission fee or admission items. The flag lives on the
+    // students table; if it can't be read, stop rather than charge a repeater.
+    const repeaterGcc = new Set()
+    {
+      const nums = selectedList.map(x => parseInt(x.gcc_no)).filter(Number.isFinite)
+      const { data, error } = await supabase.from('students').select('gcc_no').in('gcc_no', nums).eq('is_repeater', true)
+      if (error) { setSaving(false); return setSaveError('Could not check which students are repeaters: ' + error.message) }
+      for (const r of data || []) repeaterGcc.add(parseInt(r.gcc_no))
+    }
+
     for (let i = 0; i < selectedList.length; i++) {
       const s     = selectedList[i]
       const gc    = gccStr(s.gcc_no)
@@ -235,11 +247,14 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
 
       // Same kinds/labels as FeeCollectionModal, so collectFee writes the
       // standard fee rows AND their Accounts entries with the keys Fees uses.
-      const items = [
+      const allItems = [
         its.admission  && { kind: 'admission', label: 'Admission Fee',  amount: amts.admission  || DEFAULT_ADM_FEE },
         its.dress      && { kind: 'item',      label: 'Dress Fee',      amount: amts.dress      || DEFAULT_DRESS   },
         its.prospectus && { kind: 'item',      label: 'Prospectus Fee', amount: amts.prospectus || DEFAULT_PROSP   },
       ].filter(Boolean)
+      const isRepeater = repeaterGcc.has(parseInt(s.gcc_no))
+      if (isRepeater && excludeRepeaterFees(true, allItems).excluded.length) skippedAll.push(`GCC-${gc}: repeater — admission fee and items waived`)
+      const items = excludeRepeaterFees(isRepeater, allItems).items
 
       if (!items.length) { setProgress(p => ({ ...p, done: p.done + 1 })); continue }
 
@@ -251,7 +266,7 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
           hostelType: s.hostel_type || 'Day Scholar',
           payDate, payMode, txnRef: txnRef || null,
           collectedBy: collectedBy.trim(), staffId,
-          receiptNo: rcpt, items,
+          receiptNo: rcpt, items, isRepeater,
         })
         if (skipped?.length) skippedAll.push(`GCC-${gc}: ${skipped.join(', ')}`)
         const recorded = items.filter(it => !(skipped || []).includes(it.label))
@@ -301,26 +316,17 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f4f8', fontFamily: "system-ui,sans-serif", padding: '0 0 80px' }}>
-
-      {/* Header */}
-      <div style={{ background: C.navy, color: 'white', padding: '24px 32px', borderBottom: `3px solid ${C.gold}` }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: C.gold, marginBottom: 6 }}>
-            GNSI Portal · Accounts
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em', marginBottom: 4 }}>
-            Bulk Admission Fee Collection
-          </div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.55)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <span>📋 {students.length} students pending admission fee</span>
-            <span>·</span>
-            <span>✅ {savedCount} processed this session</span>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 32px' }}>
+    <div className="px-root" style={{ minHeight: '100vh', background: 'transparent', padding: '0 0 80px' }}>
+      <PremiumStyles />
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 'clamp(12px, 2.5vw, 24px) clamp(12px, 2.5vw, 32px)' }}>
+        <PremiumHero eyebrow="GNSI · Accounts · Admissions" title="Bulk Admission Fee"
+          subtitle="Collect the admission fee for many students at once, then print every receipt"
+          icon={<span style={{ fontSize: 22 }}>📥</span>}
+          stats={[
+            { label: 'Pending', value: students.length, sub: 'Admission fee not paid' },
+            { label: 'Selected', value: Object.values(selected).filter(Boolean).length, sub: 'Ready to collect' },
+            { label: 'Processed', value: savedCount, sub: 'This session' },
+          ]} />
 
         {error && (
           <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>
@@ -455,7 +461,7 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: C.slate[900] }}>{s.applicant_name}</div>
                       <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                        <span style={{ fontWeight: 700, color: C.navy, fontFamily: 'monospace' }}>GCC-{gc}</span>
+                        <span style={{ fontWeight: 700, color: C.navy, fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace" }}>GCC-{gc}</span>
                         {s.course && <span style={{ background: `${C.navy}12`, color: C.navy, padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>{s.course}</span>}
                         {s.subtype && <span>{s.subtype}</span>}
                         {s.batch   && <span>· {s.batch}</span>}

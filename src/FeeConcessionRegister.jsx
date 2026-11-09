@@ -3,6 +3,8 @@
 // Records only; nothing here changes fee rows.
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
+import StudentJump from './StudentJump'
+import { cardFlush as card, inputFull as inp, label as lbl, btn, btnPrimary, cell, head } from './feeTheme'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_concession_register/.test(err.message || ''))
 const SETUP_MSG = 'Run supabase/migrations/20261009_fee_dayclose_refunds_register.sql in the Supabase SQL editor to switch on the concession register.'
@@ -49,15 +51,8 @@ function downloadCsv(rows, filename) {
 }
 
 const STATE_STYLE = { active: ['#dcfce7', '#166534', 'Active'], expiring: ['#fef3c7', '#92400e', 'Expiring ≤30d'], expired: ['#e5e7eb', '#4b5563', 'Expired'], revoked: ['#fee2e2', '#991b1b', 'Revoked'] }
-const card = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 }
-const inp = { padding: '8px 10px', border: '1px solid #d9d2c2', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', width: '100%' }
-const lbl = { fontSize: 11, fontWeight: 700, color: '#5d6b82', display: 'block' }
-const btn = { padding: '7px 12px', border: '1px solid #d9d2c2', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }
-const btnPrimary = { ...btn, background: '#1e3a6e', color: 'white', border: '1px solid #1e3a6e' }
-const cell = { padding: '8px 10px', borderBottom: '1px solid #f3f0e8', fontSize: 12.5, color: '#14213d', whiteSpace: 'nowrap' }
-const head = { ...cell, fontSize: 10.5, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.05em', background: '#faf8f3' }
 
-export default function FeeConcessionRegister({ students, isAdmin, currentUser }) {
+export default function FeeConcessionRegister({ students, isAdmin, currentUser, onCollect, onLedger }) {
   const me = currentUser?.userName || currentUser?.name || 'Admin'
   const [rows, setRows] = useState([])
   const [setup, setSetup] = useState(false)
@@ -205,7 +200,7 @@ export default function FeeConcessionRegister({ students, isAdmin, currentUser }
                 return (
                   <tr key={r.id}>
                     <td style={{ ...cell, fontWeight: 700 }}>{r.gcc}</td>
-                    <td style={cell}>{r.student_name || '—'}</td>
+                    <td style={cell}>{r.student_name || '—'}<StudentJump gcc={r.gcc} students={students} onCollect={onCollect} onLedger={onLedger} /></td>
                     <td style={cell}>{r.kind}</td>
                     <td style={{ ...cell, fontWeight: 700 }}>{valueText(r)}</td>
                     <td style={cell}>{(APPLIES.find(a => a[0] === r.applies_to) || [0, r.applies_to])[1]}</td>

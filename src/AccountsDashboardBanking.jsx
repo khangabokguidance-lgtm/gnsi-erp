@@ -32,6 +32,8 @@ export const AccountsDashboardBanking = ({
   isMobile = false,
   openEdit = () => {},
   handleDelete = () => {},
+  vendors = [],
+  payers = [],
   onExportReport = null, // (format:'pdf'|'docx'|'excel') => void — generates a full report of all entries, independent of on-screen filters
   exportingReport = '', // '' | 'pdf' | 'docx' | 'excel' — disables buttons while generating
 }) => {
@@ -417,9 +419,8 @@ export const AccountsDashboardBanking = ({
                           fontWeight: 500,
                           margin: 0,
                           color: '#16171B',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          wordBreak: 'break-word',
+                          lineHeight: 1.4,
                         }}
                       >
                         {entry.note || entry.category || 'Transaction'}
@@ -433,6 +434,42 @@ export const AccountsDashboardBanking = ({
                       >
                         {entry.entry_date} · {entry.payment_mode || 'Unknown'}
                       </p>
+                      {(() => {
+                        const party = isIncome
+                          ? (payers.find((x) => String(x.id) === String(entry.payer_id))?.name || '')
+                          : (vendors.find((x) => String(x.id) === String(entry.vendor_id))?.name || '')
+                        const bits = [
+                          ['Category', [entry.category, entry.sub_category].filter(Boolean).join(' › ')],
+                          [isIncome ? 'Payer' : 'Paid to', party],
+                          ['Voucher head', entry.voucher_head],
+                          ['Account', entry.account_type || 'Cash A/c'],
+                          ['Voucher no.', entry.voucher_no],
+                          ['Ref', entry.txn_ref],
+                          ['By', entry.added_by],
+                          ['Receipt', entry.receipt_url ? 'Attached' : ''],
+                        ].filter(([, v]) => v)
+                        return (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 6px', marginTop: '8px' }}>
+                            {bits.map(([k, v]) => (
+                              <span
+                                key={k}
+                                style={{
+                                  fontSize: '11px',
+                                  padding: '3px 9px',
+                                  borderRadius: '999px',
+                                  backgroundColor: '#F5F3EC',
+                                  color: '#4B4F58',
+                                  border: '1px solid #ECE7D8',
+                                  wordBreak: 'break-word',
+                                }}
+                              >
+                                <span style={{ color: '#9C9EA6', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', fontSize: '9.5px', marginRight: '5px' }}>{k}</span>
+                                {v}
+                              </span>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 

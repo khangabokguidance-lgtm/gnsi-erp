@@ -16,10 +16,8 @@ import Accounts           from './Accounts'
 import Salary             from './Salary'
 import Staff              from './Staff'
 import HR                 from './DAILY_ATTENDANCE_TRACKER_COMPLETE'
-import Leave              from './Leave'
 import Hostel             from './Hostel'
 import Reception          from './Reception'
-import Notice             from './Notice'
 import Social             from './Social'
 import Connect            from './Connect'
 import Reports            from './Reports'
@@ -29,36 +27,49 @@ import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
 import LearningHub from './LearningHub'
-import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
-import { NavIcon } from './navIcons'
+import ModuleHub from './ModuleHub'
+import CommandPalette from './CommandPalette'
+import { openPalette } from './paletteEvents'
+import { MODULE_HUBS, HUB_BY_ID, HUB_OF, visibleHubTabs } from './moduleHubs'
+import { HUB_ID, HUB_TABS, isHubTab, canSeeHub, hubTabAllowed } from './learningHubTabs'
+import { NavIcon, AppIcon } from './navIcons'
 import TabIcons from './TabIcons'
+import MultiLoginWatch from './MultiLoginWatch'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
 import Teaching           from './Teaching'
 import Attendance         from './Attendance'
-import Exams              from './Exams'
-import Timetable          from './Timetable'
+// Exams is the largest module — load it only when someone opens it.
+const Exams = React.lazy(() => import('./Exams'))
+import Cbt                from './Cbt'
+import CbtPublic          from './CbtPublic'
+import ResponsiveTables   from './ResponsiveTables'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import ConstructionMaintenance from './ConstructionMaintenance'
 import Store              from './Store'
 import StorePublic        from './StorePublic'
+import ExamRegistrationPublic from './ExamRegistrationPublic'
+import AdmissionPortalPublic from './AdmissionPortalPublic'
 import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
 import LandingPage        from './LandingPage'
 import WebsiteTab         from './WebsiteTab'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff     from './AdminLinkStaff'
-import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
+import TeachersDayFrame from './TeachersDayFrame'
+import DesignStudio from './DesignStudio'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
 import { ADMIN_ROLES, isAdminRole } from './roles'
+import ReadOnlyShield from './ReadOnlyShield'
+import { hasWriteRights } from './lib/readOnlyShield'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -89,22 +100,19 @@ const ALL_GROUPS = [
     group: 'CORE',
     items: [
       { id: 'dashboard',      label: 'Dashboard',      icon: '⊞' },
-      { id: 'students',       label: 'Students',       icon: '🎓' },
-      { id: 'admissions',     label: 'Admissions',     icon: '📋' },
-      { id: 'bulkadmission',  label: 'Bulk Admission', icon: '📥' },
+      // Hubs (moduleHubs.js): one entry for modules with overlapping features; each tab keeps its permission key
+      { id: 'studentshub',    label: 'Students & Admissions', icon: '🎓' },
     ],
   },
   {
     group: 'FINANCE',
     items: [
-      { id: 'fees',             label: 'Fees',               icon: '💰' },
+      { id: 'feeshub',          label: 'Fees',               icon: '💰' },
       { id: 'accounts',         label: 'Accounts',           icon: '🧾' },
       // Salary/Payroll moved into Face Attendance's own "Payroll" tab
       // (admins get the full register there now — Salary.jsx itself is
       // unchanged, just no longer mounted as a separate top-level page).
-      { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
-      // FIX: feesetup now visible in nav (was hidden but reachable)
-      { id: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
+      // Student Fee Ledger and Fee Setup are tabs of the Fees hub
       { id: 'construction',     label: 'Construction & Maintenance', icon: '🏗️' },
     ],
   },
@@ -112,23 +120,22 @@ const ALL_GROUPS = [
     group: 'ACADEMIC',
     items: [
       { id: 'attendance',    label: 'Attendance',      icon: '📅' },
-      { id: 'exams',         label: 'Exams',           icon: '📝' },
-      { id: 'timetable',     label: 'Timetable',       icon: '🕐' },
+      { id: 'examshub',      label: 'Exams & CBT',     icon: '📝' },
       { id: 'teaching',      label: 'Teaching',        icon: '📚' },
       { id: 'courses',       label: 'Courses',         icon: '🎓' },
-      // Study Materials, Teaching Aids, Question Bank (+ Viewer) and Entrance Exam
-      // are tabs of this one module; each keeps its own permission key.
+      // Study Materials, Teaching Aids, Study Lockers, Question Bank (+ Viewer), Entrance Exam
+      // and Model Sets are tabs of this one module; each keeps its own permission key.
       { id: 'learninghub',   label: 'Learning Hub',    icon: '🎓' },
-      { id: 'studylockers',  label: 'Study Lockers',   icon: '🗃️' },
     ],
   },
   {
     group: 'PEOPLE',
     items: [
+      // HR is a core module (gold CORE tag, listed first on the staff home). It includes the Staff
+      // directory, Time Table, Leave and Notice as sections, each with its own permission key
+      // (HR_SECTIONS below); keywords let the menu search find them under HR.
+      { id: 'hr',      label: 'HR', icon: '🗂️', core: true, keywords: 'staff directory timetable time table leave notice circular attendance' },
       { id: 'kitchen', label: 'Kitchen', icon: '🍽️' },
-      { id: 'staff',   label: 'Staff',   icon: '👨‍🏫' },
-      { id: 'hr',      label: 'HR',      icon: '🗂️' },
-      { id: 'leave',   label: 'Leave',   icon: '🏖️' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
       { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
@@ -138,10 +145,7 @@ const ALL_GROUPS = [
     group: 'OPERATIONS',
     items: [
       { id: 'reception', label: 'Reception', icon: '🛎️' },
-      { id: 'notice',    label: 'Notice',    icon: '🔔' },
-      { id: 'social',    label: 'Social',    icon: '📣' },
-      { id: 'connect',   label: 'Connect',   icon: '🔗' },
-      { id: 'website',   label: 'Website Manager', icon: '🌐' },
+      { id: 'commshub',  label: 'Communication', icon: '📣' },
       { id: 'store',     label: 'Store',     icon: '🏬' },
     ],
   },
@@ -150,12 +154,8 @@ const ALL_GROUPS = [
     items: [
       { id: 'reports',     label: 'Reports',      icon: '📊' },
       { id: 'checklist',   label: 'Checklist',    icon: '✅' },
-      { id: 'invitation',  label: 'Invitation',   icon: '✉️' },
-      { id: 'certificate', label: 'Certificates', icon: '📜' },
-      { id: 'admin',       label: 'Admin',        icon: '🔐' },
-      { id: 'student360',  label: 'Student 360°', icon: '🔍' },
-      { id: 'system',      label: 'System',       icon: '⚙️' },
-      { id: 'adminlink',   label: 'Link Staff',   icon: '🔗' },
+      { id: 'designstudio', label: 'Design Studio', icon: '🎨' },
+      { id: 'adminhub',    label: 'Admin & System', icon: '🔐' },
     ],
   },
   {
@@ -166,7 +166,20 @@ const ALL_GROUPS = [
   },
 ]
 
+// hub entries carry their tabs' names as search keywords
+MODULE_HUBS.forEach(h => { const it = ALL_GROUPS.flatMap(g => g.items).find(i => i.id === h.id); if (it) it.keywords = h.keywords })
 const ALL_ITEMS = ALL_GROUPS.flatMap(g => g.items)
+// Modules that now live inside HR: module id (and permission key) → HR section
+const HR_SECTIONS = { staff: 'staffdir', timetable: 'timetable', leave: 'leavedesk', notice: 'notice' }
+// HR and the hubs show in the menu when the user may open at least one of their sections
+function addContainers(set) {
+  if (Object.keys(HR_SECTIONS).some(k => set.has(k))) set.add('hr')
+  MODULE_HUBS.forEach(h => { if (visibleHubTabs(h, k => set.has(k), false).length) set.add(h.id) })
+  return set
+}
+const LEARNING_LABELS = { studymaterial: 'Study Materials', teachingaids: 'Teaching Aids', studylockers: 'Study Lockers', questionbank: 'Question Bank', questionbankviewer: 'Question Bank Viewer', entrance: 'Entrance Exam', modelsets: 'Model Sets', setmaker: 'Model Set Maker', classmaterial: 'Class Material' }
+const readRecents = () => { try { return JSON.parse(localStorage.getItem('gnsi_nav_recents') || '[]') } catch { return [] } }
+const navMatches = (item, q) => !q || item.label.toLowerCase().includes(q) || !!item.keywords?.includes(q)
 
 const BADGES = {
   fees:   { count: 3, color: '#fcd34d', bg: '#78350f' },
@@ -279,8 +292,17 @@ const SIDEBAR_MINI = 62
 // drawer is open, so module modals/overlays behave exactly as before at
 // all other times (they still sit above the top bar / desktop sidebar).
 const DRAWER_OPEN_CLASS = 'gnsi-drawer-open'
+// One type system on every module screen: older modules name their own fonts inline
+// (Playfair, Source Serif, Iowan for titles; Inter, DM Sans, Outfit for text). Inside
+// the app's content area those map to the portal's Fraunces / Plus Jakarta Sans, so
+// every module reads the same on phone and desktop. Print windows are separate
+// documents and keep their own fonts.
+const SERIF_UI = "'Fraunces','Playfair Display',Georgia,serif"
+const SANS_UI = "'Plus Jakarta Sans','Inter',system-ui,sans-serif"
 const SHELL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');
+main.app-content [style*="Playfair Display"], main.app-content [style*="Source Serif"], main.app-content [style*="Iowan Old Style"] { font-family: ${SERIF_UI} !important; }
+main.app-content [style*="font-family: Inter"], main.app-content [style*="'Inter'"],
+main.app-content [style*="DM Sans"], main.app-content [style*="Outfit"] { font-family: ${SANS_UI} !important; }
 body.${DRAWER_OPEN_CLASS} main.app-content {
   position: relative;
   z-index: 0;
@@ -315,7 +337,7 @@ function CollapsedNav({ activePage, onNavigate, allowedModules }) {
               fontSize: 18, position: 'relative', transition: 'all .12s' }}
             onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
             onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-            <NavIcon id={item.id} size={19} />
+            <AppIcon id={item.id} size={30} />
             {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />}
             {badge && <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
           </button>
@@ -333,8 +355,9 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
     <div style={{ position: 'relative' }} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPinHov(false) }}>
       <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, rgba(201,162,75,0.20) 0%, rgba(201,162,75,0.04) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: UI_FONT }}>
         {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
-        <span style={{ display: 'flex', flexShrink: 0, opacity: isActive ? 1 : 0.85, color: isActive ? D.accentLight : 'inherit' }}><NavIcon id={item.id} size={compact ? 16 : 18} /></span>
+        <span style={{ display: 'flex', flexShrink: 0 }}><AppIcon id={item.id} size={compact ? 24 : 28} /></span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+        {item.core && !compact && <span title="Core module" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '.12em', padding: '2px 6px', borderRadius: 99, background: 'linear-gradient(180deg,#e2c57e,#b8923a)', color: '#1a1406', flexShrink: 0 }}>CORE</span>}
         {badge && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>}
         {isPinned && !hov && <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>}
       </button>
@@ -427,8 +450,8 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    return set
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
+    return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
   useEffect(() => {
@@ -456,7 +479,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const q = search.trim().toLowerCase()
     return ALL_GROUPS.map(g => ({
       ...g,
-      items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && (!q || i.label.toLowerCase().includes(q)))
+      items: g.items.filter(i => allowedModules.has(i.id) && !pins.includes(i.id) && navMatches(i, q))
     })).filter(g => g.items.length > 0)
   }, [allowedModules, search, pins])
 
@@ -488,7 +511,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
           <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: UI_FONT }} />
-          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', flexShrink: 0 }}>/</span>}
+          {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", flexShrink: 0 }}>/</span>}
         </div>
       </div>
 
@@ -510,7 +533,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
 
       <div style={{ padding: '8px 8px 12px', borderTop: `1px solid ${D.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 7px' }}>
-          <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: 'monospace', fontSize: 9 }}>/</span>{' '}to search</span>
+          <span style={{ fontSize: 10, color: D.textFaint }}><span style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 3, padding: '1px 4px', fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace", fontSize: 9 }}>/</span>{' '}to search</span>
           <span style={{ fontSize: 10, color: D.textFaint }}>v2.2 · © {new Date().getFullYear()} GNSI</span>
         </div>
         <LogoutButton onLogout={onLogout} />
@@ -528,7 +551,7 @@ function MiniLogout({ onLogout }) {
   )
 }
 
-function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, collapsed, onToggleCollapse }) {
+function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, collapsed, onToggleCollapse, onBackToMenu }) {
   const isMobile    = useIsMobile()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const totalBadges = Object.values(BADGES).reduce((s, b) => s + b.count, 0)
@@ -540,8 +563,8 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
-    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
-    return set
+    if (canSeeHub(k => hubTabAllowed(k, permMap[k]))) set.add(HUB_ID)
+    return addContainers(set)
   }, [permMap, isAdmin, currentUser])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
@@ -585,6 +608,9 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
+        {onBackToMenu && (
+          <button onClick={onBackToMenu} aria-label="Back to the main menu" title="Back to the main menu" style={{ background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: D.accentLight, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>← Menu</button>
+        )}
         <img src={brandLogo()} alt="Logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><BrandTitle accent={D.accent} /></div>
@@ -593,6 +619,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
         <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
           <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><NavIcon id={activePage} size={14} /></span>{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
+        <button type="button" onClick={openPalette} aria-label="Go to a module or action" title="Go to…" style={{ background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: D.accentLight, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><NavIcon id="search" size={18} /></button>
         <button onClick={onLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
       {/* Phone menu — payments-app style home screen of module icons */}
@@ -673,7 +700,7 @@ export default function App() {
     // Presentation API for cast-receiver. Everything else still defaults
     // to 'dashboard' and is reached via in-app setActive(...) calls only.
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
-    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store']
+    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store', 'exam-registration', 'admit-card', 'apply', 'apply-status', 'exam']
     // 'store' is deliberately both the public storefront route (cold load,
     // no session) and the staff-side nav item id (POS module, logged in).
     // Only take the public branch on a genuine cold load with no session —
@@ -698,9 +725,20 @@ export default function App() {
   const [hubTab, setHubTab] = useState(HUB_TABS[0])
   // hubHome: the hub opens on its home screen from the menu, but straight on a tab for deep links
   const [hubHome, setHubHome] = useState(true)
+  // HR: Staff, Time Table, Leave and Notice are its sections; links to those old modules open them there.
+  const [hrSection, setHrSection] = useState(null)
+  // Module hubs (moduleHubs.js): the open tab of each; links to a tab's old module id open it there
+  const [hubSections, setHubSections] = useState({})
   const setActive = useCallback(id => {
     if (isHubTab(id)) { setHubTab(id); setHubHome(false); setActiveRaw(HUB_ID) }
-    else { if (id === HUB_ID) setHubHome(true); setActiveRaw(id) }
+    else if (HR_SECTIONS[id]) { setHrSection(HR_SECTIONS[id]); setActiveRaw('hr') }
+    else if (HUB_OF[id]) { setHubSections(s => ({ ...s, [HUB_OF[id]]: id })); setActiveRaw(HUB_OF[id]) }
+    else {
+      if (id === HUB_ID) setHubHome(true)
+      if (id === 'hr') setHrSection(null)
+      if (HUB_BY_ID[id]) setHubSections(s => ({ ...s, [id]: null }))
+      setActiveRaw(id)
+    }
   }, [])
   // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
   useEffect(() => {
@@ -712,7 +750,15 @@ export default function App() {
   // rather than pages: 'hub' / 'logs' / 'syllabusmgr' live inside Teaching.
   const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [setActive])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
-  const [showLogin,        setShowLogin]        = useState(false)
+  // While a module is open the sidebar tucks into its icon rail so the module gets the room; the main
+  // menu keeps the width the user chose. Toggling inside a module is temporary (reset when you go back
+  // or open the next module from the menu).
+  const inModule = active !== 'dashboard'
+  const [railOverride, setRailOverride] = useState(null)
+  useEffect(() => { setRailOverride(null) }, [inModule])
+  const railCollapsed = railOverride ?? (inModule ? true : sidebarCollapsed)
+  // /staff-login opens the staff sign-in screen directly (linked from the landing header, menu and pop-up)
+  const [showLogin,        setShowLogin]        = useState(() => window.location.pathname.replace(/^\/+|\/+$/g, '') === 'staff-login')
   const [permMap,          setPermMap]          = useState({})
   const [permLoading,      setPermLoading]      = useState(false)
   const isMobile = useIsMobile()
@@ -737,11 +783,35 @@ export default function App() {
   // dedupes against student_mismatch_log), so this can't spam admins by
   // re-flagging something already open from a previous scan. See
   // mismatchScanner.js / mismatchDetector.js / mismatchLog.js.
-  useMismatchAutoScan({ enabled: !!currentUser && isAdmin, intervalMinutes: 60 })
+  useMismatchAutoScan({ enabled: !!currentUser && isAdmin, intervalMinutes: 24 * 60 })
 
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 
-  const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
+  // Full screen for the whole portal (works for every module). Entering full screen
+  // opens the sidebar with every module visible, and leaving restores its previous width.
+  const [isFs, setIsFs] = useState(false)
+  const fsPrevCollapsed = useRef(null)
+  useEffect(() => {
+    const onFs = () => {
+      const on = !!document.fullscreenElement
+      setIsFs(on)
+      if (on) { setSidebarCollapsed(c => { fsPrevCollapsed.current = c; return false }); setRailOverride(false) }
+      else { if (fsPrevCollapsed.current !== null) { setSidebarCollapsed(fsPrevCollapsed.current); fsPrevCollapsed.current = null }; setRailOverride(null) }
+    }
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }, [])
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'F11' && document.documentElement.requestFullscreen) { e.preventDefault(); toggleFullscreen() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleFullscreen])
+
+  const sidebarW = isMobile ? 0 : (railCollapsed ? SIDEBAR_MINI : SIDEBAR_FULL)
 
   const fetchSharedStaff = useCallback(async () => {
     const columns = isAdmin ? '*' : 'id, name, designation, department, role, phone, joining_date, status'
@@ -855,14 +925,22 @@ export default function App() {
   // return ZERO rows, so Fees shows ₹0 and 0 students, rosters look empty,
   // etc. That happens if linking failed at login or the session expired and
   // couldn't refresh. Show it plainly instead of silently empty data.
-  const [secureOff, setSecureOff] = useState(false)
+  // A session can also exist WITHOUT being linked to a staff account (the
+  // link step refused, or the browser holds another account's session, such
+  // as a parent's): then reading works but every save is refused with
+  // "row-level security". is_staff() is the check the fee tables' policies
+  // use, so the banner asks it too.
+  const [secureOff, setSecureOff] = useState(false)   // false | 'off' (no session) | 'unlinked'
   useEffect(() => {
     if (!currentUser) return
     let live = true
-    supabase.auth.getSession()
-      .then(({ data }) => { if (live) setSecureOff(!data?.session) })
-      .catch(() => {})
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { if (live) setSecureOff(!session) })
+    const check = async (session) => {
+      if (!session) { if (live) setSecureOff('off'); return }
+      const { data, error } = await supabase.rpc('is_staff')
+      if (live) setSecureOff(!error && data === false ? 'unlinked' : false)
+    }
+    supabase.auth.getSession().then(({ data }) => check(data?.session)).catch(() => {})
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { check(session).catch(() => {}) })
     return () => { live = false; sub?.subscription?.unsubscribe?.() }
   }, [currentUser])
 
@@ -935,6 +1013,11 @@ export default function App() {
   if (active === 'student-leave') return <StudentSelfService />
   if (active === 'verify')        return <GatePassVerifyPage />
   if (active === 'cast-receiver') return <CastReceiver />
+  // Entrance-exam registration and admit card: public, no login (candidates and parents use these).
+  if (active === 'exam-registration' || active === 'admit-card') return <ExamRegistrationPublic page={active} />
+  if (active === 'apply' || active === 'apply-status') return <AdmissionPortalPublic page={active} />
+  // Online CBT exam: candidates open the link from anywhere, no login (…/exam?t=<test id>).
+  if (active === 'exam') return <CbtPublic />
   // Public storefront — only reachable here when there's no session yet
   // (see the cold-load check above); once logged in, 'store' always means
   // the staff POS module below, never this page.
@@ -961,35 +1044,40 @@ export default function App() {
     // the component itself only exposes enrollment management to admins.
     if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
-    if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
+    if (key === HUB_ID) return canSeeHub(k => hubTabAllowed(k, permMap[k]))
+    // Learning Hub tabs: staff get view tabs on read access; tabs that create / run things need edit-type rights too
+    if (isHubTab(key)) return hubTabAllowed(key, permMap[key])
+    if (key === 'hr') return ['hr', ...Object.keys(HR_SECTIONS)].some(k => permMap[k]?.read === true)
+    if (HUB_BY_ID[key]) return visibleHubTabs(HUB_BY_ID[key], k => permMap[k]?.read === true, false).length > 0
     return permMap[key]?.read === true
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
+  // Older modules never read their `perms` prop, so "read" used to mean full edit rights there. For the sensitive ones,
+  // a non-admin without add / edit / delete rights now gets a view-only screen.
+  const viewOnly = (key, label, node) => (!isAdmin && !hasWriteRights(permMap[key]) ? <ReadOnlyShield label={label}>{node}</ReadOnlyShield> : node)
   const moduleMap = {
     // onNavigate: Students is edit-only now — its "New Admission" button sends staff to Admissions.
     students:          <Students          currentUser={currentUser} perms={perms('students')} onNavigate={setActive} />,
-    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}        />,
+    admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')} onNavigate={setActive} />,
     // FIX: sessions/admissionsessions — admin only explicitly
     sessions:          isAdmin ? <Sessions          currentUser={currentUser} perms={perms('sessions')}          /> : <AccessDenied />,
     admissionsessions: isAdmin ? <AdmissionSessions currentUser={currentUser} perms={perms('admissionsessions')} /> : <AccessDenied />,
     bulkadmission:     <BulkAdmission     currentUser={currentUser} perms={perms('bulkadmission')}     />,
     fees:              <Fees              currentUser={currentUser} perms={perms('fees')}              />,
     accounts:          <Accounts          role={currentUser.role?.toLowerCase()} perms={perms('accounts')} />,
-    salary:            <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
+    salary:            viewOnly('salary', 'Salary', <Salary            currentUser={currentUser} perms={perms('salary')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />),
     staff:             <Staff             currentUser={currentUser} perms={perms('staff')}  staff={sharedStaff} onStaffChange={fetchSharedStaff} />,
-    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} />,
-    leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
+    hr:                <HR                currentUser={currentUser} perms={perms('hr')} staff={sharedStaff} canAccess={canAccess} modulePerms={perms} section={hrSection} onSection={setHrSection}
+                          staffDirectory={<Staff currentUser={currentUser} perms={perms('staff')} staff={sharedStaff} onStaffChange={fetchSharedStaff} />} />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
-    awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
+    awards:            viewOnly('awards', 'Awards', <Awards            currentUser={currentUser} perms={perms('awards')}            />),
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null}
                           onNavigate={setActive} onLogout={handleLogout} onStaffChange={fetchSharedStaff} />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
-    notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
     learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} home={hubHome} onHome={() => setHubHome(true)} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
-    studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
@@ -1001,11 +1089,11 @@ export default function App() {
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')} onNavigate={navigateTo} />,
     // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
-    exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
-    timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
+    exams:             <React.Suspense fallback={<div style={{ padding: 60, textAlign: 'center', color: '#5d6b82', fontFamily: 'inherit' }}>Opening Exams…</div>}><Exams currentUser={currentUser} perms={perms('exams')} /></React.Suspense>,
+    cbt:               <Cbt               currentUser={currentUser} perms={perms('cbt')}               />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
-    construction:      <ConstructionMaintenance />,
+    construction:      viewOnly('construction', 'Construction', <ConstructionMaintenance />),
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
@@ -1014,7 +1102,14 @@ export default function App() {
     student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} onNavigate={setActive} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
+    teachersday:       canAccess('teachersday') ? <TeachersDayFrame /> : <AccessDenied />,
+    designstudio:      canAccess('designstudio') || canAccess('invitation') || canAccess('certificate') || canAccess('teachersday') ? <DesignStudio currentUser={currentUser} perms={perms} canAccess={canAccess} /> : <AccessDenied />,
     help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
+  }
+  for (const hub of MODULE_HUBS) {
+    const visible = visibleHubTabs(hub, canAccess, isAdmin)
+    moduleMap[hub.id] = <ModuleHub hub={hub} visible={visible} views={Object.fromEntries(visible.map(id => [id, moduleMap[id]]))}
+      section={hubSections[hub.id] || null} onSection={id => setHubSections(s => ({ ...s, [hub.id]: id }))} />
   }
 
   const renderContent = () => {
@@ -1024,34 +1119,73 @@ export default function App() {
     if (active === 'student-leave') return <StudentSelfService />
     if (active === 'verify')        return <GatePassVerifyPage />
     if (active === 'cast-receiver') return <CastReceiver />
-    if (active === 'dashboard') return isAdmin
+    // Every table in every module becomes stacked cards on phones (see ResponsiveTables)
+    if (active === 'dashboard') return <ResponsiveTables>{isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />}</ResponsiveTables>
     if (!canAccess(active)) return <AccessDenied />
-    return moduleMap[active] || (
+    return <ResponsiveTables>{moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🚧</div>
         <h2 style={{ color: '#1e3a5f' }}>Module coming soon</h2>
       </div>
-    )
+    )}</ResponsiveTables>
   }
+
+  // Command palette (Ctrl+K): modules, sections inside hubs, and everyday actions this user may open
+  const openHrSection = sec => { setHrSection(sec); setActiveRaw('hr') }
+  const groupOf = id => ALL_GROUPS.find(g => g.items.some(i => i.id === id))?.group || ''
+  const paletteItems = currentUser ? [
+    ...[
+      ['a-fee', 'Collect a fee', 'fees', 'fees', 'Fees → collection desk', 'payment receipt'],
+      ['a-adm', 'New admission', 'admissions', 'admissions', 'Admissions → counter form', 'apply enrol'],
+      ['a-att', 'Mark student attendance', 'attendance', 'attendance', 'Attendance → roll call', 'roll call present absent'],
+      ['a-staff', 'Mark staff attendance', 'hr', 'hr', 'HR → Daily Attendance', 'staff present absent', () => openHrSection('daily')],
+      ['a-leave', 'Approve staff leave', 'hr', 'leave', 'HR → Leave Approvals', 'leave approve reject', () => openHrSection('leave')],
+      ['a-cover', 'Arrange a substitute', 'timetable', 'timetable', 'HR → Timetable → Today', 'cover substitute absent teacher'],
+      ['a-notice', 'Post a notice', 'notice', 'notice', 'HR → Notices', 'circular announcement'],
+      ['a-marks', 'Enter exam marks', 'exams', 'exams', 'Exams → mark entry', 'marks results'],
+      ['a-report', 'Make a report', 'reports', 'reports', 'Reports → generator', 'pdf excel export'],
+    ].filter(([, , perm]) => canAccess(perm)).map(([key, label, perm, icon, hint, keywords, run]) => ({ key, label, icon, hint, keywords, group: 'Actions', run: run || (() => setActive(perm)) })),
+    ...ALL_ITEMS.filter(i => canAccess(i.id)).map(i => ({ key: 'm-' + i.id, label: i.label, icon: i.id, hint: groupOf(i.id).charAt(0) + groupOf(i.id).slice(1).toLowerCase(), keywords: i.keywords, group: 'Modules', run: () => setActive(i.id) })),
+    ...MODULE_HUBS.flatMap(h => visibleHubTabs(h, canAccess, isAdmin).map(id => {
+      const t = h.groups.flatMap(g => g.tabs).find(x => x.id === id)
+      return { key: 's-' + id, label: t.label, icon: id, hint: `${h.label} · ${t.hint}`, group: 'Sections', run: () => setActive(id) }
+    })),
+    ...[['staff', 'Staff Directory'], ['timetable', 'Timetable'], ['leave', 'Leave Requests'], ['notice', 'Notices']]
+      .filter(([id]) => canAccess(id)).map(([id, label]) => ({ key: 's-' + id, label, icon: id, hint: 'HR', group: 'Sections', run: () => setActive(id) })),
+    ...(canAccess('hr') && perms('hr').read ? [['daily', 'Daily Staff Attendance'], ['absent', 'Absentees'], ['leave', 'Leave Approvals'], ['shift', 'Shifts'], ['risk', 'Absence Risk'], ['performance', 'Staff Performance'], ['compliance', 'Compliance'], ['geo', 'Geo Check-in'], ['bulk', 'Bulk Staff Marking']] : [])
+      .map(([sec, label]) => ({ key: 'hr-' + sec, label, icon: 'hr', hint: 'HR', group: 'Sections', run: () => openHrSection(sec) })),
+    ...HUB_TABS.filter(id => canAccess(id)).map(id => ({ key: 's-' + id, label: LEARNING_LABELS[id] || id, icon: id, hint: 'Learning Hub', group: 'Sections', run: () => setActive(id) })),
+  ] : []
 
   return (
     <div style={{ display: 'flex', fontFamily: UI_FONT, minHeight: '100vh', background: '#F4F1EA' }}>
       <style>{SHELL_CSS}</style>
       <TabIcons />
+      {currentUser && <CommandPalette items={paletteItems} recentIds={readRecents()} />}
+      {currentUser && <MultiLoginWatch currentUser={currentUser} />}
+      {isFs && (
+        <button type="button" onClick={toggleFullscreen} title="Return to normal view (Esc / F11)"
+          style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999, background: '#0B1E3D', color: '#E2C57E', border: '1px solid #E2C57E', borderRadius: 999, padding: '9px 16px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, boxShadow: '0 4px 14px rgba(0,0,0,.35)' }}>🗗 Return to app</button>
+      )}
       <Sidebar
         activePage={active}
         setActivePage={setActive}
         onLogout={handleLogout}
         currentUser={currentUser}
         permMap={permMap}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(p => !p)}
+        collapsed={railCollapsed}
+        onToggleCollapse={() => { const next = !railCollapsed; setRailOverride(next); if (!inModule) setSidebarCollapsed(next) }}
+        onBackToMenu={inModule ? () => setActive('dashboard') : null}
       />
       {!isMobile && (
         <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 60, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid #E8E1D0', boxShadow: '0 4px 18px rgba(11,30,61,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)', fontFamily: UI_FONT }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {inModule && (
+              <button type="button" onClick={() => setActive('dashboard')} title="Back to the main menu"
+                style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>← Main menu</button>
+            )}
             <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}><span style={{ color: D.accentLight, display: 'flex' }}><NavIcon id={active} size={18} /></span></span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>{ALL_GROUPS.find(g => g.items.some(i => i.id === active))?.group || 'CORE'}</div>
@@ -1059,6 +1193,13 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button type="button" onClick={openPalette} title="Go to any module, section or action (Ctrl+K)"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F6F3EC', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 10px 7px 13px', cursor: 'pointer', color: '#5d6b82', fontSize: 12.5, fontWeight: 600, minWidth: 200 }}>
+              <span style={{ color: '#A87A1F', display: 'flex' }}><NavIcon id="search" size={15} /></span>Go to…
+              <kbd style={{ marginLeft: 'auto', font: '700 10.5px inherit', fontFamily: 'inherit', color: '#7A8398', border: '1px solid #E8E1D0', borderRadius: 6, padding: '2px 6px', background: '#fff' }}>Ctrl K</kbd>
+            </button>
+            <button type="button" onClick={toggleFullscreen} title={isFs ? 'Exit full screen (F11 / Esc)' : 'Full screen (F11)'}
+              style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>{isFs ? '🗗 Exit full screen' : '⛶ Full screen'}</button>
             {active !== 'help' && (
               <button type="button" title="Step-by-step guide for this page" onClick={() => { try { sessionStorage.setItem('gnsi_help_open', active) } catch { /* storage unavailable */ } setActive('help') }}
                 style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>📖 Help for this page</button>
@@ -1080,7 +1221,12 @@ export default function App() {
           <div role="alert" style={{ margin: isMobile ? '10px 12px 0' : '16px 28px 0', padding: '12px 16px', borderRadius: 14, background: '#fff4e5', border: '1px solid #f5c26b', color: '#7a4a00', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: UI_FONT }}>
             <span style={{ fontSize: 20 }}>⚠️</span>
             <div style={{ flex: '1 1 260px', minWidth: 0, fontSize: 13.5, lineHeight: 1.45 }}>
-              <b>Secure database connection is off</b> — records will show as empty or ₹0 until you sign in again. Your data is safe; it just can't be read from this session.
+              {secureOff === 'unlinked' ? <>
+                <b>Your login is not linked to your staff account in the database</b> — you can view records, but saving (fees, attendance, edits) will be refused with a “row-level security” error. Sign in again to link it.
+                {currentUser.username === import.meta.env.VITE_ADMIN_USERNAME && ' For the admin account the database links it only after the admin password has been changed from the default.'}
+              </> : <>
+                <b>Secure database connection is off</b> — records will show as empty or ₹0 until you sign in again. Your data is safe; it just can't be read from this session.
+              </>}
             </div>
             <button onClick={handleLogout} style={{ padding: '9px 16px', borderRadius: 999, border: 'none', background: 'linear-gradient(180deg,#132B52,#0B1E3D)', color: '#E2C57E', fontWeight: 800, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               Sign in again
@@ -1114,7 +1260,7 @@ const UD_CSS = `
   .ud-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
   .ud-tile:active{background:#f3f0e8}
   .ud-tile:focus-visible,.ud-qb:focus-visible{outline:2px solid #b8923a;outline-offset:2px}
-  .ud-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#132a4f;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 7px 12px rgba(19,42,79,.10);transition:transform .09s ease}
+  .ud-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7);transition:transform .09s ease}
   .ud-tile:active .ud-ic{transform:translateY(2px)}
   .ud-quick{display:flex;justify-content:space-around;gap:4px;padding:14px 6px 12px}
   .ud-qb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;min-width:60px}
@@ -1122,11 +1268,13 @@ const UD_CSS = `
   .ud-qb:active .ud-round{transform:translateY(2px)}
 }`
 
-function UserDashboard({ onNavigate, currentUser, modules = [] }) {
+function UserDashboard({ onNavigate, currentUser, modules: allowed = [] }) {
+  // core modules (HR) lead the list
+  const modules = [...allowed.filter(m => m.core), ...allowed.filter(m => !m.core)]
   const [udQ, setUdQ] = useState('')
   const udNeedle = udQ.trim().toLowerCase()
   const udIds = new Set(modules.map(m => m.id))
-  const udGroups = ALL_GROUPS.map(g => ({ group: g.group, items: g.items.filter(i => udIds.has(i.id) && (!udNeedle || i.label.toLowerCase().includes(udNeedle))) })).filter(g => g.items.length)
+  const udGroups = ALL_GROUPS.map(g => ({ group: g.group, items: g.items.filter(i => udIds.has(i.id) && navMatches(i, udNeedle)) })).filter(g => g.items.length)
   const udQuick = modules.slice(0, 4)
   const now = new Date()
   const greet = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
@@ -1180,12 +1328,12 @@ function UserDashboard({ onNavigate, currentUser, modules = [] }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
           {modules.map(m => (
             <button key={m.id} onClick={() => onNavigate(m.id)}
-              style={{ textAlign: 'left', background: '#fff', border: '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
+              style={{ textAlign: 'left', background: m.core ? 'linear-gradient(160deg,#fffdf6,#f6efdc)' : '#fff', border: m.core ? '1px solid #e2c57e' : '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 18px 40px rgba(11,30,61,.14)' }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)' }}>
               <span style={{ width: 40, height: 40, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, background: '#0B1E3D', boxShadow: 'inset 0 0 0 1px rgba(226,197,126,.4)', marginBottom: 10, color: '#E2C57E' }}><NavIcon id={m.id} size={20} /></span>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#0B1E3D' }}>{m.label}</div>
-              <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>Open →</div>
+              <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>{m.core ? '★ Core module · Open →' : 'Open →'}</div>
             </button>
           ))}
         </div>

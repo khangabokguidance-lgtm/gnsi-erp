@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'rea
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
 import { supabase } from './supabase'
+import { compressImage } from './lib/imageCompress'
 import { sysOr, sysValue } from './systemSettings'
 import { isAdminRole } from './roles'
 import {
@@ -12,10 +13,12 @@ import IncomeAnalysis from './IncomeAnalysis'
 import AuditMonitor from './AuditMonitor'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
-import ExpenseDayBook from './ExpenseDayBook'
 import { printAccountVoucher } from './premiumReceipt'
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
+import TodayExpenseBreakdown from './TodayExpenseBreakdown'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
+import ExpenditureControls from './ExpenditureControls'
+import { CONTROL_DEFAULTS, EXPENSE_HEADS, isDigitalMode, validateExpenseRow, natureOf, NATURES, entryCategoryChoices, reasonProblems, isGenericText, isPlaceholderName, suggestHead, categoryKey } from './lib/expenditureRules'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
 import jsPDF from 'jspdf'
@@ -41,14 +44,7 @@ const RECEIPT_BUCKET     = 'account-receipts'
 // convenience list for the dropdown — a sub-category is free text under the
 // hood (same "type your own" pattern as the existing custom-category
 // feature), so this never blocks an entry, it just seeds sensible options.
-const EXPENSE_SUBCATEGORIES = {
-  Maintenance : ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 'General Repair'],
-  Transport   : ['Fuel', 'Vehicle Repair', 'Bus Hire', 'Driver Payment'],
-  Electricity : ['Main Building', 'Hostel', 'Generator/Diesel'],
-  Stationery  : ['Office Supplies', 'Printing', 'Books & Study Material'],
-  Event       : ['Decoration', 'Refreshment', 'Prizes & Certificates', 'Guest Honorarium'],
-  Salary      : ['Teaching Staff', 'Non-Teaching Staff', 'Bonus/Incentive'],
-}
+const EXPENSE_SUBCATEGORIES = EXPENSE_HEADS   // real heads and their sub-heads (lib/expenditureRules.js) — a superset of the old built-in lists
 
 // ── Expenditure v2: approval workflow defaults ──────────────────────────
 // Mirrors expenditure_approval_settings in the DB migration — used as a
@@ -97,6 +93,8 @@ const emptyRow = {
   is_recurring : false,
   receipt_url  : '',
   status       : 'Confirmed',
+  txn_ref      : '',   // accounting controls: UTR / transaction id for digital payments
+  expense_nature: '',  // accounting controls: Revenue | Capital | Drawings | Advance ('' = automatic)
 }
 
 const DEFAULT_BUDGETS = {
@@ -111,6 +109,15 @@ const monthKey = (d) => d ? d.slice(0,7) : ''
 const getToday = () => new Date().toLocaleDateString('en-CA')
 // Fee/store postings carry no account_type — they are Cash A/c, as every
 // other view here already assumes. Use this wherever entries are matched by account.
+// Cash goes to the Cash A/c; bank / UPI / card go to the A/c of the financial year (April–March) the entry falls in.
+const autoAccountType = (mode, date) => {
+  if (!mode || String(mode).trim().toLowerCase() === 'cash') return 'Cash A/c'
+  const [y, m] = String(date || '').split('-').map(Number)
+  if (!y || !m) return 'Cash A/c'
+  const start = m >= 4 ? y : y - 1
+  const fy = `${start}-${String(start + 1).slice(2)} A/c`
+  return ACCOUNT_TYPES.includes(fy) ? fy : 'Cash A/c'
+}
 const acctOf = e => e?.account_type || 'Cash A/c'
 // Local-time Date for a 'YYYY-MM-DD' (new Date('YYYY-MM-DD') is UTC midnight,
 // which lands on the previous day in time zones behind UTC).
@@ -279,17 +286,23 @@ function SeverityBadge({severity}){
 const AC = { navy:'#132a4f', navy2:'#1e3a6e', gold:'#b8923a', goldLight:'#f6efdc', goldBorder:'#e9d9b0', ivory:'#f7f5f0', line:'#e8e3d8', line2:'#d9d2c2', ink:'#0f1b2e', muted:'#5d6b82', serif:"'Fraunces',Georgia,serif" }
 const iStyle     = {width:'100%',padding:'11px 14px',borderRadius:10,border:`1px solid ${AC.line2}`,fontSize:13.5,backgroundColor:'white',color:AC.ink,boxSizing:'border-box',fontFamily:'inherit',minHeight:44,transition:'border-color .15s, box-shadow .15s'}
 const lStyle     = {display:'block',fontSize:11,fontWeight:700,color:AC.muted,marginBottom:7,letterSpacing:'.08em',textTransform:'uppercase'}
-const tdS        = {padding:'13px 14px',color:'#475569',fontSize:'13px',fontWeight:500}
-const chartCard  = {backgroundColor:'white',borderRadius:18,padding:24,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.16)',border:`1px solid ${AC.line}`,transition:'box-shadow .2s'}
-const chartTitle = {fontSize:18,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.01em',fontFamily:AC.serif}
-const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}22`,borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
+const tdS        = {padding:'15px 16px',color:'#3f4a5e',fontSize:'13.5px',fontWeight:500}
+const chartCard  = {background:'linear-gradient(180deg,#ffffff,#fdfbf6)',borderRadius:20,padding:26,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 2px 4px rgba(19,42,79,.04), 0 20px 44px -24px rgba(19,42,79,.28)',border:`1px solid ${AC.line}`,borderTop:`2px solid ${AC.gold}66`,transition:'box-shadow .2s'}
+const chartTitle = {fontSize:21,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.02em',fontFamily:AC.serif}
+const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}33`,borderRadius:999,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
 const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:9,border:`1px solid ${AC.line}`,cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'white',color:disabled?'#d9d2c2':AC.navy2,transition:'all .15s ease',fontFamily:'inherit'})
 
 const AC_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
 .ac-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:${AC.ivory};color:${AC.ink};min-height:100vh;-webkit-font-smoothing:antialiased}
 .ac-root *{box-sizing:border-box}
-.ac-root h1,.ac-root h2,.ac-root h3{letter-spacing:-.01em}
+.ac-root h1,.ac-root h2,.ac-root h3{letter-spacing:-.015em;font-family:'Fraunces',Georgia,serif;font-weight:600}
+.ac-root h4{font-family:'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.02em}
+.ac-root td,.ac-root th,.ac-root strong,.ac-root input[type=number]{font-variant-numeric:lining-nums tabular-nums}
+.ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]),.ac-root select,.ac-root textarea{border-radius:12px!important;border-color:${AC.line2};background-color:#fff;transition:border-color .15s,box-shadow .15s}
+.ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]):hover,.ac-root select:hover{border-color:#c4b88f}
+.ac-root input::placeholder,.ac-root textarea::placeholder{color:#a9afbd}
+.ac-root label{letter-spacing:.1em}
 .ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,.ac-root select:focus,.ac-root textarea:focus{outline:none;border-color:${AC.navy2}!important;box-shadow:0 0 0 3px rgba(30,58,110,.14)!important}
 .ac-root button{font-family:inherit}
 .ac-root button:not(:disabled){transition:transform .12s,filter .12s,box-shadow .15s,background-color .15s}
@@ -297,9 +310,15 @@ const AC_CSS = `
 .ac-root button:not(:disabled):active{transform:scale(.98)}
 .ac-root button:focus-visible{outline:2px solid ${AC.gold};outline-offset:2px}
 .ac-root table{border-collapse:separate;border-spacing:0}
-.ac-root thead th{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;font-weight:700!important;white-space:nowrap}
+.ac-root thead th{font-size:10.5px!important;text-transform:uppercase;letter-spacing:.14em;font-weight:800!important;white-space:nowrap;background:linear-gradient(180deg,#fbf8ef,#f6f1e3)!important;color:#8a6a1f!important;border-bottom:2px solid ${AC.goldBorder}!important}
+.ac-root thead th:first-child{border-top-left-radius:12px}
+.ac-root thead th:last-child{border-top-right-radius:12px}
+.ac-root tbody td{border-bottom:1px solid #f1ede2!important}
+.ac-root tbody tr:nth-child(even){background-color:#fdfcf8}
+.ac-root tbody tr:last-child td{border-bottom:none!important}
+.ac-root table{border:1px solid ${AC.line};border-radius:14px;overflow:hidden}
 .ac-root tbody tr{transition:background-color .12s}
-.ac-root tbody tr:hover{background-color:#faf8f3}
+.ac-root tbody tr:hover{background-color:#f8f2e1!important}
 .ac-root ::selection{background:${AC.goldBorder};color:${AC.navy}}
 .ac-root ::-webkit-scrollbar{width:6px;height:6px}
 .ac-root ::-webkit-scrollbar-thumb{background:${AC.line2};border-radius:6px}
@@ -319,7 +338,7 @@ const AC_CSS = `
 .ac-tab:hover{color:${AC.ink};background:#f3f0e8!important;filter:none!important}
 .ac-tab.on{background:linear-gradient(180deg,${AC.navy2},${AC.navy})!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
 .ac-tab .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.ac-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ac-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .ac-group{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:13px 16px;border-radius:16px;border:1px solid ${AC.line};background:#fff;cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s;min-width:0}
 .ac-group:hover{transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(19,42,79,.45)}
 .ac-group.on{background:linear-gradient(135deg,#0e203f,${AC.navy} 60%,${AC.navy2});border-color:${AC.navy};box-shadow:0 14px 28px -16px rgba(19,42,79,.7)}
@@ -330,7 +349,7 @@ const AC_CSS = `
 .ac-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:99px;background:${AC.gold};color:#fff;font-size:10.5px;font-weight:800}
 @media (max-width:760px){.ac-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.ac-group-s{display:none}}
 .ac-tab.on .dot{background:${AC.gold}!important}
-.ac-card{background:#fff;border:1px solid ${AC.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 8px 24px -12px rgba(19,42,79,.16)}
+.ac-card{background:linear-gradient(180deg,#fff,#fdfbf6);border:1px solid ${AC.line};border-top:2px solid ${AC.gold}66;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 20px 44px -24px rgba(19,42,79,.28)}
 @keyframes acUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
 .ac-anim{animation:acUp .25s ease both}
 @media (prefers-reduced-motion:reduce){.ac-anim{animation:none}}
@@ -411,6 +430,12 @@ function Accounts({role,userId}){
 
   // receipt
   const [receiptFile,      setReceiptFile]      = useState(null)
+
+  // ── Accounting controls (migration 20261031). controlsReady=false means the migration has not
+  // been run yet: the screen keeps working exactly as before and simply skips the new columns.
+  const [controls,      setControls]      = useState(CONTROL_DEFAULTS)
+  const [controlsReady, setControlsReady] = useState(false)
+  const [controlsCols,  setControlsCols]  = useState([])   // columns the accounting_controls row actually has (later migrations add more)
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [viewReceipt,      setViewReceipt]      = useState(null)
   const [receiptMemoEntry, setReceiptMemoEntry]  = useState(null)
@@ -419,6 +444,7 @@ function Accounts({role,userId}){
   // tabs
   const [activeTab, setActiveTab] = useState('analytics')
   const [showIncomeWhy, setShowIncomeWhy] = useState(false)
+  const [showExpenseWhy, setShowExpenseWhy] = useState(false)
 
   // stat cards (Total Income / Expense / Net / Transactions / Pending) — hidden by default
   const [showStatCards, setShowStatCards] = useState(false)
@@ -444,6 +470,10 @@ function Accounts({role,userId}){
     const deduped = [...new Set(merged)].sort((a,b)=>a.localeCompare(b))
     return [...deduped,'Other']
   },[customExpCats,entries])
+
+  // The category list on the entry form: real heads only. "Other" / "Paytm Payment" style heads and spelling
+  // variants of a real head are left out (they stay visible in the filters so old entries can still be found).
+  const entryCategoryOptions = useMemo(()=>entryCategoryChoices(entries.filter(e=>e.type==='Expense'&&e.category).map(e=>e.category),customExpCats),[entries,customExpCats])
 
   // ── All-expense category summary (built straight off actual entries) ────
   // Every distinct expense category ever used, with total spent, entry
@@ -611,12 +641,9 @@ function Accounts({role,userId}){
   // ── Expenditure v2: approval workflow ────────────────────────────────────
   const [approvalSettings, setApprovalSettings] = useState({threshold_amount:DEFAULT_APPROVAL_THRESHOLD, lower_trust_roles:DEFAULT_LOWER_TRUST_ROLES})
   const [pendingApprovals, setPendingApprovals] = useState([])   // rows from expenditure_approvals, status='pending', joined with their accounts row
-  const [approvalHistory,  setApprovalHistory]  = useState([])   // today's approved/rejected decisions, for the "approval list for the day"
   const [approvalsLoaded,  setApprovalsLoaded]  = useState(false)
   const [approvalBusyId,   setApprovalBusyId]   = useState(null)
   const [showApprovalQueue, setShowApprovalQueue] = useState(false) // collapsed/expanded state of the always-visible header widget
-  const [editThreshold, setEditThreshold] = useState(false)
-  const [thresholdDraft, setThresholdDraft] = useState('')
 
   // ── Expenditure v2: monitoring (spend-velocity, per-staff, audit trail) ──
   const [expAuditLog, setExpAuditLog] = useState([])   // audit_log rows filtered to expenditure-only actions, for the dedicated audit viewer
@@ -742,9 +769,6 @@ function Accounts({role,userId}){
     const {data,error}=await supabase.from('expenditure_approval_settings').select('*').eq('id',1).maybeSingle()
     if(!error&&data){
       setApprovalSettings({threshold_amount:Number(data.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD,lower_trust_roles:data.lower_trust_roles||DEFAULT_LOWER_TRUST_ROLES})
-      setThresholdDraft(String(data.threshold_amount??DEFAULT_APPROVAL_THRESHOLD))
-    }else{
-      setThresholdDraft(String(DEFAULT_APPROVAL_THRESHOLD))
     }
   },[])
 
@@ -756,19 +780,6 @@ function Accounts({role,userId}){
     else console.warn('Pending approvals not loaded (has the expenditure v2 migration been run?):',error.message)
     setApprovalsLoaded(true)
   },[])
-
-  // "approval list for the day" — every approve/reject DECIDED today,
-  // regardless of when it was originally requested, so admin can see what
-  // was actioned today at a glance.
-  const fetchApprovalHistoryToday = useCallback(async(todayStr)=>{
-    if(!isAdmin)return
-    const startOfDay=`${todayStr}T00:00:00`,endOfDay=`${todayStr}T23:59:59.999`
-    const {data,error}=await supabase.from('expenditure_approvals').select('*,accounts:entry_id(*)')
-      .neq('status','pending').gte('decided_at',startOfDay).lte('decided_at',endOfDay)
-      .order('decided_at',{ascending:false})
-    if(!error)setApprovalHistory(data||[])
-    else console.warn('Approval history not loaded:',error.message)
-  },[isAdmin])
 
   // ── Expenditure v2: dedicated audit trail (expenditure-only slice of
   // audit_log — separate view from the general Activity Timeline) ────────
@@ -831,10 +842,17 @@ function Accounts({role,userId}){
     else console.warn('Opening balances not loaded (has the accounts v3 migration been run?):',error.message)
   },[isAdmin])
 
+  const fetchControls = useCallback(async()=>{
+    const {data,error}=await supabase.from('accounting_controls').select('*').eq('id',1).maybeSingle()
+    if(!error&&data){setControls({...CONTROL_DEFAULTS,...data});setControlsCols(Object.keys(data));setControlsReady(true)}
+    else{setControlsReady(false)}   // table missing → feature off, nothing else changes
+  },[])
+
   useEffect(()=>{
+    fetchControls()
     fetchEntries();fetchBudgets();fetchStaff();fetchVendors();fetchApprovalSettings();fetchPendingApprovals();fetchPayers();fetchRecurringTemplates();fetchMonthLocks()
     if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags();fetchExpAuditLog();fetchOpeningBalances()}
-  },[fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchPayers,fetchRecurringTemplates,fetchMonthLocks,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,fetchOpeningBalances,isAdmin])
+  },[fetchControls,fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchPayers,fetchRecurringTemplates,fetchMonthLocks,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,fetchOpeningBalances,isAdmin])
 
   useEffect(()=>{
     fetchIncTargets(today.slice(0,7))
@@ -848,10 +866,6 @@ function Accounts({role,userId}){
     const mk=monthKey(dateStr)
     return monthLocks.some(l=>l.account_type===accountType&&l.month===mk)
   },[isAdmin,monthLocks])
-
-  useEffect(()=>{
-    if(isAdmin)fetchApprovalHistoryToday(today)
-  },[isAdmin,today,fetchApprovalHistoryToday])
 
   // Voucher Head / person pickers should only show real people — system rows
   // (e.g. "Admin", test/placeholder entries) are flagged is_system=true in the
@@ -949,7 +963,7 @@ function Accounts({role,userId}){
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
     setEditEntry(null)
-    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
+    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:''}])
     setReceiptFile(null);setShowForm(true)
   }
 
@@ -964,6 +978,7 @@ function Accounts({role,userId}){
       voucher_head:item.voucher_head||'',
       note:item.note||'',is_recurring:!!item.is_recurring,
       receipt_url:item.receipt_url||'',status:item.status||'Confirmed',
+      txn_ref:item.txn_ref||'',expense_nature:item.expense_nature||'',
     }])
     setReceiptFile(null);setShowForm(true);setActiveTab('transactions')
     window.scrollTo({top:0,behavior:'smooth'})
@@ -981,6 +996,7 @@ function Accounts({role,userId}){
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
       note:item.note||'',is_recurring:false,receipt_url:'',status:'Confirmed',
+      txn_ref:'',expense_nature:item.expense_nature||'',
     }])
     setReceiptFile(null);setShowForm(true);setActiveTab('transactions')
     window.scrollTo({top:0,behavior:'smooth'})
@@ -1015,6 +1031,44 @@ function Accounts({role,userId}){
       alert('Transaction date cannot be in the future. Please check the date entered.')
       return
     }
+    // ── Strict expenditure rules ───────────────────────────────────────
+    // Every expense must name a real, accountable person (Voucher Head),
+    // a category, a payment mode and a meaningful description. The HTML
+    // `required` attributes alone were bypassable (blank/'-' values, names
+    // not in the staff list, one-word notes), which is how entries ended up
+    // with no accountable person.
+    const realStaff=new Set(selectableStaffList.map(s=>(s.name||'').trim().toLowerCase()).filter(Boolean))
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i]
+      if(r.type!=='Expense')continue
+      const label=rows.length>1?`Row ${i+1}: `:''
+      const vh=(r.voucher_head||'').trim()
+      if(!vh||vh==='-'||vh==='__add_staff__'){
+        alert(`${label}Voucher Head is required — choose the staff member who takes/is accountable for this expense.`)
+        return
+      }
+      if(!realStaff.has(vh.toLowerCase())){
+        alert(`${label}"${vh}" is not a valid staff member. Pick the Voucher Head from the Staff list.`)
+        return
+      }
+      if(!r.category){alert(`${label}Choose an expense category.`);return}
+      if(!r.sub_category){alert(`${label}Choose a sub-category (use "+ Add New Sub-category" if none fits).`);return}
+      if(!r.vendor_id){alert(`${label}Choose the Vendor / Payee who was paid (use "+ Add New Vendor" if new).`);return}
+      if(!r.payment_mode){alert(`${label}Choose a payment mode.`);return}
+      if(!(Number(r.amount)>0)){alert(`${label}Enter an amount greater than zero.`);return}
+      if((r.note||'').trim().length<5){
+        alert(`${label}Description is too short — say what the money was spent on (at least 5 characters).`)
+        return
+      }
+      // Accounting controls: reference for digital payments, no digital-in-cash, receipt above the limit,
+      // no generic descriptions. The database enforces the first three for manual entries too.
+      const vendorName=vendors.find(v=>String(v.id)===String(r.vendor_id))?.name||''
+      const chk=validateExpenseRow(r,{controls:{...controls,min_reason_length:5,min_reason_words:1,generic_description_check:false,receipt_required_above:null},canStoreRef:controlsReady,hasReceipt:!!(receiptFile||r.receipt_url),vendorName,original:editEntry||null})
+      if(chk.errors.length){alert(`${label}${chk.errors.join('\n\n')}`);return}
+      if(chk.warnings.length&&!window.confirm(`${label}${chk.warnings.join('\n')}\n\nSave anyway?`))return
+      const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
+      if(bigAmt&&!window.confirm(`${label}₹${Number(r.amount).toLocaleString('en-IN')} is a large expense.\n\nVoucher Head: ${vh}\nCategory: ${r.category}\nNote: ${r.note.trim()}\n\nConfirm these details are correct?`))return
+    }
     // Accounts v3: month-end close/lock — a non-admin can't add/edit an
     // entry dated inside a month that's already been closed for that
     // account type. Admin is exempt (that's how a month gets corrected or
@@ -1048,6 +1102,7 @@ function Accounts({role,userId}){
         note:r.note,is_recurring:r.is_recurring,status:r.status,
         recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
         receipt_url:receiptUrl,edited_by:enteredByName,edited_at:new Date().toISOString(),
+        ...(controlsReady&&r.type==='Expense'?{txn_ref:(r.txn_ref||'').trim()||null,expense_nature:r.expense_nature||null}:{}),
       }
       const{error}=await supabase.from('accounts').update(payload).eq('id',editEntry.id)
       if(error){
@@ -1113,6 +1168,7 @@ function Accounts({role,userId}){
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:needsApproval?'Pending':r.status,added_by:enteredByName,
         recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
+        ...(controlsReady&&r.type==='Expense'?{txn_ref:(r.txn_ref||'').trim()||null,expense_nature:r.expense_nature||null}:{}),
       }))
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
       if(error){
@@ -1169,8 +1225,14 @@ function Accounts({role,userId}){
     const original=entries.find(e=>e.id===id)
     if(isLinkedEntry(original)){alert(linkedEntryMsg(original));return}
     if(!window.confirm('Delete this transaction?'))return
+    // Accounting controls: a deletion is a void, and a void needs a written reason (ACC-003).
+    let reason=''
+    if(controlsReady&&controls.require_delete_reason){
+      reason=(window.prompt('Reason for deleting this entry (required):','')||'').trim()
+      if(reason.length<4){alert('A reason of at least 4 characters is required to delete an entry.');return}
+    }
     const ok=await mutateAccountsTable(
-      ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id),
+      ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString(),...(controlsReady&&reason?{delete_reason:reason}:{})}).eq('id',id),
       {errorContext:'Delete'}
     )
     if(!ok)return
@@ -1218,6 +1280,11 @@ function Accounts({role,userId}){
       return
     }
     if(!window.confirm(`Delete ${selected.size} selected transaction(s)?`))return
+    let bulkReason=''
+    if(controlsReady&&controls.require_delete_reason){
+      bulkReason=(window.prompt(`Reason for deleting these ${selected.size} entries (required):`,'')||'').trim()
+      if(bulkReason.length<4){alert('A reason of at least 4 characters is required to delete entries.');return}
+    }
     // PHASE 6 FIX: previously no error check per-row — one failed row in the
     // loop would silently continue to the next, and the audit log could end
     // up recording a 'bulk_delete' for a row that was never actually updated
@@ -1226,7 +1293,7 @@ function Accounts({role,userId}){
     const failedIds=[]
     for(const id of[...selected]){
       const original=entries.find(e=>e.id===id)
-      const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
+      const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString(),...(controlsReady&&bulkReason?{delete_reason:bulkReason}:{})}).eq('id',id)
       if(error){
         console.error(`Bulk delete failed for id ${id}:`,error)
         failedIds.push(id)
@@ -1259,7 +1326,7 @@ function Accounts({role,userId}){
       const decidedAt=new Date().toISOString()
       await supabase.from('expenditure_approvals').update({status:'approved',decided_by:role,decided_by_id:String(currentStaff?.id||userId||''),decided_at:decidedAt}).eq('id',req.id)
       await writeAuditLog({action:'expenditure_approved',role,targetId:req.entry_id,oldValues:{status:'Pending'},newValues:{status:'Confirmed',amount:req.amount}})
-      fetchPendingApprovals();fetchEntries();fetchApprovalHistoryToday(today)
+      fetchPendingApprovals();fetchEntries()
     }
     setApprovalBusyId(null)
   }
@@ -1274,20 +1341,9 @@ function Accounts({role,userId}){
     if(error){alert('Reject failed: '+error.message)}
     else{
       await writeAuditLog({action:'expenditure_rejected',role,targetId:req.entry_id,newValues:{amount:req.amount,note}})
-      fetchPendingApprovals();fetchApprovalHistoryToday(today)
+      fetchPendingApprovals()
     }
     setApprovalBusyId(null)
-  }
-
-  // ── Expenditure v2: admin-editable approval threshold ───────────────────
-  const saveApprovalThreshold=async()=>{
-    const amt=Number(thresholdDraft)
-    if(!(amt>=0)){alert('Enter a valid amount.');return}
-    const editedAt=new Date().toISOString()
-    const{error}=await supabase.from('expenditure_approval_settings').upsert({id:1,threshold_amount:amt,lower_trust_roles:approvalSettings.lower_trust_roles,edited_by:role,edited_at:editedAt})
-    if(error){alert('Could not save threshold (has the expenditure v2 migration been run?): '+error.message);return}
-    setApprovalSettings(prev=>({...prev,threshold_amount:amt}))
-    setEditThreshold(false)
   }
 
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
@@ -1296,16 +1352,23 @@ function Accounts({role,userId}){
     if(idx!==i)return r
     // ACTUAL PAYMENT DATE FIX: keep payment_date following entry_date until the user
     // explicitly diverges them (i.e. payment_date currently still mirrors entry_date)
-    if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))return{...r,entry_date:val,payment_date:val}
-    return{...r,[key]:val}
+    let next
+    if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))next={...r,entry_date:val,payment_date:val}
+    else next={...r,[key]:val}
+    // Account Type is detected automatically: Cash → Cash A/c, anything else → the financial-year A/c of the entry date.
+    if(key==='payment_mode'||key==='entry_date')next.account_type=autoAccountType(next.payment_mode,next.entry_date)
+    return next
   }))
-  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
+  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:''}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
 
   const addCustomExpenseCategory=(i)=>{
-    const name=window.prompt('New expense category name:')?.trim()
+    const name=window.prompt('New expense category — name what the money is spent on (e.g. "Hostel Furniture"). "Other", "Misc" or a payment app name is not accepted:')?.trim()
     if(!name)return
-    const existing=expenseCategoryOptions.find(c=>c.toLowerCase()===name.toLowerCase())
+    if(name.length<3||isGenericText(name)){alert(`"${name}" does not say what the money is spent on. Choose one of the listed categories, or give a specific name.`);return}
+    const asHead=suggestHead(name)
+    if(asHead&&categoryKey(asHead)!==categoryKey(name)&&window.confirm(`"${name}" is covered by the existing category "${asHead}". Use "${asHead}"?`)){updateRow(i,'category',asHead);return}
+    const existing=entryCategoryOptions.find(c=>categoryKey(c)===categoryKey(name))
     if(existing){updateRow(i,'category',existing);return}
     const next=[...customExpCats,name]
     setCustomExpCats(next)
@@ -1332,8 +1395,9 @@ function Accounts({role,userId}){
   },[customSubCats])
 
   const addCustomSubCategory=(i,category)=>{
-    const name=window.prompt(`New sub-category under "${category}":`)?.trim()
+    const name=window.prompt(`New sub-category under "${category}" (be specific — "Other" or "Misc" is not accepted):`)?.trim()
     if(!name)return
+    if(name.length<3||isGenericText(name)){alert(`"${name}" is not specific enough. Name what it is, e.g. "Hand pump parts".`);return}
     const existing=subCategoryOptionsFor(category).find(c=>c.toLowerCase()===name.toLowerCase())
     if(existing){updateRow(i,'sub_category',existing);return}
     const next={...customSubCats,[category]:[...(customSubCats[category]||[]),name]}
@@ -1344,8 +1408,9 @@ function Accounts({role,userId}){
 
   // ── Expenditure v2: vendor/payee ──────────────────────────────────────────
   const addNewVendor=async(i)=>{
-    const name=window.prompt('New vendor/payee name:')?.trim()
+    const name=window.prompt('Name of the person or shop that was paid (a real name — not "Cash", "Shop" or "Other"):')?.trim()
     if(!name)return
+    if(isPlaceholderName(name)){alert(`"${name}" is not a real payee. Enter the actual person or shop name.`);return}
     const existing=vendors.find(v=>v.name?.toLowerCase()===name.toLowerCase())
     if(existing){updateRow(i,'vendor_id',existing.id);return}
     const{data,error}=await supabase.from('vendors').insert({name,created_by:currentStaff?.name||role}).select()
@@ -2640,72 +2705,6 @@ function Accounts({role,userId}){
     return Object.values(map)
   },[entries])
 
-  // ── Savings Tracker: daily/weekly income vs expense + category trends ────
-  // Admin-only tab. Reuses groupByDate/monthKey — no new data sources, just
-  // a different lens on the same entries: last 14 days, last 8 weeks, an
-  // all-time running savings figure, and category-level week-over-week flags.
-  const dailyTrend=useMemo(()=>{
-    if(!isAdmin)return[]
-    const map={}
-    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{
-      const d=e.entry_date;if(!d)return
-      if(!map[d])map[d]={date:d,Income:0,Expense:0}
-      map[d][e.type]+=Number(e.amount)
-    })
-    return Object.values(map).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0).slice(-14)
-      .map(r=>({...r,Net:r.Income-r.Expense}))
-  },[entries,isAdmin])
-
-
-  const weeklyTrend=useMemo(()=>{
-    if(!isAdmin)return[]
-    const map={}
-    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{
-      if(!e.entry_date)return
-      const wk=weekKey(e.entry_date)
-      if(!map[wk])map[wk]={week:wk,Income:0,Expense:0}
-      map[wk][e.type]+=Number(e.amount)
-    })
-    return Object.values(map).sort((a,b)=>a.week<b.week?-1:a.week>b.week?1:0).slice(-8)
-      .map(r=>({...r,Net:r.Income-r.Expense}))
-  },[entries,isAdmin])
-
-  const savingsTracker=useMemo(()=>{
-    if(!isAdmin)return null
-    // BUGFIX: excludes Pending — a savings rate calculated on money that
-    // hasn't actually been received/paid yet isn't a real savings rate.
-    const totalIncomeAll=entries.filter(e=>e.type==='Income'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-    const totalExpenseAll=entries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-    const netSavings=totalIncomeAll-totalExpenseAll
-    const savingsRate=totalIncomeAll>0?(netSavings/totalIncomeAll)*100:0
-    const thisWeek=weeklyTrend[weeklyTrend.length-1]||{Income:0,Expense:0,Net:0}
-    const lastWeek=weeklyTrend[weeklyTrend.length-2]||{Income:0,Expense:0,Net:0}
-    return{totalIncomeAll,totalExpenseAll,netSavings,savingsRate,thisWeek,lastWeek}
-  },[entries,weeklyTrend,isAdmin])
-
-  const categoryTrendFlags=useMemo(()=>{
-    if(!isAdmin||weeklyTrend.length<2)return[]
-    // Compare this week's per-category expense spend vs last week's, per category.
-    const thisWk=weeklyTrend[weeklyTrend.length-1]?.week
-    const lastWk=weeklyTrend[weeklyTrend.length-2]?.week
-    if(!thisWk||!lastWk)return[]
-    const sumByCatWeek=(wk)=>{
-      const map={}
-      entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&e.entry_date&&weekKey(e.entry_date)===wk)
-        .forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
-      return map
-    }
-    const thisMap=sumByCatWeek(thisWk),lastMap=sumByCatWeek(lastWk)
-    const cats=new Set([...Object.keys(thisMap),...Object.keys(lastMap)])
-    return[...cats].map(cat=>{
-      const cur=thisMap[cat]||0,prev=lastMap[cat]||0
-      const change=prev>0?((cur-prev)/prev)*100:(cur>0?100:0)
-      return{category:cat,current:cur,previous:prev,change}
-    }).filter(r=>r.current>0||r.previous>0)
-      .sort((a,b)=>b.change-a.change)
-      .slice(0,6)
-  },[entries,weeklyTrend,isAdmin])
-
   const plData=useMemo(()=>{
     // BUGFIX (audit): plStatus==='All' previously meant "every status,
     // including Pending" — so the P&L's default view (nobody has touched
@@ -3065,12 +3064,6 @@ function Accounts({role,userId}){
   const digestItems=useMemo(()=>{
     if(!isAdmin)return[]
     const items=[]
-    if(pendingApprovals.length>0)items.push({
-      severity:'high',icon:'🔏',
-      title:`${pendingApprovals.length} expenditure entr${pendingApprovals.length>1?'ies':'y'} awaiting your approval`,
-      detail:'Flagged by amount threshold or submitter role — not yet counted in any total until approved.',
-      tab:'approvals',
-    })
     if(spendVelocityAlerts.length>0)items.push({
       severity:'medium',icon:'📈',
       title:`${spendVelocityAlerts.length} spend-velocity alert${spendVelocityAlerts.length>1?'s':''}`,
@@ -3136,7 +3129,7 @@ function Accounts({role,userId}){
     })
     const order={high:0,medium:1,low:2}
     return items.sort((a,b)=>order[a.severity]-order[b.severity])
-  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,unrecognizedStatusEntries,fmt,pendingApprovals,spendVelocityAlerts])
+  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,unrecognizedStatusEntries,spendVelocityAlerts])
 
   const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
@@ -3151,12 +3144,14 @@ function Accounts({role,userId}){
     backgroundColor:activeTab===t?'#1e3a6e':'#f3f0e8',
     color:activeTab===t?'white':'#5d6b82', transition:'all .15s',
   })
-  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f3f0e8',color:activeQuick===key?'white':'#5d6b82'})
+  const qBtn=(key)=>({padding: isMobile ? '7px 12px' : '7px 14px',borderRadius:999,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f3f0e8',color:activeQuick===key?'white':'#5d6b82'})
 
   // ── responsive grid columns ────────────────────────────────────────────
   const statCardCols    = isMobile ? 'repeat(2,1fr)' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)'
   const todayCols       = isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)'
-  const formCols        = isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)'
+  const formCols        = isMobile ? '1fr' : isTablet ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,1fr)'
+  // roomier fields on phone/tablet: 16px text (stops iOS zoom-on-focus) and taller tap targets
+  const formInput       = (isMobile||isTablet) ? {...iStyle,fontSize:16,padding:'14px 16px',minHeight:52} : iStyle
   const filterCols      = isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : '2fr 1fr 1fr 1fr 1fr 1fr 1fr'
   const chartGridCols   = isMobile ? '1fr' : '1fr 1fr'
   const budgetGridCols  = isMobile ? '1fr' : 'repeat(2,1fr)'
@@ -3222,13 +3217,12 @@ function Accounts({role,userId}){
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <button onClick={(e)=>{e.stopPropagation();setActiveTab('approvals')}} style={{backgroundColor:'#92400e',color:'white',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,cursor:'pointer',fontSize:12}}>Review Queue →</button>
             <span style={{fontSize:12,color:'#92400e'}}>{showApprovalQueue?'▲':'▼'}</span>
           </div>
         </div>
         {showApprovalQueue&&(
           <div style={{marginTop:12,borderTop:'1px solid #fde68a',paddingTop:10,display:'flex',flexDirection:'column',gap:6}} onClick={e=>e.stopPropagation()}>
-            {pendingApprovals.slice(0,5).map(req=>(
+            {pendingApprovals.map(req=>(
               <div key={req.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,backgroundColor:'white',borderRadius:8,padding:'8px 12px',fontSize:12}}>
                 <div style={{minWidth:0}}>
                   <strong style={{color:'#14213d'}}>{fmt(req.amount)}</strong> — {req.accounts?.category||'—'}{req.accounts?.note?` · ${req.accounts.note}`:''}
@@ -3240,7 +3234,6 @@ function Accounts({role,userId}){
                 </div>
               </div>
             ))}
-            {pendingApprovals.length>5&&<button onClick={()=>setActiveTab('approvals')} style={{background:'none',border:'none',color:'#92400e',fontWeight:700,fontSize:12,cursor:'pointer',padding:'4px 0'}}>+{pendingApprovals.length-5} more — view full queue →</button>}
           </div>
         )}
       </div>
@@ -3266,7 +3259,7 @@ function Accounts({role,userId}){
         {todayCount===0&&<span style={{marginLeft:'auto',fontSize:12,color:'#8a93a6',fontStyle:'italic'}}>No transactions today</span>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:todayCols,gap: isMobile ? 10 : 12}}>
-        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️',onClick:()=>setShowIncomeWhy(v=>!v),hint:showIncomeWhy?'Hide breakdown ▲':'Tap for breakdown ▼'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eef2f9',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#a7771f',bg:'#fbf6e8',icon:'🔢',isCurrency:false}].map(card=>(
+        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️',onClick:()=>setShowIncomeWhy(v=>!v),hint:showIncomeWhy?'Hide breakdown ▲':'Tap for breakdown ▼'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️',onClick:()=>setShowExpenseWhy(v=>!v),hint:showExpenseWhy?'Hide breakdown ▲':'Tap for breakdown ▼'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eef2f9',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#a7771f',bg:'#fbf6e8',icon:'🔢',isCurrency:false}].map(card=>(
           <div key={card.label} onClick={card.onClick} role={card.onClick?'button':undefined} tabIndex={card.onClick?0:undefined} onKeyDown={card.onClick?(e=>{if(e.key==='Enter'||e.key===' ')card.onClick()}):undefined} style={{backgroundColor:card.bg,borderRadius:12,padding: isMobile ? '11px 12px' : '13px 16px',border:`1px solid ${card.color}1f`,position:'relative',overflow:'hidden',cursor:card.onClick?'pointer':'default'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:6}}>
               <p style={{fontSize:11,color:card.color,fontWeight:700,margin:0,letterSpacing:'.04em'}}>{card.label}</p>
@@ -3278,6 +3271,7 @@ function Accounts({role,userId}){
         ))}
       </div>
       {showIncomeWhy&&<div style={{marginTop:12}}><TodayIncomeBreakdown onClose={()=>setShowIncomeWhy(false)}/></div>}
+      {showExpenseWhy&&<div style={{marginTop:12}}><TodayExpenseBreakdown rows={entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&e.entry_date===today)} vendors={vendors} date={today} onClose={()=>setShowExpenseWhy(false)}/></div>}
     </div>
 
     {/* ── add/edit form ── */}
@@ -3293,11 +3287,11 @@ function Accounts({role,userId}){
           {rows.map((row,i)=>(
             <div key={i} style={{border:rows.length>1?'1px solid #e8e3d8':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a6e'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
-              <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
-                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
-                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
+              <div style={{display:'grid',gridTemplateColumns:formCols,gap: isMobile ? 20 : isTablet ? 22 : 16}}>
+                <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={formInput}/></div>
+                {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={formInput}/></div>}
                 <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
+                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...formInput,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
                     {(canAddIncome||row.type==='Income')&&<option>Income</option>}<option>Expense</option>
                   </select>
                 </div>
@@ -3305,31 +3299,32 @@ function Accounts({role,userId}){
                   <select value={row.category} onChange={e=>{
                     if(e.target.value==='__add_new__'){addCustomExpenseCategory(i);return}
                     updateRow(i,'category',e.target.value)
-                  }} required style={iStyle}>
+                  }} required style={formInput}>
                     <option value="">Select</option>
-                    {(row.type==='Income'?INCOME_CATEGORIES:expenseCategoryOptions).map(c=><option key={c}>{c}</option>)}
-                    {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
+                    {row.type==='Expense'&&row.category&&!entryCategoryOptions.includes(row.category)&&<option value={row.category}>{row.category}{isGenericText(row.category)?' (old — choose a real category)':''}</option>}
+                    {(row.type==='Income'?INCOME_CATEGORIES:entryCategoryOptions).map(c=><option key={c}>{c}</option>)}
+                    {row.type==='Expense'&&<option value="__add_new__">+ Add a specific category…</option>}
                   </select>
                 </div>
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Sub-category <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Sub-category <span style={{color:'#dc2626'}}>*</span></label>
                     <select value={row.sub_category||''} onChange={e=>{
                       if(e.target.value==='__add_new_sub__'){addCustomSubCategory(i,row.category);return}
                       updateRow(i,'sub_category',e.target.value)
-                    }} disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#faf8f3':'white'}}>
-                      <option value="">{row.category?'None':'Select a category first'}</option>
+                    }} required disabled={!row.category} style={{...formInput,backgroundColor:!row.category?'#faf8f3':'white'}}>
+                      <option value="">{row.category?'Select':'Select a category first'}</option>
                       {subCategoryOptionsFor(row.category).map(c=><option key={c}>{c}</option>)}
                       {row.category&&<option value="__add_new_sub__">+ Add New Sub-category…</option>}
                     </select>
                   </div>
                 )}
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Vendor / Payee <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Vendor / Payee <span style={{color:'#dc2626'}}>*</span></label>
                     <select value={row.vendor_id||''} onChange={e=>{
                       if(e.target.value==='__add_vendor__'){addNewVendor(i);return}
                       updateRow(i,'vendor_id',e.target.value)
-                    }} style={iStyle}>
-                      <option value="">None</option>
+                    }} required style={formInput}>
+                      <option value="">Select</option>
                       {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                       <option value="__add_vendor__">+ Add New Vendor…</option>
                     </select>
@@ -3340,52 +3335,64 @@ function Accounts({role,userId}){
                     <select value={row.payer_id||''} onChange={e=>{
                       if(e.target.value==='__add_payer__'){addNewPayer(i);return}
                       updateRow(i,'payer_id',e.target.value)
-                    }} style={iStyle}>
+                    }} style={formInput}>
                       <option value="">None</option>
                       {payers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                       <option value="__add_payer__">+ Add New Payer…</option>
                     </select>
                   </div>
                 )}
-                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
+                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={formInput}/>
                 </div>
-                <div><label style={lStyle}>Payment Mode <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
+                <div><label style={lStyle}>Payment Mode <span style={{fontWeight:400,color:'#8a93a6'}}>(default Cash)</span> <span style={{color:'#dc2626'}}>*</span></label>
+                  <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={formInput}>
                     <option value="">Select</option>
                     {PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Account Type <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.account_type||'Cash A/c'} onChange={e=>updateRow(i,'account_type',e.target.value)} required style={iStyle}>
-                    {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
-                  </select>
+                <div><label style={lStyle}>Account Type <span style={{fontWeight:400,color:'#8a93a6'}}>(automatic)</span></label>
+                  <input type="text" value={row.account_type||'Cash A/c'} readOnly disabled style={{...formInput,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
+                {row.type==='Expense'&&controlsReady&&isDigitalMode(row.payment_mode)&&(
+                  <div><label style={lStyle}>Payment Reference <span style={{fontWeight:400,color:'#8a93a6'}}>(UTR / txn id)</span> <span style={{color:'#dc2626'}}>*</span></label>
+                    <input type="text" placeholder="e.g. 412345678901" value={row.txn_ref||''} onChange={e=>updateRow(i,'txn_ref',e.target.value)} style={formInput}/>
+                  </div>
+                )}
                 <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#8a93a6'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
                     updateRow(i,'voucher_head',e.target.value)
-                  }} required style={iStyle}>
+                  }} required style={formInput}>
                     <option value="">Select from Staff…</option>
                     {selectableStaffList.map(s=><option key={s.id??s.name} value={s.name}>{s.name}{String(s.user_id)===String(userId)||String(s.id)===String(userId)?' (You)':''}</option>)}
                     <option value="__add_staff__">+ Add New Staff Member…</option>
                   </select>
                 </div>
                 <div><label style={lStyle}>Entered By</label>
-                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
+                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...formInput,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
-                <div><label style={lStyle}>Status <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} required style={iStyle}>
+                <div><label style={lStyle}>Status <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <select value={row.status||'Confirmed'} onChange={e=>updateRow(i,'status',e.target.value)} style={formInput}>
                     {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
                   </select>
                 </div>
-                <div style={{gridColumn: isMobile ? '1' : 'span 4'}}><label style={lStyle}>Description / Note <span style={{color:'#dc2626'}}>*</span></label><input type="text" placeholder="Transaction description" value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={iStyle}/></div>
+                <div style={{gridColumn: isMobile ? '1' : isTablet ? 'span 2' : 'span 4'}}><label style={lStyle}>{row.type==='Expense'?'Reason — what was bought / paid for, and for whom':'Description / Note'} <span style={{color:'#dc2626'}}>*</span></label>
+                  <input type="text" placeholder={row.type==='Expense'?'e.g. 7 bags rice (50 kg) for hostel kitchen, bill no. 214':'Transaction description'} value={row.note} onChange={e=>updateRow(i,'note',e.target.value)} required style={formInput}/>
+                  {row.type==='Expense'&&(()=>{
+                    const len=(row.note||'').trim().length
+                    if(!len)return <div style={{fontSize:11,color:'#8a93a6',marginTop:4}}>Say what was bought or paid for (at least 5 letters).</div>
+                    return len<5
+                      ?<div style={{fontSize:11,color:'#b45309',marginTop:4}}>Needs at least 5 characters (now {len}).</div>
+                      :<div style={{fontSize:11,color:'#16a34a',marginTop:4}}>✓ Clear reason</div>
+                  })()}
+                </div>
               </div>
             </div>
           ))}
           <div style={{marginTop:16}}>
             <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={async e=>{const f=e.target.files[0]||null;setReceiptFile(f?(await compressImage(f,{maxDim:1800,quality:0.9,targetKB:300})).file:null)}} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>
@@ -3400,37 +3407,36 @@ function Accounts({role,userId}){
       </div>
     )}
 
-    {/* ── tabs — grouped into Books / Analysis / Controls / Reports so 16
-         screens read as four clear areas instead of one long strip ── */}
+    {/* ── tabs — 19 screens under five areas (Entries / Statements / Insights / Budgets & Approvals / Audit);
+         the pills under the area switch between its related screens ── */}
     {(()=>{
       const all=[
-        {id:'transactions',label:'Transactions',group:'books'},
-        {id:'daily',label:'Daily Book',group:'books'},
-        {id:'expenditure',label:'Expenditure',group:'books'},
-        {id:'expdaybook',label:'Expenditure Day Book',group:'books'},
-        {id:'iereg',label:'Income & Expenditure',group:'books'},
-        ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'books'}]:[]),
-        ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'books'}]:[]),
-        {id:'analytics',label:'Analytics',group:'analysis'},
-        {id:'income',label:'Income Analysis',group:'analysis'},
-        ...(isAdmin?[{id:'forecast',label:'Forecast',group:'analysis'}]:[]),
-        ...(isAdmin?[{id:'staffspend',label:'Staff Spend',group:'analysis'}]:[]),
-        ...(isAdmin?[{id:'savings',label:'Savings Tracker',group:'analysis'}]:[]),
-        {id:'budgets',label:'Budgets',group:'controls'},
-        // Approval queue: admin-only to act on, so only admins see it.
-        ...(isAdmin?[{id:'approvals',label:'Approvals',group:'controls',badge:pendingApprovals.length}]:[]),
-        ...(isAdmin?[{id:'fraud',label:'For Admin',group:'controls',badge:digestItems.length}]:[]),
+        {id:'transactions',label:'Transactions',group:'entries'},
+        {id:'daily',label:'Daily Book',group:'entries'},
+        {id:'expenditure',label:'Expenditure',group:'entries'},
+        {id:'iereg',label:'Income & Expenditure',group:'statements'},
+        ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'statements'}]:[]),
+        ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'statements'}]:[]),
+        {id:'analytics',label:'Analytics',group:'insights'},
+        {id:'income',label:'Income Analysis',group:'insights'},
+        ...(isAdmin?[{id:'forecast',label:'Forecast',group:'insights'}]:[]),
+        ...(isAdmin?[{id:'staffspend',label:'Staff Spend',group:'insights'}]:[]),
+        {id:'budgets',label:'Budgets',group:'budgets'},
+        // Accounting controls: exception report, capital/revenue view, staff advances, vendor bills, rules.
+        ...(canWrite?[{id:'controls',label:'Accounting Controls',group:'audit'}]:[]),
+        ...(isAdmin?[{id:'fraud',label:'For Admin',group:'audit',badge:digestItems.length}]:[]),
         // Course-wise fee collection + anomaly detection across the whole ledger.
-        ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'controls'}]:[]),
+        ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'audit'}]:[]),
         // Every user's inserts/edits/deletes — admin-only visibility.
-        ...(isAdmin?[{id:'timeline',label:'Activity Log',group:'controls'}]:[]),
-        {id:'reports',label:'Reports & Exports',group:'reports'},
+        ...(isAdmin?[{id:'timeline',label:'Activity Log',group:'audit'}]:[]),
+        {id:'reports',label:'Reports & Exports',group:'statements'},
       ]
       const GROUPS=[
-        {id:'books',label:'Books',sub:'Day-to-day entries'},
-        {id:'analysis',label:'Analysis',sub:'Trends & insight'},
-        {id:'controls',label:'Controls',sub:'Budgets, approvals, audit'},
-        {id:'reports',label:'Reports',sub:'Statements & exports'},
+        {id:'entries',label:'Entries',sub:'Add & review daily entries'},
+        {id:'statements',label:'Statements',sub:'Reports, balance sheet, closing'},
+        {id:'insights',label:'Insights',sub:'Trends, forecasts, spending'},
+        {id:'budgets',label:'Budgets & Approvals',sub:'Limits and sign-off'},
+        {id:'audit',label:'Audit',sub:'Alerts & activity (admin)'},
       ].filter(g=>all.some(t=>t.group===g.id))
       const current=all.find(t=>t.id===activeTab)||all[0]
       const grp=current.group
@@ -3439,7 +3445,7 @@ function Accounts({role,userId}){
         <div style={{marginBottom:18}}>
           {isMobile && createPortal(
             <nav className="ac-bottom" role="tablist" aria-label="Accounts areas">
-              <style>{`.ac-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+              <style>{`.ac-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
 body:has(.ac-bottom){padding-bottom:76px}
 .ac-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer;position:relative}
 .ac-nb .ac-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
@@ -3449,7 +3455,7 @@ body:has(.ac-bottom){padding-bottom:76px}
 .ac-nb .ac-badge{position:absolute;top:0;right:calc(50% - 28px)}`}</style>
               {GROUPS.map(g=>{
                 const on=g.id===grp, b=groupBadge(g.id)
-                const icon={books:'accounts',analysis:'pulse',controls:'shield',reports:'reports'}[g.id]
+                const icon={entries:'accounts',statements:'reports',insights:'pulse',budgets:'stamp',audit:'shield'}[g.id]
                 return (
                   <button key={g.id} type="button" role="tab" aria-selected={on} className={'ac-nb'+(on?' on':'')}
                     onClick={()=>{ if(!on) setActiveTab(all.find(t=>t.group===g.id).id); window.scrollTo({top:0}) }}>
@@ -3487,7 +3493,6 @@ body:has(.ac-bottom){padding-bottom:76px}
       )
     })()}
 
-    {activeTab==='expdaybook'&&<ExpenseDayBook source={bookSource}/>}
     {activeTab==='iereg'&&<IncomeExpenditureRegister source={bookSource}/>}
 
     {/* ══ TAB: TRANSACTIONS ══ */}
@@ -3504,6 +3509,8 @@ body:has(.ac-bottom){padding-bottom:76px}
     openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
     handleDelete={handleDelete}
+    vendors={vendors}
+    payers={payers}
             onExportReport={(fmt)=>exportAllEntriesReport(fmt,'Transactions')}
             exportingReport={generatingReport}
   />
@@ -3514,8 +3521,9 @@ body:has(.ac-bottom){padding-bottom:76px}
         <div className="ac-hero" style={{borderRadius:18,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
-              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily {dailyLabelWord} Register</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.5)',margin:'4px 0 0'}}>{dailyTypeFilter} entries grouped by {dailyIsIncome?(dailyDateMode==='payment'?'actual payment date':'entry date'):'entry date'}</p>
+              <p style={{fontSize:10.5,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:AC.gold,margin:'0 0 6px'}}>Daily Register</p>
+              <h2 style={{fontSize: isMobile ? 22 : 30,fontWeight:600,color:'white',margin:0,fontFamily:AC.serif,letterSpacing:'-0.02em'}}>Daily {dailyLabelWord} Register</h2>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.62)',margin:'6px 0 0'}}>{dailyTypeFilter} entries grouped by {dailyIsIncome?(dailyDateMode==='payment'?'actual payment date':'entry date'):'entry date'}</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportDailyCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -3524,25 +3532,25 @@ body:has(.ac-bottom){padding-bottom:76px}
           </div>
           <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
             {[{label:'Total Days',value:dailyGroups.length,isCurrency:false},{label:dailyIsIncome?'Payments Received':'Total Entries',value:dailyFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:dailyCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:dailyBankAmt,color:'#f87171'}].map(c=>(
-              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:'12px 14px'}}>
-                <p style={{fontSize:11,color:'rgba(255,255,255,0.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.6px',margin:'0 0 6px'}}>{c.label}</p>
-                <p style={{fontFamily:'monospace',fontSize: isMobile ? 16 : 20,fontWeight:600,color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.16)',borderTop:`2px solid ${AC.gold}88`,borderRadius:14,padding:'14px 16px',backdropFilter:'blur(6px)'}}>
+                <p style={{fontSize:10,color:'rgba(255,255,255,0.6)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.16em',margin:'0 0 8px'}}>{c.label}</p>
+                <p style={{fontFamily:AC.serif,fontVariantNumeric:'lining-nums tabular-nums',fontSize: isMobile ? 20 : 27,fontWeight:600,letterSpacing:'-0.02em',color:c.color||'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* PAYMENT-DATE FILTER FIX: Income/Expense toggle + quick date range, so you can instantly see "how many paid on date X" */}
-        <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Showing:</span>
-          <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
-          <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
+        <div style={{display:'flex',gap: isMobile ? 6 : 8,alignItems:'center',flexWrap:'wrap',backgroundColor:'white',border:`1px solid ${AC.line}`,borderRadius:'16px 16px 0 0',padding: isMobile ? '14px 14px 6px' : '16px 20px 8px',borderBottom:'none',boxShadow:'0 1px 2px rgba(19,42,79,.04)'}}>
+          <span style={{fontSize:10,color:'#8a93a6',fontWeight:800,letterSpacing:'.14em',textTransform:'uppercase'}}>Showing</span>
+          <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
+          <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
           {dailyIsIncome&&(
             <>
               <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
               <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Filter by:</span>
-              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='payment'?'white':'#5d6b82'}}>💰 Payment Date</button>
-              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='entry'?'white':'#5d6b82'}}>🗓 Entry Date</button>
+              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='payment'?'white':'#5d6b82'}}>💰 Payment Date</button>
+              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '8px 14px' : '8px 18px',borderRadius:999,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='entry'?'white':'#5d6b82'}}>🗓 Entry Date</button>
             </>
           )}
           <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
@@ -3553,7 +3561,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           {activeQuick&&<button onClick={clearQuick} style={{padding:'5px 8px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,backgroundColor:'#fee2e2',color:'#dc2626',fontWeight:600}}>✖</button>}
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto auto auto auto auto auto',gap:8,marginBottom:16,alignItems:'center'}}>
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:22,alignItems:'center',backgroundColor:'white',border:`1px solid ${AC.line}`,borderTop:'none',borderRadius:'0 0 16px 16px',padding: isMobile ? '8px 14px 16px' : '8px 20px 18px',boxShadow:'0 10px 28px -18px rgba(19,42,79,.25)'}}>
           <input placeholder="🔍 Search…" value={dailySearch} onChange={e=>setDailySearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
           <select value={dailyAcctFilter} onChange={e=>setDailyAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
           <select value={dailyModeFilter} onChange={e=>setDailyModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
@@ -3564,7 +3572,7 @@ body:has(.ac-bottom){padding-bottom:76px}
             <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
         </div>
 
-        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
+        {dailyGroups.length===0?<div style={{textAlign:'center',padding:56,color:'#8a93a6',backgroundColor:'white',borderRadius:18,border:`1px dashed ${AC.line2}`,fontFamily:AC.serif,fontSize:17}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
           <TransactionsViewBanking
             dayRows={dailyFilteredEntries}
             dailyIsIncome={dailyIsIncome}
@@ -3582,6 +3590,8 @@ body:has(.ac-bottom){padding-bottom:76px}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
+            vendors={vendors}
+            payers={payers}
             isMobile={isMobile}
             onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Daily')}
             exportingReport={generatingReport}
@@ -3593,11 +3603,12 @@ body:has(.ac-bottom){padding-bottom:76px}
     {/* ══ TAB: DAILY EXPENDITURE (dedicated — separate from the combined Daily register) ══ */}
     {activeTab==='expenditure'&&(
       <div>
-        <div style={{backgroundColor:'#7f1d1d',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div className="ac-hero" style={{background:'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.30) 0%,transparent 55%),linear-gradient(135deg,#4a0f12 0%,#7f1d1d 55%,#9b2226 100%)',borderRadius:22,padding: isMobile ? '18px' : '26px 30px',marginBottom:22}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
-              <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💵 Daily Expenditure</h2>
-              <p style={{fontSize:12,color:'rgba(255,255,255,0.55)',margin:'4px 0 0'}}>All expense entries, grouped by entry date — a dedicated table separate from the combined Daily register.</p>
+              <p style={{fontSize:10.5,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:'#e9c46a',margin:'0 0 6px'}}>Expenditure</p>
+              <h2 style={{fontSize: isMobile ? 22 : 30,fontWeight:600,color:'white',margin:0,fontFamily:AC.serif,letterSpacing:'-0.02em'}}>Daily Expenditure</h2>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.65)',margin:'6px 0 0'}}>All expense entries, grouped by entry date — a dedicated table separate from the combined Daily register.</p>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={exportExpenditureCSV} style={{backgroundColor:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.2)',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⬇ CSV</button>
@@ -3607,19 +3618,19 @@ body:has(.ac-bottom){padding-bottom:76px}
 
           <div style={{display:'grid',gridTemplateColumns:dailySumCols,gap:12}}>
             {[{label:'Total Days',value:expenditureGroups.length,isCurrency:false},{label:'Total Entries',value:expenditureFilteredEntries.length,isCurrency:false},{label:'Cash Total',value:expenditureCashAmt,color:'#fbbf24'},{label:'Bank Transfer',value:expenditureBankAmt,color:'#f87171'}].map(c=>(
-              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.08)',borderRadius:10,padding:'12px 14px'}}>
-                <p style={{fontSize:11,color:c.color||'rgba(255,255,255,0.6)',fontWeight:600,margin:'0 0 4px'}}>{c.label}</p>
-                <p style={{fontSize: isMobile ? 16 : 19,fontWeight:800,color:'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
+              <div key={c.label} style={{backgroundColor:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.16)',borderTop:'2px solid #e9c46a99',borderRadius:14,padding:'14px 16px'}}>
+                <p style={{fontSize:10,color:c.color||'rgba(255,255,255,0.6)',fontWeight:700,letterSpacing:'.16em',textTransform:'uppercase',margin:'0 0 8px'}}>{c.label}</p>
+                <p style={{fontFamily:AC.serif,fontVariantNumeric:'lining-nums tabular-nums',fontSize: isMobile ? 20 : 27,fontWeight:600,letterSpacing:'-0.02em',color:'white',margin:0}}>{c.isCurrency===false?c.value:fmt(c.value)}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* ── one-click Expenditure Report — reuses the same letterheaded PDF/DOCX/Excel export as the Reports tab ── */}
-        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
+        <div style={{backgroundColor:'white',border:`1px solid ${AC.line}`,borderRadius:20,padding: isMobile ? 16 : 24,marginBottom:22,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 18px 40px -22px rgba(19,42,79,.28)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
             <div>
-              <h3 style={{...chartTitle,fontSize:15,margin:0}}>📑 Expenditure Report</h3>
+              <h3 style={{...chartTitle,fontSize:20,margin:0}}>Expenditure Report</h3>
               <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>Generates the same letterheaded report as the Reports tab, pre-filtered to Expense entries using the filters below.</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
@@ -3643,7 +3654,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           <div style={{display:'flex',gap:8,marginTop:12,alignItems:'center',flexWrap:'wrap'}}>
             <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Quick:</span>
             {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
-              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f3f0e8',color:expQuick===k?'white':'#5d6b82'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
+              <button key={k} style={{padding: isMobile?'7px 12px':'7px 15px',borderRadius:999,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f3f0e8',color:expQuick===k?'white':'#5d6b82'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
             ))}
             {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expSubCategory!=='All'||expVendorFilter!=='All'||expDateFrom||expDateTo)&&
               <button onClick={resetExpFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset</button>}
@@ -3659,7 +3670,7 @@ body:has(.ac-bottom){padding-bottom:76px}
           <div style={{...chartCard,marginBottom:20}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
               <div>
-                <h3 style={{...chartTitle,marginBottom:3}}>📂 All Expense Categories</h3>
+                <h3 style={{...chartTitle,marginBottom:3,fontSize:22}}>All Expense Categories</h3>
                 <p style={{fontSize:12,color:'#8a93a6',margin:0}}>Every category ever used across your expense entries, ranked by total spend</p>
               </div>
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
@@ -3685,7 +3696,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                 const color=CHART_COLORS[idx%CHART_COLORS.length]
                 const catEntries=expanded?entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
                 return (
-                  <div key={c.category} style={{border:'1px solid #f3f0e8',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                  <div key={c.category} style={{border:`1px solid ${AC.line}`,borderTop:`3px solid ${color}`,borderRadius:16,overflow:'hidden',backgroundColor:expanded?'#fdfbf6':'white',boxShadow:'0 1px 2px rgba(19,42,79,.04), 0 12px 28px -18px rgba(19,42,79,.25)',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
                     <div onClick={()=>setCatAllDrilldown(expanded?null:c.category)} style={{padding:'14px 16px',cursor:'pointer'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                         <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
@@ -3698,7 +3709,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                         <span style={{fontSize:14,color:'#d9d2c2',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
-                        <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
+                        <strong style={{fontSize:22,fontWeight:600,color:'#132a4f',fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(c.total)}</strong>
                         <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
                       </div>
                       <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
@@ -3709,9 +3720,16 @@ body:has(.ac-bottom){padding-bottom:76px}
                       <div style={{padding:'0 16px 14px',borderTop:'1px solid #f3f0e8',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
                           {(showAllDrilldown.has(`expcat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
-                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
-                              <span style={{color:'#5d6b82'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
-                              <strong style={{color:'#dc2626',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'10px 0',fontSize:12.5,borderBottom:'1px solid #f1ede2'}}>
+                              <div style={{minWidth:0}}>
+                                <div style={{color:'#0f1b2e',fontWeight:600,wordBreak:'break-word'}}>{e.note||e.category}</div>
+                                <div style={{display:'flex',flexWrap:'wrap',gap:'4px 6px',marginTop:6}}>
+                                  {[['Date',e.entry_date],['Sub',e.sub_category],['Paid to',vendors.find(v=>String(v.id)===String(e.vendor_id))?.name],['Voucher head',e.voucher_head],['Mode',e.payment_mode],['Account',e.account_type||'Cash A/c'],['Ref',e.txn_ref],['By',e.added_by],['Receipt',e.receipt_url?'Attached':'']].filter(([,v])=>v).map(([k,v])=>(
+                                    <span key={k} style={{fontSize:11,padding:'2px 9px',borderRadius:999,backgroundColor:'#f5f3ec',border:'1px solid #ece7d8',color:'#4b4f58'}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'#9c9ea6',marginRight:5}}>{k}</span>{v}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <strong style={{color:'#b91c1c',flexShrink:0,marginLeft:12,fontFamily:AC.serif,fontSize:15,fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
                           {catEntries.length>10&&(
@@ -3731,31 +3749,70 @@ body:has(.ac-bottom){padding-bottom:76px}
         })()}
 
         {/* ── Expenditure v2: vendor spend summary + drilldown ── */}
-        {vendorSpendSummary.length>0&&(
-          <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
-            <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🏷️ Vendor / Payee Spend</h3>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {vendorSpendSummary.map(v=>{
+        {vendorSpendSummary.length>0&&(()=>{
+          const vTotal=vendorSpendSummary.reduce((s,v)=>s+v.total,0)
+          const vTop=vendorSpendSummary[0]
+          return(
+          <div style={{...chartCard,marginBottom:22,padding: isMobile ? 16 : 26}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:12,marginBottom:20}}>
+              <div>
+                <p style={{fontSize:10,fontWeight:800,letterSpacing:'.22em',textTransform:'uppercase',color:AC.gold,margin:'0 0 6px'}}>Payees</p>
+                <h3 style={{...chartTitle,fontSize: isMobile?20:24,marginBottom:3}}>Vendor / Payee Spend</h3>
+                <p style={{fontSize:12.5,color:'#8a93a6',margin:0}}>Who was paid, how much and when — ranked by total spend</p>
+              </div>
+              <div style={{display:'flex',gap: isMobile?14:26,flexWrap:'wrap'}}>
+                {[['Vendors',vendorSpendSummary.length,AC.navy2],['Total paid',fmt(vTotal),'#7f1d1d'],['Top payee',vTop.vendorName,AC.navy2]].map(([l,val,c])=>(
+                  <div key={l} style={{textAlign: isMobile?'left':'right',minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'.14em'}}>{l}</div>
+                    <div style={{fontSize: l==='Top payee'?15:22,fontWeight:600,color:c,fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(300px,1fr))',gap:14}}>
+              {vendorSpendSummary.map((v,idx)=>{
                 const expanded=vendorDrilldown===v.vendor_id
+                const pct=vTotal>0?(v.total/vTotal)*100:0
+                const color=CHART_COLORS[idx%CHART_COLORS.length]
+                const initial=(v.vendorName||'?').trim().charAt(0).toUpperCase()
                 return (
-                  <div key={v.vendor_id} style={{border:'1px solid #f3f0e8',borderRadius:8}}>
-                    <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
-                      <div>
-                        <strong style={{color:'#14213d'}}>{expanded?'▾':'▸'} {v.vendorName}</strong>
-                        <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</span>
+                  <div key={v.vendor_id} style={{border:`1px solid ${AC.line}`,borderTop:`3px solid ${color}`,borderRadius:16,overflow:'hidden',backgroundColor:expanded?'#fdfbf6':'white',boxShadow:'0 1px 2px rgba(19,42,79,.04), 0 12px 28px -18px rgba(19,42,79,.25)',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                    <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{padding:'16px 18px',cursor:'pointer'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:12}}>
+                        <div style={{display:'flex',alignItems:'center',gap:12,minWidth:0}}>
+                          <span style={{width:42,height:42,borderRadius:13,background:`${color}1f`,color,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:AC.serif,fontSize:19,fontWeight:600,flexShrink:0}}>{initial}</span>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontWeight:700,color:AC.navy,fontSize:15,wordBreak:'break-word'}}>{v.vendorName}</div>
+                            <div style={{fontSize:11.5,color:'#8a93a6',marginTop:2}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</div>
+                          </div>
+                        </div>
+                        <span style={{fontSize:10,fontWeight:800,color:AC.gold,letterSpacing:'.1em',flexShrink:0}}>#{idx+1} {expanded?'▾':'▸'}</span>
                       </div>
-                      <strong style={{color:'#7f1d1d'}}>{fmt(v.total)}</strong>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
+                        <strong style={{fontSize:24,fontWeight:600,color:'#7f1d1d',fontFamily:AC.serif,letterSpacing:'-0.02em',fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(v.total)}</strong>
+                        <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
+                      </div>
+                      <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,background:`linear-gradient(90deg,${color},${color}99)`,transition:'width .3s ease'}}/>
+                      </div>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #faf8f3'}}>
+                      <div style={{padding:'0 18px 14px',borderTop:`1px dashed ${AC.line}`}}>
                         {(showAllDrilldown.has(`vendor:${v.vendor_id}`)?v.entries:v.entries.slice(0,10)).map(e=>(
-                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
-                            <span style={{color:'#5d6b82'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
-                            <strong style={{color:'#dc2626'}}>{fmt(e.amount)}</strong>
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,padding:'11px 0',borderBottom:'1px solid #f1ede2'}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{color:AC.ink,fontWeight:600,fontSize:13,wordBreak:'break-word'}}>{e.note||e.category}</div>
+                              <div style={{display:'flex',flexWrap:'wrap',gap:'4px 6px',marginTop:6}}>
+                                {[['Date',e.entry_date],['Category',[e.category,e.sub_category].filter(Boolean).join(' › ')],['Voucher head',e.voucher_head],['Mode',e.payment_mode],['Account',e.account_type||'Cash A/c'],['Ref',e.txn_ref],['By',e.added_by],['Receipt',e.receipt_url?'Attached':'']].filter(([,x])=>x).map(([k,x])=>(
+                                  <span key={k} style={{fontSize:11,padding:'2px 9px',borderRadius:999,backgroundColor:'#f5f3ec',border:'1px solid #ece7d8',color:'#4b4f58'}}><span style={{fontSize:9.5,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'#9c9ea6',marginRight:5}}>{k}</span>{x}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <strong style={{color:'#b91c1c',flexShrink:0,fontFamily:AC.serif,fontSize:15,fontVariantNumeric:'lining-nums tabular-nums'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
                         {v.entries.length>10&&(
-                          <button onClick={()=>toggleShowAllDrilldown(`vendor:${v.vendor_id}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'6px 0 0',textAlign:'left'}}>
+                          <button onClick={()=>toggleShowAllDrilldown(`vendor:${v.vendor_id}`)} style={{background:'none',border:'none',color:AC.navy2,fontSize:12,fontWeight:700,cursor:'pointer',padding:'10px 0 0',textAlign:'left'}}>
                             {showAllDrilldown.has(`vendor:${v.vendor_id}`)?'Show less':`+${v.entries.length-10} more payment(s) — Show all`}
                           </button>
                         )}
@@ -3766,7 +3823,8 @@ body:has(.ac-bottom){padding-bottom:76px}
               })}
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* ── separate daily expenditure table ── */}
         {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
@@ -3787,6 +3845,8 @@ body:has(.ac-bottom){padding-bottom:76px}
             openEdit={openEdit}
             printReceiptMemo={printReceiptMemo}
             handleDelete={handleDelete}
+            vendors={vendors}
+            payers={payers}
             isMobile={isMobile}
             onExportReport={(fmt2)=>exportAllEntriesReport(fmt2,'Expenditure')}
             exportingReport={generatingReport}
@@ -4571,101 +4631,6 @@ body:has(.ac-bottom){padding-bottom:76px}
       </div>
     )}
 
-    {activeTab==='savings'&&isAdmin&&(
-      <div>
-        <div style={{backgroundColor:'#064e3b',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
-          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💹 Savings Tracker</h2>
-          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Daily and weekly income vs. expense, and which categories to watch for future saving.</p>
-        </div>
-
-        {/* ── overall savings summary ── */}
-        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)',gap: isMobile ? 10 : 14,marginBottom:24}}>
-          <StatCard label="Total Income (All Time)" value={savingsTracker?.totalIncomeAll||0} color="#16a34a" bg="#dcfce7" icon="💰"/>
-          <StatCard label="Total Expense (All Time)" value={savingsTracker?.totalExpenseAll||0} color="#dc2626" bg="#fee2e2" icon="💸"/>
-          <StatCard label="Net Savings (All Time)" value={savingsTracker?.netSavings||0} color={savingsTracker?.netSavings>=0?'#16a34a':'#dc2626'} bg={savingsTracker?.netSavings>=0?'#dcfce7':'#fee2e2'} icon="🏦"/>
-          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a6e" bg="#eef2f9" icon="📈" isCurrency={false} sub="of total income saved"/>
-        </div>
-
-        {/* ── this week vs last week ── */}
-        <div style={{...chartCard,marginBottom:24}}>
-          <h3 style={chartTitle}>This Week vs Last Week</h3>
-          <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:16}}>
-            {[{label:'Last Week',data:savingsTracker?.lastWeek},{label:'This Week',data:savingsTracker?.thisWeek}].map(({label,data})=>(
-              <div key={label} style={{backgroundColor:'#faf8f3',borderRadius:10,padding:16}}>
-                <p style={{fontSize:12,color:'#5d6b82',fontWeight:600,margin:'0 0 8px'}}>{label}</p>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#16a34a'}}>Income</span><strong style={{fontSize:13,color:'#16a34a'}}>{fmt(data?.Income||0)}</strong></div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#dc2626'}}>Expense</span><strong style={{fontSize:13,color:'#dc2626'}}>{fmt(data?.Expense||0)}</strong></div>
-                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e8e3d8'}}><span style={{fontSize:12,color:'#1e3a6e',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── daily trend (last 14 days) ── */}
-        <div style={{...chartCard,marginBottom:24}}>
-          <h3 style={chartTitle}>📅 Daily Income vs Expense — Last 14 Days</h3>
-          {dailyTrend.length===0?<p style={{textAlign:'center',color:'#8a93a6',fontSize:14,padding:32}}>No entries yet.</p>:(
-            <ResponsiveContainer width="100%" height={isMobile?220:280}>
-              <LineChart data={dailyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/>
-                <XAxis dataKey="date" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
-                <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={v=>fmt(v)}/>
-                <Legend/>
-                <Line type="monotone" dataKey="Income" stroke="#16a34a" strokeWidth={2} dot={false}/>
-                <Line type="monotone" dataKey="Expense" stroke="#dc2626" strokeWidth={2} dot={false}/>
-                <Line type="monotone" dataKey="Net" stroke="#1e3a6e" strokeWidth={2} strokeDasharray="4 4" dot={false}/>
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* ── weekly trend (last 8 weeks) ── */}
-        <div style={{...chartCard,marginBottom:24}}>
-          <h3 style={chartTitle}>🗓️ Weekly Income vs Expense — Last 8 Weeks</h3>
-          {weeklyTrend.length===0?<p style={{textAlign:'center',color:'#8a93a6',fontSize:14,padding:32}}>No entries yet.</p>:(
-            <ResponsiveContainer width="100%" height={isMobile?220:280}>
-              <BarChart data={weeklyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/>
-                <XAxis dataKey="week" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
-                <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={v=>fmt(v)}/>
-                <Legend/>
-                <Bar dataKey="Income" fill="#16a34a" radius={[3,3,0,0]}/>
-                <Bar dataKey="Expense" fill="#dc2626" radius={[3,3,0,0]}/>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* ── category trend flags: what to watch for future saving ── */}
-        <div style={{...chartCard,marginBottom:20}}>
-          <h3 style={chartTitle}>🔍 Categories to Watch — This Week vs Last Week</h3>
-          {categoryTrendFlags.length===0?<p style={{color:'#8a93a6',fontSize:14}}>Not enough weekly data yet to compare trends.</p>:(
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Category','Last Week','This Week','Change','Signal'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
-              <tbody>{categoryTrendFlags.map(r=>{
-                const rising=r.change>20,falling=r.change<-20
-                return(
-                  <tr key={r.category} style={{borderBottom:'1px solid #f3f0e8'}}>
-                    <td style={{...tdS,fontWeight:600,color:'#14213d'}}>{r.category}</td>
-                    <td style={tdS}>{fmt(r.previous)}</td>
-                    <td style={{...tdS,fontWeight:600}}>{fmt(r.current)}</td>
-                    <td style={{...tdS,fontWeight:700,color:rising?'#dc2626':falling?'#16a34a':'#5d6b82'}}>{r.change>0?'+':''}{r.change.toFixed(0)}%</td>
-                    <td style={tdS}>
-                      {rising&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fee2e2',color:'#dc2626'}}>⬆ Trending up — consider cutting back</span>}
-                      {falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#dcfce7',color:'#16a34a'}}>⬇ Trending down</span>}
-                      {!rising&&!falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:'#f3f0e8',color:'#5d6b82'}}>Stable</span>}
-                    </td>
-                  </tr>
-                )
-              })}</tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    )}
-
     {/* ══ TAB: BALANCE SHEET (PHASE 4) ══ */}
     {activeTab==='balancesheet'&&isAdmin&&(
       <div>
@@ -4946,7 +4911,7 @@ body:has(.ac-bottom){padding-bottom:76px}
                         <span style={{fontSize:11,color:'#8a93a6'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
                       </div>
                       <div style={{fontSize:12,color:'#5d6b82',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
-                      {log.new_values&&<div style={{fontSize:11,color:'#8a93a6',marginTop:4,fontFamily:'monospace',background:'#faf8f3',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
+                      {log.new_values&&<div style={{fontSize:11,color:'#8a93a6',marginTop:4,fontFamily: "'IBM Plex Mono','SF Mono',Menlo,monospace",background:'#faf8f3',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
                     </div>
                   </div>
                 )
@@ -4999,89 +4964,8 @@ body:has(.ac-bottom){padding-bottom:76px}
       </div>
     )}
 
-    {/* ══ TAB: EXPENDITURE APPROVALS (admin only) ══
-        Pending queue + "approval list for the day" (everything decided today). ══ */}
-    {activeTab==='approvals'&&isAdmin&&(
-      <div>
-        <div style={{backgroundColor:'#92400e',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
-          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔏 Expenditure Approvals</h2>
-          <p style={{fontSize:12,color:'rgba(255,255,255,0.7)',margin:'4px 0 0'}}>Entries flagged for approval by amount threshold or submitter role — pending queue and today's decisions.</p>
-        </div>
+    {activeTab==='controls'&&canWrite&&<ExpenditureControls entries={entries} vendors={vendors} controls={controls} controlsCols={controlsCols} controlsReady={controlsReady} reloadControls={fetchControls} isLocked={e=>isMonthLocked(acctOf(e),e.entry_date)} onAudit={(e,payload)=>writeAuditLog({action:'update',role:currentStaff?.name||role,targetId:e.id,oldValues:e,newValues:payload})} reload={fetchEntries} isAdmin={isAdmin} canWrite={canWrite} who={currentStaff?.name||role}/>}
 
-        {/* ── admin-editable threshold ── */}
-        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #92400e'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
-            <div>
-              <h3 style={{...chartTitle,fontSize:15,margin:0}}>Approval Threshold</h3>
-              <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>Any Expense entry at or above this amount needs approval, regardless of who enters it. Superintendent and general staff entries always need approval, regardless of amount.</p>
-            </div>
-            {!editThreshold?(
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <span style={{fontSize:20,fontWeight:800,color:'#92400e'}}>{fmt(approvalSettings.threshold_amount)}</span>
-                <button onClick={()=>{setEditThreshold(true);setThresholdDraft(String(approvalSettings.threshold_amount))}} style={{...smallBtn('#fffbeb','#92400e')}}>✏️ Edit</button>
-              </div>
-            ):(
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <input type="number" min="0" value={thresholdDraft} onChange={e=>setThresholdDraft(e.target.value)} style={{...iStyle,width:140}}/>
-                <button onClick={saveApprovalThreshold} style={{...smallBtn('#f0fdf4','#16a34a')}}>✅ Save</button>
-                <button onClick={()=>setEditThreshold(false)} style={{...smallBtn('#f3f0e8','#5d6b82')}}>Cancel</button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── pending queue ── */}
-        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #d97706',overflowX:'auto'}}>
-          <h3 style={{...chartTitle,color:'#d97706'}}>⏳ Pending Queue ({pendingApprovals.length})</h3>
-          {pendingApprovals.length===0?<p style={{color:'#8a93a6',fontSize:14}}>Nothing waiting on approval.</p>:(
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Requested','Amount','Category','Note','Requested By','Reason','Actions'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
-              <tbody>{pendingApprovals.map(req=>(
-                <tr key={req.id} style={{borderBottom:'1px solid #fffbeb'}}>
-                  <td style={tdS}>{req.requested_at?new Date(req.requested_at).toLocaleString('en-IN'):''}</td>
-                  <td style={{...tdS,fontWeight:700,color:'#dc2626'}}>{fmt(req.amount)}</td>
-                  <td style={tdS}>{req.accounts?.category||'—'}{req.accounts?.sub_category?` / ${req.accounts.sub_category}`:''}</td>
-                  <td style={{...tdS,maxWidth:220}}>{req.accounts?.note||'—'}</td>
-                  <td style={tdS}><strong>{req.requested_by}</strong></td>
-                  <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fef3c7',color:'#92400e'}}>{req.reason==='both'?'role + amount':req.reason==='role'?'role':'amount'}</span></td>
-                  <td style={tdS}>
-                    <div style={{display:'flex',gap:6}}>
-                      <button disabled={approvalBusyId===req.id} onClick={()=>approveExpenditure(req)} style={smallBtn('#f0fdf4','#16a34a')}>✓ Approve</button>
-                      <button disabled={approvalBusyId===req.id} onClick={()=>rejectExpenditure(req)} style={smallBtn('#fee2e2','#dc2626')}>✗ Reject</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </div>
-
-        {/* ── "approval list for the day": everything DECIDED today ── */}
-        <div style={{...chartCard,borderLeft:'4px solid #1e3a6e',overflowX:'auto'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:8}}>
-            <h3 style={{...chartTitle,margin:0}}>📅 Today's Approval List — {new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</h3>
-            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eef2f9','#1e3a6e'),fontSize:12}}>↻ Refresh</button>
-          </div>
-          <p style={{fontSize:12,color:'#8a93a6',margin:'0 0 14px'}}>Every expenditure approval decision made today, approved or rejected — regardless of when it was originally submitted.</p>
-          {approvalHistory.length===0?<p style={{color:'#8a93a6',fontSize:14}}>No approval decisions made today yet.</p>:(
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Decided At','Decision','Amount','Category','Requested By','Decided By','Note'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
-              <tbody>{approvalHistory.map(h=>(
-                <tr key={h.id} style={{borderBottom:'1px solid #f3f0e8'}}>
-                  <td style={tdS}>{h.decided_at?new Date(h.decided_at).toLocaleString('en-IN'):''}</td>
-                  <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:h.status==='approved'?'#dcfce7':'#fee2e2',color:h.status==='approved'?'#16a34a':'#dc2626'}}>{h.status==='approved'?'✓ Approved':'✗ Rejected'}</span></td>
-                  <td style={{...tdS,fontWeight:600}}>{fmt(h.amount)}</td>
-                  <td style={tdS}>{h.accounts?.category||'—'}</td>
-                  <td style={tdS}>{h.requested_by}</td>
-                  <td style={tdS}><strong>{h.decided_by}</strong></td>
-                  <td style={{...tdS,maxWidth:200}}>{h.decision_note||'—'}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    )}
 
     {/* ══ TAB: PER-STAFF EXPENDITURE DASHBOARD (admin only) ══ */}
     {activeTab==='staffspend'&&isAdmin&&(
