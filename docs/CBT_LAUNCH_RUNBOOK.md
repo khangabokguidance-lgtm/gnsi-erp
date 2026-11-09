@@ -24,7 +24,9 @@ What to do before, during and after an online exam. Written for the person runni
 - **Countdown:** in *Countdown to* pick a published test that has an **Opens** time. The banner and pop-up then count down ("Coming up"), change to **CBT LIVE** when the exam opens, and hide themselves after the **Closes** time. If you change that test's Opens / Closes time later (Online tab → publish again) the countdown follows. The same countdown shows on the exam page before it opens.
 - The countdown uses each visitor's own clock; the exam itself always opens and closes on the **server's** time.
 - The website menu, the phone bottom bar and the header carry a **CBT Exam** link to `/exam`. With no test in the link, that page asks for the exam link or Test ID. A phone that already started an exam shows **Continue as …** and **Not me · start fresh** (clears that phone only; the attempt stays on the server — use **Reset** in Live to allow a new attempt).
-- Needs nothing in the database beyond the existing `website_settings` table. Whoever uses the switch needs permission to edit website settings.
+- **Candidates can find the current test without a link.** The `/exam` page lists **Tests open now** (and tests opening within 14 days, with a countdown) with a Start button. Run `supabase/RUN_cbt_public_list.sql` once in Supabase (SQL editor) to switch this on. It shows only the test name, length and timing — never questions, answers or the access code — and a candidate still needs the access code, GCC no. and parent number. In **Publish** untick **Show on the public exam page** for a private batch test.
+- The **practice test** works at any time — before, during and after an exam closes, and from the `/exam` page with no link.
+- The flash message and countdown need nothing in the database beyond the existing `website_settings` table. Whoever uses the switch needs permission to edit website settings.
 
 ## What the candidate sees
 

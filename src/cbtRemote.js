@@ -6,14 +6,17 @@ import { friendly, splitKey, joinKey, toAttempt, packMarks } from './lib/cbtOnli
 export * from './lib/cbtOnlineLogic'
 
 // ── staff ────────────────────────────────────────────────────────────────────
-export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '' } = {}) {
+export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '', publicList } = {}) {
   const { sections, key } = splitKey(test)
   const iso = v => (v ? new Date(v).toISOString() : null)
-  const { error } = await supabase.from('cbt_tests').upsert({
+  const row = {
     id: test.id, name: test.name, duration_min: test.durationMin, marking: test.marking, instructions: test.instructions, show_result: test.showResult !== false,
     show_answers: test.showAnswers !== false, sections, status, access_code: String(code || '').trim() || null, opens_at: iso(opensAt), closes_at: iso(closesAt),
     created_by: by || null, updated_at: new Date().toISOString(),
-  })
+  }
+  let { error } = await supabase.from('cbt_tests').upsert(typeof publicList === 'boolean' ? { ...row, public_list: publicList } : row)
+  // public_list exists only after 20261115_cbt_public_list.sql: publishing must still work before it is run
+  if (error && /public_list/.test(error.message || '')) ({ error } = await supabase.from('cbt_tests').upsert(row))
   if (error) throw new Error(friendly(error))
   const k = await supabase.from('cbt_keys').upsert({ test_id: test.id, answers: key })
   if (k.error) throw new Error(friendly(k.error))
@@ -80,6 +83,10 @@ export async function fetchOnlineTest(id) {
 const fail = raw => { const e = new Error(friendly(raw)); e.code = /EXAM-([A-Z0-9]+)/.exec(String(raw?.message || raw))?.[1] || ''; return e }   // e.code: 'SESSION', 'EARLY', …
 const rpc = async (fn, args) => { const { data, error } = await supabase.rpc(fn, args); if (error) throw fail(error); if (data && !Array.isArray(data) && typeof data.error === 'string') throw fail(data.error); return data }
 export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
+// The tests open right now (and starting within 14 days) that an admin has not hidden — for the public exam page. [] if the database update is not run yet.
+export const listPublicTests = async () => { try { const r = await rpc('cbt_public_tests', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
+// Staff: is this test shown on the public page? (true when the column does not exist yet)
+export async function getPublicListFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('public_list').eq('id', id).maybeSingle(); return error || !data ? true : data.public_list !== false } catch { return true } }
 export const startExam = (id, code, gcc, parent, phone, dob) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null, ...(dob ? { p_dob: dob } : {}) })
 // A guest (not in the ERP) — only when the test allows guests. One attempt per mobile number.
 export const startGuest = (id, code, name, phone, district, gender, caste) => rpc('cbt_start_guest', { p_test: id, p_code: code || '', p_name: name, p_phone: phone, ...(district ? { p_district: district } : {}), ...(gender ? { p_gender: gender } : {}), ...(caste ? { p_caste: caste } : {}) })
