@@ -285,6 +285,181 @@ export async function drawPremiumCertificate(opts) {
   return c
 }
 
+
+// ── Formal "Heritage" design helpers ────────────────────────────────────────
+const FF = '/design-studio/fonts/'
+let formalFontsReady = null
+/** Bundled fonts (work offline): Cinzel, Playfair Display italic, Pinyon Script. */
+function loadFormalFonts() {
+  if (formalFontsReady) return formalFontsReady
+  const faces = [
+    ['Cinzel', 'cinzel-latin-600-normal.woff2', '600'], ['Cinzel', 'cinzel-latin-700-normal.woff2', '700'], ['Cinzel', 'cinzel-latin-800-normal.woff2', '800'],
+    ['Playfair Display', 'playfair-display-latin-400-italic.woff2', '400', 'italic'], ['Playfair Display', 'playfair-display-latin-700-italic.woff2', '700', 'italic'],
+    ['Playfair Display', 'playfair-display-latin-700-normal.woff2', '700'], ['Pinyon Script', 'pinyon-script-latin-400-normal.woff2', '400'],
+  ]
+  formalFontsReady = Promise.race([
+    Promise.all(faces.map(async ([fam, file, weight, style = 'normal']) => {
+      try { const f = new FontFace(fam, `url(${FF}${file}) format('woff2')`, { weight, style }); await f.load(); document.fonts.add(f) } catch { /* falls back to serif */ }
+    })),
+    new Promise(res => setTimeout(res, 5000)),
+  ])
+  return formalFontsReady
+}
+const F_HEAD = '"Cinzel", "Trajan Pro", Georgia, serif'
+const F_BODY = '"Playfair Display", Georgia, serif'
+const F_SCRIPT = '"Pinyon Script", "Great Vibes", "Brush Script MT", Georgia, serif'
+
+// Gold foil: a diagonal multi-stop gradient with bright highlights.
+function foil(g, x0, y0, x1, y1) {
+  const gr = g.createLinearGradient(x0, y0, x1, y1)
+  ;[[0, '#5E410A'], [0.2, '#A87A1E'], [0.36, '#D9AE4A'], [0.5, '#8C6416'], [0.66, '#CFA23C'], [0.84, '#A87A1E'], [1, '#5A3E09']].forEach(([o, c]) => gr.addColorStop(o, c))
+  return gr
+}
+// Guilloche rosette: interlaced loops plus fine concentric rings.
+function rosette(g, x, y, R, color, alpha, loops = 44) {
+  g.save(); g.translate(x, y); g.strokeStyle = color; g.lineWidth = 1; g.globalAlpha = alpha
+  for (let i = 0; i < loops; i++) { g.save(); g.rotate((i / loops) * Math.PI); g.beginPath(); g.ellipse(0, 0, R, R * 0.34, 0, 0, Math.PI * 2); g.stroke(); g.restore() }
+  for (let r = R * 0.18; r <= R; r += R * 0.09) { g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke() }
+  g.restore()
+}
+// Ornamental rule: fading line, centre diamond and two small side diamonds.
+function flourish(g, cx, y, half, gold) {
+  const gr = g.createLinearGradient(cx - half, 0, cx + half, 0)
+  gr.addColorStop(0, 'rgba(184,138,44,0)'); gr.addColorStop(0.25, '#B88A2C'); gr.addColorStop(0.5, '#F1D789'); gr.addColorStop(0.75, '#B88A2C'); gr.addColorStop(1, 'rgba(184,138,44,0)')
+  g.strokeStyle = gr; g.lineWidth = 3; g.beginPath(); g.moveTo(cx - half, y); g.lineTo(cx + half, y); g.stroke()
+  const dia = (x, s) => { g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); g.fill() }
+  g.fillStyle = gold; dia(cx, 11); dia(cx - 46, 6); dia(cx + 46, 6)
+}
+// Starburst gold seal with ribbon tails.
+function goldSeal(g, cx, cy, r, line1, line2) {
+  ;[-1, 1].forEach(s => { // ribbon tails
+    g.fillStyle = s < 0 ? '#0E2550' : '#173B70'
+    g.beginPath(); g.moveTo(cx + s * r * 0.15, cy + r * 0.5); g.lineTo(cx + s * r * 0.85, cy + r * 1.75); g.lineTo(cx + s * r * 0.5, cy + r * 1.55)
+    g.lineTo(cx + s * r * 0.2, cy + r * 1.8); g.lineTo(cx - s * r * 0.15 + s * r * 0.05, cy + r * 0.5); g.closePath(); g.fill()
+    g.strokeStyle = '#C9A24D'; g.lineWidth = 2; g.stroke()
+  })
+  g.save(); g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 18; g.shadowOffsetY = 8
+  g.beginPath()
+  for (let i = 0; i < 96; i++) { const a = (i / 96) * Math.PI * 2, rr = i % 2 ? r * 0.93 : r; g.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr) }
+  g.closePath(); g.fillStyle = foil(g, cx - r, cy - r, cx + r, cy + r); g.fill(); g.restore()
+  g.strokeStyle = 'rgba(90,62,10,.7)'; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r * 0.8, 0, Math.PI * 2); g.stroke()
+  const face = g.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.05, cx, cy, r * 0.78)
+  face.addColorStop(0, '#1F4685'); face.addColorStop(1, '#0A1B42')
+  g.fillStyle = face; g.beginPath(); g.arc(cx, cy, r * 0.72, 0, Math.PI * 2); g.fill()
+  g.strokeStyle = foil(g, cx - r, cy, cx + r, cy); g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r * 0.64, 0, Math.PI * 2); g.stroke()
+  g.fillStyle = foil(g, cx - r, cy - r, cx + r, cy + r); g.textAlign = 'center'
+  g.font = `700 ${Math.round(r * 0.2)}px ${F_HEAD}`; g.fillText('★ ★ ★', cx, cy - r * 0.3)
+  g.font = `800 ${Math.round(r * 0.36)}px ${F_HEAD}`; g.fillText(line1, cx, cy + r * 0.1)
+  g.font = `600 ${Math.round(r * 0.14)}px ${F_HEAD}`; g.fillText(line2, cx, cy + r * 0.38)
+}
+
+/**
+ * The formal "Heritage" design (A4 landscape, 2000 × 1414): navy frame with a
+ * gold-foil rule, ivory security paper with guilloche rosettes in the corners
+ * and behind the text, a crest medallion over the top edge, gold-foil title,
+ * script name, ornamental rules, and a starburst gold seal with ribbon tails
+ * between the two signatures. Same opts as drawPremiumCertificate. It carries
+ * the institute's own crest and seal only — no national emblem, and no claim
+ * that a government body issued it.
+ */
+export async function drawFormalCertificate(opts) {
+  await Promise.all([loadFonts(), loadFormalFonts()])
+  const inst = getInstitute({ name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur — 795134' })
+  const W = 2000, H = 1414, cx = W / 2
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const logo = await loadImage(`data:image/png;base64,${LOGO_BASE64}`)
+  const issuedDate = opts.issued || new Date()
+  const NAVY = '#0F2A5C'
+  const gold = foil(g, 0, 0, W, H)
+
+  // navy frame with engraved gold hatch
+  const fr = g.createLinearGradient(0, 0, W, H); fr.addColorStop(0, '#0A1B42'); fr.addColorStop(0.5, '#173B70'); fr.addColorStop(1, '#0A1B42')
+  g.fillStyle = fr; g.fillRect(0, 0, W, H)
+  g.strokeStyle = 'rgba(226,197,126,.10)'; g.lineWidth = 1
+  for (let d = -H; d < W; d += 14) { g.beginPath(); g.moveTo(d, 0); g.lineTo(d + H, H); g.stroke() }
+  rosette(g, 0, 0, 330, '#E2C57E', 0.25, 36); rosette(g, W, 0, 330, '#E2C57E', 0.25, 36); rosette(g, 0, H, 330, '#E2C57E', 0.25, 36); rosette(g, W, H, 330, '#E2C57E', 0.25, 36)
+
+  // ivory panel with a gold-foil double rule
+  const PX = 78, PY = 78, PW = W - 156, PH = H - 156
+  g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 30; g.fillStyle = '#000'; g.fillRect(PX, PY, PW, PH); g.restore()
+  const paper = g.createLinearGradient(PX, PY, PX + PW, PY + PH); paper.addColorStop(0, '#FFFEF8'); paper.addColorStop(0.5, '#FBF6E6'); paper.addColorStop(1, '#F3EAD0')
+  g.fillStyle = paper; g.fillRect(PX, PY, PW, PH)
+  g.save(); g.beginPath(); g.rect(PX, PY, PW, PH); g.clip()
+  rosette(g, cx, H / 2 + 40, 700, NAVY, 0.035, 60)
+  rosette(g, cx, H / 2 + 40, 430, '#B88A2C', 0.05, 40)
+  ;[[PX, PY], [PX + PW, PY], [PX, PY + PH], [PX + PW, PY + PH]].forEach(([x, y]) => { rosette(g, x, y, 260, NAVY, 0.22, 48); rosette(g, x, y, 170, '#B88A2C', 0.45, 32) })
+  // soft ivory plate behind the wording so it always reads cleanly over the rosettes
+  { g.save(); g.translate(cx, 850); g.scale(2.1, 1)
+    const pl = g.createRadialGradient(0, 0, 30, 0, 0, 360); pl.addColorStop(0, 'rgba(255,254,248,.97)'); pl.addColorStop(0.7, 'rgba(255,254,248,.9)'); pl.addColorStop(1, 'rgba(255,254,248,0)')
+    g.fillStyle = pl; g.fillRect(-360, -330, 720, 660); g.restore() }
+  g.restore()
+  g.strokeStyle = gold; g.lineWidth = 7; g.strokeRect(PX + 22, PY + 22, PW - 44, PH - 44)
+  g.lineWidth = 2; g.strokeRect(PX + 40, PY + 40, PW - 80, PH - 80)
+  // corner studs
+  ;[[PX + 22, PY + 22], [PX + PW - 22, PY + 22], [PX + 22, PY + PH - 22], [PX + PW - 22, PY + PH - 22]].forEach(([x, y]) => {
+    g.fillStyle = gold; g.beginPath(); g.arc(x, y, 17, 0, Math.PI * 2); g.fill()
+    g.fillStyle = NAVY; g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.fill()
+  })
+
+  // crest medallion over the top edge
+  const my = 132
+  g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 20; g.shadowOffsetY = 6
+  g.fillStyle = gold; g.beginPath(); g.arc(cx, my, 112, 0, Math.PI * 2); g.fill(); g.restore()
+  g.fillStyle = '#FFFEF8'; g.beginPath(); g.arc(cx, my, 100, 0, Math.PI * 2); g.fill()
+  g.strokeStyle = gold; g.lineWidth = 3; g.beginPath(); g.arc(cx, my, 90, 0, Math.PI * 2); g.stroke()
+  if (logo) { g.save(); g.beginPath(); g.arc(cx, my, 84, 0, Math.PI * 2); g.clip(); g.drawImage(logo, cx - 84, my - 84, 168, 168); g.restore() }
+
+  // letterhead
+  g.textAlign = 'center'
+  g.fillStyle = NAVY; fit(g, inst.name.toUpperCase(), 1300, 44, F_HEAD, '800'); spaced(g, inst.name.toUpperCase(), cx, 306, 5)
+  g.fillStyle = '#2F3A4E'; g.font = `italic 700 28px ${F_BODY}`; g.fillText(inst.address, cx, 346)
+  // slim tricolour ribbon between gold rules
+  ;[['#FF9933', 0], ['#FFFFFF', 1], ['#138808', 2]].forEach(([col, k]) => { g.fillStyle = col; g.fillRect(cx - 105 + k * 70, 366, 70, 7) })
+  g.strokeStyle = 'rgba(15,42,92,.35)'; g.lineWidth = 1; g.strokeRect(cx - 105, 366, 210, 7)
+  g.fillStyle = gold; g.fillRect(cx - 360, 369, 230, 2); g.fillRect(cx + 130, 369, 230, 2)
+
+  // title, gold foil with an engraved shadow
+  g.save(); g.shadowColor = 'rgba(80,55,8,.35)'; g.shadowOffsetY = 5; g.shadowBlur = 5
+  g.fillStyle = foil(g, cx - 560, 410, cx + 560, 530); g.font = `800 124px ${F_HEAD}`; spaced(g, 'CERTIFICATE', cx, 500, 12); g.restore()
+  g.fillStyle = NAVY; g.font = `700 42px ${F_HEAD}`
+  spaced(g, `OF ${(opts.kind || 'Appreciation').toUpperCase()}`, cx, 562, 14)
+  flourish(g, cx, 598, 420, gold)
+
+  // wording
+  g.fillStyle = '#1B2433'; g.font = `italic 700 36px ${F_BODY}`
+  g.fillText(opts.presented || 'This certificate is proudly presented to', cx, 660)
+  g.save(); g.shadowColor = 'rgba(15,42,92,.18)'; g.shadowOffsetY = 4; g.shadowBlur = 6
+  g.fillStyle = '#071433'; fit(g, opts.name || '', 1350, 150, F_SCRIPT, '400'); g.fillText(opts.name || '', cx, 782); g.restore()
+  flourish(g, cx, 836, 520, gold)
+  let y = 892
+  if (opts.subtitle) { g.fillStyle = NAVY; fit(g, opts.subtitle.toUpperCase(), 1400, 40, F_HEAD, '800'); spaced(g, opts.subtitle.toUpperCase(), cx, y, 4); y += 50 }
+  if (opts.detail) { g.fillStyle = '#6B4A0E'; fit(g, opts.detail, 1400, 36, F_BODY, 'italic 700'); g.fillText(opts.detail, cx, y); y += 48 }
+  g.fillStyle = '#111827'
+  for (const [i, raw] of (opts.body || []).entries()) { const line = i === 0 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw; fit(g, line, 1400, 32, F_BODY, 'italic 700'); g.fillText(line, cx, y); y += 42 }
+
+  // signatures, with the gold seal between them
+  const sigY = 1170, sigs = opts.signatures || [{ title: 'Principal' }, { title: 'Head of the Institution' }]
+  ;[[420, sigs[0]], [W - 420, sigs[1]]].forEach(([sx, sgn]) => {
+    if (!sgn) return
+    g.strokeStyle = gold; g.lineWidth = 3; g.beginPath(); g.moveTo(sx - 210, sigY); g.lineTo(sx + 210, sigY); g.stroke()
+    g.fillStyle = NAVY; fit(g, sgn.title.toUpperCase(), 400, 26, F_HEAD, '700'); spaced(g, sgn.title.toUpperCase(), sx, sigY + 42, 3)
+    if (sgn.name) { g.fillStyle = '#1B2433'; g.font = `italic 700 27px ${F_BODY}`; g.fillText(sgn.name, sx, sigY + 78) }
+  })
+  goldSeal(g, cx, 1112, 68, 'GNSI', opts.seal ? `${opts.seal.label} ${opts.seal.value}`.trim() : 'AWARD')
+
+  // issue line and micro-text security border
+  const issued = issuedDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+  g.fillStyle = '#1B2433'; g.font = `700 20px ${F_HEAD}`
+  spaced(g, `ISSUED ${issued.toUpperCase()}${opts.certNo ? `   ·   NO. ${opts.certNo}` : ''}`, cx, H - 150, 3)
+  g.save(); g.fillStyle = 'rgba(15,42,92,.42)'; g.font = `600 11px ${F_HEAD}`
+  const micro = `${inst.name.toUpperCase()} · AUTHENTIC · `.repeat(14)
+  g.textAlign = 'center'; if ('letterSpacing' in g) g.letterSpacing = '2px'
+  let mt = micro; while (mt.length > 20 && g.measureText(mt).width > 1380) mt = mt.slice(0, -4)
+  g.fillText(mt, cx, H - 128); g.restore()
+  return c
+}
+
 /** Downloads the certificate canvas as an A4-landscape PDF. */
 export function certificatePdf(canvas, fileName) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })

@@ -1158,7 +1158,7 @@ function LeaderboardScreen() {
     }
   }
 
-  const handleDownloadCertificate = () => {
+  const handleDownloadCertificate = (design = 'premium') => {
     if (!published) return
     generateAwardCertificate({
       categoryKey: activeKey,
@@ -1166,6 +1166,7 @@ function LeaderboardScreen() {
       monthLabel: monthLabelOf(monthStr),
       score: published.score,
       nomineeMeta: topPick?.house ? { house: topPick.house } : undefined,
+      design,
     })
   }
 
@@ -1296,7 +1297,8 @@ function LeaderboardScreen() {
           {published ? (
             <>
               <p style={{ margin: '0 0 10px' }}><strong>{published.nominee_name}</strong> published — {published.score}%</p>
-              <button style={S.btn} onClick={handleDownloadCertificate}>Download certificate</button>
+              <button style={S.btn} onClick={() => handleDownloadCertificate('premium')}>Download certificate</button>
+              <button style={S.btn} onClick={() => handleDownloadCertificate('formal')} title="Formal official-style layout with guilloche border and tricolour band">Download formal certificate</button>
             </>
           ) : (
             <>
