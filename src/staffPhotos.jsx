@@ -19,10 +19,12 @@ const subs = new Set()
 
 async function loadPhotos() {
   const byId = new Map(), byName = new Map(), list = []
-  const add = (name, url) => {
+  const web = { byName: new Map(), list: [], freq: new Map() }   // the website's Faculty photos only
+  const add = (name, url, fromWeb = false) => {
     if (!name || !url) return
     const n = norm(name); if (!byName.has(n)) byName.set(n, url)
     list.push({ toks: tokens(name), url })
+    if (fromWeb) { if (!web.byName.has(n)) web.byName.set(n, url); web.list.push({ toks: tokens(name), url }) }
   }
   try {
     const { data } = await supabase.from('staff_profiles').select('*').limit(2000)
@@ -34,11 +36,12 @@ async function loadPhotos() {
   // Faculty photos managed in Website Manager → Faculty (same source as the website)
   try {
     const rows = await getFaculty()
-    ;(rows || []).forEach(r => add(r.name, r.photo_url || r.photo || r.image_url))
+    ;(rows || []).forEach(r => add(r.name, r.photo_url || r.photo || r.image_url, true))
   } catch (_) {}
   const freq = new Map()
   list.forEach(e => new Set(e.toks).forEach(t => freq.set(t, (freq.get(t) || 0) + 1)))
-  cache = { byId, byName, list, freq }
+  web.list.forEach(e => new Set(e.toks).forEach(t => web.freq.set(t, (web.freq.get(t) || 0) + 1)))
+  cache = { byId, byName, list, freq, web }
   subs.forEach(f => f())
   return cache
 }
@@ -60,10 +63,13 @@ export function findStaffPhoto(name, id) {
   // (Kh → Khundrakpam) and spelling variants (Praveen/Prabin, Laishramcha).
   // Common words (Singh, Devi) and family names shared by many people only
   // count if a personal name (e.g. Arjun, Chetan) also matches.
+  return fuzzyPick(cache.list, cache.freq, name)
+}
+
+function fuzzyPick(list, freq, name) {
   const t = tokens(name); if (!t.length) return null
-  const freq = cache.freq
   let best = null, bestW = 0, tie = false
-  for (const e of cache.list) {
+  for (const e of list) {
     const m = matchedTokens(t, e.toks)            // [[staffWord, facultyWord], …]
     const rare = m.filter(([x, y]) => !COMMON.has(x) && !COMMON.has(y) && (freq.get(y) || 0) <= 1)
     if (!rare.length || m.length < Math.min(2, t.length)) continue
@@ -72,6 +78,15 @@ export function findStaffPhoto(name, id) {
     else if (w === bestW && e.url !== best) tie = true
   }
   return !tie ? best : null
+}
+
+// A photo from the website's Faculty cards (Website Manager → Faculty) only — the same photos the public
+// website shows. Public data, so it also works for a candidate who is not signed in.
+export function findWebsitePhoto(name) {
+  const w = cache?.web; if (!w) return null
+  const n = norm(name); if (!n) return null
+  if (w.byName.has(n)) return w.byName.get(n)
+  return fuzzyPick(w.list, w.freq, name)
 }
 
 const COMMON = new Set(['singh', 'devi', 'chanu', 'leima', 'meitei', 'sharma', 'kumar', 'kumari', 'rani', 'md', 'mohd'])
