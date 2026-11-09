@@ -124,7 +124,7 @@ export function CbtOpenNote({ flash }) {
       <div className="lx-cbtnote" role="dialog" aria-modal="true" aria-label="CBT online exam notice" onClick={(e) => e.stopPropagation()}>
         <i className="lx-cbtnote-ring r1" aria-hidden="true" /><i className="lx-cbtnote-ring r2" aria-hidden="true" />
         <button type="button" className="lx-cbtnote-x" aria-label="Close" onClick={close} autoFocus>×</button>
-        <div className="lx-cbtnote-crest"><img src="/gnsi-mark.webp" alt="" width="64" height="64" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div>
+        <div className="lx-cbtnote-crest"><img src="/gnsi-mark.webp" alt="GNSI" width="86" height="88" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div>
         <div className="lx-cbtnote-inst">Guidance Navodaya &amp; Sainik Institute</div>
         <span className="lx-cbtnote-pill"><i aria-hidden="true" />{soon ? 'Coming up' : 'Live now'}</span>
         <h3>{soon ? (flash.label || 'CBT Online Exam') : 'CBT Online Exam'}</h3>
