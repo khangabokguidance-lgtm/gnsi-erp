@@ -13,6 +13,7 @@ import { presentTest, isShuffled } from './lib/cbtShuffle'
 import { fsExits } from './lib/cbtProctorLogic'
 import { sectionTimed, settleSection, nextSection } from './lib/cbtSections'
 import { Calculator, RoughPad } from './CbtTools'
+import { BmeiText } from './MayekBmei'
 import { useStaffPhotos, findWebsitePhoto } from './staffPhotos'
 
 // The founder's welcome (same person, photo and message as the website's founder section).
@@ -22,7 +23,9 @@ const FOUNDER = {
   quote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
 }
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
-const pick = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
+const pickRaw = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
+// Meitei Mayek is drawn in the BMEI04 (Bmei) font; English stays as plain text.
+const pick = (en, mm, lang) => (lang === 'mm' && mm ? <BmeiText text={mm} /> : en)
 const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
 const LEGEND = ['answered', 'notAnswered', 'notVisited', 'marked', 'answeredMarked']
 const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
@@ -669,7 +672,7 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
                 return (
                   <div key={q.no} className="cbt-review" style={{ borderLeftColor: !given ? '#94a3b8' : !q.answer ? '#d9b566' : ok ? '#3a9d3a' : '#d9532c' }}>
                     <b>Q{q.no}.</b> <span className={`tag`} style={{ background: !given ? '#f1f5f9' : ok ? '#e7f6ec' : '#fde8e6', color: !given ? '#475569' : ok ? '#146c3a' : '#b42318' }}>{!given ? 'Not answered' : !q.answer ? 'No key' : ok ? 'Correct' : 'Wrong'}</span>
-                    {q.passage && <div className="muted" style={{ margin: '6px 0' }}>Passage: {pick(q.passage, q.passageMm, lang).slice(0, 160)}…</div>}
+                    {q.passage && <div className="muted" style={{ margin: '6px 0' }}>Passage: {pickRaw(q.passage, q.passageMm, lang).slice(0, 160)}…</div>}
                     {picsOf(q).map((src, i) => <img key={i} className="cbt-fig" style={{ maxHeight: 220, margin: '8px 0' }} src={src} alt={`Question ${q.no} figure ${i + 1}`} />)}
                     {q.text && <div className={lang === 'mm' && q.textMm ? 'mm' : ''} style={{ whiteSpace: 'pre-wrap', margin: '6px 0', fontWeight: 600 }}>{pick(q.text, q.textMm, lang)}</div>}
                     <div style={{ display: 'grid', gap: 4 }}>
