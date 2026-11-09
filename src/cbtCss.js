@@ -84,6 +84,57 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-exam{animation:cbtopen .45s cubic-bezier(.22,1,.36,1) backwards;will-change:transform}
 .cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:cbtstep .4s cubic-bezier(.22,1,.36,1) .08s backwards}
 @media (prefers-reduced-motion:reduce){.cbt-exam,.cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:none}}
+
+/* ── premium introduction ── */
+.cbt-intro{flex:1;min-height:0;display:grid;place-items:center;padding:24px 16px;overflow:auto;color:#fff;
+  background:radial-gradient(1100px 560px at 15% -10%,#1f4e8c 0%,transparent 60%),radial-gradient(900px 520px at 110% 115%,#8a6516 0%,transparent 55%),linear-gradient(160deg,#0b1e3d,#14264a 60%,#0b1e3d)}
+.cbt-intro-card{max-width:700px;width:100%;text-align:center;padding:36px 28px 28px;border-radius:28px;border:1px solid rgba(226,197,126,.38);
+  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.04));box-shadow:0 34px 90px -34px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.14)}
+.cbt-intro-mark{width:88px;height:88px;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(0,0,0,.5))}
+.cbt-intro-kicker{margin-top:10px;font-size:11.5px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;color:var(--gold2)}
+.cbt-intro h1{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:clamp(24px,4.6vw,40px);line-height:1.15;margin:10px 0 0}
+.cbt-intro-rule{width:78px;height:3px;border-radius:3px;margin:16px auto;background:linear-gradient(90deg,transparent,var(--gold2),transparent)}
+.cbt-intro-hi{margin:0 0 20px;font-size:15px;opacity:.92}
+.cbt-intro-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin:0 0 20px}
+.cbt-intro-stats div{padding:13px 8px;border-radius:16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13)}
+.cbt-intro-stats b{display:block;font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;color:var(--gold2);line-height:1.1}
+.cbt-intro-stats span{display:block;margin-top:4px;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
+.cbt-intro-note{font-size:13px;line-height:1.65;opacity:.82;margin:0 auto 22px;max-width:500px}
+.cbt-intro-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.cbt-intro-actions .cbt-b{background:transparent;color:#fff;border-color:rgba(255,255,255,.38)}
+.cbt-intro-actions .cbt-b.gold{background:linear-gradient(180deg,#e9c979,#c9a24b);border-color:#c9a24b;color:#0b1e3d;padding:12px 24px;font-size:14px;box-shadow:0 12px 26px -12px rgba(201,162,75,.9)}
+@keyframes cbtup{from{opacity:0;transform:translate3d(0,16px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+.cbt-intro-card>*{animation:cbtup .6s cubic-bezier(.22,1,.36,1) backwards}
+.cbt-intro-card>:nth-child(2){animation-delay:.07s}.cbt-intro-card>:nth-child(3){animation-delay:.14s}.cbt-intro-card>:nth-child(4){animation-delay:.2s}
+.cbt-intro-card>:nth-child(5){animation-delay:.26s}.cbt-intro-card>:nth-child(6){animation-delay:.34s}.cbt-intro-card>:nth-child(7){animation-delay:.42s}.cbt-intro-card>:nth-child(8){animation-delay:.5s}
+
+/* ── instructions, one slide at a time ── */
+.cbt-prog{height:5px;border-radius:5px;background:#e4e9f3;overflow:hidden;margin:0 0 16px}
+.cbt-prog i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#1f4e8c,var(--gold));transition:width .4s cubic-bezier(.22,1,.36,1)}
+.cbt-ihead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.cbt-ihead .ic{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;font-size:23px;flex:none;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--gold)}
+.cbt-ihead small{display:block;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b}
+.cbt-ihead h3{margin:2px 0 0;font-size:21px}
+@keyframes cbtslf{from{opacity:0;transform:translate3d(46px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes cbtslb{from{opacity:0;transform:translate3d(-46px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+.cbt-islide{min-height:250px;animation:cbtslf .4s cubic-bezier(.22,1,.36,1) backwards}
+.cbt-islide[data-dir=back]{animation-name:cbtslb}
+.cbt-dots{display:flex;gap:7px;justify-content:center;margin-top:16px}
+.cbt-dots button{width:9px;height:9px;border-radius:99px;border:none;padding:0;background:#c5cde0;cursor:pointer;transition:width .25s,background .25s}
+.cbt-dots button.on{width:28px;background:var(--gold)}
+.cbt-mcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.cbt-mcards div{border-radius:14px;padding:14px 8px;text-align:center;border:1px solid var(--line);background:var(--soft);font-size:12.5px;color:#475569}
+.cbt-mcards b{display:block;font-size:26px;line-height:1.2}
+.cbt-leg{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.cbt-leg div{display:flex;gap:11px;align-items:center;font-size:13.5px;line-height:1.4}
+.cbt-bul{margin:0;padding:0;list-style:none}
+.cbt-bul li{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #eef1f7;font-size:14px;line-height:1.55}
+.cbt-bul li:last-child{border-bottom:0}.cbt-bul li>span:first-child{flex:none;width:26px;text-align:center;font-size:17px}
+.cbt-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.cbt-facts div{border-radius:14px;padding:12px;background:var(--soft);border:1px solid var(--line)}
+.cbt-facts b{display:block;font-size:22px;color:var(--navy)}.cbt-facts span{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b}
+@media (prefers-reduced-motion:reduce){.cbt-intro-card>*,.cbt-islide{animation:none}}
+@media (max-width:560px){.cbt-mcards{grid-template-columns:1fr}.cbt-intro-card{padding:28px 18px 22px}}
 .cbt-top{display:flex;align-items:center;gap:12px;padding:10px 18px;color:#fff;flex-wrap:wrap;
   background:linear-gradient(90deg,#0b1e3d,#14264a 55%,#1b3566);border-bottom:3px solid var(--gold)}
 .cbt-top .title{font-weight:800;font-size:15px;flex:1 1 240px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}

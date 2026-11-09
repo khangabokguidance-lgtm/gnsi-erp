@@ -30,7 +30,9 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const lock = answersLocked(baseTest)
   const camOn = cfg.camera !== 'off'
   // a candidate who reopens an exam in progress goes through the camera check again before the paper is shown
-  const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'instructions')
+  const [stage, setStage] = useState(resume ? (camOn ? 'camera' : 'exam') : 'intro')
+  const [islide, setIslide] = useState(0)            // instructions: which slide is showing
+  const [idir, setIdir] = useState('fwd')            // …and which way it slid in
   const [a, setA] = useState(resume || null)
   // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
   const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
@@ -347,37 +349,107 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     </>)
   }
 
-  // ── instructions ──
-  if (stage === 'instructions' || stage === 'declaration') {
+  // ── premium introduction ──
+  if (stage === 'intro') {
+    const nQ = flatQuestions(test).length
+    const maxM = Math.round(nQ * test.marking.correct * 100) / 100
+    return shell(
+      <div className="cbt-intro">
+        <div className="cbt-intro-card">
+          <img className="cbt-intro-mark" src="/gnsi-mark.webp" alt="" onError={e => { e.currentTarget.style.display = 'none' }} />
+          <div className="cbt-intro-kicker">Guidance Navodaya &amp; Sainik Institute</div>
+          <h1>{test.name}</h1>
+          <div className="cbt-intro-rule" />
+          <p className="cbt-intro-hi">Welcome, <b>{candidate.name}</b>{candidate.roll ? ` · Roll ${candidate.roll}` : ''}</p>
+          <div className="cbt-intro-stats">
+            <div><b>{nQ}</b><span>Questions</span></div>
+            <div><b>{test.durationMin}</b><span>Minutes</span></div>
+            <div><b>{maxM}</b><span>Maximum marks</span></div>
+            <div><b>{test.sections.length}</b><span>{test.sections.length === 1 ? 'Section' : 'Sections'}</span></div>
+          </div>
+          <p className="cbt-intro-note">The instructions come next, one at a time. Read each one carefully — the test begins only after you accept the declaration.</p>
+          <div className="cbt-intro-actions">
+            <button className="cbt-b" onClick={onClose}>Cancel</button>
+            <button className="cbt-b gold" onClick={() => { setIdir('fwd'); setIslide(0); setStage('instructions') }}>Read the instructions ›</button>
+          </div>
+        </div>
+      </div>)
+  }
+
+  // ── instructions, slide by slide ──
+  if (stage === 'instructions') {
+    const nQ = flatQuestions(test).length
+    const maxM = Math.round(nQ * test.marking.correct * 100) / 100
+    const slides = [
+      { key: 'about', icon: '📋', title: 'About this test', body: <>
+        <div className="cbt-facts"><div><b>{test.durationMin} min</b><span>Duration</span></div><div><b>{nQ}</b><span>Questions</span></div><div><b>{maxM}</b><span>Maximum marks</span></div></div>
+        <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
+      </> },
+      { key: 'rules', icon: '📝', title: 'General instructions', show: !!String(test.instructions || '').trim(), body: <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.7 }}>{test.instructions}</div> },
+      { key: 'marking', icon: '🎯', title: 'Marking scheme', body: <>
+        <div className="cbt-mcards">
+          <div><b style={{ color: '#146c3a' }}>+{test.marking.correct}</b>Correct answer</div>
+          <div><b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : '0'}</b>{test.marking.wrong ? 'Wrong answer' : 'Wrong answer — no negative marking'}</div>
+          <div><b>0</b>Not answered</div>
+        </div>
+        {minMin > 0 && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#9a5b00' }}>⏳ You can submit the test only after {minMin} minutes.</p>}
+        {lock && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#b42318' }}>🔒 Answers are final: once you choose an option for a question it is locked and cannot be changed or cleared. Think before you click.</p>}
+      </> },
+      { key: 'palette', icon: '🎨', title: 'The question palette', body: <>
+        <p style={{ margin: '0 0 12px', fontSize: 14, lineHeight: 1.6 }}>The palette on the right of the paper shows every question. Click a number to jump to it. The colour shows where you stand:</p>
+        <div className="cbt-leg">{LEGEND.map(s => <div key={s}><Swatch s={s} n={s === 'answeredMarked' ? '✓' : ''} />{STATUS_LABEL[s]}</div>)}</div>
+      </> },
+      { key: 'buttons', icon: '🖱️', title: 'Answering & moving around', body: <ul className="cbt-bul">
+        <li><span>✅</span><span><b>Save &amp; Next</b> — saves your answer and opens the next question.</span></li>
+        <li><span>🔖</span><span><b>Mark for Review &amp; Next</b> — keeps the question flagged so you can come back to it.</span></li>
+        <li><span>↩️</span><span><b>Clear Response</b> — removes the option you picked{lock ? ' (not allowed in this test: answers are final)' : ''}.</span></li>
+        <li><span>⏱️</span><span>The clock at the top shows the time left. The test is submitted automatically when it reaches zero.</span></li>
+        {mm && <li><span>🌐</span><span>Use the language button at the top to switch between English and Meitei Mayek.</span></li>}
+        {(tools.calc || tools.rough) && <li><span>🧮</span><span>{[tools.calc && 'a calculator', tools.rough && 'a rough-work pad'].filter(Boolean).join(' and ')} {tools.calc && tools.rough ? 'are' : 'is'} available from the top bar.</span></li>}
+      </ul> },
+      { key: 'rulesx', icon: '🛡️', title: 'Exam rules', show: camOn || fsOn || !!cfg.shield, body: <ul className="cbt-bul">
+        {fsOn && <li><span>🖥️</span><span>The test runs in <b>full screen</b>. Leaving full screen is recorded{cfg.fullscreen === 'strict' ? ` and after ${cfg.maxFsExits} exits the test is submitted` : ''}.</span></li>}
+        {camOn && <li><span>📷</span><span>Your <b>camera</b> stays on to check that only you are in front of the screen{cfg.camera === 'strict' ? `. After ${cfg.maxStrikes} warnings the test is submitted` : ''}.</span></li>}
+        {cfg.shield && <li><span>🔒</span><span>Copying, printing and screenshots are blocked.</span></li>}
+        <li><span>👀</span><span>Do not switch tabs or windows. Every time you leave this screen it is recorded.</span></li>
+      </ul> },
+    ].filter(s => s.show !== false)
+    const last = slides.length - 1
+    const i = Math.min(islide, last)
+    const goTo = n => { setIdir(n > i ? 'fwd' : 'back'); setIslide(n) }
+    const sl = slides[i]
     return shell(<>
       <div className="cbt-top"><div className="title">{test.name}</div><div className="cbt-tools"><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div></div>
       <div className="cbt-center"><div className="panel">
-        {stage === 'instructions' ? <>
-          <h3 style={{ textAlign: 'center' }}>Instructions</h3>
-          <p style={{ textAlign: 'center', margin: '0 0 12px' }}><b>Duration: {test.durationMin} minutes</b> · Maximum marks: {Math.round(flatQuestions(test).length * test.marking.correct * 100) / 100} · {flatQuestions(test).length} questions</p>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.65 }}>{test.instructions}</div>
-          <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Marking scheme</p>
-          <p style={{ margin: 0, fontSize: 14 }}>Correct answer: <b style={{ color: '#146c3a' }}>+{test.marking.correct}</b> · Wrong answer: <b style={{ color: '#b42318' }}>{test.marking.wrong ? `−${test.marking.wrong}` : 'no negative marking'}</b> · Not answered: 0</p>
-          {minMin > 0 && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#9a5b00' }}>⏳ You can submit the test only after {minMin} minutes.</p>}
-          {lock && <p style={{ margin: '10px 0 0', fontSize: 14, fontWeight: 700, color: '#b42318' }}>🔒 Answers are final: once you choose an option for a question it is locked and cannot be changed or cleared. Think before you click.</p>}
-          <p style={{ margin: '14px 0 6px', fontWeight: 700 }}>Sections</p>
-          <div className="tbl"><table><thead><tr><th>Section</th><th>Questions</th></tr></thead><tbody>{test.sections.map(s => <tr key={s.id}><td>{s.label ? `${s.label} — ` : ''}{s.title}</td><td>{s.questions.length} (Q{s.questions[0].no}–{s.questions.at(-1).no})</td></tr>)}</tbody></table></div>
-          <div className="cbt-row">
-            <button className="cbt-b" onClick={onClose}>Cancel</button>
-            <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => setStage('declaration')}>Next ›</button>
-          </div>
-        </> : <>
+        <div className="cbt-prog" role="progressbar" aria-valuemin={1} aria-valuemax={slides.length} aria-valuenow={i + 1}><i style={{ width: `${((i + 1) / slides.length) * 100}%` }} /></div>
+        <div className="cbt-islide" key={sl.key} data-dir={idir}>
+          <div className="cbt-ihead"><span className="ic" aria-hidden="true">{sl.icon}</span><div><small>Instruction {i + 1} of {slides.length}</small><h3>{sl.title}</h3></div></div>
+          {sl.body}
+        </div>
+        <div className="cbt-dots" role="tablist" aria-label="Instruction slides">{slides.map((s, n) => <button key={s.key} type="button" role="tab" aria-selected={n === i} aria-label={`Instruction ${n + 1}: ${s.title}`} className={n === i ? 'on' : ''} onClick={() => goTo(n)} />)}</div>
+        <div className="cbt-row">
+          <button className="cbt-b" onClick={() => (i === 0 ? setStage('intro') : goTo(i - 1))}>‹ Previous</button>
+          <button className="cbt-b sub" style={{ width: 'auto', margin: 0 }} onClick={() => (i === last ? setStage('declaration') : goTo(i + 1))}>{i === last ? 'Continue to declaration ›' : 'Next ›'}</button>
+        </div>
+      </div></div>
+    </>)
+  }
+
+  // ── declaration ──
+  if (stage === 'declaration') {
+    return shell(<>
+      <div className="cbt-top"><div className="title">{test.name}</div><div className="cbt-tools"><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div></div>
+      <div className="cbt-center"><div className="panel">
           <h3 style={{ textAlign: 'center' }}>Declaration</h3>
           <label style={{ display: 'flex', gap: 10, fontSize: 14, lineHeight: 1.6, alignItems: 'flex-start' }}>
             <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 5, width: 18, height: 18 }} />
             <span>I have read and understood the instructions. I will not use any unfair means, and I understand that leaving this screen during the test is recorded.{camOn ? ' I agree to my camera being used during the test to check that only I am in front of the screen.' : ''}{cfg.shield ? ' I will not copy, print or take screenshots of the paper.' : ''}</span>
           </label>
           <div className="cbt-row">
-            <button className="cbt-b" onClick={() => setStage('instructions')}>‹ Previous</button>
+            <button className="cbt-b" onClick={() => { setIdir('back'); setStage('instructions') }}>‹ Previous</button>
             <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: agree ? 1 : .5 }} disabled={!agree || !!busy} onClick={camOn ? () => { setStage('camera'); cam.start() } : begin}>{busy || (camOn ? 'Next: camera check ›' : 'I am ready to begin')}</button>
           </div>
           {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
-        </>}
       </div></div>
     </>)
   }
