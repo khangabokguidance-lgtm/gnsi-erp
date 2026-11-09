@@ -12,6 +12,8 @@
 // (reason HOSTEL_MISMATCH_REASON), anything else is admin-only.
 import { supabase } from './supabase'
 import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
+import { loadAllCourseHistory } from './courseHistory'
+import { courseOnMonth } from './lib/courseHistory'
 import { canonicalBatch, normalizeCourse, courseOf } from './courseMap'
 import { detectFeeTypes } from './lib/feeTypeDetect'
 import { checkMonthlyFees } from './lib/monthlyFeeCheck'
@@ -107,7 +109,7 @@ export function rateFrom(structures, { session, course, batch, type, field }) {
 // This session's flat/course payments made at ANOTHER hostel type's rate:
 // paid less than the student's own-type rate and exactly the rate of a cheaper
 // type. Rows already carrying a concession decision are counted as reviewed.
-export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map(), addonOf = () => 0 }) {
+export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map(), courseHistory = new Map(), addonOf = () => 0 }) {
   const issues = []
   let reviewed = 0
   // Per student: how many of this session's payments match their own type's
@@ -120,8 +122,10 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     const field = kind === 'flat' ? 'flat_fee' : 'course_fee'
     // The type in effect for that month (a mid-session change keeps earlier months at the old type).
     const ownType = typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
-    const course = (kind === 'course' ? (row.course || st.course) : st.course) || (courseOf(st) !== 'Unassigned' ? courseOf(st) : '')
-    const args = { session: rateSession, course, batch: st.batch || '', field }
+    // the course / batch in force that month (a mid-session course change keeps earlier months at the old course)
+    const cAt = courseOnMonth(st, courseHistory.get(gccKey(st.gcc_no)), month, year)
+    const course = (kind === 'course' ? (row.course || cAt.course) : cAt.course) || (courseOf(st) !== 'Unassigned' ? courseOf(st) : '')
+    const args = { session: rateSession, course, batch: cAt.batch || '', field }
     // Combined students pay the monthly add-on on top of every type's rate
     const add = addonOf(st, rateSession) || 0
     const rateAt = type => { const b = rateFrom(structures, { ...args, type }); return b > 0 ? b + add : 0 }
@@ -180,10 +184,11 @@ export async function loadFeeTypeScan({ students, courseRows, flatRows }) {
 // hostel type in force that month (see lib/monthlyFeeCheck.js). Students with a custom flat fee have
 // their flat-fee months left out, since the standard flat rate does not apply to them.
 export async function loadMonthlyFeeScan({ students, courseRows, flatRows }) {
-  const [{ data: structures, error }, { data: ov }, { map: history }] = await Promise.all([
+  const [{ data: structures, error }, { data: ov }, { map: history }, { map: courseHist }] = await Promise.all([
     supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
     supabase.from('student_fee_overrides').select('gcc_no'),
     loadHostelHistory(),
+    loadAllCourseHistory(),
   ])
   if (error) throw new Error(error.message)
   const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
@@ -191,19 +196,21 @@ export async function loadMonthlyFeeScan({ students, courseRows, flatRows }) {
   const rateOf = ({ session, course, batch, type, field, student }) => { const b = rateFrom(structures || [], { session, course, batch, type, field }); return b > 0 && student ? b + resolver.amount(student, session) : b }
   const typeAt = (st, month, year) => typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
   const flat = (flatRows || []).filter(r => !overrideGccs.has(gccKey(r.adm_app_id)))
-  return checkMonthlyFees({ students, courseRows, flatRows: flat, rateOf, typeAt })
+  const courseAt = (st, month, year) => courseOnMonth(st, courseHist.get(gccKey(st.gcc_no)), month, year)
+  return checkMonthlyFees({ students, courseRows, flatRows: flat, rateOf, typeAt, courseAt })
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {
-  const [{ data: structures, error }, { data: ov }, { map: history }] = await Promise.all([
+  const [{ data: structures, error }, { data: ov }, { map: history }, { map: courseHistory }] = await Promise.all([
     supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
     supabase.from('student_fee_overrides').select('gcc_no, session_year'),
     loadHostelHistory(),
+    loadAllCourseHistory(),
   ])
   if (error) throw new Error(error.message)
   const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
   const resolver = await getAddonResolver()
-  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session, history, addonOf: (st, sess) => resolver.amount(st, sess) })
+  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session, history, courseHistory, addonOf: (st, sess) => resolver.amount(st, sess) })
 }
 
 // Pending wrong-hostel-type approvals + record/bed conflicts, for the tab badge.
