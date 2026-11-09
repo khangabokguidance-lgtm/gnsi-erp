@@ -467,10 +467,34 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
  .cbt-exam .cbt-pass-h{display:none}
  .cbt-exam .cbt-pass .cbt-prose{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;max-height:none;padding:12px 16px 4px;font-size:15px;line-height:1.7;flex:none;min-height:0}
  .cbt-exam .cbt-pass .cbt-prose::first-letter{float:none;font-size:inherit;margin:0;color:inherit}
+ .cbt-exam .cbt-pass .cbt-prose.mm{padding-top:14px;line-height:2.1}
  .cbt-exam .cbt-passbar{display:flex;margin:6px 12px 12px;width:auto;border-radius:10px;background:linear-gradient(95deg,#0f2552,#173a74);color:#fff;border:1px solid #c9a24b;padding:11px 14px;font-size:13px;letter-spacing:.02em;box-shadow:0 6px 14px -8px rgba(15,37,82,.7)}
  .cbt-exam .cbt-passbar span:last-child{color:#e2c57e}
 }
 @media (min-width:861px){.cbt-exam .cbt-pass{flex:1 1 48%;max-width:760px}.cbt-exam .cbt-pass .cbt-prose{padding:20px 28px 32px}}
 .cbt-hc .cbt-pass,.cbt-hc .cbt-prose,.cbt-hc .cbt-reader,.cbt-hc .cbt-reader-body,.cbt-hc .cbt-pass-h{background:#000!important;color:#fff!important}
+
+/* comfortable tap targets + a landscape-phone layout (the short screen must still leave room for the question) */
+@media (max-width:860px){.cbt-exam .cbt-palbtn{min-height:38px;padding:7px 14px}}
+@media (max-height:500px) and (orientation:landscape) and (max-width:1000px){
+ .cbt-exam .cbt-top{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;padding:4px 10px}
+ .cbt-exam .cbt-top .title{flex:1 1 auto;min-width:0;font-size:13px}
+ .cbt-exam .cbt-top .title .brand{width:26px;height:26px}
+ .cbt-exam .cbt-tools{order:2;grid-row:auto;flex:0 1 auto;max-width:46vw;overflow-x:auto}
+ .cbt-exam .cbt-top .cand{display:none}
+ .cbt-exam .cbt-timer{order:3;padding:2px 10px 6px;min-width:0}.cbt-exam .cbt-timer small{display:none}.cbt-exam .cbt-timer b{font-size:15px}
+ .cbt-exam .cbt-sectimer,.cbt-exam .cbt-saved{display:none}
+ .cbt-exam .cbt-sec{padding:4px 8px}.cbt-exam .cbt-sec .sl{height:20px}
+ .cbt-exam .cbt-qhead{padding:3px 12px}
+ .cbt-exam .cbt-palbtn{min-height:32px;padding:3px 12px}
+ .cbt-exam .cbt-q{padding:8px 14px 12px}
+ .cbt-exam .cbt-opt{min-height:40px;padding:8px 12px}
+ .cbt-exam .cbt-pass .cbt-prose{-webkit-line-clamp:2;padding:6px 14px 0;font-size:14px}
+ .cbt-exam .cbt-passbar{margin:4px 12px 6px;padding:7px 12px}
+ .cbt-exam .cbt-act{display:flex;gap:6px;padding:4px 10px}
+ .cbt-exam .cbt-act .sp{display:block;flex:1}
+ .cbt-exam .cbt-b,.cbt-exam .cbt-b.b-save,.cbt-exam .cbt-b.b-prev,.cbt-exam .cbt-b.b-mark,.cbt-exam .cbt-b.b-clear{order:0;min-height:36px;padding:4px 12px;font-size:12.5px;white-space:nowrap}
+ .cbt-reader-h{padding:5px 10px}.cbt-reader-body .cbt-prose{padding:12px 20px 24px}.cbt-reader-f{padding:6px 12px}
+}
 @media (prefers-reduced-motion:reduce){.cbt-exam *,.cbt-exam *::after{transition:none!important}.cbt-exam .cbt-timer.low{animation:none}}
 `

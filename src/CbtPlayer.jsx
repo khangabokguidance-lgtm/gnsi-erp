@@ -81,6 +81,15 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const curNo = a?.current
   const reader = readerNo !== null && readerNo === curNo   // moving to another question closes it
   const setReader = open => setReaderNo(open ? curNo : null)
+  const readerRef = useRef(null)
+  useEffect(() => {                                    // reader: Escape closes it; focus moves in, and back to the passage button after
+    if (!reader) return undefined
+    const prev = document.activeElement
+    try { readerRef.current?.querySelector('button')?.focus({ preventScroll: true }) } catch { /* ignore */ }
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); setReaderNo(null) } }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true); try { if (prev && prev.isConnected) prev.focus({ preventScroll: true }) } catch { /* ignore */ } }
+  }, [reader])
   const secbarRef = useRef(null)
   useEffect(() => {                                    // keep the open section's tab in view on a phone
     try { const el = secbarRef.current?.querySelector('.cbt-sec.on'); el?.scrollIntoView({ block: 'nearest', inline: 'center' }) } catch { /* old browser */ }
@@ -615,7 +624,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       </aside>
     </div>
 
-    {reader && q.passage && <div className="cbt-reader" role="dialog" aria-label="Reading passage">
+    {reader && q.passage && <div className="cbt-reader" role="dialog" aria-modal="true" aria-label="Reading passage" ref={readerRef}>
       <div className="cbt-reader-h"><button onClick={() => setReader(false)} aria-label="Back to the question">‹ Back</button><span>{/^Part\b/i.test(q.passage) ? 'Directions' : 'Reading passage'}<small>Question {dn(q)} of {qs.length}</small></span><span className="cbt-pass-tools"><button onClick={() => setRfs(f => Math.max(14, f - 1))} aria-label="Smaller text">A−</button><button onClick={() => setRfs(f => Math.min(30, f + 1))} aria-label="Larger text">A+</button></span></div>
       <div className="cbt-reader-body"><article className={`cbt-prose${lang === 'mm' && q.passageMm ? ' mm' : ''}`} style={{ '--rfs': `${rfs + 2}px` }}>{pick(q.passage, q.passageMm, lang)}</article></div>
       <div className="cbt-reader-f"><button className="cbt-b save" onClick={() => setReader(false)}>Answer Question {dn(q)} ›</button></div>
