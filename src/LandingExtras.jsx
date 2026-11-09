@@ -122,13 +122,18 @@ export function CbtOpenNote({ flash }) {
   return (
     <div className="lx-cbtnote-ov" onClick={close}>
       <div className="lx-cbtnote" role="dialog" aria-modal="true" aria-label="CBT online exam notice" onClick={(e) => e.stopPropagation()}>
+        <i className="lx-cbtnote-ring r1" aria-hidden="true" /><i className="lx-cbtnote-ring r2" aria-hidden="true" />
         <button type="button" className="lx-cbtnote-x" aria-label="Close" onClick={close} autoFocus>×</button>
-        <span className="lx-cbtflash-badge"><i aria-hidden="true" />{soon ? 'COMING UP' : 'CBT LIVE'}</span>
-        <h3>{soon ? (flash.label || 'CBT online exam') : 'CBT online exam'}</h3>
-        <p>{soon ? 'Starts in' : flash.text}</p>
+        <div className="lx-cbtnote-crest"><img src="/gnsi-mark.webp" alt="" width="64" height="64" onError={(e) => { e.currentTarget.style.display = 'none'; }} /></div>
+        <div className="lx-cbtnote-inst">Guidance Navodaya &amp; Sainik Institute</div>
+        <span className="lx-cbtnote-pill"><i aria-hidden="true" />{soon ? 'Coming up' : 'Live now'}</span>
+        <h3>{soon ? (flash.label || 'CBT Online Exam') : 'CBT Online Exam'}</h3>
+        <div className="lx-cbtnote-rule" aria-hidden="true"><span /><b /><span /></div>
+        <p>{soon ? 'The exam opens in' : flash.text}</p>
         {soon && <CbtCountdown to={flash.at} onDone={() => tick((n) => n + 1)} className="lx-cd lx-cd-big" />}
-        <a href={flash.link} className="lx-cbtnote-go">{soon ? 'Get ready →' : 'Take the test →'}</a>
-        <button type="button" className="lx-cbtnote-no" onClick={close}>Not now</button>
+        <a href={flash.link} className="lx-cbtnote-go"><span>{soon ? 'Get ready' : 'Take the test'}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></a>
+        <ul className="lx-cbtnote-pts"><li>Any phone or computer</li><li>Answers save automatically</li><li>One attempt per GCC no.</li></ul>
+        <button type="button" className="lx-cbtnote-no" onClick={close}>Maybe later</button>
       </div>
     </div>
   );
