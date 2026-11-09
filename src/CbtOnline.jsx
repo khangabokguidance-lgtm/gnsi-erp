@@ -1,7 +1,7 @@
 // CbtOnline.jsx — the staff side of online exams: publish a test as a link, see the online tests, close or
 // remove them. (Candidates use CbtPublic.jsx.)
 import { useEffect, useState } from 'react'
-import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag } from './cbtRemote'
+import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag } from './cbtRemote'
 import { flatQuestions } from './lib/cbtEngine'
 import { syncFlashSchedule } from './cbtFlashSync'
 
@@ -12,11 +12,12 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   const [code, setCode] = useState(row ? row.access_code || '' : newCode())
   const [opens, setOpens] = useState(local(row?.opens_at))
   const [closes, setCloses] = useState(local(row?.closes_at))
+  const [practice, setPractice] = useState(true)   // allow practice mode once the exam has closed
   const [listed, setListed] = useState(true)       // show on the public exam page (so candidates can find it without a link)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(row || null)
-  useEffect(() => { let live = true; if (row) getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); return () => { live = false } }, [row, test.id])
+  useEffect(() => { let live = true; if (row) { getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); getPracticeFlag(test.id).then(v => { if (live) setPractice(v) }) } return () => { live = false } }, [row, test.id])
   const qs = flatQuestions(test)
   const keyed = qs.filter(q => q.answer).length
 
@@ -26,7 +27,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
     if (opens && closes && new Date(closes) <= new Date(opens)) { setErr('The closing time must be after the opening time.'); return }
     setBusy(true)
     try {
-      await publishOnline(test, { code, opensAt: opens, closesAt: closes, status: 'live', by, publicList: listed })
+      await publishOnline(test, { code, opensAt: opens, closesAt: closes, status: 'live', by, publicList: listed, practiceAfterClose: practice })
       const next = { id: test.id, access_code: code.trim() || null, opens_at: opens ? new Date(opens).toISOString() : null, closes_at: closes ? new Date(closes).toISOString() : null, status: 'live' }
       syncFlashSchedule({ id: test.id, name: test.name, opensAt: next.opens_at, closesAt: next.closes_at })
       setDone(next); onChanged(); flash(row ? 'Online exam updated.' : 'Published. Share the link with candidates.')
@@ -52,6 +53,10 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0', fontSize: 13.5 }}>
           <input type="checkbox" checked={listed} onChange={e => setListed(e.target.checked)} style={{ marginTop: 3 }} />
           <span><b>Show on the public exam page</b> — candidates can find this test there without a link (name, length and timing only; they still need the access code and their GCC no.). Untick for a private batch test.</span>
+        </label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0', fontSize: 13.5 }}>
+          <input type="checkbox" checked={practice} onChange={e => setPractice(e.target.checked)} style={{ marginTop: 3 }} />
+          <span><b>Allow practice after it closes</b> — once this exam is closed and its answers are released, anyone can take the same paper again in practice mode (nothing recorded or counted). Untick if you will reuse these questions.</span>
         </label>
         <p className="muted">A candidate who starts before the closing time keeps their full duration. Each GCC no. gets one attempt. Candidates type only the access code and their GCC no.; the name comes from the ERP and they confirm a parent contact number that matches the record.</p>
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</p>}

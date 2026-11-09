@@ -6,7 +6,7 @@ import { friendly, splitKey, joinKey, toAttempt, packMarks } from './lib/cbtOnli
 export * from './lib/cbtOnlineLogic'
 
 // ── staff ────────────────────────────────────────────────────────────────────
-export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '', publicList } = {}) {
+export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '', publicList, practiceAfterClose } = {}) {
   const { sections, key } = splitKey(test)
   const iso = v => (v ? new Date(v).toISOString() : null)
   const row = {
@@ -14,9 +14,10 @@ export async function publishOnline(test, { code = '', opensAt = null, closesAt 
     show_answers: test.showAnswers !== false, sections, status, access_code: String(code || '').trim() || null, opens_at: iso(opensAt), closes_at: iso(closesAt),
     created_by: by || null, updated_at: new Date().toISOString(),
   }
-  let { error } = await supabase.from('cbt_tests').upsert(typeof publicList === 'boolean' ? { ...row, public_list: publicList } : row)
-  // public_list exists only after 20261115_cbt_public_list.sql: publishing must still work before it is run
-  if (error && /public_list/.test(error.message || '')) ({ error } = await supabase.from('cbt_tests').upsert(row))
+  const extra = { ...(typeof publicList === 'boolean' ? { public_list: publicList } : {}), ...(typeof practiceAfterClose === 'boolean' ? { practice_after_close: practiceAfterClose } : {}) }
+  let { error } = await supabase.from('cbt_tests').upsert({ ...row, ...extra })
+  // public_list / practice_after_close exist only after 20261115 / 20261116: publishing must still work before they are run
+  if (error && /public_list|practice_after_close/.test(error.message || '')) ({ error } = await supabase.from('cbt_tests').upsert(row))
   if (error) throw new Error(friendly(error))
   const k = await supabase.from('cbt_keys').upsert({ test_id: test.id, answers: key })
   if (k.error) throw new Error(friendly(k.error))
@@ -87,6 +88,19 @@ export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const listPublicTests = async () => { try { const r = await rpc('cbt_public_tests', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 // Staff: is this test shown on the public page? (true when the column does not exist yet)
 export async function getPublicListFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('public_list').eq('id', id).maybeSingle(); return error || !data ? true : data.public_list !== false } catch { return true } }
+export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
+// Past (closed) exams anyone may practise: [] if the database update is not run yet.
+export const listPracticeTests = async () => { try { const r = await rpc('cbt_practice_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
+// The past paper with its key, turned into a test the exam screen can run and mark locally (nothing is sent anywhere).
+export async function practiceTest(id) {
+  const p = await rpc('cbt_practice_paper', { p_test: id })
+  return {
+    id: `practice-${p.id}`, name: `${p.name} — practice`, durationMin: Number(p.durationMin) || 60,
+    marking: { ...(p.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((p.marking || {}).tools || {}) } },
+    instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${p.instructions || ''}`.trim(),
+    showResult: true, showAnswers: true, sections: joinKey(p.sections || [], p.key || {}), createdAt: 0, updatedAt: 0,
+  }
+}
 export const startExam = (id, code, gcc, parent, phone, dob) => rpc('cbt_start', { p_test: id, p_code: code || '', p_gcc: gcc, p_parent: parent || null, p_phone: phone || null, ...(dob ? { p_dob: dob } : {}) })
 // A guest (not in the ERP) — only when the test allows guests. One attempt per mobile number.
 export const startGuest = (id, code, name, phone, district, gender, caste) => rpc('cbt_start_guest', { p_test: id, p_code: code || '', p_name: name, p_phone: phone, ...(district ? { p_district: district } : {}), ...(gender ? { p_gender: gender } : {}), ...(caste ? { p_caste: caste } : {}) })

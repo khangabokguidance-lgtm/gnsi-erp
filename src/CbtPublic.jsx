@@ -8,7 +8,7 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref } from './lib/cbtRef'
@@ -37,11 +37,13 @@ function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemp
 
 // Opened as /exam with no test in the link (e.g. from the website menu): ask for the Test ID or the full link, and
 // offer to continue an exam that was started on this device.
-function CbtFinder({ onPractice }) {
+function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [raw, setRaw] = useState('')
   const [msg, setMsg] = useState('')
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
+  const [past, setPast] = useState([])       // closed exams that may be practised
+  useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
   const scan = () => {
     const out = []
     try {
@@ -89,6 +91,16 @@ function CbtFinder({ onPractice }) {
               {t.state === 'not_open' && t.opensAt && <div style={{ marginTop: 4 }}><span style={{ fontSize: 12.5, color: '#9a5b00', fontWeight: 700 }}>Opens {when(t.opensAt)} · </span><CbtCountdown to={t.opensAt} onDone={() => listPublicTests().then(setTests)} /></div>}
             </div>
             <a className={`btn ${t.state === 'open' ? 'gold' : 'navy'}`} style={{ textDecoration: 'none' }} href={examHref({ id: t.id })}>{t.state === 'open' ? 'Start →' : 'View →'}</a>
+          </div>
+        ))}
+      </div>}
+      {past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
+        <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
+        {past.map(t => (
+          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{t.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}</div></div>
+            <button type="button" className="btn navy" disabled={!!busyId} onClick={() => onPracticePast(t.id)}>{busyId === t.id ? 'Opening…' : 'Practise →'}</button>
           </div>
         ))}
       </div>}
@@ -200,7 +212,17 @@ function CbtPublicInner() {
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
   // practice test: runs in this browser only; its result is the local attempt itself
   const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
-  const demoDone = done => { setView({ test: DEMO_TEST, attempt: done }); setPhase('result') }
+  const demoDone = done => { setView({ test: run?.test || DEMO_TEST, attempt: done }); setPhase('result') }
+  // practise a PAST exam: its real paper and key are fetched (only allowed once it is closed and its answers are out); marking happens here, nothing is saved
+  const [practiceBusy, setPracticeBusy] = useState('')
+  const startPractice = async id => {
+    setErr(''); setPracticeBusy(id)
+    try {
+      const test = await practiceTest(id)
+      setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')
+    } catch (e) { setErr(friendly(e)) }
+    setPracticeBusy('')
+  }
 
   if (phase === 'gate' || phase === 'exam') {
     return <CbtPlayer test={run.test} candidate={run.candidate} resume={run.resume} remote={run.remote} demo={!!run.demo} onSubmit={run.demo ? demoDone : submitted} onClose={() => { setPhase('landing'); setRun(null) }} />
@@ -225,11 +247,11 @@ function CbtPublicInner() {
         <h2>{info ? info.name : 'Online exam'}</h2>
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}
       </div>
-      {!testId && <CbtFinder onPractice={startDemo} />}
+      {!testId && <CbtFinder onPractice={startDemo} onPracticePast={startPractice} busyId={practiceBusy} />}
       {testId && !info && !err && <div className="card muted">Loading…</div>}
       {info && (!saved || !open) && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">{open ? 'Try a 4-minute practice test first — it is not counted and nothing is saved.' : 'You can still try the 4-minute practice test any time — it is not counted and nothing is saved.'}</span> <button className="btn" style={{ marginLeft: 6 }} onClick={startDemo}>Try the practice test</button></div>}
       {err && !(info && open && !saved) && <div className="card" role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</div>}
-      {info && info.state === 'closed' && <div className="card" style={{ color: '#b42318', fontWeight: 700 }}>This exam is closed.</div>}
+      {info && info.state === 'closed' && <div className="card"><div style={{ color: '#b42318', fontWeight: 700 }}>This exam is closed.</div><div className="muted" style={{ margin: '6px 0 8px' }}>You can still practise it: take the same paper again in practice mode — nothing is recorded or counted.</div><button type="button" className="btn navy" disabled={!!practiceBusy} onClick={() => startPractice(testId)}>{practiceBusy ? 'Opening…' : 'Practise this exam →'}</button></div>}
       {info && info.state === 'not_open' && <div className="card" style={{ color: '#9a5b00', fontWeight: 700, textAlign: 'center' }}>This exam opens on {when(info.opensAt)}.{info.opensAt && <div style={{ marginTop: 10 }}><CbtCountdown to={info.opensAt} onDone={() => window.location.reload()} /></div>}</div>}
       {info && saved && (
         <div className="card" style={{ borderColor: '#bfe3c7', background: '#f1faf3' }}>
