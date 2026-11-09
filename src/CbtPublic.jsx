@@ -18,12 +18,12 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } cat
 const when = t => (t ? new Date(t).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 
 // The adapter CbtPlayer talks to. `offset` = server time minus this device's time, so the countdown follows the server.
-function makeRemote({ testId, code, candidate, gcc, parent, dob = '', guest = null, attemptId = null, token = null, session = null }) {
+function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemptId = null, token = null, session = null }) {
   const r = { offset: 0, attemptId, token, session }
   const sync = o => { if (o?.serverNow) r.offset = Date.parse(o.serverNow) - Date.now() }
   const backup = a => write(backupKey(r.attemptId), { ts: Date.now(), answers: a.answers, marked: a.marked, visited: a.visited, current: a.current, lang: a.lang, switches: a.switches, proctor: a.proctor || null, timing: a.timing || null, sec: a.sec || null, changes: a.changes || null })
   r.begin = async () => {
-    const res = guest ? await startGuest(testId, code, guest.name, guest.phone, guest.district, guest.gender, guest.caste) : await startExam(testId, code, gcc, parent, null, dob)
+    const res = guest ? await startGuest(testId, code, guest.name, guest.phone, guest.district, guest.gender, guest.caste) : await startExam(testId, code, gcc, parent, null)
     r.attemptId = res.attempt.id; r.token = res.token; r.session = res.session; sync(res.attempt)
     write(savedKey(testId), { attemptId: r.attemptId, token: r.token, session: r.session, name: candidate.name, roll: candidate.roll })
     return { test: res.test, attempt: localAttempt(res.attempt, res.test, candidate) }
@@ -38,7 +38,7 @@ function CbtPublicInner() {
   const testId = params.get('t') || ''
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
-  const [form, setForm] = useState({ gcc: '', parent: '', dob: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
+  const [form, setForm] = useState({ gcc: '', parent: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
   const [saved] = useState(() => read(savedKey(testId)))
   const [phase, setPhase] = useState('landing')     // landing | gate | exam | result | done
   const [run, setRun] = useState(null)              // { test, remote, candidate, resume }
@@ -67,7 +67,7 @@ function CbtPublicInner() {
     return () => { live = false; clearTimeout(t) }
   }, [form.gcc, form.code, testId])
   const type = k => e => {
-    const v = k === 'gcc' ? e.target.value.replace(/\D/g, '') : k === 'parent' || k === 'gphone' ? e.target.value.replace(/[^\d+\s-]/g, '') : k === 'dob' ? e.target.value.replace(/[^\d/.-]/g, '') : e.target.value
+    const v = k === 'gcc' ? e.target.value.replace(/\D/g, '') : k === 'parent' || k === 'gphone' ? e.target.value.replace(/[^\d+\s-]/g, '') : e.target.value
     setForm(f => ({ ...f, [k]: v }))
     if (k === 'gcc' || k === 'code') setStu(null)
   }
@@ -87,13 +87,11 @@ function CbtPublicInner() {
     if (par.length < 10) return setErr('Enter the 10-digit parent / guardian contact number.')
     setBusy(true)
     try {
-      const dobD = form.dob.replace(/\D/g, '')
-      if (dobD.length < 8) { setBusy(false); return setErr('Enter your date of birth as DD/MM/YYYY.') }
-      const r = await lookupStudent(testId, form.code, form.gcc, par, dobD)
-      if (!r.length || r[0].verified !== true) { setBusy(false); return setErr('The number or date of birth does not match the institute records.') }
+      const r = await lookupStudent(testId, form.code, form.gcc, par)
+      if (!r.length || r[0].verified !== true) { setBusy(false); return setErr('The number does not match the institute records.') }
       const v = r[0]
       const candidate = { name: v.name, roll: String(Number(v.gcc) || v.gcc) }
-      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par, dob: dobD }), resume: null })
+      setRun({ test: infoTest(info), candidate, remote: makeRemote({ testId, code: form.code, candidate, gcc: v.gcc, parent: par }), resume: null })
       setPhase('gate')
     } catch (e) { setErr(friendly(e)) }
     setBusy(false)
@@ -208,8 +206,6 @@ function CbtPublicInner() {
             <h3 style={{ marginBottom: 2 }}>Verify your contact number</h3>
             <p className="muted" style={{ margin: '0 0 10px' }}>Step 2 of 2 — confirm it is really you</p>
             <label><span className="lbl">Parent / guardian contact no. *</span><input className="in" inputMode="tel" autoComplete="off" autoFocus placeholder="10-digit mobile" value={form.parent} onChange={type('parent')} /></label>
-            <label style={{ display: 'block', marginTop: 8 }}><span className="lbl">{stu.hasDob ? 'Your date of birth *' : 'Your date of birth * — not in our records yet, please enter it'} (DD/MM/YYYY)</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="DD/MM/YYYY" value={form.dob} onChange={type('dob')} /></label>
-            {!stu.hasDob && <p className="muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>Your date of birth is missing from the institute records. What you enter is saved to your record, so please type it correctly.</p>}
             <p className="muted" style={{ margin: '6px 0 12px' }}>Type the parent / guardian number given at admission (GCC {stu.gcc}).{stu.phoneHint ? <> Hint: it ends in <b>{stu.phoneHint.replace(/•/g, '')}</b>.</> : null}</p>
             {err && <p role="alert" style={{ margin: '0 0 10px', color: '#b42318', fontWeight: 700 }}>{err}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

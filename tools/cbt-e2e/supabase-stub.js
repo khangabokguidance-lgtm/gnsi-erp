@@ -9,3 +9,5 @@ export const supabase = {
   from: () => { throw new Error('table access is not available in the candidate page test') },
   auth: { getSession: async () => ({ data: { session: null } }) },
 }
+// the app's other helpers from src/supabase.js, as no-ops (the candidate page never writes students)
+export const onStudentsWrite = () => () => {}
