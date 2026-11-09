@@ -92,7 +92,7 @@ body.lp-gov .hd-util .gov-skip{display:inline;position:absolute;left:-9999px}
 /* fit the bar at laptop widths */
 :is(body.lp-gov,body) .lp-nav .brand-text small{letter-spacing:.17em;font-size:.56rem!important}
 @media(max-width:1500px){
-  .hd-links li:nth-child(5){display:none}
+  .hd-links li:nth-child(6){display:none}
   :is(body.lp-gov,body) .lp-nav .nv-lbl-full{display:none!important}
   :is(body.lp-gov,body) .lp-nav .nv-lbl-short{display:inline!important}
   .hd-links{gap:1.3rem}
@@ -128,3 +128,6 @@ body.lp-page{overflow-x:clip!important}
 @media(max-width:640px){.ten-years-banner .tyb-frame{flex-direction:column;gap:.4rem}.ten-years-banner .tyb-frame img.tyb-logo{height:230px}.ten-years-banner .tyb-frame img.tyb-celebrate{height:120px}}
 :is(body.lp-gov,body) .ten-years-banner .tyb-frame{background:none!important}
 :is(body.lp-gov,body) .ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}
+
+.hd-cbt a{display:inline-flex!important;align-items:center;gap:.45rem}
+.hd-new{font:800 .5rem var(--hd-display);letter-spacing:.12em;text-transform:uppercase;background:linear-gradient(135deg,#e2c57e,#b8913f);color:#0b1e3d;border-radius:999px;padding:.18rem .42rem;line-height:1}

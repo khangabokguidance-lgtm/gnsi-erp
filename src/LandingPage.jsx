@@ -1389,6 +1389,7 @@ export default function LandingPage({ onLogin }) {
 
   const searchEntries = useMemo(() => [
     ...tabList.map((t) => ({ id: t.id, label: t.label, icon: TAB_ICONS[t.id] || '🔹' })),
+    { href: '/exam', label: 'CBT online exam (take your test)', icon: '💻', keywords: 'cbt computer based test mock online exam' },
     { href: '/apply', label: 'Apply online (admission form)', icon: '📝', keywords: 'admission application register' },
     { href: '/apply-status', label: 'Check application status', icon: '🔎', keywords: 'track' },
     { href: '/exam-registration', label: 'Exam registration / admit card', icon: '🪪' },
