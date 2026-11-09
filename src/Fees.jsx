@@ -1619,7 +1619,10 @@ const FEES_CSS = `
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
 .fh-all .fh-i{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
-@media(max-width:1600px){.fh:not(.fh-row){grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+/* The Admin Fee Panel's sections sit side by side and fill the width (no empty half when the hub is two columns). */
+.fh-secs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:6px 22px;align-items:start}
+.fh-secs>div{margin-top:10px}
+@media(max-width:1600px){.fh:not(.fh-row){grid-template-columns:repeat(2,minmax(0,1fr))!important}.fh-g.fh-admin{grid-column:1/-1}}
 @media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:700px){.fh-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px 2px;padding:12px 6px 10px}.fh-row .fh-l{font-size:10.5px}.fh:not(.fh-row){grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
@@ -5096,18 +5099,18 @@ export default function Fees() {
           return full ? (
             <nav className="fh" role="tablist" aria-label="Fees sections" style={{ '--fh-cols': TAB_GROUPS.map(g => `${Math.min(5, Math.max(4, g.items.length))}fr`).join(' ') }}>
               {TAB_GROUPS.map(g => (
-                <section key={g.id} className="fh-g">
+                <section key={g.id} className={'fh-g' + (g.id === 'adminFee' ? ' fh-admin' : '')}>
                   <h2>{g.title}</h2>
-                  {g.id === 'adminFee' ? ADMIN_SUBS.map(([title, ids]) => {
+                  {g.id === 'adminFee' ? <div className="fh-secs">{ADMIN_SUBS.map(([title, ids]) => {
                     const items = ids.map(id => g.items.find(t => t.id === id)).filter(Boolean)
                     const due = items.reduce((n, t) => n + (t.badge || 0), 0)
                     return items.length > 0 && (
                       <div key={title} style={{ marginTop: 10 }}>
                         <h3 style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#5d6b82' }}>{title}{due > 0 && <span style={{ marginLeft: 6, background: '#dc2626', color: '#fff', borderRadius: 99, padding: '1px 7px', fontSize: 10 }}>{due} to review</span>}</h3>
-                        <div className="fh-grid" style={{ '--fh-n': 5 }}>{items.map(tile)}</div>
+                        <div className="fh-grid" style={{ '--fh-n': Math.min(Math.max(items.length, 1), 4) }}>{items.map(tile)}</div>
                       </div>
                     )
-                  }) : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
+                  })}</div> : <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>}
                 </section>
               ))}
             </nav>
