@@ -77,6 +77,13 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 /* ── exam screen ── */
 .cbt-exam{position:fixed;inset:0;z-index:3000;background:#eef1f7;display:flex;flex-direction:column;color:#1f2933;user-select:none;-webkit-user-select:none;overflow:hidden}
 .cbt-exam .mm{font-family:${MAYEK_STACK};line-height:1.75}
+/* Smooth slide: the test slides in from the right when it opens, and each step after it
+   (instructions → declaration → camera check → the paper) slides in the same way. */
+@keyframes cbtopen{from{transform:translate3d(100%,0,0)}to{transform:translate3d(0,0,0)}}
+@keyframes cbtstep{from{transform:translate3d(36px,0,0);opacity:0}to{transform:translate3d(0,0,0);opacity:1}}
+.cbt-exam{animation:cbtopen .45s cubic-bezier(.22,1,.36,1) backwards;will-change:transform}
+.cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:cbtstep .4s cubic-bezier(.22,1,.36,1) .08s backwards}
+@media (prefers-reduced-motion:reduce){.cbt-exam,.cbt-exam .cbt-center,.cbt-exam .cbt-body{animation:none}}
 .cbt-top{display:flex;align-items:center;gap:12px;padding:10px 18px;color:#fff;flex-wrap:wrap;
   background:linear-gradient(90deg,#0b1e3d,#14264a 55%,#1b3566);border-bottom:3px solid var(--gold)}
 .cbt-top .title{font-weight:800;font-size:15px;flex:1 1 240px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}

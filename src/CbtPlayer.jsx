@@ -1,7 +1,7 @@
 // CbtPlayer.jsx — the candidate's exam screen, laid out like the SSC / TCS computer based test:
 // instructions → declaration → exam (question + options on the left, colour-coded question palette on the
 // right, section tabs, countdown clock, language switch) → summary → submit. CbtResult shows the score card.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import { cbtStore } from './cbtStore'
 import {
@@ -312,7 +312,9 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
 
   const shell = body => (
     <div className={`cbt cbt-exam${cfg.shield ? ' cbt-shield' : ''}${hc ? ' cbt-hc' : ''}`} onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
-      <style>{CBT_CSS}</style>{body}
+      <style>{CBT_CSS}</style>
+      {/* keyed by the step, so each step (instructions → declaration → camera → paper) slides in afresh */}
+      <Fragment key={stage}>{body}</Fragment>
       {camOn && (stage === 'camera' || stage === 'exam') && (
         <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
           <video ref={cam.videoRef} muted playsInline autoPlay />
