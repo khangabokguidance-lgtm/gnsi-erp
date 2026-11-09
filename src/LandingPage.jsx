@@ -17,7 +17,8 @@ import { receiptCheckParams } from './lib/receiptCheckParams';
 // and the browser caches it separately from the JS, and normal CSS tooling can
 // read it. Place LandingPage.css next to this file.
 import './LandingPage.css';
-import { QuickServices, AdmissionsBanner, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
+import { cbtFlashFrom } from './lib/cbtFlash';
+import { QuickServices, AdmissionsBanner, CbtFlashBar, HostelTab, AlumniTab, CareersTab, SiteSearch, ReceiptVerifyForm } from './LandingExtras';
 import { CreativeFX, LegacySection, JourneySection, BackToTop } from './LandingCreative';
 import MegaMenu, { MenuButton } from './LandingMenu';
 import MajesticFooter from './LandingFooter';
@@ -149,6 +150,7 @@ function buildSite(cfg) {
       [text('selection_rate'), 'Selection rate'],
     ].filter(([v]) => v).map(([value, label]) => ({ value: /^\d+$/.test(value) && /rate/i.test(label) ? value + '%' : value, label })),
     admissionBanner: text('admission_banner_text', 'Admissions open for the new batch'),
+    cbtFlash: cbtFlashFrom(cfg),
     mapQuery: text('map_query', 'GNSI Khangabok, Thoubal, Manipur'),
     seats: [
       ['Navodaya (NVS)', 'nvs'], ['Sainik School', 'sainik'], ['RMS', 'rms'], ['Foundation', 'foundation'],
@@ -2223,6 +2225,7 @@ window.submitGrievance = async () => {
     </div>
   </nav>
   <StaffFlashCard onLogin={onLogin} />
+  <CbtFlashBar flash={site.cbtFlash} />
   <AdmissionsBanner site={site} />
   {/* TICKER */}
   <div className="ticker-wrap">

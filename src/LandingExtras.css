@@ -19,6 +19,16 @@
 @media(max-width:1000px){.lx-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.lx-grid{grid-template-columns:repeat(2,1fr);gap:.6rem}.lx-tile{padding:.7rem}.lx-ic{width:36px;height:36px}}
 
+/* CBT flash message */
+.lx-cbtflash{display:flex;align-items:center;justify-content:center;gap:.8rem;flex-wrap:wrap;padding:.6rem 1rem;color:#fff;font-size:.88rem;background:linear-gradient(90deg,#7a1d12,#b42318 40%,#d9461f 60%,#7a1d12);background-size:200% 100%;animation:lxCbtBg 6s linear infinite;border-bottom:2px solid #e2c57e}
+@keyframes lxCbtBg{to{background-position:200% 0}}
+.lx-cbtflash-badge{display:inline-flex;align-items:center;gap:.45rem;font-weight:800;font-size:.72rem;letter-spacing:.14em;background:#fff;color:#b42318;border-radius:999px;padding:.22rem .7rem}
+.lx-cbtflash-badge i{width:9px;height:9px;border-radius:50%;background:#dc2626;animation:lxCbtBlink 1s steps(2,start) infinite}
+@keyframes lxCbtBlink{50%{opacity:.15}}
+.lx-cbtflash-tx{font-weight:600;text-align:center}
+.lx-cbtflash-cta{padding:.28rem .9rem;border-radius:999px;background:#e2c57e;color:#1a1204;font-weight:800;font-size:.78rem;text-decoration:none;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.lx-cbtflash,.lx-cbtflash-badge i{animation:none}}
+
 /* Admissions banner */
 .lx-banner{display:flex;align-items:center;justify-content:center;gap:.7rem;flex-wrap:wrap;padding:.55rem 1rem;font-size:.84rem;color:#fff;background:linear-gradient(90deg,#0B1E3D,#1F4E8C 55%,#0B1E3D)}
 .lx-pulse{width:9px;height:9px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 rgba(74,222,128,.7);animation:lxPulse 1.8s infinite}
