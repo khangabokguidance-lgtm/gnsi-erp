@@ -880,7 +880,7 @@ function PendingDashboard({ staff, salaryRows, regMonth, onMarkPaid, dedMap, isM
       {unpaid.length===0
         ? <div style={{ textAlign:'center', padding:'24px', color:'#16a34a', fontWeight:'700' }}>✅ All staff paid for {fmtMonth(regMonth)}!</div>
         : (
-          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(260px,1fr))', gap:'10px' }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(min(260px,100%),1fr))', gap:'10px' }}>
             {unpaid.map(s => {
               const d=dedMap[s.id]||{}
               const perfAdj=Number(d.performance_adjustment||0)

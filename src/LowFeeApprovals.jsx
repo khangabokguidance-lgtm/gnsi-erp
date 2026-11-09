@@ -307,7 +307,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 12, marginBottom: 14 }}>
         <Breakdown title="By staff who collected" rows={sum.byStaff} onPick={r => drill({ staff: r.key }, { staff: 'All' })} isActive={r => staff === r.key} />
         <Breakdown title="By reason" rows={sum.byReason} onPick={r => drill({ reason: r.key }, { reason: 'All' })} isActive={r => reason === r.key} />
         <Breakdown title="Students given low fees more than once" rows={sum.repeat} onPick={r => drill({ q: r.key.split('|')[0] }, { q: '' })} isActive={r => q === r.key.split('|')[0]} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />

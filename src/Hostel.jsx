@@ -187,7 +187,7 @@ const mobileCard = {
 // ─── Responsive grid helpers ──────────────────────────────────
 const grid2 = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px,100%),1fr))',
   gap: '16px',
 }
 
@@ -1919,7 +1919,7 @@ function MissingRollCallAlert({ students, onOpen, onFix, lockHouse }) {
           {onOpen && incomplete.length > 0 && <button type="button" onClick={onOpen} style={{ padding: '6px 12px', borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>Open roll call →</button>}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: single ? '1fr' : 'repeat(auto-fill, minmax(min(260px,100%),1fr))', gap: 10 }}>
         {cards.map(c => c.items.length ? (
           <div key={c.key} role="alert" style={{ borderRadius: 14, border: '2px solid #DC2626', background: '#FEF2F2', overflow: 'hidden' }}>
             <div style={{ padding: '9px 12px', background: '#DC2626', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -3415,7 +3415,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               {/* ── House grid ── */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
+                gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(min(300px,100%),1fr))',
                 gap: '12px',
               }}>
                 {houses.map(houseName => {
@@ -3733,7 +3733,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 rows={houses.map(h => { const s = getHouseStats(h); return { house: h, ...s } })}
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(min(300px,100%),1fr))', gap: '12px' }}>
               {houses.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', gridColumn: '1/-1' }}>
                   No houses found. Assign students to houses first.
@@ -6324,7 +6324,7 @@ function CommandCentreTab({ students, currentUser }) {
         <div style={{ fontSize: '13px', fontWeight: '800', color: MD.color.primary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
           🏠 Today — Live Roll Call Status
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(min(280px,100%),1fr))', gap: '12px' }}>
           {houses.map(houseName => {
             const statuses = todayHouseStatus(houseName)
             const anyLate = statuses.some(s => s.isLate)
@@ -6706,7 +6706,7 @@ function HMPerformanceRanking() {
       ) : (
         <>
           {/* Housemaster / housemistress profile cards (the roll-call profile card design), best score first */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px,100%),1fr))', gap: '14px' }}>
             {rankings.map((r, i) => {
               const isExpanded = expandedHouse === r.house
               const isTop = topPerformer && r.house === topPerformer.house
@@ -7419,7 +7419,7 @@ function HMDashboard({ students, hmOnly, lockHouse, staffProfiles, currentHousem
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fit, minmax(min(320px,100%),1fr))', gap: '16px', marginBottom: '16px' }}>
         {/* Needs attention */}
         <div style={{ ...panel, padding: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -10227,7 +10227,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </div>
             )
             : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16, marginBottom: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(300px,100%),1fr))', gap: 16, marginBottom: 24 }}>
                 {houses.map(h => {
                   const hs = getHouseStyle(h)
                   const houseStudents = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(h.name))
@@ -12208,7 +12208,7 @@ function HousemasterTab({ currentUser }) {
       {loading
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(290px,100%),1fr))', gap: 16 }}>
             {filtered.map(r => {
               const hs = getHouseStyle(r.house)
               return (
@@ -12784,7 +12784,7 @@ function HostelParentItemsTab({ currentHousemaster, currentUser }) {
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
         : shown.length === 0 ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: 14, border: '1px dashed #e2e8f0' }}>Nothing here{status === 'Pending' ? ' — all items handed over ✓' : ''}</div>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(290px,100%),1fr))', gap: 12 }}>
             {shown.map(it => {
               const st = it.status || 'Pending'
               const col = st === 'Pending' ? '#d97706' : st === 'Delivered' ? '#16a34a' : '#64748b'

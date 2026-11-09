@@ -333,7 +333,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
           </div>
 
           {/* Per-course detail cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(260px,100%),1fr))", gap: 12 }}>
             {courseStats.map(c => (
               <div key={c.course} style={{
                 background: "white", borderRadius: 12, padding: "16px 18px",

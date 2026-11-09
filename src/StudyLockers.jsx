@@ -1053,7 +1053,7 @@ export default function StudyLockers({ currentUser, perms, onNavigate, embedded 
               {isAdmin ? 'No lockers yet. Go to ⚙️ Admin to create the first locker.' : 'No lockers available yet. Contact admin.'}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(min(280px,100%), 1fr))', gap: 14 }}>
               {filtered.map(locker => {
                 const unlocked = isUnlocked(locker.id)
                 return (

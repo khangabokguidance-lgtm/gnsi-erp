@@ -81,7 +81,7 @@ const card = {
 const mobileCard = { ...card, padding: '14px', borderRadius: MD.radius.field }
 const grid2 = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px,100%), 1fr))',
   gap: '14px',
 }
 const mobileStatGrid = {

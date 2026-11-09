@@ -1781,7 +1781,7 @@ function OrdersTab({ currentUser, showToast, onSaleDone, liveTick }) {
         </div>
       )}
       {view === 'board' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 12, alignItems: 'start' }}>
           {ORDER_COLS.map(([st, label, color]) => {
             const col = orders.filter(o => o.status === st && (!fq || [o.order_no, o.customer_name, o.phone, o.gcc_no].some(v => String(v || '').toLowerCase().includes(fq))))
             return (
@@ -2184,7 +2184,7 @@ ${note ? `<div class="s" style="margin-top:8px">Note: ${esc(note)}</div>` : ''}
       {!r ? <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>⏳ Loading…</div> : (
         <>
           {data.prev && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: 8, padding: '7px 11px', fontSize: 12, marginBottom: 10 }}>This day was already closed by {data.prev.closed_by} at {new Date(data.prev.created_at).toLocaleTimeString('en-IN', { timeStyle: 'short' })} (counted ₹{n(data.prev.cash_counted)}, variance ₹{n(data.prev.variance)}). Saving again adds a new closing record.</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 16 }}>
             <div>
               <SumLine l={`Bills (${r.online} online)`} v={r.bills} />
               <SumLine l="Gross sales" v={`₹${n(r.gross)}`} />
@@ -2409,7 +2409,7 @@ function ReportsTab({ products, categories, refreshKey }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(300px,100%),1fr))', gap: 14 }}>
             <StatBox title="👤 Collections by staff">{Object.keys(byStaff).length ? Object.entries(byStaff).sort((a, b) => b[1].amt - a[1].amt).map(([k, v]) => <StatRow key={k} l={`${k} (${v.bills} bill${v.bills > 1 ? 's' : ''})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
             <StatBox title="🏆 Top products">{top.length ? top.map(([k, v]) => <StatRow key={k} l={`${k} (×${v.qty})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
             <StatBox title="📂 By category">{Object.keys(byCat).length ? Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => <StatRow key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
@@ -2439,13 +2439,13 @@ function ReportsTab({ products, categories, refreshKey }) {
                 <div style={{ fontSize: 11, color: '#64748b' }}>₹{n(Math.round(abc.deadValue))} tied up{hasCost ? ' (at cost)' : ''}</div>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(300px,100%),1fr))', gap: 14 }}>
               <div><div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', marginBottom: 4 }}>A items — never let these run out</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.A.length ? abc.A.map(r => <StatRow key={r.id} l={`${r.p?.name || 'Removed'}${r.p?.size ? ' — ' + r.p.size : ''} · stock ${r.p?.stock ?? '—'}`} r={`₹${n(Math.round(r.v))}`} c={r.p && r.p.stock <= (r.p.reorder_level ?? 5) ? '#dc2626' : undefined} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</div></div>
               <div><div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>Dead stock — consider a deal or kit</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.dead.length ? abc.dead.map(d => <StatRow key={d.p.id} l={`${d.p.name}${d.p.size ? ' — ' + d.p.size : ''} · ${d.p.stock} in stock`} r={`₹${n(Math.round(d.value))}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>Everything in stock sold at least once ✓</div>}</div></div>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 14, marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(340px,100%),1fr))', gap: 14, marginTop: 14 }}>
             <div style={{ ...card, padding: 16, overflowX: 'auto' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>🕒 When we sell</div>
               <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 10 }}>Sales by weekday and hour — plan counter staff for the dark cells</div>
@@ -2569,7 +2569,7 @@ function PromotionsTab({ currentUser, showToast }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 18, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(340px,100%),1fr))', gap: 18, alignItems: 'start' }}>
         {/* Promo codes */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -2974,7 +2974,7 @@ function KitsTab({ kits, ready, products, reload, showToast }) {
         <div style={{ fontSize: 12.5, color: '#64748b', maxWidth: 620 }}>Kits group items parents usually buy together — e.g. <b>Class 6 starter kit</b>. They appear as one-tap buttons at the POS and as "Complete kits" on the online store. Items are charged at their own prices.</div>
         <button onClick={() => open(null)} style={btn(NAVY)}>+ New kit</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 12 }}>
         {kits.map(k => {
           const items = arr(k.items), short = kitShort(items)
           return (
@@ -3258,7 +3258,7 @@ ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.p?.name)}${r.p?.size ? ' 
       </div>
 
       {/* History + suppliers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 18, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 18, alignItems: 'start' }}>
         <div style={{ ...card, overflow: 'auto', gridColumn: 'span 2' }}>
           <div style={{ padding: '12px 14px', fontSize: 14, fontWeight: 800, color: NAVY }}>🧾 Purchase history</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 620 }}>
