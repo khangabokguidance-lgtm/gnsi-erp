@@ -1,6 +1,7 @@
 // CbtOnline.jsx — the staff side of online exams: publish a test as a link, see the online tests, close or
 // remove them. (Candidates use CbtPublic.jsx.)
 import { useEffect, useState } from 'react'
+import { buildMockFile } from './lib/cbtMock'
 import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag, getAutoCodeFlag } from './cbtRemote'
 import { flatQuestions } from './lib/cbtEngine'
 import { syncFlashSchedule } from './cbtFlashSync'
@@ -21,6 +22,17 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   useEffect(() => { let live = true; if (row) { getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); getPracticeFlag(test.id).then(v => { if (live) setPractice(v) }); getAutoCodeFlag(test.id).then(v => { if (live) setAutoCode(v) }) } return () => { live = false } }, [row, test.id])
   const qs = flatQuestions(test)
   const keyed = qs.filter(q => q.answer).length
+
+  // a self-contained copy of the paper (with its key) for public/mocks/ — runs on the student's device, no database (see docs/CBT_STATIC_MOCK.md)
+  const downloadMock = () => {
+    setErr('')
+    try {
+      const f = buildMockFile(test)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(f)], { type: 'application/json' }))
+      const a = document.createElement('a'); a.href = url; a.download = `${f.slug}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000)
+      flash(`Saved ${f.slug}.json. Add it with: node scripts/add-mock.mjs ${f.slug}.json`)
+    } catch (e) { setErr(e.message) }
+  }
 
   const publish = async () => {
     setErr('')
@@ -67,6 +79,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</p>}
         <div className="cbt-actions" style={{ marginTop: 8 }}>
           <button className="btn gold" disabled={busy} onClick={publish}>{busy ? 'Publishing…' : row || done ? '💾 Update and keep live' : '🌐 Publish online'}</button>
+          <button className="btn" title="Download this paper as a static mock file that runs on the student device with no exam traffic" onClick={downloadMock}>⬇ Static mock file</button>
           <button className="btn" onClick={onClose}>Close</button>
         </div>
         {done && (
