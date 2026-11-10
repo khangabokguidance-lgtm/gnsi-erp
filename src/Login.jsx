@@ -160,6 +160,9 @@ const injectStyles = () => {
 // staff member still gets in exactly as before.
 const staffEmail = (u) => `${String(u).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_')}.staff@guidancekhangabok.in`
 
+const LOGIN_SLOW_MS = 8000        // show "taking longer than usual"
+const LOGIN_TIMEOUT_MS = 25000    // give up and say so
+
 async function linkSupabaseAuth(username, password, isAdminShortcut = false) {
   try {
     const email = staffEmail(username)
@@ -244,6 +247,8 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
   const [rememberMe,   setRememberMe]   = useState(false)
   const [error,        setError]        = useState('')
   const [loading,      setLoading]      = useState(false)
+  const [slow,         setSlow]         = useState(false)   // the server is taking long: say so instead of spinning silently
+  const attemptRef = useRef(0)                                    // lets a timed-out attempt be ignored if it finishes later
   const [shakeCard,    setShakeCard]    = useState(false)
   const cardRef = useRef(null)
   const emblemRef = useRef(null)
@@ -270,7 +275,8 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
     setTimeout(() => setShakeCard(false), 450)
   }
 
-  const doLogin = async () => {
+  const doLogin = async (attempt) => {
+    const finish = user => { if (attempt === attemptRef.current) onLogin(user) }
     setError('')
     if (!username.trim() || !password.trim()) {
       showError('Please enter both username and password.'); return
@@ -333,7 +339,7 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
 
       await linkSupabaseAuth(username, password, true)
       await supabase.rpc('set_staff_context', { p_staff_id: 37, p_is_admin: true })
-      onLogin(realUser
+      finish(realUser
         ? { ...realUser, staff_profile_id: realUser.staff_profile_id ?? 37 }
         : { id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 }
       )
@@ -390,7 +396,7 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
   // and RPC that gates on app.is_admin for real admin accounts.
   p_is_admin: ['Admin', 'Administrator', 'Co-Admin', 'admin', 'HM'].includes(data.role),
 })
-onLogin({
+finish({
   ...data,
   staff_profile_id: profile?.id         ?? data.staff_profile_id ?? null,
   department:       profile?.department  ?? null,
@@ -406,12 +412,25 @@ onLogin({
   const handleLogin = async (e) => {
     if (e && e.preventDefault) e.preventDefault()
     if (loading) return
+    const attempt = ++attemptRef.current
+    let limit, slowTimer
+    // A server that never answers (a paused or overloaded database, a dead connection) used to leave the button spinning
+    // for ever: after LOGIN_SLOW_MS we say it is slow, after LOGIN_TIMEOUT_MS we stop and show a message.
+    const timeout = new Promise((_, reject) => { limit = setTimeout(() => reject(new Error('login-timeout')), LOGIN_TIMEOUT_MS) })
+    slowTimer = setTimeout(() => setSlow(true), LOGIN_SLOW_MS)
     try {
-      await doLogin()
+      await Promise.race([doLogin(attempt), timeout])
     } catch (err) {
-      console.error('Login failed:', err)
-      showError('Could not reach the server. Check your connection and try again.')
+      attemptRef.current += 1                                   // ignore this attempt if it ever finishes
+      if (err && err.message === 'login-timeout') {
+        showError('The server is not answering. Wait a minute and try again. If it keeps happening, the database may be paused or offline — tell the administrator.')
+      } else {
+        console.error('Login failed:', err)
+        showError('Could not reach the server. Check your connection and try again.')
+      }
       setLoading(false)
+    } finally {
+      clearTimeout(limit); clearTimeout(slowTimer); setSlow(false)
     }
   }
 
@@ -534,7 +553,7 @@ onLogin({
             )}
 
             <button type="submit" className="gl-btn" disabled={loading}>
-              {loading ? <><span className="gl-spinner" aria-hidden="true" /> Signing in…</> : <>Sign in <ArrowIcon /></>}
+              {loading ? <><span className="gl-spinner" aria-hidden="true" /> {slow ? 'Taking longer than usual…' : 'Signing in…'}</> : <>Sign in <ArrowIcon /></>}
             </button>
 
             <div className="gl-card-foot">
