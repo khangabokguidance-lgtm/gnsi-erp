@@ -207,6 +207,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-founder-pic{position:relative;width:132px;height:160px;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold),0 18px 30px -18px rgba(11,30,61,.7)}
 .cbt-founder-pic img{width:100%;height:100%;object-fit:cover;display:block}
 .cbt-founder-pic span{position:absolute;inset:0;display:none;place-items:center;font:600 48px 'Fraunces',Georgia,serif;color:var(--gold2)}
+.cbt-founder-pic.logo img{object-fit:contain;padding:16px}
 .cbt-founder-pic.nophoto img{display:none}.cbt-founder-pic.nophoto span{display:grid}
 .cbt-founder-txt blockquote{margin:0 0 12px;padding-left:14px;border-left:3px solid var(--gold);font-family:'Fraunces',Georgia,serif;font-size:17px;line-height:1.55;font-style:italic;color:#1f2a44}
 .cbt-founder-by b{display:block;font-size:16px;color:var(--navy)}.cbt-founder-by span{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a6a1f;margin-top:2px}

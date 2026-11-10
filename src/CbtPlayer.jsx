@@ -14,17 +14,15 @@ import { fsExits } from './lib/cbtProctorLogic'
 import { sectionTimed, settleSection, nextSection } from './lib/cbtSections'
 import { Calculator, RoughPad } from './CbtTools'
 import { BmeiText } from './MayekBmei'
-import { useStaffPhotos, findWebsitePhoto } from './staffPhotos'
 
 // Load: 300 students saving after every click exhausted the database disk budget, so saves are batched and heartbeats are rarer.
 // Staff mark a candidate "dropped off" after 100 s of silence (lib/cbtLive.js), so the heartbeat must stay well under that.
 const SAVE_DEBOUNCE_MS = 3000
 const HEARTBEAT_MS = 50000
 
-// The founder's welcome (same person, photo and message as the website's founder section).
+// The founder's welcome message. It shows the institute logo, so no photo has to be downloaded.
 const FOUNDER = {
   name: 'Moirangthem Himan Singh', role: 'Founder & Head of the Institute · GNSI',
-  photo: 'https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg',
   quote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
 }
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
@@ -68,7 +66,6 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
   }, [])
   useEffect(() => { if (stage !== 'exam' && stage !== 'intro') return; try { const el = document.activeElement; if (el && /^(TEXTAREA|INPUT)$/.test(el.tagName)) el.blur() } catch { /* ignore */ } }, [stage])
-  useStaffPhotos({ websiteOnly: true })               // only the website Faculty photos (the founder's) are needed here — no staff-table download for candidates
   const [a, setA] = useState(resume || null)
   // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
   const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
@@ -437,13 +434,11 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   if (stage === 'instructions') {
     const nQ = flatQuestions(test).length
     const maxM = Math.round(nQ * test.marking.correct * 100) / 100
-    // The founder's photo comes from the website's staff (Faculty) photos, matched by name; the website's founder photo is the fallback.
-    const founderPhoto = [FOUNDER.name, 'Himan Singh', 'Himan'].map(n => findWebsitePhoto(n)).find(Boolean) || FOUNDER.photo
     const slides = [
       { key: 'founder', icon: '🎓', kicker: 'From our Founder', title: 'A message to every candidate', body: <div className="cbt-founder">
-        <div className="cbt-founder-pic" key={founderPhoto}>
-          <img src={founderPhoto} alt={FOUNDER.name} onError={e => { e.currentTarget.parentNode.classList.add('nophoto') }} />
-          <span aria-hidden="true">{FOUNDER.name[0]}</span>
+        <div className="cbt-founder-pic logo">
+          <img src="/gnsi-mark.webp" alt="GNSI logo" onError={e => { e.currentTarget.parentNode.classList.add('nophoto') }} />
+          <span aria-hidden="true">G</span>
         </div>
         <div className="cbt-founder-txt">
           <blockquote>&ldquo;{FOUNDER.quote}&rdquo;</blockquote>
