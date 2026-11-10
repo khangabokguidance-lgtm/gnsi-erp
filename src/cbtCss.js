@@ -66,6 +66,14 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 @media (max-width:380px){.cbt-welcome h1{font-size:27px}.cbt-welcome-feats{grid-template-columns:1fr}}
 @media (min-width:640px){.cbt-welcome{padding:28px 34px 30px}.cbt-welcome h1{font-size:38px}.cbt-welcome-cta{flex-direction:row;max-width:none;justify-content:center}.cbt-welcome-go{padding:15px 28px}.cbt-welcome-feats{grid-template-columns:repeat(4,1fr)}}
 @media (prefers-reduced-motion:reduce){.cbt-welcome-go::after,.cbt-welcome-live span i{animation:none}}
+.cbt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px;margin:0 0 12px}
+.cbt-kpis>div{background:#fff;border:1px solid #e3e8f2;border-radius:12px;padding:10px 12px}
+.cbt-kpis small{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b}
+.cbt-kpis b{display:block;margin-top:2px;font-size:19px;color:#0f2a5c;font-variant-numeric:tabular-nums}
+.cbt-tops{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.cbt-tops>div{border:1px solid #e3e8f2;border-radius:12px;padding:10px 12px;background:#fbfcff}
+.cbt-tops>div>b{display:block;margin-bottom:6px;color:#0f2a5c}
+.cbt-tops .row{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13.5px}.cbt-tops .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cbt-tops .mk{font-variant-numeric:tabular-nums;font-weight:800}
 .cbt-filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .cbt-cd-sm{gap:5px;flex-wrap:nowrap}.cbt-cd-sm .cbt-cd-c{min-width:42px;padding:5px 6px;border-radius:9px}.cbt-cd-sm .cbt-cd-c b{font-size:15px}.cbt-cd-sm .cbt-cd-c small{font-size:8.5px;margin-top:2px}
 .cbt-fchip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;border:1px solid #cdd6e6;background:#fff;color:#0f2a5c;font-weight:700;font-size:12.5px;cursor:pointer;min-height:38px}

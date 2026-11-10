@@ -16,6 +16,7 @@ import ResponsiveTables from './ResponsiveTables'
 import CbtLive from './CbtLive'
 import CbtAnalysis from './CbtAnalysis'
 import CbtFlashControl from './CbtFlashControl'
+import CbtResultOut from './CbtResultOut'
 
 const download = (name, blob) => {
   const url = URL.createObjectURL(blob)
@@ -52,7 +53,7 @@ function CbtInner({ perms, currentUser }) {
   useEffect(() => { load(); loadOnline() }, [load, loadOnline])
   useEffect(() => {
     let live = true
-    if (tab === 'results' && resTest) {
+    if ((tab === 'results' || tab === 'board') && resTest) {
       const row = online?.find(o => o.id === resTest)
       Promise.all([
         cbtStore.listAttempts(resTest).then(a => a.map(x => ({ ...x, source: 'local' }))),
@@ -110,7 +111,7 @@ function CbtInner({ perms, currentUser }) {
             <p>Computer based tests in the SSC / TCS style: colour-coded palette, review marking, countdown timer, English and Meitei Mayek. Works on desktop, tablet and phone.</p>
           </div>
           <div className="cbt-tabs" role="tablist">
-            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['live', '🔴 Live'], ['results', '📊 Results']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
+            {[['tests', '📝 Tests'], ['online', '🌐 Online'], ['live', '🔴 Live'], ['results', '📊 Results'], ['board', '🏆 Result out']].map(([id, l]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setBuilder(null) }}>{l}</button>)}
           </div>
         </div>
       </div>
@@ -159,6 +160,8 @@ function CbtInner({ perms, currentUser }) {
       {pub && <PublishModal test={pub} row={online?.find(o => o.id === pub.id) || null} by={currentUser?.name || currentUser?.username || ''} onClose={() => setPub(null)} onChanged={loadOnline} flash={flash} />}
 
       {tab === 'live' && <CbtLive online={online} canEdit={canEdit} flash={flash} />}
+
+      {tab === 'board' && <CbtResultOut test={test} rows={rows} tests={tests} online={online} resTest={resTest} setResTest={setResTest} onView={attempt => setDone({ test, attempt, admin: true })} flash={flash} />}
 
       {tab === 'results' && <>
         <div className="card">
