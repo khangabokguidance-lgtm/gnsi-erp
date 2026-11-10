@@ -68,7 +68,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     }
   }, [])
   useEffect(() => { if (stage !== 'exam' && stage !== 'intro') return; try { const el = document.activeElement; if (el && /^(TEXTAREA|INPUT)$/.test(el.tagName)) el.blur() } catch { /* ignore */ } }, [stage])
-  useStaffPhotos()                                    // loads the photos (and re-renders when they arrive)
+  useStaffPhotos({ websiteOnly: true })               // only the website Faculty photos (the founder's) are needed here — no staff-table download for candidates
   const [a, setA] = useState(resume || null)
   // each candidate sees their own order when the test asks for it (seeded by the attempt id, so a reload looks the same)
   const test = useMemo(() => presentTest(baseTest, a?.id), [baseTest, a?.id])
