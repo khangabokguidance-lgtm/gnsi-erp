@@ -90,6 +90,15 @@ export const listPublicTests = async () => { try { const r = await rpc('cbt_publ
 export async function getPublicListFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('public_list').eq('id', id).maybeSingle(); return error || !data ? true : data.public_list !== false } catch { return true } }
 // Staff: does the exam page fill in this test's current access code by itself? (false when the column does not exist yet)
 export async function getAutoCodeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('auto_code').eq('id', id).maybeSingle(); return error || !data ? false : data.auto_code === true } catch { return false } }
+// ── the public TOP 5 board ─────────────────────────────────────────────────────
+// Staff publish a snapshot (top 5 only) into cbt_tests.top5; the public page reads it through cbt_top5_list().
+export async function saveTop5(id, snapshot) {
+  const { error } = await supabase.from('cbt_tests').update({ top5: snapshot }).eq('id', id)
+  if (error) throw new Error(/top5/.test(error.message || '') ? 'Run supabase/RUN_cbt_top5.sql in Supabase once, then try again.' : friendly(error))
+}
+export async function getTop5(id) { try { const { data, error } = await supabase.from('cbt_tests').select('top5').eq('id', id).maybeSingle(); return error ? null : data?.top5 || null } catch { return null } }
+// The latest published top-5 boards, newest first: [] if none or the database update is not run yet.
+export const listTop5 = async () => { try { const r = await rpc('cbt_top5_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
 // Past (closed) exams anyone may practise: [] if the database update is not run yet.
 export const listPracticeTests = async () => { try { const r = await rpc('cbt_practice_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }

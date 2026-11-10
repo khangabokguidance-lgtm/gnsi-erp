@@ -74,11 +74,12 @@ test('finder filter: open vs upcoming split and ordering', () => {
   assert.deepEqual(splitPublicTests(undefined), { open: [], upcoming: [] })
 })
 test('finder filter: which blocks each chip shows', () => {
-  assert.deepEqual(showBlocks('all'), { open: true, upcoming: true, practice: true })
-  assert.deepEqual(showBlocks('open'), { open: true, upcoming: false, practice: false })
-  assert.deepEqual(showBlocks('upcoming'), { open: false, upcoming: true, practice: false })
-  assert.deepEqual(showBlocks('practice'), { open: false, upcoming: false, practice: true })
-  assert.equal(FINDER_FILTERS.length, 4)
+  assert.deepEqual(showBlocks('all'), { open: true, upcoming: true, practice: true, top: true })
+  assert.deepEqual(showBlocks('open'), { open: true, upcoming: false, practice: false, top: false })
+  assert.deepEqual(showBlocks('upcoming'), { open: false, upcoming: true, practice: false, top: false })
+  assert.deepEqual(showBlocks('practice'), { open: false, upcoming: false, practice: true, top: false })
+  assert.deepEqual(showBlocks('top'), { open: false, upcoming: false, practice: false, top: true })
+  assert.equal(FINDER_FILTERS.length, 5)
 })
 
 test('the access code is picked out of free text', () => {

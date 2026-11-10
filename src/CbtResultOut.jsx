@@ -8,6 +8,8 @@ import { loadStudents } from './cbtCertPrint'
 import { buildBoard, classCounts, filterEntries, sortEntries, summarize, toppers, whatsappText } from './lib/cbtResultBoard'
 import { downloadCsv, downloadExcel, downloadPdf, printBoard, copyText } from './cbtResultExport'
 import { downloadCbtFormalCertificate } from './cbtFormalCert'
+import { makeTop5Snapshot } from './lib/cbtTop5'
+import { saveTop5, getTop5 } from './cbtRemote'
 
 const num = v => (v === null || v === undefined || v === '' ? '—' : v)
 const COLS = [['rank', 'Rank'], ['classRank', 'Class rank'], ['name', 'Candidate'], ['gcc', 'GCC'], ['class', 'Class'], ['marks', 'Marks'], ['percent', '%'], ['accuracy', 'Accuracy'], ['time', 'Min'], ['flags', 'Flags']]
@@ -26,6 +28,10 @@ export default function CbtResultOut({ test, rows, tests, online, resTest, setRe
   const [sort, setSort] = useState({ key: 'rank', dir: 'asc' })
   const [limit, setLimit] = useState(50)
   const [busy, setBusy] = useState('')
+  const [t5Name, setT5Name] = useState('short')      // names shown to viewers: short ("Himan S.") or full
+  const [t5Skip, setT5Skip] = useState(true)          // leave out candidates the camera / shield flagged
+  const [t5Class, setT5Class] = useState(true)        // also the top of each class
+  const [t5Pub, setT5Pub] = useState(null)            // the snapshot viewers see now (null = nothing published); undefined while loading
 
   useEffect(() => {
     let live = true
@@ -48,6 +54,14 @@ export default function CbtResultOut({ test, rows, tests, online, resTest, setRe
     return sortEntries(f, sort.key, sort.dir)
   }, [entries, classKeys, q, status, minPercent, flaggedOnly, passOnly, cutoff, sort])
 
+  const isOnline = !!(test && online?.some(o => o.id === test.id))
+  const testId = test?.id
+  useEffect(() => {
+    let live = true
+    if (testId) getTop5(testId).then(v => { if (live) setT5Pub(v) })
+    return () => { live = false }
+  }, [testId])
+  const t5Preview = useMemo(() => (entries.length ? makeTop5Snapshot({ entries, nameStyle: t5Name, skipFlagged: t5Skip, byClass: t5Class }) : null), [entries, t5Name, t5Skip, t5Class])
   const toggleClass = k => setClassKeys(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
   const setSortKey = k => setSort(s => (s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' }))
   const filtered = classKeys.size || q || status !== 'all' || minPercent !== '' || flaggedOnly || passOnly
@@ -92,6 +106,26 @@ export default function CbtResultOut({ test, rows, tests, online, resTest, setRe
             <button className="btn" disabled={!tops.length} onClick={async () => { const ok = await copyText(whatsappText({ test, summary, tops })); flash?.(ok ? 'Result message copied — paste it into WhatsApp.' : 'Could not copy. Select the text manually.') }}>💬 Copy for WhatsApp</button>
           </div>
           <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>CSV follows your filters; Excel, PDF and Print always contain everyone, by class.</p>
+        </div>
+
+        <div className="card" style={{ borderLeft: `4px solid ${t5Pub ? '#146c3a' : '#cbd5e1'}` }}>
+          <h3 style={{ margin: '0 0 4px' }}>🌟 Show the top 5 to viewers</h3>
+          <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>Viewers on the exam page see <b>only the top 5</b> of this test (and a trend across tests) — never the full result list, GCC numbers or phone numbers.</p>
+          {!isOnline && <p style={{ color: '#9a5b00', fontWeight: 700, margin: '0 0 8px' }}>This test is not published online, so there is no public page to show it on.</p>}
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>Names <select className="in" style={{ width: 'auto' }} value={t5Name} onChange={e => setT5Name(e.target.value)}><option value="short">Short (Himan S.)</option><option value="full">Full name</option></select></label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={t5Skip} onChange={e => setT5Skip(e.target.checked)} />Leave out flagged candidates</label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={t5Class} onChange={e => setT5Class(e.target.checked)} />Also top 5 of each class</label>
+          </div>
+          {t5Preview && <div className="cbt-tops" style={{ marginBottom: 8 }}>
+            <div><b>Overall — preview</b>{t5Preview.overall.map(x => <div key={x.rank + x.name} className="row"><span>{x.rank}</span><span className="nm">{x.name} <small className="muted">· {x.cls}</small></span><span className="mk">{x.marks}/{x.max}</span></div>)}</div>
+            {t5Preview.byClass.map(c => <div key={c.key}><b>{c.label}</b>{c.list.map(x => <div key={x.rank + x.name} className="row"><span>{x.rank}</span><span className="nm">{x.name}</span><span className="mk">{x.marks}/{x.max}</span></div>)}</div>)}
+          </div>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn gold" disabled={!isOnline || !t5Preview || !t5Preview.overall.length || !!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, t5Preview); setT5Pub(t5Preview); flash?.('Top 5 is now visible to viewers on the exam page.') })}>{t5Pub ? '🔄 Update the published top 5' : '🌟 Publish top 5'}</button>
+            {t5Pub && <button className="btn red" disabled={!!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, null); setT5Pub(null); flash?.('Top 5 hidden from viewers.') })}>Hide from viewers</button>}
+            <span className="muted" style={{ fontSize: 12.5 }}>{t5Pub ? `Published ${new Date(t5Pub.publishedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} — update it if marks change (for example after re-evaluating).` : 'Not shown to viewers yet.'}</span>
+          </div>
         </div>
 
         {(unmatched > 0 || noMedium > 0 || unclassified > 0) && <div className="card" style={{ background: '#fff9ea', borderColor: '#f3d38a' }}>
