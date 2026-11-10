@@ -49,8 +49,10 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 let T=null, A=null, cur=1, sec=0, lang='en', timer=null, endAt=0;
 
 const all=()=>T.sections.flatMap(s=>s.questions);
+const sname=s=>[s.label,s.title||s.name].filter(Boolean).join(' — ')||'Section';
+const stext=(s,mm)=>mm&&s.directionsMm?s.directionsMm:s.directions||'';
 const qOf=no=>all().find(q=>q.no===no);
-const pics=q=>q.images&&q.images.length?q.images:q.image?[q.image]:[];
+const pics=q=>q.images&&q.images.length?q.images:q.image?[q.image]:q.figure&&typeof q.figure==='string'?[q.figure]:[];
 const isImg=s=>/^data:image\//.test(s)||/^https?:\/\//.test(s);
 const fmt=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>String(n).padStart(2,'0');return h?`${h}:${p(m)}:${p(x)}`:`${m}:${p(x)}`};
 
@@ -99,14 +101,16 @@ function draw(){
   const txt=(a,b)=>lang==='mm'&&b?b:a;
   app.innerHTML=`<div class="top"><b>${esc(T.name)}</b><span class="clock" id="clock">${fmt(Math.round((endAt-Date.now())/1000))}</span>${hasMm?`<button class="btn" id="lang">${lang==='mm'?'English':'ꯃꯩꯇꯩ'}</button>`:''}</div>
   <div class="grid" style="margin-top:12px"><div>
-   <div class="tabs">${T.sections.map((x,i)=>`<span class="tab ${i===sec?'on':''}" data-s="${i}">${esc(x.name)}</span>`).join('')}</div>
+   <div class="tabs">${T.sections.map((x,i)=>`<span class="tab ${i===sec?'on':''}" data-s="${i}">${esc(sname(x))}</span>`).join('')}</div>
    <div class="card"><div class="mut">Question ${q.no} of ${all().length}</div>
+    ${s.directions&&q===s.questions[0]?`<div class="mut" style="white-space:pre-wrap;margin-bottom:8px">${esc(stext(s,lang==='mm'))}</div>`:''}
+    ${q.passage?`<div class="mut" style="white-space:pre-wrap;margin-bottom:8px;border-left:3px solid var(--line);padding-left:10px">${esc(txt(q.passage,q.passageMm))}</div>`:''}
     ${q.text?`<div class="qtext">${esc(txt(q.text,q.textMm))}</div>`:''}
     ${pics(q).filter(isImg).map(p=>`<img src="${esc(p)}" alt="">`).join('')}
     ${q.options.map(o=>`<div class="opt ${A.ans[q.no]===o.key?'sel':''}" data-k="${esc(o.key)}"><b>${esc(String(o.key).toUpperCase())}.</b><div>${o.text?esc(txt(o.text,o.textMm)):''}${o.image&&isImg(o.image)?`<img src="${esc(o.image)}" alt="">`:''}</div></div>`).join('')}
     <div class="row"><button class="btn" id="prev">‹ Previous</button><button class="btn" id="mr">${A.mark[q.no]?'Unmark review':'Mark for review'}</button><button class="btn" id="clr">Clear</button><button class="btn pri" id="next">Save &amp; Next ›</button></div>
    </div></div>
-   <div><div class="card"><b>${esc(s.name)}</b><div class="pal" style="margin-top:8px">${s.questions.map(x=>`<div class="pb ${status(x.no)} ${x.no===cur?'cur':''}" data-n="${x.no}">${x.no}</div>`).join('')}</div>
+   <div><div class="card"><b>${esc(sname(s))}</b><div class="pal" style="margin-top:8px">${s.questions.map(x=>`<div class="pb ${status(x.no)} ${x.no===cur?'cur':''}" data-n="${x.no}">${x.no}</div>`).join('')}</div>
     <div class="leg"><span><i style="background:#2e9e5b"></i>Answered</span><span><i style="background:#d9534f"></i>Not answered</span><span><i style="background:#7a4dc2"></i>Review</span><span><i style="background:#e6e9ef"></i>Not visited</span></div>
     <div class="row"><button class="btn gold" id="sub">Submit test</button></div></div></div></div>`;
   document.querySelectorAll('.tab').forEach(e=>e.onclick=()=>{sec=+e.dataset.s;go(T.sections[sec].questions[0].no)});
@@ -130,7 +134,7 @@ function finish(auto){
   app.innerHTML=`<div class="card"><h1>${esc(T.name)} — Result</h1>${auto?'<p class="r-bad">Time is up — your test was submitted automatically.</p>':''}
   ${show?`<div class="big">${score} / ${max}</div><p>✔ Correct <b>${ok}</b> · ✘ Wrong <b>${bad}</b> · Not answered <b>${skip}</b> · Accuracy ${ok+bad?Math.round(ok/(ok+bad)*100):0}%${A.switches?` · Left the page ×${A.switches}`:''}</p>`:'<p>Your test has been submitted.</p>'}
   <div class="row"><button class="btn pri" id="again">Try again</button><button class="btn" id="home">Choose another test</button></div></div>
-  ${show&&ans?T.sections.map(s=>`<div class="card"><h3>${esc(s.name)}</h3>${s.questions.map(q=>{const g=A.ans[q.no],good=g===q.answer;return `<div style="padding:8px 0;border-top:1px solid var(--line)"><div><b>${q.no}.</b> ${esc(q.text||'')} <span class="${!g?'mut':good?'r-ok':'r-bad'}">${!g?'— not answered':good?'✔':'✘'}</span></div>${q.options.map(o=>`<div style="padding:2px 8px;border-radius:6px;${o.key===q.answer?'background:#e7f6ec;':o.key===g?'background:#fde8e6;':''}">${esc(String(o.key).toUpperCase())}. ${esc(o.text||'')}${o.key===q.answer?' ✔':o.key===g?' (your answer)':''}</div>`).join('')}</div>`}).join('')}</div>`).join(''):''}`;
+  ${show&&ans?T.sections.map(s=>`<div class="card"><h3>${esc(sname(s))}</h3>${s.questions.map(q=>{const g=A.ans[q.no],good=g===q.answer;return `<div style="padding:8px 0;border-top:1px solid var(--line)"><div><b>${q.no}.</b> ${esc(q.text||'')} <span class="${!g?'mut':good?'r-ok':'r-bad'}">${!g?'— not answered':good?'✔':'✘'}</span></div>${q.options.map(o=>`<div style="padding:2px 8px;border-radius:6px;${o.key===q.answer?'background:#e7f6ec;':o.key===g?'background:#fde8e6;':''}">${esc(String(o.key).toUpperCase())}. ${esc(o.text||'')}${o.key===q.answer?' ✔':o.key===g?' (your answer)':''}</div>`).join('')}</div>`}).join('')}</div>`).join(''):''}`;
   $('#again').onclick=()=>intro(T);$('#home').onclick=()=>{T=null;home()};window.scrollTo(0,0);
 }
 home();

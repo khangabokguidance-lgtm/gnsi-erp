@@ -130,7 +130,11 @@ async function staticPractice(id) {
     const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
     if (!m) return null
     const r = await fetch(mockPath(m.slug, base), { cache: 'no-cache' })
-    return r.ok ? parseMock(await r.json()) : null
+    if (!r.ok) return null
+    const t = parseMock(await r.json())
+    // practice, like the database copy: no camera / full-screen rules, no minimum time, calculator and rough work on
+    return { ...t, name: `${t.name} — practice`, instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${t.instructions || ''}`.trim(),
+      marking: { ...(t.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((t.marking || {}).tools || {}) } }, showResult: true, showAnswers: true }
   } catch { return null }
 }
 
