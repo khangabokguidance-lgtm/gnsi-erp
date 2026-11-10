@@ -93,8 +93,11 @@ export async function getAutoCodeFlag(id) { try { const { data, error } = await 
 // ── the public TOP 5 board ─────────────────────────────────────────────────────
 // Staff publish a snapshot (top 5 only) into cbt_tests.top5; the public page reads it through cbt_top5_list().
 export async function saveTop5(id, snapshot) {
-  const { error } = await supabase.from('cbt_tests').update({ top5: snapshot }).eq('id', id)
+  // .select() so we can SEE whether a row changed: when the database refuses the change (no permission, or the test is not
+  // published online) it answers "0 rows, no error", which must not be reported as success
+  const { data, error } = await supabase.from('cbt_tests').update({ top5: snapshot }).eq('id', id).select('id')
   if (error) throw new Error(/top5/.test(error.message || '') ? 'Run supabase/RUN_cbt_top5.sql in Supabase once, then try again.' : friendly(error))
+  if (!data || !data.length) throw new Error('Nothing was saved — you may not have permission, or this test is not published online.')
 }
 export async function getTop5(id) { try { const { data, error } = await supabase.from('cbt_tests').select('top5').eq('id', id).maybeSingle(); return error ? null : data?.top5 || null } catch { return null } }
 // The latest published top-5 boards, newest first: [] if none or the database update is not run yet.

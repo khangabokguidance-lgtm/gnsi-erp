@@ -3,9 +3,11 @@
 //   • the whole invitation text   "Online exam: … / Link: https://site/exam?t=ID / Access code: 123456 / …"  (as copied from WhatsApp)
 //   • a bare Test ID
 
+const MAX_PASTE = 4000          // an invitation is a few hundred characters; never scan a huge paste
+
 // The access code, found in free text: "Access code: 123456", "Code - AB12CD", or "?c=123456" in a link. null when there is none.
 export function extractCode(text) {
-  const s = String(text ?? '')
+  const s = String(text ?? '').slice(0, MAX_PASTE)
   const q = s.match(/[?&]c=([A-Za-z0-9]{4,20})(?![A-Za-z0-9])/)
   if (q) return q[1]
   const m = s.match(/(?:access\s*code|exam\s*code|passcode|code)\s*(?:is)?\s*[:=\-–—]?\s*([A-Za-z0-9]{4,20})(?![A-Za-z0-9])/i)
@@ -15,7 +17,7 @@ export function extractCode(text) {
 const urlIn = s => { const m = s.match(/(?:https?:\/\/|\b[\w.-]+\.[a-z]{2,}\/)[^\s<>"')]+/gi); return m ? m : [] }
 
 export function parseExamRef(raw) {
-  const s = String(raw ?? '').trim()
+  const s = String(raw ?? '').slice(0, MAX_PASTE).trim()
   if (!s) return null
   let id = '', code = extractCode(s) || ''
   if (/\s/.test(s) || /[/?=]/.test(s)) {

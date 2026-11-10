@@ -14,7 +14,7 @@ import { saveTop5, getTop5 } from './cbtRemote'
 const num = v => (v === null || v === undefined || v === '' ? '—' : v)
 const COLS = [['rank', 'Rank'], ['classRank', 'Class rank'], ['name', 'Candidate'], ['gcc', 'GCC'], ['class', 'Class'], ['marks', 'Marks'], ['percent', '%'], ['accuracy', 'Accuracy'], ['time', 'Min'], ['flags', 'Flags']]
 
-export default function CbtResultOut({ test, rows, tests, online, resTest, setResTest, onView, flash }) {
+export default function CbtResultOut({ test, rows, tests, online, resTest, setResTest, onView, canEdit = false, flash }) {
   const [students, setStudents] = useState(null)
   const [secondary, setSecondary] = useState({})
   const [loadErr, setLoadErr] = useState('')
@@ -112,6 +112,7 @@ export default function CbtResultOut({ test, rows, tests, online, resTest, setRe
           <h3 style={{ margin: '0 0 4px' }}>🌟 Show the top 5 to viewers</h3>
           <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }}>Viewers on the exam page see <b>only the top 5</b> of this test (and a trend across tests) — never the full result list, GCC numbers or phone numbers.</p>
           {!isOnline && <p style={{ color: '#9a5b00', fontWeight: 700, margin: '0 0 8px' }}>This test is not published online, so there is no public page to show it on.</p>}
+          {!canEdit && <p style={{ color: '#9a5b00', fontWeight: 700, margin: '0 0 8px' }}>You can preview this, but only someone with edit permission on the CBT module can publish it.</p>}
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>Names <select className="in" style={{ width: 'auto' }} value={t5Name} onChange={e => setT5Name(e.target.value)}><option value="short">Short (Himan S.)</option><option value="full">Full name</option></select></label>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={t5Skip} onChange={e => setT5Skip(e.target.checked)} />Leave out flagged candidates</label>
@@ -122,8 +123,8 @@ export default function CbtResultOut({ test, rows, tests, online, resTest, setRe
             {t5Preview.byClass.map(c => <div key={c.key}><b>{c.label}</b>{c.list.map(x => <div key={x.rank + x.name} className="row"><span>{x.rank}</span><span className="nm">{x.name}</span><span className="mk">{x.marks}/{x.max}</span></div>)}</div>)}
           </div>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button className="btn gold" disabled={!isOnline || !t5Preview || !t5Preview.overall.length || !!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, t5Preview); setT5Pub(t5Preview); flash?.('Top 5 is now visible to viewers on the exam page.') })}>{t5Pub ? '🔄 Update the published top 5' : '🌟 Publish top 5'}</button>
-            {t5Pub && <button className="btn red" disabled={!!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, null); setT5Pub(null); flash?.('Top 5 hidden from viewers.') })}>Hide from viewers</button>}
+            <button className="btn gold" disabled={!canEdit || !isOnline || !t5Preview || !t5Preview.overall.length || !!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, t5Preview); setT5Pub(t5Preview); flash?.('Top 5 is now visible to viewers on the exam page.') })}>{t5Pub ? '🔄 Update the published top 5' : '🌟 Publish top 5'}</button>
+            {t5Pub && <button className="btn red" disabled={!canEdit || !!busy} onClick={() => run('top 5', async () => { await saveTop5(test.id, null); setT5Pub(null); flash?.('Top 5 hidden from viewers.') })}>Hide from viewers</button>}
             <span className="muted" style={{ fontSize: 12.5 }}>{t5Pub ? `Published ${new Date(t5Pub.publishedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} — update it if marks change (for example after re-evaluating).` : 'Not shown to viewers yet.'}</span>
           </div>
         </div>

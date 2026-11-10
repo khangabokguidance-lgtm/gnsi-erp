@@ -3,13 +3,13 @@
 --   A closed exam can be re-taken by anyone as a practice test — in the browser only, nothing is saved or counted.
 --   It is released only when the exam is closed AND its answers are already released to candidates
 --   (cbt_answers_open: closed, and no attempt still running) AND the test "shows answers" AND the admin has
---   not turned practice off (cbt_tests.practice_after_close, default on; a tick box in Publish).
+--   switched practice ON for the test (cbt_tests.practice_after_close, default OFF; a tick box in Publish).
 --   Tests hidden from the public page (public_list = false) are not offered for practice either.
 -- Safe to run more than once.
 -- ────────────────────────────────────────────────────────────────────────────
 
 alter table public.cbt_tests add column if not exists public_list boolean not null default true;
-alter table public.cbt_tests add column if not exists practice_after_close boolean not null default true;
+alter table public.cbt_tests add column if not exists practice_after_close boolean not null default false;   -- opt-in per test (Publish → "Allow practice after it closes")
 
 create or replace function public.cbt_practice_ok(t public.cbt_tests)
 returns boolean
