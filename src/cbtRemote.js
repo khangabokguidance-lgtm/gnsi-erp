@@ -2,6 +2,7 @@
 // anywhere. Candidates only ever call the cbt_* database functions (supabase/migrations/20261034_cbt_online_exam.sql);
 // the answer key stays in a staff-only table. Staff read and manage the tables directly.
 import { supabase } from './supabase'
+import { buildMockFile, manifestEntry, upsertIndex, dropIndex, MOCK_SLUG } from './lib/cbtMock'
 import { friendly, splitKey, joinKey, toAttempt, packMarks } from './lib/cbtOnlineLogic'
 export * from './lib/cbtOnlineLogic'
 
@@ -137,4 +138,29 @@ export async function applyRescore(changes) {
     done++
   }
   return done
+}
+
+// ── practice copies on the CDN (public storage bucket cbt-practice; supabase/RUN_cbt_practice_bucket.sql) ──
+const PRACTICE_BUCKET = 'cbt-practice'
+const practiceUrl = name => supabase.storage.from(PRACTICE_BUCKET).getPublicUrl(name).data.publicUrl
+export const practiceCopyUrl = slug => practiceUrl(`${slug}.json`)
+const putJson = async (name, body, cacheControl) => {
+  const { error } = await supabase.storage.from(PRACTICE_BUCKET).upload(name, new Blob([JSON.stringify(body)], { type: 'application/json' }), { upsert: true, contentType: 'application/json', cacheControl })
+  if (error) throw new Error(/bucket not found/i.test(error.message || '') ? 'Run supabase/RUN_cbt_practice_bucket.sql in the Supabase SQL editor first.' : friendly(error))
+}
+// the public list (fresh from the network; null if the bucket or list does not exist yet)
+export async function listPracticeCopies() {
+  try { const r = await fetch(practiceUrl('index.json'), { cache: 'no-cache' }); if (!r.ok) return []; const j = await r.json(); return Array.isArray(j) ? j.filter(m => m && MOCK_SLUG.test(String(m.slug))) : [] } catch { return [] }
+}
+// Make the paper (with its key) practisable by any number of students. Only for a CLOSED exam: the file carries the answers.
+export async function publishPracticeCopy(test) {
+  const file = buildMockFile(test)                                   // refuses a paper with a missing key
+  await putJson(`${file.slug}.json`, file, '3600')
+  await putJson('index.json', upsertIndex(await listPracticeCopies(), manifestEntry(file)), '60')
+  return file.slug
+}
+export async function removePracticeCopy(slug) {
+  if (!MOCK_SLUG.test(slug)) throw new Error('Bad name.')
+  await putJson('index.json', dropIndex(await listPracticeCopies(), slug), '60')
+  await supabase.storage.from(PRACTICE_BUCKET).remove([`${slug}.json`])
 }

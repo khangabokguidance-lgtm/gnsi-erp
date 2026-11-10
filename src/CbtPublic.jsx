@@ -8,7 +8,7 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
@@ -124,17 +124,22 @@ function Top5Card({ item }) {
 // offer to continue an exam that was started on this device.
 // If staff added this past exam as a static mock (public/mocks/, entry testId = the exam id), practise from that file: the CDN serves it, so any number of students can practise with no database call.
 async function staticPractice(id) {
+  const read = async url => { try { const r = await fetch(url, { cache: 'no-cache' }); return r.ok ? r : null } catch { return null } }
   try {
     const base = import.meta.env.BASE_URL
-    const idx = await fetch(`${base}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : []))
-    const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
-    if (!m) return null
-    const r = await fetch(mockPath(m.slug, base), { cache: 'no-cache' })
-    if (!r.ok) return null
-    const t = parseMock(await r.json())
-    // practice, like the database copy: no camera / full-screen rules, no minimum time, calculator and rough work on
-    return { ...t, name: `${t.name} — practice`, instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${t.instructions || ''}`.trim(),
-      marking: { ...(t.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((t.marking || {}).tools || {}) } }, showResult: true, showAnswers: true }
+    // copies staff published from the admin screen (public storage bucket) come first, then ones committed to the site (public/mocks/)
+    const sources = [[await listPracticeCopies(), slug => practiceCopyUrl(slug)], [await (await read(`${base}mocks/index.json`))?.json?.().catch(() => []) || [], slug => mockPath(slug, base)]]
+    for (const [idx, urlOf] of sources) {
+      const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
+      if (!m) continue
+      const r = await read(urlOf(m.slug))
+      if (!r) continue
+      const t = parseMock(await r.json())
+      // practice, like the database copy: no camera / full-screen rules, no minimum time, calculator and rough work on
+      return { ...t, name: `${t.name} — practice`, instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${t.instructions || ''}`.trim(),
+        marking: { ...(t.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((t.marking || {}).tools || {}) } }, showResult: true, showAnswers: true }
+    }
+    return null
   } catch { return null }
 }
 

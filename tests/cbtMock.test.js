@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildMockFile, parseMock, slugify, manifestEntry, mockLink, MOCK_FORMAT } from '../src/lib/cbtMock.js'
+import { upsertIndex, dropIndex, buildMockFile, parseMock, slugify, manifestEntry, mockLink, MOCK_FORMAT } from '../src/lib/cbtMock.js'
 
 const paper = (answered = true) => ({
   id: 't1', name: '8th Mega Mock Test', durationMin: 120, marking: { correct: 1, wrong: 0.25 }, instructions: 'Read.',
@@ -36,4 +36,12 @@ test('manifest entry and link', () => {
   const f = buildMockFile(paper(), { now: Date.UTC(2026, 10, 10) })
   assert.deepEqual(manifestEntry(f), { slug: '8th-mega-mock-test', name: '8th Mega Mock Test', durationMin: 120, questions: 2, date: '2026-11-10', testId: 't1' })
   assert.equal(mockLink('a-b', 'https://x.in'), 'https://x.in/exam?mock=a-b')
+})
+
+test('index helpers add, replace and drop by slug', () => {
+  const a = { slug: 'a', name: 'A' }, b = { slug: 'b', name: 'B' }
+  assert.deepEqual(upsertIndex([a], b).map(x => x.slug), ['b', 'a'])
+  assert.deepEqual(upsertIndex([a, b], { slug: 'a', name: 'A2' }).map(x => x.name), ['A2', 'B'])
+  assert.deepEqual(upsertIndex(null, a), [a])
+  assert.deepEqual(dropIndex([a, b], 'a'), [b])
 })

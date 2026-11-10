@@ -46,3 +46,7 @@ export function manifestEntry(file) {
 }
 export const mockPath = (slug, base = '/') => `${base}mocks/${slug}.json`
 export const mockLink = (slug, origin = typeof window !== 'undefined' ? window.location.origin : '') => `${origin}/exam?mock=${encodeURIComponent(slug)}`
+
+// the list of practice copies (index.json): newest first, one entry per slug
+export const upsertIndex = (list, entry) => [entry, ...(Array.isArray(list) ? list : []).filter(m => m && m.slug !== entry.slug)]
+export const dropIndex = (list, slug) => (Array.isArray(list) ? list : []).filter(m => m && m.slug !== slug)
