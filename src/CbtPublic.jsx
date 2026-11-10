@@ -8,11 +8,12 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
 import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
+import { trendOf } from './lib/cbtTop5'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
 const backupKey = id => `gnsi-cbt-bk:${id}`
@@ -73,6 +74,51 @@ function CbtWelcome({ inst, onStart, onPractice }) {
   )
 }
 
+// Trend of the latest tests: the best score and the average, test by test (percent).
+function TrendChart({ points }) {
+  if (points.length < 2) return null
+  const W = 320, H = 120, L = 30, R = 10, T = 12, B = 30
+  const vals = points.flatMap(p => [p.topPercent, p.avgPercent]).filter(v => v != null)
+  const lo = Math.max(0, Math.floor((Math.min(...vals) - 5) / 10) * 10), hi = Math.min(100, Math.ceil((Math.max(...vals) + 5) / 10) * 10)
+  const x = i => L + (i * (W - L - R)) / (points.length - 1), y = v => T + (1 - (v - lo) / Math.max(1, hi - lo)) * (H - T - B)
+  const line = key => points.map((p, i) => (p[key] == null ? null : `${x(i)},${y(p[key])}`)).filter(Boolean).join(' ')
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Trend of the top score and the average across the latest tests" style={{ width: '100%', maxWidth: 460, display: 'block' }}>
+      {[lo, (lo + hi) / 2, hi].map(v => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#e3e8f2" /><text x={L - 4} y={y(v) + 3} fontSize="8" textAnchor="end" fill="#64748b">{Math.round(v)}%</text></g>)}
+      <polyline points={line('avgPercent')} fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="4 3" />
+      <polyline points={line('topPercent')} fill="none" stroke="#b8913f" strokeWidth="2.5" />
+      {points.map((p, i) => <g key={p.id}>
+        {p.topPercent != null && <circle cx={x(i)} cy={y(p.topPercent)} r="3.5" fill="#b8913f" />}
+        <text x={x(i)} y={H - 16} fontSize="8" textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} fill="#334155">{p.name.length > 11 ? `${p.name.slice(0, 10)}…` : p.name}</text>
+        {p.topPercent != null && <text x={x(i)} y={y(p.topPercent) - 7} fontSize="8.5" fontWeight="700" textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} fill="#7a5a14">{p.topPercent}%</text>}
+      </g>)}
+    </svg>
+  )
+}
+
+// One test's published top 5: overall, or the top of a class.
+function Top5Card({ item }) {
+  const t = item.top5 || {}
+  const tabs = [{ key: 'all', label: 'Overall', list: t.overall || [] }, ...(t.byClass || []).map(c => ({ key: c.key, label: c.label, list: c.list || [] }))]
+  const [tab, setTab] = useState('all')
+  const cur = tabs.find(x => x.key === tab) || tabs[0]
+  const medal = ['🥇', '🥈', '🥉']
+  return (
+    <div className="card" style={{ borderLeft: '4px solid #b8913f' }}>
+      <h3 style={{ margin: '0 0 2px' }}>{item.name}</h3>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{t.stats?.appeared ? `${t.stats.appeared} appeared · ` : ''}{t.stats?.avgPercent != null ? `average ${t.stats.avgPercent}%` : ''}</div>
+      {tabs.length > 1 && <div className="cbt-filters" role="group" aria-label="Class">{tabs.map(x => <button key={x.key} type="button" className={`cbt-fchip${tab === x.key ? ' on' : ''}`} aria-pressed={tab === x.key} onClick={() => setTab(x.key)}>{x.label}</button>)}</div>}
+      {cur.list.map(r => (
+        <div key={`${r.rank}${r.name}`} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 0', borderTop: '1px solid #eef1f6' }}>
+          <span style={{ width: 28, textAlign: 'center', fontSize: 20, fontWeight: 800 }}>{medal[r.rank - 1] || r.rank}</span>
+          <div style={{ flex: 1, minWidth: 0 }}><b>{r.name}</b>{tab === 'all' && r.cls ? <div className="muted" style={{ fontSize: 12.5 }}>{r.cls}</div> : null}</div>
+          <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}><b>{r.marks}</b><span className="muted"> / {r.max}</span>{r.percent != null && <div className="muted" style={{ fontSize: 12.5 }}>{r.percent}%</div>}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Opened as /exam with no test in the link (e.g. from the website menu): ask for the Test ID or the full link, and
 // offer to continue an exam that was started on this device.
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
@@ -82,6 +128,9 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
   const [past, setPast] = useState([])       // closed exams that may be practised
   const [filter, setFilter] = useState('all')   // all | open | upcoming | practice
+  const [top, setTop] = useState([])         // published top-5 boards, newest first
+  const [topMore, setTopMore] = useState(false)
+  useEffect(() => { let live = true; listTop5().then(r => { if (live) setTop(r) }); return () => { live = false } }, [])
   useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
   const scan = () => {
     const out = []
@@ -123,8 +172,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         ))}
       </div>}
       <div className="cbt-filters" role="group" aria-label="Show">
-        {FINDER_FILTERS.map(([id, label]) => {
-          const n = id === 'open' ? split.open.length : id === 'upcoming' ? split.upcoming.length : id === 'practice' ? past.length + (onPractice ? 1 : 0) : split.open.length + split.upcoming.length + past.length
+        {FINDER_FILTERS.filter(([id]) => id !== 'top' || top.length > 0).map(([id, label]) => {
+          const n = id === 'open' ? split.open.length : id === 'upcoming' ? split.upcoming.length : id === 'practice' ? past.length + (onPractice ? 1 : 0) : id === 'top' ? top.length : split.open.length + split.upcoming.length + past.length + top.length
           return <button key={id} type="button" className={`cbt-fchip${filter === id ? ' on' : ''}`} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}<i>{n}</i></button>
         })}
       </div>
@@ -156,7 +205,17 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         ))}
       </div>}
       {(filter === 'open' && !split.open.length) && <div className="card muted">No test is open right now. Check <button type="button" className="cbt-link" onClick={() => setFilter('upcoming')}>Upcoming</button> or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
+      {(filter === 'top' && !top.length) && <div className="card muted">No top-5 board has been published yet.</div>}
       {(filter === 'upcoming' && !split.upcoming.length) && <div className="card muted">No upcoming test has been announced yet. Check back soon, or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
+      {show.top && top.length > 0 && <>
+        {(() => { const tr = trendOf(top); return tr.points.length >= 2 && <div className="card">
+          <h3 style={{ margin: '0 0 2px' }}>📈 Trend — how the toppers are doing</h3>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>Best score <span style={{ color: '#b8913f', fontWeight: 800 }}>━</span> and average <span style={{ color: '#94a3b8', fontWeight: 800 }}>┅</span> in the latest tests.{tr.direction && tr.direction !== 'flat' ? ` The top score ${tr.direction === 'up' ? 'rose' : 'fell'} by ${Math.abs(tr.change)}% in the latest test.` : ''}</div>
+          <TrendChart points={tr.points} />
+        </div> })()}
+        {(topMore ? top : top.slice(0, 2)).map(i => <Top5Card key={i.id} item={i} />)}
+        {top.length > 2 && !topMore && <button type="button" className="btn" onClick={() => setTopMore(true)}>Show earlier tests ({top.length - 2})</button>}
+      </>}
       {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
