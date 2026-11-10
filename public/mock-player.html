@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GNSI Mock Test Player</title>
+<style>
+:root{--navy:#1f3a6e;--gold:#c8962b;--ok:#146c3a;--bad:#b42318;--ink:#16202f;--mut:#64748b;--line:#dfe5ee;--bg:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:980px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 12px}
+h1,h2,h3{margin:0 0 8px}.mut{color:var(--mut);font-size:14px}
+.btn{font:inherit;font-weight:700;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 16px;cursor:pointer}
+.btn.pri{background:var(--navy);border-color:var(--navy);color:#fff}.btn.gold{background:var(--gold);border-color:var(--gold);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.clock{font:700 20px ui-monospace,monospace;background:#0e2147;padding:4px 12px;border-radius:8px}.clock.low{background:var(--bad)}
+.grid{display:grid;grid-template-columns:1fr 250px;gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.qtext{font-size:18px;white-space:pre-wrap;margin:6px 0 12px}.qtext img,.opt img{max-width:100%;max-height:300px;display:block;margin:8px 0}
+.opt{display:flex;gap:10px;align-items:flex-start;border:2px solid var(--line);border-radius:12px;padding:11px 12px;margin:8px 0;cursor:pointer;background:#fff}
+.opt.sel{border-color:var(--navy);background:#eef3fd}.opt b{min-width:22px}
+.pal{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.pb{border:1px solid var(--line);border-radius:8px;padding:8px 0;text-align:center;font-weight:700;cursor:pointer;background:#e6e9ef}
+.pb.A{background:#2e9e5b;color:#fff;border-color:#2e9e5b}.pb.NA{background:#d9534f;color:#fff;border-color:#d9534f}.pb.MR{background:#7a4dc2;color:#fff;border-color:#7a4dc2}.pb.AMR{background:#7a4dc2;color:#fff;box-shadow:inset 0 0 0 3px #2e9e5b}.pb.cur{outline:3px solid var(--gold)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.tab{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;font-size:14px}.tab.on{background:var(--navy);color:#fff}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.big{font-size:40px;font-weight:800;color:var(--navy)}
+.leg{font-size:12px;display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.r-ok{color:var(--ok);font-weight:700}.r-bad{color:var(--bad);font-weight:700}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div id="app" class="wrap"></div>
+<script>
+/* GNSI Mock Test Player — one self-contained file. Everything runs in this browser; nothing is sent anywhere.
+   Load a mock paper by choosing its .json file (made with CBT > Publish > "Static mock file"),
+   or paste a paper into window.MOCK below to ship one fixed test inside this file. */
+window.MOCK = null;
+
+const SAMPLE = {format:'gnsi-mock-1',slug:'sample',name:'Sample Mock (3 questions)',durationMin:5,marking:{correct:1,wrong:0.25},instructions:'This is a sample so you can see how the player works.\nEach correct answer gives 1 mark; each wrong answer loses 0.25.',showResult:true,showAnswers:true,
+ sections:[{id:'s1',name:'General Knowledge',questions:[
+  {no:1,text:'Which is the capital of Manipur?',options:[{key:'a',text:'Imphal'},{key:'b',text:'Delhi'},{key:'c',text:'Pune'},{key:'d',text:'Agra'}],answer:'a'},
+  {no:2,text:'How many days are in a leap year?',options:[{key:'a',text:'365'},{key:'b',text:'366'},{key:'c',text:'364'},{key:'d',text:'360'}],answer:'b'},
+  {no:3,text:'2 + 2 × 2 = ?',options:[{key:'a',text:'8'},{key:'b',text:'6'},{key:'c',text:'4'},{key:'d',text:'2'}],answer:'b'}]}]};
+
+const $=s=>document.querySelector(s), app=$('#app');
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let T=null, A=null, cur=1, sec=0, lang='en', timer=null, endAt=0;
+
+const all=()=>T.sections.flatMap(s=>s.questions);
+const qOf=no=>all().find(q=>q.no===no);
+const pics=q=>q.images&&q.images.length?q.images:q.image?[q.image]:[];
+const isImg=s=>/^data:image\//.test(s)||/^https?:\/\//.test(s);
+const fmt=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60,p=n=>String(n).padStart(2,'0');return h?`${h}:${p(m)}:${p(x)}`:`${m}:${p(x)}`};
+
+function valid(j){
+  if(!j||j.format!=='gnsi-mock-1'||!Array.isArray(j.sections)||!j.sections.length) throw new Error('This is not a valid mock test file.');
+  if(!j.sections.some(s=>s.questions&&s.questions.length)) throw new Error('This mock test has no questions.');
+  if(j.sections.some(s=>s.questions.some(q=>!q.answer))) throw new Error('This mock test is missing answers, so it cannot be marked.');
+  return j;
+}
+
+function home(msg){
+  app.innerHTML=`<div class="card"><h1>GNSI Mock Test Player</h1><p class="mut">Runs completely on this device. Your answers and score are never sent anywhere.</p>
+  ${window.MOCK?`<button class="btn gold" id="go">▶ Start: ${esc(window.MOCK.name)}</button>`:`<div class="drop"><p><b>Choose your mock test file</b> (.json)</p><input type="file" id="file" accept=".json,application/json"><p class="mut">Or <a href="#" id="demo">try the sample test</a>.</p></div>`}
+  ${msg?`<p role="alert" class="r-bad">${esc(msg)}</p>`:''}</div>`;
+  if($('#go'))$('#go').onclick=()=>intro(window.MOCK);
+  if($('#demo'))$('#demo').onclick=e=>{e.preventDefault();intro(SAMPLE)};
+  if($('#file'))$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{intro(valid(JSON.parse(r.result)))}catch(x){home(x.message)}};r.readAsText(f)};
+}
+
+function intro(t){
+  try{T=valid(t)}catch(e){return home(e.message)}
+  const n=all().length, m=T.marking||{};
+  app.innerHTML=`<div class="card"><h1>${esc(T.name)}</h1>
+  <p><b>${n}</b> questions · <b>${T.durationMin}</b> minutes · +${m.correct??1} for each correct answer${m.wrong?`, −${m.wrong} for each wrong answer`:''}</p>
+  <div style="white-space:pre-wrap">${esc(T.instructions||'')}</div>
+  <p class="mut">Do not refresh or close this page while you write — progress is not saved. Leaving the page is counted.</p>
+  <label><input type="checkbox" id="ok"> I have read the instructions.</label>
+  <div class="row"><button class="btn pri" id="start" disabled>Start the test</button><button class="btn" id="back">Back</button></div></div>`;
+  $('#ok').onchange=e=>$('#start').disabled=!e.target.checked;
+  $('#back').onclick=()=>home();
+  $('#start').onclick=start;
+}
+
+function start(){
+  A={ans:{},vis:{},mark:{},switches:0,startedAt:Date.now()};
+  cur=all()[0].no;sec=0;lang='en';A.vis[cur]=1;endAt=Date.now()+T.durationMin*60000;
+  const warn=e=>{e.preventDefault();e.returnValue=''};window.onbeforeunload=warn;
+  document.onvisibilitychange=()=>{if(document.hidden&&A&&!A.done)A.switches++};
+  timer=setInterval(tick,1000);draw();
+}
+function tick(){const left=Math.round((endAt-Date.now())/1000),c=$('#clock');if(c){c.textContent=fmt(left);c.classList.toggle('low',left<=300)}if(left<=0)finish(true)}
+
+function status(no){const a=!!A.ans[no],m=!!A.mark[no];return a&&m?'AMR':a?'A':m?'MR':A.vis[no]?'NA':''}
+function draw(){
+  const s=T.sections[sec],q=qOf(cur),hasMm=all().some(x=>x.textMm||(x.options||[]).some(o=>o.textMm));
+  const txt=(a,b)=>lang==='mm'&&b?b:a;
+  app.innerHTML=`<div class="top"><b>${esc(T.name)}</b><span class="clock" id="clock">${fmt(Math.round((endAt-Date.now())/1000))}</span>${hasMm?`<button class="btn" id="lang">${lang==='mm'?'English':'ꯃꯩꯇꯩ'}</button>`:''}</div>
+  <div class="grid" style="margin-top:12px"><div>
+   <div class="tabs">${T.sections.map((x,i)=>`<span class="tab ${i===sec?'on':''}" data-s="${i}">${esc(x.name)}</span>`).join('')}</div>
+   <div class="card"><div class="mut">Question ${q.no} of ${all().length}</div>
+    ${q.text?`<div class="qtext">${esc(txt(q.text,q.textMm))}</div>`:''}
+    ${pics(q).filter(isImg).map(p=>`<img src="${esc(p)}" alt="">`).join('')}
+    ${q.options.map(o=>`<div class="opt ${A.ans[q.no]===o.key?'sel':''}" data-k="${esc(o.key)}"><b>${esc(String(o.key).toUpperCase())}.</b><div>${o.text?esc(txt(o.text,o.textMm)):''}${o.image&&isImg(o.image)?`<img src="${esc(o.image)}" alt="">`:''}</div></div>`).join('')}
+    <div class="row"><button class="btn" id="prev">‹ Previous</button><button class="btn" id="mr">${A.mark[q.no]?'Unmark review':'Mark for review'}</button><button class="btn" id="clr">Clear</button><button class="btn pri" id="next">Save &amp; Next ›</button></div>
+   </div></div>
+   <div><div class="card"><b>${esc(s.name)}</b><div class="pal" style="margin-top:8px">${s.questions.map(x=>`<div class="pb ${status(x.no)} ${x.no===cur?'cur':''}" data-n="${x.no}">${x.no}</div>`).join('')}</div>
+    <div class="leg"><span><i style="background:#2e9e5b"></i>Answered</span><span><i style="background:#d9534f"></i>Not answered</span><span><i style="background:#7a4dc2"></i>Review</span><span><i style="background:#e6e9ef"></i>Not visited</span></div>
+    <div class="row"><button class="btn gold" id="sub">Submit test</button></div></div></div></div>`;
+  document.querySelectorAll('.tab').forEach(e=>e.onclick=()=>{sec=+e.dataset.s;go(T.sections[sec].questions[0].no)});
+  document.querySelectorAll('.pb').forEach(e=>e.onclick=()=>go(+e.dataset.n));
+  document.querySelectorAll('.opt').forEach(e=>e.onclick=()=>{A.ans[q.no]=e.dataset.k;draw()});
+  $('#clr').onclick=()=>{delete A.ans[q.no];draw()};
+  $('#mr').onclick=()=>{A.mark[q.no]?delete A.mark[q.no]:A.mark[q.no]=1;draw()};
+  $('#prev').onclick=()=>step_(-1);$('#next').onclick=()=>step_(1);
+  $('#sub').onclick=()=>{const un=all().filter(x=>!A.ans[x.no]).length;if(confirm(un?`${un} question${un>1?'s are':' is'} not answered. Submit anyway?`:'Submit the test now?'))finish(false)};
+  if($('#lang'))$('#lang').onclick=()=>{lang=lang==='mm'?'en':'mm';draw()};
+}
+function go(no){cur=no;A.vis[no]=1;sec=T.sections.findIndex(s=>s.questions.some(q=>q.no===no));draw()}
+function step_(d){const l=all(),i=l.findIndex(q=>q.no===cur),n=l[i+d];if(n)go(n.no)}
+
+function finish(auto){
+  if(A.done)return;A.done=1;clearInterval(timer);window.onbeforeunload=null;document.onvisibilitychange=null;
+  const m=T.marking||{},c=+m.correct||1,w=+m.wrong||0;let ok=0,bad=0,skip=0;
+  all().forEach(q=>{const g=A.ans[q.no];if(!g)skip++;else if(g===q.answer)ok++;else bad++});
+  const score=Math.round((ok*c-bad*w)*100)/100,max=all().length*c;
+  const show=T.showResult!==false,ans=T.showAnswers!==false;
+  app.innerHTML=`<div class="card"><h1>${esc(T.name)} — Result</h1>${auto?'<p class="r-bad">Time is up — your test was submitted automatically.</p>':''}
+  ${show?`<div class="big">${score} / ${max}</div><p>✔ Correct <b>${ok}</b> · ✘ Wrong <b>${bad}</b> · Not answered <b>${skip}</b> · Accuracy ${ok+bad?Math.round(ok/(ok+bad)*100):0}%${A.switches?` · Left the page ×${A.switches}`:''}</p>`:'<p>Your test has been submitted.</p>'}
+  <div class="row"><button class="btn pri" id="again">Try again</button><button class="btn" id="home">Choose another test</button></div></div>
+  ${show&&ans?T.sections.map(s=>`<div class="card"><h3>${esc(s.name)}</h3>${s.questions.map(q=>{const g=A.ans[q.no],good=g===q.answer;return `<div style="padding:8px 0;border-top:1px solid var(--line)"><div><b>${q.no}.</b> ${esc(q.text||'')} <span class="${!g?'mut':good?'r-ok':'r-bad'}">${!g?'— not answered':good?'✔':'✘'}</span></div>${q.options.map(o=>`<div style="padding:2px 8px;border-radius:6px;${o.key===q.answer?'background:#e7f6ec;':o.key===g?'background:#fde8e6;':''}">${esc(String(o.key).toUpperCase())}. ${esc(o.text||'')}${o.key===q.answer?' ✔':o.key===g?' (your answer)':''}</div>`).join('')}</div>`}).join('')}</div>`).join(''):''}`;
+  $('#again').onclick=()=>intro(T);$('#home').onclick=()=>{T=null;home()};window.scrollTo(0,0);
+}
+home();
+</script>
+</body>
+</html>
