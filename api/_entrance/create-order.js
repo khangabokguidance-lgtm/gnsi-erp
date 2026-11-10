@@ -1,7 +1,6 @@
 // POST /api/entrance/create-order  { applicationNo, dob }  → Razorpay order for the application fee.
 // The amount is read from the exam here; nothing the browser sends can change it.
-import Razorpay from 'razorpay'
-import { send, only, body, findCandidate, updateTolerant } from './_lib.js'
+import { send, only, body, findCandidate, updateTolerant, razorpayOrder } from './_lib.js'
 import { feeFor } from './entranceReg.js'
 
 export default async function handler(req, res) {
@@ -13,8 +12,7 @@ export default async function handler(req, res) {
     const { candidate: c, exam } = found
     const fee = feeFor(exam)
     if (c.fee_status === 'Paid' || c.fee_status === 'Waived' || fee === 0) return send(res, 409, { error: 'No payment is due for this application.' })
-    const rzp = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET })
-    const order = await rzp.orders.create({
+    const order = await razorpayOrder({
       amount: Math.round(fee * 100), currency: 'INR', receipt: String(c.application_no).slice(0, 40),
       notes: { application_no: c.application_no, exam_id: String(exam.id), candidate: String(c.student_name || '').slice(0, 60) },
     })
