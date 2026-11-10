@@ -39,7 +39,8 @@ function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemp
 // The welcome page of the exam site (/exam with no test in the link): shown first, once per browser session.
 function CbtWelcome({ inst, onStart, onPractice }) {
   const [counts, setCounts] = useState(null)
-  useEffect(() => { let live = true; listPublicTests().then(r => { if (live) { const sp = splitPublicTests(r); setCounts({ open: sp.open.length, upcoming: sp.upcoming.length }) } }); return () => { live = false } }, [])
+  const load = () => listPublicTests().then(r => { const sp = splitPublicTests(r); setCounts({ open: sp.open.length, upcoming: sp.upcoming.length, next: sp.upcoming[0] || null }) })
+  useEffect(() => { let live = true; listPublicTests().then(r => { if (live) { const sp = splitPublicTests(r); setCounts({ open: sp.open.length, upcoming: sp.upcoming.length, next: sp.upcoming[0] || null }) } }); return () => { live = false } }, [])
   const feats = [['📱', 'Any phone or computer', 'Take your test wherever you are.'], ['💾', 'Answers save automatically', 'If the connection drops, carry on where you left.'], ['🎯', 'Practice first', 'Try a short practice test — nothing is counted.'], ['📚', 'Practise past exams', 'Retake closed exams any time, with the answers.']]
   const steps = ['Pick your test, or paste the link your teacher sent.', 'Enter the access code, your GCC no. and the parent / guardian number.', 'Take the exam. Your result appears when the institute releases it.']
   return (
@@ -51,6 +52,12 @@ function CbtWelcome({ inst, onStart, onPractice }) {
       <h1>Welcome to <span>Online Exams</span></h1>
       <div className="cbt-welcome-rule" aria-hidden="true"><span /><b /><span /></div>
       <p className="cbt-welcome-lead">Computer-based tests for Navodaya, Sainik School and RMS aspirants — in the same format as the real exam.</p>
+      {counts && counts.next && counts.next.opensAt && <div className="cbt-welcome-next">
+        <small>Next test opens in</small>
+        <CbtCountdown to={counts.next.opensAt} className="cbt-cd cbt-cd-lg" onDone={load} />
+        <b>{counts.next.name}</b>
+        <span>{when(counts.next.opensAt)}{counts.next.durationMin ? ` · ${counts.next.durationMin} min` : ''}{counts.next.questions ? ` · ${counts.next.questions} questions` : ''}</span>
+      </div>}
       {counts && (counts.open > 0 || counts.upcoming > 0) && <div className="cbt-welcome-live">
         {counts.open > 0 && <span><i aria-hidden="true" />{counts.open} test{counts.open === 1 ? '' : 's'} open now</span>}
         {counts.upcoming > 0 && <span className="up">{counts.upcoming} upcoming</span>}
