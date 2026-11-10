@@ -118,10 +118,10 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
   const [cover, setCover] = useState('')           // shield: the exam is hidden (window left, screenshot key pressed)
   const proctorEvent = useCallback(kind => {
     setA(x => (x ? { ...x, proctor: addEvent(x.proctor, kind) } : x))
-    const msg = { fsexit: 'You left full screen. This has been recorded — return to full screen to continue.', none: 'Your face is not visible. Sit in front of the camera.', multi: 'More than one person is in front of the camera. Only the candidate may be there.', away: 'Look at the screen. Looking away is recorded.', nocam: 'The camera stopped. Turn it back on.' }[kind]
+    const msg = { fsexit: 'You left full screen. This has been recorded — return to full screen to continue.', none: 'Your face is not visible. Sit in front of the camera.', far: 'You are too far from the camera. Sit closer so your face fills the picture.', vcam: 'A virtual camera was detected. This has been recorded.', multi: 'More than one person is in front of the camera. Only the candidate may be there.', away: 'Look at the screen. Looking away is recorded.', nocam: 'The camera stopped. Turn it back on.' }[kind]
     if (msg) { setToast(msg); setTimeout(() => setToast(''), 4500) }
   }, [])
-  const cam = useCbtProctor({ enabled: camOn, running: stage === 'exam', onEvent: proctorEvent })
+  const cam = useCbtProctor({ enabled: camOn, running: stage === 'exam', onEvent: proctorEvent, strict: cfg.camera === 'strict' })
   // a brand new attempt starts on the first question the candidate will SEE (their own order may differ)
   const startAt = (t, att) => {
     if (!isShuffled(t) || Object.keys(att.answers || {}).length || Object.keys(att.marked || {}).length) return att
@@ -371,7 +371,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       {camOn && (stage === 'camera' || stage === 'exam') && (
         <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
           <video ref={cam.videoRef} muted playsInline autoPlay />
-          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', multi: '⚠ More than one person', away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
+          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', far: '⚠ Move closer', multi: `⚠ More than one person${cam.faceCount > 1 ? ` (${cam.faceCount})` : ''}`, away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
         </div>
       )}
       {stage === 'exam' && camOn && cam.status !== 'ok' && cam.held >= 2000 && cam.phase === 'ready' && cfg.camera === 'strict' && <div className="cbt-cover" style={{ background: 'rgba(11,30,61,.94)' }}><div><b>{EVENT_LABEL[cam.status] || 'Camera check'}</b><br />Sit in front of the camera, alone, facing the screen. The exam continues when you are visible.</div></div>}
@@ -381,20 +381,21 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
 
   // ── camera check ──
   if (stage === 'camera') {
-    const good = cam.phase === 'ready' && cam.okStreak >= 3
+    const good = cam.phase === 'ready' && cam.okStreak >= 5          // ~4 s of steady, good frames
     return shell(<>
       <div className="cbt-top"><div className="title">{test.name}</div><div className="cbt-tools"><div className="cand"><span className="avatar">{(candidate.name || '?')[0].toUpperCase()}</span><span>{candidate.name}{candidate.roll ? ` · ${candidate.roll}` : ''}</span></div></div></div>
       <div className="cbt-center"><div className="panel" style={{ textAlign: 'center' }}>
         <h3>Camera check</h3>
         <p style={{ fontSize: 14, lineHeight: 1.65, margin: '0 0 10px' }}>This exam uses your camera to make sure <b>only you</b> are in front of the screen. The video is <b>not recorded or sent anywhere</b> — the exam only counts the warnings (face not visible, another person, looking away).{cfg.camera === 'strict' ? ` After ${cfg.maxStrikes} warnings the exam is submitted automatically.` : ''}</p>
         <p style={{ margin: '0 0 6px', fontWeight: 700, color: good ? '#146c3a' : '#9a5b00' }}>
-          {cam.phase === 'starting' ? 'Starting the camera…' : cam.phase === 'error' ? cam.error : good ? '✓ Your face is visible. You are ready.' : cam.status === 'multi' ? 'More than one person is visible. Only the candidate may sit here.' : cam.status === 'away' ? 'Look straight at the screen.' : 'Sit in front of the camera so your face is fully visible, in good light.'}
+          {cam.phase === 'starting' ? 'Starting the camera…' : cam.phase === 'error' ? cam.error : good ? '✓ Your face is visible. You are ready.' : cam.status === 'multi' ? 'More than one person is visible. Only the candidate may sit here.' : cam.status === 'away' ? 'Look straight at the screen.' : cam.status === 'far' ? 'Move closer to the camera so your face fills the picture.' : cam.status === 'nocam' ? 'The camera picture has stopped. Check the camera is on and not covered.' : 'Sit in front of the camera so your face is fully visible, in good light.'}
         </p>
         <div className="cbt-row">
           {!resume && <button className="cbt-b" onClick={() => { cam.stop(); setStage('declaration') }}>‹ Previous</button>}
           {cam.phase === 'error' && <button className="cbt-b" onClick={cam.start}>Try the camera again</button>}
           <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: good ? 1 : .5 }} disabled={!good || !!busy} onClick={resume ? () => setStage('exam') : begin}>{busy || (resume ? 'Continue the exam' : 'I am ready to begin')}</button>
         </div>
+        {cam.phase === 'ready' && <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>{cam.deep ? '🧠 Two-stage AI face check is on (detects extra people, even small or partly hidden).' : '🧠 AI face check is on.'}</p>}
         {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
       </div></div>
     </>)

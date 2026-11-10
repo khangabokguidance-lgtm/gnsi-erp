@@ -66,6 +66,12 @@ The Founder's photo is taken from the website's Faculty photos (Website Manager 
 | Countdown is wrong or missing | The test needs an **Opens** time (Online tab → publish). Re-pick it in *Countdown to* and press Save text. |
 | Result looks wrong | Answer key problem: fix → republish → Re-evaluate. |
 
+## The camera check (what it catches)
+
+Warn / Strict camera mode counts a **strike** when, for long enough: no face is visible (3 s), the face is **too small / far** (3 s), a **second person** is near (2 s), the head is **turned away** (4 s), or the **camera stops** — closed, unplugged, covered by a shutter, **frozen or paused** (about 10 s). A **virtual / software camera** (OBS, ManyCam, Snap Camera …) is refused in Strict mode and only recorded ("Virtual camera") in Warn mode. A run of unreadable frames counts as a stopped camera, so a failing detector cannot hide a problem. The pre-exam check now needs about 4 seconds of steady good frames.
+**Extra people — two AI models.** The fast detector checks every frame; every other frame a second, more accurate model (SSD MobileNet v1, `public/models/ssd_mobilenetv1_*`, about 5.6 MB, loaded only when the camera check is on) takes a second look and finds smaller or partly hidden faces. A second face at about 18% of the candidate's face width or larger, confirmed by that model, counts as "More than one person" (strike after 2 s). Smaller faces (a poster, someone far in the background) are ignored. If the second model cannot load, the fast one still works alone. In tests on real photos the fast model alone missed a small second face and all four faces of a group photo; the two together found them.
+Limits to remember: the video is never recorded or sent, only counts are kept; the check runs in the candidate's browser, so a determined person with a modified browser can bypass it; looking **down** (at a phone or notes) is not detected. Rehearse with the real devices.
+
 ## What this system does **not** do
 
 - It cannot stop a determined cheater with a modified browser or a second phone. Full-screen strikes, tab-leave counts and the camera check are **indicators**. Do not promise "cheat-proof".
