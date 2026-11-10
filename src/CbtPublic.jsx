@@ -13,7 +13,7 @@ import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
-import { FINDER_FILTERS, splitPublicTests, showBlocks, rankPractice } from './lib/cbtFinder'
+import { FINDER_FILTERS, splitPublicTests, showBlocks, rankPractice, practiceLeft } from './lib/cbtFinder'
 import { trendOf } from './lib/cbtTop5'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
@@ -132,6 +132,7 @@ async function staticPractice(id) {
     for (const [idx, urlOf] of sources) {
       const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
       if (!m) continue
+      if (practiceLeft(m.until)?.expired) return 'ended'          // the deadline staff set has passed
       const r = await read(urlOf(m.slug))
       if (!r) continue
       const t = parseMock(await r.json())
@@ -143,12 +144,24 @@ async function staticPractice(id) {
   } catch { return null }
 }
 
+// testId → practice deadline (ISO), from the practice copies staff published (storage bucket) and the ones committed to the site
+async function practiceDeadlines() {
+  const out = {}
+  try {
+    const repo = await fetch(`${import.meta.env.BASE_URL}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).catch(() => [])
+    for (const m of [...(Array.isArray(repo) ? repo : []), ...(await listPracticeCopies())]) if (m && m.testId && m.until) out[m.testId] = m.until
+  } catch { /* no deadlines */ }
+  return out
+}
+
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
   const [past, setPast] = useState([])       // closed exams that may be practised
   const [filter, setFilter] = useState('all')   // all | open | upcoming | practice
   const [top, setTop] = useState([])         // published top-5 boards, newest first
+  const [deadlines, setDeadlines] = useState({})   // testId → practice deadline
+  useEffect(() => { let live = true; practiceDeadlines().then(r => { if (live) setDeadlines(r) }); return () => { live = false } }, [])
   const [mocks, setMocks] = useState([])     // static mock tests (public/mocks/index.json): run on the student's device, no database
   useEffect(() => { let live = true; fetch(`${import.meta.env.BASE_URL}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).then(r => { if (live && Array.isArray(r)) setMocks(r.filter(m => m && MOCK_SLUG.test(String(m.slug)))) }).catch(() => {}); return () => { live = false } }, [])
   const [topMore, setTopMore] = useState(false)
@@ -175,7 +188,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const split = splitPublicTests(tests)
   const show = showBlocks(filter)
   const appeared = id => started.some(x => x.id === id)            // this device holds an attempt for that exam
-  const ranked = rankPractice(past)
+  // a past exam whose practice deadline has passed leaves the list; the others show how long is left
+  const ranked = rankPractice(past).map(t => ({ ...t, left: practiceLeft(deadlines[t.id]) })).filter(t => !t.left?.expired)
   // the red banner: the exam open right now, else the most recently closed one
   const latest = split.open[0] ? { kind: 'open', t: split.open[0] } : ranked[0] ? { kind: 'past', t: ranked[0] } : null
   const Appeared = ({ id }) => (appeared(id) ? <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>✔ You appeared</span> : null)
@@ -187,6 +201,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           {latest.kind === 'open' ? 'LATEST TEST · LIVE NOW' : 'LATEST TEST'}
           {latest.t.ago && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>{latest.kind === 'open' ? `closes ${when(latest.t.closesAt)}` : `closed ${latest.t.ago}`}</span>}
           {latest.kind === 'open' && !latest.t.ago && latest.t.closesAt && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>closes {when(latest.t.closesAt)}</span>}
+          {latest.t.left && <span style={{ background: '#fff', color: '#8f1d14', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 800 }}>⏳ {latest.t.left.text}</span>}
           {appeared(latest.t.id) && <span style={{ background: '#fff', color: '#146c3a', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 800 }}>✔ You appeared</span>}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 8 }}>
@@ -211,7 +226,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
       </div>}
       <div className="cbt-filters" role="group" aria-label="Show">
         {FINDER_FILTERS.filter(([id]) => id !== 'top' || top.length > 0).map(([id, label]) => {
-          const n = id === 'open' ? split.open.length : id === 'upcoming' ? split.upcoming.length : id === 'practice' ? past.length + (onPractice ? 1 : 0) : id === 'top' ? top.length : split.open.length + split.upcoming.length + past.length + top.length
+          const n = id === 'open' ? split.open.length : id === 'upcoming' ? split.upcoming.length : id === 'practice' ? ranked.length + (onPractice ? 1 : 0) : id === 'top' ? top.length : split.open.length + split.upcoming.length + ranked.length + top.length
           return <button key={id} type="button" className={`cbt-fchip${filter === id ? ' on' : ''}`} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}<i>{n}</i></button>
         })}
       </div>
@@ -242,7 +257,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           </div>
         ))}
       </div>}
-      {filter === 'all' && tests !== null && !split.open.length && !split.upcoming.length && !top.length && !past.length && <div className="card" style={{ borderLeft: '4px solid #9a5b00' }}><b>No test is listed on this page right now.</b><div className="muted" style={{ marginTop: 4 }}>If your teacher sent you an invitation message or an exam link, paste it in the box below — the exam and the access code are picked out for you. You can also try the practice test.</div></div>}
+      {filter === 'all' && tests !== null && !split.open.length && !split.upcoming.length && !top.length && !ranked.length && <div className="card" style={{ borderLeft: '4px solid #9a5b00' }}><b>No test is listed on this page right now.</b><div className="muted" style={{ marginTop: 4 }}>If your teacher sent you an invitation message or an exam link, paste it in the box below — the exam and the access code are picked out for you. You can also try the practice test.</div></div>}
       {(filter === 'open' && !split.open.length) && <div className="card muted">No test is open right now. Check <button type="button" className="cbt-link" onClick={() => setFilter('upcoming')}>Upcoming</button> or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
       {(filter === 'top' && !top.length) && <div className="card muted">No top-5 board has been published yet.</div>}
       {(filter === 'upcoming' && !split.upcoming.length) && <div className="card muted">No upcoming test has been announced yet. Check back soon, or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
@@ -265,7 +280,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           </div>
         ))}
       </div>}
-      {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
+      {show.practice && ranked.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
         {ranked.map(t => (
@@ -276,6 +291,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
                 {t.latest && <span className="tag" style={{ background: '#c8962b', color: '#fff', fontWeight: 800, letterSpacing: .4 }}>LATEST</span>}
                 {t.isNew && <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>NEW</span>}
                 <Appeared id={t.id} />
+                {t.left && <span className="tag" style={{ background: '#fff4dc', color: '#9a5b00', fontWeight: 800 }}>⏳ {t.left.text}</span>}
               </div>
               <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}{t.ago ? <b style={{ color: t.isNew ? '#146c3a' : undefined }}> · {t.ago}</b> : ''}</div>
             </div>
@@ -408,7 +424,9 @@ function CbtPublicInner() {
   const startPractice = async id => {
     setErr(''); setPracticeBusy(id)
     try {
-      const test = (await staticPractice(id)) || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
+      const sp = await staticPractice(id)
+      if (sp === 'ended') throw new Error('Practice for this exam has ended.')
+      const test = sp || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
       setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')
     } catch (e) { setErr(friendly(e)) }
     setPracticeBusy('')

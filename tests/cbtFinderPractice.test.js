@@ -26,3 +26,14 @@ test('rankPractice copes with missing times and empty input', () => {
   assert.equal(r[0].latest, false)
   assert.equal(r[0].ago, null)
 })
+
+import { practiceLeft } from '../src/lib/cbtFinder.js'
+test('practiceLeft counts down and expires', () => {
+  assert.equal(practiceLeft('', NOW), null)
+  assert.equal(practiceLeft(undefined, NOW), null)
+  assert.deepEqual(practiceLeft('2026-11-12T16:00:00Z', NOW), { expired: false, text: 'ends in 2 days 4 h' })
+  assert.deepEqual(practiceLeft('2026-11-10T15:20:00Z', NOW), { expired: false, text: 'ends in 3 h 20 min' })
+  assert.deepEqual(practiceLeft('2026-11-10T12:25:00Z', NOW), { expired: false, text: 'ends in 25 min' })
+  assert.deepEqual(practiceLeft('2026-11-10T12:00:00Z', NOW), { expired: true, text: 'practice has ended' })
+  assert.deepEqual(practiceLeft('2026-11-09T12:00:00Z', NOW), { expired: true, text: 'practice has ended' })
+})

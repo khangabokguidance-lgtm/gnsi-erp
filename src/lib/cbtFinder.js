@@ -38,3 +38,14 @@ export function rankPractice(list, now = Date.now()) {
   const sorted = (Array.isArray(list) ? list.filter(Boolean) : []).slice().sort((a, b) => at(b.closedAt) - at(a.closedAt))
   return sorted.map((t, i) => ({ ...t, latest: i === 0 && at(t.closedAt) > 0, isNew: at(t.closedAt) > 0 && now - at(t.closedAt) < 86400000, ago: agoText(t.closedAt, now) }))
 }
+
+/** Practice deadline: { expired, text } — 'ends in 2 days 4 h' / 'ends in 3 h 20 min'; null when there is no deadline. */
+export function practiceLeft(until, now = Date.now()) {
+  const t = Date.parse(until)
+  if (!Number.isFinite(t)) return null
+  const m = Math.ceil((t - now) / 60000)
+  if (m <= 0) return { expired: true, text: 'practice has ended' }
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mi = m % 60
+  const text = d > 0 ? `${d} day${d === 1 ? '' : 's'}${h ? ` ${h} h` : ''}` : h > 0 ? `${h} h${mi ? ` ${mi} min` : ''}` : `${mi} min`
+  return { expired: false, text: `ends in ${text}` }
+}

@@ -41,8 +41,8 @@ export function parseMock(raw) {
 }
 
 // the manifest the exam page lists: public/mocks/index.json = [{ slug, name, durationMin, questions, date }]
-export function manifestEntry(file) {
-  return { slug: file.slug, name: file.name, durationMin: file.durationMin, questions: flatQuestions(file).length, date: new Date(file.builtAt || Date.now()).toISOString().slice(0, 10), testId: file.id || '' }
+export function manifestEntry(file, until = '') {
+  return { slug: file.slug, name: file.name, durationMin: file.durationMin, questions: flatQuestions(file).length, date: new Date(file.builtAt || Date.now()).toISOString().slice(0, 10), testId: file.id || '', ...(Number.isFinite(Date.parse(until)) ? { until: new Date(until).toISOString() } : {}) }
 }
 export const mockPath = (slug, base = '/') => `${base}mocks/${slug}.json`
 export const mockLink = (slug, origin = typeof window !== 'undefined' ? window.location.origin : '') => `${origin}/exam?mock=${encodeURIComponent(slug)}`
