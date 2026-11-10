@@ -99,3 +99,35 @@ test('a stopped camera counts as a strike after 4 s and repeats; far counts afte
   assert.equal(faceStrikes(p), 2, 'far + nocam are strikes; a recorded virtual camera is not')
   assert.match(flagText(p), /Too far from the camera ×1/); assert.match(flagText(p), /Virtual camera ×1/)
 })
+
+
+import { iou, mergeFaces, createExtraMemory, NEAR_FRACTION_DEEP } from '../src/lib/cbtProctorLogic.js'
+const bx = (x, y, w, h = w) => ({ x, y, w, h })
+test('two models, one verdict: a face both saw is counted once, one only the second model saw is added', () => {
+  assert.equal(iou(bx(0, 0, 100), bx(0, 0, 100)), 1); assert.equal(iou(bx(0, 0, 100), bx(200, 0, 100)), 0)
+  const primary = [{ w: 200, ratio: 0.5, box: bx(100, 100, 200) }]
+  assert.equal(mergeFaces(primary, [{ w: 190, box: bx(110, 105, 190) }]).length, 1, 'same face from both models')
+  const m = mergeFaces(primary, [{ w: 190, box: bx(110, 105, 190) }, { w: 50, box: bx(450, 300, 50) }])
+  assert.equal(m.length, 2); assert.equal(m[1].deep, true); assert.equal(m[1].ratio, null)
+  assert.equal(mergeFaces([], [{ w: 90, box: bx(10, 10, 90) }]).length, 1, 'the second model rescues a face the fast one missed')
+  assert.equal(mergeFaces(null, null).length, 0)
+})
+test('a small second face counts when the second model confirmed it, but not when only the fast model saw it', () => {
+  assert.equal(NEAR_FRACTION_DEEP, 0.18)
+  const one = { w: 200, ratio: 0.5, box: bx(0, 0, 200) }
+  assert.equal(classify([one, { w: 45, ratio: null, deep: true, box: bx(300, 0, 45) }]), 'multi', '22% of the candidate, confirmed')
+  assert.equal(classify([one, { w: 45, ratio: 0.5, box: bx(300, 0, 45) }]), 'ok', 'same size, fast model only: still ignored')
+  assert.equal(classify([one, { w: 30, ratio: null, deep: true, box: bx(300, 0, 30) }]), 'ok', '15%: a poster / far background')
+})
+test('several small faces are "more than one person", not "too far"', () => {
+  const f = w => ({ w, ratio: 0.5, box: bx(0, 0, w) })
+  assert.equal(classify([f(96), f(93), f(94), f(94)], 1366), 'multi')
+  assert.equal(classify([f(60)], 640), 'far')
+})
+test('the second look is remembered for a few frames, then forgotten — independent of how slow the device is', () => {
+  const m = createExtraMemory(); assert.equal(m.get().length, 0, 'nothing before the first look')
+  m.set([{ w: 50 }]); assert.equal(m.get().length, 1)
+  m.next(); m.next(); m.next(); assert.equal(m.get().length, 1, 'still kept 3 frames later')
+  m.next(); assert.equal(m.get().length, 0, 'forgotten after that')
+  m.set([{ w: 50 }]); m.clear(); assert.equal(m.get().length, 0)
+})

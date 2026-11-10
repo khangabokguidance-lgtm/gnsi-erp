@@ -7,10 +7,11 @@
 // device gone) or a detector that keeps failing is a 'nocam' violation — it is never silently skipped. A virtual camera
 // (OBS, ManyCam …) is refused in strict mode and recorded otherwise.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { loadDetector, openCamera, detectFaces } from './cbtProctor'
-import { classify, createTracker, streamHealth, isVirtualCamera } from './lib/cbtProctorLogic'
+import { loadDetector, openCamera, detectFaces, scanMoreFaces } from './cbtProctor'
+import { classify, createTracker, streamHealth, isVirtualCamera, mergeFaces, createExtraMemory } from './lib/cbtProctorLogic'
 
 const MAX_DETECT_FAILS = 6          // ~5 s of frames the detector could not read → treated as a stopped camera
+const DEEP_EVERY = 2                // the second AI model takes a look every 2nd frame; its result is remembered for 3 frames so the verdict does not flicker between looks
 
 export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
   const videoRef = useRef(null), streamRef = useRef(null), faceapi = useRef(null), tracker = useRef(createTracker())
@@ -20,6 +21,9 @@ export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
   const [okStreak, setOkStreak] = useState(0)
   const [held, setHeld] = useState(0)             // ms the current problem has lasted (0 when all is well)
   const badSince = useRef(0)
+  const extra = useRef(createExtraMemory(3)), tickN = useRef(0)
+  const [faceCount, setFaceCount] = useState(0)
+  const [deep, setDeep] = useState(false)          // is the second AI model loaded?
   const mutedRef = useRef(false), lastAdvance = useRef(0), lastTime = useRef(-1), fails = useRef(0), vcamLogged = useRef(false), virtual = useRef(false)
   const [error, setError] = useState('')
   useEffect(() => { cb.current = onEvent; runRef.current = running })
@@ -32,7 +36,7 @@ export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
   const start = useCallback(async () => {
     if (!enabled) return
     setPhase('starting'); setError('')
-    mutedRef.current = false; lastAdvance.current = 0; lastTime.current = -1; fails.current = 0
+    mutedRef.current = false; lastAdvance.current = 0; lastTime.current = -1; fails.current = 0; tickN.current = 0; extra.current.clear()
     try {
       const stream = await openCamera()
       streamRef.current = stream
@@ -45,7 +49,7 @@ export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
       const v = videoRef.current
       if (v) { v.srcObject = stream; await v.play().catch(() => {}) }
       faceapi.current = await loadDetector()
-      tracker.current.reset(); vcamLogged.current = false; setPhase('ready')
+      tracker.current.reset(); vcamLogged.current = false; setDeep(!!faceapi.current.ssd); setPhase('ready')
     } catch (e) { stop(); setError(e.message || 'The camera check could not start.'); setPhase('error') }
   }, [enabled, stop, strict])
 
@@ -67,7 +71,15 @@ export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
         let next = streamHealth({ readyState: v.readyState, paused: v.paused, muted: mutedRef.current, trackLive: !track || track.readyState === 'live', lastAdvance: lastAdvance.current, now })
         // 2. if it is, look at the faces
         if (next === 'ok') {
-          try { next = classify(await detectFaces(faceapi.current, v), v.videoWidth || 0); fails.current = 0 }
+          try {
+            const primary = await detectFaces(faceapi.current, v)
+            if (tickN.current++ % DEEP_EVERY === 0) {                       // the second look; a failure here never hides the first
+              try { extra.current.set(await scanMoreFaces(faceapi.current, v)) } catch { /* keep the fast model's verdict */ }
+            } else extra.current.next()
+            const faces = mergeFaces(primary, extra.current.get())
+            setFaceCount(faces.length)
+            next = classify(faces, v.videoWidth || 0); fails.current = 0
+          }
           catch { fails.current += 1; next = fails.current >= MAX_DETECT_FAILS ? 'nocam' : null }   // a few unreadable frames are skipped; a run of them is a problem
         }
         if (!live || next === null) { busy = false; return }
@@ -84,5 +96,5 @@ export function useCbtProctor({ enabled, running, onEvent, strict = false }) {
   }, [phase])
 
   useEffect(() => stop, [stop])
-  return { videoRef, phase, status, okStreak, held, error, start, stop }
+  return { videoRef, phase, status, okStreak, held, error, start, stop, faceCount, deep }
 }

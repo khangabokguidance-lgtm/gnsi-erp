@@ -20,13 +20,16 @@ export function proctorOf(test) {
 // Tightened: a head turned a third of the way round already counts (was 0.3–0.7). A face narrower than 12% of the frame
 // means the candidate has moved away from the camera — it is not the person sitting at the screen.
 export const AWAY_LOW = 0.33, AWAY_HIGH = 0.67, NEAR_FRACTION = 0.3, MIN_FACE_FRACTION = 0.12
+// A second face confirmed by the second, more accurate model (SSD MobileNet) counts at a smaller size than one only the fast model saw.
+export const NEAR_FRACTION_DEEP = 0.18
 
 export function classify(faces, frameW = 0) {
   const list = (faces || []).filter(f => f && f.w > 0).sort((a, b) => b.w - a.w)
   if (!list.length) return 'none'
-  if (frameW > 0 && list[0].w < frameW * MIN_FACE_FRACTION) return 'far'
   // a second face counts when it is a real size next to the candidate's — a poster far away is smaller than that
-  if (list.slice(1).some(f => f.w >= list[0].w * NEAR_FRACTION)) return 'multi'
+  if (list.slice(1).some(f => f.w >= list[0].w * (f.deep ? NEAR_FRACTION_DEEP : NEAR_FRACTION))) return 'multi'
+  // only one person: are they too far from the camera?
+  if (frameW > 0 && list[0].w < frameW * MIN_FACE_FRACTION) return 'far'
   const r = list[0].ratio
   if (typeof r === 'number' && (r < AWAY_LOW || r > AWAY_HIGH)) return 'away'
   return 'ok'
@@ -56,6 +59,42 @@ export function createTracker(hold = HOLD_SECONDS) {
       return { state, event: null }
     },
     reset() { state = 'ok'; since = 0; lastStrike = 0 },
+  }
+}
+
+// ── two AI models, one verdict ─────────────────────────────────────────────────────────────────────────────────────
+// The fast detector (Tiny Face Detector + landmarks) runs on every frame. Every few frames the second, more accurate model
+// (SSD MobileNet v1) takes a second look and finds smaller, partly hidden or side-on faces the fast one misses. Boxes are
+// { x, y, w, h } in the video's own pixels.
+export function iou(a, b) {
+  const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y), x2 = Math.min(a.x + a.w, b.x + b.w), y2 = Math.min(a.y + a.h, b.y + b.h)
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1)
+  const uni = a.w * a.h + b.w * b.h - inter
+  return uni > 0 ? inter / uni : 0
+}
+const centreIn = (a, b) => { const cx = a.x + a.w / 2, cy = a.y + a.h / 2; return cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h }
+const sameFace = (a, b) => iou(a, b) > 0.3 || centreIn(a, b) || centreIn(b, a)
+
+/** primary: [{ w, ratio, box }] from the fast model; extra: [{ w, box }] from the second look. Faces both saw are counted once. */
+export function mergeFaces(primary, extra) {
+  const out = (primary || []).filter(f => f && f.w > 0)
+  for (const e of extra || []) {
+    if (!e || !(e.w > 0) || !e.box) continue
+    if (out.some(p => p.box && sameFace(p.box, e.box))) continue
+    out.push({ w: e.w, ratio: null, box: e.box, deep: true })
+  }
+  return out
+}
+
+/** Remembers the last second-look result for a few FRAMES (not seconds), so a slow phone and a fast laptop behave the same and the
+ *  verdict does not flicker between looks. Call next() once per frame, set() when a second look finishes. */
+export function createExtraMemory(keepFrames = 3) {
+  let faces = [], age = Infinity
+  return {
+    set(f) { faces = Array.isArray(f) ? f : []; age = 0 },
+    next() { if (age !== Infinity) age += 1 },
+    get() { return age <= keepFrames ? faces : [] },
+    clear() { faces = []; age = Infinity },
   }
 }
 

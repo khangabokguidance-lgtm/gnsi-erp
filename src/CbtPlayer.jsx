@@ -371,7 +371,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
       {camOn && (stage === 'camera' || stage === 'exam') && (
         <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
           <video ref={cam.videoRef} muted playsInline autoPlay />
-          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', far: '⚠ Move closer', multi: '⚠ More than one person', away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
+          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', far: '⚠ Move closer', multi: `⚠ More than one person${cam.faceCount > 1 ? ` (${cam.faceCount})` : ''}`, away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
         </div>
       )}
       {stage === 'exam' && camOn && cam.status !== 'ok' && cam.held >= 2000 && cam.phase === 'ready' && cfg.camera === 'strict' && <div className="cbt-cover" style={{ background: 'rgba(11,30,61,.94)' }}><div><b>{EVENT_LABEL[cam.status] || 'Camera check'}</b><br />Sit in front of the camera, alone, facing the screen. The exam continues when you are visible.</div></div>}
@@ -395,6 +395,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
           {cam.phase === 'error' && <button className="cbt-b" onClick={cam.start}>Try the camera again</button>}
           <button className="cbt-b sub" style={{ width: 'auto', margin: 0, opacity: good ? 1 : .5 }} disabled={!good || !!busy} onClick={resume ? () => setStage('exam') : begin}>{busy || (resume ? 'Continue the exam' : 'I am ready to begin')}</button>
         </div>
+        {cam.phase === 'ready' && <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>{cam.deep ? '🧠 Two-stage AI face check is on (detects extra people, even small or partly hidden).' : '🧠 AI face check is on.'}</p>}
         {beginErr && <p role="alert" style={{ color: '#b42318', fontWeight: 700, marginTop: 12 }}>{beginErr}</p>}
       </div></div>
     </>)
