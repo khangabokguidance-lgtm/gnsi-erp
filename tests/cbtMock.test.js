@@ -45,3 +45,10 @@ test('index helpers add, replace and drop by slug', () => {
   assert.deepEqual(upsertIndex(null, a), [a])
   assert.deepEqual(dropIndex([a, b], 'a'), [b])
 })
+
+test('manifest entry carries an optional practice deadline', () => {
+  const f = buildMockFile(paper(), { now: 0 })
+  assert.equal(manifestEntry(f, '2026-11-17T12:00:00Z').until, '2026-11-17T12:00:00.000Z')
+  assert.equal('until' in manifestEntry(f, ''), false)
+  assert.equal('until' in manifestEntry(f, 'garbage'), false)
+})

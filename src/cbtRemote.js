@@ -153,10 +153,10 @@ export async function listPracticeCopies() {
   try { const r = await fetch(practiceUrl('index.json'), { cache: 'no-cache' }); if (!r.ok) return []; const j = await r.json(); return Array.isArray(j) ? j.filter(m => m && MOCK_SLUG.test(String(m.slug))) : [] } catch { return [] }
 }
 // Make the paper (with its key) practisable by any number of students. Only for a CLOSED exam: the file carries the answers.
-export async function publishPracticeCopy(test) {
+export async function publishPracticeCopy(test, until = '') {
   const file = buildMockFile(test)                                   // refuses a paper with a missing key
   await putJson(`${file.slug}.json`, file, '3600')
-  await putJson('index.json', upsertIndex(await listPracticeCopies(), manifestEntry(file)), '60')
+  await putJson('index.json', upsertIndex(await listPracticeCopies(), manifestEntry(file, until)), '60')
   return file.slug
 }
 export async function removePracticeCopy(slug) {

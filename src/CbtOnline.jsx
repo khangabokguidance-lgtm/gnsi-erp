@@ -39,11 +39,12 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   // a practice copy on the CDN: any number of students can practise with no database load. Only after the exam has closed (it carries the answer key).
   const isClosed = !!row && statusOf(row).label === 'Closed'
   const mySlug = slugify(test.name)
+  const [until, setUntil] = useState(() => local(new Date(Date.now() + 7 * 864e5).toISOString()))   // practice ends (default: a week from now; clear it for no deadline)
   const hasCopy = !!copies && copies.some(m => m.slug === mySlug)
   const practiceCopy = async remove => {
     setErr(''); setBusy(true)
     try {
-      if (remove) { await removePracticeCopy(mySlug); flash('Practice copy removed.') } else { await publishPracticeCopy(test); flash('Practice copy published. Students can practise from the exam page now.') }
+      if (remove) { await removePracticeCopy(mySlug); flash('Practice copy removed.') } else { await publishPracticeCopy(test, until ? new Date(until).toISOString() : ''); flash('Practice copy published. Students can practise from the exam page now.') }
       setCopies(await listPracticeCopies())
     } catch (e) { setErr(e.message) }
     setBusy(false)
@@ -90,6 +91,9 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
           <span><b>Allow practice after it closes</b> — once this exam is closed and its answers are released, anyone can take the same paper again in practice mode (nothing recorded or counted). Untick if you will reuse these questions.</span>
         </label>
         <p className="muted">A candidate who starts before the closing time keeps their full duration. Each GCC no. gets one attempt. Candidates type only the access code and their GCC no.; the name comes from the ERP and they confirm a parent contact number that matches the record.</p>
+        {isClosed && <label style={{ display: 'block', margin: '10px 0 0', fontSize: 13.5 }}><span className="lbl">Practice copy ends on (leave empty for no deadline)</span>
+          <input className="in" type="datetime-local" value={until} onChange={e => setUntil(e.target.value)} style={{ maxWidth: 260 }} />
+          <small className="muted" style={{ display: 'block' }}>{hasCopy ? 'A copy is live. To change the deadline, remove it and publish again.' : 'After this time the exam leaves the practice list and cannot be opened from it.'}</small></label>}
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</p>}
         <div className="cbt-actions" style={{ marginTop: 8 }}>
           <button className="btn gold" disabled={busy} onClick={publish}>{busy ? 'Publishing…' : row || done ? '💾 Update and keep live' : '🌐 Publish online'}</button>

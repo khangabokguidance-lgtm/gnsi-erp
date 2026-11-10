@@ -25,3 +25,9 @@ Run `supabase/RUN_cbt_practice_bucket.sql` once in the Supabase SQL editor (crea
 After an exam has **closed**: CBT → Tests → 🌐 Online → **🚀 Publish practice copy**. The exam page's **Practise →** button then
 loads it from the CDN at once. **🗑 Remove practice copy** takes it down. Needs the paper to be on this computer and every question keyed.
 Copies from this bucket are tried first, then ones committed under `public/mocks/`.
+
+## Practice deadline
+When you publish a practice copy, **Practice copy ends on** is prefilled to a week ahead (clear it for no deadline). Until then the
+exam shows "⏳ ends in 2 days 4 h" in the banner and the practice list. After it, the exam leaves the practice list and its
+Practise button refuses. It is a soft limit: the file stays on the CDN until you press **Remove practice copy**, so remove it
+too if the answers must really disappear. To change a deadline, remove the copy and publish it again.
