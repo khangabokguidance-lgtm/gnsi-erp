@@ -129,5 +129,18 @@ body.lp-page{overflow-x:clip!important}
 :is(body.lp-gov,body) .ten-years-banner .tyb-frame{background:none!important}
 :is(body.lp-gov,body) .ten-years-banner{background:radial-gradient(900px 360px at 50% 0,#1a4a8f,transparent 70%),#0E3266!important}
 
-.hd-cbt a{display:inline-flex!important;align-items:center;gap:.45rem}
-.hd-new{font:800 .5rem var(--hd-display);letter-spacing:.12em;text-transform:uppercase;background:linear-gradient(135deg,#e2c57e,#b8913f);color:#0b1e3d;border-radius:999px;padding:.18rem .42rem;line-height:1}
+.hd-links a{white-space:nowrap}
+.hd-cbt a{display:inline-flex!important;align-items:center;gap:.4rem}
+.hd-new{flex:none;width:.5rem;height:.5rem;border-radius:50%;background:#ef4444;box-shadow:0 0 0 .16rem rgba(239,68,68,.28);animation:hdLive 1.3s ease-in-out infinite}
+@keyframes hdLive{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.hd-new{animation:none}}
+/* make room for the 7th link: keep the bar on one row from 1100px up to wide screens */
+@media(max-width:2100px){
+  .hd-links li:nth-child(6){display:none}
+  :is(body.lp-gov,body) .lp-nav .nv-lbl-full{display:none!important}
+  :is(body.lp-gov,body) .lp-nav .nv-lbl-short{display:inline!important}
+  .hd-links{gap:1.2rem}
+}
+@media(max-width:1500px){.hd-cbt .hd-ex{display:none}}
+@media(max-width:1320px){.hd-links{gap:.85rem}.hd-links a{letter-spacing:.1em;font-size:.7rem}}
+@media(max-width:1200px){.hd-links li:nth-child(4){display:none}}
