@@ -84,6 +84,9 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-home:hover{background:rgba(255,255,255,.22)}
 .cbt-hero .eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--gold2)}
 .cbt-hero h2{color:#fff;margin:4px 0 4px;font-family:'Fraunces',Georgia,serif;font-size:26px;line-height:1.15}
+.cbt-hero-logo{position:absolute;right:16px;top:14px;width:66px;height:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+.cbt-hero:has(.cbt-hero-logo) h2,.cbt-hero:has(.cbt-hero-logo) .eyebrow{padding-right:80px}
+@media(max-width:480px){.cbt-hero-logo{width:52px;right:12px;top:12px}.cbt-hero:has(.cbt-hero-logo) h2,.cbt-hero:has(.cbt-hero-logo) .eyebrow{padding-right:62px}}
 .cbt-hero p{color:#fff;margin:0;opacity:.8;font-size:13px;max-width:640px;line-height:1.5}
 .cbt-hero .row{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .cbt-tabs{display:flex;gap:4px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px}
@@ -204,6 +207,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-founder-pic{position:relative;width:132px;height:160px;border-radius:20px;overflow:hidden;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold),0 18px 30px -18px rgba(11,30,61,.7)}
 .cbt-founder-pic img{width:100%;height:100%;object-fit:cover;display:block}
 .cbt-founder-pic span{position:absolute;inset:0;display:none;place-items:center;font:600 48px 'Fraunces',Georgia,serif;color:var(--gold2)}
+.cbt-founder-pic.logo img{object-fit:contain;padding:16px}
 .cbt-founder-pic.nophoto img{display:none}.cbt-founder-pic.nophoto span{display:grid}
 .cbt-founder-txt blockquote{margin:0 0 12px;padding-left:14px;border-left:3px solid var(--gold);font-family:'Fraunces',Georgia,serif;font-size:17px;line-height:1.55;font-style:italic;color:#1f2a44}
 .cbt-founder-by b{display:block;font-size:16px;color:var(--navy)}.cbt-founder-by span{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a6a1f;margin-top:2px}

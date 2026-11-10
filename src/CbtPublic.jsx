@@ -430,6 +430,7 @@ function CbtPublicInner() {
       <style>{CBT_CSS}</style>
       <div className="cbt-hero">
         <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
+        <img className="cbt-hero-logo" src="/gnsi-mark.webp" alt="GNSI" width="66" height="67" onError={e => { e.currentTarget.style.display = 'none' }} />
         <div className="eyebrow">{(inst.name || 'GNSI').toUpperCase()} · ONLINE EXAM</div>
         <h2>{info ? info.name : mock ? mock.name : 'Online exam'}</h2>
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}

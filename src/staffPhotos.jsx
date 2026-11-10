@@ -17,7 +17,8 @@ let cache = null          // { byId: Map, byName: Map, list: [{toks, url}] }
 let loading = null
 const subs = new Set()
 
-async function loadPhotos() {
+// withStaff=false: website Faculty photos only — public pages (the exam screen) skip the staff_profiles download
+async function loadPhotos(withStaff = true) {
   const byId = new Map(), byName = new Map(), list = []
   const web = { byName: new Map(), list: [], freq: new Map() }   // the website's Faculty photos only
   const add = (name, url, fromWeb = false) => {
@@ -26,7 +27,7 @@ async function loadPhotos() {
     list.push({ toks: tokens(name), url })
     if (fromWeb) { if (!web.byName.has(n)) web.byName.set(n, url); web.list.push({ toks: tokens(name), url }) }
   }
-  try {
+  if (withStaff) try {
     const { data } = await supabase.from('staff_profiles').select('*').limit(2000)
     ;(data || []).forEach(r => {
       const url = r.photo_url || r.photo || r.avatar_url || r.image_url || null
@@ -41,12 +42,12 @@ async function loadPhotos() {
   const freq = new Map()
   list.forEach(e => new Set(e.toks).forEach(t => freq.set(t, (freq.get(t) || 0) + 1)))
   web.list.forEach(e => new Set(e.toks).forEach(t => web.freq.set(t, (web.freq.get(t) || 0) + 1)))
-  cache = { byId, byName, list, freq, web }
+  cache = { byId, byName, list, freq, web, hasStaff: withStaff }
   subs.forEach(f => f())
   return cache
 }
 
-export function refreshStaffPhotos() { loading = loadPhotos(); return loading }
+export function refreshStaffPhotos() { loading = loadPhotos(cache ? cache.hasStaff : true); return loading }
 
 // Website Manager → Faculty fires this after every add / edit / photo upload
 if (typeof window !== 'undefined' && !window.__gnsiFacultyListener) {
@@ -125,14 +126,15 @@ function matchedTokens(a, b) {
 
 
 
-export function useStaffPhotos() {
+export function useStaffPhotos({ websiteOnly = false } = {}) {
   const [, force] = useState(0)
   useEffect(() => {
     const f = () => force(x => x + 1)
     subs.add(f)
-    if (!cache && !loading) loading = loadPhotos()
+    // a website-only cache is not enough for a screen that needs the staff photos: load those too
+    if (!loading && (!cache || (!websiteOnly && !cache.hasStaff))) loading = loadPhotos(!websiteOnly)
     return () => subs.delete(f)
-  }, [])
+  }, [websiteOnly])
   return findStaffPhoto
 }
 
