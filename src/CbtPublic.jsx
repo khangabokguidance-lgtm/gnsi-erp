@@ -12,6 +12,7 @@ import { listPublicTests, listPracticeTests, listTop5, practiceTest, examInfo, s
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
+import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
 import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
 import { trendOf } from './lib/cbtTop5'
 
@@ -129,6 +130,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [past, setPast] = useState([])       // closed exams that may be practised
   const [filter, setFilter] = useState('all')   // all | open | upcoming | practice
   const [top, setTop] = useState([])         // published top-5 boards, newest first
+  const [mocks, setMocks] = useState([])     // static mock tests (public/mocks/index.json): run on the student's device, no database
+  useEffect(() => { let live = true; fetch(`${import.meta.env.BASE_URL}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).then(r => { if (live && Array.isArray(r)) setMocks(r.filter(m => m && MOCK_SLUG.test(String(m.slug)))) }).catch(() => {}); return () => { live = false } }, [])
   const [topMore, setTopMore] = useState(false)
   useEffect(() => { let live = true; listTop5().then(r => { if (live) setTop(r) }); return () => { live = false } }, [])
   useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
@@ -217,6 +220,16 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         {(topMore ? top : top.slice(0, 2)).map(i => <Top5Card key={i.id} item={i} />)}
         {top.length > 2 && !topMore && <button type="button" className="btn" onClick={() => setTopMore(true)}>Show earlier tests ({top.length - 2})</button>}
       </>}
+      {show.practice && mocks.length > 0 && <div className="card" style={{ borderLeft: '4px solid #146c3a' }}>
+        <h3 style={{ margin: '0 0 4px' }}>Mock tests</h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Full mock papers that run on your own phone or computer. Your score appears at the end; nothing is recorded or counted.</div>
+        {mocks.map(m => (
+          <div key={m.slug} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div></div>
+            <a className="btn navy" href={`/exam?mock=${encodeURIComponent(m.slug)}`}>Start →</a>
+          </div>
+        ))}
+      </div>}
       {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
@@ -244,6 +257,9 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
 function CbtPublicInner() {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
   const testId = params.get('t') || ''
+  const mockSlug = MOCK_SLUG.test(params.get('mock') || '') ? params.get('mock') : ''
+  const [mock, setMock] = useState(null)       // the loaded static mock test (runs here, nothing sent anywhere)
+  const [mockErr, setMockErr] = useState('')
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
   const [form, setForm] = useState({ gcc: '', parent: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
@@ -265,6 +281,13 @@ function CbtPublicInner() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the field once the exam details arrive
     if (info && info.code) { setForm(f => (f.code === info.code ? f : { ...f, code: info.code })); setCodeNote('✓ Latest access code filled in automatically.') }
   }, [info])
+  useEffect(() => {
+    let live = true
+    if (!mockSlug) return undefined
+    fetch(mockPath(mockSlug, import.meta.env.BASE_URL), { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('This mock test was not found. Check the link.'); return r.json() })
+      .then(j => { if (live) setMock(parseMock(j)) }).catch(e => { if (live) setMockErr(e instanceof SyntaxError ? 'This mock test could not be read.' : e.message || 'This mock test could not be loaded.') })
+    return () => { live = false }
+  }, [mockSlug])
   useEffect(() => {
     let live = true
     if (!testId) return undefined                    // no test in the link: the finder below asks for it
@@ -344,6 +367,7 @@ function CbtPublicInner() {
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
   // practice test: runs in this browser only; its result is the local attempt itself
   const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
+  const startMock = () => { setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate') }
   const demoDone = done => { setView({ test: run?.test || DEMO_TEST, attempt: done }); setPhase('result') }
   // practise a PAST exam: its real paper and key are fetched (only allowed once it is closed and its answers are out); marking happens here, nothing is saved
   const [practiceBusy, setPracticeBusy] = useState('')
@@ -383,7 +407,7 @@ function CbtPublicInner() {
                   {!codeNote && !params.get('c') && <small className="muted">Tip: paste the whole invitation message and the code is picked out for you.</small>}
                 </label>
   )
-  if (!testId && !welcomed) {
+  if (!testId && !mockSlug && !welcomed) {
     return (
       <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
         <style>{CBT_CSS}</style>
@@ -397,10 +421,18 @@ function CbtPublicInner() {
       <div className="cbt-hero">
         <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
         <div className="eyebrow">{(inst.name || 'GNSI').toUpperCase()} · ONLINE EXAM</div>
-        <h2>{info ? info.name : 'Online exam'}</h2>
+        <h2>{info ? info.name : mock ? mock.name : 'Online exam'}</h2>
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}
       </div>
-      {!testId && <CbtFinder onPractice={startDemo} onPracticePast={startPractice} busyId={practiceBusy} />}
+      {mockSlug && <div className="card" style={{ borderLeft: '4px solid #146c3a' }}>
+        {mockErr ? <div role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{mockErr}</div> : !mock ? <div className="muted">Loading the mock test…</div> : <>
+          <h3 style={{ margin: '0 0 4px' }}>{mock.name}</h3>
+          <div className="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>{mock.sections.reduce((n, x) => n + x.questions.length, 0)} questions · {mock.durationMin} minutes. This mock runs on your own device — your score and the answers appear at the end, and nothing is recorded or counted. Do not refresh or close the page while you write — progress on a mock is not saved.</div>
+          <button type="button" className="btn gold" onClick={startMock}>▶ Start the mock test</button>
+        </>}
+        <div style={{ marginTop: 10 }}><a className="cbt-link" href="/exam">See other tests</a></div>
+      </div>}
+      {!testId && !mockSlug && <CbtFinder onPractice={startDemo} onPracticePast={startPractice} busyId={practiceBusy} />}
       {testId && !info && !err && <div className="card muted">Loading…</div>}
       {info && (!saved || !open) && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">{open ? 'Try a 4-minute practice test first — it is not counted and nothing is saved.' : 'You can still try the 4-minute practice test any time — it is not counted and nothing is saved.'}</span> <button className="btn" style={{ marginLeft: 6 }} onClick={startDemo}>Try the practice test</button></div>}
       {err && !(info && open && !saved) && <div className="card" role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</div>}
