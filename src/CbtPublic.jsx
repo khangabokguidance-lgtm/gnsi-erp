@@ -174,8 +174,31 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   }
   const split = splitPublicTests(tests)
   const show = showBlocks(filter)
+  const appeared = id => started.some(x => x.id === id)            // this device holds an attempt for that exam
+  const ranked = rankPractice(past)
+  // the red banner: the exam open right now, else the most recently closed one
+  const latest = split.open[0] ? { kind: 'open', t: split.open[0] } : ranked[0] ? { kind: 'past', t: ranked[0] } : null
+  const Appeared = ({ id }) => (appeared(id) ? <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>✔ You appeared</span> : null)
   return (
     <>
+      {latest && filter !== 'top' && filter !== 'upcoming' && <div role="region" aria-label="Latest test" style={{ background: 'linear-gradient(135deg,#c9261a,#8f1d14)', color: '#fff', borderRadius: 16, padding: '14px 16px', marginBottom: 12, boxShadow: '0 14px 28px -18px rgba(180,35,24,.8)' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5, fontWeight: 800, letterSpacing: '.14em' }}>
+          <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: '50%', background: '#fff', display: 'inline-block' }} />
+          {latest.kind === 'open' ? 'LATEST TEST · LIVE NOW' : 'LATEST TEST'}
+          {latest.t.ago && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>{latest.kind === 'open' ? `closes ${when(latest.t.closesAt)}` : `closed ${latest.t.ago}`}</span>}
+          {latest.kind === 'open' && !latest.t.ago && latest.t.closesAt && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>closes {when(latest.t.closesAt)}</span>}
+          {appeared(latest.t.id) && <span style={{ background: '#fff', color: '#146c3a', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 800 }}>✔ You appeared</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 8 }}>
+          <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+            <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 21, lineHeight: 1.2, fontWeight: 700 }}>{latest.t.name}</div>
+            <div style={{ fontSize: 13, opacity: .9 }}>{latest.t.questions ? `${latest.t.questions} questions · ` : ''}{latest.t.durationMin} min{latest.kind === 'past' ? ' · practise it now' : ''}</div>
+          </div>
+          {latest.kind === 'open'
+            ? <a className="btn" style={{ textDecoration: 'none', background: '#fff', color: '#8f1d14', fontWeight: 800 }} href={examHref({ id: latest.t.id })}>Start →</a>
+            : onPracticePast && <button type="button" className="btn" style={{ background: '#fff', color: '#8f1d14', fontWeight: 800 }} disabled={!!busyId} onClick={() => onPracticePast(latest.t.id)}>{busyId === latest.t.id ? 'Opening…' : 'Practise →'}</button>}
+        </div>
+      </div>}
       {started.length > 0 && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <b>Continue your exam</b>
         <div className="muted" style={{ fontSize: 13, margin: '4px 0 8px' }}>An exam was started on this device. Open it to carry on — your answers are saved.</div>
@@ -198,7 +221,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         {split.open.map(t => (
           <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
             <div style={{ minWidth: 0, flex: '1 1 200px' }}>
-              <b>{t.name}</b>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}><b>{t.name}</b><Appeared id={t.id} /></div>
               <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closesAt ? ` · closes ${when(t.closesAt)}` : ''}</div>
             </div>
             <a className="btn gold" style={{ textDecoration: 'none' }} href={examHref({ id: t.id })}>Start →</a>
@@ -245,13 +268,14 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
       {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
-        {rankPractice(past).map(t => (
+        {ranked.map(t => (
           <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 8px', borderTop: '1px solid #eef1f6', ...(t.latest ? { background: '#fffaf0', borderRadius: 10, border: '1px solid #f0dcaa' } : {}) }}>
             <div style={{ minWidth: 0, flex: '1 1 200px' }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <b>{t.name}</b>
                 {t.latest && <span className="tag" style={{ background: '#c8962b', color: '#fff', fontWeight: 800, letterSpacing: .4 }}>LATEST</span>}
                 {t.isNew && <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>NEW</span>}
+                <Appeared id={t.id} />
               </div>
               <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}{t.ago ? <b style={{ color: t.isNew ? '#146c3a' : undefined }}> · {t.ago}</b> : ''}</div>
             </div>
