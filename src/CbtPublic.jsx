@@ -13,7 +13,7 @@ import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
-import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
+import { FINDER_FILTERS, splitPublicTests, showBlocks, rankPractice } from './lib/cbtFinder'
 import { trendOf } from './lib/cbtTop5'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
@@ -254,9 +254,16 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
       {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
-        {past.map(t => (
-          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
-            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{t.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}</div></div>
+        {rankPractice(past).map(t => (
+          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 8px', borderTop: '1px solid #eef1f6', ...(t.latest ? { background: '#fffaf0', borderRadius: 10, border: '1px solid #f0dcaa' } : {}) }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <b>{t.name}</b>
+                {t.latest && <span className="tag" style={{ background: '#c8962b', color: '#fff', fontWeight: 800, letterSpacing: .4 }}>LATEST</span>}
+                {t.isNew && <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>NEW</span>}
+              </div>
+              <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}{t.ago ? <b style={{ color: t.isNew ? '#146c3a' : undefined }}> · {t.ago}</b> : ''}</div>
+            </div>
             <button type="button" className="btn navy" disabled={!!busyId} onClick={() => onPracticePast(t.id)}>{busyId === t.id ? 'Opening…' : 'Practise →'}</button>
           </div>
         ))}
