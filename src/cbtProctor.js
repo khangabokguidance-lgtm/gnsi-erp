@@ -26,7 +26,7 @@ export async function openCamera() {
   }
 }
 
-// → [{ w, ratio }] for every face in the frame
+// → [{ w, ratio }] for every face in the frame (w is in the video's own pixels; compare with video.videoWidth)
 export async function detectFaces(f, video) {
   const found = await f.detectAllFaces(video, new f.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })).withFaceLandmarks()
   return found.map(r => ({ w: r.detection.box.width, ratio: yawRatio(r.landmarks.positions) }))

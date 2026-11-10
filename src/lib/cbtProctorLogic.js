@@ -17,11 +17,14 @@ export function proctorOf(test) {
 // ── what the camera sees ─────────────────────────────────────────────────────
 // faces: [{ w, ratio }] — w = face width in the frame, ratio = where the nose sits between the two sides of the jaw
 // (0.5 = looking straight at the screen; near 0 or 1 = head turned right round).
-export const AWAY_LOW = 0.3, AWAY_HIGH = 0.7, NEAR_FRACTION = 0.3
+// Tightened: a head turned a third of the way round already counts (was 0.3–0.7). A face narrower than 12% of the frame
+// means the candidate has moved away from the camera — it is not the person sitting at the screen.
+export const AWAY_LOW = 0.33, AWAY_HIGH = 0.67, NEAR_FRACTION = 0.3, MIN_FACE_FRACTION = 0.12
 
-export function classify(faces) {
+export function classify(faces, frameW = 0) {
   const list = (faces || []).filter(f => f && f.w > 0).sort((a, b) => b.w - a.w)
   if (!list.length) return 'none'
+  if (frameW > 0 && list[0].w < frameW * MIN_FACE_FRACTION) return 'far'
   // a second face counts when it is a real size next to the candidate's — a poster far away is smaller than that
   if (list.slice(1).some(f => f.w >= list[0].w * NEAR_FRACTION)) return 'multi'
   const r = list[0].ratio
@@ -38,7 +41,7 @@ export function yawRatio(points) {
 }
 
 // A condition has to last before it counts, so a blink or a glance at the keyboard is not a violation.
-export const HOLD_SECONDS = { none: 3, multi: 2, away: 5 }
+export const HOLD_SECONDS = { none: 3, far: 3, multi: 2, away: 4, nocam: 4 }
 const REPEAT_SECONDS = 10    // still violating this long after a strike → another strike
 
 export function createTracker(hold = HOLD_SECONDS) {
@@ -49,12 +52,27 @@ export function createTracker(hold = HOLD_SECONDS) {
       if (next !== state) { state = next; since = t; lastStrike = 0; return { state, event: null } }
       if (state === 'ok') return { state, event: null }
       const held = (t - since) / 1000
-      if (held >= hold[state] && (!lastStrike || (t - lastStrike) / 1000 >= REPEAT_SECONDS)) { lastStrike = t; return { state, event: state } }
+      if (held >= (hold[state] ?? 3) && (!lastStrike || (t - lastStrike) / 1000 >= REPEAT_SECONDS)) { lastStrike = t; return { state, event: state } }
       return { state, event: null }
     },
     reset() { state = 'ok'; since = 0; lastStrike = 0 },
   }
 }
+
+// ── is the camera still delivering live pictures? ──────────────────────────────────────────────────────────────────
+// A frozen feed (paused video, a stalled virtual camera, a lens shutter the browser reports as "muted") used to be skipped
+// silently, so nothing was ever raised. Now it counts like a camera that stopped.
+export const STALL_MS = 4000
+export function streamHealth({ readyState = 0, paused = false, muted = false, trackLive = true, lastAdvance = 0, now = 0, stallMs = STALL_MS } = {}) {
+  if (!trackLive || muted) return 'nocam'
+  if (readyState < 2 || paused) return lastAdvance && now - lastAdvance < stallMs ? 'ok' : 'nocam'
+  if (lastAdvance && now - lastAdvance >= stallMs) return 'nocam'       // frames have stopped advancing
+  return 'ok'
+}
+
+// Software cameras that can feed a pre-recorded or someone else's picture. Matched on the device name the browser reports.
+const VIRTUAL_CAM = /\b(obs|manycam|snap camera|xsplit|camtwist|ndi\b|streamlabs|vcam|virtual|splitcam|webcamoid|e2esoft|mmhmm|chromacam|youcam)\b/i
+export const isVirtualCamera = label => VIRTUAL_CAM.test(String(label || ''))
 
 // ── keys ─────────────────────────────────────────────────────────────────────
 // A browser cannot stop the operating system taking a screenshot. What it can do is notice the usual shortcuts and
@@ -76,10 +94,10 @@ export function isBlockedKey(e) {
 
 // ── the log kept on the attempt ──────────────────────────────────────────────
 export const EVENT_LABEL = {
-  none: 'Face not visible', multi: 'More than one person', away: 'Looking away', nocam: 'Camera stopped',
+  none: 'Face not visible', far: 'Too far from the camera', multi: 'More than one person', away: 'Looking away', nocam: 'Camera stopped', vcam: 'Virtual camera',
   shot: 'Screenshot attempt', blocked: 'Copy / print / inspect attempt', hidden: 'Exam window hidden', fsexit: 'Left full screen',
 }
-const FACE_EVENTS = ['none', 'multi', 'away', 'nocam']
+const FACE_EVENTS = ['none', 'far', 'multi', 'away', 'nocam']      // each one is a strike (vcam is only recorded)
 
 export function addEvent(p, kind, t = Date.now()) {
   const cur = p && typeof p === 'object' ? p : {}
