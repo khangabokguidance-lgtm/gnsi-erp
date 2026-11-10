@@ -36,6 +36,36 @@ function makeRemote({ testId, code, candidate, gcc, parent, guest = null, attemp
   return r
 }
 
+// The welcome page of the exam site (/exam with no test in the link): shown first, once per browser session.
+function CbtWelcome({ inst, onStart, onPractice }) {
+  const [counts, setCounts] = useState(null)
+  useEffect(() => { let live = true; listPublicTests().then(r => { if (live) { const sp = splitPublicTests(r); setCounts({ open: sp.open.length, upcoming: sp.upcoming.length }) } }); return () => { live = false } }, [])
+  const feats = [['📱', 'Any phone or computer', 'Take your test wherever you are.'], ['💾', 'Answers save automatically', 'If the connection drops, carry on where you left.'], ['🎯', 'Practice first', 'Try a short practice test — nothing is counted.'], ['📚', 'Practise past exams', 'Retake closed exams any time, with the answers.']]
+  const steps = ['Pick your test, or paste the link your teacher sent.', 'Enter the access code, your GCC no. and the parent / guardian number.', 'Take the exam. Your result appears when the institute releases it.']
+  return (
+    <div className="cbt-welcome">
+      <i className="cbt-welcome-ring r1" aria-hidden="true" /><i className="cbt-welcome-ring r2" aria-hidden="true" />
+      <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
+      <div className="cbt-welcome-crest"><img src="/gnsi-mark.webp" alt="GNSI" width="86" height="88" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
+      <div className="cbt-welcome-inst">{(inst.name || 'Guidance Navodaya & Sainik Institute').toUpperCase()}</div>
+      <h1>Welcome to <span>Online Exams</span></h1>
+      <div className="cbt-welcome-rule" aria-hidden="true"><span /><b /><span /></div>
+      <p className="cbt-welcome-lead">Computer-based tests for Navodaya, Sainik School and RMS aspirants — in the same format as the real exam.</p>
+      {counts && (counts.open > 0 || counts.upcoming > 0) && <div className="cbt-welcome-live">
+        {counts.open > 0 && <span><i aria-hidden="true" />{counts.open} test{counts.open === 1 ? '' : 's'} open now</span>}
+        {counts.upcoming > 0 && <span className="up">{counts.upcoming} upcoming</span>}
+      </div>}
+      <div className="cbt-welcome-cta">
+        <button type="button" className="cbt-welcome-go" onClick={onStart}><span>Find my exam</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg></button>
+        <button type="button" className="cbt-welcome-alt" onClick={onPractice}>Try the practice test</button>
+      </div>
+      <div className="cbt-welcome-feats">{feats.map(([ic, t, d]) => <div key={t}><span aria-hidden="true">{ic}</span><b>{t}</b><small>{d}</small></div>)}</div>
+      <div className="cbt-welcome-steps"><h2>How it works</h2><ol>{steps.map((t, i) => <li key={i}><i>{i + 1}</i><span>{t}</span></li>)}</ol></div>
+      <p className="cbt-welcome-foot">Need help? Ask your teacher or call the institute.</p>
+    </div>
+  )
+}
+
 // Opened as /exam with no test in the link (e.g. from the website menu): ask for the Test ID or the full link, and
 // offer to continue an exam that was started on this device.
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
@@ -157,6 +187,8 @@ function CbtPublicInner() {
   const [guestMode, setGuestMode] = useState(false)   // a candidate who is not in the institute records (only when the test allows guests)
   const [stu, setStu] = useState(null)             // the ERP student found for the GCC no.: { gcc, hasPhone } | { none: true } | null
   const inst = getInstitute()
+  const [welcomed, setWelcomed] = useState(() => { try { return sessionStorage.getItem('gnsi_cbt_welcome') === '1' } catch { return false } })
+  const enter = () => { try { sessionStorage.setItem('gnsi_cbt_welcome', '1') } catch { /* storage blocked */ } setWelcomed(true); window.scrollTo?.(0, 0) }
 
   useEffect(() => {
     let live = true
@@ -264,6 +296,14 @@ function CbtPublicInner() {
   }
 
   const open = info?.state === 'open'
+  if (!testId && !welcomed) {
+    return (
+      <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
+        <style>{CBT_CSS}</style>
+        <CbtWelcome inst={inst} onStart={enter} onPractice={() => { enter(); startDemo() }} />
+      </div>
+    )
+  }
   return (
     <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
       <style>{CBT_CSS}</style>
