@@ -200,6 +200,11 @@ function CbtPublicInner() {
   const [welcomed, setWelcomed] = useState(() => { try { return sessionStorage.getItem('gnsi_cbt_welcome') === '1' } catch { return false } })
   const enter = () => { try { sessionStorage.setItem('gnsi_cbt_welcome', '1') } catch { /* storage blocked */ } setWelcomed(true); window.scrollTo?.(0, 0) }
 
+  // the admin chose to share the current access code: fill it in (it replaces a stale code from an old link or invitation)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the field once the exam details arrive
+    if (info && info.code) { setForm(f => (f.code === info.code ? f : { ...f, code: info.code })); setCodeNote('✓ Latest access code filled in automatically.') }
+  }, [info])
   useEffect(() => {
     let live = true
     if (!testId) return undefined                    // no test in the link: the finder below asks for it

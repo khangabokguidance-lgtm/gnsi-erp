@@ -1,7 +1,7 @@
 // CbtOnline.jsx — the staff side of online exams: publish a test as a link, see the online tests, close or
 // remove them. (Candidates use CbtPublic.jsx.)
 import { useEffect, useState } from 'react'
-import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag } from './cbtRemote'
+import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag, getAutoCodeFlag } from './cbtRemote'
 import { flatQuestions } from './lib/cbtEngine'
 import { syncFlashSchedule } from './cbtFlashSync'
 
@@ -12,12 +12,13 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   const [code, setCode] = useState(row ? row.access_code || '' : newCode())
   const [opens, setOpens] = useState(local(row?.opens_at))
   const [closes, setCloses] = useState(local(row?.closes_at))
+  const [autoCode, setAutoCode] = useState(false)  // the exam page fills in the current access code by itself (off unless the admin chooses it)
   const [practice, setPractice] = useState(true)   // allow practice mode once the exam has closed
   const [listed, setListed] = useState(true)       // show on the public exam page (so candidates can find it without a link)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(row || null)
-  useEffect(() => { let live = true; if (row) { getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); getPracticeFlag(test.id).then(v => { if (live) setPractice(v) }) } return () => { live = false } }, [row, test.id])
+  useEffect(() => { let live = true; if (row) { getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); getPracticeFlag(test.id).then(v => { if (live) setPractice(v) }); getAutoCodeFlag(test.id).then(v => { if (live) setAutoCode(v) }) } return () => { live = false } }, [row, test.id])
   const qs = flatQuestions(test)
   const keyed = qs.filter(q => q.answer).length
 
@@ -27,7 +28,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
     if (opens && closes && new Date(closes) <= new Date(opens)) { setErr('The closing time must be after the opening time.'); return }
     setBusy(true)
     try {
-      await publishOnline(test, { code, opensAt: opens, closesAt: closes, status: 'live', by, publicList: listed, practiceAfterClose: practice })
+      await publishOnline(test, { code, opensAt: opens, closesAt: closes, status: 'live', by, publicList: listed, practiceAfterClose: practice, autoCode })
       const next = { id: test.id, access_code: code.trim() || null, opens_at: opens ? new Date(opens).toISOString() : null, closes_at: closes ? new Date(closes).toISOString() : null, status: 'live' }
       syncFlashSchedule({ id: test.id, name: test.name, opensAt: next.opens_at, closesAt: next.closes_at })
       setDone(next); onChanged(); flash(row ? 'Online exam updated.' : 'Published. Share the link with candidates.')
@@ -53,6 +54,10 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0', fontSize: 13.5 }}>
           <input type="checkbox" checked={listed} onChange={e => setListed(e.target.checked)} style={{ marginTop: 3 }} />
           <span><b>Show on the public exam page</b> — candidates can find this test there without a link (name, length and timing only; they still need the access code and their GCC no.). Untick for a private batch test.</span>
+        </label>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0', fontSize: 13.5 }}>
+          <input type="checkbox" checked={autoCode} onChange={e => setAutoCode(e.target.checked)} style={{ marginTop: 3 }} />
+          <span><b>Fill in the latest access code automatically</b> — candidates do not type it, and an old link or invitation keeps working after you change the code. <span style={{ color: '#9a5b00', fontWeight: 700 }}>Anyone who opens this test's page can then see the code, so it no longer keeps outsiders out — candidates are still checked by GCC no. and parent number.</span> Leave unticked for a private test.</span>
         </label>
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0', fontSize: 13.5 }}>
           <input type="checkbox" checked={practice} onChange={e => setPractice(e.target.checked)} style={{ marginTop: 3 }} />

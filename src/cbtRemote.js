@@ -6,7 +6,7 @@ import { friendly, splitKey, joinKey, toAttempt, packMarks } from './lib/cbtOnli
 export * from './lib/cbtOnlineLogic'
 
 // ── staff ────────────────────────────────────────────────────────────────────
-export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '', publicList, practiceAfterClose } = {}) {
+export async function publishOnline(test, { code = '', opensAt = null, closesAt = null, status = 'live', by = '', publicList, practiceAfterClose, autoCode } = {}) {
   const { sections, key } = splitKey(test)
   const iso = v => (v ? new Date(v).toISOString() : null)
   const row = {
@@ -14,10 +14,10 @@ export async function publishOnline(test, { code = '', opensAt = null, closesAt 
     show_answers: test.showAnswers !== false, sections, status, access_code: String(code || '').trim() || null, opens_at: iso(opensAt), closes_at: iso(closesAt),
     created_by: by || null, updated_at: new Date().toISOString(),
   }
-  const extra = { ...(typeof publicList === 'boolean' ? { public_list: publicList } : {}), ...(typeof practiceAfterClose === 'boolean' ? { practice_after_close: practiceAfterClose } : {}) }
+  const extra = { ...(typeof publicList === 'boolean' ? { public_list: publicList } : {}), ...(typeof practiceAfterClose === 'boolean' ? { practice_after_close: practiceAfterClose } : {}), ...(typeof autoCode === 'boolean' ? { auto_code: autoCode } : {}) }
   let { error } = await supabase.from('cbt_tests').upsert({ ...row, ...extra })
   // public_list / practice_after_close exist only after 20261115 / 20261116: publishing must still work before they are run
-  if (error && /public_list|practice_after_close/.test(error.message || '')) ({ error } = await supabase.from('cbt_tests').upsert(row))
+  if (error && /public_list|practice_after_close|auto_code/.test(error.message || '')) ({ error } = await supabase.from('cbt_tests').upsert(row))
   if (error) throw new Error(friendly(error))
   const k = await supabase.from('cbt_keys').upsert({ test_id: test.id, answers: key })
   if (k.error) throw new Error(friendly(k.error))
@@ -88,6 +88,8 @@ export const examInfo = id => rpc('cbt_exam_info', { p_test: id })
 export const listPublicTests = async () => { try { const r = await rpc('cbt_public_tests', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 // Staff: is this test shown on the public page? (true when the column does not exist yet)
 export async function getPublicListFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('public_list').eq('id', id).maybeSingle(); return error || !data ? true : data.public_list !== false } catch { return true } }
+// Staff: does the exam page fill in this test's current access code by itself? (false when the column does not exist yet)
+export async function getAutoCodeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('auto_code').eq('id', id).maybeSingle(); return error || !data ? false : data.auto_code === true } catch { return false } }
 export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
 // Past (closed) exams anyone may practise: [] if the database update is not run yet.
 export const listPracticeTests = async () => { try { const r = await rpc('cbt_practice_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
