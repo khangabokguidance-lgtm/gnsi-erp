@@ -233,7 +233,7 @@ function CbtPublicInner() {
   if (phase === 'done') {
     return (
       <div className="cbt cbt-page" style={{ maxWidth: 560 }}><style>{CBT_CSS}</style>
-        <div className="card" style={{ textAlign: 'center', marginTop: 40 }}><h3>Thank you</h3><p className="muted">Your exam is complete. You can close this window.</p></div>
+        <div className="card" style={{ textAlign: 'center', marginTop: 40 }}><h3>Thank you</h3><p className="muted">Your exam is complete. You can close this window.</p><a className="btn navy" style={{ textDecoration: 'none', display: 'inline-block' }} href="/">‹ Back to home</a></div>
       </div>
     )
   }
@@ -243,6 +243,7 @@ function CbtPublicInner() {
     <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
       <style>{CBT_CSS}</style>
       <div className="cbt-hero">
+        <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
         <div className="eyebrow">{(inst.name || 'GNSI').toUpperCase()} · ONLINE EXAM</div>
         <h2>{info ? info.name : 'Online exam'}</h2>
         {info && <p>{total} questions · {info.durationMin} minutes · {info.marking.correct} mark{info.marking.correct === 1 ? '' : 's'} each{info.marking.wrong ? `, −${info.marking.wrong} for a wrong answer` : ', no negative marking'}</p>}
