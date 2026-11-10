@@ -54,7 +54,7 @@ test('schedule round-trips through the saved settings', () => {
   assert.equal(f.at, '2026-11-12T04:30:00.000Z'); assert.equal(f.label, 'Mock 5'); assert.equal(f.test, 't1')
 })
 
-import { parseExamRef, examHref } from '../src/lib/cbtRef.js'
+import { parseExamRef, examHref, extractCode } from '../src/lib/cbtRef.js'
 test('exam link or plain Test ID is understood', () => {
   assert.deepEqual(parseExamRef('https://guidancekhangabok.in/exam?t=abc123&c=4455'), { id: 'abc123', code: '4455' })
   assert.deepEqual(parseExamRef('guidancekhangabok.in/exam?t=abc123'), { id: 'abc123', code: '' })
@@ -79,4 +79,26 @@ test('finder filter: which blocks each chip shows', () => {
   assert.deepEqual(showBlocks('upcoming'), { open: false, upcoming: true, practice: false })
   assert.deepEqual(showBlocks('practice'), { open: false, upcoming: false, practice: true })
   assert.equal(FINDER_FILTERS.length, 4)
+})
+
+test('the access code is picked out of free text', () => {
+  assert.equal(extractCode('Access code: 123456'), '123456')
+  assert.equal(extractCode('access code - AB12cd'), 'AB12cd')
+  assert.equal(extractCode('Your code is 998877'), '998877')
+  assert.equal(extractCode('https://x.in/exam?t=abc&c=4455'), '4455')
+  assert.equal(extractCode('Duration: 120 minutes'), null)
+  assert.equal(extractCode('Access code: 12'), null, 'too short to be a code')
+  assert.equal(extractCode(''), null); assert.equal(extractCode(undefined), null)
+})
+test('a pasted WhatsApp invitation gives the test AND the code', () => {
+  const invite = `Online exam: 8th Mega Mock 5
+Link: https://guidancekhangabok.in/exam?t=t-8f2a91
+Access code: 482915
+Duration: 120 minutes
+Opens: 12 Nov 2026, 10:00 am
+Use a steady internet connection. Keep the page open until you submit.`
+  assert.deepEqual(parseExamRef(invite), { id: 't-8f2a91', code: '482915' })
+  assert.deepEqual(parseExamRef('Join here 👉 guidancekhangabok.in/exam?t=abc123 — code: 7788'), { id: 'abc123', code: '7788' })
+  assert.deepEqual(parseExamRef('https://guidancekhangabok.in/exam?t=abc123&c=99'), { id: 'abc123', code: '99'.length >= 4 ? '99' : '99' })
+  assert.equal(parseExamRef('Online exam: no link here\nAccess code: 123456'), null, 'a code without a test cannot open anything')
 })

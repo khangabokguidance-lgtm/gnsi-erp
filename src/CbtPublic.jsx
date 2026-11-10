@@ -11,7 +11,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { listPublicTests, listPracticeTests, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
-import { parseExamRef, examHref } from './lib/cbtRef'
+import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
 import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
@@ -108,6 +108,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
     window.location.href = examHref(ref)
   }
   const split = splitPublicTests(tests)
+  const detected = parseExamRef(raw)
   const show = showBlocks(filter)
   return (
     <>
@@ -169,8 +170,9 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
       {show.practice && onPractice && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try the 4-minute practice test — it is not counted and nothing is saved. Works any time, even after an exam has closed.</span><div style={{ marginTop: 8 }}><button className="btn" type="button" onClick={onPractice}>Try the practice test</button></div></div>}
       <form className="card" onSubmit={go}>
         <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
-        <p className="muted" style={{ margin: '0 0 10px' }}>Your teacher gives you an exam link or a Test ID. Paste either one here.</p>
-        <label><span className="lbl">Exam link or Test ID</span><input className="in" value={raw} onChange={e => { setRaw(e.target.value); setMsg('') }} placeholder="Paste the exam link or Test ID" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></label>
+        <p className="muted" style={{ margin: '0 0 10px' }}>Paste the whole invitation message your teacher sent (or just the exam link or Test ID). The exam and the access code are picked out for you.</p>
+        <label><span className="lbl">Exam link or Test ID</span><input className="in" value={raw} onChange={e => { setRaw(e.target.value); setMsg('') }} onPaste={e => { const ref = parseExamRef(e.clipboardData?.getData('text') || ''); if (ref) { e.preventDefault(); window.location.href = examHref(ref) } }} placeholder="Paste the invitation, exam link or Test ID" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></label>
+        {detected && <p style={{ color: '#146c3a', fontWeight: 700, margin: '8px 0 0' }}>✓ Exam found{detected.code ? ' · access code detected' : ''} — press Open exam.</p>}
         {msg && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0' }}>{msg}</p>}
         <div style={{ marginTop: 12 }}><button className="btn navy" type="submit">Open exam →</button></div>
         <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Do not have a link yet? Ask your teacher, or call the institute — tests are opened for each batch.</p>
@@ -192,11 +194,17 @@ function CbtPublicInner() {
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('find')     // find (access code + GCC no.) | verify (contact number)
   const [guestMode, setGuestMode] = useState(false)   // a candidate who is not in the institute records (only when the test allows guests)
+  const [codeNote, setCodeNote] = useState('')
   const [stu, setStu] = useState(null)             // the ERP student found for the GCC no.: { gcc, hasPhone } | { none: true } | null
   const inst = getInstitute()
   const [welcomed, setWelcomed] = useState(() => { try { return sessionStorage.getItem('gnsi_cbt_welcome') === '1' } catch { return false } })
   const enter = () => { try { sessionStorage.setItem('gnsi_cbt_welcome', '1') } catch { /* storage blocked */ } setWelcomed(true); window.scrollTo?.(0, 0) }
 
+  // the admin chose to share the current access code: fill it in (it replaces a stale code from an old link or invitation)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the field once the exam details arrive
+    if (info && info.code) { setForm(f => (f.code === info.code ? f : { ...f, code: info.code })); setCodeNote('✓ Latest access code filled in automatically.') }
+  }, [info])
   useEffect(() => {
     let live = true
     if (!testId) return undefined                    // no test in the link: the finder below asks for it
@@ -303,6 +311,18 @@ function CbtPublicInner() {
   }
 
   const open = info?.state === 'open'
+  // the access-code field (used by the student form and the guest form): paste the invitation, or use the Paste button, and the code is picked out
+  const codeField = (
+    <label><span className="lbl">Access code *</span>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input className="in" autoComplete="one-time-code" autoCapitalize="off" spellCheck={false} value={form.code} onChange={e => { type('code')(e); setCodeNote('') }}
+                      onPaste={e => { const t = e.clipboardData?.getData('text') || ''; const c = extractCode(t) || (/^[A-Za-z0-9]{4,20}$/.test(t.trim()) ? t.trim() : null); if (c) { e.preventDefault(); setForm(f => ({ ...f, code: c })); setStu(null); setCodeNote('✓ Access code detected from what you pasted.') } }} />
+                    <button type="button" className="btn" title="Paste the access code from your clipboard" onClick={async () => { try { const t = await navigator.clipboard.readText(); const c = extractCode(t) || (/^[A-Za-z0-9]{4,20}$/.test((t || '').trim()) ? t.trim() : null); if (c) { setForm(f => ({ ...f, code: c })); setStu(null); setCodeNote('✓ Access code detected from your clipboard.') } else setCodeNote('No access code found in your clipboard. Copy the invitation message, then try again.') } catch { setCodeNote('Your browser did not allow clipboard access — paste into the box instead.') } }}>📋 Paste</button>
+                  </span>
+                  {(codeNote || params.get('c')) && <small style={{ color: codeNote.startsWith('✓') || (!codeNote && params.get('c')) ? '#146c3a' : '#9a5b00', fontWeight: 700 }}>{codeNote || '✓ Access code filled in from your link.'}</small>}
+                  {!codeNote && !params.get('c') && <small className="muted">Tip: paste the whole invitation message and the code is picked out for you.</small>}
+                </label>
+  )
   if (!testId && !welcomed) {
     return (
       <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
@@ -345,7 +365,7 @@ function CbtPublicInner() {
           <h3 style={{ marginBottom: 2 }}>Guest candidate</h3>
           <p className="muted" style={{ margin: '0 0 10px' }}>For candidates who are not students of the institute. You get one attempt per mobile number.</p>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
-            <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
+            {codeField}
             <label><span className="lbl">Full name *</span><input className="in" autoComplete="off" value={form.gname} onChange={type('gname')} /></label>
             <label><span className="lbl">Mobile number *</span><input className="in" inputMode="tel" autoComplete="off" placeholder="10-digit mobile" value={form.gphone} onChange={type('gphone')} /></label>
             <label><span className="lbl">District *</span><select className="in" value={form.gdistrict} onChange={type('gdistrict')}><option value="">Choose district…</option>{DISTRICT_OPTIONS.map(d => <option key={d}>{d}</option>)}</select></label>
@@ -362,7 +382,7 @@ function CbtPublicInner() {
             <h3 style={{ marginBottom: 2 }}>Your details</h3>
             <p className="muted" style={{ margin: '0 0 10px' }}>Step 1 of 2 — find yourself</p>
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,240px),1fr))' }}>
-              <label><span className="lbl">Access code *</span><input className="in" autoComplete="off" value={form.code} onChange={type('code')} /></label>
+              {codeField}
               <label><span className="lbl">GCC no. *</span><input className="in" inputMode="numeric" autoComplete="off" placeholder="your GCC number" value={form.gcc} onChange={type('gcc')} /></label>
             </div>
             {stu?.none && <p role="alert" style={{ margin: '8px 0', color: '#b42318', fontWeight: 700 }}>No student with this GCC no. was found. Check the number, or ask the office.</p>}
