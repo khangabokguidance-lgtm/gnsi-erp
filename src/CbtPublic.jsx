@@ -11,7 +11,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
-import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
+import { extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
 import { FINDER_FILTERS, splitPublicTests, showBlocks, rankPractice } from './lib/cbtFinder'
 import { trendOf } from './lib/cbtTop5'
@@ -144,8 +144,6 @@ async function staticPractice(id) {
 }
 
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
-  const [raw, setRaw] = useState('')
-  const [msg, setMsg] = useState('')
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
   const [past, setPast] = useState([])       // closed exams that may be practised
@@ -174,14 +172,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
     try { localStorage.removeItem(savedKey(x.id)); localStorage.removeItem(backupKey(x.id)) } catch { /* storage blocked */ }
     setStarted(scan())
   }
-  const go = e => {
-    e.preventDefault()
-    const ref = parseExamRef(raw)
-    if (!ref) { setMsg('Paste the exam link or type the Test ID your teacher gave you.'); return }
-    window.location.href = examHref(ref)
-  }
   const split = splitPublicTests(tests)
-  const detected = parseExamRef(raw)
   const show = showBlocks(filter)
   return (
     <>
@@ -269,15 +260,6 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         ))}
       </div>}
       {show.practice && onPractice && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try the 4-minute practice test — it is not counted and nothing is saved. Works any time, even after an exam has closed.</span><div style={{ marginTop: 8 }}><button className="btn" type="button" onClick={onPractice}>Try the practice test</button></div></div>}
-      <form className="card" onSubmit={go}>
-        <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
-        <p className="muted" style={{ margin: '0 0 10px' }}>Paste the whole invitation message your teacher sent (or just the exam link or Test ID). The exam and the access code are picked out for you.</p>
-        <label><span className="lbl">Exam link or Test ID</span><input className="in" value={raw} onChange={e => { setRaw(e.target.value); setMsg('') }} onPaste={e => { const ref = parseExamRef(e.clipboardData?.getData('text') || ''); if (ref) { e.preventDefault(); window.location.href = examHref(ref) } }} placeholder="Paste the invitation, exam link or Test ID" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></label>
-        {detected && <p style={{ color: '#146c3a', fontWeight: 700, margin: '8px 0 0' }}>✓ Exam found{detected.code ? ' · access code detected' : ''} — press Open exam.</p>}
-        {msg && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0' }}>{msg}</p>}
-        <div style={{ marginTop: 12 }}><button className="btn navy" type="submit">Open exam →</button></div>
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Do not have a link yet? Ask your teacher, or call the institute — tests are opened for each batch.</p>
-      </form>
     </>
   )
 }
