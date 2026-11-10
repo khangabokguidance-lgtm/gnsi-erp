@@ -32,6 +32,15 @@ What to do before, during and after an online exam. Written for the person runni
 - The **practice test** works at any time — before, during and after an exam closes, and from the `/exam` page with no link.
 - The flash message and countdown need nothing in the database beyond the existing `website_settings` table. Whoever uses the switch needs permission to edit website settings.
 
+## Result out (admin result platform)
+
+**CBT → 🏆 Result out.** Pick a test. Every candidate is matched to the ERP by GCC no. and their **class is detected automatically**: Lakshya A, Lakshya B, Umeed, Combined · Manipuri, Combined · English (plus Achiever / Leader / Champion / Pragati / Udaan). It uses the student's *batch*; for the Combined Course the medium comes from the English / Manipuri **secondary batch** set in Exams → Students (or ENG / MM written in the batch or class). Candidates who are not in the ERP show as **Guest / not in ERP**.
+- **Numbers:** appeared, submitted, average, median, highest, lowest, pass rate at the **pass mark you set** (default 40%, remembered), accuracy, average time — overall and for each class (click a class row to filter to it).
+- **Ranks:** overall rank and **class rank** (ties share a rank), percentile, **toppers of every class**, best in each section.
+- **List:** filter by class (several at once), search name / GCC / class, status, minimum %, passed only, flagged only; sort any column; 🏅 formal certificate and View for each candidate.
+- **Get the result out:** 📊 **CSV** (follows your filters), 📗 **Excel** (Summary, All results and one sheet per class), 📕 **PDF** rank list (overall, then one page per class), 🖨 **Print**, 💬 **Copy for WhatsApp** (toppers of each class).
+- **Check the classes** box lists what could not be classified: guests, Combined students with no medium, students with no recognised batch — fix those in Exams → Students / Students and reopen.
+
 ## What the candidate sees
 
 Welcome screen (institute, test, questions / minutes / marks) → the instructions **one slide at a time** (message from the Founder, about the test, general instructions, marking scheme, question palette, answering and moving around, and exam rules when camera / full screen / shield are on) → declaration → camera check (if on) → the exam. Each step slides in. A candidate who reopens an exam in progress goes straight back to it.
