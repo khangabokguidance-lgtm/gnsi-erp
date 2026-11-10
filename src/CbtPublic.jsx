@@ -122,6 +122,18 @@ function Top5Card({ item }) {
 
 // Opened as /exam with no test in the link (e.g. from the website menu): ask for the Test ID or the full link, and
 // offer to continue an exam that was started on this device.
+// If staff added this past exam as a static mock (public/mocks/, entry testId = the exam id), practise from that file: the CDN serves it, so any number of students can practise with no database call.
+async function staticPractice(id) {
+  try {
+    const base = import.meta.env.BASE_URL
+    const idx = await fetch(`${base}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : []))
+    const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
+    if (!m) return null
+    const r = await fetch(mockPath(m.slug, base), { cache: 'no-cache' })
+    return r.ok ? parseMock(await r.json()) : null
+  } catch { return null }
+}
+
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [raw, setRaw] = useState('')
   const [msg, setMsg] = useState('')
@@ -220,10 +232,10 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         {(topMore ? top : top.slice(0, 2)).map(i => <Top5Card key={i.id} item={i} />)}
         {top.length > 2 && !topMore && <button type="button" className="btn" onClick={() => setTopMore(true)}>Show earlier tests ({top.length - 2})</button>}
       </>}
-      {show.practice && mocks.length > 0 && <div className="card" style={{ borderLeft: '4px solid #146c3a' }}>
+      {show.practice && mocks.filter(m => !past.some(t => t.id === m.testId)).length > 0 && <div className="card" style={{ borderLeft: '4px solid #146c3a' }}>
         <h3 style={{ margin: '0 0 4px' }}>Mock tests</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Full mock papers that run on your own phone or computer. Your score appears at the end; nothing is recorded or counted.</div>
-        {mocks.map(m => (
+        {mocks.filter(m => !past.some(t => t.id === m.testId)).map(m => (
           <div key={m.slug} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
             <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div></div>
             <a className="btn navy" href={`/exam?mock=${encodeURIComponent(m.slug)}`}>Start →</a>
@@ -374,7 +386,7 @@ function CbtPublicInner() {
   const startPractice = async id => {
     setErr(''); setPracticeBusy(id)
     try {
-      const test = await practiceTest(id)
+      const test = (await staticPractice(id)) || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
       setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')
     } catch (e) { setErr(friendly(e)) }
     setPracticeBusy('')
