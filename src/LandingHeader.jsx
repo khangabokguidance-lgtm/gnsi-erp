@@ -54,7 +54,7 @@ export function HeaderLinks({ active, goToTab }) {
       {LINKS.map(([id, label, href]) => (
         <li key={id} className={href ? 'hd-cbt' : undefined}>
           {href
-            ? <a href={href}>{label}<span className="hd-new" aria-hidden="true">Live</span></a>
+            ? <a href={href} title="Online exams — live">{label.split(' ')[0]}<span className="hd-ex"> {label.split(' ').slice(1).join(' ')}</span><span className="hd-new" role="img" aria-label="live" /></a>
             : <a href={'#' + id} className={active === id ? 'on' : ''} aria-current={active === id ? 'page' : undefined}
               onClick={(e) => { e.preventDefault(); goToTab(id); }}>{label}</a>}
         </li>
