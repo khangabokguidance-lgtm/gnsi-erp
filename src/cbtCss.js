@@ -23,6 +23,12 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-page{padding:18px 20px 48px;max-width:1280px;margin:0 auto}
 .cbt-hero{position:relative;overflow:hidden;color:#fff;border-radius:18px;padding:20px 22px;margin-bottom:16px;
   background:radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 48%,#0B1E3D 90%);box-shadow:0 22px 44px -26px rgba(11,30,61,.6),inset 0 0 0 1px rgba(226,197,126,.22)}
+.cbt-filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.cbt-cd-sm{gap:5px;flex-wrap:nowrap}.cbt-cd-sm .cbt-cd-c{min-width:42px;padding:5px 6px;border-radius:9px}.cbt-cd-sm .cbt-cd-c b{font-size:15px}.cbt-cd-sm .cbt-cd-c small{font-size:8.5px;margin-top:2px}
+.cbt-fchip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;border:1px solid #cdd6e6;background:#fff;color:#0f2a5c;font-weight:700;font-size:12.5px;cursor:pointer;min-height:38px}
+.cbt-fchip i{font-style:normal;font-size:11px;font-weight:800;min-width:20px;text-align:center;border-radius:999px;padding:2px 6px;background:#eef1f7;color:#0f2a5c}
+.cbt-fchip.on{background:#0f2a5c;color:#fff;border-color:#0f2a5c}.cbt-fchip.on i{background:#e2c57e;color:#0b1e3d}
+.cbt-link{background:none;border:none;padding:0;color:#1f4e8c;font-weight:700;text-decoration:underline;cursor:pointer;font:inherit}
 .cbt-home{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(226,197,126,.55);color:#fff!important;font-size:12.5px;font-weight:700;text-decoration:none;letter-spacing:.02em}
 .cbt-home:hover{background:rgba(255,255,255,.22)}
 .cbt-hero .eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--gold2)}

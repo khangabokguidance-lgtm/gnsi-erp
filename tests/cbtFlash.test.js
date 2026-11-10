@@ -62,3 +62,21 @@ test('exam link or plain Test ID is understood', () => {
   for (const bad of ['', '   ', 'https://x.in/exam', 'a', '<script>', 'https://x.in/exam?t=a b!']) assert.equal(parseExamRef(bad), null, bad)
   assert.equal(examHref({ id: 'abc', code: '12 3' }), '/exam?t=abc&c=12%203')
 })
+
+import { splitPublicTests, showBlocks, FINDER_FILTERS } from '../src/lib/cbtFinder.js'
+test('finder filter: open vs upcoming split and ordering', () => {
+  const r = splitPublicTests([
+    { id: 'u2', state: 'not_open', opensAt: '2026-12-10T00:00:00Z' }, { id: 'o2', state: 'open', closesAt: null },
+    { id: 'u1', state: 'not_open', opensAt: '2026-11-12T00:00:00Z' }, { id: 'o1', state: 'open', closesAt: '2026-11-11T00:00:00Z' }, null,
+  ])
+  assert.deepEqual(r.open.map(x => x.id), ['o1', 'o2'])        // closing soonest first, no end last
+  assert.deepEqual(r.upcoming.map(x => x.id), ['u1', 'u2'])    // opening soonest first
+  assert.deepEqual(splitPublicTests(undefined), { open: [], upcoming: [] })
+})
+test('finder filter: which blocks each chip shows', () => {
+  assert.deepEqual(showBlocks('all'), { open: true, upcoming: true, practice: true })
+  assert.deepEqual(showBlocks('open'), { open: true, upcoming: false, practice: false })
+  assert.deepEqual(showBlocks('upcoming'), { open: false, upcoming: true, practice: false })
+  assert.deepEqual(showBlocks('practice'), { open: false, upcoming: false, practice: true })
+  assert.equal(FINDER_FILTERS.length, 4)
+})

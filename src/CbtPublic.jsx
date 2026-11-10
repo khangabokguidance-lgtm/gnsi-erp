@@ -12,6 +12,7 @@ import { listPublicTests, listPracticeTests, practiceTest, examInfo, startExam, 
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
 import { parseExamRef, examHref } from './lib/cbtRef'
+import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
 const backupKey = id => `gnsi-cbt-bk:${id}`
@@ -43,6 +44,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
   const [past, setPast] = useState([])       // closed exams that may be practised
+  const [filter, setFilter] = useState('all')   // all | open | upcoming | practice
   useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
   const scan = () => {
     const out = []
@@ -68,6 +70,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
     if (!ref) { setMsg('Paste the exam link or type the Test ID your teacher gave you.'); return }
     window.location.href = examHref(ref)
   }
+  const split = splitPublicTests(tests)
+  const show = showBlocks(filter)
   return (
     <>
       {started.length > 0 && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
@@ -80,21 +84,42 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           </div>
         ))}
       </div>}
-      {tests && tests.length > 0 && <div className="card" style={{ borderLeft: '4px solid #b42318' }}>
+      <div className="cbt-filters" role="group" aria-label="Show">
+        {FINDER_FILTERS.map(([id, label]) => {
+          const n = id === 'open' ? split.open.length : id === 'upcoming' ? split.upcoming.length : id === 'practice' ? past.length + (onPractice ? 1 : 0) : split.open.length + split.upcoming.length + past.length
+          return <button key={id} type="button" className={`cbt-fchip${filter === id ? ' on' : ''}`} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}<i>{n}</i></button>
+        })}
+      </div>
+      {show.open && split.open.length > 0 && <div className="card" style={{ borderLeft: '4px solid #b42318' }}>
         <h3 style={{ margin: '0 0 4px' }}>Tests open now</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Choose your test. You will need the access code your teacher gave you and your GCC no.</div>
-        {tests.map(t => (
+        {split.open.map(t => (
           <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
             <div style={{ minWidth: 0, flex: '1 1 200px' }}>
               <b>{t.name}</b>
               <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closesAt ? ` · closes ${when(t.closesAt)}` : ''}</div>
-              {t.state === 'not_open' && t.opensAt && <div style={{ marginTop: 4 }}><span style={{ fontSize: 12.5, color: '#9a5b00', fontWeight: 700 }}>Opens {when(t.opensAt)} · </span><CbtCountdown to={t.opensAt} onDone={() => listPublicTests().then(setTests)} /></div>}
             </div>
-            <a className={`btn ${t.state === 'open' ? 'gold' : 'navy'}`} style={{ textDecoration: 'none' }} href={examHref({ id: t.id })}>{t.state === 'open' ? 'Start →' : 'View →'}</a>
+            <a className="btn gold" style={{ textDecoration: 'none' }} href={examHref({ id: t.id })}>Start →</a>
           </div>
         ))}
       </div>}
-      {past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
+      {show.upcoming && split.upcoming.length > 0 && <div className="card" style={{ borderLeft: '4px solid #9a5b00' }}>
+        <h3 style={{ margin: '0 0 4px' }}>Upcoming tests</h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>The test series that is coming up. Each one opens at the time shown.</div>
+        {split.upcoming.map(t => (
+          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+              <b>{t.name}</b>
+              <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min</div>
+              {t.opensAt && <div style={{ marginTop: 4 }}><span style={{ fontSize: 12.5, color: '#9a5b00', fontWeight: 700 }}>Opens {when(t.opensAt)} · </span><CbtCountdown to={t.opensAt} className="cbt-cd cbt-cd-sm" onDone={() => listPublicTests().then(setTests)} /></div>}
+            </div>
+            <a className="btn navy" style={{ textDecoration: 'none' }} href={examHref({ id: t.id })}>View →</a>
+          </div>
+        ))}
+      </div>}
+      {(filter === 'open' && !split.open.length) && <div className="card muted">No test is open right now. Check <button type="button" className="cbt-link" onClick={() => setFilter('upcoming')}>Upcoming</button> or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
+      {(filter === 'upcoming' && !split.upcoming.length) && <div className="card muted">No upcoming test has been announced yet. Check back soon, or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
+      {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
         {past.map(t => (
@@ -104,7 +129,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           </div>
         ))}
       </div>}
-      {onPractice && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try the 4-minute practice test — it is not counted and nothing is saved. Works any time, even after an exam has closed.</span><div style={{ marginTop: 8 }}><button className="btn" type="button" onClick={onPractice}>Try the practice test</button></div></div>}
+      {show.practice && onPractice && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try the 4-minute practice test — it is not counted and nothing is saved. Works any time, even after an exam has closed.</span><div style={{ marginTop: 8 }}><button className="btn" type="button" onClick={onPractice}>Try the practice test</button></div></div>}
       <form className="card" onSubmit={go}>
         <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
         <p className="muted" style={{ margin: '0 0 10px' }}>Your teacher gives you an exam link or a Test ID. Paste either one here.</p>
