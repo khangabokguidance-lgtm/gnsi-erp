@@ -161,7 +161,7 @@ function CbtInner({ perms, currentUser }) {
 
       {tab === 'live' && <CbtLive online={online} canEdit={canEdit} flash={flash} />}
 
-      {tab === 'board' && <CbtResultOut test={test} rows={rows} tests={tests} online={online} resTest={resTest} setResTest={setResTest} onView={attempt => setDone({ test, attempt, admin: true })} flash={flash} />}
+      {tab === 'board' && <CbtResultOut test={test} rows={rows} tests={tests} online={online} resTest={resTest} setResTest={setResTest} onView={attempt => setDone({ test, attempt, admin: true })} canEdit={canEdit} flash={flash} />}
 
       {tab === 'results' && <>
         <div className="card">

@@ -103,3 +103,10 @@ Use a steady internet connection. Keep the page open until you submit.`
   assert.deepEqual(parseExamRef('https://guidancekhangabok.in/exam?t=abc123&c=99'), { id: 'abc123', code: '99'.length >= 4 ? '99' : '99' })
   assert.equal(parseExamRef('Online exam: no link here\nAccess code: 123456'), null, 'a code without a test cannot open anything')
 })
+
+test('the paste parser only reads the first few thousand characters', () => {
+  const huge = 'x '.repeat(5000) + 'https://guidancekhangabok.in/exam?t=abc123 Access code: 482915'
+  assert.equal(parseExamRef(huge), null, 'a link buried after 10 000 characters is ignored')
+  assert.equal(extractCode(huge), null)
+  assert.deepEqual(parseExamRef('Link: https://guidancekhangabok.in/exam?t=abc123 Access code: 482915'.padEnd(3000, ' ')), { id: 'abc123', code: '482915' })
+})
