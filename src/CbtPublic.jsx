@@ -8,12 +8,12 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import ResponsiveTables from './ResponsiveTables'
-import { parseExamRef, examHref, extractCode } from './lib/cbtRef'
+import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
-import { FINDER_FILTERS, splitPublicTests, showBlocks } from './lib/cbtFinder'
+import { FINDER_FILTERS, splitPublicTests, showBlocks, rankPractice } from './lib/cbtFinder'
 import { trendOf } from './lib/cbtTop5'
 
 const savedKey = id => `gnsi-cbt-remote:${id}`
@@ -124,23 +124,26 @@ function Top5Card({ item }) {
 // offer to continue an exam that was started on this device.
 // If staff added this past exam as a static mock (public/mocks/, entry testId = the exam id), practise from that file: the CDN serves it, so any number of students can practise with no database call.
 async function staticPractice(id) {
+  const read = async url => { try { const r = await fetch(url, { cache: 'no-cache' }); return r.ok ? r : null } catch { return null } }
   try {
     const base = import.meta.env.BASE_URL
-    const idx = await fetch(`${base}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : []))
-    const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
-    if (!m) return null
-    const r = await fetch(mockPath(m.slug, base), { cache: 'no-cache' })
-    if (!r.ok) return null
-    const t = parseMock(await r.json())
-    // practice, like the database copy: no camera / full-screen rules, no minimum time, calculator and rough work on
-    return { ...t, name: `${t.name} — practice`, instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${t.instructions || ''}`.trim(),
-      marking: { ...(t.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((t.marking || {}).tools || {}) } }, showResult: true, showAnswers: true }
+    // copies staff published from the admin screen (public storage bucket) come first, then ones committed to the site (public/mocks/)
+    const sources = [[await listPracticeCopies(), slug => practiceCopyUrl(slug)], [await (await read(`${base}mocks/index.json`))?.json?.().catch(() => []) || [], slug => mockPath(slug, base)]]
+    for (const [idx, urlOf] of sources) {
+      const m = Array.isArray(idx) && idx.find(x => x && x.testId === id && MOCK_SLUG.test(String(x.slug)))
+      if (!m) continue
+      const r = await read(urlOf(m.slug))
+      if (!r) continue
+      const t = parseMock(await r.json())
+      // practice, like the database copy: no camera / full-screen rules, no minimum time, calculator and rough work on
+      return { ...t, name: `${t.name} — practice`, instructions: `PRACTICE — this is a past exam. Nothing you do here is recorded or counted.\n\n${t.instructions || ''}`.trim(),
+        marking: { ...(t.marking || {}), minMinutes: 0, proctor: { camera: 'off', shield: false, fullscreen: 'off' }, tools: { calc: true, rough: true, ...((t.marking || {}).tools || {}) } }, showResult: true, showAnswers: true }
+    }
+    return null
   } catch { return null }
 }
 
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
-  const [raw, setRaw] = useState('')
-  const [msg, setMsg] = useState('')
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
   const [past, setPast] = useState([])       // closed exams that may be practised
@@ -169,14 +172,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
     try { localStorage.removeItem(savedKey(x.id)); localStorage.removeItem(backupKey(x.id)) } catch { /* storage blocked */ }
     setStarted(scan())
   }
-  const go = e => {
-    e.preventDefault()
-    const ref = parseExamRef(raw)
-    if (!ref) { setMsg('Paste the exam link or type the Test ID your teacher gave you.'); return }
-    window.location.href = examHref(ref)
-  }
   const split = splitPublicTests(tests)
-  const detected = parseExamRef(raw)
   const show = showBlocks(filter)
   return (
     <>
@@ -249,23 +245,21 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
       {show.practice && past.length > 0 && onPracticePast && <div className="card" style={{ borderLeft: '4px solid #1f4e8c' }}>
         <h3 style={{ margin: '0 0 4px' }}>Practise past exams</h3>
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>These exams have closed. Take them again in practice mode — nothing is recorded or counted, and your score and the answers appear at the end.</div>
-        {past.map(t => (
-          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
-            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{t.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}</div></div>
+        {rankPractice(past).map(t => (
+          <div key={t.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 8px', borderTop: '1px solid #eef1f6', ...(t.latest ? { background: '#fffaf0', borderRadius: 10, border: '1px solid #f0dcaa' } : {}) }}>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <b>{t.name}</b>
+                {t.latest && <span className="tag" style={{ background: '#c8962b', color: '#fff', fontWeight: 800, letterSpacing: .4 }}>LATEST</span>}
+                {t.isNew && <span className="tag" style={{ background: '#e7f6ec', color: '#146c3a', fontWeight: 800 }}>NEW</span>}
+              </div>
+              <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}{t.ago ? <b style={{ color: t.isNew ? '#146c3a' : undefined }}> · {t.ago}</b> : ''}</div>
+            </div>
             <button type="button" className="btn navy" disabled={!!busyId} onClick={() => onPracticePast(t.id)}>{busyId === t.id ? 'Opening…' : 'Practise →'}</button>
           </div>
         ))}
       </div>}
       {show.practice && onPractice && <div className="card" style={{ background: '#f8fafc' }}><b>New to computer-based tests?</b> <span className="muted">Try the 4-minute practice test — it is not counted and nothing is saved. Works any time, even after an exam has closed.</span><div style={{ marginTop: 8 }}><button className="btn" type="button" onClick={onPractice}>Try the practice test</button></div></div>}
-      <form className="card" onSubmit={go}>
-        <h3 style={{ margin: '0 0 6px' }}>Open your exam</h3>
-        <p className="muted" style={{ margin: '0 0 10px' }}>Paste the whole invitation message your teacher sent (or just the exam link or Test ID). The exam and the access code are picked out for you.</p>
-        <label><span className="lbl">Exam link or Test ID</span><input className="in" value={raw} onChange={e => { setRaw(e.target.value); setMsg('') }} onPaste={e => { const ref = parseExamRef(e.clipboardData?.getData('text') || ''); if (ref) { e.preventDefault(); window.location.href = examHref(ref) } }} placeholder="Paste the invitation, exam link or Test ID" autoCapitalize="off" autoCorrect="off" spellCheck={false} /></label>
-        {detected && <p style={{ color: '#146c3a', fontWeight: 700, margin: '8px 0 0' }}>✓ Exam found{detected.code ? ' · access code detected' : ''} — press Open exam.</p>}
-        {msg && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0' }}>{msg}</p>}
-        <div style={{ marginTop: 12 }}><button className="btn navy" type="submit">Open exam →</button></div>
-        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Do not have a link yet? Ask your teacher, or call the institute — tests are opened for each batch.</p>
-      </form>
     </>
   )
 }

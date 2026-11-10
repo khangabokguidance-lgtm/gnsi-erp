@@ -1,8 +1,8 @@
 // CbtOnline.jsx — the staff side of online exams: publish a test as a link, see the online tests, close or
 // remove them. (Candidates use CbtPublic.jsx.)
 import { useEffect, useState } from 'react'
-import { buildMockFile } from './lib/cbtMock'
-import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag, getAutoCodeFlag } from './cbtRemote'
+import { buildMockFile, slugify } from './lib/cbtMock'
+import { examLink, publishOnline, setOnline, deleteOnline, statusOf, inviteText, stamp, getPublicListFlag, getPracticeFlag, getAutoCodeFlag, publishPracticeCopy, removePracticeCopy, listPracticeCopies } from './cbtRemote'
 import { flatQuestions } from './lib/cbtEngine'
 import { syncFlashSchedule } from './cbtFlashSync'
 
@@ -17,9 +17,11 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
   const [practice, setPractice] = useState(true)   // allow practice mode once the exam has closed
   const [listed, setListed] = useState(true)       // show on the public exam page (so candidates can find it without a link)
   const [busy, setBusy] = useState(false)
+  const [copies, setCopies] = useState(null)       // practice copies already on the CDN (null while loading)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(row || null)
   useEffect(() => { let live = true; if (row) { getPublicListFlag(test.id).then(v => { if (live) setListed(v) }); getPracticeFlag(test.id).then(v => { if (live) setPractice(v) }); getAutoCodeFlag(test.id).then(v => { if (live) setAutoCode(v) }) } return () => { live = false } }, [row, test.id])
+  useEffect(() => { let live = true; listPracticeCopies().then(r => { if (live) setCopies(r) }); return () => { live = false } }, [])
   const qs = flatQuestions(test)
   const keyed = qs.filter(q => q.answer).length
 
@@ -34,6 +36,18 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
     } catch (e) { setErr(e.message) }
   }
 
+  // a practice copy on the CDN: any number of students can practise with no database load. Only after the exam has closed (it carries the answer key).
+  const isClosed = !!row && statusOf(row).label === 'Closed'
+  const mySlug = slugify(test.name)
+  const hasCopy = !!copies && copies.some(m => m.slug === mySlug)
+  const practiceCopy = async remove => {
+    setErr(''); setBusy(true)
+    try {
+      if (remove) { await removePracticeCopy(mySlug); flash('Practice copy removed.') } else { await publishPracticeCopy(test); flash('Practice copy published. Students can practise from the exam page now.') }
+      setCopies(await listPracticeCopies())
+    } catch (e) { setErr(e.message) }
+    setBusy(false)
+  }
   const publish = async () => {
     setErr('')
     if (code.trim().length < 4) { setErr('Set an access code of at least 4 characters — candidates need it to look themselves up by GCC no.'); return }
@@ -79,6 +93,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{err}</p>}
         <div className="cbt-actions" style={{ marginTop: 8 }}>
           <button className="btn gold" disabled={busy} onClick={publish}>{busy ? 'Publishing…' : row || done ? '💾 Update and keep live' : '🌐 Publish online'}</button>
+          {isClosed && <button className="btn navy" disabled={busy || copies === null} title="Put this closed exam's paper and key on the CDN so any number of students can practise it" onClick={() => practiceCopy(hasCopy)}>{hasCopy ? '🗑 Remove practice copy' : '🚀 Publish practice copy'}</button>}
           <button className="btn" title="Download this paper as a static mock file that runs on the student device with no exam traffic" onClick={downloadMock}>⬇ Static mock file</button>
           <button className="btn" onClick={onClose}>Close</button>
         </div>

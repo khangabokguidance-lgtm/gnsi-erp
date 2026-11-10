@@ -19,3 +19,9 @@ student's browser** — timer, camera / tab rules and marking — so any number 
 Add the closed exam as a static mock (steps above). Its file keeps the exam's id, so on the exam page the existing
 **Practise →** button for that exam automatically loads the CDN copy instead of asking the database. The exam is not
 listed twice. Remove the file (`--remove`) to go back to the database copy.
+
+## One-click practice copy (no files, no deploy)
+Run `supabase/RUN_cbt_practice_bucket.sql` once in the Supabase SQL editor (creates the public bucket `cbt-practice`; only staff can write).
+After an exam has **closed**: CBT → Tests → 🌐 Online → **🚀 Publish practice copy**. The exam page's **Practise →** button then
+loads it from the CDN at once. **🗑 Remove practice copy** takes it down. Needs the paper to be on this computer and every question keyed.
+Copies from this bucket are tried first, then ones committed under `public/mocks/`.
