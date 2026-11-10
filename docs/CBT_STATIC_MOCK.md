@@ -14,3 +14,8 @@ student's browser** — timer, camera / tab rules and marking — so any number 
 - **Nothing is recorded** — no Result out board, no Top 5, no flags reach staff. A refresh restarts the mock.
 - **The answer key is inside the file**, so a determined student can read it. Use for practice / pre-mocks, never the official exam.
 - Camera and tab-switch rules run as authored in the test, but only the student sees them.
+
+## Let 300+ students practise a past exam with no database
+Add the closed exam as a static mock (steps above). Its file keeps the exam's id, so on the exam page the existing
+**Practise →** button for that exam automatically loads the CDN copy instead of asking the database. The exam is not
+listed twice. Remove the file (`--remove`) to go back to the database copy.

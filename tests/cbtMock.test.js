@@ -34,6 +34,6 @@ test('parseMock rejects foreign or empty files', () => {
 })
 test('manifest entry and link', () => {
   const f = buildMockFile(paper(), { now: Date.UTC(2026, 10, 10) })
-  assert.deepEqual(manifestEntry(f), { slug: '8th-mega-mock-test', name: '8th Mega Mock Test', durationMin: 120, questions: 2, date: '2026-11-10' })
+  assert.deepEqual(manifestEntry(f), { slug: '8th-mega-mock-test', name: '8th Mega Mock Test', durationMin: 120, questions: 2, date: '2026-11-10', testId: 't1' })
   assert.equal(mockLink('a-b', 'https://x.in'), 'https://x.in/exam?mock=a-b')
 })
