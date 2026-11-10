@@ -2,7 +2,7 @@
 // Marks the application fee Paid ONLY after the Razorpay signature checks out AND Razorpay itself reports the payment
 // as captured for this order and for at least the exam fee.
 import crypto from 'crypto'
-import { send, only, body, findCandidate, updateTolerant } from './_lib.js'
+import { send, only, body, findCandidate, updateTolerant, payFetch } from './_lib.js'
 import { feeFor } from './entranceReg.js'
 
 export default async function handler(req, res) {
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     if (expected !== sig) return send(res, 400, { error: 'Payment signature did not match', verified: false })
 
     const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')
-    const pr = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, { headers: { Authorization: `Basic ${auth}` } })
+    const pr = await payFetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, { headers: { Authorization: `Basic ${auth}` } })
     if (!pr.ok) return send(res, 502, { error: 'Could not confirm the payment with Razorpay yet — if money was deducted, contact the office with your application number.', verified: false })
     const pay = await pr.json()
     if (pay.order_id !== orderId) return send(res, 400, { error: 'Payment does not belong to this order', verified: false })

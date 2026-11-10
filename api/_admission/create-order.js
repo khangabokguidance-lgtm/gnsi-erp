@@ -1,6 +1,5 @@
 // POST /api/entrance?action=adm-order { reference, dob } → Razorpay order for the admission fee (amount from the stored fee_amount).
-import Razorpay from 'razorpay'
-import { db, send, only, body } from './_deps.js'
+import { db, send, only, body, razorpayOrder } from './_deps.js'
 import { findApplication, isOpen, logEvent } from './_common.js'
 
 export default async function handler(req, res) {
@@ -11,8 +10,7 @@ export default async function handler(req, res) {
     if (!a) return send(res, 404, { error: 'No application matches that reference and date of birth.' })
     if (!isOpen(a)) return send(res, 409, { error: 'This application is closed.' })
     if (a.fee_status !== 'Unpaid' || !(Number(a.fee_amount) > 0)) return send(res, 409, { error: 'No payment is due for this application.' })
-    const rzp = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET })
-    const order = await rzp.orders.create({
+    const order = await razorpayOrder({
       amount: Math.round(Number(a.fee_amount) * 100), currency: 'INR', receipt: a.reference_no,
       notes: { reference_no: a.reference_no, kind: 'admission_portal', applicant: String(a.student_name || '').slice(0, 60) },
     })

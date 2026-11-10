@@ -22,6 +22,9 @@
     },
     "api/gemini.js": {
       "maxDuration": 60
+    },
+    "api/entrance.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

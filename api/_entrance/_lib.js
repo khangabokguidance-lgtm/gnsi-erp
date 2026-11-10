@@ -12,8 +12,31 @@ import { sameDob } from './entranceReg.js'
 export const BUCKET = 'gnsi'
 export const EXAM_FIELDS = 'id, exam_name, exam_type, exam_date, exam_time, reporting_time, duration_mins, venue, class_target, application_fee, app_open, app_close, status, instructions, course'
 
+// Every call to the outside has a time limit. Without one, a database or payment request that never answers keeps the function
+// alive until Vercel stops it ("Task timed out after 300 seconds") while the visitor waits and the bill grows.
+export const DB_TIMEOUT_MS = 20000
+export const PAY_TIMEOUT_MS = 15000
+const combine = (outer, ms) => {
+  const t = AbortSignal.timeout(ms)
+  if (!outer) return t
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([outer, t])
+  const c = new AbortController(); const on = () => c.abort(); outer.addEventListener('abort', on); t.addEventListener('abort', on); return c.signal
+}
+/** A fetch that gives up after `ms` (and still honours a signal the caller passes). */
+export const timedFetch = ms => (input, init = {}) => fetch(input, { ...init, signal: combine(init.signal, ms) })
+export const payFetch = timedFetch(PAY_TIMEOUT_MS)
+
 let _db
-export const db = () => (_db ||= createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }))
+export const db = () => (_db ||= createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false }, global: { fetch: timedFetch(DB_TIMEOUT_MS) } }))
+
+// A Razorpay order, created with a plain HTTPS call (no SDK → no extra HTTP library loaded, and a hard time limit).
+export async function razorpayOrder(order) {
+  const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')
+  const r = await payFetch('https://api.razorpay.com/v1/orders', { method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' }, body: JSON.stringify(order) })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(`Razorpay ${r.status}: ${j?.error?.description || 'could not create the order'}`)
+  return j
+}
 
 export const send = (res, code, body) => res.status(code).json(body)
 export function only(req, res, method) {
