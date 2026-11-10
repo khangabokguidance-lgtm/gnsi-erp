@@ -84,6 +84,9 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-home:hover{background:rgba(255,255,255,.22)}
 .cbt-hero .eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--gold2)}
 .cbt-hero h2{color:#fff;margin:4px 0 4px;font-family:'Fraunces',Georgia,serif;font-size:26px;line-height:1.15}
+.cbt-hero-logo{position:absolute;right:16px;top:14px;width:66px;height:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+.cbt-hero:has(.cbt-hero-logo) h2,.cbt-hero:has(.cbt-hero-logo) .eyebrow{padding-right:80px}
+@media(max-width:480px){.cbt-hero-logo{width:52px;right:12px;top:12px}.cbt-hero:has(.cbt-hero-logo) h2,.cbt-hero:has(.cbt-hero-logo) .eyebrow{padding-right:62px}}
 .cbt-hero p{color:#fff;margin:0;opacity:.8;font-size:13px;max-width:640px;line-height:1.5}
 .cbt-hero .row{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
 .cbt-tabs{display:flex;gap:4px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px}
