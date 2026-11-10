@@ -16,6 +16,11 @@ import { Calculator, RoughPad } from './CbtTools'
 import { BmeiText } from './MayekBmei'
 import { useStaffPhotos, findWebsitePhoto } from './staffPhotos'
 
+// Load: 300 students saving after every click exhausted the database disk budget, so saves are batched and heartbeats are rarer.
+// Staff mark a candidate "dropped off" after 100 s of silence (lib/cbtLive.js), so the heartbeat must stay well under that.
+const SAVE_DEBOUNCE_MS = 3000
+const HEARTBEAT_MS = 50000
+
 // The founder's welcome (same person, photo and message as the website's founder section).
 const FOUNDER = {
   name: 'Moirangthem Himan Singh', role: 'Founder & Head of the Institute · GNSI',
@@ -204,10 +209,10 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds, ...(x.sec ? { sec: { ...x.sec, at: x.sec.at + (r.extraSeconds - (x.extraSeconds || 0)) * 1000 } } : {}) } : x))   // staff gave extra time
         if (r?.submitted) finish(true)          // the server's clock ran out first
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
-    }, remote ? 1200 : 500)
+    }, remote ? SAVE_DEBOUNCE_MS : 500)
     return () => clearTimeout(t)
   }, [a, stage, remote, finish, kicked, demo])
-  // heartbeat: save every 30 s even when nothing changed, so staff can tell "thinking" from "dropped off" (Live tab)
+  // heartbeat: save every ~50 s even when nothing changed, so staff can tell "thinking" from "dropped off" (Live tab)
   useEffect(() => {
     if (!remote || stage !== 'exam') return
     const t = setInterval(async () => {
@@ -217,7 +222,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         if (r?.extraSeconds != null) setA(x => (x && (x.extraSeconds || 0) !== r.extraSeconds ? { ...x, extraSeconds: r.extraSeconds, ...(x.sec ? { sec: { ...x.sec, at: x.sec.at + (r.extraSeconds - (x.extraSeconds || 0)) * 1000 } } : {}) } : x))
         if (r?.submitted) finish(true)
       } catch (e) { if (e.code === 'SESSION') setKicked(e.message); else { setNetErr(e.message); setSaveInfo(x => ({ ...x, state: 'offline' })) } }
-    }, 30000 + Math.floor(Math.random() * 5000))   // a little jitter so a whole batch does not save in the same second
+    }, HEARTBEAT_MS + Math.floor(Math.random() * 5000))   // a little jitter so a whole batch does not save in the same second
     return () => clearInterval(t)
   }, [remote, stage, kicked, finish])
   // while an online save keeps failing, try again every few seconds (answers are also kept on this device)

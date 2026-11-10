@@ -29,7 +29,7 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
   }, [id, testName])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- switching exam clears the old list, then loads the new one
   useEffect(() => { setRows(null); load() }, [load])
-  useEffect(() => { const t = setInterval(load, 15000); return () => clearInterval(t) }, [load])
+  useEffect(() => { const t = setInterval(load, 30000); return () => clearInterval(t) }, [load])
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
 
   if (!online?.length) return <div className="card"><h3>Nothing online yet</h3><p className="muted">Publish a test from the Tests tab first.</p></div>
@@ -49,7 +49,7 @@ export default function CbtLive({ online, canEdit, flash, initialId = '' }) {
             <select className="in" style={{ maxWidth: 380 }} value={id} onChange={e => setId(e.target.value)}>{online.map(o => <option key={o.id} value={o.id}>{o.name}{o.status === 'live' ? ' (live)' : ''}</option>)}</select></label>
           <label style={{ flex: '1 1 160px' }}><span className="lbl">Find a candidate</span><input className="in" value={q} onChange={e => setQ(e.target.value)} placeholder="Name or GCC no." /></label>
           <button className="btn" onClick={load}>↻ Refresh now</button>
-          <span className="muted" style={{ fontSize: 12 }}>Auto-refreshes every 15 s</span>
+          <span className="muted" style={{ fontSize: 12 }}>Auto-refreshes every 30 s</span>
         </div>
         {err && <p role="alert" style={{ color: '#b42318', fontWeight: 700, margin: '8px 0 0' }}>{err}</p>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
