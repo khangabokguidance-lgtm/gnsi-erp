@@ -204,6 +204,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           </div>
         ))}
       </div>}
+      {filter === 'all' && tests !== null && !split.open.length && !split.upcoming.length && !top.length && !past.length && <div className="card" style={{ borderLeft: '4px solid #9a5b00' }}><b>No test is listed on this page right now.</b><div className="muted" style={{ marginTop: 4 }}>If your teacher sent you an invitation message or an exam link, paste it in the box below — the exam and the access code are picked out for you. You can also try the practice test.</div></div>}
       {(filter === 'open' && !split.open.length) && <div className="card muted">No test is open right now. Check <button type="button" className="cbt-link" onClick={() => setFilter('upcoming')}>Upcoming</button> or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
       {(filter === 'top' && !top.length) && <div className="card muted">No top-5 board has been published yet.</div>}
       {(filter === 'upcoming' && !split.upcoming.length) && <div className="card muted">No upcoming test has been announced yet. Check back soon, or try <button type="button" className="cbt-link" onClick={() => setFilter('practice')}>Practice</button>.</div>}
