@@ -29,7 +29,7 @@ as $$
     from public.cbt_tests t
     where t.status = 'live' and t.public_list
       and (t.closes_at is null or now() < t.closes_at)
-      and (t.opens_at is null or t.opens_at < now() + interval '14 days')
+      and (t.opens_at is null or t.opens_at < now() + interval '60 days')
     order by coalesce(t.opens_at, t.created_at) desc
     limit 20
   ) q;
