@@ -11,7 +11,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, ensurePracticeCopy, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import { RESULT_WA_NUMBER } from './lib/cbtResultShare'
-import { countOnce, statsOf, fmtCount, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
+import { countOnce, statsOf, fmtCount, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText, PRACTICE_TRIES } from './lib/cbtMockStats'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
@@ -156,7 +156,7 @@ async function practiceDeadlines() {
   return out
 }
 
-// Before a practice or mock starts: the student's GCC no. (3 tries per GCC per test). Remembers the GCC on this device.
+// Before a practice or mock starts: the student's GCC no. (5 tries per GCC per test; see PRACTICE_TRIES). Remembers the GCC on this device.
 function GccGate({ title, slug, onPass, onCancel }) {
   const [gcc, setGcc] = useState(() => { try { return localStorage.getItem('gnsi-practice-gcc') || '' } catch { return '' } })
   const [busy, setBusy] = useState(false)
@@ -175,7 +175,7 @@ function GccGate({ title, slug, onPass, onCancel }) {
     <div role="dialog" aria-modal="true" aria-label="Enter your GCC no." style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(11,30,61,.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div className="card" style={{ maxWidth: 380, width: '100%', margin: 0 }}>
         <h3 style={{ margin: '0 0 4px' }}>Enter your GCC no.</h3>
-        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{title ? <b>{title}</b> : null}{title ? ' — ' : ''}each student can practise a test 3 times. Nothing else about you is saved.</div>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{title ? <b>{title}</b> : null}{title ? ' — ' : ''}each student can practise a test {PRACTICE_TRIES} times. Nothing else about you is saved.</div>
         <input className="in" inputMode="numeric" autoFocus value={gcc} placeholder="GCC no." aria-label="GCC no." disabled={busy} onChange={e => { setGcc(e.target.value); setErr('') }} onKeyDown={e => { if (e.key === 'Enter') go() }} />
         {err && <div role="alert" style={{ color: '#b42318', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>{err}</div>}
         {left !== null && <div style={{ color: '#146c3a', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>✓ {triesText(left)}</div>}
