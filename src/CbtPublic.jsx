@@ -334,7 +334,7 @@ function CbtPublicInner() {
   useEffect(() => {
     let live = true
     if (!mockSlug) return undefined
-    fetch(mockPath(mockSlug, import.meta.env.BASE_URL), { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('This mock test was not found. Check the link.'); return r.json() })
+    fetch(mockPath(mockSlug, import.meta.env.BASE_URL), { cache: 'no-cache' }).then(r => { if (!r.ok || !/json/i.test(r.headers.get('content-type') || '')) throw new Error('This mock test was not found. Check the link, or ask your teacher whether it has been published yet.'); return r.json() })   // a missing file comes back as the site's home page (HTML), not a 404
       .then(j => { if (live) setMock(parseMock(j)) }).catch(e => { if (live) setMockErr(e instanceof SyntaxError ? 'This mock test could not be read.' : e.message || 'This mock test could not be loaded.') })
     return () => { live = false }
   }, [mockSlug])
