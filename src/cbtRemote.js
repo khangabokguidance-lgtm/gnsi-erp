@@ -102,6 +102,9 @@ export async function saveTop5(id, snapshot) {
 }
 export async function getTop5(id) { try { const { data, error } = await supabase.from('cbt_tests').select('top5').eq('id', id).maybeSingle(); return error ? null : data?.top5 || null } catch { return null } }
 // The latest published top-5 boards, newest first: [] if none or the database update is not run yet.
+// Static-mock counters: +1 view / +1 appeared (fire and forget — a mock must never fail because of a counter), and all counters at once.
+export const mockHit = (slug, kind) => { try { Promise.resolve(supabase.rpc('cbt_mock_hit', { p_slug: slug, p_kind: kind })).catch(() => {}) } catch { /* ignore */ } }
+export const listMockStats = async () => { try { const r = await rpc('cbt_mock_stats', {}); return r && typeof r === 'object' && !Array.isArray(r) ? r : {} } catch { return {} } }
 export const listTop5 = async () => { try { const r = await rpc('cbt_top5_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
 // Past (closed) exams anyone may practise: [] if the database update is not run yet.

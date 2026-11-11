@@ -8,8 +8,9 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, mockHit, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
+import { countOnce, statsOf, viewsText, appearedText, YEAR_MS } from './lib/cbtMockStats'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
@@ -154,6 +155,13 @@ async function practiceDeadlines() {
   return out
 }
 
+// 👁 views · students appeared, for a static mock (nothing shows until the first view is counted)
+const Eye = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none' }}><path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+function MockStats({ s }) {
+  if (!s) return null
+  return <div className="muted" style={{ fontSize: 12.5, margin: '4px 0 10px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 6 }}><span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Eye />{viewsText(s.views)}</span>{s.starts > 0 && <><span aria-hidden="true">·</span><span title="Students who started this mock">{appearedText(s.starts)}</span></>}</div>
+}
+
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
@@ -164,6 +172,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   useEffect(() => { let live = true; practiceDeadlines().then(r => { if (live) setDeadlines(r) }); return () => { live = false } }, [])
   const [mocks, setMocks] = useState([])     // static mock tests (public/mocks/index.json): run on the student's device, no database
   useEffect(() => { let live = true; fetch(`${import.meta.env.BASE_URL}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).then(r => { if (live && Array.isArray(r)) setMocks(r.filter(m => m && MOCK_SLUG.test(String(m.slug)))) }).catch(() => {}); return () => { live = false } }, [])
+  const [mockStats, setMockStats] = useState({})   // slug → { views, starts }
+  useEffect(() => { let live = true; listMockStats().then(r => { if (live) setMockStats(r) }); return () => { live = false } }, [])
   const [topMore, setTopMore] = useState(false)
   useEffect(() => { let live = true; listTop5().then(r => { if (live) setTop(r) }); return () => { live = false } }, [])
   useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
@@ -275,7 +285,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Full mock papers that run on your own phone or computer. Your score appears at the end; nothing is recorded or counted.</div>
         {mocks.filter(m => !past.some(t => t.id === m.testId)).map(m => (
           <div key={m.slug} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
-            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div></div>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div><MockStats s={statsOf(mockStats, m.slug)} /></div>
             <a className="btn navy" href={`/exam?mock=${encodeURIComponent(m.slug)}`}>Start →</a>
           </div>
         ))}
@@ -310,6 +320,16 @@ function CbtPublicInner() {
   const mockSlug = MOCK_SLUG.test(params.get('mock') || '') ? params.get('mock') : ''
   const [mock, setMock] = useState(null)       // the loaded static mock test (runs here, nothing sent anywhere)
   const [mockErr, setMockErr] = useState('')
+  const [mockStats, setMockStats] = useState({})
+  useEffect(() => {
+    if (!mockSlug) return undefined
+    let live = true
+    // one view per device per day, then read the counters (a failed counter never blocks the mock)
+    let store = null; try { store = window.localStorage } catch { /* blocked */ }
+    if (countOnce(store || { getItem: () => null, setItem: () => {} }, `gnsi-mock-view:${mockSlug}`)) mockHit(mockSlug, 'view')
+    listMockStats().then(r => { if (live) setMockStats(r) })
+    return () => { live = false }
+  }, [mockSlug])
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
   const [form, setForm] = useState({ gcc: '', parent: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
@@ -417,7 +437,9 @@ function CbtPublicInner() {
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
   // practice test: runs in this browser only; its result is the local attempt itself
   const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
-  const startMock = () => { setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate') }
+  const startMock = () => {
+    try { if (countOnce(window.localStorage, `gnsi-mock-start:${mockSlug}`, Date.now(), YEAR_MS)) mockHit(mockSlug, 'start') } catch { /* counter only */ }
+    setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate') }
   const demoDone = done => { setView({ test: run?.test || DEMO_TEST, attempt: done }); setPhase('result') }
   // practise a PAST exam: its real paper and key are fetched (only allowed once it is closed and its answers are out); marking happens here, nothing is saved
   const [practiceBusy, setPracticeBusy] = useState('')
@@ -481,6 +503,7 @@ function CbtPublicInner() {
         {mockErr ? <div role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{mockErr}</div> : !mock ? <div className="muted">Loading the mock test…</div> : <>
           <h3 style={{ margin: '0 0 4px' }}>{mock.name}</h3>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>{mock.sections.reduce((n, x) => n + x.questions.length, 0)} questions · {mock.durationMin} minutes. This mock runs on your own device — your score and the answers appear at the end, and nothing is recorded or counted. Do not refresh or close the page while you write — progress on a mock is not saved.</div>
+          <MockStats s={statsOf(mockStats, mockSlug)} />
           <button type="button" className="btn gold" onClick={startMock}>▶ Start the mock test</button>
         </>}
         <div style={{ marginTop: 10 }}><a className="cbt-link" href="/exam">See other tests</a></div>

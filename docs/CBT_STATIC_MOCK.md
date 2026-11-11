@@ -11,7 +11,8 @@ student's browser** — timer, camera / tab rules and marking — so any number 
 
 ## What it does and does not do
 - Student sees their own score and the answers at the end (per the test's show-result / show-answers settings).
-- **Nothing is recorded** — no Result out board, no Top 5, no flags reach staff. A refresh restarts the mock.
+- **Nothing is recorded about a student** — no Result out board, no Top 5, no flags reach staff. A refresh restarts the mock.
+- **Two counters only (👁 views · students appeared):** run `supabase/RUN_cbt_mock_stats.sql` once. Each device sends at most one view per day and one "appeared" per mock — two tiny writes, no names, no answers. The numbers show on the mock's page and its card on the exam page. Without the SQL the mock works the same and the numbers simply do not show.
 - **The answer key is inside the file**, so a determined student can read it. Use for practice / pre-mocks, never the official exam.
 - Camera and tab-switch rules run as authored in the test, but only the student sees them.
 
