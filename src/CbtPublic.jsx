@@ -156,7 +156,7 @@ async function practiceDeadlines() {
   return out
 }
 
-// Before a practice or mock starts: the student's GCC no. (5 tries per GCC per test; see PRACTICE_TRIES). Remembers the GCC on this device.
+// Before a practice or mock starts: the student's GCC no. (PRACTICE_TRIES per GCC per test). Remembers the GCC on this device.
 function GccGate({ title, slug, onPass, onCancel }) {
   const [gcc, setGcc] = useState(() => { try { return localStorage.getItem('gnsi-practice-gcc') || '' } catch { return '' } })
   const [busy, setBusy] = useState(false)

@@ -30,7 +30,7 @@ export const appearedText = n => `${fmtCount(n)} student${n === 1 ? '' : 's'} ap
 
 // ── GCC practice limit ──
 /** How many times one GCC may start a test. The real limit is `lim` in supabase/RUN_cbt_mock_practice_gcc.sql — keep both the same. */
-export const PRACTICE_TRIES = 5
+export const PRACTICE_TRIES = 10
 /** The key a practice is counted under: the mock's slug, or practice-<exam id> for a past exam. */
 export const practiceKey = (kind, id) => (kind === 'exam' ? `practice-${String(id || '').toLowerCase().replace(/[^a-z0-9-]/g, '')}` : String(id || ''))
 /** Digits only, no leading zeros — how the database compares GCC numbers. */
