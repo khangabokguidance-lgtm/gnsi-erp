@@ -11,7 +11,9 @@
 //   language only or with different numbers; two options with the same text; a repeated question.
 
 const MEETEI_DIGITS = /[꯰-꯹]/g
-export const toAscii = t => String(t || '').replace(MEETEI_DIGITS, c => String(c.charCodeAt(0) - 0xABF0))
+// raised / lowered digits of a true fraction (¹⁄₉) read as the plain digits 1 and 9
+const SCRIPT_DIGITS = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9', '\u2044': '/' }
+export const toAscii = t => String(t || '').replace(MEETEI_DIGITS, c => String(c.charCodeAt(0) - 0xABF0)).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉\u2044]/g, c => SCRIPT_DIGITS[c])
 export const numbersIn = t => (toAscii(t).match(/\d+(?:[.,]\d+)*/g) || []).map(x => x.replace(/,/g, '')).sort()
 const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 const norm = t => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, '')

@@ -109,3 +109,17 @@ test('auto-numbered paper that also has section headings and directions', async 
   const s = await read(await docx(body, NUMBERING))
   check(s, 'auto + section'); assert.equal(s[0].label, 'A'); assert.match(s[0].directions, /correct answer/)
 })
+
+test('Word equation fractions become true fractions (¹⁄₉, not 19)', async () => {
+  const M = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+  const mr = x => `<m:r><m:t>${x}</m:t></m:r>`
+  const frac = (a, b) => `<m:oMath><m:f><m:num>${mr(a)}</m:num><m:den>${mr(b)}</m:den></m:f></m:oMath>`
+  const body = `<w:p ${M}><w:r><w:t xml:space="preserve">4 </w:t></w:r>${frac('1', '9')}<w:r><w:t xml:space="preserve"> × 6 </w:t></w:r>${frac('8', '9')}</w:p>`
+  const lines = await paragraphsFromDocx(await docx(body), { convertBmei: false })
+  assert.equal(lines[0].text, '4 ¹⁄₉ × 6 ⁸⁄₉')
+})
+
+test('true fractions still count as the same numbers when English and Meitei Mayek are compared', async () => {
+  const { numberDiff } = await import('../src/lib/cbtCompare.js')
+  assert.equal(numberDiff('4 1/9 × 6 8/9', '4 ¹⁄₉ × 6 ⁸⁄₉').same, true)
+})

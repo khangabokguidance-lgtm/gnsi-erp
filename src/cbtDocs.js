@@ -9,8 +9,16 @@ import { makeNumbering } from './lib/docxNumbering.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const M_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math'
 const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' }
+
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹', SUB = '₀₁₂₃₄₅₆₇₈₉'
+const plainText = el => (el ? Array.from(el.getElementsByTagName('*')).filter(k => k.localName === 't').map(k => k.textContent).join('').replace(/\s+/g, '') : '')
+// 1 over 9 → ¹⁄₉ (raised top, fraction slash, lowered bottom). Anything that is not plain digits keeps a readable a/b form.
+export const trueFraction = (top, bottom) => /^\d+$/.test(top) && /^\d+$/.test(bottom)
+  ? `${top.replace(/\d/g, d => SUP[d])}\u2044${bottom.replace(/\d/g, d => SUB[d])}`
+  : `${/^\d+$/.test(top) ? top : `(${top})`}/${/^\d+$/.test(bottom) ? bottom : `(${bottom})`}`
 
 // Which font a run is really in: its own rFonts, else its character style, else its paragraph style (and the styles
 // they are based on), else the document default. Word often stores the font only on the style, so a check of the
@@ -99,6 +107,12 @@ export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei =
         if (c.nodeType !== 1) continue
         const n = c.localName
         if (n === 'pPr' || n === 'rPr' || n === 'txbxContent' || n === 'Fallback' || n === 'p') continue
+        // A Word equation fraction (m:f) keeps the top and bottom in separate parts: write it as a true fraction (¹⁄₉), not 19
+        if (n === 'f' && c.namespaceURI === M_NS) {
+          const part = name => Array.from(c.childNodes).find(k => k.nodeType === 1 && k.localName === name)
+          push(trueFraction(plainText(part('num')), plainText(part('den'))), false)
+          continue
+        }
         if (n === 'r') {
           const bmei = forceBmei || isBmeiName(fontOfRun(c, p, sf))
           let t = ''

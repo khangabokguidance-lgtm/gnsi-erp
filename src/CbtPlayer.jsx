@@ -3,6 +3,7 @@
 // right, section tabs, countdown clock, language switch) → summary → submit. CbtResult shows the score card.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
+import { toAscii } from './lib/cbtVerify'
 import { cbtStore } from './cbtStore'
 import {
   STATUS_LABEL, answersLocked, settle, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
@@ -28,7 +29,17 @@ const FOUNDER = {
 const hasMm = test => flatQuestions(test).some(q => q.textMm || q.options.some(o => o.textMm))
 const pickRaw = (en, mm, lang) => (lang === 'mm' && mm ? mm : en)
 // Meitei Mayek is drawn in the BMEI04 (Bmei) font; English stays as plain text.
-const pick = (en, mm, lang) => (lang === 'mm' && mm ? <BmeiText text={mm} /> : en)
+// A true fraction in the stored text (¹⁄₉: raised digits, fraction slash, lowered digits) is drawn stacked, with a bar.
+const FRACTION = /([⁰¹²³⁴⁵⁶⁷⁸⁹]+\u2044[₀₁₂₃₄₅₆₇₈₉]+)/
+function withFractions(text, plain) {
+  if (!FRACTION.test(text)) return plain(text)
+  return text.split(FRACTION).map((part, i) => {
+    if (i % 2 === 0) return part ? <Fragment key={i}>{plain(part)}</Fragment> : null
+    const [top, bottom] = toAscii(part).split('/')
+    return <span key={i} className="cbt-frac" role="math" aria-label={`${top} over ${bottom}`}><span className="n">{top}</span><span className="d">{bottom}</span></span>
+  })
+}
+const pick = (en, mm, lang) => (lang === 'mm' && mm ? withFractions(mm, t => <BmeiText text={t} />) : withFractions(en || '', t => t))
 const picsOf = q => (q.images?.length ? q.images : q.image ? [q.image] : [])
 const LEGEND = ['answered', 'notAnswered', 'notVisited', 'marked', 'answeredMarked']
 const Swatch = ({ s, n }) => <span className={`cbt-s ${s}`}>{n}</span>
