@@ -40,7 +40,9 @@ h2{font-family:'Fraunces',Georgia,serif;font-size:31px;line-height:1.12;margin:1
 .how{margin:0 0 16px;padding:0;list-style:none;display:grid;gap:8px}
 .how li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5}
 .how i{flex:none;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-style:normal;font-weight:800;font-size:12px;display:grid;place-items:center;margin-top:1px}
-.link{background:var(--navy);color:#fff;border-radius:14px;padding:13px 16px;margin:4px 0 16px}
+.link{display:block;text-decoration:none;background:var(--navy);color:#fff;border-radius:14px;padding:13px 16px;margin:4px 0 16px}
+.link:hover,.link:focus-visible{background:var(--navy2);outline:2px solid var(--gold)}
+.link span{text-decoration:underline;text-underline-offset:3px}
 .link small{display:block;font-size:11px;letter-spacing:.12em;color:var(--gold-l);font-weight:800;margin-bottom:3px}
 .link span{font-weight:700;font-size:14.5px;word-break:break-all}
 .foot{border-top:1px dashed #d6deea;padding:12px 26px 18px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
@@ -84,7 +86,7 @@ h2{font-family:'Fraunces',Georgia,serif;font-size:31px;line-height:1.12;margin:1
       <li><i>2</i><span>Allow the camera for the face check. The video is <b>not recorded or sent anywhere</b>.</span></li>
       <li><i>3</i><span>Let your child sit alone and finish in one go. The score and answers appear at the end.</span></li>
     </ul>
-    <div class="link"><small>PRACTISE HERE</small><span id="cLink"></span></div>
+    <a class="link" id="cLinkA" href="#" target="_blank" rel="noopener"><small>PRACTISE HERE · TAP TO OPEN</small><span id="cLink"></span></a>
   </div>
   <div class="foot"><span id="cContact"><b>GNSI</b> · Guidance Navodaya &amp; Sainik Institute</span><span>Keep up the daily practice 🌟</span></div>
 </div>
@@ -97,7 +99,10 @@ if (qs.get('link')) $('inLink').value = qs.get('link')
 if (qs.get('until')) $('inUntil').value = qs.get('until')
 if (qs.get('contact')) $('inContact').value = qs.get('contact')
 function render() {
-  $('cLink').textContent = $('inLink').value.trim()
+  const href = $('inLink').value.trim()
+  $('cLink').textContent = href
+  // only web links are made clickable
+  if (/^https?:\/\//i.test(href)) $('cLinkA').setAttribute('href', href); else $('cLinkA').removeAttribute('href')
   const u = $('inUntil').value.trim()
   $('cUntil').hidden = !u
   $('cUntil').textContent = u ? '⏳ ' + u : ''
