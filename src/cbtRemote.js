@@ -102,8 +102,35 @@ export async function saveTop5(id, snapshot) {
 }
 export async function getTop5(id) { try { const { data, error } = await supabase.from('cbt_tests').select('top5').eq('id', id).maybeSingle(); return error ? null : data?.top5 || null } catch { return null } }
 // The latest published top-5 boards, newest first: [] if none or the database update is not run yet.
+// GCC practice limit: asks the database to count this try (3 per GCC per test). Resolves { ok, used, limit, left } or { skipped: true } when
+// the database update is not run yet / there is no connection (practice must keep working); a "no" from the server (wrong GCC, tries used up) throws.
+export async function mockBegin(slug, gcc) {
+  try { return await rpc('cbt_mock_begin', { p_slug: slug, p_gcc: gcc }) } catch (e) { if (e && e.code) throw e; return { skipped: true } }
+}
+// Staff: who practised (newest first) and giving a student more tries (admin).
+export async function listMockPractice(limit = 5000) {
+  const { data, error } = await supabase.from('cbt_mock_practice').select('gcc,slug,started_at').order('started_at', { ascending: false }).limit(limit)
+  if (error) throw new Error(friendly(error))
+  return data || []
+}
+export async function resetMockPractice(gcc, slug) { const { error } = await supabase.from('cbt_mock_practice').delete().eq('gcc', gcc).eq('slug', slug); if (error) throw new Error(friendly(error)) }
+// GCC no. (no leading zeros) → { name, batch } for the staff list; read client-side so it works whatever the column type is.
+export async function nameMap() {
+  const { data } = await supabase.from('students').select('gcc_no,name,batch').limit(5000)
+  const out = {}
+  for (const r of data || []) out[String(r.gcc_no).replace(/^0+/, '')] = { name: r.name || '', batch: r.batch || '' }
+  return out
+}
+// Static-mock counters: +1 view / +1 appeared (fire and forget — a mock must never fail because of a counter), and all counters at once.
+export const mockHit = (slug, kind) => { try { Promise.resolve(supabase.rpc('cbt_mock_hit', { p_slug: slug, p_kind: kind })).catch(() => {}) } catch { /* ignore */ } }
+export const listMockStats = async () => { try { const r = await rpc('cbt_mock_stats', {}); return r && typeof r === 'object' && !Array.isArray(r) ? r : {} } catch { return {} } }
 export const listTop5 = async () => { try { const r = await rpc('cbt_top5_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
+// Ask the site to put this closed exam's practice copy on the CDN (the first student triggers it once; the rest read the CDN). → true when a copy
+// exists / was made; false on any problem, and the page then uses the database copy as before.
+export async function ensurePracticeCopy(id) {
+  try { const r = await fetch(`/api/entrance?action=practice-copy&id=${encodeURIComponent(id)}`, { method: 'POST' }); if (!r.ok) return false; const j = await r.json().catch(() => ({})); return !!j.ok } catch { return false }
+}
 // Past (closed) exams anyone may practise: [] if the database update is not run yet.
 export const listPracticeTests = async () => { try { const r = await rpc('cbt_practice_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 // The past paper with its key, turned into a test the exam screen can run and mark locally (nothing is sent anywhere).

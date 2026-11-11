@@ -4,6 +4,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CBT_CSS } from './cbtCss'
 import { toAscii } from './lib/cbtVerify'
+import { resultMessage, waLink } from './lib/cbtResultShare'
 import { cbtStore } from './cbtStore'
 import {
   STATUS_LABEL, answersLocked, settle, flatQuestions, newAttempt, statusOf, go, select, clear, mark, counts, neighbour, secondsLeft, clock, grade, keyStatus,
@@ -666,7 +667,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
 }
 
 // ── Score card + answer review ───────────────────────────────────────────────
-export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 'Close' }) {
+export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 'Close', shareTo = '' }) {
   const ks = keyStatus(test)
   // With a key here the score is worked out fresh (so a key added later is used); otherwise the server's score is shown.
   const g = useMemo(() => (ks.set === 0 && attempt.score ? attempt.score : grade(test, attempt.answers)), [test, attempt, ks.set])
@@ -695,6 +696,10 @@ export function CbtResult({ test, attempt, onClose, admin = false, closeLabel = 
           ) : <>
             {!admin && test.answersLater && <p style={{ background: '#eef2f9', border: '1px solid #c9d6ec', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>🔒 The correct answers and the question review will be shown after the exam closes. Open this link again later to see them.</p>}
             {!complete && <p style={{ background: '#fff4dc', border: '1px solid #f3d38a', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>⚠️ The answer key is {ks.set ? `set for ${ks.set} of ${ks.total} questions` : 'not set yet'}, so this score is {ks.set ? 'partial' : 'not available'}. Add the key under CBT Exam → Edit, then open the result again.</p>}
+            {shareTo && !admin && known && <p style={{ margin: '0 0 12px' }}>
+              <a className="btn gold" style={{ textDecoration: 'none' }} target="_blank" rel="noopener noreferrer" href={waLink(shareTo, resultMessage({ testName: String(test.name || '').replace(/ — practice$/, ''), gcc: (() => { try { return localStorage.getItem('gnsi-practice-gcc') || '' } catch { return '' } })(), g, tookMin: took }))}>📲 Send my result on WhatsApp</a>
+              <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>WhatsApp opens with your result typed in — press Send.</span>
+            </p>}
             <div className="cbt-stats">
               {stat('Score', known ? `${g.marks} / ${g.max}` : '—', '#146c3a')}
               {stat('Correct', g.correct, '#146c3a')}{stat('Wrong', g.wrong, '#b42318')}{stat('Not answered', g.skipped)}

@@ -8,8 +8,10 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, ensurePracticeCopy, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
+import { RESULT_WA_NUMBER } from './lib/cbtResultShare'
+import { countOnce, statsOf, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
@@ -154,6 +156,45 @@ async function practiceDeadlines() {
   return out
 }
 
+// Before a practice or mock starts: the student's GCC no. (3 tries per GCC per test). Remembers the GCC on this device.
+function GccGate({ title, slug, onPass, onCancel }) {
+  const [gcc, setGcc] = useState(() => { try { return localStorage.getItem('gnsi-practice-gcc') || '' } catch { return '' } })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [left, setLeft] = useState(null)
+  const go = async () => {
+    if (!gccValid(gcc)) { setErr('Enter your GCC no. (numbers only).'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await mockBegin(slug, gccDigits(gcc))
+      try { localStorage.setItem('gnsi-practice-gcc', gccDigits(gcc)) } catch { /* optional */ }
+      if (r && r.ok && typeof r.left === 'number') { setLeft(r.left); setTimeout(onPass, 900) } else onPass()
+    } catch (e) { setErr(e.message || 'Could not check the GCC no.'); setBusy(false) }
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Enter your GCC no." style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(11,30,61,.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div className="card" style={{ maxWidth: 380, width: '100%', margin: 0 }}>
+        <h3 style={{ margin: '0 0 4px' }}>Enter your GCC no.</h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{title ? <b>{title}</b> : null}{title ? ' — ' : ''}each student can practise a test 3 times. Nothing else about you is saved.</div>
+        <input className="in" inputMode="numeric" autoFocus value={gcc} placeholder="GCC no." aria-label="GCC no." disabled={busy} onChange={e => { setGcc(e.target.value); setErr('') }} onKeyDown={e => { if (e.key === 'Enter') go() }} />
+        {err && <div role="alert" style={{ color: '#b42318', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>{err}</div>}
+        {left !== null && <div style={{ color: '#146c3a', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>✓ {triesText(left)}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn gold" disabled={busy} onClick={go}>{busy ? 'Checking…' : 'Continue →'}</button>
+          <button type="button" className="btn" disabled={busy && left === null} onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 👁 views · students appeared, for a static mock (nothing shows until the first view is counted)
+const Eye = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none' }}><path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>
+function MockStats({ s }) {
+  if (!s) return null
+  return <div className="muted" style={{ fontSize: 12.5, margin: '4px 0 10px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 6 }}><span title="Views" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Eye />{viewsText(s.views)}</span>{s.starts > 0 && <><span aria-hidden="true">·</span><span title="Students who started this mock">{appearedText(s.starts)}</span></>}</div>
+}
+
 function CbtFinder({ onPractice, onPracticePast, busyId }) {
   const [tests, setTests] = useState(null)   // tests open now (or starting soon) that the institute has listed; null while loading
   useEffect(() => { let live = true; listPublicTests().then(r => { if (live) setTests(r) }); return () => { live = false } }, [])
@@ -164,6 +205,8 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
   useEffect(() => { let live = true; practiceDeadlines().then(r => { if (live) setDeadlines(r) }); return () => { live = false } }, [])
   const [mocks, setMocks] = useState([])     // static mock tests (public/mocks/index.json): run on the student's device, no database
   useEffect(() => { let live = true; fetch(`${import.meta.env.BASE_URL}mocks/index.json`, { cache: 'no-cache' }).then(r => (r.ok ? r.json() : [])).then(r => { if (live && Array.isArray(r)) setMocks(r.filter(m => m && MOCK_SLUG.test(String(m.slug)))) }).catch(() => {}); return () => { live = false } }, [])
+  const [mockStats, setMockStats] = useState({})   // slug → { views, starts }
+  useEffect(() => { let live = true; listMockStats().then(r => { if (live) setMockStats(r) }); return () => { live = false } }, [])
   const [topMore, setTopMore] = useState(false)
   useEffect(() => { let live = true; listTop5().then(r => { if (live) setTop(r) }); return () => { live = false } }, [])
   useEffect(() => { let live = true; listPracticeTests().then(r => { if (live) setPast(r) }); return () => { live = false } }, [])
@@ -275,7 +318,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
         <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Full mock papers that run on your own phone or computer. Your score appears at the end; nothing is recorded or counted.</div>
         {mocks.filter(m => !past.some(t => t.id === m.testId)).map(m => (
           <div key={m.slug} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #eef1f6' }}>
-            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div></div>
+            <div style={{ minWidth: 0, flex: '1 1 200px' }}><b>{m.name}</b><div className="muted" style={{ fontSize: 12.5 }}>{m.questions ? `${m.questions} questions · ` : ''}{m.durationMin} min</div><MockStats s={statsOf(mockStats, m.slug)} /></div>
             <a className="btn navy" href={`/exam?mock=${encodeURIComponent(m.slug)}`}>Start →</a>
           </div>
         ))}
@@ -310,6 +353,16 @@ function CbtPublicInner() {
   const mockSlug = MOCK_SLUG.test(params.get('mock') || '') ? params.get('mock') : ''
   const [mock, setMock] = useState(null)       // the loaded static mock test (runs here, nothing sent anywhere)
   const [mockErr, setMockErr] = useState('')
+  const [mockStats, setMockStats] = useState({})
+  useEffect(() => {
+    if (!mockSlug) return undefined
+    let live = true
+    // one view per device per day, then read the counters (a failed counter never blocks the mock)
+    let store = null; try { store = window.localStorage } catch { /* blocked */ }
+    if (countOnce(store || { getItem: () => null, setItem: () => {} }, `gnsi-mock-view:${mockSlug}`)) mockHit(mockSlug, 'view')
+    listMockStats().then(r => { if (live) setMockStats(r) })
+    return () => { live = false }
+  }, [mockSlug])
   const [info, setInfo] = useState(null)
   const [err, setErr] = useState('')
   const [form, setForm] = useState({ gcc: '', parent: '', code: params.get('c') || '', gname: '', gphone: '', gdistrict: '', ggender: '', gcaste: '' })
@@ -334,7 +387,7 @@ function CbtPublicInner() {
   useEffect(() => {
     let live = true
     if (!mockSlug) return undefined
-    fetch(mockPath(mockSlug, import.meta.env.BASE_URL), { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('This mock test was not found. Check the link.'); return r.json() })
+    fetch(mockPath(mockSlug, import.meta.env.BASE_URL), { cache: 'no-cache' }).then(r => { if (!r.ok || !/json/i.test(r.headers.get('content-type') || '')) throw new Error('This mock test was not found. Check the link, or ask your teacher whether it has been published yet.'); return r.json() })   // a missing file comes back as the site's home page (HTML), not a 404
       .then(j => { if (live) setMock(parseMock(j)) }).catch(e => { if (live) setMockErr(e instanceof SyntaxError ? 'This mock test could not be read.' : e.message || 'This mock test could not be loaded.') })
     return () => { live = false }
   }, [mockSlug])
@@ -417,14 +470,22 @@ function CbtPublicInner() {
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
   // practice test: runs in this browser only; its result is the local attempt itself
   const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
-  const startMock = () => { setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate') }
+  const [gate, setGate] = useState(null)   // { title, slug, then } — the GCC question shown before a practice / mock starts
+  const runMock = () => {
+    try { if (countOnce(window.localStorage, `gnsi-mock-start:${mockSlug}`, Date.now(), YEAR_MS)) mockHit(mockSlug, 'start') } catch { /* counter only */ }
+    setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate')
+  }
+  const startMock = () => setGate({ title: mock?.name, slug: practiceKey('mock', mockSlug), then: runMock })
   const demoDone = done => { setView({ test: run?.test || DEMO_TEST, attempt: done }); setPhase('result') }
   // practise a PAST exam: its real paper and key are fetched (only allowed once it is closed and its answers are out); marking happens here, nothing is saved
   const [practiceBusy, setPracticeBusy] = useState('')
-  const startPractice = async id => {
+  const startPractice = id => setGate({ title: '', slug: practiceKey('exam', id), then: () => runPractice(id) })
+  const runPractice = async id => {
     setErr(''); setPracticeBusy(id)
     try {
-      const sp = await staticPractice(id)
+      // a CDN copy first (no database); if there is none yet, ask the site to make it once, then read it — the database copy is the last resort
+      let sp = await staticPractice(id)
+      if (!sp && await ensurePracticeCopy(id)) sp = await staticPractice(id)
       if (sp === 'ended') throw new Error('Practice for this exam has ended.')
       const test = sp || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
       setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')
@@ -436,7 +497,7 @@ function CbtPublicInner() {
     return <CbtPlayer test={run.test} candidate={run.candidate} resume={run.resume} remote={run.remote} demo={!!run.demo} onSubmit={run.demo ? demoDone : submitted} onClose={() => { setPhase('landing'); setRun(null) }} />
   }
   if (phase === 'result' && view) {
-    return <CbtResult test={view.test} attempt={view.attempt} closeLabel={run?.demo ? 'Back to the exam page' : 'Finish'} onClose={() => { if (run?.demo) { setRun(null); setView(null); setPhase('landing') } else setPhase('done') }} />
+    return <CbtResult test={view.test} attempt={view.attempt} closeLabel={run?.demo ? 'Back to the exam page' : 'Finish'} shareTo={run?.demo && ['MOCK', 'PRACTICE'].includes(run?.candidate?.roll) ? RESULT_WA_NUMBER : ''} onClose={() => { if (run?.demo) { setRun(null); setView(null); setPhase('landing') } else setPhase('done') }} />
   }
   if (phase === 'done') {
     return (
@@ -470,6 +531,7 @@ function CbtPublicInner() {
   return (
     <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
       <style>{CBT_CSS}</style>
+      {gate && <GccGate title={gate.title} slug={gate.slug} onPass={() => { const next = gate.then; setGate(null); next() }} onCancel={() => setGate(null)} />}
       <div className="cbt-hero">
         <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
         <img className="cbt-hero-logo" src="/gnsi-mark.webp" alt="GNSI" width="66" height="67" onError={e => { e.currentTarget.style.display = 'none' }} />
@@ -481,6 +543,7 @@ function CbtPublicInner() {
         {mockErr ? <div role="alert" style={{ color: '#b42318', fontWeight: 700 }}>{mockErr}</div> : !mock ? <div className="muted">Loading the mock test…</div> : <>
           <h3 style={{ margin: '0 0 4px' }}>{mock.name}</h3>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 10 }}>{mock.sections.reduce((n, x) => n + x.questions.length, 0)} questions · {mock.durationMin} minutes. This mock runs on your own device — your score and the answers appear at the end, and nothing is recorded or counted. Do not refresh or close the page while you write — progress on a mock is not saved.</div>
+          <MockStats s={statsOf(mockStats, mockSlug)} />
           <button type="button" className="btn gold" onClick={startMock}>▶ Start the mock test</button>
         </>}
         <div style={{ marginTop: 10 }}><a className="cbt-link" href="/exam">See other tests</a></div>

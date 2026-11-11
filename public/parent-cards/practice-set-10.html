@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Practice Set 10 — Parent Card</title>
+<title>10th Mega Mock Test — Parent Card</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
@@ -54,7 +54,7 @@ h2{font-family:'Fraunces',Georgia,serif;font-size:31px;line-height:1.12;margin:1
 <div class="tools">
   <h1>Practice Set 10 — parent card</h1>
   <label for="inLink">Practice link</label>
-  <input id="inLink" value="https://www.guidancekhangabok.in/exam?mock=navodaya-mega-mock-set-10">
+  <input id="inLink" value="https://www.guidancekhangabok.in/exam?mock=10th-mega-mock-test">
   <label for="inUntil">Date / deadline (shown on the card — leave empty to hide)</label>
   <input id="inUntil" placeholder="e.g. Open now · practise until 20 Nov 2026">
   <label for="inContact">Contact line</label>
@@ -70,11 +70,11 @@ h2{font-family:'Fraunces',Georgia,serif;font-size:31px;line-height:1.12;margin:1
   <div class="top">
     <div class="brand"><img src="../gnsi-logo-top.webp" alt=""><div><b>GNSI</b><small>Guidance Navodaya &amp; Sainik Institute</small></div></div>
     <span class="tag">FOR PARENTS</span>
-    <h2>Navodaya Mega Mock<br>Practice Set 10</h2>
+    <h2>10th Mega Mock Test<br>Practice Set 10</h2>
     <div class="sub">A full practice paper your child can take at home</div>
   </div>
   <div class="body">
-    <p class="msg">Dear Parent, Practice Set 10 is ready. Please let your child attempt it in a quiet place, on a phone or computer — just like the real test.</p>
+    <p class="msg">Dear Parent, the 10th Mega Mock Test (Practice Set 10) is ready. Please let your child attempt it in a quiet place, on a phone or computer — just like the real test.</p>
     <div class="chips">
       <span class="chip">80 questions</span>
       <span class="chip">120 minutes</span>
@@ -83,7 +83,7 @@ h2{font-family:'Fraunces',Georgia,serif;font-size:31px;line-height:1.12;margin:1
     </div>
     <ul class="how">
       <li><i>1</i><span>Open the link below on a phone or computer with a good internet connection.</span></li>
-      <li><i>2</i><span>Allow the camera for the face check. The video is <b>not recorded or sent anywhere</b>.</span></li>
+      <li><i>2</i><span>Keep the screen on the exam. Please do not switch to other apps or tabs while the test is running.</span></li>
       <li><i>3</i><span>Let your child sit alone and finish in one go. The score and answers appear at the end.</span></li>
     </ul>
     <a class="link" id="cLinkA" href="#" target="_blank" rel="noopener"><small>PRACTISE HERE · TAP TO OPEN</small><span id="cLink"></span></a>
@@ -122,7 +122,7 @@ $('dl').onclick = async () => {
 }
 $('cp').onclick = async () => {
   const u = $('inUntil').value.trim()
-  const t = ['*GNSI — Navodaya Mega Mock · Practice Set 10*', '', 'Dear Parent, Practice Set 10 is ready for your child.', '', '📝 80 questions · ⏱ 120 minutes', 'Not counted — it is for practice. The score and answers appear at the end.', u ? '⏳ ' + u : '', '', '1️⃣ Open the link on a phone or computer', '2️⃣ Allow the camera for the face check (video is not recorded or sent anywhere)', '3️⃣ Let your child sit alone and finish in one go', '', '👉 ' + $('inLink').value.trim(), '', 'GNSI · Guidance Navodaya & Sainik Institute'].filter((x, i, arr) => x !== '' || arr[i - 1] !== '').join('\n')
+  const t = ['*GNSI — 10th Mega Mock Test · Practice Set 10*', '', 'Dear Parent, the 10th Mega Mock Test (Practice Set 10) is ready for your child.', '', '📝 80 questions · ⏱ 120 minutes', 'Not counted — it is for practice. The score and answers appear at the end.', u ? '⏳ ' + u : '', '', '1️⃣ Open the link on a phone or computer', '2️⃣ Keep the screen on the exam — do not switch to other apps or tabs', '3️⃣ Let your child sit alone and finish in one go', '', '👉 ' + $('inLink').value.trim(), '', 'GNSI · Guidance Navodaya & Sainik Institute'].filter((x, i, arr) => x !== '' || arr[i - 1] !== '').join('\n')
   try { await navigator.clipboard.writeText(t); $('cp').textContent = '✔ Copied' } catch { prompt('Copy this message:', t) }
   setTimeout(() => ($('cp').textContent = '📋 Copy WhatsApp text'), 1800)
 }

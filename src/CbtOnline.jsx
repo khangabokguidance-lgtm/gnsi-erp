@@ -119,6 +119,7 @@ export function PublishModal({ test, row, by, onClose, onChanged, flash }) {
 }
 
 import CbtReadiness from './CbtReadiness'
+import CbtPracticeLog from './CbtPracticeLog'
 
 export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, onDownload, flash }) {
   const [busy, setBusy] = useState('')
@@ -127,8 +128,9 @@ export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, o
   const copy = async text => { try { await navigator.clipboard.writeText(text); flash('Copied.') } catch { flash('Could not copy.') } }
   if (err) return <div className="card" role="alert" style={{ color: '#9a3412' }}>{err}</div>
   if (!rows) return <div className="card muted">Loading…</div>
-  if (!rows.length) return <div className="card"><h3>No online exams yet</h3><p className="muted">On the Tests tab press “🌐 Online” on a test to publish it as a link candidates can open from anywhere.</p></div>
+  if (!rows.length) return <><div className="card"><h3>No online exams yet</h3><p className="muted">On the Tests tab press “🌐 Online” on a test to publish it as a link candidates can open from anywhere.</p></div><CbtPracticeLog canEdit={canEdit} flash={flash} /></>
   return (
+    <>
     <div className="grid cbt-tests">
       {rows.map(r => {
         const st = statusOf(r)
@@ -158,5 +160,7 @@ export function OnlineTab({ rows, err, canEdit, localIds, onReload, onResults, o
       })}
       {ready && <CbtReadiness row={ready} onClose={() => setReady(null)} />}
     </div>
+    <CbtPracticeLog canEdit={canEdit} flash={flash} />
+    </>
   )
 }
