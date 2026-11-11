@@ -1,11 +1,11 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Practice and mock tests: ask for the GCC no. and allow each GCC 5 tries per test.
+-- Practice and mock tests: ask for the GCC no. and allow each GCC 10 tries per test.
 --   cbt_mock_practice      one small row per start: the GCC no., the test (mock slug or practice-<exam id>) and the time.
 --                          Staff (qbank_is_staff) read it; an admin may delete rows to give a student more tries.
 --   cbt_mock_begin(slug, gcc)  checks the GCC no. is an active student, counts the tries, records this one.
 --                          Returns { ok, used, limit, left } or an { error: 'EXAM-…' } the page shows as text.
 -- Needs 20260925_qbank_rls.sql and the CBT online setup (cbt_throttled / cbt_hit). Safe to run more than once.
--- To change the 5-tries limit, change `lim` below and run this file again.
+-- To change the 10-tries limit, change `lim` below and run this file again.
 -- ────────────────────────────────────────────────────────────────────────────
 
 create table if not exists public.cbt_mock_practice (
@@ -29,7 +29,7 @@ security definer
 set search_path = public
 as $$
 declare
-  lim constant int := 5;
+  lim constant int := 10;
   g text := ltrim(regexp_replace(coalesce(p_gcc, ''), '\D', '', 'g'), '0');
   st public.students; n int;
 begin
