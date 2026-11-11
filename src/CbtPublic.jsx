@@ -8,9 +8,9 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, mockHit, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
-import { countOnce, statsOf, viewsText, appearedText, YEAR_MS } from './lib/cbtMockStats'
+import { countOnce, statsOf, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
@@ -153,6 +153,38 @@ async function practiceDeadlines() {
     for (const m of [...(Array.isArray(repo) ? repo : []), ...(await listPracticeCopies())]) if (m && m.testId && m.until) out[m.testId] = m.until
   } catch { /* no deadlines */ }
   return out
+}
+
+// Before a practice or mock starts: the student's GCC no. (3 tries per GCC per test). Remembers the GCC on this device.
+function GccGate({ title, slug, onPass, onCancel }) {
+  const [gcc, setGcc] = useState(() => { try { return localStorage.getItem('gnsi-practice-gcc') || '' } catch { return '' } })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [left, setLeft] = useState(null)
+  const go = async () => {
+    if (!gccValid(gcc)) { setErr('Enter your GCC no. (numbers only).'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await mockBegin(slug, gccDigits(gcc))
+      try { localStorage.setItem('gnsi-practice-gcc', gccDigits(gcc)) } catch { /* optional */ }
+      if (r && r.ok && typeof r.left === 'number') { setLeft(r.left); setTimeout(onPass, 900) } else onPass()
+    } catch (e) { setErr(e.message || 'Could not check the GCC no.'); setBusy(false) }
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Enter your GCC no." style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(11,30,61,.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div className="card" style={{ maxWidth: 380, width: '100%', margin: 0 }}>
+        <h3 style={{ margin: '0 0 4px' }}>Enter your GCC no.</h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>{title ? <b>{title}</b> : null}{title ? ' — ' : ''}each student can practise a test 3 times. Nothing else about you is saved.</div>
+        <input className="in" inputMode="numeric" autoFocus value={gcc} placeholder="GCC no." aria-label="GCC no." disabled={busy} onChange={e => { setGcc(e.target.value); setErr('') }} onKeyDown={e => { if (e.key === 'Enter') go() }} />
+        {err && <div role="alert" style={{ color: '#b42318', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>{err}</div>}
+        {left !== null && <div style={{ color: '#146c3a', fontWeight: 700, fontSize: 13.5, marginTop: 8 }}>✓ {triesText(left)}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button type="button" className="btn gold" disabled={busy} onClick={go}>{busy ? 'Checking…' : 'Continue →'}</button>
+          <button type="button" className="btn" disabled={busy && left === null} onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // 👁 views · students appeared, for a static mock (nothing shows until the first view is counted)
@@ -437,13 +469,17 @@ function CbtPublicInner() {
   const submitted = (res, test, cur) => { setView(resultView(res, test, run.candidate, cur)); setPhase('result') }
   // practice test: runs in this browser only; its result is the local attempt itself
   const startDemo = () => { setErr(''); setRun({ test: DEMO_TEST, candidate: { name: 'Practice', roll: 'DEMO' }, remote: null, resume: null, demo: true }); setPhase('gate') }
-  const startMock = () => {
+  const [gate, setGate] = useState(null)   // { title, slug, then } — the GCC question shown before a practice / mock starts
+  const runMock = () => {
     try { if (countOnce(window.localStorage, `gnsi-mock-start:${mockSlug}`, Date.now(), YEAR_MS)) mockHit(mockSlug, 'start') } catch { /* counter only */ }
-    setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate') }
+    setErr(''); setRun({ test: mock, candidate: { name: 'Mock test', roll: 'MOCK' }, remote: null, resume: null, demo: true }); setPhase('gate')
+  }
+  const startMock = () => setGate({ title: mock?.name, slug: practiceKey('mock', mockSlug), then: runMock })
   const demoDone = done => { setView({ test: run?.test || DEMO_TEST, attempt: done }); setPhase('result') }
   // practise a PAST exam: its real paper and key are fetched (only allowed once it is closed and its answers are out); marking happens here, nothing is saved
   const [practiceBusy, setPracticeBusy] = useState('')
-  const startPractice = async id => {
+  const startPractice = id => setGate({ title: '', slug: practiceKey('exam', id), then: () => runPractice(id) })
+  const runPractice = async id => {
     setErr(''); setPracticeBusy(id)
     try {
       const sp = await staticPractice(id)
@@ -492,6 +528,7 @@ function CbtPublicInner() {
   return (
     <div className="cbt cbt-page" style={{ maxWidth: 720 }}>
       <style>{CBT_CSS}</style>
+      {gate && <GccGate title={gate.title} slug={gate.slug} onPass={() => { const next = gate.then; setGate(null); next() }} onCancel={() => setGate(null)} />}
       <div className="cbt-hero">
         <a className="cbt-home" href="/" aria-label="Back to the GNSI website home">‹ Back to home</a>
         <img className="cbt-hero-logo" src="/gnsi-mark.webp" alt="GNSI" width="66" height="67" onError={e => { e.currentTarget.style.display = 'none' }} />

@@ -32,3 +32,13 @@ When you publish a practice copy, **Practice copy ends on** is prefilled to a we
 exam shows "⏳ ends in 2 days 4 h" in the banner and the practice list. After it, the exam leaves the practice list and its
 Practise button refuses. It is a soft limit: the file stays on the CDN until you press **Remove practice copy**, so remove it
 too if the answers must really disappear. To change a deadline, remove the copy and publish it again.
+
+## GCC no. and 3 tries per test
+Run `supabase/RUN_cbt_mock_practice_gcc.sql` once. Before a mock or a past-exam practice starts, the page asks for the student's GCC no.
+The database checks it is an active student and allows **3 starts per GCC per test**, then says "You have already practised this test 3 times".
+Staff see **👤 Who practised (by GCC no.)** at the bottom of CBT → Online (search, CSV; an admin can **Reset** a student's tries).
+- It stores only the GCC no., the test and the time — about 100 bytes a start, so even 100,000 starts is only a few MB.
+- A try is counted when the student presses Continue, even if the page is then refreshed (a mock does not save progress).
+- It is a soft limit: the mock file itself is public, and anyone who knows another student's GCC no. could use up their tries. Staff can Reset.
+- Without the SQL, or when the network fails, practice works exactly as before and nothing is asked or counted.
+- To change 3, edit `lim` in the SQL file and run it again (the staff list shows "/3" in `CbtPracticeLog.jsx`).
