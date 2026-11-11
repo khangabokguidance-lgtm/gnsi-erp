@@ -9,6 +9,7 @@ import { makeNumbering } from './lib/docxNumbering.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const M_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math'
 const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml' }
 
@@ -99,6 +100,15 @@ export async function paragraphsFromDocx(data, { convertBmei = true, forceBmei =
         if (c.nodeType !== 1) continue
         const n = c.localName
         if (n === 'pPr' || n === 'rPr' || n === 'txbxContent' || n === 'Fallback' || n === 'p') continue
+        // A Word equation fraction (m:f) keeps the top and bottom in separate parts: put the bar back, so 1/9 does not become 19
+        if (n === 'f' && c.namespaceURI === M_NS) {
+          const part = name => Array.from(c.childNodes).find(k => k.nodeType === 1 && k.localName === name)
+          const top = part('num'), bottom = part('den')
+          if (top) walk(top)
+          push('/', false)
+          if (bottom) walk(bottom)
+          continue
+        }
         if (n === 'r') {
           const bmei = forceBmei || isBmeiName(fontOfRun(c, p, sf))
           let t = ''
