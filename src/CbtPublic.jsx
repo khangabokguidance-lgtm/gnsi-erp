@@ -11,7 +11,7 @@ import CbtPlayer, { CbtResult } from './CbtPlayer'
 import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, ensurePracticeCopy, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import { RESULT_WA_NUMBER } from './lib/cbtResultShare'
-import { countOnce, statsOf, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
+import { countOnce, statsOf, fmtCount, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
 import ResponsiveTables from './ResponsiveTables'
 import { examHref, extractCode } from './lib/cbtRef'
 import { parseMock, mockPath, MOCK_SLUG } from './lib/cbtMock'
@@ -244,6 +244,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
           {latest.kind === 'open' ? 'LATEST TEST · LIVE NOW' : 'LATEST TEST'}
           {latest.t.ago && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>{latest.kind === 'open' ? `closes ${when(latest.t.closesAt)}` : `closed ${latest.t.ago}`}</span>}
           {latest.kind === 'open' && !latest.t.ago && latest.t.closesAt && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700 }}>closes {when(latest.t.closesAt)}</span>}
+          {latest.kind === 'past' && statsOf(mockStats, practiceKey('exam', latest.t.id)) && <span style={{ background: 'rgba(255,255,255,.2)', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }} title="Views of this practice"><Eye />{fmtCount(statsOf(mockStats, practiceKey('exam', latest.t.id)).views)}</span>}
           {latest.t.left && <span style={{ background: '#fff', color: '#8f1d14', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 800 }}>⏳ {latest.t.left.text}</span>}
           {appeared(latest.t.id) && <span style={{ background: '#fff', color: '#146c3a', borderRadius: 999, padding: '2px 10px', letterSpacing: 0, fontWeight: 800 }}>✔ You appeared</span>}
         </div>
@@ -337,6 +338,7 @@ function CbtFinder({ onPractice, onPracticePast, busyId }) {
                 {t.left && <span className="tag" style={{ background: '#fff4dc', color: '#9a5b00', fontWeight: 800 }}>⏳ {t.left.text}</span>}
               </div>
               <div className="muted" style={{ fontSize: 12.5 }}>{t.questions ? `${t.questions} questions · ` : ''}{t.durationMin} min{t.closedAt ? ` · closed ${when(t.closedAt)}` : ''}{t.ago ? <b style={{ color: t.isNew ? '#146c3a' : undefined }}> · {t.ago}</b> : ''}</div>
+              <MockStats s={statsOf(mockStats, practiceKey('exam', t.id))} />
             </div>
             <button type="button" className="btn navy" disabled={!!busyId} onClick={() => onPracticePast(t.id)}>{busyId === t.id ? 'Opening…' : 'Practise →'}</button>
           </div>
@@ -489,6 +491,12 @@ function CbtPublicInner() {
       if (sp === 'ended') throw new Error('Practice for this exam has ended.')
       const test = sp || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
       setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')
+      // 👁 counters (the same two as a static mock): one view per device per day, one "appeared" per device per exam; a failure never blocks practice
+      try {
+        const key = practiceKey('exam', id)
+        if (countOnce(window.localStorage, `gnsi-mock-view:${key}`)) mockHit(key, 'view')
+        if (countOnce(window.localStorage, `gnsi-mock-start:${key}`, Date.now(), YEAR_MS)) mockHit(key, 'start')
+      } catch { /* counter only */ }
     } catch (e) { setErr(friendly(e)) }
     setPracticeBusy('')
   }
