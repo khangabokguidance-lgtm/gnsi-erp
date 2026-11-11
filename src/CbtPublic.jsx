@@ -8,7 +8,7 @@ import { DEMO_TEST } from './lib/cbtDemo'
 import { DISTRICT_OPTIONS, GENDERS, CASTES } from './lib/studentFields'
 import { CBT_CSS } from './cbtCss'
 import CbtPlayer, { CbtResult } from './CbtPlayer'
-import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
+import { listPublicTests, listPracticeTests, listPracticeCopies, practiceCopyUrl, listTop5, practiceTest, ensurePracticeCopy, mockHit, mockBegin, listMockStats, examInfo, startExam, startGuest, resumeExam, saveExam, submitExam, lookupStudent, friendly, infoTest, localAttempt, resultView } from './cbtRemote'
 import { getInstitute } from './systemSettings'
 import { RESULT_WA_NUMBER } from './lib/cbtResultShare'
 import { countOnce, statsOf, viewsText, appearedText, YEAR_MS, practiceKey, gccValid, gccDigits, triesText } from './lib/cbtMockStats'
@@ -483,7 +483,9 @@ function CbtPublicInner() {
   const runPractice = async id => {
     setErr(''); setPracticeBusy(id)
     try {
-      const sp = await staticPractice(id)
+      // a CDN copy first (no database); if there is none yet, ask the site to make it once, then read it — the database copy is the last resort
+      let sp = await staticPractice(id)
+      if (!sp && await ensurePracticeCopy(id)) sp = await staticPractice(id)
       if (sp === 'ended') throw new Error('Practice for this exam has ended.')
       const test = sp || (await practiceTest(id))   // a CDN copy (no database) when staff added one, else the database copy
       setRun({ test, candidate: { name: 'Practice', roll: 'PRACTICE' }, remote: null, resume: null, demo: true }); setPhase('gate')

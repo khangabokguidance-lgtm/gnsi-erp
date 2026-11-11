@@ -126,6 +126,11 @@ export const mockHit = (slug, kind) => { try { Promise.resolve(supabase.rpc('cbt
 export const listMockStats = async () => { try { const r = await rpc('cbt_mock_stats', {}); return r && typeof r === 'object' && !Array.isArray(r) ? r : {} } catch { return {} } }
 export const listTop5 = async () => { try { const r = await rpc('cbt_top5_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 export async function getPracticeFlag(id) { try { const { data, error } = await supabase.from('cbt_tests').select('practice_after_close').eq('id', id).maybeSingle(); return error || !data ? true : data.practice_after_close !== false } catch { return true } }
+// Ask the site to put this closed exam's practice copy on the CDN (the first student triggers it once; the rest read the CDN). → true when a copy
+// exists / was made; false on any problem, and the page then uses the database copy as before.
+export async function ensurePracticeCopy(id) {
+  try { const r = await fetch(`/api/entrance?action=practice-copy&id=${encodeURIComponent(id)}`, { method: 'POST' }); if (!r.ok) return false; const j = await r.json().catch(() => ({})); return !!j.ok } catch { return false }
+}
 // Past (closed) exams anyone may practise: [] if the database update is not run yet.
 export const listPracticeTests = async () => { try { const r = await rpc('cbt_practice_list', {}); return Array.isArray(r) ? r : [] } catch { return [] } }
 // The past paper with its key, turned into a test the exam screen can run and mark locally (nothing is sent anywhere).

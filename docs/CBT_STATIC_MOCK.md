@@ -27,6 +27,15 @@ After an exam has **closed**: CBT → Tests → 🌐 Online → **🚀 Publish p
 loads it from the CDN at once. **🗑 Remove practice copy** takes it down. Needs the paper to be on this computer and every question keyed.
 Copies from this bucket are tried first, then ones committed under `public/mocks/`.
 
+## Automatic practice copy (no database load per student)
+When a student presses **Practise →** on a past exam that has no CDN copy yet, the page asks the site (`/api/entrance?action=practice-copy`) to make one.
+The server reads the paper **once**, saves it to the `cbt-practice` bucket and adds it to `index.json`; that student and everyone after read the CDN.
+- The database still decides whether practice is allowed (closed, listed, answers out, practice on). If not, nothing is published.
+- Run `supabase/RUN_cbt_practice_bucket.sql` once (the bucket) and, to be safe, `supabase/RUN_cbt_practice_auto_copy.sql`.
+- If anything fails (no bucket, server problem), the page falls back to the database copy exactly as before.
+- A copy you **Remove** stays removed only while its entry is gone from the list: the next student's Practise would make it again. To stop practice for an exam, switch its practice option off instead.
+- No deadline is set on automatic copies. Publish one yourself with an end date if you want one.
+
 ## Practice deadline
 When you publish a practice copy, **Practice copy ends on** is prefilled to a week ahead (clear it for no deadline). Until then the
 exam shows "⏳ ends in 2 days 4 h" in the banner and the practice list. After it, the exam leaves the practice list and its

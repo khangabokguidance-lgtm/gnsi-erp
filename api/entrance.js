@@ -3,6 +3,7 @@
 //   POST ?action=register                        submit an application
 //   POST ?action=create-order                    Razorpay order for the application fee
 //   POST ?action=verify                          confirm the payment, mark the fee paid
+//   POST ?action=practice-copy&id=<exam id>      put a closed exam's practice copy on the CDN (once), so practice does not read the database per student
 //   POST ?action=lookup                          status / admit-card data (application no. + date of birth)
 //   adm-options (GET) · adm-submit · adm-upload · adm-order · adm-verify · adm-lookup   the online admission portal (api/_admission/)
 // The handlers live in api/_entrance/ (a leading underscore keeps them from becoming functions of their own, so the
@@ -13,6 +14,7 @@ import register from './_entrance/register.js'
 import createOrder from './_entrance/create-order.js'
 import verify from './_entrance/verify.js'
 import lookup from './_entrance/lookup.js'
+import practiceCopy from './_entrance/practice-copy.js'
 import admOptions from './_admission/options.js'
 import admSubmit from './_admission/submit.js'
 import admUpload from './_admission/upload.js'
@@ -21,7 +23,7 @@ import admVerify from './_admission/verify.js'
 import admLookup from './_admission/lookup.js'
 
 const routes = {
-  exam, register, 'create-order': createOrder, verify, lookup,
+  exam, register, 'create-order': createOrder, verify, lookup, 'practice-copy': practiceCopy,
   'adm-options': admOptions, 'adm-submit': admSubmit, 'adm-upload': admUpload, 'adm-order': admOrder, 'adm-verify': admVerify, 'adm-lookup': admLookup,
 }
 
