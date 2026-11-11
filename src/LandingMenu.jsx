@@ -89,7 +89,7 @@ export default function MegaMenu({ open, onClose, tabs, icons, active, goToTab, 
   const stagger = () => ({ '--i': idx++ });
 
   return (
-    <div className={'mm' + (open ? ' open' : '')} id="mmPanel" role="dialog" aria-modal="true" aria-label="Site menu" aria-hidden={!open} ref={panelRef}>
+    <div className={'mm-panel' + (open ? ' open' : '')} id="mmPanel" role="dialog" aria-modal="true" aria-label="Site menu" aria-hidden={!open} ref={panelRef}>
       <div className="mm-bg" aria-hidden="true"><i className="mm-orb mm-orb1" /><i className="mm-orb mm-orb2" /><i className="mm-grid" /></div>
 
       <header className="mm-top">

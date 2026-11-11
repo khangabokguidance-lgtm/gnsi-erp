@@ -365,17 +365,18 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
     return () => window.removeEventListener('keydown', key)
   }) // re-bound each render so it always sees the current question
 
+  const camBox = (
+        <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
+          <video ref={cam.videoRef} muted playsInline autoPlay />
+          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', far: '⚠ Move closer', multi: `⚠ More than one person${cam.faceCount > 1 ? ` (${cam.faceCount})` : ''}`, away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
+        </div>
+  )
   const shell = body => (
     <div className={`cbt cbt-exam${cfg.shield ? ' cbt-shield' : ''}${hc ? ' cbt-hc' : ''}`} onContextMenu={e => e.preventDefault()} onCopy={e => e.preventDefault()} style={{ '--fs': `${fs}px` }}>
       <style>{CBT_CSS}</style>
       {/* keyed by the step, so each step (instructions → declaration → camera → paper) slides in afresh */}
       <Fragment key={stage}>{body}</Fragment>
-      {camOn && (stage === 'camera' || stage === 'exam') && (
-        <div className={`cbt-cam${stage === 'camera' ? ' big' : ''} s-${cam.status}`} aria-label="Camera check">
-          <video ref={cam.videoRef} muted playsInline autoPlay />
-          <span>{{ ok: '● Camera OK', none: '⚠ Face not visible', far: '⚠ Move closer', multi: `⚠ More than one person${cam.faceCount > 1 ? ` (${cam.faceCount})` : ''}`, away: '⚠ Look at the screen', nocam: '⚠ Camera stopped' }[cam.status]}{stage === 'exam' && cfg.camera === 'strict' ? ` · warnings ${strikes}/${cfg.maxStrikes}` : ''}</span>
-        </div>
-      )}
+      {camOn && stage === 'exam' && camBox}
       {stage === 'exam' && camOn && cam.status !== 'ok' && cam.held >= 2000 && cam.phase === 'ready' && cfg.camera === 'strict' && <div className="cbt-cover" style={{ background: 'rgba(11,30,61,.94)' }}><div><b>{EVENT_LABEL[cam.status] || 'Camera check'}</b><br />Sit in front of the camera, alone, facing the screen. The exam continues when you are visible.</div></div>}
       {cover && <div className="cbt-cover" onClick={() => document.hasFocus() && setCover('')}><div>🔒 {cover}</div></div>}
     </div>
@@ -392,6 +393,7 @@ export default function CbtPlayer({ test: testProp, candidate, resume, onSubmit,
         <p style={{ margin: '0 0 6px', fontWeight: 700, color: good ? '#146c3a' : '#9a5b00' }}>
           {cam.phase === 'starting' ? 'Starting the camera…' : cam.phase === 'error' ? cam.error : good ? '✓ Your face is visible. You are ready.' : cam.status === 'multi' ? 'More than one person is visible. Only the candidate may sit here.' : cam.status === 'away' ? 'Look straight at the screen.' : cam.status === 'far' ? 'Move closer to the camera so your face fills the picture.' : cam.status === 'nocam' ? 'The camera picture has stopped. Check the camera is on and not covered.' : 'Sit in front of the camera so your face is fully visible, in good light.'}
         </p>
+        {camBox}
         <div className="cbt-row">
           {!resume && <button className="cbt-b" onClick={() => { cam.stop(); setStage('declaration') }}>‹ Previous</button>}
           {cam.phase === 'error' && <button className="cbt-b" onClick={cam.start}>Try the camera again</button>}

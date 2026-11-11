@@ -1,7 +1,7 @@
 /* LandingMenu.css — hamburger button + full-screen command-centre menu.
    Always a deep-blue glass surface with a warm accent, whichever site theme is active. */
 
-.mm,.mm-burger{
+.mm-panel,.mm-burger{
   --mm-bg1:var(--gv-blue2,#0B1E3D); --mm-bg2:#06102a; --mm-acc:var(--gv-saffron,#E2C57E); --mm-acc2:var(--gv-accent,#B8913F);
   --mm-line:rgba(255,255,255,.12); --mm-glass:rgba(255,255,255,.06);
 }
@@ -27,10 +27,10 @@ body.lp-gov .mm-burger .mm-burger-lines i{background:#fff}
 
 /* ═══ Menu surface ═══ */
 body.mm-lock{overflow:hidden}
-.mm{position:fixed;inset:0;z-index:10050;color:#fff;display:flex;flex-direction:column;visibility:hidden;pointer-events:none;
+.mm-panel{position:fixed;inset:0;z-index:10050;color:#fff;display:flex;flex-direction:column;visibility:hidden;pointer-events:none;
   clip-path:circle(0 at calc(100% - 52px) 46px);background:radial-gradient(1100px 600px at 85% -10%,color-mix(in srgb,var(--gv-blue,#1F4E8C) 80%,transparent),transparent 60%),linear-gradient(170deg,var(--mm-bg1),var(--mm-bg2));
   transition:clip-path .75s cubic-bezier(.76,0,.18,1),visibility 0s .75s}
-.mm.open{visibility:visible;pointer-events:auto;clip-path:circle(160% at calc(100% - 52px) 46px);transition:clip-path .85s cubic-bezier(.76,0,.18,1),visibility 0s}
+.mm-panel.open{visibility:visible;pointer-events:auto;clip-path:circle(160% at calc(100% - 52px) 46px);transition:clip-path .85s cubic-bezier(.76,0,.18,1),visibility 0s}
 
 .mm-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .mm-orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5}
@@ -62,8 +62,8 @@ body.mm-lock{overflow:hidden}
 /* scroll body */
 .mm-scroll{position:relative;z-index:1;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:1.6rem clamp(1rem,4vw,2.4rem) 2rem}
 .mm-inner{max-width:1180px;margin:0 auto}
-.mm [style*="--i"]{opacity:0;transform:translateY(18px);transition:opacity .5s,transform .5s}
-.mm.open [style*="--i"]{opacity:1;transform:none;transition-delay:calc(.28s + var(--i) * 28ms)}
+.mm-panel [style*="--i"]{opacity:0;transform:translateY(18px);transition:opacity .5s,transform .5s}
+.mm-panel.open [style*="--i"]{opacity:1;transform:none;transition-delay:calc(.28s + var(--i) * 28ms)}
 
 /* primary actions */
 .mm-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:2rem}
@@ -125,8 +125,8 @@ body.mm-lock{overflow:hidden}
   .mm-search{height:42px}.mm-close{width:42px;height:42px}
 }
 @media(prefers-reduced-motion:reduce){
-  .mm,.mm.open{transition:none!important}
-  .mm [style*="--i"]{transition:none!important;opacity:1;transform:none}
+  .mm-panel,.mm-panel.open{transition:none!important}
+  .mm-panel [style*="--i"]{transition:none!important;opacity:1;transform:none}
   .mm-orb{animation:none}.mm-act::after{display:none}
 }
 
