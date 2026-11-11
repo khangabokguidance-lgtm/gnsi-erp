@@ -250,6 +250,7 @@ export const CBT_CSS = `${MAYEK_FACE}${BMEI_FACE}
 .cbt-passbar{display:none}
 .cbt-q{flex:1 1 54%;overflow:auto;overscroll-behavior:contain;padding:16px 22px;font-size:var(--fs,15px)}
 .cbt-dir{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--gold);padding:10px 14px;border-radius:8px;margin-bottom:14px;line-height:1.6;font-size:.93em}
+.cbt-frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 .15em;line-height:1.15;font-size:.92em;white-space:nowrap}.cbt-frac .n{border-bottom:.09em solid currentColor;padding:0 .22em .04em}.cbt-frac .d{padding:.04em .22em 0}
 .cbt-qtext{white-space:pre-wrap;line-height:1.65;margin-bottom:16px;font-weight:600}
 .cbt-fig{max-width:100%;max-height:50vh;display:block;margin:0 auto 16px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
 .cbt-opt{display:flex;align-items:flex-start;gap:12px;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:9px;cursor:pointer;background:#fff;transition:background .12s,border-color .12s}
