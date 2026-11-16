@@ -6,7 +6,7 @@
 // Progress is stored in the `mission_sainik_tasks` table (migration 20261201_mission_sainik_tasks.sql).
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
-import MissionSainikAnalyzer from './MissionSainikAnalyzer'
+import MockTestAnalyzer from './MockTestAnalyzer'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -170,14 +170,18 @@ export default function MissionSainik({ currentUser, perms }) {
   const today = todayISO()
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
-  const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', file: null })
+  const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
   const [fileKey, setFileKey] = useState(0)
+  const [viewMat, setViewMat] = useState(null)
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
   const [marks, setMarks] = useState([])
   const [markDraft, setMarkDraft] = useState({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' })
   const [marksSetup, setMarksSetup] = useState(false)
-  const [results, setResults] = useState([])
-  const [resSetup, setResSetup] = useState(false)
+  const [institute, setInstitute] = useState({ name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok, Thoubal, Manipur', academicYear: '2026-2027' })
+  useEffect(() => {
+    supabase.from('system_settings').select('value').eq('key', 'exam_institute_config').single()
+      .then(({ data }) => { try { if (data?.value) setInstitute(i => ({ ...i, ...JSON.parse(data.value) })) } catch { /* keep defaults */ } }, () => {})
+  }, [])
 
   const me = (currentUser?.name || '').toLowerCase()
   const isMe = name => !!name && me.includes(String(name).toLowerCase())
@@ -207,11 +211,6 @@ export default function MissionSainik({ currentUser, perms }) {
     setMarks(b.data || [])
   }, [])
   useEffect(() => { loadExtra() }, [loadExtra])
-  const loadResults = useCallback(async () => {
-    const { data, error } = await supabase.from('mission_sainik_results').select('*').order('test_no')
-    if (error) { setResSetup(true); setResults([]) } else { setResSetup(false); setResults(data || []) }
-  }, [])
-  useEffect(() => { loadResults() }, [loadResults])
   const saveChapter = async (test_no, subject, chapter) => {
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
@@ -337,6 +336,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
     { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
     { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
+    { id: 'activity',   label: 'Teacher activity', icon: PIcon.users },
     { id: 'insights',   label: 'Insights',    icon: PIcon.chart },
     { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
@@ -578,6 +578,54 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     )
   }
 
+  // ── Teacher activity: tasks + study-material uploads per teacher ──────
+  const Activity = () => {
+    const has = (who, name) => !!who && String(who).toLowerCase().includes(String(name).toLowerCase())
+    const daysAgo = iso => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null)
+    const stats = ALL_PEOPLE.map(n => {
+      const mine = rows.filter(r => r.setter === n)
+      const ver = rows.filter(r => r.verifier === n)
+      const ups = mats.filter(m => has(m.uploaded_by, n))
+      const touches = [...rows.filter(r => has(r.updated_by, n)).map(r => r.updated_at), ...ups.map(m => m.created_at)].filter(Boolean).sort()
+      const last = touches[touches.length - 1] || null
+      return {
+        n, set: mine.length, submitted: mine.filter(r => r.status !== 'Pending').length, overdue: mine.filter(r => isOverdue(r, today)).length,
+        toVerify: ver.filter(r => r.status === 'Submitted').length, verified: ver.filter(r => r.status === 'Verified' || r.status === 'Approved').length,
+        uploads: ups.length, last, idle: daysAgo(last),
+      }
+    }).sort((a, b) => (b.overdue - a.overdue) || ((b.idle ?? 999) - (a.idle ?? 999)))
+    const feed = [
+      ...rows.filter(r => r.updated_by && r.updated_at).map(r => ({ at: r.updated_at, who: r.updated_by, text: `${r.status === 'Pending' ? 'updated' : r.status.toLowerCase()} ${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} · ${r.subject} (${fullName(r.setter)})`, icon: '✔' })),
+      ...mats.map(m => ({ at: m.created_at, who: m.uploaded_by, text: `uploaded study material “${m.title}”${m.subject ? ' · ' + m.subject : ''}`, icon: m.body && !m.file_path ? '📝' : '📎' })),
+    ].filter(x => x.who).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 40)
+    return (
+      <>
+        <PremiumCard title="Teacher activity" subtitle="Task progress and study-material uploads per teacher. “Idle” = days since their last update or upload." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+          <table className="px-table" style={{ minWidth: 720 }}>
+            <thead><tr><th>Teacher</th><th>Sections set</th><th>Submitted</th><th>Overdue</th><th>To verify</th><th>Verified</th><th>Material uploads</th><th>Last activity</th></tr></thead>
+            <tbody>{stats.map(x => (
+              <tr key={x.n}>
+                <td><b>{fullName(x.n)}</b></td><td>{x.set}</td>
+                <td>{x.submitted}/{x.set} <div style={{ width: 70 }}><Bar value={x.submitted} total={x.set} /></div></td>
+                <td style={{ color: x.overdue ? PX.bad : undefined, fontWeight: x.overdue ? 700 : 400 }}>{x.overdue}</td>
+                <td>{x.toVerify}</td><td>{x.verified}</td>
+                <td>{x.uploads}</td>
+                <td style={{ color: x.idle == null || x.idle >= 3 ? PX.bad : PX.ok, fontWeight: 600 }}>{x.idle == null ? 'No activity' : x.idle === 0 ? 'Today' : x.idle + 'd idle'}</td>
+              </tr>))}
+            </tbody>
+          </table>
+        </PremiumCard>
+        <PremiumCard title="Recent activity" subtitle="Latest 40 task updates and uploads">
+          {!feed.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing yet.</div> : feed.map((f, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: i ? `1px solid ${PX.line || '#eef1f6'}` : 'none', fontSize: 13 }}>
+              <span>{f.icon}</span><span style={{ flex: 1 }}><b>{f.who}</b> {f.text}</span>
+              <span style={{ color: PX.sub, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtShort(String(f.at).slice(0, 10))}</span>
+            </div>))}
+        </PremiumCard>
+      </>
+    )
+  }
+
   const Allotment = () => {
     const list = filterTest ? TESTS.filter(t => t.no === filterTest) : TESTS
     return (
@@ -691,7 +739,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const saveMaterial = async () => {
     const d = matDraft
     if (!d.title.trim()) return setMsg('❌ Give the material a title.')
-    if (!d.file && !d.link_url.trim()) return setMsg('❌ Choose a file or paste a link.')
+    if (!d.file && !d.link_url.trim() && !d.body.trim()) return setMsg('❌ Type the material, choose a file or paste a link.')
     if (d.file && d.file.size > 50 * 1024 * 1024) return setMsg('❌ File is over 50 MB.')
     setBusy(true)
     try {
@@ -706,15 +754,26 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
       }
       const { error } = await supabase.from(MAT_TABLE).insert({
         title: d.title.trim(), subject: d.subject || null, test_no: Number(d.test_no) || 0,
-        link_url: d.link_url.trim() || null, file_path, file_name, note: d.note.trim() || null, uploaded_by: currentUser?.name || '',
+        link_url: d.link_url.trim() || null, body: d.body.trim() || null, file_path, file_name, note: d.note.trim() || null, uploaded_by: currentUser?.name || '',
       })
       if (error) throw error
-      setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', file: null }); setFileKey(k => k + 1)
+      setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
       setMsg('✅ Material added.'); loadMats()
     } catch (e) { setMsg('❌ ' + (e.message || 'Upload failed')) }
     setBusy(false)
   }
+  const printMaterial = m => {
+    const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.title)}</title><style>@page{size:A4;margin:16mm}body{font-family:Georgia,'Times New Roman',serif;color:#111827;font-size:13.5px;line-height:1.6}
+.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:8px;margin-bottom:12px}.lh h1{margin:0;font-size:20px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
+h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:12px}pre{white-space:pre-wrap;font-family:inherit;margin:0}</style></head><body>
+<div class="lh"><h1>${esc(institute.name)}</h1><div>Mission Sainik 2027 · Study Material</div></div>
+<h2>${esc(m.title)}</h2><div class="meta">${esc([m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : '', m.uploaded_by].filter(Boolean).join(' · '))}</div>
+<pre>${esc(m.body)}</pre><script>window.onload=()=>window.print()</script></body></html>`)
+    w.document.close()
+  }
   const openMaterial = async m => {
+    if (m.body && !m.link_url && !m.file_path) return setViewMat(m)
     if (m.link_url) return window.open(m.link_url, '_blank', 'noopener')
     const { data, error } = await supabase.storage.from(MAT_BUCKET).createSignedUrl(m.file_path, 3600)
     if (error) return setMsg('❌ ' + error.message)
@@ -792,6 +851,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
           </select>
           <input key={fileKey} style={inp} type="file" onChange={e => setMatDraft({ ...matDraft, file: e.target.files?.[0] || null })} />
           <input style={inp} placeholder="…or paste a link (Drive, YouTube)" value={matDraft.link_url} onChange={e => setMatDraft({ ...matDraft, link_url: e.target.value })} />
+          <textarea style={{ ...inp, gridColumn: '1 / -1', minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" value={matDraft.body} onChange={e => setMatDraft({ ...matDraft, body: e.target.value })} />
           <input style={inp} placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
         </div>
         <button className="px-hbtn" style={{ marginTop: 12 }} disabled={busy} onClick={saveMaterial}>{busy ? 'Uploading…' : '⬆ Add material'}</button>
@@ -800,12 +860,13 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
         {!mats.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div>}
         {mats.map(m => (
           <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 4px', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 20 }}>{m.link_url ? '🔗' : '📄'}</span>
+            <span style={{ fontSize: 20 }}>{m.link_url ? '🔗' : m.body && !m.file_path ? '📝' : '📄'}</span>
             <div style={{ flex: 1, minWidth: 180 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{m.title}</div>
               <div style={{ fontSize: 12, color: PX.sub }}>{[m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : null, m.uploaded_by, fmtShort(String(m.created_at).slice(0, 10))].filter(Boolean).join(' · ')}{m.note ? ' — ' + m.note : ''}</div>
             </div>
             <button className="px-hbtn" onClick={() => openMaterial(m)}>Open</button>
+            {m.body && <button className="px-hbtn" onClick={() => printMaterial(m)}>🖨 Print</button>}
             {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => deleteMaterial(m)}>🗑</button>}
           </div>
         ))}
@@ -852,9 +913,9 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {tab === 'activity' && <Activity />}
             {tab === 'insights' && <Insights />}
-            {(tab === 'premock' || tab === 'megamock') && <MissionSainikAnalyzer key={tab} series={tab === 'premock' ? 'pre' : 'mega'} results={results} reload={loadResults}
-              setupNeeded={resSetup} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} />}
+            {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
             {tab === 'mock' && <MockSeries />}
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
@@ -866,6 +927,19 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
           </>
         )}
       </div>
+      {viewMat && (
+        <div onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
+            <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>{viewMat.title}</div>
+            <div style={{ fontSize: 12.5, color: PX.sub, margin: '4px 0 12px' }}>{[viewMat.subject || 'All subjects', viewMat.test_no ? 'Test ' + viewMat.test_no : null, viewMat.uploaded_by].filter(Boolean).join(' · ')}</div>
+            <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{viewMat.body}</div>
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="px-btn gold" onClick={() => printMaterial(viewMat)}>🖨 Print</button>
+              <button className="px-btn ghost" onClick={() => setViewMat(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
       {sel && <TaskDialog key={sel.id} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
