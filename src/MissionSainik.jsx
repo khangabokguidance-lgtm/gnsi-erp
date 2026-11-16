@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
+import MissionSainikBuilder from './MissionSainikBuilder'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -334,6 +335,8 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const tabs = [
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
+    { id: 'prebuilder',  label: 'Pre Mock Builder',  icon: PIcon.pen },
+    { id: 'megabuilder', label: 'Mega Mock Builder', icon: PIcon.pen },
     { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
     { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
     { id: 'activity',   label: 'Teacher activity', icon: PIcon.users },
@@ -913,6 +916,8 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {(tab === 'prebuilder' || tab === 'megabuilder') && <MissionSainikBuilder key={tab} series={tab === 'prebuilder' ? 'pre' : 'mega'} tasks={rows} saveTask={saveTask}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} />}
             {tab === 'activity' && <Activity />}
             {tab === 'insights' && <Insights />}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
