@@ -774,7 +774,7 @@ function MissionSainikInner({ currentUser }) {
       .sort((a, b) => dueFor(a).localeCompare(dueFor(b)) || a.test_no - b.test_no)
     const count = st => scoped.filter(r => (st === 'Overdue' ? isOverdue(r, today) : st ? r.status === st : true)).length
     const chip = (on, label, onClick, n) => (
-      <button key={label} className="msx-tap" onClick={onClick} aria-pressed={on} style={{ padding: '8px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flex: 'none', background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.ink, border: `1px solid ${on ? PX.navy : '#d9d2c2'}` }}>{label}{n != null ? <span style={{ opacity: .7, marginLeft: 6 }}>{n}</span> : null}</button>
+      <button key={label} className="msx-tap" onClick={onClick} aria-pressed={on} style={{ padding: '7px 12px', borderRadius: 99, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flex: 'none', background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.ink, border: `1px solid ${on ? PX.navy : '#d9d2c2'}` }}>{label}{n != null ? <span style={{ opacity: .7, marginLeft: 6 }}>{n}</span> : null}</button>
     )
     return (
       <>

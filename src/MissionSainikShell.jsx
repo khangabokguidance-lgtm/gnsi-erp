@@ -50,6 +50,21 @@ const CSS = `
 .msx-confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:msx-fall 1.7s ease-in forwards}
 .msx-overlay{align-items:flex-end!important}
 .msx-dialog{border-radius:26px 26px 0 0!important;width:100%!important;max-width:560px!important;animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both}
+@media (max-width:700px){
+  /* Wide data tables become stacked cards on phones (labels come from each column's heading, set in the Shell effect). */
+  .msx-main table.px-table,.msx-main table.px-table tbody{display:block;width:100%;min-width:0!important}
+  .msx-main .px-table thead{display:none}
+  .msx-main .px-table tr{display:block;margin:10px;padding:6px 14px;border:1px solid #e8e3d8;border-radius:18px;background:#fff;box-shadow:0 1px 6px rgba(19,42,79,.06)}
+  .msx-main .px-table td{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0!important;padding:7px 0!important;text-align:right;position:static!important;background:transparent!important;white-space:normal!important}
+  .msx-main .px-table td::before{content:attr(data-label);flex:none;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);text-align:left}
+  .msx-main .px-table td:first-child{justify-content:flex-start;font-size:15.5px;font-weight:800;padding-bottom:9px!important;margin-bottom:3px;border-bottom:1px solid #eef1f6!important}
+  .msx-main .px-table td:first-child::before,.msx-main .px-table td[data-label=""]::before{display:none}
+  .msx-main .px-table td:empty{display:none}
+  /* card headers: title first, action buttons on their own row */
+  .msx-main .px-card-h{flex-wrap:wrap}
+  .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
+  .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
+}
 @keyframes msx-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes msx-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
 @keyframes msx-fade{from{opacity:0}to{opacity:1}}
@@ -74,6 +89,13 @@ export function Confetti({ show }) {
 export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
   useEffect(() => { if (sheet) { const k = e => e.key === 'Escape' && setSheet(false); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) } }, [sheet])
+  // Label every table cell with its column heading so the phone card layout can show it.
+  useEffect(() => {
+    document.querySelectorAll('.msx-main table.px-table').forEach(t => {
+      const heads = [...t.querySelectorAll('thead th')].map(h => h.textContent.trim())
+      t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || '' }))
+    })
+  })
   const go = id => { try { navigator.vibrate?.(8) } catch { /* not supported */ } setSheet(false); onChange(id); window.scrollTo?.({ top: 0 }) }
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
   const inBottom = BOTTOM.some(b => b[0] === active)
