@@ -14,6 +14,8 @@ import {
 } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
+const MAT_TABLE = 'mission_sainik_materials'
+const MAT_BUCKET = 'teacher-materials'
 const STATUS_STYLE = {
   Pending:   { fg: PX.warn,  bg: PX.warnBg },
   Submitted: { fg: '#1d4ed8', bg: '#e8f0fe' },
@@ -133,6 +135,10 @@ export default function MissionSainik({ currentUser, perms }) {
   const [person, setPerson] = useState('')   // admin filter on "My tasks"
   const [filterTest, setFilterTest] = useState(0)
   const today = todayISO()
+  const [mats, setMats] = useState([])
+  const [matSetup, setMatSetup] = useState(false)
+  const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', file: null })
+  const [fileKey, setFileKey] = useState(0)
 
   const me = (currentUser?.name || '').toLowerCase()
   const isMe = name => !!name && me.includes(String(name).toLowerCase())
@@ -149,6 +155,11 @@ export default function MissionSainik({ currentUser, perms }) {
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+  const loadMats = useCallback(async () => {
+    const { data, error } = await supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false })
+    if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
+  }, [])
+  useEffect(() => { loadMats() }, [loadMats])
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(''), 4500); return () => clearTimeout(t) }, [msg])
 
   const tests = useMemo(() => rows.filter(r => r.kind === 'test'), [rows])
@@ -251,6 +262,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
     { id: 'mine',       label: isAdmin ? 'All tasks' : 'My tasks', icon: PIcon.pen, badge: isAdmin ? 0 : rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length },
     { id: 'practice',   label: 'Practice bank', icon: PIcon.folder },
+    { id: 'material',   label: 'Study material', icon: PIcon.folder },
     { id: 'panel',      label: 'Panel',       icon: PIcon.users },
   ]
 
@@ -460,6 +472,81 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     </>
   )
 
+  const saveMaterial = async () => {
+    const d = matDraft
+    if (!d.title.trim()) return setMsg('❌ Give the material a title.')
+    if (!d.file && !d.link_url.trim()) return setMsg('❌ Choose a file or paste a link.')
+    if (d.file && d.file.size > 50 * 1024 * 1024) return setMsg('❌ File is over 50 MB.')
+    setBusy(true)
+    try {
+      let file_path = null, file_name = null
+      if (d.file) {
+        const safe = d.file.name.replace(/[^\w.-]+/g, '_')
+        const who = (currentUser?.name || 'staff').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+        file_path = `mission-sainik/${who}/${Date.now()}-${safe}`
+        const { error: upErr } = await supabase.storage.from(MAT_BUCKET).upload(file_path, d.file, { upsert: false })
+        if (upErr) throw upErr
+        file_name = d.file.name
+      }
+      const { error } = await supabase.from(MAT_TABLE).insert({
+        title: d.title.trim(), subject: d.subject || null, test_no: Number(d.test_no) || 0,
+        link_url: d.link_url.trim() || null, file_path, file_name, note: d.note.trim() || null, uploaded_by: currentUser?.name || '',
+      })
+      if (error) throw error
+      setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', file: null }); setFileKey(k => k + 1)
+      setMsg('✅ Material added.'); loadMats()
+    } catch (e) { setMsg('❌ ' + (e.message || 'Upload failed')) }
+    setBusy(false)
+  }
+  const openMaterial = async m => {
+    if (m.link_url) return window.open(m.link_url, '_blank', 'noopener')
+    const { data, error } = await supabase.storage.from(MAT_BUCKET).createSignedUrl(m.file_path, 3600)
+    if (error) return setMsg('❌ ' + error.message)
+    window.open(data.signedUrl, '_blank', 'noopener')
+  }
+  const deleteMaterial = async m => {
+    if (!window.confirm(`Delete “${m.title}”?`)) return
+    if (m.file_path) await supabase.storage.from(MAT_BUCKET).remove([m.file_path])
+    const { error } = await supabase.from(MAT_TABLE).delete().eq('id', m.id)
+    if (error) return setMsg('❌ ' + error.message)
+    loadMats()
+  }
+  const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
+  const materialTab = (
+    <>
+      {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
+      <PremiumCard title="Upload study material" subtitle="Notes, PDFs, images or a link — visible to all staff">
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr', gap: 10 }}>
+          <input style={inp} placeholder="Title" value={matDraft.title} onChange={e => setMatDraft({ ...matDraft, title: e.target.value })} />
+          <select style={inp} value={matDraft.subject} onChange={e => setMatDraft({ ...matDraft, subject: e.target.value })}>
+            <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
+          </select>
+          <select style={inp} value={matDraft.test_no} onChange={e => setMatDraft({ ...matDraft, test_no: e.target.value })}>
+            <option value={0}>All tests</option>{TESTS.map(t => <option key={t.id} value={t.no ?? t.id}>{t.id}</option>)}
+          </select>
+          <input key={fileKey} style={inp} type="file" onChange={e => setMatDraft({ ...matDraft, file: e.target.files?.[0] || null })} />
+          <input style={inp} placeholder="…or paste a link (Drive, YouTube)" value={matDraft.link_url} onChange={e => setMatDraft({ ...matDraft, link_url: e.target.value })} />
+          <input style={inp} placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
+        </div>
+        <button className="px-hbtn" style={{ marginTop: 12 }} disabled={busy} onClick={saveMaterial}>{busy ? 'Uploading…' : '⬆ Add material'}</button>
+      </PremiumCard>
+      <PremiumCard title={`Library (${mats.length})`}>
+        {!mats.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div>}
+        {mats.map(m => (
+          <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 4px', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 20 }}>{m.link_url ? '🔗' : '📄'}</span>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{m.title}</div>
+              <div style={{ fontSize: 12, color: PX.sub }}>{[m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : null, m.uploaded_by, fmtShort(String(m.created_at).slice(0, 10))].filter(Boolean).join(' · ')}{m.note ? ' — ' + m.note : ''}</div>
+            </div>
+            <button className="px-hbtn" onClick={() => openMaterial(m)}>Open</button>
+            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => deleteMaterial(m)}>🗑</button>}
+          </div>
+        ))}
+      </PremiumCard>
+    </>
+  )
+
   // ── render ─────────────────────────────────────────────────────────────
   if (setup) {
     return (
@@ -501,6 +588,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
             {tab === 'practice' && <Practice />}
+            {tab === 'material' && materialTab}
             {tab === 'panel' && <Panel />}
           </>
         )}
