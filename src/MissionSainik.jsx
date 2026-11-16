@@ -6,7 +6,6 @@
 // Progress is stored in the `mission_sainik_tasks` table (migration 20261201_mission_sainik_tasks.sql).
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
-import { isAdminRole } from './roles'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -16,6 +15,10 @@ import {
 const TABLE = 'mission_sainik_tasks'
 const MAT_TABLE = 'mission_sainik_materials'
 const MAT_BUCKET = 'teacher-materials'
+const SYL_TABLE = 'mission_sainik_syllabus'
+const MARKS_TABLE = 'mission_sainik_marks'
+const MARK_COLS = [['maths', 'Maths', 60], ['reasoning', 'Reasoning', 20], ['grammar', 'Grammar', 20], ['gk', 'GK', 20]]
+const ALL_PEOPLE = [...new Set(Object.values(PANEL).flat())].sort()
 const STATUS_STYLE = {
   Pending:   { fg: PX.warn,  bg: PX.warnBg },
   Submitted: { fg: '#1d4ed8', bg: '#e8f0fe' },
@@ -67,7 +70,9 @@ function Bar({ value, total, color = PX.gold }) {
 }
 
 // Update dialog — a top-level component so typing is never lost when the screen behind it re-renders.
-function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose }) {
+function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapter }) {
+    const [setter, setSetter] = useState(sel.setter || '')
+    const [verifier, setVerifier] = useState(sel.verifier || '')
     const [remarks, setRemarks] = useState(sel.remarks || '')
     const [count, setCount] = useState(sel.question_count ?? '')
     const next = allowed
@@ -83,6 +88,7 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose }) {
             Setter {fullName(sel.setter)}{sel.verifier ? ` · verifier ${fullName(sel.verifier)}` : ''} · due {fmt(dueFor(sel))}
             {sel.kind === 'test' && ` · test on ${fmtShort(TESTS[sel.test_no - 1].date)}`}
           </div>
+          {chapter && <div style={{ fontSize: 13, fontWeight: 700, color: PX.navy, marginBottom: 10 }}>📘 Chapter: {chapter}</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <Chip status={sel.status} overdue={isOverdue(sel, today)} />
             {sel.submitted_on && <span style={{ fontSize: 12, color: PX.sub }}>submitted {fmtShort(sel.submitted_on)}</span>}
@@ -94,18 +100,30 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose }) {
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions
                 <input className="px-input" type="number" min="0" value={count} onChange={e => setCount(e.target.value)} style={{ marginTop: 4 }} />
               </label>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  {[['Setter', setter, setSetter], ['Verifier', verifier, setVerifier]].map(([lbl, val, fn]) => (
+                    <label key={lbl} style={{ flex: 1, fontSize: 12, fontWeight: 700, color: PX.sub }}>{lbl}
+                      <select className="px-input" value={val} onChange={e => fn(e.target.value)} style={{ marginTop: 4 }}>
+                        <option value="">—</option>
+                        {[...new Set([...ALL_PEOPLE, val].filter(Boolean))].map(n => <option key={n} value={n}>{fullName(n)}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
               <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginTop: 10 }}>Remarks
                 <textarea className="px-input" rows={3} value={remarks} onChange={e => setRemarks(e.target.value)} style={{ marginTop: 4, resize: 'vertical' }} />
               </label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 {next.map(s => (
                   <button key={s} className={'px-btn' + (STATUS_FLOW.indexOf(s) > STATUS_FLOW.indexOf(sel.status) ? ' gold' : ' ghost')} disabled={busy}
-                    onClick={async () => { if (await onSave(sel, { status: s, remarks, question_count: count === '' ? null : +count })) onClose() }}>
+                    onClick={async () => { if (await onSave(sel, { status: s, remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>
                     {STATUS_FLOW.indexOf(s) > STATUS_FLOW.indexOf(sel.status) ? `Mark ${s.toLowerCase()}` : `Move back to ${s.toLowerCase()}`}
                   </button>
                 ))}
                 <button className="px-btn" disabled={busy}
-                  onClick={async () => { if (await onSave(sel, { remarks, question_count: count === '' ? null : +count })) onClose() }}>Save notes</button>
+                  onClick={async () => { if (await onSave(sel, { remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>Save notes</button>
               </div>
             </>
           )}
@@ -122,7 +140,8 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose }) {
 
 export default function MissionSainik({ currentUser, perms }) {
   const isMobile = useIsMobile()
-  const isAdmin = isAdminRole(currentUser?.role)
+  // Everyone on staff manages everything here (reassign, approve, syllabus, marks). Updates are stamped with the user's name.
+  const isAdmin = true
   // Open to every logged-in staff member: non-admins can only move tasks they set or verify (see allowedStatuses).
   const canEdit = true
   const [tab, setTab] = useState('overview')
@@ -139,6 +158,10 @@ export default function MissionSainik({ currentUser, perms }) {
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', file: null })
   const [fileKey, setFileKey] = useState(0)
+  const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
+  const [marks, setMarks] = useState([])
+  const [markDraft, setMarkDraft] = useState({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' })
+  const [marksSetup, setMarksSetup] = useState(false)
 
   const me = (currentUser?.name || '').toLowerCase()
   const isMe = name => !!name && me.includes(String(name).toLowerCase())
@@ -160,6 +183,38 @@ export default function MissionSainik({ currentUser, perms }) {
     if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
   }, [])
   useEffect(() => { loadMats() }, [loadMats])
+  const loadExtra = useCallback(async () => {
+    const [a, b] = await Promise.all([supabase.from(SYL_TABLE).select('*'), supabase.from(MARKS_TABLE).select('*').order('test_no').order('batch')])
+    if (a.error || b.error) { setMarksSetup(true); return }
+    setMarksSetup(false)
+    const m = {}; (a.data || []).forEach(r => { m[r.test_no + '|' + r.subject] = r.chapter || '' }); setSyl(m)
+    setMarks(b.data || [])
+  }, [])
+  useEffect(() => { loadExtra() }, [loadExtra])
+  const saveChapter = async (test_no, subject, chapter) => {
+    if ((syl[test_no + '|' + subject] || '') === chapter) return
+    setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
+    const { error } = await supabase.from(SYL_TABLE).upsert({ test_no, subject, chapter, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'test_no,subject' })
+    setMsg(error ? '❌ ' + error.message : '✅ Chapter saved')
+  }
+  const saveMarks = async () => {
+    const d = markDraft
+    const row = { test_no: Number(d.test_no), batch: d.batch.trim(), entered_by: currentUser?.name || '' }
+    for (const [k, , max] of MARK_COLS) {
+      if (d[k] === '') { row[k] = null; continue }
+      const v = Number(d[k]); if (Number.isNaN(v) || v < 0 || v > max) return setMsg(`❌ ${k} must be 0–${max}`)
+      row[k] = v
+    }
+    const { error } = await supabase.from(MARKS_TABLE).upsert(row, { onConflict: 'test_no,batch' })
+    if (error) return setMsg('❌ ' + error.message)
+    setMsg('✅ Marks saved'); setMarkDraft({ ...markDraft, maths: '', reasoning: '', grammar: '', gk: '' }); loadExtra()
+  }
+  const deleteMarks = async r => {
+    if (!window.confirm('Delete this entry?')) return
+    const { error } = await supabase.from(MARKS_TABLE).delete().eq('id', r.id)
+    if (error) return setMsg('❌ ' + error.message)
+    loadExtra()
+  }
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(''), 4500); return () => clearTimeout(t) }, [msg])
 
   const tests = useMemo(() => rows.filter(r => r.kind === 'test'), [rows])
@@ -262,6 +317,8 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
     { id: 'mine',       label: isAdmin ? 'All tasks' : 'My tasks', icon: PIcon.pen, badge: isAdmin ? 0 : rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length },
     { id: 'practice',   label: 'Practice bank', icon: PIcon.folder },
+    { id: 'syllabus',   label: 'Syllabus',    icon: PIcon.list },
+    { id: 'marks',      label: 'Marks tracker', icon: PIcon.chart },
     { id: 'material',   label: 'Study material', icon: PIcon.folder },
     { id: 'panel',      label: 'Panel',       icon: PIcon.users },
   ]
@@ -512,6 +569,56 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     loadMats()
   }
   const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
+  const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
+  const syllabusTab = (
+    <>{setupNote}
+      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type and click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 900 }}>
+          <thead><tr style={{ textAlign: 'left', color: PX.sub }}><th style={{ padding: 8 }}>Test</th>{SUBJECTS.map(x => <th key={x.key} style={{ padding: 8 }}>{x.short}</th>)}</tr></thead>
+          <tbody>{TESTS.map(t => (
+            <tr key={t.no} style={{ borderTop: `1px solid ${PX.line || '#eef1f6'}` }}>
+              <td style={{ padding: 6, fontWeight: 700, whiteSpace: 'nowrap' }}>{t.id}<div style={{ fontWeight: 400, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
+              {SUBJECTS.map(x => (
+                <td key={x.key} style={{ padding: 4 }}>
+                  <input key={t.no + x.label + (syl[t.no + '|' + x.label] ?? '')} className="px-input" defaultValue={syl[t.no + '|' + x.label] || ''} placeholder="Chapter"
+                    onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
+                </td>
+              ))}
+            </tr>))}
+          </tbody>
+        </table>
+      </PremiumCard>
+    </>
+  )
+  const marksTab = (
+    <>{setupNote}
+      <PremiumCard title="Daily Class Test marks" subtitle="Maths /60 · Reasoning, Grammar, GK /20 each · 120 in all. Entering the same test and batch again overwrites it.">
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(6, 1fr)', gap: 10 }}>
+          <select className="px-input" value={markDraft.test_no} onChange={e => setMarkDraft({ ...markDraft, test_no: e.target.value })}>{TESTS.map(t => <option key={t.no} value={t.no}>T{t.no} · {fmtShort(t.date)}</option>)}</select>
+          <input className="px-input" placeholder="Batch / student" value={markDraft.batch} onChange={e => setMarkDraft({ ...markDraft, batch: e.target.value })} />
+          {MARK_COLS.map(([k, lbl, max]) => <input key={k} className="px-input" type="number" min="0" max={max} placeholder={`${lbl} /${max}`} value={markDraft[k]} onChange={e => setMarkDraft({ ...markDraft, [k]: e.target.value })} />)}
+        </div>
+        <button className="px-btn gold" style={{ marginTop: 12 }} onClick={saveMarks}>Save marks</button>
+      </PremiumCard>
+      <PremiumCard title={`Entries (${marks.length})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+        {!marks.length ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+            <thead><tr style={{ textAlign: 'left', color: PX.sub }}><th style={{ padding: 8 }}>Test</th><th>Batch</th>{MARK_COLS.map(([k, l, m]) => <th key={k}>{l} /{m}</th>)}<th>Total /120</th><th /></tr></thead>
+            <tbody>{marks.map(r => {
+              const tot = MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)
+              return (
+                <tr key={r.id} style={{ borderTop: `1px solid ${PX.line || '#eef1f6'}` }}>
+                  <td style={{ padding: 8, fontWeight: 700 }}>T{r.test_no}</td><td>{r.batch || '—'}</td>
+                  {MARK_COLS.map(([k, , m]) => <td key={k} style={{ color: r[k] != null && r[k] / m < 0.6 ? PX.bad : undefined, fontWeight: r[k] != null && r[k] / m < 0.6 ? 700 : 400 }}>{r[k] ?? '—'}</td>)}
+                  <td style={{ fontWeight: 700, color: tot / 120 < 0.6 ? PX.bad : PX.ok }}>{tot}</td>
+                  <td><button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>
+                </tr>)
+            })}</tbody>
+          </table>
+        )}
+      </PremiumCard>
+    </>
+  )
   const materialTab = (
     <>
       {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
@@ -588,12 +695,14 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
             {tab === 'practice' && <Practice />}
+            {tab === 'syllabus' && syllabusTab}
+            {tab === 'marks' && marksTab}
             {tab === 'material' && materialTab}
             {tab === 'panel' && <Panel />}
           </>
         )}
       </div>
-      {sel && <TaskDialog key={sel.id} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
+      {sel && <TaskDialog key={sel.id} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
 }
