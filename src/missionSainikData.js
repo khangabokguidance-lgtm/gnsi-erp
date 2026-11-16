@@ -104,3 +104,16 @@ export function buildSeedRows() {
 }
 
 export const STATUS_FLOW = ['Pending', 'Submitted', 'Verified', 'Approved']
+
+// Sainik Mock Test Series (Annexure-III, second table) — 20 tests, 10–30 Jan 2027; AISSEE Class VI on 31 Jan 2027.
+export const EXAM_DATE = '2027-01-31'
+export const MOCK_DATES = [
+  '2027-01-10', '2027-01-11', '2027-01-12', '2027-01-13', '2027-01-14', '2027-01-15', '2027-01-16', '2027-01-17', '2027-01-18', '2027-01-19',
+  '2027-01-20', '2027-01-21', '2027-01-22', '2027-01-23', '2027-01-24', '2027-01-25', '2027-01-27', '2027-01-28', '2027-01-29', '2027-01-30',
+]
+export const MOCK_TESTS = MOCK_DATES.map((date, i) => ({ no: i + 1, id: 'MT-' + String(i + 1).padStart(2, '0'), date }))
+// AISSEE pattern: 125 questions, 300 marks, 150 minutes, no negative marking.
+export const MOCK_SECTIONS = [
+  { label: 'Mathematics', q: 50, marks: 150 }, { label: 'Intelligence', q: 25, marks: 50 },
+  { label: 'Grammar + Vocabulary', q: 25, marks: 50 }, { label: 'Science + GK', q: 25, marks: 50 },
+]

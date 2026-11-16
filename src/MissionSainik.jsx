@@ -9,7 +9,7 @@ import { supabase } from './supabase'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
-  buildSeedRows, fullName, STATUS_FLOW,
+  buildSeedRows, fullName, STATUS_FLOW, EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
 } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
@@ -314,6 +314,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const tabs = [
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
+    { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
     { id: 'mine',       label: isAdmin ? 'All tasks' : 'My tasks', icon: PIcon.pen, badge: isAdmin ? 0 : rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length },
     { id: 'practice',   label: 'Practice bank', icon: PIcon.folder },
@@ -417,6 +418,40 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
       </div>
       <div style={{ padding: '10px 16px', fontSize: 12, color: PX.sub }}>* Sunday, a working day. The 1 Jan test moved to 2 Jan; the tests start right after the JNVST ({fmtShort(JNVST[0])}–{fmtShort(JNVST[3])}).</div>
     </PremiumCard>
+  )
+
+  const daysToExam = dayDiff(today, EXAM_DATE)
+  const nextMock = MOCK_TESTS.find(t => t.date >= today)
+  const MockSeries = () => (
+    <>
+      <PremiumCard title="Sainik Mock Test Series" subtitle="10 – 30 January 2027 · 20 tests, one every available day · AISSEE pattern: 125 questions, 300 marks, 150 minutes, no negative marking">
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+          {MOCK_SECTIONS.map(x => (
+            <div key={x.label} style={{ padding: 12, borderRadius: 12, background: PX.tint, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: PX.sub, fontWeight: 700 }}>{x.label}</div>
+              <div style={{ fontFamily: PX.serif, fontSize: 22, color: PX.navy }}>{x.q} Q</div>
+              <div style={{ fontSize: 12, color: PX.sub }}>{x.marks} marks</div>
+            </div>
+          ))}
+        </div>
+      </PremiumCard>
+      <PremiumCard title="Mock test schedule" bodyStyle={{ padding: 0 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="px-table">
+            <thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Status</th></tr></thead>
+            <tbody>{MOCK_TESTS.map(t => {
+              const st = t.date < today ? 'Held' : t.date === today ? 'Today' : (nextMock && nextMock.no === t.no ? 'Next' : 'Upcoming')
+              return (
+                <tr key={t.no} style={st === 'Today' || st === 'Next' ? { background: PX.tint } : undefined}>
+                  <td><b>{t.id}</b></td><td>{fmt(t.date)}</td><td>{dayName(t.date)}</td>
+                  <td style={{ fontWeight: 700, color: st === 'Held' ? PX.sub : st === 'Today' ? PX.gold : PX.navy }}>{st}{st === 'Upcoming' || st === 'Next' ? ` · in ${dayDiff(today, t.date)}d` : ''}</td>
+                </tr>)
+            })}</tbody>
+          </table>
+        </div>
+        <div style={{ padding: '10px 16px', fontSize: 12, color: PX.sub }}>Duration, OMR format and the Daily Class Test papers are notified separately. Marks for the Daily Class Tests go in the Marks tracker tab.</div>
+      </PremiumCard>
+    </>
   )
 
   const Allotment = () => {
@@ -684,6 +719,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
             { label: 'Submission', value: daysToDeadline > 0 ? daysToDeadline + 'd left' : daysToDeadline === 0 ? 'Today' : 'Closed', sub: 'by ' + fmtShort(SUBMISSION_DEADLINE) },
             { label: 'In', value: `${submitted}/${total || seedCount}`, sub: 'submitted or beyond' },
             { label: 'Approved', value: approved, sub: 'ready to print', tone: PX.goldLt },
+            { label: 'AISSEE 2027', value: daysToExam > 0 ? daysToExam + 'd' : daysToExam === 0 ? 'Today' : 'Held', sub: fmtShort(EXAM_DATE) + (nextMock ? ' · next mock ' + fmtShort(nextMock.date) : ''), tone: PX.goldLt },
             { label: 'Overdue', value: overdue, sub: 'not submitted', tone: overdue ? '#fca5a5' : '#fff' },
           ]} />
         <PremiumTabs tabs={tabs} active={tab} onChange={setTab} style={{ marginBottom: 14 }} />
@@ -692,6 +728,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {tab === 'mock' && <MockSeries />}
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
             {tab === 'practice' && <Practice />}
