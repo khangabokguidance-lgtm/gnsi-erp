@@ -44,7 +44,7 @@ const CFG = {
   },
 }
 
-export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '' }) {
+export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
@@ -58,6 +58,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [signoffs, setSignoffs] = useState([])
   const [bin, setBin] = useState([])
   const [showBin, setShowBin] = useState(false)
+  const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
@@ -87,10 +88,10 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
 
   // Who may upload to a section: its setter (Pre Mock: the allotted setter; Mega Mock: the panel of its subjects) or an admin.
   const settersOf = (t, s) => cfg.panel === 'practice'
-    ? (() => { const p = PRACTICE_PANEL[cfg.sections.find(x => x.label === s)?.key]; return p ? [p.verifier, ...p.assistants] : [] })()
+    ? (() => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practice?.[key]?.length) return panel.practice[key]; const p = PRACTICE_PANEL[key]; return p ? [p.verifier, ...p.assistants] : [] })()
     : series === 'pre'
     ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.setter)
-    : (MEGA_PANEL[s] || []).flatMap(k => PANEL[k] || [])
+    : (MEGA_PANEL[s] || []).flatMap(k => (panel?.setters?.[k] ?? PANEL[k]) || [])
   const canEdit = (t, s) => isAdmin || settersOf(t, s).some(isMe)
   // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
   const dateOf = t => cfg.tests.find(x => x.no === t)?.date
@@ -164,6 +165,19 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     if (!list.length || !canEdit(testNo, section)) return
     if (!window.confirm(`Delete all ${list.length} questions of ${section} for ${tid(testNo)}?`)) return
     await removeRows(x => x.eq('series', series).eq('test_no', testNo).eq('section', section).is('deleted_at', null), `${series}:${testNo}:${section}`, list.length)
+  }
+  const saveEdit = async () => {
+    const d = editQ
+    if (!canEdit(d.test_no, d.section)) return setMsg('❌ Only the section setter or an admin can edit this question.')
+    if (!d.question.trim() || !d.option_a.trim() || !d.option_b.trim() || !d.option_c.trim() || !d.option_d.trim()) return setMsg('❌ The question and all four options are required.')
+    if (!['A', 'B', 'C', 'D'].includes(d.answer)) return setMsg('❌ Choose the correct answer.')
+    const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
+    if (get(d.test_no, d.section).some(q => q.id !== d.id && norm(q.question) === norm(d.question))) return setMsg('❌ Another question in this section has the same text.')
+    const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: d.topic?.trim() || null, difficulty: d.difficulty || null }
+    const { error } = await supabase.from(TABLE).update(patch).eq('id', d.id)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('edit_question', `${series}:${d.test_no}:${d.section}`, { id: d.id })
+    await clearSignoff(d.test_no, d.section); setEditQ(null); setMsg('✅ Question updated (verification reset)'); load()
   }
   const restore = async q => {
     if (!(isAdmin || canEdit(q.test_no, q.section))) return
@@ -302,8 +316,31 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <button style={{ all: 'unset', cursor: 'pointer', flex: 1, fontSize: 13.5 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.question}</button>
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
+              {mayEdit && <button className="px-hbtn" onClick={() => { setEditQ({ ...q }); setOpen('') }} aria-label="Edit question">✎</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
             </div>
+            {editQ && editQ.id === q.id && (
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: PX.tint, border: `1px solid ${line}` }}>
+                {(() => {
+                  const set = patch => setEditQ({ ...editQ, ...patch }), lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginTop: 8 }
+                  return (
+                    <>
+                      <label style={{ ...lab, marginTop: 0 }}>Question<textarea className="px-input" rows={3} value={editQ.question} onChange={e => set({ question: e.target.value })} /></label>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
+                        {['a', 'b', 'c', 'd'].map(k => <label key={k} style={lab}>Option {k.toUpperCase()}<input className="px-input" value={editQ['option_' + k]} onChange={e => set({ ['option_' + k]: e.target.value })} /></label>)}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 2fr 1fr', gap: 8 }}>
+                        <label style={lab}>Answer<select className="px-input" value={editQ.answer} onChange={e => set({ answer: e.target.value })}>{['A', 'B', 'C', 'D'].map(k => <option key={k}>{k}</option>)}</select></label>
+                        <label style={lab}>Level<select className="px-input" value={editQ.difficulty || ''} onChange={e => set({ difficulty: e.target.value })}><option value="">—</option><option>Easy</option><option>Medium</option><option>Hard</option></select></label>
+                        <label style={lab}>Topic<input className="px-input" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
+                      </div>
+                      <label style={lab}>Explanation<input className="px-input" value={editQ.explanation || ''} onChange={e => set({ explanation: e.target.value })} /></label>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}><button className="px-btn ghost" onClick={() => setEditQ(null)}>Cancel</button><button className="px-btn gold" onClick={saveEdit}>Save question</button></div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
             {open === q.id && (
               <div style={{ marginTop: 6, marginLeft: 18, fontSize: 13, lineHeight: 1.55 }}>
                 {['A', 'B', 'C', 'D'].map(k => <div key={k} style={{ fontWeight: q.answer === k ? 700 : 400, color: q.answer === k ? PX.ok : undefined }}>({k}) {q['option_' + k.toLowerCase()]}{q.answer === k ? ' ✓' : ''}</div>)}

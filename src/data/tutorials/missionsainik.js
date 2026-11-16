@@ -26,7 +26,7 @@ export default {
     { name: 'Daily Test Builder', what: 'Daily Class Test T1–T20: Maths 20 Q, Reasoning 10, Grammar 10, GK 10 (120 marks). Panel members upload; everyone can print.' },
     { name: 'Practice Bank Builder', what: 'Practice sets of 25 questions per subject (Maths and Grammar 3 sets, others 2), uploaded by the practice panel and verifiers.' },
     { name: 'Admin (admins only)', what: 'Launch settings (deadline, order number and date, exam date, embargo), one-click "one setter for a whole subject", a database setup check, and the audit log of who did what.' },
-    { name: 'Panel', what: 'The Question Setting Panel and who verifies whom.' },
+    { name: 'Panel', what: 'The Question Setting Panel. Add, edit or remove members (setter, verifier, assistant); use “Load from notice” first to start from the notice.' },
   ],
   steps: [
     {
@@ -107,6 +107,8 @@ export default {
     'Seeing "No tasks matched your name" → your login name does not match the panel name. Ask an admin to link it or change the setter name on the task.',
   ],
   faq: [
+    { q: 'How do I add, edit or delete things?', a: 'Tasks: “＋ Add task” (Tasks tab) or “＋ Add practice set”; open a task to edit or delete it. Marks: ✎ edits a row, 🗑 deletes it. Study material: ✎ and 🗑 on each item. Builders: ✎ edits a question, 🗑 moves it to the recycle bin. Panel: ＋ Add member, ✎, 🗑. Syllabus: type, or clear a cell to remove the chapter.' },
+    { q: 'Why can I not edit the Schedule or Mock series dates?', a: 'They are fixed by the Principal\'s office order. Any change needs prior written approval, so they are changed only in the portal code after that approval.' },
     { q: 'What is verification in the builders?', a: 'When a section is full, a different panel member (not the uploader) presses "✓ Mark verified". Any later upload or delete removes the verification. Printed papers say "NOT FULLY VERIFIED" until every section is verified.' },
     { q: 'I deleted questions by mistake.', a: 'Open the "Recycle bin" card at the bottom of the builder and press Restore. Only an admin can delete forever.' },
     { q: 'What does the embargo do?', a: 'If an admin switches it on, questions, answers and printing stay hidden from everyone except the section setter and admins until the test date.' },
