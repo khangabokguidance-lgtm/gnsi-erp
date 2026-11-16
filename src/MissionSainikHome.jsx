@@ -16,7 +16,7 @@ function Ring({ pct, size = 112, stroke = 12, children }) {
   )
 }
 
-export default function MissionSainikHome({ announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile }) {
+export default function MissionSainikHome({ upcoming = [], announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile }) {
   const hour = new Date().getHours()
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = String(name || '').replace(/^(sir|miss|mr|mrs)\s+/i, '').split(' ')[0] || 'Teacher'
@@ -65,6 +65,22 @@ export default function MissionSainikHome({ announcement, name, stats, game, nex
           <div style={{ padding: '10px 4px 2px', fontSize: 14, color: PX.ink, fontWeight: 600 }}>🎉 You're all caught up. Check Insights or help a colleague verify.</div>
         )}
       </div>
+
+      {upcoming.length > 0 && (
+        <div style={card}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub, marginBottom: 8 }}>UPCOMING TESTS</div>
+          {upcoming.map((u, i) => (
+            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: i ? '1px solid #eef1f6' : 'none' }}>
+              <span style={{ width: 46, height: 46, borderRadius: 14, background: '#eef2f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: PX.navy, lineHeight: 1.05 }}>
+                <span style={{ fontSize: 15 }}>{u.date.split(' ')[0]}</span><span style={{ fontSize: 9.5, letterSpacing: '.08em' }}>{u.date.split(' ')[1]?.toUpperCase()}</span>
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: 14.5 }}>{u.id} <span style={{ fontWeight: 600, color: PX.sub, fontSize: 12.5 }}>· {u.day} · {u.days === 0 ? 'today' : u.days === 1 ? 'tomorrow' : 'in ' + u.days + ' days'}</span></span>
+                <span style={{ display: 'block', height: 6, borderRadius: 3, background: '#eef1f6', margin: '6px 0 3px', overflow: 'hidden' }}><span style={{ display: 'block', width: Math.round((u.done / u.total) * 100) + '%', height: '100%', background: 'linear-gradient(90deg,#b8923a,#e6c35e)' }} /></span>
+                <span style={{ fontSize: 11.5, color: PX.sub, fontWeight: 600 }}>{u.done}/{u.total} sections in · drafts due {u.drafts}</span>
+              </span>
+            </div>))}
+        </div>)}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
         {quick.map(q => (
