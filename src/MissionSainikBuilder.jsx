@@ -67,14 +67,14 @@ function figFromFile(file) {
   })
 }
 
-export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null }) {
+export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
-  const [testNo, setTestNo] = useState(1)
-  const [sectionSel, setSection] = useState(cfg.sections[0].label)
+  const [testNo, setTestNo] = useState(startTest || 1)
+  const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
@@ -100,6 +100,9 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const moveSection = (label, d) => { const a = [...pc.sections], i = a.findIndex(x => x.label === label), j = i + d; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; setPc({ ...pc, sections: a }) }
   const [picked, setPicked] = useState([])       // ids ticked for bulk actions
   const [moveTo, setMoveTo] = useState({ test: '', section: '' })
+  const [reviews, setReviews] = useState([])
+  const [newNote, setNewNote] = useState('')
+  const [qSearch, setQSearch] = useState(''), [qLevel, setQLevel] = useState('')
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
@@ -109,6 +112,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
       ;({ data, error } = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).order('id')))
     }
     if (error) { setSetup(true); setQs([]) } else { setSetup(false); setQs(data || []) }
+    const rv = await supabase.from('mission_sainik_reviews').select('*').eq('series', series).order('id')
+    setReviews(rv.error ? [] : rv.data || [])
     const so = await supabase.from('mission_sainik_signoffs').select('*').eq('series', series)
     setSignoffs(so.error ? [] : so.data || [])
     const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
@@ -133,7 +138,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     : series === 'pre'
     ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.setter)
     : (MEGA_PANEL[s] || []).flatMap(k => (panel?.setters?.[k] ?? PANEL[k]) || [])
-  const canEdit = (t, s) => isAdmin || settersOf(t, s).some(isMe)
+  const isLocked = t => locks?.[`lock:${series}:${t}`] === 'on'
+  const canEdit = (t, s) => isAdmin || (!isLocked(t) && settersOf(t, s).some(isMe))
   // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
   const dateOf = t => cfg.tests.find(x => x.no === t)?.date
   const embargoed = (t, s) => !!embargo && !!dateOf(t) && !!today && today < dateOf(t) && !canEdit(t, s)
@@ -141,9 +147,24 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   // Verifier: a different person from the uploader (admins may always verify).
   const verifiersOf = (t, s) => (cfg.panel === 'practice' || series === 'mega') ? settersOf(t, s)
     : (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.verifier).filter(Boolean)
+  const notesOf = (t, s) => reviews.filter(r => r.test_no === t && r.section === s)
+  const openNotes = (t, s) => notesOf(t, s).filter(r => r.status === 'open').length
+  const addNote = async () => {
+    const note = newNote.trim(); if (!note) return setMsg('❌ Write the note first.')
+    const { error } = await supabase.from('mission_sainik_reviews').insert({ series, test_no: testNo, section, note, author: currentUser?.name || '', status: 'open' })
+    if (error) return setMsg('❌ ' + error.message + ' (run migration 20261213)')
+    audit('review_note', `${series}:${testNo}:${section}`, null); setNewNote(''); setMsg('✅ Note added — the setter will see it'); load()
+  }
+  const setNoteStatus = async (r, status) => {
+    const { error } = await supabase.from('mission_sainik_reviews').update({ status, resolved_by: status === 'resolved' ? currentUser?.name || '' : null, resolved_at: status === 'resolved' ? new Date().toISOString() : null }).eq('id', r.id)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('review_' + status, `${series}:${r.test_no}:${r.section}`, { id: r.id }); load()
+  }
+  const delNote = async r => { if (!window.confirm('Delete this note?')) return; const { error } = await supabase.from('mission_sainik_reviews').delete().eq('id', r.id); if (error) return setMsg('❌ ' + error.message); load() }
   const canVerify = (t, s) => {
     const list = get(t, s); if (!list.length) return false
     if (isAdmin) return true
+    if (openNotes(t, s) > 0) return false                     // unresolved review notes block verification
     const mine = list.every(q => nameMatches(q.uploaded_by, currentUser?.name?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
     return verifiersOf(t, s).some(isMe) && !mine
   }
@@ -393,6 +414,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
+  const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
@@ -426,6 +448,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                 <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{s.short} <span style={{ fontWeight: 400 }}>· {range(s)}</span></div>
                 <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{n}/{s.q}</div>
                 <div style={{ fontSize: 11, color: PX.sub }}>{ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'}</div>
+                {openNotes(testNo, s.label) > 0 && <div style={{ fontSize: 11, color: PX.warn, fontWeight: 700 }}>💬 {openNotes(testNo, s.label)} open note{openNotes(testNo, s.label) > 1 ? 's' : ''}</div>}
                 {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : n >= s.q ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
               </button>
             )
@@ -434,7 +457,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
 
       <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
-        right={<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span>}>
+        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span></span>}>
+        {isLocked(testNo) && <div role="status" style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13, fontWeight: 600 }}>🔒 This paper is locked by an admin. It can be viewed and printed but not changed{isAdmin ? ' (you can, as an admin)' : ''}.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}><MiniBar pct={health.score} tone={health.score >= 85 ? 'ok' : health.score >= 55 ? 'gold' : 'bad'} width={140} /><b style={{ fontSize: 13 }}>Paper health</b></div>
@@ -535,8 +559,32 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         )}
       </PremiumCard>
 
+      <PremiumCard title={`Review notes (${notesOf(testNo, section).length})`} subtitle={`${tid(testNo)} · ${section} — a verifier can ask for changes here; open notes block verification until they are resolved`}>
+        {notesOf(testNo, section).length === 0 && <div style={{ fontSize: 13, color: PX.sub, marginBottom: 8 }}>No notes yet.</div>}
+        {notesOf(testNo, section).map(r => (
+          <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: `1px solid ${line}`, opacity: r.status === 'resolved' ? 0.65 : 1 }}>
+            <span style={{ fontSize: 18 }}>{r.status === 'resolved' ? '✅' : '💬'}</span>
+            <div style={{ flex: 1, fontSize: 13.5 }}>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{r.note}</div>
+              <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 2 }}>{r.author}{r.status === 'resolved' ? ` · resolved by ${r.resolved_by || '?'}` : ''}</div>
+            </div>
+            {r.status === 'open' ? <button className="px-hbtn" onClick={() => setNoteStatus(r, 'resolved')}>Resolve</button> : isAdmin ? <button className="px-hbtn" onClick={() => setNoteStatus(r, 'open')}>Reopen</button> : null}
+            {(isAdmin || nameMatches(r.author, currentUser?.name?.split(/\s+/)[0])) && <button className="px-hbtn" onClick={() => delNote(r)} aria-label="Delete note">🗑</button>}
+          </div>))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <input className="px-input" style={{ flex: '1 1 240px' }} value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="e.g. Q7 has two correct answers; Q12 needs an explanation" aria-label="New review note" />
+          <button className="px-btn gold" onClick={addNote}>Add note</button>
+        </div>
+      </PremiumCard>
+
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see options, answer and explanation' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
+        {secList.length > 5 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            <input className="px-input" style={{ flex: '1 1 200px' }} type="search" value={qSearch} onChange={e => setQSearch(e.target.value)} placeholder="Search questions, topics, options…" aria-label="Search questions" />
+            <select className="px-input" style={{ flex: '0 1 140px' }} value={qLevel} onChange={e => setQLevel(e.target.value)} aria-label="Filter by level"><option value="">Any level</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
+            {(qSearch || qLevel) && <span style={{ alignSelf: 'center', fontSize: 12.5, color: PX.sub }}>{listShown.length} of {secList.length}</span>}
+          </div>)}
         {mayEdit && picked.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '8px 10px', margin: '0 0 8px', borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0' }}>
             <b style={{ fontSize: 13 }}>{picked.length} selected</b>
@@ -547,7 +595,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <button className="px-btn ghost" style={{ color: PX.bad }} onClick={deletePicked}>🗑 Delete</button>
           </div>)}
         {embargoed(testNo, section) ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>🔒 {secList.length} question(s) uploaded. The questions stay hidden from other staff until {fmtShort(dateOf(testNo))} (embargo).</div>
-          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : secList.map((q, i) => (
+          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.map(({ q, i }) => (
           <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}

@@ -18,6 +18,8 @@ import { PremiumStyles, PremiumCard, PX } from './premiumUI'
 import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
+import MissionSainikAdmin from './MissionSainikAdmin'
+import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import {
@@ -191,6 +193,16 @@ function MissionSainikInner({ currentUser }) {
   const [addTask, setAddTask] = useState(null)             // null | form for the Add task dialog
   const [editMarksId, setEditMarksId] = useState(null)
   const [editMat, setEditMat] = useState(null)
+  const [bStart, setBStart] = useState({ test: 1, section: '', n: 0 })   // where the Practice Bank builder should open
+  const [schedFilter, setSchedFilter] = useState('all')            // all | upcoming | done
+  const [allotTeacher, setAllotTeacher] = useState('')
+  const [allotStatus, setAllotStatus] = useState('')
+  const [taskSort, setTaskSort] = useState('due')
+  const [pracCounts, setPracCounts] = useState({})
+  const [sylImport, setSylImport] = useState(null)                   // null | text
+  const [marksImport, setMarksImport] = useState(null)               // null | text
+  const [marksFilter, setMarksFilter] = useState(0)
+  const [matQ, setMatQ] = useState(''), [matSubj, setMatSubj] = useState(''), [matSort, setMatSort] = useState('new')
   const [taskView, setTaskView] = useState('needs')   // needs | mine | all
   const [statusF, setStatusF] = useState('')
   const [subjF, setSubjF] = useState('')
@@ -225,6 +237,16 @@ function MissionSainikInner({ currentUser }) {
     const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
   }, [])
   useEffect(() => { loadSettings() }, [loadSettings])
+  const putSetting = async (key, value) => {
+    const { error } = await supabase.from('mission_sainik_settings').upsert({ key, value: String(value), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    if (error) { setMsg('❌ ' + error.message + ' (admins only; migration 20261209 must be run)'); return false }
+    audit('setting_' + key.split(':')[0], key, { value: key === 'announcement' ? '(text)' : value }); await loadSettings(); return true
+  }
+  const delSetting = async key => {
+    const { error } = await supabase.from('mission_sainik_settings').delete().eq('key', key)
+    if (error) { setMsg('❌ ' + error.message); return false }
+    audit('setting_clear_' + key.split(':')[0], key, null); await loadSettings(); return true
+  }
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
@@ -406,7 +428,7 @@ function MissionSainikInner({ currentUser }) {
     const checks = [['mission_sainik_tasks', 'id', '20261201'], ['mission_sainik_materials', 'id', '20261202'], ['mission_sainik_materials', 'body', '20261205 (typed material)'],
       ['mission_sainik_syllabus', 'id', '20261203'], ['mission_sainik_marks', 'id', '20261203'], ['mission_sainik_tasks', 'easy_count', '20261204'],
       ['mission_sainik_questions', 'id', '20261206'], ['mission_sainik_questions', 'deleted_at', '20261209'], ['mission_sainik_settings', 'key', '20261209'],
-      ['mission_sainik_audit', 'id', '20261209'], ['mission_sainik_signoffs', 'id', '20261209'], ['mission_sainik_panel', 'id', '20261210 (editable panel)']]
+      ['mission_sainik_audit', 'id', '20261209'], ['mission_sainik_signoffs', 'id', '20261209'], ['mission_sainik_panel', 'id', '20261210 (editable panel)'], ['mission_sainik_questions', 'passage', '20261211 (passages & figures)'], ['mission_sainik_paper_cfg', 'series', '20261212 (shared paper settings)'], ['mission_sainik_reviews', 'id', '20261213 (review notes)']]
     const out = []
     for (const [t, c, mig] of checks) { const { error } = await supabase.from(t).select(c).limit(1); out.push({ t, c, mig, ok: !error }) }
     setHealth(out)
@@ -464,13 +486,7 @@ function MissionSainikInner({ currentUser }) {
             </div>))}
           <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Also run 20261208 (staff-only lockdown); it cannot be checked from here.</div>
         </PremiumCard>
-        <PremiumCard title="Audit log" subtitle="Latest 150 actions (cannot be edited or deleted)" right={<button className="px-hbtn" onClick={loadAudit}>Refresh</button>} bodyStyle={{ padding: 0, overflowX: 'auto' }}>
-          {!auditRows.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Press Refresh to load.</div> : (
-            <table className="px-table" style={{ minWidth: 560 }}>
-              <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Reference</th></tr></thead>
-              <tbody>{auditRows.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td><PersonCell name={a.actor} size={28} /></td><td><Pill tone={/delete|purge|bulk/.test(a.action) ? 'bad' : /verify|approve|create/.test(a.action) ? 'ok' : /print|export/.test(a.action) ? 'gold' : 'info'}>{String(a.action).replace(/_/g, ' ')}</Pill></td><td style={{ color: PX.sub }}>{a.ref || ''}</td></tr>)}</tbody>
-            </table>)}
-        </PremiumCard>
+        <MissionSainikAdmin rows={rows} settings={settings} putSetting={putSetting} delSetting={delSetting} reload={load} setMsg={setMsg} audit={audit} currentUser={currentUser} today={today} auditRows={auditRows} loadAudit={loadAudit} isMobile={isMobile} dueFor={dueFor} />
       </>
     )
   }
@@ -515,7 +531,7 @@ function MissionSainikInner({ currentUser }) {
 
         <PremiumCard title="All 20 tests" subtitle="Tap a test to see its sections" style={{ marginTop: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 4 : 10},minmax(0,1fr))`, gap: 8 }}>
-            {TESTS.map(t => {
+            {TESTS.filter(t => schedFilter === 'all' || (schedFilter === 'upcoming' ? t.date >= today : t.date < today)).map(t => {
               const r = tests.filter(x => x.test_no === t.no)
               const st = sectionStats(r)
               const late = r.some(x => isOverdue(x, today))
@@ -543,9 +559,29 @@ function MissionSainikInner({ currentUser }) {
     )
   }
 
+  const exportScheduleCsv = () => downloadCsv('Mission_Sainik_schedule.csv', [['Test', 'Date', 'Day', 'Drafts due', 'Verification', 'Final & print']].concat(TESTS.map(t => [t.id, t.date, dayName(t.date), t.drafts, t.verify, t.print])))
+  const exportScheduleIcs = () => {
+    const ev = TESTS.flatMap(t => [
+      { uid: 'pmt-' + t.no, date: t.date, title: `${t.id} — Pre Mock Test`, description: `Mission Sainik 2027 · 150 questions · 300 marks` },
+      { uid: 'pmt-draft-' + t.no, date: t.drafts, title: `${t.id}: drafts due`, description: 'Submit question drafts' },
+      { uid: 'pmt-verify-' + t.no, date: t.verify, title: `${t.id}: verification`, description: 'Verify the questions' },
+      { uid: 'pmt-print-' + t.no, date: t.print, title: `${t.id}: final & print`, description: 'Final paper and printing' },
+    ])
+    downloadFile('Mission_Sainik_schedule.ics', buildIcs(ev, 'Mission Sainik 2027 — Pre Mock'), 'text/calendar;charset=utf-8')
+  }
+  const exportMockCsv = () => downloadCsv('Mission_Sainik_mock_series.csv', [['Test', 'Date', 'Day']].concat(MOCK_TESTS.map(t => [t.id, t.date, dayName(t.date)])))
+  const exportMockIcs = () => downloadFile('Mission_Sainik_mock_series.ics', buildIcs(MOCK_TESTS.map(t => ({ uid: 'mt-' + t.no, date: t.date, title: `${t.id} — Sainik Mock Test`, description: 'AISSEE pattern · 125 questions · 300 marks · 150 minutes' })), 'Mission Sainik 2027 — Mega Mock'), 'text/calendar;charset=utf-8')
   const Schedule = () => (
     <PremiumCard title="Schedule of Pre Mock Tests" subtitle={`Office Order ${ORDER_NO} · tests on alternate days`} bodyStyle={{ padding: 0 }}
-      right={<span style={{ fontSize: 11.5, color: PX.sub }}>No test or deadline on 13 Dec, 27 Dec, 1 Jan</span>}>
+      right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="px-hbtn" onClick={exportScheduleIcs}>📅 Add to calendar</button>
+        <button className="px-hbtn" onClick={exportScheduleCsv}>⬇ CSV</button>
+      </span>}>
+      <div style={{ display: 'flex', gap: 8, padding: '12px 16px', flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Schedule filter">
+        {[['all', 'All 20'], ['upcoming', 'Upcoming'], ['done', 'Held']].map(([id, l]) => (
+          <button key={id} className="msx-tap" aria-pressed={schedFilter === id} onClick={() => setSchedFilter(id)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, background: schedFilter === id ? PX.navy : '#fff', color: schedFilter === id ? '#fff' : PX.ink, border: `1px solid ${schedFilter === id ? PX.navy : '#d9d2c2'}` }}>{l}</button>))}
+        <span style={{ fontSize: 11.5, color: PX.sub }}>No test or deadline on 13 Dec, 27 Dec, 1 Jan</span>
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table">
           <thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th><th>Sections</th><th>Status</th></tr></thead>
@@ -589,7 +625,7 @@ function MissionSainikInner({ currentUser }) {
           ))}
         </div>
       </PremiumCard>
-      <PremiumCard title="Mock test schedule" bodyStyle={{ padding: 0 }}>
+      <PremiumCard title="Mock test schedule" bodyStyle={{ padding: 0 }} right={<span style={{ display: 'flex', gap: 8 }}><button className="px-hbtn" onClick={exportMockIcs}>📅 Add to calendar</button><button className="px-hbtn" onClick={exportMockCsv}>⬇ CSV</button></span>}>
         <div style={{ overflowX: 'auto' }}>
           <table className="px-table">
             <thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Status</th></tr></thead>
@@ -653,7 +689,8 @@ function MissionSainikInner({ currentUser }) {
     )
     return (
       <>
-        <PremiumCard title="Delivery forecast" subtitle={`Submission deadline ${fmt(SUBMISSION_DEADLINE)} · ${daysToDeadline > 0 ? daysToDeadline + ' days left' : 'deadline passed'}`}>
+        <PremiumCard title="Delivery forecast" subtitle={`Submission deadline ${fmt(SUBMISSION_DEADLINE)} · ${daysToDeadline > 0 ? daysToDeadline + ' days left' : 'deadline passed'}`}
+          right={<button className="px-hbtn" onClick={() => downloadCsv('Mission_Sainik_pending_by_teacher.csv', [['Teacher', 'Pending sections', 'Overdue', 'Sections'], ...setters.map(x => [fullName(x.n), x.l.length, x.late, x.l.map(r => (r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice') + ' ' + r.subject).join('; ')])])}>⬇ CSV</button>}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
             {card('Still pending', open.length, `of ${rows.length} sections`)}
             {card('Overdue', late.length, 'past their own due date', late.length > 0)}
@@ -730,7 +767,8 @@ function MissionSainikInner({ currentUser }) {
     ].filter(x => x.who).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 40)
     return (
       <>
-        <PremiumCard title="Teacher activity" subtitle="Task progress and study-material uploads per teacher. “Idle” = days since their last update or upload." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+        <PremiumCard title="Teacher activity" subtitle="Task progress and study-material uploads per teacher. “Idle” = days since their last update or upload." bodyStyle={{ padding: 0, overflowX: 'auto' }}
+          right={<button className="px-hbtn" onClick={() => downloadCsv('Mission_Sainik_teacher_activity.csv', [['Teacher', 'Sections set', 'Submitted', 'Overdue', 'To verify', 'Verified', 'Uploads', 'Days idle'], ...stats.map(x => [fullName(x.n), x.set, x.submitted, x.overdue, x.toVerify, x.verified, x.uploads, x.idle ?? ''])])}>⬇ CSV</button>}>
           <table className="px-table" style={{ minWidth: 720 }}>
             <thead><tr><th>Teacher</th><th>Sections set</th><th>Submitted</th><th>Overdue</th><th>To verify</th><th>Verified</th><th>Material uploads</th><th>Last activity</th></tr></thead>
             <tbody>{stats.map(x => (
@@ -758,9 +796,19 @@ function MissionSainikInner({ currentUser }) {
 
   const Allotment = () => {
     const list = filterTest ? TESTS.filter(t => t.no === filterTest) : TESTS
+    const load = {}; tests.forEach(r => { const o = (load[r.setter] = load[r.setter] || { n: 0, done: 0 }); o.n++; if (r.status !== 'Pending') o.done++ })
+    const people = Object.keys(load).sort((a, b) => load[b].n - load[a].n)
+    const dim = r => (allotTeacher && r.setter !== allotTeacher) || (allotStatus && (allotStatus === 'Overdue' ? !isOverdue(r, today) : r.status !== allotStatus))
+    const exportAllot = () => downloadCsv('Mission_Sainik_allotment.csv', [['Test', 'Date', ...SUBJECTS.map(x => x.label + ' (setter)'), ...SUBJECTS.map(x => x.label + ' (status)')]].concat(TESTS.map(t => [t.id, t.date, ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.setter || ''), ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.status || '')])))
     return (
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
-        right={filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null} bodyStyle={{ padding: 0 }}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
+        <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select className="px-input" style={{ width: 'auto' }} value={allotTeacher} onChange={e => setAllotTeacher(e.target.value)} aria-label="Highlight a teacher"><option value="">All teachers</option>{people.map(n => <option key={n} value={n}>{fullName(n)} · {load[n].done}/{load[n].n}</option>)}</select>
+          <select className="px-input" style={{ width: 'auto' }} value={allotStatus} onChange={e => setAllotStatus(e.target.value)} aria-label="Highlight a status"><option value="">Any status</option>{['Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(x => <option key={x}>{x}</option>)}</select>
+          {(allotTeacher || allotStatus) && <button className="px-btn ghost" onClick={() => { setAllotTeacher(''); setAllotStatus('') }}>Clear</button>}
+          <span style={{ fontSize: 12, color: PX.sub }}>Matching cells stay bright; the rest fade.</span>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="px-table" style={{ minWidth: 720 }}>
             <thead><tr><th>Test</th>{SUBJECTS.map(s => <th key={s.key}>{s.short}</th>)}</tr></thead>
@@ -772,7 +820,7 @@ function MissionSainikInner({ currentUser }) {
                     const r = byCell[t.no + '|' + s.label]
                     if (!r) return <td key={s.key} style={{ color: PX.faint }}>—</td>
                     return (
-                      <td key={s.key} className="msx-click" onClick={() => setSel(r)}>
+                      <td key={s.key} className="msx-click" onClick={() => setSel(r)} style={dim(r) ? { opacity: 0.25 } : undefined}>
                         <PersonCell name={r.setter} size={26}>{r.setter}</PersonCell>
                         <div style={{ marginTop: 5 }}><Chip status={r.status} overdue={isOverdue(r, today)} small /></div>
                       </td>
@@ -788,6 +836,14 @@ function MissionSainikInner({ currentUser }) {
     )
   }
 
+  // Practice tab → open the Practice Bank builder on the right subject and set so questions can be added straight away.
+  const subjectOfPractice = r => (SUBJECTS.find(x => x.label === r.subject) || SUBJECTS.find(x => r.subject.includes(x.label)) || SUBJECTS[0])
+  const goAddQuestions = (subjectLabel, setNo) => { setBStart(b => ({ test: setNo || 1, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }
+  const setNoFor = r => {
+    const sub = subjectOfPractice(r)
+    const same = practice.filter(x => subjectOfPractice(x).key === sub.key).sort((a, b) => a.id - b.id)
+    return Math.min(Math.max(same.findIndex(x => x.id === r.id) + 1, 1), PRACTICE_PANEL[sub.key]?.sets || 1)
+  }
   const TaskRow = ({ r }) => {
     const late = isOverdue(r, today)
     const next = allowedStatuses(r)
@@ -801,6 +857,7 @@ function MissionSainikInner({ currentUser }) {
           </div>
         </div>
         <Chip status={r.status} overdue={late} />
+        {r.kind === 'practice' && <button className="px-btn ghost" onClick={() => goAddQuestions(subjectOfPractice(r).label, setNoFor(r))}>＋ Questions</button>}
         {quick && <button className="px-btn gold" disabled={busy} onClick={() => saveTask(r, { status: quick })}>Mark {quick.toLowerCase()}</button>}
         <button className="px-btn ghost" onClick={() => setSel(r)}>Open</button>
       </div>
@@ -816,7 +873,7 @@ function MissionSainikInner({ currentUser }) {
     const matches = r => (!subjF || r.subject === subjF) && (!qq || [r.subject, r.setter, r.verifier, r.kind === 'test' ? 'pmt-' + String(r.test_no).padStart(2, '0') : 'practice'].join(' ').toLowerCase().includes(qq))
     const scoped = base.filter(matches)
     const list = scoped.filter(r => !statusF || (statusF === 'Overdue' ? isOverdue(r, today) : r.status === statusF))
-      .sort((a, b) => dueFor(a).localeCompare(dueFor(b)) || a.test_no - b.test_no)
+      .sort((a, b) => (taskSort === 'test' ? a.test_no - b.test_no || a.subject.localeCompare(b.subject) : taskSort === 'subject' ? a.subject.localeCompare(b.subject) || a.test_no - b.test_no : taskSort === 'status' ? STATUS_FLOW.indexOf(a.status) - STATUS_FLOW.indexOf(b.status) || dueFor(a).localeCompare(dueFor(b)) : taskSort === 'teacher' ? String(a.setter).localeCompare(String(b.setter)) || a.test_no - b.test_no : dueFor(a).localeCompare(dueFor(b)) || a.test_no - b.test_no))
     const count = st => scoped.filter(r => (st === 'Overdue' ? isOverdue(r, today) : st ? r.status === st : true)).length
     const chip = (on, label, onClick, n) => (
       <button key={label} className="msx-tap" onClick={onClick} aria-pressed={on} style={{ padding: '7px 12px', borderRadius: 99, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flex: 'none', background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.ink, border: `1px solid ${on ? PX.navy : '#d9d2c2'}` }}>{label}{n != null ? <span style={{ opacity: .7, marginLeft: 6 }}>{n}</span> : null}</button>
@@ -833,6 +890,9 @@ function MissionSainikInner({ currentUser }) {
           <select className="px-input" style={{ flex: '0 1 170px' }} value={subjF} onChange={e => { setSubjF(e.target.value); setTaskLimit(30) }} aria-label="Filter by subject">
             <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
           </select>
+          <select className="px-input" style={{ flex: '0 1 160px' }} value={taskSort} onChange={e => setTaskSort(e.target.value)} aria-label="Sort tasks">
+            <option value="due">Sort: due date</option><option value="test">Sort: test no.</option><option value="subject">Sort: subject</option><option value="status">Sort: status</option><option value="teacher">Sort: teacher</option>
+          </select>
           {taskView === 'all' && (
             <select className="px-input" style={{ flex: '0 1 170px' }} value={person} onChange={e => setPerson(e.target.value)} aria-label="Filter by teacher">
               <option value="">All teachers</option>{names.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
@@ -842,7 +902,7 @@ function MissionSainikInner({ currentUser }) {
           {['', 'Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(st => chip(statusF === st, st || 'Any status', () => { setStatusF(st); setTaskLimit(30) }, count(st)))}
         </div>
         <PremiumCard title={taskView === 'needs' ? 'Needs your action' : taskView === 'mine' ? 'All my tasks' : 'All tasks'} subtitle={`${list.length} shown · earliest deadline first`}
-          right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-btn gold" onClick={() => setAddTask(newTaskForm('test'))}>＋ Add task</button><button className="px-btn ghost" onClick={exportCsv}>Export CSV</button></span>} bodyStyle={{ padding: 0 }}>
+          right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-btn gold" onClick={() => setAddTask(newTaskForm('test'))}>＋ Add task</button><button className="px-btn ghost" onClick={() => { const t = list.map(r => `• ${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} · ${r.subject} — ${r.status} · due ${fmtShort(dueFor(r))}`).join('\n'); navigator.clipboard?.writeText(t).then(() => setMsg('✅ List copied'), () => setMsg('❌ Copy failed')) }}>Copy list</button><button className="px-btn ghost" onClick={exportCsv}>Export CSV</button></span>} bodyStyle={{ padding: 0 }}>
           {list.length === 0
             ? <div style={{ padding: 24, textAlign: 'center', color: PX.sub, fontSize: 14 }}>
               {taskView === 'needs' ? '🎉 Nothing needs you right now.' : taskView === 'mine' ? `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or open Everyone.` : 'Nothing to show.'}
@@ -856,8 +916,24 @@ function MissionSainikInner({ currentUser }) {
   }
 
 
+  useEffect(() => {
+    if (tab !== 'practice') return
+    ;(async () => {
+      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section').eq('series', 'practice').is('deleted_at', null).order('id'))
+      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section').eq('series', 'practice').order('id')))
+      const m = {}; (error ? [] : data || []).forEach(q => { m[q.test_no + '|' + q.section] = (m[q.test_no + '|' + q.section] || 0) + 1 }); setPracCounts(m)
+    })()
+  }, [tab])
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" right={<button className="px-btn gold" onClick={() => setAddTask(newTaskForm('practice'))}>＋ Add practice set</button>} bodyStyle={{ padding: 0 }}>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${PX.line}` }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Add questions to the practice bank</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {SUBJECTS.flatMap(sub => Array.from({ length: PRACTICE_PANEL[sub.key]?.sets || 1 }, (_, i) => (
+            <button key={sub.key + i} className="px-btn ghost" onClick={() => goAddQuestions(sub.label, i + 1)}>＋ {sub.short} · Set {i + 1}<span style={{ marginLeft: 8, fontWeight: 800, color: (pracCounts[(i + 1) + '|' + sub.label] || 0) >= 25 ? PX.ok : PX.sub }}>{pracCounts[(i + 1) + '|' + sub.label] || 0}/25</span></button>)))}
+        </div>
+        <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Opens the Practice Bank builder on that subject and set — paste or upload up to 25 questions per set.</div>
+      </div>
       {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
       {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
@@ -1007,9 +1083,26 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   }
   const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
   const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
+  const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
+  const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
+  const runSylImport = async () => {
+    const { rows: list, errors } = parseSyllabusText(sylImport, SUBJECTS)
+    if (errors.length) return setMsg('❌ ' + errors.slice(0, 3).join(' · '))
+    if (!list.length) return setMsg('❌ Nothing to import.')
+    const { error } = await supabase.from(SYL_TABLE).upsert(list.map(r => ({ ...r, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() })), { onConflict: 'test_no,subject' })
+    if (error) return setMsg('❌ ' + error.message)
+    audit('syllabus_import', null, { rows: list.length }); setSylImport(null); setMsg(`✅ ${list.length} chapter(s) imported`); loadExtra()
+  }
   const syllabusTab = (
     <>{setupNote}
-      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type and click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type and click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
+        {sylImport !== null && (
+          <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
+            <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
+            <textarea className="px-input" rows={6} value={sylImport} onChange={e => setSylImport(e.target.value)} aria-label="Syllabus import" placeholder={'1, Maths, Fractions\n1, Science, Light'} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="px-btn gold" onClick={runSylImport}>Import chapters</button><button className="px-btn ghost" onClick={() => setSylImport(null)}>Cancel</button></div>
+          </div>)}
         <table className="px-table" style={{ minWidth: 900 }}>
           <thead><tr><th>Test</th>{SUBJECTS.map(x => <th key={x.key}>{x.short}</th>)}</tr></thead>
           <tbody>{TESTS.map(t => (
@@ -1027,6 +1120,16 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       </PremiumCard>
     </>
   )
+  const exportMarks = () => downloadCsv('Mission_Sainik_marks.csv', [['Test', 'Batch', ...MARK_COLS.map(([, l, m]) => `${l} /${m}`), 'Total /120']].concat(marks.map(r => ['T' + r.test_no, r.batch || '', ...MARK_COLS.map(([k]) => r[k] ?? ''), MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)])))
+  const runMarksImport = async () => {
+    const { rows: list, errors } = parseMarksText(marksImport, MARK_COLS)
+    if (errors.length) return setMsg('❌ ' + errors.slice(0, 3).join(' · '))
+    if (!list.length) return setMsg('❌ Nothing to import.')
+    const { error } = await supabase.from(MARKS_TABLE).upsert(list.map(r => ({ ...r, entered_by: currentUser?.name || '' })), { onConflict: 'test_no,batch' })
+    if (error) return setMsg('❌ ' + error.message)
+    audit('marks_import', null, { rows: list.length }); setMarksImport(null); setMsg(`✅ ${list.length} row(s) imported`); loadExtra()
+  }
+  const marksShown = marks.filter(r => !marksFilter || r.test_no === marksFilter)
   const marksTab = (
     <>{setupNote}
       <PremiumCard title="Daily Class Test marks" subtitle="Maths /60 · Reasoning, Grammar, GK /20 each · 120 in all. Entering the same test and batch again overwrites it.">
@@ -1040,11 +1143,20 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           {editMarksId && <><span style={{ fontSize: 13, color: PX.sub }}>Editing T{markDraft.test_no} · {markDraft.batch || 'no batch'}</span><button className="px-btn ghost" onClick={() => { setEditMarksId(null); setMarkDraft({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' }) }}>Cancel</button></>}
         </div>
       </PremiumCard>
-      <PremiumCard title={`Entries (${marks.length})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+      {marksImport !== null && (
+        <PremiumCard title="Import marks" subtitle="Lines: test, batch, maths, reasoning, grammar, gk — leave a mark empty to skip it. Same test + batch overwrites.">
+          <textarea className="px-input" rows={6} value={marksImport} onChange={e => setMarksImport(e.target.value)} aria-label="Marks import" placeholder={'1, Batch A, 45, 18, 15, 17\n2, Batch A, 38, 12, 14, 16'} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="px-btn gold" onClick={runMarksImport}>Import marks</button><button className="px-btn ghost" onClick={() => setMarksImport(null)}>Cancel</button></div>
+        </PremiumCard>)}
+      <PremiumCard title={`Entries (${marksShown.length}${marksFilter ? ' of ' + marks.length : ''})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <select className="px-input" style={{ width: 'auto' }} value={marksFilter} onChange={e => setMarksFilter(Number(e.target.value))} aria-label="Filter by test"><option value={0}>All tests</option>{TESTS.map(t => <option key={t.no} value={t.no}>T{t.no}</option>)}</select>
+          <button className="px-hbtn" onClick={() => setMarksImport(marksImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportMarks}>⬇ CSV</button>
+        </span>}>
         {!marks.length ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : (
           <table className="px-table" style={{ minWidth: 560 }}>
             <thead><tr><th>Test</th><th>Batch</th>{MARK_COLS.map(([k, l, m]) => <th key={k}>{l} /{m}</th>)}<th>Total /120</th><th /></tr></thead>
-            <tbody>{marks.map(r => {
+            <tbody>{marksShown.map(r => {
               const tot = MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)
               return (
                 <tr key={r.id}>
@@ -1059,6 +1171,8 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       </PremiumCard>
     </>
   )
+  const matsShown = mats.filter(m => (!matSubj || m.subject === matSubj) && (!matQ.trim() || [m.title, m.note, m.body, m.uploaded_by].join(' ').toLowerCase().includes(matQ.trim().toLowerCase())))
+    .sort((a, b) => (matSort === 'title' ? String(a.title).localeCompare(String(b.title)) : matSort === 'old' ? String(a.created_at).localeCompare(String(b.created_at)) : String(b.created_at).localeCompare(String(a.created_at))))
   const materialTab = (
     <>
       {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
@@ -1082,9 +1196,14 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             <button className="px-btn ghost" onClick={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}>Cancel</button></>}
         </div>
       </PremiumCard>
-      <PremiumCard title={`Library (${mats.length})`}>
-        {!mats.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div>}
-        {mats.map(m => (
+      <PremiumCard title={`Library (${matsShown.length}${matsShown.length !== mats.length ? ' of ' + mats.length : ''})`}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <input className="px-input" style={{ flex: '1 1 160px' }} type="search" value={matQ} onChange={e => setMatQ(e.target.value)} placeholder="Search title, note or text…" aria-label="Search material" />
+          <select className="px-input" style={{ flex: '0 1 170px' }} value={matSubj} onChange={e => setMatSubj(e.target.value)} aria-label="Filter by subject"><option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}</select>
+          <select className="px-input" style={{ flex: '0 1 150px' }} value={matSort} onChange={e => setMatSort(e.target.value)} aria-label="Sort material"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="title">Title A–Z</option></select>
+        </div>
+        {!matsShown.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>{mats.length ? 'No material matches these filters.' : 'Nothing uploaded yet.'}</div>}
+        {matsShown.map(m => (
           <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 4px', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 20 }}>{m.link_url ? '🔗' : m.body && !m.file_path ? '📝' : '📄'}</span>
             <div style={{ flex: 1, minWidth: 180 }}>
@@ -1117,6 +1236,10 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     examLabel: daysToExam > 0 ? daysToExam + 'd' : daysToExam === 0 ? 'today' : 'held',
     nextTest: nextTest ? nextTest.id.replace('PMT-', '') : 'Done', inLabel: `${submitted}/${total || seedCount}`, approved, overdue,
   }
+  const upcoming = TESTS.filter(t => t.date >= today).slice(0, 3).map(t => {
+    const r = tests.filter(x => x.test_no === t.no); const done = r.filter(x => x.status !== 'Pending').length
+    return { id: t.id, date: fmtShort(t.date), day: dayName(t.date), days: dayDiff(today, t.date), done, total: r.length || 6, drafts: fmtShort(t.drafts) }
+  })
   const quick = [
     { id: 'prebuilder', icon: '🧱', label: 'Build', bg: '#e8f0fe' }, { id: 'mine', icon: '✅', label: 'Tasks', bg: '#e6f4ea', badge: myOpen.length },
     { id: 'material', icon: '📎', label: 'Material', bg: '#fff6dc' }, { id: 'insights', icon: '💡', label: 'Insights', bg: '#fdecea' },
@@ -1147,10 +1270,10 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
-            {tab === 'overview' && <><MissionSainikHome name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
+            {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
-            {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} />}
+            {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
