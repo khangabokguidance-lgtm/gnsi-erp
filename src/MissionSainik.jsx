@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import MissionSainikBuilder from './MissionSainikBuilder'
+import { fetchAll } from './lib/missionSainikQuestions'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -189,7 +190,7 @@ export default function MissionSainik({ currentUser, perms }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.from(TABLE).select('*').order('kind').order('test_no').order('id')
+    const { data, error } = await fetchAll(() => supabase.from(TABLE).select('*').order('kind').order('test_no').order('id'))
     if (error) {
       const text = `${error.code || ''} ${error.message || ''}`
       if (/42P01|PGRST205|does not exist|schema cache/i.test(text)) setSetup(true)
@@ -200,12 +201,12 @@ export default function MissionSainik({ currentUser, perms }) {
   }, [])
   useEffect(() => { load() }, [load])
   const loadMats = useCallback(async () => {
-    const { data, error } = await supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false })
+    const { data, error } = await fetchAll(() => supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false }).order('id'))
     if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
   }, [])
   useEffect(() => { loadMats() }, [loadMats])
   const loadExtra = useCallback(async () => {
-    const [a, b] = await Promise.all([supabase.from(SYL_TABLE).select('*'), supabase.from(MARKS_TABLE).select('*').order('test_no').order('batch')])
+    const [a, b] = await Promise.all([fetchAll(() => supabase.from(SYL_TABLE).select('*').order('id')), fetchAll(() => supabase.from(MARKS_TABLE).select('*').order('test_no').order('batch').order('id'))])
     if (a.error || b.error) { setMarksSetup(true); return }
     setMarksSetup(false)
     const m = {}; (a.data || []).forEach(r => { m[r.test_no + '|' + r.subject] = r.chapter || '' }); setSyl(m)
