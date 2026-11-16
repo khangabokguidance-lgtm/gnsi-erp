@@ -184,6 +184,11 @@ function MissionSainikInner({ currentUser }) {
   const [settings, setSettings] = useState({})
   const [setForm, setSetForm] = useState(null)
   const [boom, setBoom] = useState(false)
+  const [taskView, setTaskView] = useState('needs')   // needs | mine | all
+  const [statusF, setStatusF] = useState('')
+  const [subjF, setSubjF] = useState('')
+  const [taskQ, setTaskQ] = useState('')
+  const [taskLimit, setTaskLimit] = useState(30)
   const [auditRows, setAuditRows] = useState([])
   const [health, setHealth] = useState(null)
   const [bulk, setBulk] = useState({ subject: SUBJECTS[0].label, setter: '', verifier: '' })
@@ -759,26 +764,52 @@ function MissionSainikInner({ currentUser }) {
 
   const Mine = () => {
     const names = Array.from(new Set(rows.flatMap(r => [r.setter, r.verifier]).filter(Boolean))).sort()
-    const mine = rows
-      .filter(r => (isAdmin ? (!person || r.setter === person || r.verifier === person) : (isMe(r.setter) || isMe(r.verifier))))
+    const needsMe = r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')
+    const isMine = r => isMe(r.setter) || isMe(r.verifier)
+    const base = taskView === 'needs' ? rows.filter(needsMe) : taskView === 'mine' ? rows.filter(isMine) : rows.filter(r => !person || r.setter === person || r.verifier === person)
+    const qq = taskQ.trim().toLowerCase()
+    const matches = r => (!subjF || r.subject === subjF) && (!qq || [r.subject, r.setter, r.verifier, r.kind === 'test' ? 'pmt-' + String(r.test_no).padStart(2, '0') : 'practice'].join(' ').toLowerCase().includes(qq))
+    const scoped = base.filter(matches)
+    const list = scoped.filter(r => !statusF || (statusF === 'Overdue' ? isOverdue(r, today) : r.status === statusF))
       .sort((a, b) => dueFor(a).localeCompare(dueFor(b)) || a.test_no - b.test_no)
+    const count = st => scoped.filter(r => (st === 'Overdue' ? isOverdue(r, today) : st ? r.status === st : true)).length
+    const chip = (on, label, onClick, n) => (
+      <button key={label} className="msx-tap" onClick={onClick} aria-pressed={on} style={{ padding: '8px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flex: 'none', background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.ink, border: `1px solid ${on ? PX.navy : '#d9d2c2'}` }}>{label}{n != null ? <span style={{ opacity: .7, marginLeft: 6 }}>{n}</span> : null}</button>
+    )
     return (
-      <PremiumCard title={isAdmin ? 'All tasks' : 'My tasks'} subtitle={isAdmin ? 'Filter by teacher, update any task, export to CSV' : 'Sections you set or verify, earliest deadline first'}
-        right={isAdmin ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <select className="px-input" style={{ width: 170 }} value={person} onChange={e => setPerson(e.target.value)} aria-label="Filter by teacher">
-              <option value="">All teachers</option>
-              {names.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
-            </select>
-            <button className="px-btn ghost" onClick={exportCsv}>Export CSV</button>
-          </div>) : null}
-        bodyStyle={{ padding: 0 }}>
-        {mine.length === 0
-          ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>{isAdmin ? 'Nothing to show.' : `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or see the Allotment tab.`}</div>
-          : mine.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
-      </PremiumCard>
+      <>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }} role="group" aria-label="Task view">
+          {chip(taskView === 'needs', 'Needs me', () => { setTaskView('needs'); setTaskLimit(30) }, rows.filter(needsMe).length)}
+          {chip(taskView === 'mine', 'All mine', () => { setTaskView('mine'); setTaskLimit(30) }, rows.filter(isMine).length)}
+          {chip(taskView === 'all', 'Everyone', () => { setTaskView('all'); setTaskLimit(30) }, rows.length)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, margin: '4px 0 10px', flexWrap: 'wrap' }}>
+          <input className="px-input" style={{ flex: '1 1 160px' }} type="search" value={taskQ} onChange={e => { setTaskQ(e.target.value); setTaskLimit(30) }} placeholder="Search…" aria-label="Search tasks" />
+          <select className="px-input" style={{ flex: '0 1 170px' }} value={subjF} onChange={e => { setSubjF(e.target.value); setTaskLimit(30) }} aria-label="Filter by subject">
+            <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
+          </select>
+          {taskView === 'all' && (
+            <select className="px-input" style={{ flex: '0 1 170px' }} value={person} onChange={e => setPerson(e.target.value)} aria-label="Filter by teacher">
+              <option value="">All teachers</option>{names.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
+            </select>)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8 }} role="group" aria-label="Status filter">
+          {['', 'Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(st => chip(statusF === st, st || 'Any status', () => { setStatusF(st); setTaskLimit(30) }, count(st)))}
+        </div>
+        <PremiumCard title={taskView === 'needs' ? 'Needs your action' : taskView === 'mine' ? 'All my tasks' : 'All tasks'} subtitle={`${list.length} shown · earliest deadline first`}
+          right={<button className="px-btn ghost" onClick={exportCsv}>Export CSV</button>} bodyStyle={{ padding: 0 }}>
+          {list.length === 0
+            ? <div style={{ padding: 24, textAlign: 'center', color: PX.sub, fontSize: 14 }}>
+              {taskView === 'needs' ? '🎉 Nothing needs you right now.' : taskView === 'mine' ? `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or open Everyone.` : 'Nothing to show.'}
+              {taskView !== 'all' && <div style={{ marginTop: 10 }}><button className="px-btn ghost" onClick={() => { setTaskView('all'); setStatusF('') }}>Show everyone's tasks</button></div>}
+            </div>
+            : list.slice(0, taskLimit).map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
+          {list.length > taskLimit && <div style={{ padding: 14, textAlign: 'center' }}><button className="px-btn ghost" onClick={() => setTaskLimit(l => l + 30)}>Show 30 more ({list.length - taskLimit} left)</button></div>}
+        </PremiumCard>
+      </>
     )
   }
+
 
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" bodyStyle={{ padding: 0 }}>
