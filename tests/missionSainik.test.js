@@ -77,3 +77,23 @@ test('printed notice carries the clauses, all five annexures, live syllabus and 
     assert.ok(html.includes(t), t)
   assert.ok(html.includes('Fractions &lt;b&gt;') && !html.includes('Fractions <b>'))
 })
+
+import { computeGame } from '../src/lib/missionSainikGame.js'
+test('game: xp, level, streak and badges are computed from my own work only', () => {
+  const me = n => n === 'Sumanta'
+  const rows = [
+    { setter: 'Sumanta', status: 'Submitted', updated_by: 'Sir Sumanta', updated_at: '2026-11-16T09:00:00Z', due: '2026-11-28' },
+    { setter: 'Sumanta', status: 'Approved', updated_by: 'Sir Sumanta', updated_at: '2026-11-15T09:00:00Z', due: '2026-11-28' },
+    { setter: 'Sumanta', status: 'Pending', due: '2026-11-10' },
+    { setter: 'Johny', status: 'Approved', verifier: 'Sumanta', updated_by: 'x', updated_at: '2026-11-14T00:00:00Z', due: '2026-11-28' },
+    { setter: 'Johny', status: 'Submitted', due: '2026-11-28' },
+  ]
+  const g = computeGame({ rows, mats: [{ uploaded_by: 'Sir Sumanta', created_at: '2026-11-14T10:00:00Z' }], userName: 'Sir Sumanta', isMe: me, today: '2026-11-16' })
+  assert.equal(g.xp, 2 * 20 + 10 + 15 + 5)               // 2 submitted-or-beyond, 1 approved, 1 verified for others, 1 upload
+  assert.equal(g.level, 1); assert.equal(g.levelTitle, 'Cadet')
+  assert.equal(g.streak, 3)                               // 14th, 15th, 16th
+  assert.equal(g.badges.find(b => b.id === 'first').on, true)
+  assert.equal(g.badges.find(b => b.id === 'clean').on, false)   // one of mine is overdue
+  const none = computeGame({ rows: [], mats: [], userName: '', isMe: () => false, today: '2026-11-16' })
+  assert.equal(none.xp, 0); assert.equal(none.streak, 0); assert.equal(none.levelTitle, 'Recruit')
+})
