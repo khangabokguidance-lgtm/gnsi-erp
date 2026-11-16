@@ -129,3 +129,14 @@ export const PRACTICE_PANEL = {
   grammar:   { verifier: 'Manglemba', assistants: ['Bidyachandra', 'Adision'], sets: 3 },
   vocab:     { verifier: 'Pawan',     assistants: ['Fedrava'], sets: 2 },
 }
+
+// Whole-word, case-insensitive match of a panel name ("Sumanta") inside a login / display name ("Sir Sumanta Singh").
+// Stricter than String.includes so "Boy" never matches "Boyd" and "Johny" never matches "Johnyson".
+export function nameMatches(who, name) {
+  if (!who || !name) return false
+  return String(who).toLowerCase().split(/[^a-z0-9]+/).includes(String(name).toLowerCase())
+}
+// Only http(s) links may be stored or opened (blocks javascript: / data: URLs).
+export function safeUrl(u) {
+  try { const x = new URL(String(u || '').trim()); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : '' } catch { return '' }
+}

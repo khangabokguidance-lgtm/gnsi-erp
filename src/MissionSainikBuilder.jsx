@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
-import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName } from './missionSainikData'
+import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
 const line = PX.line || '#eef1f6'
@@ -84,8 +84,7 @@ function parseQuestions(text) {
 export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
-  const me = (currentUser?.name || '').toLowerCase()
-  const isMe = n => !!n && me.includes(String(n).toLowerCase())
+  const isMe = n => nameMatches(currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
   const [testNo, setTestNo] = useState(1)
@@ -126,6 +125,11 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
     if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
     const have = get(testNo, section).length
+    if (parsed.questions.length > 200) return setMsg('❌ Upload at most 200 questions at a time.')
+    const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
+    const seen = new Set(get(testNo, section).map(q => norm(q.question)))
+    const dupes = parsed.questions.filter((q, i) => seen.has(norm(q.question)) || parsed.questions.findIndex(z => norm(z.question) === norm(q.question)) !== i)
+    if (dupes.length) return setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”. Remove them and upload again.`)
     if (have + parsed.questions.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + parsed.questions.length}. Upload anyway?`)) return
     setBusy(true)
     const rows = parsed.questions.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
@@ -238,6 +242,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}>
         {mayEdit ? (
           <>
+            {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
             <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
               Paste your questions in this format (or load a .txt file):
               <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
