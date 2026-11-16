@@ -25,6 +25,7 @@ export default {
     { name: 'Pre Mock Builder / Mega Mock Builder', what: 'Setters paste or upload their questions (Q, options A–D, Ans, Exp, Topic, Level). The paper and answer key assemble automatically with fixed serials (Pre Mock: Maths Q1–25, Reasoning Q26–50, Science Q51–75, GK Q76–100, Grammar Q101–125, Vocabulary Q126–150). Only the section setter or an admin can upload; others view and print.' },
     { name: 'Daily Test Builder', what: 'Daily Class Test T1–T20: Maths 20 Q, Reasoning 10, Grammar 10, GK 10 (120 marks). Panel members upload; everyone can print.' },
     { name: 'Practice Bank Builder', what: 'Practice sets of 25 questions per subject (Maths and Grammar 3 sets, others 2), uploaded by the practice panel and verifiers.' },
+    { name: 'Admin (admins only)', what: 'Launch settings (deadline, order number and date, exam date, embargo), one-click "one setter for a whole subject", a database setup check, and the audit log of who did what.' },
     { name: 'Panel', what: 'The Question Setting Panel and who verifies whom.' },
   ],
   steps: [
@@ -106,6 +107,9 @@ export default {
     'Seeing "No tasks matched your name" → your login name does not match the panel name. Ask an admin to link it or change the setter name on the task.',
   ],
   faq: [
+    { q: 'What is verification in the builders?', a: 'When a section is full, a different panel member (not the uploader) presses "✓ Mark verified". Any later upload or delete removes the verification. Printed papers say "NOT FULLY VERIFIED" until every section is verified.' },
+    { q: 'I deleted questions by mistake.', a: 'Open the "Recycle bin" card at the bottom of the builder and press Restore. Only an admin can delete forever.' },
+    { q: 'What does the embargo do?', a: 'If an admin switches it on, questions, answers and printing stay hidden from everyone except the section setter and admins until the test date.' },
     { q: 'Who can change things here?', a: 'Every logged-in staff member can update, reassign, approve and upload. Changes are stamped with the user\'s name so you can see who did what in Teacher activity.' },
     { q: 'A teacher is absent. What do I do?', a: 'Open their task and change the Setter (and Verifier) to someone else, then save.' },
     { q: 'Can I change a test date or the deadline?', a: 'Dates are fixed by Office Order GNSI/MS-2027/PMT/2026/01. Any deviation needs the Principal\'s prior written approval; the dates themselves are changed in the portal code.' },

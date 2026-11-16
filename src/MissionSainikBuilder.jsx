@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
+import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -42,46 +43,7 @@ const CFG = {
   },
 }
 
-// Free-text format, one question after another:
-//   Q1. question text
-//   A) option   B) option   C) option   D) option   (each on its own line)
-//   Ans: B
-//   Exp: one-line explanation        (optional)
-//   Topic: Fractions                 (optional)
-//   Level: Easy | Medium | Hard      (optional)
-function parseQuestions(text) {
-  const out = [], errors = []
-  let cur = null, field = null
-  const push = () => {
-    if (!cur) return
-    const miss = []
-    if (!cur.question) miss.push('question')
-    ;['a', 'b', 'c', 'd'].forEach(k => { if (!cur['option_' + k]) miss.push('option ' + k.toUpperCase()) })
-    if (!cur.answer) miss.push('Ans')
-    if (miss.length) errors.push(`Question ${out.length + errors.length + 1}: missing ${miss.join(', ')}`)
-    else out.push(cur)
-    cur = null; field = null
-  }
-  for (const raw of String(text || '').split(/\r?\n/)) {
-    const ln = raw.trim()
-    if (!ln) continue
-    let m
-    if ((m = ln.match(/^(?:Q(?:uestion)?\s*\d*|\d+)\s*[.):-]\s*(.*)$/i)) && !/^(ans|exp|topic|level|difficulty)/i.test(ln)) {
-      push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null }; field = 'question'; continue
-    }
-    if (!cur) continue
-    if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) { field = 'option_' + m[1].toLowerCase(); cur[field] = m[2].trim(); continue }
-    if ((m = ln.match(/^(?:ans(?:wer)?|correct(?: answer)?)\s*[:-]\s*\(?([A-D])\b/i))) { cur.answer = m[1].toUpperCase(); field = null; continue }
-    if ((m = ln.match(/^(?:exp(?:lanation)?)\s*[:-]\s*(.*)$/i))) { cur.explanation = m[1].trim(); field = 'explanation'; continue }
-    if ((m = ln.match(/^topic\s*[:-]\s*(.*)$/i))) { cur.topic = m[1].trim(); field = 'topic'; continue }
-    if ((m = ln.match(/^(?:level|difficulty)\s*[:-]\s*(easy|medium|hard)/i))) { cur.difficulty = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(); field = null; continue }
-    if (field) cur[field] = (cur[field] + ' ' + ln).trim()
-  }
-  push()
-  return { questions: out, errors }
-}
-
-export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute }) {
+export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '' }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
@@ -92,10 +54,22 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
+  const [signoffs, setSignoffs] = useState([])
+  const [bin, setBin] = useState([])
+  const [showBin, setShowBin] = useState(false)
+  const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from(TABLE).select('*').eq('series', series).order('id')
+    let { data, error } = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).is('deleted_at', null).order('id'))
+    if (error && /deleted_at/.test(error.message || '')) {            // launch migration not run yet → fall back to hard-delete mode
+      setSoft(false)
+      ;({ data, error } = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).order('id')))
+    }
     if (error) { setSetup(true); setQs([]) } else { setSetup(false); setQs(data || []) }
+    const so = await supabase.from('mission_sainik_signoffs').select('*').eq('series', series)
+    setSignoffs(so.error ? [] : so.data || [])
+    const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
+    setBin(b.error ? [] : b.data || [])
   }, [series])
   useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
@@ -117,6 +91,27 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.setter)
     : (MEGA_PANEL[s] || []).flatMap(k => PANEL[k] || [])
   const canEdit = (t, s) => isAdmin || settersOf(t, s).some(isMe)
+  // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
+  const dateOf = t => cfg.tests.find(x => x.no === t)?.date
+  const embargoed = (t, s) => !!embargo && !!dateOf(t) && !!today && today < dateOf(t) && !canEdit(t, s)
+  const signoff = (t, s) => signoffs.find(x => x.test_no === t && x.section === s)
+  // Verifier: a different person from the uploader (admins may always verify).
+  const verifiersOf = (t, s) => (cfg.panel === 'practice' || series === 'mega') ? settersOf(t, s)
+    : (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.verifier).filter(Boolean)
+  const canVerify = (t, s) => {
+    const list = get(t, s); if (!list.length) return false
+    if (isAdmin) return true
+    const mine = list.every(q => nameMatches(q.uploaded_by, currentUser?.name?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
+    return verifiersOf(t, s).some(isMe) && !mine
+  }
+  const clearSignoff = async (t, s) => { if (signoff(t, s)) await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s) }
+  const verify = async (t, s) => {
+    if (!canVerify(t, s)) return setMsg('❌ A different panel member (not the uploader) must verify.')
+    const n = get(t, s).length
+    const { error } = await supabase.from('mission_sainik_signoffs').upsert({ series, test_no: t, section: s, verified_by: currentUser?.name || '', verified_at: new Date().toISOString() }, { onConflict: 'series,test_no,section' })
+    if (error) return setMsg('❌ ' + error.message)
+    audit('verify_section', `${series}:${t}:${s}`, { questions: n }); setMsg('✅ Section verified'); load()
+  }
 
   const tid = n => (cfg.noun === 'Set' ? `Set ${n}` : `${cfg.prefix}-${String(n).padStart(2, '0')}`)
   const parsed = useMemo(() => parseQuestions(text), [text])
@@ -137,6 +132,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     setBusy(false)
     if (error) return setMsg('❌ ' + error.message)
     setText(''); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
+    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
+    await clearSignoff(testNo, section)
     await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
     if (series === 'pre' && have + rows.length >= sec.q) {
@@ -144,20 +141,50 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
       if (task && task.status === 'Pending' && saveTask) await saveTask(task, { status: 'Submitted', question_count: have + rows.length })
     }
   }
+  const removeRows = async (match, label, ids) => {
+    if (soft) {
+      const { error } = await match(supabase.from(TABLE).update({ deleted_at: new Date().toISOString(), deleted_by: currentUser?.name || '' }))
+      if (error) return setMsg('❌ ' + error.message)
+    } else {
+      const { error } = await match(supabase.from(TABLE).delete())
+      if (error) return setMsg('❌ ' + error.message)
+    }
+    audit('delete_questions', label, { count: ids, recoverable: soft })
+    await clearSignoff(testNo, section); load()
+    setMsg(soft ? '🗑 Moved to the recycle bin — you can restore it.' : '🗑 Deleted.')
+  }
   const del = async q => {
     if (!canEdit(q.test_no, q.section)) return
-    if (!window.confirm('Delete this question?')) return
-    const { error } = await supabase.from(TABLE).delete().eq('id', q.id)
-    if (error) return setMsg('❌ ' + error.message)
-    load()
+    if (!window.confirm('Delete this question?' + (soft ? ' (it goes to the recycle bin)' : ' This cannot be undone.'))) return
+    await removeRows(x => x.eq('id', q.id), `${series}:${q.test_no}:${q.section}`, 1)
   }
   const clearSection = async () => {
     const list = get(testNo, section)
     if (!list.length || !canEdit(testNo, section)) return
     if (!window.confirm(`Delete all ${list.length} questions of ${section} for ${tid(testNo)}?`)) return
-    const { error } = await supabase.from(TABLE).delete().eq('series', series).eq('test_no', testNo).eq('section', section)
+    await removeRows(x => x.eq('series', series).eq('test_no', testNo).eq('section', section).is('deleted_at', null), `${series}:${testNo}:${section}`, list.length)
+  }
+  const restore = async q => {
+    if (!(isAdmin || canEdit(q.test_no, q.section))) return
+    const { error } = await supabase.from(TABLE).update({ deleted_at: null, deleted_by: null }).eq('id', q.id)
     if (error) return setMsg('❌ ' + error.message)
-    load()
+    audit('restore_question', `${series}:${q.test_no}:${q.section}`, { id: q.id }); clearSignoff(q.test_no, q.section); load()
+  }
+  const purge = async q => {
+    if (!isAdmin || !window.confirm('Delete this question forever? This cannot be undone.')) return
+    const { error } = await supabase.from(TABLE).delete().eq('id', q.id)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('purge_question', `${series}:${q.test_no}:${q.section}`, { id: q.id }); load()
+  }
+  // Backup: the whole bank of this series as CSV (answers included), formula-injection safe.
+  const exportCsv = () => {
+    const cell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
+    const head = ['Series', 'Test', 'Section', 'Q no', 'Question', 'A', 'B', 'C', 'D', 'Answer', 'Explanation', 'Topic', 'Level', 'Uploaded by', 'Verified by']
+    const lines = [head.map(cell).join(',')]
+    cfg.tests.forEach(t => live(t.no).forEach(sc => get(t.no, sc.label).forEach((q, i) => lines.push([cfg.name, tid(t.no), sc.label, startOf(sc.label) + i, q.question, q.option_a, q.option_b, q.option_c, q.option_d, q.answer, q.explanation, q.topic, q.difficulty, q.uploaded_by, signoff(t.no, sc.label)?.verified_by || ''].map(cell).join(',')))))
+    const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `Mission_Sainik_${cfg.name.replace(/\s+/g, '_')}_questions.csv`; a.click(); URL.revokeObjectURL(url)
+    audit('export_questions', series, { rows: lines.length - 1 })
   }
   const loadFile = e => {
     const f = e.target.files?.[0]; if (!f) return
@@ -171,8 +198,11 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const range = s => `Q${startOf(s.label)}–Q${startOf(s.label) + s.q - 1}`
   const assemble = t => live(t).map(s => ({ ...s, from: startOf(s.label), items: get(t, s.label).slice(0, s.q).map((q, i) => ({ ...q, no: startOf(s.label) + i })) }))
   const printDoc = (t, key) => {
+    if (embargo && !isAdmin && dateOf(t) && today < dateOf(t)) return setMsg(`🔒 Printing is locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`)
     const secs = assemble(t); const count = secs.reduce((a, s) => a + s.items.length, 0)
     if (!count) return setMsg('❌ No questions uploaded for this test yet.')
+    const allVerified = live(t).every(x => signoff(t, x.label))
+    audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: allVerified })
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
     const date = cfg.tests.find(x => x.no === t)?.date
@@ -190,7 +220,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
 <div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 <div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, s) => a + s.q * s.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
-${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}
+${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div><script>window.onload=()=>window.print()</script></body></html>`)
     w.document.close()
   }
@@ -222,7 +252,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
       </PremiumCard>
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8 }}><button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${live(testNo).length}, 1fr)`, gap: 8 }}>
           {live(testNo).map(s => {
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
@@ -232,6 +262,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
                 <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{s.short} <span style={{ fontWeight: 400 }}>· {range(s)}</span></div>
                 <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{n}/{s.q}</div>
                 <div style={{ fontSize: 11, color: PX.sub }}>{ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'}</div>
+                {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : n >= s.q ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
               </button>
             )
           })}
@@ -239,7 +270,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
       </PremiumCard>
 
       <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${secList.length}/${sec.q} questions · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
-        right={mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}>
+        right={<span style={{ display: 'flex', gap: 8 }}>{secList.length >= sec.q && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
             {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
@@ -247,9 +278,9 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
               Paste your questions in this format (or load a .txt file):
               <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
             </div>
-            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
+            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <input type="file" accept=".txt,text/plain" onChange={loadFile} style={{ fontSize: 12 }} />
+              <input type="file" aria-label="Load questions from a .txt file" accept=".txt,text/plain" onChange={loadFile} style={{ fontSize: 12 }} />
               <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
                 {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`) : ''}
               </span>
@@ -264,7 +295,8 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
       </PremiumCard>
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see options, answer and explanation' : ''}>
-        {!secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : secList.map((q, i) => (
+        {embargoed(testNo, section) ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>🔒 {secList.length} question(s) uploaded. The questions stay hidden from other staff until {fmtShort(dateOf(testNo))} (embargo).</div>
+          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : secList.map((q, i) => (
           <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <button style={{ all: 'unset', cursor: 'pointer', flex: 1, fontSize: 13.5 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.question}</button>
@@ -280,6 +312,14 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
             )}
           </div>
         ))}
+      </PremiumCard>
+      <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
+        {showBin && (!bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
+          <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${line}`, fontSize: 13 }}>
+            <span style={{ flex: 1 }}>{embargoed(q.test_no, q.section) ? '(hidden until test date)' : q.question.slice(0, 90)} <span style={{ color: PX.sub, fontSize: 11 }}>· {tid(q.test_no)} · {q.section} · deleted by {q.deleted_by || '?'}</span></span>
+            {(isAdmin || canEdit(q.test_no, q.section)) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
+            {isAdmin && <button className="px-hbtn" onClick={() => purge(q)} aria-label="Delete forever">✖</button>}
+          </div>)))}
       </PremiumCard>
     </>
   )
