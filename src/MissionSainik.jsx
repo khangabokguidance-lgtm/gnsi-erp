@@ -4,15 +4,17 @@
 // Who sets what, who verifies, deadlines, and progress: Pending → Submitted → Verified → Approved.
 // Plan and deadlines: missionSainikData.js (Office Order GNSI/MS-2027/PMT/2026/01).
 // Progress is stored in the `mission_sainik_tasks` table (migration 20261201_mission_sainik_tasks.sql).
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import MissionSainikBuilder from './MissionSainikBuilder'
+import MissionSainikBoundary from './MissionSainikBoundary'
+import { isAdminRole } from './roles'
 import { fetchAll } from './lib/missionSainikQuestions'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
-  ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
-  buildSeedRows, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
+  ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
+  buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
 } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
@@ -48,11 +50,10 @@ function useIsMobile() {
   return m
 }
 
-function dueFor(task) {
-  if (task.kind === 'practice') return SUBMISSION_DEADLINE
-  return TESTS[task.test_no - 1]?.drafts || SUBMISSION_DEADLINE
+function dueForBase(task, deadline) {
+  if (task.kind === 'practice') return deadline
+  return TESTS[task.test_no - 1]?.drafts || deadline
 }
-const isOverdue = (task, today) => task.status === 'Pending' && today > dueFor(task)
 
 function Chip({ status, overdue, small }) {
   const st = STATUS_STYLE[overdue ? 'Overdue' : status] || STATUS_STYLE.Pending
@@ -73,7 +74,9 @@ function Bar({ value, total, color = PX.gold }) {
 }
 
 // Update dialog — a top-level component so typing is never lost when the screen behind it re-renders.
-function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapter }) {
+function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapter, deadline }) {
+    const dueFor = t => dueForBase(t, deadline)
+    const isOverdue = (t, td) => t.status === 'Pending' && td > dueFor(t)
     const [setter, setSetter] = useState(sel.setter || '')
     const [verifier, setVerifier] = useState(sel.verifier || '')
     const [remarks, setRemarks] = useState(sel.remarks || '')
@@ -154,8 +157,9 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
     )
 }
 
-export default function MissionSainik({ currentUser, perms }) {
+function MissionSainikInner({ currentUser }) {
   const isMobile = useIsMobile()
+  const isRealAdmin = isAdminRole(currentUser?.role)
   // Everyone on staff manages everything here (reassign, approve, syllabus, marks). Updates are stamped with the user's name.
   const isAdmin = true
   // Open to every logged-in staff member: non-admins can only move tasks they set or verify (see allowedStatuses).
@@ -170,6 +174,24 @@ export default function MissionSainik({ currentUser, perms }) {
   const [person, setPerson] = useState('')   // admin filter on "My tasks"
   const [filterTest, setFilterTest] = useState(0)
   const today = todayISO()
+  const [settings, setSettings] = useState({})
+  const [setForm, setSetForm] = useState(null)
+  const [auditRows, setAuditRows] = useState([])
+  const [health, setHealth] = useState(null)
+  const [bulk, setBulk] = useState({ subject: SUBJECTS[0].label, setter: '', verifier: '' })
+  const SUBMISSION_DEADLINE = settings.deadline || DEFAULT_DEADLINE
+  const ORDER_NO = settings.order_no || DEFAULT_ORDER_NO
+  const ORDER_DATE = settings.order_date || DEFAULT_ORDER_DATE
+  const EXAM_DATE = settings.exam_date || DEFAULT_EXAM_DATE
+  const embargo = settings.embargo === 'on'
+  const dueFor = t => dueForBase(t, SUBMISSION_DEADLINE)
+  const isOverdue = (t, td) => t.status === 'Pending' && td > dueFor(t)
+  const audit = (action, ref, detail) => { supabase.from('mission_sainik_audit').insert({ actor: currentUser?.name || '', action, ref: ref || null, detail: detail || null }).then(() => {}, () => {}) } // best-effort
+  const loadSettings = useCallback(async () => {
+    const { data } = await supabase.from('mission_sainik_settings').select('*')
+    const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
+  }, [])
+  useEffect(() => { loadSettings() }, [loadSettings]) // eslint-disable-line react-hooks/set-state-in-effect
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
@@ -185,7 +207,6 @@ export default function MissionSainik({ currentUser, perms }) {
       .then(({ data }) => { try { if (data?.value) setInstitute(i => ({ ...i, ...JSON.parse(data.value) })) } catch { /* keep defaults */ } }, () => {})
   }, [])
 
-  const me = (currentUser?.name || '').toLowerCase()
   const isMe = name => nameMatches(currentUser?.name, name)
 
   const load = useCallback(async () => {
@@ -199,12 +220,12 @@ export default function MissionSainik({ currentUser, perms }) {
     } else { setSetup(false); setRows(data || []) }
     setLoading(false)
   }, [])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
   const loadMats = useCallback(async () => {
     const { data, error } = await fetchAll(() => supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false }).order('id'))
     if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
   }, [])
-  useEffect(() => { loadMats() }, [loadMats])
+  useEffect(() => { loadMats() }, [loadMats]) // eslint-disable-line react-hooks/set-state-in-effect
   const loadExtra = useCallback(async () => {
     const [a, b] = await Promise.all([fetchAll(() => supabase.from(SYL_TABLE).select('*').order('id')), fetchAll(() => supabase.from(MARKS_TABLE).select('*').order('test_no').order('batch').order('id'))])
     if (a.error || b.error) { setMarksSetup(true); return }
@@ -212,7 +233,7 @@ export default function MissionSainik({ currentUser, perms }) {
     const m = {}; (a.data || []).forEach(r => { m[r.test_no + '|' + r.subject] = r.chapter || '' }); setSyl(m)
     setMarks(b.data || [])
   }, [])
-  useEffect(() => { loadExtra() }, [loadExtra])
+  useEffect(() => { loadExtra() }, [loadExtra]) // eslint-disable-line react-hooks/set-state-in-effect
   const saveChapter = async (test_no, subject, chapter) => {
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
@@ -229,7 +250,7 @@ export default function MissionSainik({ currentUser, perms }) {
     }
     const { error } = await supabase.from(MARKS_TABLE).upsert(row, { onConflict: 'test_no,batch' })
     if (error) return setMsg('❌ ' + error.message)
-    setMsg('✅ Marks saved'); setMarkDraft({ ...markDraft, maths: '', reasoning: '', grammar: '', gk: '' }); loadExtra()
+    audit('marks_save', `T${row.test_no} ${row.batch}`, null); setMsg('✅ Marks saved'); setMarkDraft({ ...markDraft, maths: '', reasoning: '', grammar: '', gk: '' }); loadExtra()
   }
   const deleteMarks = async r => {
     if (!window.confirm('Delete this entry?')) return
@@ -281,6 +302,7 @@ export default function MissionSainik({ currentUser, perms }) {
     setRows(rs => rs.map(r => (r.id === task.id ? { ...r, ...next } : r)))
     setSel(s => (s && s.id === task.id ? { ...s, ...next } : s))
     setMsg('✅ Saved')
+    audit(patch.status ? 'task_status' : patch.setter !== task.setter || (patch.verifier || null) !== (task.verifier || null) ? 'task_reassign' : 'task_note', `${task.kind}:${task.test_no}:${task.subject}`, { from: task.status, to: patch.status || task.status, setter: patch.setter, verifier: patch.verifier })
     return true
   }
 
@@ -289,7 +311,7 @@ export default function MissionSainik({ currentUser, perms }) {
     const { error } = await supabase.from(TABLE).upsert(buildSeedRows(), { onConflict: 'kind,test_no,subject,setter', ignoreDuplicates: true })
     setBusy(false)
     if (error) { setMsg('❌ ' + error.message); return }
-    setMsg('✅ Allotment created')
+    setMsg('✅ Allotment created'); audit('create_allotment', null, { rows: buildSeedRows().length })
     load()
   }
 
@@ -325,10 +347,89 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
 <li>Any deviation requires the prior written approval of the Principal.</li></ol>
 <table><thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th></tr></thead><tbody>${rowsHtml}</tbody></table>
 <div class="sig"><b>(Moirangthem Himan Singh)</b><br>Founder &amp; Principal</div>
-<script>window.onload=function(){window.print()}<\/script></body></html>`
+<script>window.onload=function(){window.print()}</script></body></html>`
     const w = window.open('', '_blank')
     if (!w) { setMsg('❌ Allow pop-ups to print the notice'); return }
     w.document.write(html); w.document.close()
+  }
+
+  // ── Admin: launch settings, setup check, bulk reassign, audit log ───────
+  const ALL_PEOPLE_OPTS = [...new Set([...Object.values(PANEL).flat(), ...Object.values(PRACTICE_PANEL).flatMap(p => [p.verifier, ...p.assistants])])].sort()
+  const loadAudit = async () => {
+    const { data, error } = await supabase.from('mission_sainik_audit').select('*').order('at', { ascending: false }).limit(150)
+    setAuditRows(error ? [] : data || [])
+  }
+  const runHealth = async () => {
+    const checks = [['mission_sainik_tasks', 'id', '20261201'], ['mission_sainik_materials', 'id', '20261202'], ['mission_sainik_materials', 'body', '20261205 (typed material)'],
+      ['mission_sainik_syllabus', 'id', '20261203'], ['mission_sainik_marks', 'id', '20261203'], ['mission_sainik_tasks', 'easy_count', '20261204'],
+      ['mission_sainik_questions', 'id', '20261206'], ['mission_sainik_questions', 'deleted_at', '20261209'], ['mission_sainik_settings', 'key', '20261209'],
+      ['mission_sainik_audit', 'id', '20261209'], ['mission_sainik_signoffs', 'id', '20261209']]
+    const out = []
+    for (const [t, c, mig] of checks) { const { error } = await supabase.from(t).select(c).limit(1); out.push({ t, c, mig, ok: !error }) }
+    setHealth(out)
+  }
+  const saveSettings = async () => {
+    const f = setForm || { deadline: SUBMISSION_DEADLINE, order_no: ORDER_NO, order_date: ORDER_DATE, exam_date: EXAM_DATE, embargo: embargo ? 'on' : 'off' }
+    if (![f.deadline, f.order_date, f.exam_date].every(x => /^\d{4}-\d{2}-\d{2}$/.test(x))) return setMsg('❌ Enter valid dates.')
+    if (!String(f.order_no).trim()) return setMsg('❌ Enter the order number.')
+    const rows = Object.entries(f).map(([key, value]) => ({ key, value: String(value), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }))
+    const { error } = await supabase.from('mission_sainik_settings').upsert(rows, { onConflict: 'key' })
+    if (error) return setMsg('❌ ' + error.message + ' (run migration 20261209 and sign in as an admin)')
+    audit('settings_update', null, f); setMsg('✅ Settings saved'); setSetForm(null); loadSettings()
+  }
+  const bulkReassign = async () => {
+    if (!bulk.setter) return setMsg('❌ Choose the setter.')
+    if (!window.confirm(`Make ${fullName(bulk.setter)} the setter${bulk.verifier ? ` and ${fullName(bulk.verifier)} the verifier` : ''} for ALL 20 ${bulk.subject} tests? Existing status is kept.`)) return
+    setBusy(true)
+    const patch = { setter: bulk.setter, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }
+    if (bulk.verifier) patch.verifier = bulk.verifier
+    const { error } = await supabase.from(TABLE).update(patch).eq('kind', 'test').eq('subject', bulk.subject)
+    setBusy(false)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('bulk_reassign', bulk.subject, bulk); setMsg('✅ Reassigned'); load()
+  }
+  const AdminPanel = () => {
+    const f = setForm || { deadline: SUBMISSION_DEADLINE, order_no: ORDER_NO, order_date: ORDER_DATE, exam_date: EXAM_DATE, embargo: embargo ? 'on' : 'off' }
+    const lab = { fontSize: 12, fontWeight: 700, color: PX.sub, display: 'block' }
+    return (
+      <>
+        <PremiumCard title="Launch settings" subtitle="Admin only. These replace the dates written in the code; the printed notice and countdowns follow them.">
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+            <label style={lab}>Submission deadline<input className="px-input" type="date" value={f.deadline} onChange={e => setSetForm({ ...f, deadline: e.target.value })} /></label>
+            <label style={lab}>Office order no.<input className="px-input" value={f.order_no} onChange={e => setSetForm({ ...f, order_no: e.target.value })} /></label>
+            <label style={lab}>Order date<input className="px-input" type="date" value={f.order_date} onChange={e => setSetForm({ ...f, order_date: e.target.value })} /></label>
+            <label style={lab}>AISSEE exam date<input className="px-input" type="date" value={f.exam_date} onChange={e => setSetForm({ ...f, exam_date: e.target.value })} /></label>
+          </div>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, fontSize: 13 }}>
+            <input type="checkbox" checked={f.embargo === 'on'} onChange={e => setSetForm({ ...f, embargo: e.target.checked ? 'on' : 'off' })} />
+            Embargo: hide questions, answers and printing from other staff until the test date (only the section setter and admins can see them)
+          </label>
+          <button className="px-btn gold" style={{ marginTop: 12 }} onClick={saveSettings}>Save settings</button>
+        </PremiumCard>
+        <PremiumCard title="Make one teacher the setter for a whole subject" subtitle="Use this to match the notice (one setter per subject). Status of each section is kept.">
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 10 }}>
+            <label style={lab}>Subject<select className="px-input" value={bulk.subject} onChange={e => setBulk({ ...bulk, subject: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}</select></label>
+            <label style={lab}>Setter<select className="px-input" value={bulk.setter} onChange={e => setBulk({ ...bulk, setter: e.target.value })}><option value="">Choose…</option>{ALL_PEOPLE_OPTS.map(n => <option key={n} value={n}>{fullName(n)}</option>)}</select></label>
+            <label style={lab}>Verifier (optional)<select className="px-input" value={bulk.verifier} onChange={e => setBulk({ ...bulk, verifier: e.target.value })}><option value="">Keep current</option>{ALL_PEOPLE_OPTS.map(n => <option key={n} value={n}>{fullName(n)}</option>)}</select></label>
+          </div>
+          <button className="px-btn" style={{ marginTop: 12 }} disabled={busy} onClick={bulkReassign}>Apply to all 20 tests</button>
+        </PremiumCard>
+        <PremiumCard title="Setup check" subtitle="Which database migrations are in place" right={<button className="px-hbtn" onClick={runHealth}>Run check</button>}>
+          {!health ? <div style={{ color: PX.sub, fontSize: 13 }}>Press “Run check”.</div> : health.map((h, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, padding: '5px 0', fontSize: 13, borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
+              <span style={{ width: 20 }}>{h.ok ? '✅' : '❌'}</span><span style={{ flex: 1 }}>{h.t}.{h.c}</span><span style={{ color: h.ok ? PX.sub : PX.bad }}>{h.ok ? 'ok' : 'run migration ' + h.mig}</span>
+            </div>))}
+          <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Also run 20261208 (staff-only lockdown); it cannot be checked from here.</div>
+        </PremiumCard>
+        <PremiumCard title="Audit log" subtitle="Latest 150 actions (cannot be edited or deleted)" right={<button className="px-hbtn" onClick={loadAudit}>Refresh</button>} bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+          {!auditRows.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Press Refresh to load.</div> : (
+            <table className="px-table" style={{ minWidth: 560 }}>
+              <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Reference</th></tr></thead>
+              <tbody>{auditRows.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>{a.actor}</td><td><b>{a.action}</b></td><td>{a.ref || ''}</td></tr>)}</tbody>
+            </table>)}
+        </PremiumCard>
+      </>
+    )
   }
 
   // ── shared bits ────────────────────────────────────────────────────────
@@ -352,6 +453,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     { id: 'marks',      label: 'Marks tracker', icon: PIcon.chart },
     { id: 'material',   label: 'Study material', icon: PIcon.folder },
     { id: 'panel',      label: 'Panel',       icon: PIcon.users },
+    ...(isRealAdmin ? [{ id: 'admin', label: 'Admin', icon: PIcon.shield || PIcon.users }] : []),
   ]
 
   // ── screens ────────────────────────────────────────────────────────────
@@ -701,7 +803,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
         bodyStyle={{ padding: 0 }}>
         {mine.length === 0
           ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>{isAdmin ? 'Nothing to show.' : `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or see the Allotment tab.`}</div>
-          : mine.map(r => <TaskRow key={r.id} r={r} />)}
+          : mine.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       </PremiumCard>
     )
   }
@@ -709,7 +811,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" bodyStyle={{ padding: 0 }}>
       {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
-      {practice.map(r => <TaskRow key={r.id} r={r} />)}
+      {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
         <div style={{ padding: '12px 16px', fontSize: 13, color: PX.sub }}>
           {practice.reduce((n, r) => n + (r.question_count || 0), 0)} questions so far; Sir Sumanta's Mathematics count and the subject of Sir Deepak's set are to be notified.
@@ -765,7 +867,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
       })
       if (error) throw error
       setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
-      setMsg('✅ Material added.'); loadMats()
+      setMsg('✅ Material added.'); audit('material_add', d.title.trim(), { file: !!d.file, link: !!d.link_url.trim(), text: !!d.body.trim() }); loadMats()
     } catch (e) { setMsg('❌ ' + (e.message || 'Upload failed')) }
     setBusy(false)
   }
@@ -791,7 +893,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     if (m.file_path) await supabase.storage.from(MAT_BUCKET).remove([m.file_path])
     const { error } = await supabase.from(MAT_TABLE).delete().eq('id', m.id)
     if (error) return setMsg('❌ ' + error.message)
-    loadMats()
+    audit('material_delete', m.title, { by: currentUser?.name }); loadMats()
   }
   const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
   const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
@@ -805,7 +907,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
               <td style={{ padding: 6, fontWeight: 700, whiteSpace: 'nowrap' }}>{t.id}<div style={{ fontWeight: 400, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
               {SUBJECTS.map(x => (
                 <td key={x.key} style={{ padding: 4 }}>
-                  <input key={t.no + x.label + (syl[t.no + '|' + x.label] ?? '')} className="px-input" defaultValue={syl[t.no + '|' + x.label] || ''} placeholder="Chapter"
+                  <input key={t.no + x.label + (syl[t.no + '|' + x.label] ?? '')} className="px-input" defaultValue={syl[t.no + '|' + x.label] || ''} aria-label="Chapter" placeholder="Chapter"
                     onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
                 </td>
               ))}
@@ -819,9 +921,9 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     <>{setupNote}
       <PremiumCard title="Daily Class Test marks" subtitle="Maths /60 · Reasoning, Grammar, GK /20 each · 120 in all. Entering the same test and batch again overwrites it.">
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(6, 1fr)', gap: 10 }}>
-          <select className="px-input" value={markDraft.test_no} onChange={e => setMarkDraft({ ...markDraft, test_no: e.target.value })}>{TESTS.map(t => <option key={t.no} value={t.no}>T{t.no} · {fmtShort(t.date)}</option>)}</select>
-          <input className="px-input" placeholder="Batch / student" value={markDraft.batch} onChange={e => setMarkDraft({ ...markDraft, batch: e.target.value })} />
-          {MARK_COLS.map(([k, lbl, max]) => <input key={k} className="px-input" type="number" min="0" max={max} placeholder={`${lbl} /${max}`} value={markDraft[k]} onChange={e => setMarkDraft({ ...markDraft, [k]: e.target.value })} />)}
+          <select className="px-input" aria-label="Test" value={markDraft.test_no} onChange={e => setMarkDraft({ ...markDraft, test_no: e.target.value })}>{TESTS.map(t => <option key={t.no} value={t.no}>T{t.no} · {fmtShort(t.date)}</option>)}</select>
+          <input className="px-input" aria-label="Batch / student" placeholder="Batch / student" value={markDraft.batch} onChange={e => setMarkDraft({ ...markDraft, batch: e.target.value })} />
+          {MARK_COLS.map(([k, lbl, max]) => <input key={k} className="px-input" type="number" min="0" max={max} aria-label={`${lbl} /${max}`} placeholder={`${lbl} /${max}`} value={markDraft[k]} onChange={e => setMarkDraft({ ...markDraft, [k]: e.target.value })} />)}
         </div>
         <button className="px-btn gold" style={{ marginTop: 12 }} onClick={saveMarks}>Save marks</button>
       </PremiumCard>
@@ -849,17 +951,17 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
       <PremiumCard title="Upload study material" subtitle="Notes, PDFs, images or a link — visible to all staff">
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr', gap: 10 }}>
-          <input style={inp} placeholder="Title" value={matDraft.title} onChange={e => setMatDraft({ ...matDraft, title: e.target.value })} />
-          <select style={inp} value={matDraft.subject} onChange={e => setMatDraft({ ...matDraft, subject: e.target.value })}>
+          <input style={inp} aria-label="Title" placeholder="Title" value={matDraft.title} onChange={e => setMatDraft({ ...matDraft, title: e.target.value })} />
+          <select style={inp} aria-label="Subject" value={matDraft.subject} onChange={e => setMatDraft({ ...matDraft, subject: e.target.value })}>
             <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
           </select>
-          <select style={inp} value={matDraft.test_no} onChange={e => setMatDraft({ ...matDraft, test_no: e.target.value })}>
+          <select style={inp} aria-label="Test" value={matDraft.test_no} onChange={e => setMatDraft({ ...matDraft, test_no: e.target.value })}>
             <option value={0}>All tests</option>{TESTS.map(t => <option key={t.id} value={t.no ?? t.id}>{t.id}</option>)}
           </select>
-          <input key={fileKey} style={inp} type="file" onChange={e => setMatDraft({ ...matDraft, file: e.target.files?.[0] || null })} />
-          <input style={inp} placeholder="…or paste a link (Drive, YouTube)" value={matDraft.link_url} onChange={e => setMatDraft({ ...matDraft, link_url: e.target.value })} />
-          <textarea style={{ ...inp, gridColumn: '1 / -1', minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }} placeholder="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" value={matDraft.body} onChange={e => setMatDraft({ ...matDraft, body: e.target.value })} />
-          <input style={inp} placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
+          <input key={fileKey} style={inp} type="file" aria-label="Choose a file" onChange={e => setMatDraft({ ...matDraft, file: e.target.files?.[0] || null })} />
+          <input style={inp} aria-label="…or paste a link (Drive, YouTube)" placeholder="…or paste a link (Drive, YouTube)" value={matDraft.link_url} onChange={e => setMatDraft({ ...matDraft, link_url: e.target.value })} />
+          <textarea style={{ ...inp, gridColumn: '1 / -1', minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }} aria-label="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" placeholder="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" value={matDraft.body} onChange={e => setMatDraft({ ...matDraft, body: e.target.value })} />
+          <input style={inp} aria-label="Note (optional)" placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
         </div>
         <button className="px-hbtn" style={{ marginTop: 12 }} disabled={busy} onClick={saveMaterial}>{busy ? 'Uploading…' : '⬆ Add material'}</button>
       </PremiumCard>
@@ -918,21 +1020,22 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
         {msg && <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: msg.startsWith('❌') ? PX.badBg : PX.okBg, color: msg.startsWith('❌') ? PX.bad : PX.ok, fontSize: 13, fontWeight: 600 }}>{msg}</div>}
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
-            {tab === 'overview' && <Overview />}
-            {tab === 'schedule' && <Schedule />}
+            {tab === 'overview' && Overview()}
+            {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} />}
-            {tab === 'activity' && <Activity />}
-            {tab === 'insights' && <Insights />}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} />}
+            {tab === 'activity' && Activity()}
+            {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
-            {tab === 'mock' && <MockSeries />}
-            {tab === 'allotment' && <Allotment />}
-            {tab === 'mine' && <Mine />}
-            {tab === 'practice' && <Practice />}
+            {tab === 'mock' && MockSeries()}
+            {tab === 'allotment' && Allotment()}
+            {tab === 'mine' && Mine()}
+            {tab === 'practice' && Practice()}
             {tab === 'syllabus' && syllabusTab}
             {tab === 'marks' && marksTab}
             {tab === 'material' && materialTab}
-            {tab === 'panel' && <Panel />}
+            {tab === 'panel' && Panel()}
+            {tab === 'admin' && isRealAdmin && AdminPanel()}
           </>
         )}
       </div>
@@ -949,7 +1052,11 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           </div>
         </div>
       )}
-      {sel && <TaskDialog key={sel.id} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
+      {sel && <TaskDialog key={sel.id} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
+}
+
+export default function MissionSainik(props) {
+  return <MissionSainikBoundary><MissionSainikInner {...props} /></MissionSainikBoundary>
 }
