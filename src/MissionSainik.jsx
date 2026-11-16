@@ -11,6 +11,7 @@ import MissionSainikBuilder from './MissionSainikBuilder'
 import MissionSainikBoundary from './MissionSainikBoundary'
 import { isAdminRole } from './roles'
 import { fetchAll } from './lib/missionSainikQuestions'
+import { buildNoticeHtml } from './lib/missionSainikNotice'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -328,26 +329,9 @@ function MissionSainikInner({ currentUser }) {
   }
 
   const printNotice = () => {
-    const rowsHtml = TESTS.map(t => `<tr><td><b>${t.id}</b></td><td>${esc(fmt(t.date))}</td><td>${esc(dayName(t.date))}</td><td>${esc(fmtShort(t.drafts))}</td><td>${esc(fmtShort(t.verify))}</td><td>${esc(fmtShort(t.print))}</td></tr>`).join('')
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Notice – Mission Sainik 2027</title>
-<style>@page{size:A4;margin:14mm}body{font-family:'Times New Roman',serif;color:#111827;font-size:12.5px;line-height:1.45}
-.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:8px}.lh h1{margin:0;font-size:21px;color:#132a4f;letter-spacing:.5px}
-.lh div{font-size:11.5px}.ref{display:flex;justify-content:space-between;font-weight:bold;margin:10px 0}
-h2{text-align:center;text-decoration:underline;letter-spacing:3px;color:#132a4f;margin:8px 0 4px}
-.sub{text-align:center;font-weight:bold;margin-bottom:10px}ol{padding-left:20px}li{margin-bottom:5px;text-align:justify}
-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}th{background:#132a4f;color:#fff;text-align:left}
-th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:right}</style></head><body>
-<div class="lh"><h1>GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE (GNSI)</h1><div>Khangabok, Thoubal, Manipur · Established 2016</div><div><b>OFFICE OF THE PRINCIPAL</b></div></div>
-<div class="ref"><span>No. ${esc(ORDER_NO)}</span><span>Date: ${esc(fmt(ORDER_DATE))}</span></div>
-<h2>NOTICE</h2><div class="sub">Schedule of 20 Pre Mock Tests under Mission Sainik 2027 and submission of study material by Question Setters.</div>
-<ol><li>The Institute shall conduct twenty (20) Pre Mock Tests, PMT-01 to PMT-20, on alternate days from ${esc(fmt(TESTS[0].date))} to ${esc(fmt(TESTS[19].date))}, in the latest AISSEE pattern. Each test has 150 questions for 300 marks, in six sections of 25 questions at 2 marks each.</li>
-<li><b>All study material</b> (the question sections of all twenty tests and the practice question bank) shall be submitted at the office of the Head of the Institute <b>on or before ${esc(fmt(SUBMISSION_DEADLINE))}</b>. The material for PMT-01 and PMT-02 is due on ${esc(fmtShort(TESTS[0].drafts))} and ${esc(fmtShort(TESTS[1].drafts))}.</li>
-<li>Every teacher on the Question Setting Panel sets questions and verifies a colleague's questions, never their own.</li>
-<li>No test or deadline falls on 13 December, 27 December 2026 or 1 January 2027.</li>
-<li>Any deviation requires the prior written approval of the Principal.</li></ol>
-<table><thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-<div class="sig"><b>(Moirangthem Himan Singh)</b><br>Founder &amp; Principal</div>
-<script>window.onload=function(){window.print()}</script></body></html>`
+    const syllabus = {}
+    Object.entries(syl).forEach(([k, v]) => { const [n, subj] = k.split('|'); syllabus[n + '|' + subj] = v })
+    const html = buildNoticeHtml({ orderNo: ORDER_NO, orderDate: ORDER_DATE, deadline: SUBMISSION_DEADLINE, examDate: EXAM_DATE, syl: syllabus, institute, marks })
     const w = window.open('', '_blank')
     if (!w) { setMsg('❌ Allow pop-ups to print the notice'); return }
     w.document.write(html); w.document.close()

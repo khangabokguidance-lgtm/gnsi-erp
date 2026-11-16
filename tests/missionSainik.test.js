@@ -69,3 +69,11 @@ test('fetchAll pages past the 1000-row API limit', async () => {
   const err = await fetchAll(() => ({ range: async () => ({ data: null, error: { message: 'x' } }) }))
   assert.equal(err.data, null)
 })
+
+import { buildNoticeHtml } from '../src/lib/missionSainikNotice.js'
+test('printed notice carries the clauses, all five annexures, live syllabus and escapes input', () => {
+  const html = buildNoticeHtml({ orderNo: 'GNSI/MS-2027/PMT/2026/01', orderDate: '2026-11-16', deadline: '2026-11-28', syl: { '1|Mathematics': 'Fractions <b>' }, institute: { name: 'GNSI' } })
+  for (const t of ['GNSI/MS-2027/PMT/2026/01', 'Subject_SetterName_PMT-XX.docx', '40% easy', 'ANNEXURE-I<', 'ANNEXURE-II<', 'ANNEXURE-III<', 'ANNEXURE-IV<', 'ANNEXURE-V<', 'Use of the GNSI Portal', 'PMT-20', 'Sir Sumanta', '28 November 2026'])
+    assert.ok(html.includes(t), t)
+  assert.ok(html.includes('Fractions &lt;b&gt;') && !html.includes('Fractions <b>'))
+})
