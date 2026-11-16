@@ -74,6 +74,11 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
     const [setter, setSetter] = useState(sel.setter || '')
     const [verifier, setVerifier] = useState(sel.verifier || '')
     const [remarks, setRemarks] = useState(sel.remarks || '')
+    const [mix, setMix] = useState({ easy_count: sel.easy_count ?? '', medium_count: sel.medium_count ?? '', hard_count: sel.hard_count ?? '' })
+    const mixTotal = ['easy_count', 'medium_count', 'hard_count'].reduce((a, k) => a + (Number(mix[k]) || 0), 0)
+    const mixPatch = () => (mixTotal > 0 ? { easy_count: Number(mix.easy_count) || 0, medium_count: Number(mix.medium_count) || 0, hard_count: Number(mix.hard_count) || 0 } : {})
+    const mixPct = k => (mixTotal ? Math.round(((Number(mix[k]) || 0) / mixTotal) * 100) : 0)
+    const mixOff = mixTotal > 0 && (Math.abs(mixPct('easy_count') - 40) > 10 || Math.abs(mixPct('medium_count') - 40) > 10 || Math.abs(mixPct('hard_count') - 20) > 10)
     const [count, setCount] = useState(sel.question_count ?? '')
     const next = allowed
     const mayEdit = isAdmin || next.length > 0
@@ -100,6 +105,14 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions
                 <input className="px-input" type="number" min="0" value={count} onChange={e => setCount(e.target.value)} style={{ marginTop: 4 }} />
               </label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                {[['easy_count', 'Easy'], ['medium_count', 'Medium'], ['hard_count', 'Hard']].map(([k, l]) => (
+                  <label key={k} style={{ flex: 1, fontSize: 12, fontWeight: 700, color: PX.sub }}>{l}{mixTotal ? ` · ${mixPct(k)}%` : ''}
+                    <input className="px-input" type="number" min="0" value={mix[k]} onChange={e => setMix({ ...mix, [k]: e.target.value })} style={{ marginTop: 4 }} />
+                  </label>
+                ))}
+              </div>
+              {mixOff && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>⚠ The notice asks for about 40% easy, 40% medium, 20% hard.</div>}
               {isAdmin && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                   {[['Setter', setter, setSetter], ['Verifier', verifier, setVerifier]].map(([lbl, val, fn]) => (
@@ -118,12 +131,12 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 {next.map(s => (
                   <button key={s} className={'px-btn' + (STATUS_FLOW.indexOf(s) > STATUS_FLOW.indexOf(sel.status) ? ' gold' : ' ghost')} disabled={busy}
-                    onClick={async () => { if (await onSave(sel, { status: s, remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>
+                    onClick={async () => { if (await onSave(sel, { ...mixPatch(), status: s, remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>
                     {STATUS_FLOW.indexOf(s) > STATUS_FLOW.indexOf(sel.status) ? `Mark ${s.toLowerCase()}` : `Move back to ${s.toLowerCase()}`}
                   </button>
                 ))}
                 <button className="px-btn" disabled={busy}
-                  onClick={async () => { if (await onSave(sel, { remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>Save notes</button>
+                  onClick={async () => { if (await onSave(sel, { ...mixPatch(), remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>Save notes</button>
               </div>
             </>
           )}
@@ -314,6 +327,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const tabs = [
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
+    { id: 'insights',   label: 'Insights',    icon: PIcon.chart },
     { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
     { id: 'mine',       label: isAdmin ? 'All tasks' : 'My tasks', icon: PIcon.pen, badge: isAdmin ? 0 : rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length },
@@ -453,6 +467,106 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
       </PremiumCard>
     </>
   )
+
+  // ── Insights: analytics + early-warning on top of the data already entered ──
+  const Insights = () => {
+    const pct = (v, m) => (v == null ? null : (Number(v) / m) * 100)
+    // per test: class average per subject (%), overall (%)
+    const perTest = TESTS.map(t => {
+      const es = marks.filter(r => r.test_no === t.no)
+      if (!es.length) return null
+      const sub = MARK_COLS.map(([k, l, m]) => { const v = es.filter(r => r[k] != null); return { k, l, avg: v.length ? v.reduce((a, r) => a + pct(r[k], m), 0) / v.length : null } })
+      const tots = es.map(r => MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0))
+      return { t, n: es.length, sub, overall: (tots.reduce((a, b) => a + b, 0) / tots.length / 120) * 100 }
+    }).filter(Boolean)
+    const weak = perTest.flatMap(p => p.sub.filter(x => x.avg != null && x.avg < 60).map(x => ({ t: p.t, ...x })))
+    const subjLabel = { maths: 'Mathematics', reasoning: 'Reasoning', grammar: 'English Grammar', gk: 'General Knowledge' }
+    // rank by batch / student: average total across their tests
+    const byName = {}
+    marks.forEach(r => { const n = r.batch || '(no name)'; (byName[n] = byName[n] || []).push(MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)) })
+    const ranks = Object.entries(byName).map(([n, v]) => ({ n, avg: v.reduce((a, b) => a + b, 0) / v.length, tests: v.length })).sort((a, b) => b.avg - a.avg)
+    // delivery risk
+    const open = rows.filter(r => r.status === 'Pending')
+    const late = open.filter(r => isOverdue(r, today))
+    const soon = open.filter(r => !isOverdue(r, today) && dayDiff(today, dueFor(r)) <= 3)
+    const pace = daysToDeadline > 0 ? Math.ceil(open.length / daysToDeadline) : open.length
+    const bySetter = {}; open.forEach(r => { (bySetter[r.setter] = bySetter[r.setter] || []).push(r) })
+    const setters = Object.entries(bySetter).map(([n, l]) => ({ n, l, late: l.filter(r => isOverdue(r, today)).length })).sort((a, b) => b.late - a.late || b.l.length - a.l.length)
+    const remind = s => {
+      const txt = `Dear ${fullName(s.n)}, ${s.l.length} Mission Sainik task(s) pending${s.late ? ` (${s.late} overdue)` : ''}: ` +
+        s.l.slice(0, 6).map(r => `${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} ${r.subject} (due ${fmtShort(dueFor(r))})`).join('; ') +
+        `. Please submit to the Head of the Institute's office by ${fmt(SUBMISSION_DEADLINE)}. — GNSI (${ORDER_NO})`
+      window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank', 'noopener')
+    }
+    // difficulty quality
+    const mixed = rows.filter(r => r.easy_count != null)
+    const mixBad = mixed.filter(r => { const t = (r.easy_count || 0) + (r.medium_count || 0) + (r.hard_count || 0); return t && (Math.abs(r.easy_count / t * 100 - 40) > 10 || Math.abs(r.medium_count / t * 100 - 40) > 10 || Math.abs(r.hard_count / t * 100 - 20) > 10) })
+    // trend line
+    const W = 560, H = 150, pad = 28
+    const pts = perTest.map((p, i) => [pad + (perTest.length > 1 ? (i / (perTest.length - 1)) * (W - 2 * pad) : (W - 2 * pad) / 2), H - pad - (p.overall / 100) * (H - 2 * pad), p])
+    const card = (label, val, sub, bad) => (
+      <div style={{ padding: 12, borderRadius: 12, background: bad ? PX.badBg : PX.tint }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: PX.sub }}>{label}</div>
+        <div style={{ fontFamily: PX.serif, fontSize: 24, color: bad ? PX.bad : PX.navy }}>{val}</div>
+        <div style={{ fontSize: 11.5, color: PX.sub }}>{sub}</div>
+      </div>
+    )
+    return (
+      <>
+        <PremiumCard title="Delivery forecast" subtitle={`Submission deadline ${fmt(SUBMISSION_DEADLINE)} · ${daysToDeadline > 0 ? daysToDeadline + ' days left' : 'deadline passed'}`}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+            {card('Still pending', open.length, `of ${rows.length} sections`)}
+            {card('Overdue', late.length, 'past their own due date', late.length > 0)}
+            {card('Due in 3 days', soon.length, 'needs a nudge')}
+            {card('Pace needed', pace + '/day', 'sections to clear daily', pace > 15)}
+          </div>
+          {setters.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {setters.map(x => (
+                <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
+                  <b style={{ minWidth: 130 }}>{fullName(x.n)}</b>
+                  <span style={{ flex: 1, fontSize: 12.5, color: x.late ? PX.bad : PX.sub }}>{x.l.length} pending{x.late ? ` · ${x.late} overdue` : ''}</span>
+                  <button className="px-hbtn" onClick={() => remind(x)}>💬 Remind on WhatsApp</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </PremiumCard>
+        <PremiumCard title="Question quality" subtitle="Difficulty mix of submitted sections vs the notice (≈40 / 40 / 20)">
+          <div style={{ fontSize: 13, color: PX.sub }}>
+            {mixed.length ? `${mixed.length} section(s) have a mix recorded · ` : 'No difficulty mix recorded yet — setters add it in the task dialog. '}
+            {mixBad.length ? <b style={{ color: PX.warn }}>{mixBad.length} off the 40/40/20 target: {mixBad.slice(0, 6).map(r => (r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice') + ' ' + r.subject).join(', ')}</b> : mixed.length ? <b style={{ color: PX.ok }}>all within target</b> : null}
+          </div>
+        </PremiumCard>
+        <PremiumCard title="Performance trend" subtitle="Average score across all batches per Daily Class Test">
+          {!perTest.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Enter marks in the Marks tracker to see the trend.</div> : (
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 620 }} role="img" aria-label="Average score trend">
+              <line x1={pad} x2={W - pad} y1={H - pad - 0.6 * (H - 2 * pad)} y2={H - pad - 0.6 * (H - 2 * pad)} stroke={PX.bad} strokeDasharray="4 4" opacity=".5" />
+              <text x={W - pad} y={H - pad - 0.6 * (H - 2 * pad) - 4} fontSize="9" textAnchor="end" fill={PX.bad}>60% target</text>
+              <polyline fill="none" stroke={PX.navy} strokeWidth="2" points={pts.map(p => p[0] + ',' + p[1]).join(' ')} />
+              {pts.map(p => <g key={p[2].t.no}><circle cx={p[0]} cy={p[1]} r="3.5" fill={p[2].overall < 60 ? PX.bad : PX.navy} /><text x={p[0]} y={H - 8} fontSize="9" textAnchor="middle" fill={PX.sub}>T{p[2].t.no}</text><text x={p[0]} y={p[1] - 7} fontSize="9" textAnchor="middle" fill={PX.sub}>{Math.round(p[2].overall)}</text></g>)}
+            </svg>
+          )}
+        </PremiumCard>
+        <PremiumCard title="Weak chapters to revisit" subtitle="Subject averages below 60% on a test, matched to the Syllabus plan">
+          {!weak.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>{perTest.length ? '🎉 No subject is below 60%.' : 'No marks entered yet.'}</div> : weak.map((w, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderTop: i ? `1px solid ${PX.line || '#eef1f6'}` : 'none', fontSize: 13, flexWrap: 'wrap' }}>
+              <b style={{ minWidth: 70 }}>{w.t.id.replace('PMT', 'T')} · {fmtShort(w.t.date)}</b>
+              <span style={{ flex: 1 }}>{subjLabel[w.k]}{syl[w.t.no + '|' + subjLabel[w.k]] ? ` — ${syl[w.t.no + '|' + subjLabel[w.k]]}` : ''}</span>
+              <b style={{ color: PX.bad }}>{Math.round(w.avg)}%</b>
+            </div>
+          ))}
+        </PremiumCard>
+        <PremiumCard title="Leaderboard" subtitle="Average total /120 across tests entered per batch or student">
+          {!ranks.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : ranks.map((r, i) => (
+            <div key={r.n} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: i ? `1px solid ${PX.line || '#eef1f6'}` : 'none', fontSize: 13 }}>
+              <b style={{ width: 28 }}>{i + 1}</b><span style={{ flex: 1 }}>{r.n}</span><span style={{ color: PX.sub }}>{r.tests} test(s)</span><b>{r.avg.toFixed(1)}</b>
+            </div>
+          ))}
+        </PremiumCard>
+      </>
+    )
+  }
 
   const Allotment = () => {
     const list = filterTest ? TESTS.filter(t => t.no === filterTest) : TESTS
@@ -728,6 +842,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {tab === 'insights' && <Insights />}
             {tab === 'mock' && <MockSeries />}
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
