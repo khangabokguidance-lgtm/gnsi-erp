@@ -191,6 +191,7 @@ function MissionSainikInner({ currentUser }) {
   const [addTask, setAddTask] = useState(null)             // null | form for the Add task dialog
   const [editMarksId, setEditMarksId] = useState(null)
   const [editMat, setEditMat] = useState(null)
+  const [bStart, setBStart] = useState({ test: 1, section: '', n: 0 })   // where the Practice Bank builder should open
   const [taskView, setTaskView] = useState('needs')   // needs | mine | all
   const [statusF, setStatusF] = useState('')
   const [subjF, setSubjF] = useState('')
@@ -788,6 +789,14 @@ function MissionSainikInner({ currentUser }) {
     )
   }
 
+  // Practice tab → open the Practice Bank builder on the right subject and set so questions can be added straight away.
+  const subjectOfPractice = r => (SUBJECTS.find(x => x.label === r.subject) || SUBJECTS.find(x => r.subject.includes(x.label)) || SUBJECTS[0])
+  const goAddQuestions = (subjectLabel, setNo) => { setBStart(b => ({ test: setNo || 1, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }
+  const setNoFor = r => {
+    const sub = subjectOfPractice(r)
+    const same = practice.filter(x => subjectOfPractice(x).key === sub.key).sort((a, b) => a.id - b.id)
+    return Math.min(Math.max(same.findIndex(x => x.id === r.id) + 1, 1), PRACTICE_PANEL[sub.key]?.sets || 1)
+  }
   const TaskRow = ({ r }) => {
     const late = isOverdue(r, today)
     const next = allowedStatuses(r)
@@ -801,6 +810,7 @@ function MissionSainikInner({ currentUser }) {
           </div>
         </div>
         <Chip status={r.status} overdue={late} />
+        {r.kind === 'practice' && <button className="px-btn ghost" onClick={() => goAddQuestions(subjectOfPractice(r).label, setNoFor(r))}>＋ Questions</button>}
         {quick && <button className="px-btn gold" disabled={busy} onClick={() => saveTask(r, { status: quick })}>Mark {quick.toLowerCase()}</button>}
         <button className="px-btn ghost" onClick={() => setSel(r)}>Open</button>
       </div>
@@ -858,6 +868,14 @@ function MissionSainikInner({ currentUser }) {
 
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" right={<button className="px-btn gold" onClick={() => setAddTask(newTaskForm('practice'))}>＋ Add practice set</button>} bodyStyle={{ padding: 0 }}>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${PX.line}` }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Add questions to the practice bank</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {SUBJECTS.flatMap(sub => Array.from({ length: PRACTICE_PANEL[sub.key]?.sets || 1 }, (_, i) => (
+            <button key={sub.key + i} className="px-btn ghost" onClick={() => goAddQuestions(sub.label, i + 1)}>＋ {sub.short} · Set {i + 1}</button>)))}
+        </div>
+        <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Opens the Practice Bank builder on that subject and set — paste or upload up to 25 questions per set.</div>
+      </div>
       {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
       {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
@@ -1149,7 +1167,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
             {tab === 'overview' && <><MissionSainikHome name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
-            {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
+            {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
               currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}

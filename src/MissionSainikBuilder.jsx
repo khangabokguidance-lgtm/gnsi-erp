@@ -67,14 +67,14 @@ function figFromFile(file) {
   })
 }
 
-export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null }) {
+export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
-  const [testNo, setTestNo] = useState(1)
-  const [sectionSel, setSection] = useState(cfg.sections[0].label)
+  const [testNo, setTestNo] = useState(startTest || 1)
+  const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
