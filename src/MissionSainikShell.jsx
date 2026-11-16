@@ -23,6 +23,26 @@ const CSS = `
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
 .msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease both}
+.msx-main .px-card{border-radius:22px;border:1px solid #ece6d6;box-shadow:0 4px 22px rgba(19,42,79,.07);overflow:hidden}
+/* Premium data tables */
+.msx-main .px-table{border-collapse:separate;border-spacing:0}
+.msx-main .px-table th{background:linear-gradient(180deg,#fbf7ea,#f3ebd5);color:#6b5a2a;border-bottom:2px solid #e0b95a;padding:14px 16px;font-size:10.5px;letter-spacing:.12em}
+.msx-main .px-table td{padding:14px 16px;border-bottom:1px solid #f1ece0;font-variant-numeric:tabular-nums;transition:background .15s;white-space:nowrap}
+.msx-main .px-table tbody tr:nth-child(even) td{background:#fdfbf6}
+.msx-main .px-table tbody tr:hover td{background:#f9f1da}
+.msx-main .px-table tbody tr:last-child td{border-bottom:0}
+.msx-main .px-table td:first-child{font-weight:800;color:var(--navy)}
+.msx-main .px-table td.msx-click{cursor:pointer}
+.msx-main .px-table td.msx-click:hover{background:#f5e9c4!important;box-shadow:inset 0 0 0 2px #e0b95a;border-radius:6px}
+.msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:11px;font-size:12.5px;background:#fff;border:1px solid #e6dfcc;transition:border-color .15s,box-shadow .15s}
+.msx-main .px-table input.px-input:focus{outline:0;border-color:#b8923a;box-shadow:0 0 0 3px rgba(184,146,58,.22)}
+.msx-main .px-table input.px-input::placeholder{color:#b3ab98}
+/* The module's inner screens were designed for a dark hero; on light cards their .px-hbtn buttons need a light skin. */
+.msx-main .px-hbtn{background:#fff;color:var(--navy);border:1px solid #d9d2c2;height:38px;box-shadow:0 1px 2px rgba(19,42,79,.08)}
+.msx-main .px-hbtn:hover{background:#f6efdc;transform:none}
+.msx-main select,.msx-main input[type=file]{background:#fff;color:var(--ink)}
+.msx-main input[type=file]{padding:8px!important}
+.msx-main .px-table td:first-child,.msx-main .px-table th:first-child{white-space:nowrap}
 .msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:1px solid #e3e7ef;padding:8px 6px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(14,32,63,.10)}
 .msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--sub);padding:2px 0}
 .msx-pill{position:relative;width:62px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:background .2s,transform .2s}
@@ -43,6 +63,21 @@ const CSS = `
 .msx-confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:msx-fall 1.7s ease-in forwards}
 .msx-overlay{align-items:flex-end!important}
 .msx-dialog{border-radius:26px 26px 0 0!important;width:100%!important;max-width:560px!important;animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both}
+@media (max-width:700px){
+  /* Wide data tables become stacked cards on phones (labels come from each column's heading, set in the Shell effect). */
+  .msx-main table.px-table,.msx-main table.px-table tbody{display:block;width:100%;min-width:0!important}
+  .msx-main .px-table thead{display:none}
+  .msx-main .px-table tr{display:block;margin:10px;padding:6px 14px;border:1px solid #e8e3d8;border-radius:18px;background:#fff;box-shadow:0 1px 6px rgba(19,42,79,.06)}
+  .msx-main .px-table td{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0!important;padding:7px 0!important;text-align:right;position:static!important;background:transparent!important;white-space:normal!important}
+  .msx-main .px-table td::before{content:attr(data-label);flex:none;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);text-align:left}
+  .msx-main .px-table td:first-child{justify-content:flex-start;font-size:15.5px;font-weight:800;padding-bottom:9px!important;margin-bottom:3px;border-bottom:1px solid #eef1f6!important}
+  .msx-main .px-table td:first-child::before,.msx-main .px-table td[data-label=""]::before{display:none}
+  .msx-main .px-table td:empty{display:none}
+  /* card headers: title first, action buttons on their own row */
+  .msx-main .px-card-h{flex-wrap:wrap}
+  .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
+  .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
+}
 @keyframes msx-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes msx-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
 @keyframes msx-fade{from{opacity:0}to{opacity:1}}
@@ -67,6 +102,13 @@ export function Confetti({ show }) {
 export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
   useEffect(() => { if (sheet) { const k = e => e.key === 'Escape' && setSheet(false); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) } }, [sheet])
+  // Label every table cell with its column heading so the phone card layout can show it.
+  useEffect(() => {
+    document.querySelectorAll('.msx-main table.px-table').forEach(t => {
+      const heads = [...t.querySelectorAll('thead th')].map(h => h.textContent.trim())
+      t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || '' }))
+    })
+  })
   const go = id => { try { navigator.vibrate?.(8) } catch { /* not supported */ } setSheet(false); onChange(id); window.scrollTo?.({ top: 0 }) }
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
   const inBottom = BOTTOM.some(b => b[0] === active)

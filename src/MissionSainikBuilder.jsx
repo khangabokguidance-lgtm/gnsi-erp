@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
+import { CountPill, Pill } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
@@ -243,9 +244,9 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
           <tbody>{cfg.tests.map(t => (
             <tr key={t.no} style={t.no === testNo ? { background: PX.tint } : undefined}>
               <td><button style={{ all: 'unset', cursor: 'pointer', fontWeight: 700, color: PX.navy }} onClick={() => setTestNo(t.no)}>{tid(t.no)}</button><div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : ''}</div></td>
-              {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label} style={{ color: col(secStatus(t.no, s)), fontWeight: 700 }}>{get(t.no, s.label).length}/{s.q}</td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
+              {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label}><CountPill n={get(t.no, s.label).length} q={s.q} /></td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
               <td><b>{testCount(t.no)}/{totalQ(t.no)}</b></td>
-              <td>{testReady(t.no) ? <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: PX.ok, background: PX.okBg }}>Ready</span> : null}</td>
+              <td>{testReady(t.no) ? <Pill tone="ok">Ready</Pill> : null}</td>
             </tr>))}
           </tbody>
         </table>

@@ -18,6 +18,7 @@ import { PremiumStyles, PremiumCard, PX } from './premiumUI'
 import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
+import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -65,8 +66,8 @@ function dueForBase(task, deadline) {
 function Chip({ status, overdue, small }) {
   const st = STATUS_STYLE[overdue ? 'Overdue' : status] || STATUS_STYLE.Pending
   return (
-    <span style={{ display: 'inline-block', padding: small ? '2px 8px' : '3px 10px', borderRadius: 99, fontSize: small ? 10.5 : 11.5, fontWeight: 700, color: st.fg, background: st.bg, whiteSpace: 'nowrap' }}>
-      {overdue ? 'Overdue' : status}
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: small ? '2px 9px' : '4px 11px', borderRadius: 99, fontSize: small ? 10.5 : 11.5, fontWeight: 700, color: st.fg, background: st.bg, border: `1px solid ${st.fg}22`, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.fg }} />{overdue ? 'Overdue' : status}
     </span>
   )
 }
@@ -75,7 +76,7 @@ function Bar({ value, total, color = PX.gold }) {
   const pct = total ? Math.round((value / total) * 100) : 0
   return (
     <div style={{ height: 8, borderRadius: 4, background: PX.line, overflow: 'hidden' }} role="img" aria-label={`${pct}% done`}>
-      <div style={{ width: pct + '%', height: '100%', background: color, borderRadius: 4 }} />
+      <div style={{ width: pct + '%', height: '100%', background: color === PX.gold ? 'linear-gradient(90deg,#b8923a,#e6c35e)' : color, borderRadius: 4, transition: 'width .6s ease' }} />
     </div>
   )
 }
@@ -184,6 +185,11 @@ function MissionSainikInner({ currentUser }) {
   const [settings, setSettings] = useState({})
   const [setForm, setSetForm] = useState(null)
   const [boom, setBoom] = useState(false)
+  const [taskView, setTaskView] = useState('needs')   // needs | mine | all
+  const [statusF, setStatusF] = useState('')
+  const [subjF, setSubjF] = useState('')
+  const [taskQ, setTaskQ] = useState('')
+  const [taskLimit, setTaskLimit] = useState(30)
   const [auditRows, setAuditRows] = useState([])
   const [health, setHealth] = useState(null)
   const [bulk, setBulk] = useState({ subject: SUBJECTS[0].label, setter: '', verifier: '' })
@@ -418,7 +424,7 @@ function MissionSainikInner({ currentUser }) {
           {!auditRows.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Press Refresh to load.</div> : (
             <table className="px-table" style={{ minWidth: 560 }}>
               <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Reference</th></tr></thead>
-              <tbody>{auditRows.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td>{a.actor}</td><td><b>{a.action}</b></td><td>{a.ref || ''}</td></tr>)}</tbody>
+              <tbody>{auditRows.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td><PersonCell name={a.actor} size={28} /></td><td><Pill tone={/delete|purge|bulk/.test(a.action) ? 'bad' : /verify|approve|create/.test(a.action) ? 'ok' : /print|export/.test(a.action) ? 'gold' : 'info'}>{String(a.action).replace(/_/g, ' ')}</Pill></td><td style={{ color: PX.sub }}>{a.ref || ''}</td></tr>)}</tbody>
             </table>)}
         </PremiumCard>
       </>
@@ -510,9 +516,9 @@ function MissionSainikInner({ currentUser }) {
                 <tr key={t.no} style={dayName(t.date) === 'Sunday' ? { background: PX.tint } : undefined}>
                   <td><b>{t.id}</b>{upcoming && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: PX.gold }}>NEXT</span>}</td>
                   <td>{fmt(t.date)}</td>
-                  <td>{dayName(t.date)}{dayName(t.date) === 'Sunday' ? ' *' : ''}</td>
+                  <td><Pill tone={dayName(t.date) === 'Sunday' ? 'gold' : 'mute'} dot={false}>{dayName(t.date)}{dayName(t.date) === 'Sunday' ? ' *' : ''}</Pill></td>
                   <td>{fmtShort(t.drafts)}</td><td>{fmtShort(t.verify)}</td><td>{fmtShort(t.print)}</td>
-                  <td>{st.done}/{r.length || 6} in · {st.ok} approved</td>
+                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><MiniBar pct={(st.done / (r.length || 6)) * 100} tone={done ? 'ok' : 'gold'} width={70} /><span style={{ fontWeight: 700 }}>{st.done}/{r.length || 6}</span><span style={{ color: PX.sub, fontSize: 12 }}>{st.ok} approved</span></span></td>
                   <td>{r.length ? <Chip status={done ? 'Approved' : st.done ? 'Submitted' : 'Pending'} overdue={late && !done} small /> : <span style={{ color: PX.faint }}>—</span>}</td>
                 </tr>
               )
@@ -548,7 +554,7 @@ function MissionSainikInner({ currentUser }) {
               return (
                 <tr key={t.no} style={st === 'Today' || st === 'Next' ? { background: PX.tint } : undefined}>
                   <td><b>{t.id}</b></td><td>{fmt(t.date)}</td><td>{dayName(t.date)}</td>
-                  <td style={{ fontWeight: 700, color: st === 'Held' ? PX.sub : st === 'Today' ? PX.gold : PX.navy }}>{st}{st === 'Upcoming' || st === 'Next' ? ` · in ${dayDiff(today, t.date)}d` : ''}</td>
+                  <td><Pill tone={st === 'Held' ? 'mute' : st === 'Today' ? 'gold' : st === 'Next' ? 'info' : 'mute'} dot={st !== 'Upcoming'}>{st}{st === 'Upcoming' || st === 'Next' ? ` · in ${dayDiff(today, t.date)}d` : ''}</Pill></td>
                 </tr>)
             })}</tbody>
           </table>
@@ -614,7 +620,7 @@ function MissionSainikInner({ currentUser }) {
             <div style={{ marginTop: 12 }}>
               {setters.map(x => (
                 <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
-                  <b style={{ minWidth: 130 }}>{fullName(x.n)}</b>
+                  <PersonCell name={x.n} size={30}>{fullName(x.n)}</PersonCell>
                   <span style={{ flex: 1, fontSize: 12.5, color: x.late ? PX.bad : PX.sub }}>{x.l.length} pending{x.late ? ` · ${x.late} overdue` : ''}</span>
                   <button className="px-hbtn" onClick={() => remind(x)}>💬 Remind on WhatsApp</button>
                 </div>
@@ -685,12 +691,12 @@ function MissionSainikInner({ currentUser }) {
             <thead><tr><th>Teacher</th><th>Sections set</th><th>Submitted</th><th>Overdue</th><th>To verify</th><th>Verified</th><th>Material uploads</th><th>Last activity</th></tr></thead>
             <tbody>{stats.map(x => (
               <tr key={x.n}>
-                <td><b>{fullName(x.n)}</b></td><td>{x.set}</td>
-                <td>{x.submitted}/{x.set} <div style={{ width: 70 }}><Bar value={x.submitted} total={x.set} /></div></td>
-                <td style={{ color: x.overdue ? PX.bad : undefined, fontWeight: x.overdue ? 700 : 400 }}>{x.overdue}</td>
+                <td><PersonCell name={x.n} sub={`${x.set} sections`}>{fullName(x.n)}</PersonCell></td><td>{x.set}</td>
+                <td><span style={{ display: 'inline-flex', flexDirection: 'column', gap: 5 }}><b>{x.submitted}/{x.set}</b><MiniBar pct={x.set ? (x.submitted / x.set) * 100 : 0} tone={x.set && x.submitted === x.set ? 'ok' : 'gold'} /></span></td>
+                <td>{x.overdue ? <Pill tone="bad">{x.overdue} overdue</Pill> : <span style={{ color: PX.faint }}>—</span>}</td>
                 <td>{x.toVerify}</td><td>{x.verified}</td>
                 <td>{x.uploads}</td>
-                <td style={{ color: x.idle == null || x.idle >= 3 ? PX.bad : PX.ok, fontWeight: 600 }}>{x.idle == null ? 'No activity' : x.idle === 0 ? 'Today' : x.idle + 'd idle'}</td>
+                <td><Pill tone={x.idle == null || x.idle >= 3 ? 'bad' : x.idle === 0 ? 'ok' : 'warn'}>{x.idle == null ? 'No activity' : x.idle === 0 ? 'Today' : x.idle + 'd idle'}</Pill></td>
               </tr>))}
             </tbody>
           </table>
@@ -722,9 +728,9 @@ function MissionSainikInner({ currentUser }) {
                     const r = byCell[t.no + '|' + s.label]
                     if (!r) return <td key={s.key} style={{ color: PX.faint }}>—</td>
                     return (
-                      <td key={s.key} style={{ cursor: 'pointer' }} onClick={() => setSel(r)}>
-                        <div style={{ fontWeight: 600, color: PX.ink }}>{r.setter}</div>
-                        <Chip status={r.status} overdue={isOverdue(r, today)} small />
+                      <td key={s.key} className="msx-click" onClick={() => setSel(r)}>
+                        <PersonCell name={r.setter} size={26}>{r.setter}</PersonCell>
+                        <div style={{ marginTop: 5 }}><Chip status={r.status} overdue={isOverdue(r, today)} small /></div>
                       </td>
                     )
                   })}
@@ -759,26 +765,52 @@ function MissionSainikInner({ currentUser }) {
 
   const Mine = () => {
     const names = Array.from(new Set(rows.flatMap(r => [r.setter, r.verifier]).filter(Boolean))).sort()
-    const mine = rows
-      .filter(r => (isAdmin ? (!person || r.setter === person || r.verifier === person) : (isMe(r.setter) || isMe(r.verifier))))
+    const needsMe = r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')
+    const isMine = r => isMe(r.setter) || isMe(r.verifier)
+    const base = taskView === 'needs' ? rows.filter(needsMe) : taskView === 'mine' ? rows.filter(isMine) : rows.filter(r => !person || r.setter === person || r.verifier === person)
+    const qq = taskQ.trim().toLowerCase()
+    const matches = r => (!subjF || r.subject === subjF) && (!qq || [r.subject, r.setter, r.verifier, r.kind === 'test' ? 'pmt-' + String(r.test_no).padStart(2, '0') : 'practice'].join(' ').toLowerCase().includes(qq))
+    const scoped = base.filter(matches)
+    const list = scoped.filter(r => !statusF || (statusF === 'Overdue' ? isOverdue(r, today) : r.status === statusF))
       .sort((a, b) => dueFor(a).localeCompare(dueFor(b)) || a.test_no - b.test_no)
+    const count = st => scoped.filter(r => (st === 'Overdue' ? isOverdue(r, today) : st ? r.status === st : true)).length
+    const chip = (on, label, onClick, n) => (
+      <button key={label} className="msx-tap" onClick={onClick} aria-pressed={on} style={{ padding: '7px 12px', borderRadius: 99, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', flex: 'none', background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.ink, border: `1px solid ${on ? PX.navy : '#d9d2c2'}` }}>{label}{n != null ? <span style={{ opacity: .7, marginLeft: 6 }}>{n}</span> : null}</button>
+    )
     return (
-      <PremiumCard title={isAdmin ? 'All tasks' : 'My tasks'} subtitle={isAdmin ? 'Filter by teacher, update any task, export to CSV' : 'Sections you set or verify, earliest deadline first'}
-        right={isAdmin ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <select className="px-input" style={{ width: 170 }} value={person} onChange={e => setPerson(e.target.value)} aria-label="Filter by teacher">
-              <option value="">All teachers</option>
-              {names.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
-            </select>
-            <button className="px-btn ghost" onClick={exportCsv}>Export CSV</button>
-          </div>) : null}
-        bodyStyle={{ padding: 0 }}>
-        {mine.length === 0
-          ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>{isAdmin ? 'Nothing to show.' : `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or see the Allotment tab.`}</div>
-          : mine.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
-      </PremiumCard>
+      <>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 6 }} role="group" aria-label="Task view">
+          {chip(taskView === 'needs', 'Needs me', () => { setTaskView('needs'); setTaskLimit(30) }, rows.filter(needsMe).length)}
+          {chip(taskView === 'mine', 'All mine', () => { setTaskView('mine'); setTaskLimit(30) }, rows.filter(isMine).length)}
+          {chip(taskView === 'all', 'Everyone', () => { setTaskView('all'); setTaskLimit(30) }, rows.length)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, margin: '4px 0 10px', flexWrap: 'wrap' }}>
+          <input className="px-input" style={{ flex: '1 1 160px' }} type="search" value={taskQ} onChange={e => { setTaskQ(e.target.value); setTaskLimit(30) }} placeholder="Search…" aria-label="Search tasks" />
+          <select className="px-input" style={{ flex: '0 1 170px' }} value={subjF} onChange={e => { setSubjF(e.target.value); setTaskLimit(30) }} aria-label="Filter by subject">
+            <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
+          </select>
+          {taskView === 'all' && (
+            <select className="px-input" style={{ flex: '0 1 170px' }} value={person} onChange={e => setPerson(e.target.value)} aria-label="Filter by teacher">
+              <option value="">All teachers</option>{names.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
+            </select>)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8 }} role="group" aria-label="Status filter">
+          {['', 'Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(st => chip(statusF === st, st || 'Any status', () => { setStatusF(st); setTaskLimit(30) }, count(st)))}
+        </div>
+        <PremiumCard title={taskView === 'needs' ? 'Needs your action' : taskView === 'mine' ? 'All my tasks' : 'All tasks'} subtitle={`${list.length} shown · earliest deadline first`}
+          right={<button className="px-btn ghost" onClick={exportCsv}>Export CSV</button>} bodyStyle={{ padding: 0 }}>
+          {list.length === 0
+            ? <div style={{ padding: 24, textAlign: 'center', color: PX.sub, fontSize: 14 }}>
+              {taskView === 'needs' ? '🎉 Nothing needs you right now.' : taskView === 'mine' ? `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or open Everyone.` : 'Nothing to show.'}
+              {taskView !== 'all' && <div style={{ marginTop: 10 }}><button className="px-btn ghost" onClick={() => { setTaskView('all'); setStatusF('') }}>Show everyone's tasks</button></div>}
+            </div>
+            : list.slice(0, taskLimit).map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
+          {list.length > taskLimit && <div style={{ padding: 14, textAlign: 'center' }}><button className="px-btn ghost" onClick={() => setTaskLimit(l => l + 30)}>Show 30 more ({list.length - taskLimit} left)</button></div>}
+        </PremiumCard>
+      </>
     )
   }
+
 
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" bodyStyle={{ padding: 0 }}>
@@ -872,13 +904,13 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type and click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 900 }}>
-          <thead><tr style={{ textAlign: 'left', color: PX.sub }}><th style={{ padding: 8 }}>Test</th>{SUBJECTS.map(x => <th key={x.key} style={{ padding: 8 }}>{x.short}</th>)}</tr></thead>
+        <table className="px-table" style={{ minWidth: 900 }}>
+          <thead><tr><th>Test</th>{SUBJECTS.map(x => <th key={x.key}>{x.short}</th>)}</tr></thead>
           <tbody>{TESTS.map(t => (
-            <tr key={t.no} style={{ borderTop: `1px solid ${PX.line || '#eef1f6'}` }}>
-              <td style={{ padding: 6, fontWeight: 700, whiteSpace: 'nowrap' }}>{t.id}<div style={{ fontWeight: 400, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
+            <tr key={t.no}>
+              <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
               {SUBJECTS.map(x => (
-                <td key={x.key} style={{ padding: 4 }}>
+                <td key={x.key} style={{ padding: '8px 10px' }}>
                   <input key={t.no + x.label + (syl[t.no + '|' + x.label] ?? '')} className="px-input" defaultValue={syl[t.no + '|' + x.label] || ''} aria-label="Chapter" placeholder="Chapter"
                     onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
                 </td>
@@ -901,15 +933,15 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       </PremiumCard>
       <PremiumCard title={`Entries (${marks.length})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}>
         {!marks.length ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
-            <thead><tr style={{ textAlign: 'left', color: PX.sub }}><th style={{ padding: 8 }}>Test</th><th>Batch</th>{MARK_COLS.map(([k, l, m]) => <th key={k}>{l} /{m}</th>)}<th>Total /120</th><th /></tr></thead>
+          <table className="px-table" style={{ minWidth: 560 }}>
+            <thead><tr><th>Test</th><th>Batch</th>{MARK_COLS.map(([k, l, m]) => <th key={k}>{l} /{m}</th>)}<th>Total /120</th><th /></tr></thead>
             <tbody>{marks.map(r => {
               const tot = MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)
               return (
-                <tr key={r.id} style={{ borderTop: `1px solid ${PX.line || '#eef1f6'}` }}>
-                  <td style={{ padding: 8, fontWeight: 700 }}>T{r.test_no}</td><td>{r.batch || '—'}</td>
-                  {MARK_COLS.map(([k, , m]) => <td key={k} style={{ color: r[k] != null && r[k] / m < 0.6 ? PX.bad : undefined, fontWeight: r[k] != null && r[k] / m < 0.6 ? 700 : 400 }}>{r[k] ?? '—'}</td>)}
-                  <td style={{ fontWeight: 700, color: tot / 120 < 0.6 ? PX.bad : PX.ok }}>{tot}</td>
+                <tr key={r.id}>
+                  <td>T{r.test_no}</td><td>{r.batch ? <PersonCell name={r.batch} size={28}>{r.batch}</PersonCell> : '—'}</td>
+                  {MARK_COLS.map(([k, , m]) => <td key={k}><ScorePill v={r[k]} max={m} /></td>)}
+                  <td><ScorePill v={tot} max={120} /></td>
                   <td><button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>
                 </tr>)
             })}</tbody>
