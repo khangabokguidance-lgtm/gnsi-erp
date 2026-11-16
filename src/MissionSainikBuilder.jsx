@@ -60,7 +60,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [bin, setBin] = useState([])
   const [showBin, setShowBin] = useState(false)
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
-  const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false })   // paper versions (Set A, B, C…)
+  const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false, layout: 'book' })   // paper versions (Set A, B, C…)
   const [preview, setPreview] = useState(null)   // { html, title }
   const [picked, setPicked] = useState([])       // ids ticked for bulk actions
   const [moveTo, setMoveTo] = useState({ test: '', section: '' })
@@ -232,6 +232,46 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
 table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3px 6px;text-align:left;vertical-align:top}th{background:#eef1f6}
 .conf{margin-top:10px;font-size:10.5px;color:#a00;text-align:center}.pb{page-break-after:always}`
   // One document body for one version (Set A/B/…) — paper or answer key.
+  // "Exam book" layout (modelled on printed Sainik School papers): two columns, small-caps section boxes, bold numbers,
+  // italic (a)(b)(c)(d) options laid out 4-up / 2-up / stacked by length, running header and page badge.
+  const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${esc(cfg.name).toUpperCase()} TEST (MODEL SET)  ●●  MISSION SAINIK 2027";font:700 8.5pt 'Times New Roman',serif;color:#222;vertical-align:bottom;padding-bottom:2mm}
+@bottom-center{content:"P-" counter(page);font:800 9.5pt 'Times New Roman',serif;color:#111}}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:'Times New Roman',Times,serif;color:#111;font-size:10.4pt;line-height:1.28;margin:0}
+.banner{background:#d9dbe0;border-radius:2pt;padding:7mm 8mm;display:flex;align-items:center;gap:7mm;margin:0 0 4mm}
+.badge{width:20mm;height:20mm;border:2.2pt solid #111;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
+.badge b{font:800 24pt 'Times New Roman',serif;line-height:1}.badge i{font:700 5.5pt 'Times New Roman',serif;font-style:normal;letter-spacing:.06em;margin-top:1pt}
+.banner h1{margin:0;font:800 19pt 'Times New Roman',serif;font-variant:small-caps;letter-spacing:.02em;line-height:1.1}.banner div.s{font:600 9pt 'Times New Roman',serif;margin-top:2mm;color:#333}
+.cols{column-count:2;column-gap:9mm;column-rule:.7pt solid #333}
+.sec{break-inside:avoid;border:1pt solid #111;background:#e4e5e9;text-align:center;font-variant:small-caps;font-weight:800;font-size:10.5pt;letter-spacing:.03em;padding:2pt 4pt;margin:3mm 0 2.5mm}
+.ins{font-style:italic;font-weight:700;margin:1mm 0}.q{break-inside:avoid;margin:0 0 2.2mm;padding-left:7mm;text-indent:-7mm}
+.q>b{display:inline-block;width:7mm;text-indent:0}.q .t{display:inline}.o{display:block;margin:.6mm 0 0 0;text-indent:0;padding-left:7mm;font-style:italic}
+.o.four{display:flex;gap:3mm;flex-wrap:wrap}.o.four span{flex:1 1 auto;white-space:nowrap}.o.two{display:grid;grid-template-columns:1fr 1fr;gap:.4mm 3mm}.o span{display:block}.o.one span{display:block}
+.key{width:100%;border-collapse:collapse;font-size:9.5pt}.key td,.key th{border:.6pt solid #666;padding:1.5pt 4pt;text-align:left;vertical-align:top}.key th{background:#e4e5e9}
+.conf{margin-top:3mm;font-size:8.5pt;color:#a00;text-align:center;break-inside:avoid}.meta{font-weight:700;font-size:9.5pt;display:flex;justify-content:space-between;margin:0 0 2mm}.note{font-size:9.5pt;font-style:italic;margin-bottom:2mm}`
+  const optLayout = q => {
+    const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
+    const len = Math.max(...o.map(x => x.text.length))
+    const cls = len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
+    return `<div class="o ${cls}">${o.map(x => `<span>(${x.k}) ${esc(x.text)}</span>`).join('')}</div>`
+  }
+  const bookBody = (t, key, setIdx, first) => {
+    const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
+    const allVerified = live(t).every(x => signoff(t, x.label))
+    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
+    const date = cfg.tests.find(x => x.no === t)?.date
+    const letter = i => String.fromCharCode(65 + i)
+    const banner = `<div class="banner"><div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1><div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${secs.reduce((a, x) => a + x.items.length, 0) ? totalQ(t) : 0} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
+    const sections = secs.map((x, si) => {
+      const head = `<div class="sec">Section–${letter(si)}: ${esc(x.label)}</div>`
+      if (key) return head + `<table class="key"><tr><th style="width:9mm">Q</th><th style="width:9mm">Ans</th><th>Topic · Level</th><th>Explanation</th></tr>${x.items.map(q => `<tr><td>${q.no}</td><td><b>(${q.answer.toLowerCase()})</b></td><td>${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}</td><td>${esc(q.explanation || '')}</td></tr>`).join('')}</table>`
+      return head + x.items.map(q => `<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${optLayout(q)}</div>`).join('')
+    }).join('')
+    return `${first ? banner : ''}${key ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
+<div class="${key ? '' : 'cols'}">${sections}</div>
+${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
+<div class="conf">All questions are confidential until the test is held.</div>`
+  }
   const docBody = (t, key, setIdx) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
@@ -248,8 +288,8 @@ ${key ? '' : '<div class="note">Each question has four options. Choose the one c
 ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
-  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => docBody(t, key, i))
-  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${docCss}</style></head><body>${bodies.map((b, i) => `<div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
+  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}</style></head><body>${bodies.map((b, i) => `<div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   const printDoc = (t, key) => {
@@ -261,7 +301,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
   const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
   const exportWord = (t, key) => {
     if (!ready0(t)) return
-    const html = wordWrap(`<style>${docCss}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
+    const html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
@@ -351,6 +391,9 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Paper versions</div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginBottom: 8 }}>Print layout
+              <select className="px-input" value={ver.layout} onChange={e => setVer({ ...ver, layout: e.target.value })} style={{ marginTop: 4 }}><option value="book">Exam book style (2 columns, like printed Sainik papers)</option><option value="simple">Simple (1 column)</option></select>
+            </label>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }}>Number of sets
               <select className="px-input" value={ver.sets} onChange={e => setVer({ ...ver, sets: Number(e.target.value) })} style={{ marginTop: 4 }}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 1 ? '1 (single paper)' : `${n} sets (A${n > 1 ? '–' + SET_LETTERS[n - 1] : ''})`}</option>)}</select>
             </label>
