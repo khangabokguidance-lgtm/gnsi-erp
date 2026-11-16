@@ -11,7 +11,12 @@ function shuffle(list, rand) { const a = [...list]; for (let i = a.length - 1; i
 // items: [{question, option_a..d, answer:'A'..'D', ...}] → same items with `opts` [{k, text}] in the printed order and `answer` remapped.
 export function makeVersion(items, { seed = '', shuffleQ = false, shuffleOpts = false } = {}) {
   const rand = rng(seed)
-  const base = shuffleQ ? shuffle(items, rand) : [...items]
+  // Questions that share a reading passage stay together (in their original order) when the questions are shuffled.
+  const blocks = []; const byPassage = new Map()
+  items.forEach(q => {
+    if (q.passage) { if (!byPassage.has(q.passage)) { const b = []; byPassage.set(q.passage, b); blocks.push(b) } byPassage.get(q.passage).push(q) } else blocks.push([q])
+  })
+  const base = shuffleQ ? shuffle(blocks, rand).flat() : [...items]
   return base.map(q => {
     const opts = ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))
     const order = shuffleOpts ? shuffle(opts, rand) : opts

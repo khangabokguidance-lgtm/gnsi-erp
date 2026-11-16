@@ -107,6 +107,7 @@ export default {
     'Seeing "No tasks matched your name" → your login name does not match the panel name. Ask an admin to link it or change the setter name on the task.',
   ],
   faq: [
+    { q: 'How do I add a reading passage or a figure?', a: 'Passage: type “Passage: your text” on a line before its questions and “End passage” after them (the questions are printed under one “Read the following passage…” heading). Figure: press ✎ on a question, choose “Attach a figure” (an image, shrunk automatically) — it prints under the question. Needs migration 20261211.' },
     { q: 'What are the Paper tools in the builders?', a: 'Under each test: a paper health check (counts, 40/40/20 mix, answer balance, repeats, missing explanations); several shuffled sets (A–D) whose answer keys match each set; Preview, Word export and an OMR sheet; bulk move, copy or delete of ticked questions; and CSV import (use the CSV template).' },
     { q: 'How do I add, edit or delete things?', a: 'Tasks: “＋ Add task” (Tasks tab) or “＋ Add practice set”; open a task to edit or delete it. Marks: ✎ edits a row, 🗑 deletes it. Study material: ✎ and 🗑 on each item. Builders: ✎ edits a question, 🗑 moves it to the recycle bin. Panel: ＋ Add member, ✎, 🗑. Syllabus: type, or clear a cell to remove the chapter.' },
     { q: 'Why can I not edit the Schedule or Mock series dates?', a: 'They are fixed by the Principal\'s office order. Any change needs prior written approval, so they are changed only in the portal code after that approval.' },

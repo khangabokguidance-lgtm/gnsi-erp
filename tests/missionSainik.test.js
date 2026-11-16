@@ -130,3 +130,38 @@ test('omr sheet has one row per question with four bubbles', () => {
   const html = omrHtml({ title: 'PMT-01', total: 150, autoPrint: false })
   assert.equal((html.match(/class="r"/g) || []).length, 150); assert.equal((html.match(/class="b"/g) || []).length, 600)
 })
+
+test('parser: Passage blocks attach to the questions that follow until End passage', () => {
+  const { questions, errors } = parseQuestions(`Passage: The ancient Greeks made a list of wonders.
+It was called the Seven Wonders.
+Q1. What was the list called?
+A) Wonders
+B) Seven Wonders
+C) Greek list
+D) Nothing
+Ans: B
+Q2. Who made the list?
+A) Greeks
+B) Romans
+C) Persians
+D) Indians
+Ans: A
+End passage
+Q3. Plain question?
+A) a
+B) b
+C) c
+D) d
+Ans: C`)
+  assert.equal(errors.length, 0); assert.equal(questions.length, 3)
+  assert.equal(questions[0].passage, 'The ancient Greeks made a list of wonders. It was called the Seven Wonders.')
+  assert.equal(questions[1].passage, questions[0].passage); assert.equal(questions[2].passage, undefined)
+})
+test('versions: questions sharing a passage stay together and in order when shuffled', () => {
+  const items = [1, 2, 3, 4, 5, 6].map(n => ({ ...mk(n), passage: n <= 3 ? 'P1' : n === 4 ? '' : 'P2' }))
+  for (const seed of ['a', 'b', 'c', 'd', 'e']) {
+    const ids = makeVersion(items, { seed, shuffleQ: true }).map(q => q.id)
+    const i1 = ids.indexOf(1); assert.deepEqual(ids.slice(i1, i1 + 3), [1, 2, 3])
+    const i5 = ids.indexOf(5); assert.deepEqual(ids.slice(i5, i5 + 2), [5, 6])
+  }
+})

@@ -9,7 +9,7 @@
 //   Level: Easy | Medium | Hard      (optional)
 export function parseQuestions(text) {
   const out = [], errors = []
-  let cur = null, field = null
+  let cur = null, field = null, passage = ''
   const push = () => {
     if (!cur) return
     const miss = []
@@ -24,10 +24,12 @@ export function parseQuestions(text) {
     const ln = raw.trim()
     if (!ln) continue
     let m
+    if ((m = ln.match(/^passage\s*[:-]\s*(.*)$/i))) { push(); passage = /^(none|-)$/i.test(m[1].trim()) ? '' : m[1].trim(); field = 'passage'; continue }
+    if (/^end\s*passage/i.test(ln)) { push(); passage = ''; field = null; continue }
     if ((m = ln.match(/^(?:Q(?:uestion)?\s*\d*|\d+)\s*[.):-]\s*(.*)$/i)) && !/^(ans|exp|topic|level|difficulty)/i.test(ln)) {
-      push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null }; field = 'question'; continue
+      push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null, ...(passage ? { passage } : {}) }; field = 'question'; continue
     }
-    if (!cur) continue
+    if (!cur) { if (field === 'passage' && !/^end\s*passage/i.test(ln)) passage = (passage + ' ' + ln).trim(); continue }
     if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) { field = 'option_' + m[1].toLowerCase(); cur[field] = m[2].trim(); continue }
     if ((m = ln.match(/^(?:ans(?:wer)?|correct(?: answer)?)\s*[:-]\s*\(?([A-D])\b/i))) { cur.answer = m[1].toUpperCase(); field = null; continue }
     if ((m = ln.match(/^(?:exp(?:lanation)?)\s*[:-]\s*(.*)$/i))) { cur.explanation = m[1].trim(); field = 'explanation'; continue }

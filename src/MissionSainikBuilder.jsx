@@ -45,6 +45,28 @@ const CFG = {
   },
 }
 
+// Resize a picked image to at most 640px wide and return a compact data: URL (figures are stored with the question).
+function figFromFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type)) return reject(new Error('Choose an image file.'))
+    const fr = new FileReader()
+    fr.onerror = () => reject(new Error('Could not read the image.'))
+    fr.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Could not open the image.'))
+      img.onload = () => {
+        const k = Math.min(1, 640 / img.width), c = document.createElement('canvas')
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height)
+        const out = c.toDataURL('image/jpeg', 0.8)
+        out.length > 350000 ? reject(new Error('Figure is too large — use a smaller or simpler image.')) : resolve(out)
+      }
+      img.src = fr.result
+    }
+    fr.readAsDataURL(file)
+  })
+}
+
 export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null }) {
   const cfg = CFG[series]
   const isAdmin = isAdminRole(currentUser?.role)
@@ -137,7 +159,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     const rows = parsed.questions.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
-    if (error) return setMsg('❌ ' + error.message)
+    if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : ''))
     setText(''); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
     audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
     await clearSignoff(testNo, section)
@@ -179,6 +201,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     if (get(d.test_no, d.section).some(q => q.id !== d.id && norm(q.question) === norm(d.question))) return setMsg('❌ Another question in this section has the same text.')
     const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: d.topic?.trim() || null, difficulty: d.difficulty || null }
+    if ('passage' in d) patch.passage = d.passage?.trim() || null
+    if ('image_data' in d) patch.image_data = d.image_data || null
     const { error } = await supabase.from(TABLE).update(patch).eq('id', d.id)
     if (error) return setMsg('❌ ' + error.message)
     audit('edit_question', `${series}:${d.test_no}:${d.section}`, { id: d.id })
@@ -242,11 +266,13 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
 .badge b{font:800 24pt 'Times New Roman',serif;line-height:1}.badge i{font:700 5.5pt 'Times New Roman',serif;font-style:normal;letter-spacing:.06em;margin-top:1pt}
 .banner h1{margin:0;font:800 19pt 'Times New Roman',serif;font-variant:small-caps;letter-spacing:.02em;line-height:1.1}.banner div.s{font:600 9pt 'Times New Roman',serif;margin-top:2mm;color:#333}
 .cols{column-count:2;column-gap:9mm;column-rule:.7pt solid #333}
-.sec{break-inside:avoid;border:1pt solid #111;background:#e4e5e9;text-align:center;font-variant:small-caps;font-weight:800;font-size:10.5pt;letter-spacing:.03em;padding:2pt 4pt;margin:3mm 0 2.5mm}
+.sec{break-inside:avoid;break-after:avoid;border:1pt solid #111;background:#e4e5e9;text-align:center;font-variant:small-caps;font-weight:800;font-size:10.5pt;letter-spacing:.03em;padding:2pt 4pt;margin:3mm 0 2.5mm}
 .ins{font-style:italic;font-weight:700;margin:1mm 0}.q{break-inside:avoid;margin:0 0 2.2mm;padding-left:7mm;text-indent:-7mm}
 .q>b{display:inline-block;width:7mm;text-indent:0}.q .t{display:inline}.o{display:block;margin:.6mm 0 0 0;text-indent:0;padding-left:7mm;font-style:italic}
 .o.four{display:flex;gap:3mm;flex-wrap:wrap}.o.four span{flex:1 1 auto;white-space:nowrap}.o.two{display:grid;grid-template-columns:1fr 1fr;gap:.4mm 3mm}.o span{display:block}.o.one span{display:block}
 .key{width:100%;border-collapse:collapse;font-size:9.5pt}.key td,.key th{border:.6pt solid #666;padding:1.5pt 4pt;text-align:left;vertical-align:top}.key th{background:#e4e5e9}
+.pass{text-align:justify;margin:0 0 2mm;text-indent:4mm}.fig{text-align:center;margin:1.5mm 0 1mm;text-indent:0;padding-left:0}.fig img{max-width:100%;max-height:48mm}
+.sol{padding-left:7mm;text-indent:-7mm;margin:0 0 1.6mm;break-inside:avoid}.sol>b:first-child{display:inline-block;width:7mm;text-indent:0}.sol .m{font-size:8.5pt;color:#555;font-style:italic}
 .conf{margin-top:3mm;font-size:8.5pt;color:#a00;text-align:center;break-inside:avoid}.meta{font-weight:700;font-size:9.5pt;display:flex;justify-content:space-between;margin:0 0 2mm}.note{font-size:9.5pt;font-style:italic;margin-bottom:2mm}`
   const optLayout = q => {
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
@@ -254,6 +280,13 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const cls = len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
     return `<div class="o ${cls}">${o.map(x => `<span>(${x.k}) ${esc(x.text)}</span>`).join('')}</div>`
   }
+  // Passage header for the first question of a run that shares a passage, plus the figure under a stem.
+  const passageHtml = (items, i) => {
+    const q = items[i]; if (!q.passage || (i > 0 && items[i - 1].passage === q.passage)) return ''
+    let j = i; while (j + 1 < items.length && items[j + 1].passage === q.passage) j++
+    return `<div class="ins">Read the following passage and answer the questions (Q. ${q.no}${j > i ? '–' + items[j].no : ''}):</div><div class="pass">${esc(q.passage)}</div>`
+  }
+  const figHtml = q => (q.image_data && /^data:image\//.test(q.image_data) ? `<div class="fig"><img src="${q.image_data}" alt="Figure"></div>` : '')
   const bookBody = (t, key, setIdx, first) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
@@ -264,11 +297,11 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const banner = `<div class="banner"><div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1><div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${secs.reduce((a, x) => a + x.items.length, 0) ? totalQ(t) : 0} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
     const sections = secs.map((x, si) => {
       const head = `<div class="sec">Section–${letter(si)}: ${esc(x.label)}</div>`
-      if (key) return head + `<table class="key"><tr><th style="width:9mm">Q</th><th style="width:9mm">Ans</th><th>Topic · Level</th><th>Explanation</th></tr>${x.items.map(q => `<tr><td>${q.no}</td><td><b>(${q.answer.toLowerCase()})</b></td><td>${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}</td><td>${esc(q.explanation || '')}</td></tr>`).join('')}</table>`
-      return head + x.items.map(q => `<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${optLayout(q)}</div>`).join('')
+      if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${esc(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
+      return head + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
     }).join('')
     return `${first ? banner : ''}${key ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
-<div class="${key ? '' : 'cols'}">${sections}</div>
+<div class="cols">${sections}</div>
 ${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
@@ -281,7 +314,7 @@ ${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} ques
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${esc(o.text)}</span>`).join('')
     const body = key
       ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${esc(q.explanation || '')}</td></tr>`)]).join('')}</table>`
-      : secs.map(x => `<div class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map(q => `<div class="q"><b>${q.no}.</b> ${esc(q.question)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
+      : secs.map(x => `<div class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${esc(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
     return `<div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 <div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
@@ -417,7 +450,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
           <>
             {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
             <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
-              Paste your questions in this format (or load a .txt file):
+              Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
               <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
             </div>
             <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
@@ -453,7 +486,7 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
           <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
-              <button style={{ all: 'unset', cursor: 'pointer', flex: 1, fontSize: 13.5 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.question}</button>
+              <button style={{ all: 'unset', cursor: 'pointer', flex: 1, fontSize: 13.5 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}{q.question}</button>
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {mayEdit && <button className="px-hbtn" onClick={() => { setEditQ({ ...q }); setOpen('') }} aria-label="Edit question">✎</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
@@ -474,6 +507,17 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
                         <label style={lab}>Topic<input className="px-input" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
                       </div>
                       <label style={lab}>Explanation<input className="px-input" value={editQ.explanation || ''} onChange={e => set({ explanation: e.target.value })} /></label>
+                      {('passage' in editQ || 'image_data' in editQ) ? (
+                        <>
+                          <label style={lab}>Reading passage (printed once above a run of questions that share it)<textarea className="px-input" rows={3} value={editQ.passage || ''} onChange={e => set({ passage: e.target.value })} /></label>
+                          <div style={{ ...lab, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span>Figure</span>
+                            {editQ.image_data && <img src={editQ.image_data} alt="Figure" style={{ maxHeight: 70, borderRadius: 8, border: `1px solid ${line}` }} />}
+                            <input type="file" accept="image/*" aria-label="Attach a figure" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { set({ image_data: await figFromFile(f) }) } catch (er) { setMsg('❌ ' + er.message) } e.target.value = '' }} />
+                            {editQ.image_data && <button className="px-btn ghost" type="button" onClick={() => set({ image_data: '' })}>Remove figure</button>}
+                          </div>
+                        </>
+                      ) : <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Run migration 20261211 to add passages and figures.</div>}
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}><button className="px-btn ghost" onClick={() => setEditQ(null)}>Cancel</button><button className="px-btn gold" onClick={saveEdit}>Save question</button></div>
                     </>
                   )
