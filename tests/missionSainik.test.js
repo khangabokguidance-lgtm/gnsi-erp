@@ -97,3 +97,36 @@ test('game: xp, level, streak and badges are computed from my own work only', ()
   const none = computeGame({ rows: [], mats: [], userName: '', isMe: () => false, today: '2026-11-16' })
   assert.equal(none.xp, 0); assert.equal(none.streak, 0); assert.equal(none.levelTitle, 'Recruit')
 })
+
+import { makeVersion, paperHealth, csvToQuestionText, parseCsv, omrHtml } from '../src/lib/missionSainikPaper.js'
+const mk = (n, ans = 'B') => ({ id: n, test_no: 1, question: 'Question number ' + n, option_a: 'a' + n, option_b: 'b' + n, option_c: 'c' + n, option_d: 'd' + n, answer: ans, difficulty: ['Easy', 'Medium', 'Hard'][n % 3], topic: 't', explanation: 'e' })
+test('versions: same seed gives the same paper, different seed differs, and the answer follows its option', () => {
+  const items = Array.from({ length: 12 }, (_, i) => mk(i + 1, ['A', 'B', 'C', 'D'][i % 4]))
+  const a1 = makeVersion(items, { seed: 'x|A', shuffleQ: true, shuffleOpts: true }), a2 = makeVersion(items, { seed: 'x|A', shuffleQ: true, shuffleOpts: true }), b = makeVersion(items, { seed: 'x|B', shuffleQ: true, shuffleOpts: true })
+  assert.deepEqual(a1.map(q => q.id), a2.map(q => q.id))
+  assert.notDeepEqual(a1.map(q => q.id), b.map(q => q.id))
+  for (const q of b) { assert.equal(q.opts.find(o => o.k === q.answer).orig, q.origAnswer); assert.deepEqual(q.opts.map(o => o.k), ['A', 'B', 'C', 'D']) }
+  const plain = makeVersion(items, {}); assert.deepEqual(plain.map(q => q.id), items.map(q => q.id)); assert.equal(plain[0].answer, items[0].answer)
+})
+test('health: flags answer bias, repeats inside a test and reuse across tests', () => {
+  const items = Array.from({ length: 25 }, (_, i) => mk(i + 1, 'B'))
+  const repeat = { ...mk(99), question: 'Question number 1' }
+  const h = paperHealth([{ label: 'Maths', q: 26, items: [...items, repeat] }], [{ test_no: 2, question: 'Question number 5' }], 1)
+  const byId = Object.fromEntries(h.checks.map(c => [c.id, c.ok]))
+  assert.equal(byId.bias, false); assert.equal(byId.dup, false); assert.equal(byId.across, false); assert.equal(byId.count, true)
+  assert.ok(h.score < 100)
+  const clean = paperHealth([{ label: 'M', q: 4, items: [mk(1, 'A'), mk(2, 'B'), mk(3, 'C'), mk(4, 'D')] }], [], 1)
+  assert.equal(clean.checks.find(c => c.id === 'dup').ok, true)
+})
+test('csv: quoted commas and a header row convert to the builder text format and parse back', async () => {
+  const csv = 'Question,A,B,C,D,Answer,Explanation,Topic,Level\n"Which is bigger, 3 or 5?",3,5,"1,000",0,b,"Five is bigger",Numbers,easy\n'
+  assert.equal(parseCsv(csv).length, 2)
+  const text = csvToQuestionText(csv)
+  assert.match(text, /Q1\. Which is bigger, 3 or 5\?/); assert.match(text, /C\) 1,000/); assert.match(text, /Ans: B/)
+  const { parseQuestions } = await import('../src/lib/missionSainikQuestions.js')
+  const r = parseQuestions(text); assert.equal(r.errors.length, 0); assert.equal(r.questions[0].answer, 'B'); assert.equal(r.questions[0].difficulty, 'Easy')
+})
+test('omr sheet has one row per question with four bubbles', () => {
+  const html = omrHtml({ title: 'PMT-01', total: 150, autoPrint: false })
+  assert.equal((html.match(/class="r"/g) || []).length, 150); assert.equal((html.match(/class="b"/g) || []).length, 600)
+})

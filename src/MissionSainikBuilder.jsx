@@ -6,8 +6,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
-import { CountPill, Pill } from './MissionSainikUI'
+import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
+import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap } from './lib/missionSainikPaper'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -59,6 +60,10 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [bin, setBin] = useState([])
   const [showBin, setShowBin] = useState(false)
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
+  const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false })   // paper versions (Set A, B, C…)
+  const [preview, setPreview] = useState(null)   // { html, title }
+  const [picked, setPicked] = useState([])       // ids ticked for bulk actions
+  const [moveTo, setMoveTo] = useState({ test: '', section: '' })
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
@@ -203,7 +208,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   }
   const loadFile = e => {
     const f = e.target.files?.[0]; if (!f) return
-    const r = new FileReader(); r.onload = () => setText(String(r.result || '')); r.readAsText(f); e.target.value = ''
+    const isCsv = /\.csv$/i.test(f.name)
+    const r = new FileReader(); r.onload = () => setText(isCsv ? csvToQuestionText(String(r.result || '')) : String(r.result || '')); r.readAsText(f); e.target.value = ''
   }
 
   // ── automatic assembly → printable paper / key ─────────────────────────
@@ -211,41 +217,89 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   // Vocabulary Q126–150), so a partly uploaded section never shifts the numbers of the sections after it.
   const startOf = label => cfg.restart ? 1 : cfg.sections.slice(0, cfg.sections.findIndex(s => s.label === label)).reduce((a, s) => a + s.q, 0) + 1
   const range = s => `Q${startOf(s.label)}–Q${startOf(s.label) + s.q - 1}`
-  const assemble = t => live(t).map(s => ({ ...s, from: startOf(s.label), items: get(t, s.label).slice(0, s.q).map((q, i) => ({ ...q, no: startOf(s.label) + i })) }))
-  const printDoc = (t, key) => {
-    if (embargo && !isAdmin && dateOf(t) && today < dateOf(t)) return setMsg(`🔒 Printing is locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`)
-    const secs = assemble(t); const count = secs.reduce((a, s) => a + s.items.length, 0)
-    if (!count) return setMsg('❌ No questions uploaded for this test yet.')
-    const allVerified = live(t).every(x => signoff(t, x.label))
-    audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: allVerified })
-    const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
-    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
-    const date = cfg.tests.find(x => x.no === t)?.date
-    const body = key
-      ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(s => [`<tr><td colspan="5" class="sec">${esc(s.label)} · Q${s.from}–Q${s.from + s.q - 1}</td></tr>`, ...s.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${esc(q.explanation || '')}</td></tr>`)]).join('')}</table>`
-      : secs.map(s => `<div class="sec">${esc(s.label)} · Q${s.from}–Q${s.from + s.q - 1} — ${s.q} question(s)${cfg.noMarks ? '' : ' × ' + s.marks + ' mark(s)'}</div>${s.items.map(q => `<div class="q"><b>${q.no}.</b> ${esc(q.question)}<div class="o"><span>(A) ${esc(q.option_a)}</span><span>(B) ${esc(q.option_b)}</span><span>(C) ${esc(q.option_c)}</span><span>(D) ${esc(q.option_d)}</span></div></div>`).join('')}`).join('')
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${id} ${key ? 'Answer Key' : 'Question Paper'}</title><style>
-@page{size:A4;margin:14mm}body{font-family:Georgia,'Times New Roman',serif;color:#111827;font-size:12.5px;line-height:1.45}
+  const SET_LETTERS = ['A', 'B', 'C', 'D']
+  const assemble = (t, setIdx = 0) => live(t).map(sc => {
+    let items = get(t, sc.label).slice(0, sc.q)
+    if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
+    return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
+  })
+  const blocked = t => embargo && !isAdmin && dateOf(t) && today < dateOf(t)
+  const docCss = `@page{size:A4;margin:14mm}body{font-family:Georgia,'Times New Roman',serif;color:#111827;font-size:12.5px;line-height:1.45}
 .lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:6px;margin-bottom:8px}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
 .meta{display:flex;justify-content:space-between;font-weight:700;margin:6px 0 8px}.note{font-size:11.5px;color:#444;margin-bottom:6px}
 .sec{background:#eef1f6;border:1px solid #c9d1de;padding:4px 8px;font-weight:700;margin:10px 0 6px}
 .q{margin:0 0 7px;page-break-inside:avoid}.o{display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;margin-left:18px}
 table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3px 6px;text-align:left;vertical-align:top}th{background:#eef1f6}
-.conf{margin-top:10px;font-size:10.5px;color:#a00;text-align:center}</style></head><body>
-<div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
-<div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, s) => a + s.q * s.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
+.conf{margin-top:10px;font-size:10.5px;color:#a00;text-align:center}.pb{page-break-after:always}`
+  // One document body for one version (Set A/B/…) — paper or answer key.
+  const docBody = (t, key, setIdx) => {
+    const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
+    const allVerified = live(t).every(x => signoff(t, x.label))
+    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const date = cfg.tests.find(x => x.no === t)?.date
+    const setTag = ver.sets > 1 ? ` · SET ${SET_LETTERS[setIdx]}` : ''
+    const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${esc(o.text)}</span>`).join('')
+    const body = key
+      ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${esc(q.explanation || '')}</td></tr>`)]).join('')}</table>`
+      : secs.map(x => `<div class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map(q => `<div class="q"><b>${q.no}.</b> ${esc(q.question)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
+    return `<div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
+<div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
 ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
-<div class="conf">All questions are confidential until the test is held.</div><script>window.onload=()=>window.print()</script></body></html>`)
-    w.document.close()
+<div class="conf">All questions are confidential until the test is held.</div>`
   }
-
+  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => docBody(t, key, i))
+  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${docCss}</style></head><body>${bodies.map((b, i) => `<div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+  const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
+  const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
+  const printDoc = (t, key) => {
+    if (!ready0(t)) return
+    audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: live(t).every(x => signoff(t, x.label)), sets: ver.sets, shuffled: ver.shuffleQ || ver.shuffleOpts })
+    const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
+    w.document.write(shell(allBodies(t, key), docTitle(t, key), true)); w.document.close()
+  }
+  const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
+  const exportWord = (t, key) => {
+    if (!ready0(t)) return
+    const html = wordWrap(`<style>${docCss}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
+    const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
+    const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
+    audit('export_word', `${series}:${t}`, { key })
+  }
+  const printOmr = t => {
+    if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
+    const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
+    w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: totalQ(t), setLabel: ver.sets > 1 ? '____' : '' })); w.document.close()
+    audit('print_omr', `${series}:${t}`, null)
+  }
+  const downloadTemplate = () => { const url = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'Mission_Sainik_questions_template.csv'; a.click(); URL.revokeObjectURL(url) }
+  // Bulk actions on the ticked questions of the current section
+  const toggle = id => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]))
+  const moveSelected = async copy => {
+    const rowsSel = secList.filter(q => picked.includes(q.id)); if (!rowsSel.length) return
+    const tt = Number(moveTo.test || testNo), ss = moveTo.section || section
+    if (!canEdit(tt, ss)) return setMsg('❌ Only the target section’s setter or an admin can add questions there.')
+    if (tt === testNo && ss === section) return setMsg('❌ Choose a different test or section.')
+    if (!window.confirm(`${copy ? 'Copy' : 'Move'} ${rowsSel.length} question(s) to ${tid(tt)} · ${ss}?`)) return
+    let error
+    if (copy) ({ error } = await supabase.from(TABLE).insert(rowsSel.map(({ id, created_at, deleted_at, deleted_by, ...r }) => ({ ...r, test_no: tt, section: ss, uploaded_by: currentUser?.name || '' }))))  // eslint-disable-line no-unused-vars
+    else ({ error } = await supabase.from(TABLE).update({ test_no: tt, section: ss }).in('id', rowsSel.map(q => q.id)))
+    if (error) return setMsg('❌ ' + error.message)
+    audit(copy ? 'copy_questions' : 'move_questions', `${series}:${testNo}:${section}`, { to: `${tt}:${ss}`, count: rowsSel.length })
+    await clearSignoff(tt, ss); await clearSignoff(testNo, section); setPicked([]); setMsg(`✅ ${copy ? 'Copied' : 'Moved'} ${rowsSel.length} question(s)`); load()
+  }
+  const deletePicked = async () => {
+    const ids = picked.filter(id => secList.some(q => q.id === id)); if (!ids.length || !canEdit(testNo, section)) return
+    if (!window.confirm(`Delete ${ids.length} selected question(s)?${soft ? ' They go to the recycle bin.' : ''}`)) return
+    await removeRows(x => x.in('id', ids), `${series}:${testNo}:${section}`, ids.length); setPicked([])
+  }
   const secStatus = (t, s) => { const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
   const ready = testReady(testNo)
+  const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
 
   return (
@@ -284,6 +338,36 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
         </div>
       </PremiumCard>
 
+      <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
+        right={<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span>}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}><MiniBar pct={health.score} tone={health.score >= 85 ? 'ok' : health.score >= 55 ? 'gold' : 'bad'} width={140} /><b style={{ fontSize: 13 }}>Paper health</b></div>
+            {health.checks.map(c => (
+              <div key={c.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '4px 0', color: c.ok ? PX.ink : PX.warn }}>
+                <span style={{ width: 18 }}>{c.ok ? '✅' : '⚠️'}</span><span>{c.text}</span>
+              </div>))}
+            {health.dupAcross.length > 0 && <div style={{ fontSize: 12, color: PX.sub, marginTop: 4 }}>Reused: {health.dupAcross.slice(0, 3).map(d => `“${d.question.slice(0, 30)}…” (test ${d.test})`).join(', ')}</div>}
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Paper versions</div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }}>Number of sets
+              <select className="px-input" value={ver.sets} onChange={e => setVer({ ...ver, sets: Number(e.target.value) })} style={{ marginTop: 4 }}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 1 ? '1 (single paper)' : `${n} sets (A${n > 1 ? '–' + SET_LETTERS[n - 1] : ''})`}</option>)}</select>
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 8 }}><input type="checkbox" checked={ver.shuffleQ} onChange={e => setVer({ ...ver, shuffleQ: e.target.checked })} />Shuffle question order inside each section</label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 6 }}><input type="checkbox" checked={ver.shuffleOpts} onChange={e => setVer({ ...ver, shuffleOpts: e.target.checked })} />Shuffle the options A–D</label>
+            <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 6 }}>{ver.sets > 1 && !ver.shuffleQ && !ver.shuffleOpts ? '⚠ Several sets without shuffling will be identical. ' : ''}The same shuffle is reproduced every time you print, and each answer key matches its set.</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          <button className="px-hbtn" onClick={() => previewDoc(testNo, false)}>👁 Preview paper</button>
+          <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>
+          <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
+          <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
+          <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
+        </div>
+      </PremiumCard>
+
       <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${secList.length}/${sec.q} questions · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
         right={<span style={{ display: 'flex', gap: 8 }}>{secList.length >= sec.q && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
@@ -295,7 +379,8 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
             </div>
             <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <input type="file" aria-label="Load questions from a .txt file" accept=".txt,text/plain" onChange={loadFile} style={{ fontSize: 12 }} />
+              <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
+              <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
               <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
                 {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`) : ''}
               </span>
@@ -309,11 +394,22 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
         )}
       </PremiumCard>
 
-      <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see options, answer and explanation' : ''}>
+      <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see options, answer and explanation' : ''}
+        right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
+        {mayEdit && picked.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '8px 10px', margin: '0 0 8px', borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0' }}>
+            <b style={{ fontSize: 13 }}>{picked.length} selected</b>
+            <select className="px-input" style={{ width: 'auto' }} aria-label="Target test" value={moveTo.test || testNo} onChange={e => setMoveTo({ ...moveTo, test: e.target.value })}>{cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}</option>)}</select>
+            <select className="px-input" style={{ width: 'auto' }} aria-label="Target section" value={moveTo.section || section} onChange={e => setMoveTo({ ...moveTo, section: e.target.value })}>{cfg.sections.map(x => <option key={x.label} value={x.label}>{x.short}</option>)}</select>
+            <button className="px-btn gold" onClick={() => moveSelected(false)}>Move</button>
+            <button className="px-btn ghost" onClick={() => moveSelected(true)}>Copy</button>
+            <button className="px-btn ghost" style={{ color: PX.bad }} onClick={deletePicked}>🗑 Delete</button>
+          </div>)}
         {embargoed(testNo, section) ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>🔒 {secList.length} question(s) uploaded. The questions stay hidden from other staff until {fmtShort(dateOf(testNo))} (embargo).</div>
           : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : secList.map((q, i) => (
           <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: 1, fontSize: 13.5 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.question}</button>
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {mayEdit && <button className="px-hbtn" onClick={() => { setEditQ({ ...q }); setOpen('') }} aria-label="Edit question">✎</button>}
@@ -359,6 +455,18 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
             {isAdmin && <button className="px-hbtn" onClick={() => purge(q)} aria-label="Delete forever">✖</button>}
           </div>)))}
       </PremiumCard>
+      {preview && (
+        <div className="msx-overlay" onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Paper preview" onClick={e => e.stopPropagation()} style={{ width: 'min(900px,100%)', height: '88vh', background: '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${line}` }}>
+              <b style={{ flex: 1, fontSize: 14 }}>{preview.title}</b>
+              <button className="px-btn gold" onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(preview.html.replace('</body>', '<script>window.onload=()=>window.print()</script></body>')); w.document.close() } }}>🖨 Print</button>
+              <button className="px-btn ghost" onClick={() => setPreview(null)}>Close</button>
+            </div>
+            <iframe title="Paper preview" srcDoc={preview.html} style={{ flex: 1, border: 0, width: '100%', background: '#eef1f6' }} sandbox="" />
+          </div>
+        </div>
+      )}
     </>
   )
 }
