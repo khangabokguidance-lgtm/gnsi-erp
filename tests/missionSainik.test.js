@@ -182,9 +182,9 @@ import { toCsv, buildIcs, parseSyllabusText, parseMarksText } from '../src/lib/m
 test('csv export neutralises formulas and quotes; ics has all-day events with the next day as the end', () => {
   const csv = toCsv([['a', '=SUM(1)'], ['x,y', 'say "hi"']])
   assert.ok(csv.includes("\"'=SUM(1)\"")); assert.ok(csv.includes('"x,y"')); assert.ok(csv.includes('"say ""hi"""'))
-  const text = buildIcs([{ uid: 'pmt-1', date: '2026-12-31', title: 'PMT-01, test', description: 'line1\nline2' }], 'Cal', new Date('2026-11-16T00:00:00Z'))
+  const text = buildIcs([{ uid: 'pmt-1', date: '2026-12-31', title: 'PMT-01, test; part', description: 'line1\nline2' }], 'Cal', new Date('2026-11-16T00:00:00Z'))
   assert.match(text, /BEGIN:VCALENDAR/); assert.match(text, /DTSTART;VALUE=DATE:20261231/); assert.match(text, /DTEND;VALUE=DATE:20270101/)
-  assert.match(text, /SUMMARY:PMT-01\\, test/); assert.match(text, /DESCRIPTION:line1\\nline2/); assert.ok(text.endsWith('END:VCALENDAR\r\n'))
+  assert.match(text, /SUMMARY:PMT-01\\, test\\; part/); assert.match(text, /DESCRIPTION:line1\\nline2/); assert.ok(text.endsWith('END:VCALENDAR\r\n'))
 })
 test('syllabus and marks imports validate lines', () => {
   const subjects = [{ key: 'maths', label: 'Mathematics', short: 'Maths' }, { key: 'gk', label: 'General Knowledge', short: 'GK' }]

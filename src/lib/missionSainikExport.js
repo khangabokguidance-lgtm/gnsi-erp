@@ -8,7 +8,7 @@ export function downloadFile(name, content, type = 'text/csv;charset=utf-8') {
 export const downloadCsv = (name, matrix) => downloadFile(name, toCsv(matrix))
 
 // All-day events → iCalendar text. events: [{uid, date:'YYYY-MM-DD', title, description}]
-const ics = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+const ics = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
 const ymd = iso => iso.replace(/-/g, '')
 const nextDay = iso => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10) }
 export function buildIcs(events, name = 'Mission Sainik 2027', stamp = new Date()) {
