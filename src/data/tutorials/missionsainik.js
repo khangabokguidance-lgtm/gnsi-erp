@@ -22,6 +22,9 @@ export default {
     { name: 'Teacher activity', what: 'Per teacher: sections set and submitted, overdue, to verify, uploads and days idle, plus a recent-activity feed.' },
     { name: 'Insights', what: 'Delivery forecast, WhatsApp reminders, difficulty-mix check, score trend, weak chapters and leaderboard.' },
     { name: 'Pre Mock Analyzer / Mega Mock Analyzer', what: 'The same analyzer as Exams: upload result sheets (Excel), then student, subject and batch analysis and A4 printouts. Data is shared with the Exams module.' },
+    { name: 'Pre Mock Builder / Mega Mock Builder', what: 'Setters paste or upload their questions (Q, options A–D, Ans, Exp, Topic, Level). The paper and answer key assemble automatically with fixed serials (Pre Mock: Maths Q1–25, Reasoning Q26–50, Science Q51–75, GK Q76–100, Grammar Q101–125, Vocabulary Q126–150). Only the section setter or an admin can upload; others view and print.' },
+    { name: 'Daily Test Builder', what: 'Daily Class Test T1–T20: Maths 20 Q, Reasoning 10, Grammar 10, GK 10 (120 marks). Panel members upload; everyone can print.' },
+    { name: 'Practice Bank Builder', what: 'Practice sets of 25 questions per subject (Maths and Grammar 3 sets, others 2), uploaded by the practice panel and verifiers.' },
     { name: 'Panel', what: 'The Question Setting Panel and who verifies whom.' },
   ],
   steps: [

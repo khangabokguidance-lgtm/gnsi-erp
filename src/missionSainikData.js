@@ -117,3 +117,15 @@ export const MOCK_SECTIONS = [
   { label: 'Mathematics', q: 50, marks: 150 }, { label: 'Intelligence', q: 25, marks: 50 },
   { label: 'Grammar + Vocabulary', q: 25, marks: 50 }, { label: 'Science + GK', q: 25, marks: 50 },
 ]
+
+// Practice Question Setting Panel (Annexure-II, second table): verifier + assistants per subject, and the number of
+// practice sets (25 questions each) per chapter — Maths 25+25+25, Reasoning/Science/GK/Vocabulary 25+25, Grammar 25+25+25.
+// Daily Class Test (Annexure-V): Maths 20 Q × 3 marks, Reasoning / Grammar / GK 10 Q × 2 marks each = 120 marks.
+export const PRACTICE_PANEL = {
+  maths:     { verifier: 'Sumanta',   assistants: ['Sunder', 'Kabiraj', 'Bronson'], sets: 3 },
+  reasoning: { verifier: 'Johny',     assistants: ['Umesh'], sets: 2 },
+  science:   { verifier: 'Arunkumar', assistants: ['Basanta'], sets: 2 },
+  gk:        { verifier: 'Deepak',    assistants: ['Chetan'], sets: 2 },
+  grammar:   { verifier: 'Manglemba', assistants: ['Bidyachandra', 'Adision'], sets: 3 },
+  vocab:     { verifier: 'Pawan',     assistants: ['Fedrava'], sets: 2 },
+}
