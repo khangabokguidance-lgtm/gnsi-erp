@@ -9,6 +9,7 @@ import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import MissionSainikBuilder from './MissionSainikBuilder'
 import MissionSainikBoundary from './MissionSainikBoundary'
+import MissionSainikGuide from './MissionSainikGuide'
 import { isAdminRole } from './roles'
 import { fetchAll } from './lib/missionSainikQuestions'
 import { buildNoticeHtml } from './lib/missionSainikNotice'
@@ -419,6 +420,7 @@ function MissionSainikInner({ currentUser }) {
   // ── shared bits ────────────────────────────────────────────────────────
   const sectionStats = r => ({ done: r.filter(x => x.status !== 'Pending').length, ok: r.filter(x => x.status === 'Approved').length, n: r.length })
   const tabs = [
+    { id: 'guide',      label: 'How to use',  icon: PIcon.list },
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
     { id: 'prebuilder',  label: 'Pre Mock Builder',  icon: PIcon.pen },
@@ -1004,6 +1006,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
         {msg && <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: msg.startsWith('❌') ? PX.badBg : PX.okBg, color: msg.startsWith('❌') ? PX.bad : PX.ok, fontSize: 13, fontWeight: 600 }}>{msg}</div>}
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
+            {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
             {tab === 'overview' && Overview()}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
