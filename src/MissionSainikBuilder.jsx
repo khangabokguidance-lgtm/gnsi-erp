@@ -8,7 +8,7 @@ import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
-import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap } from './lib/missionSainikPaper'
+import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -84,6 +84,20 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
   const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false, layout: 'book' })   // paper versions (Set A, B, C…)
   const [preview, setPreview] = useState(null)   // { html, title }
+  const LS_PC = 'ms_paper_cfg_' + series
+  const [pc, setPc] = useState(() => { try { return mergePaperConfig(cfg.sections, JSON.parse(localStorage.getItem(LS_PC) || 'null')) } catch { return mergePaperConfig(cfg.sections, null) } })
+  const [showSettings, setShowSettings] = useState(false)
+  useEffect(() => {
+    supabase.from('mission_sainik_paper_cfg').select('config').eq('series', series).maybeSingle?.().then?.(({ data }) => { if (data?.config) setPc(mergePaperConfig(cfg.sections, data.config)) }, () => {})
+  }, [series]) // eslint-disable-line react-hooks/exhaustive-deps
+  const savePc = async () => {
+    try { localStorage.setItem(LS_PC, JSON.stringify(pc)) } catch { /* storage blocked */ }
+    const { error } = await supabase.from('mission_sainik_paper_cfg').upsert({ series, config: pc, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'series' })
+    audit('paper_settings', series, { columns: pc.columns, font: pc.font })
+    setMsg(error ? '✅ Saved on this device. Run migration 20261212 to share these settings with everyone.' : '✅ Paper settings saved for everyone')
+  }
+  const patchSection = (label, patch) => setPc({ ...pc, sections: pc.sections.map(x => (x.label === label ? { ...x, ...patch } : x)) })
+  const moveSection = (label, d) => { const a = [...pc.sections], i = a.findIndex(x => x.label === label), j = i + d; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; setPc({ ...pc, sections: a }) }
   const [picked, setPicked] = useState([])       // ids ticked for bulk actions
   const [moveTo, setMoveTo] = useState({ test: '', section: '' })
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
@@ -100,7 +114,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
     setBin(b.error ? [] : b.data || [])
   }, [series])
-  useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [load])
 
   const bySec = useMemo(() => {
     const m = {}; qs.forEach(q => { (m[q.test_no + '|' + q.section] = m[q.test_no + '|' + q.section] || []).push(q) }); return m
@@ -239,16 +253,23 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   // ── automatic assembly → printable paper / key ─────────────────────────
   // Serial numbers are fixed by section (Annexure-II: Maths Q1–25, Reasoning Q26–50, Science Q51–75, GK Q76–100, Grammar Q101–125,
   // Vocabulary Q126–150), so a partly uploaded section never shifts the numbers of the sections after it.
-  const startOf = label => cfg.restart ? 1 : cfg.sections.slice(0, cfg.sections.findIndex(s => s.label === label)).reduce((a, s) => a + s.q, 0) + 1
+  const ordSecs = orderedSections(cfg.sections, pc)                       // printed order, hidden sections removed
+  const printLive = t => ordSecs.filter(sc => avail(t, sc))
+  const printTotal = t => printLive(t).reduce((a, sc) => a + sc.q, 0)
+  const startOf = label => {
+    if (cfg.restart) return 1
+    const i = ordSecs.findIndex(s => s.label === label)
+    return i < 0 ? cfg.sections.slice(0, cfg.sections.findIndex(s => s.label === label)).reduce((a, s) => a + s.q, 0) + 1 : ordSecs.slice(0, i).reduce((a, s) => a + s.q, 0) + 1
+  }
   const range = s => `Q${startOf(s.label)}–Q${startOf(s.label) + s.q - 1}`
   const SET_LETTERS = ['A', 'B', 'C', 'D']
-  const assemble = (t, setIdx = 0) => live(t).map(sc => {
+  const assemble = (t, setIdx = 0) => printLive(t).map(sc => {
     let items = get(t, sc.label).slice(0, sc.q)
     if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
   const blocked = t => embargo && !isAdmin && dateOf(t) && today < dateOf(t)
-  const docCss = `@page{size:A4;margin:14mm}body{font-family:Georgia,'Times New Roman',serif;color:#111827;font-size:12.5px;line-height:1.45}
+  const docCss = `@page{size:A4;margin:14mm}body{font-family:${F};color:#111827;font-size:${(pc.size * 1.2).toFixed(1)}px;line-height:${pc.line + 0.15}}
 .lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:6px;margin-bottom:8px}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
 .meta{display:flex;justify-content:space-between;font-weight:700;margin:6px 0 8px}.note{font-size:11.5px;color:#444;margin-bottom:6px}
 .sec{background:#eef1f6;border:1px solid #c9d1de;padding:4px 8px;font-weight:700;margin:10px 0 6px}
@@ -258,14 +279,15 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   // One document body for one version (Set A/B/…) — paper or answer key.
   // "Exam book" layout (modelled on printed Sainik School papers): two columns, small-caps section boxes, bold numbers,
   // italic (a)(b)(c)(d) options laid out 4-up / 2-up / stacked by length, running header and page badge.
-  const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${esc(cfg.name).toUpperCase()} TEST (MODEL SET)  ●●  MISSION SAINIK 2027";font:700 8.5pt 'Times New Roman',serif;color:#222;vertical-align:bottom;padding-bottom:2mm}
-@bottom-center{content:"P-" counter(page);font:800 9.5pt 'Times New Roman',serif;color:#111}}
-*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:'Times New Roman',Times,serif;color:#111;font-size:10.4pt;line-height:1.28;margin:0}
+  const F = FONT_STACKS[pc.font][1]
+  const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${esc(cfg.name).toUpperCase()} TEST (MODEL SET)  ●●  MISSION SAINIK 2027";font:700 8.5pt ${F};color:#222;vertical-align:bottom;padding-bottom:2mm}
+@bottom-center{content:"P-" counter(page);font:800 9.5pt ${F};color:#111}}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:${F};color:#111;font-size:${pc.size}pt;line-height:${pc.line};margin:0}
 .banner{background:#d9dbe0;border-radius:2pt;padding:7mm 8mm;display:flex;align-items:center;gap:7mm;margin:0 0 4mm}
 .badge{width:20mm;height:20mm;border:2.2pt solid #111;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
-.badge b{font:800 24pt 'Times New Roman',serif;line-height:1}.badge i{font:700 5.5pt 'Times New Roman',serif;font-style:normal;letter-spacing:.06em;margin-top:1pt}
-.banner h1{margin:0;font:800 19pt 'Times New Roman',serif;font-variant:small-caps;letter-spacing:.02em;line-height:1.1}.banner div.s{font:600 9pt 'Times New Roman',serif;margin-top:2mm;color:#333}
-.cols{column-count:2;column-gap:9mm;column-rule:.7pt solid #333}
+.badge b{font:800 24pt ${F};line-height:1}.badge i{font:700 5.5pt ${F};font-style:normal;letter-spacing:.06em;margin-top:1pt}
+.banner h1{margin:0;font:800 19pt ${F};font-variant:small-caps;letter-spacing:.02em;line-height:1.1}.banner div.s{font:600 9pt ${F};margin-top:2mm;color:#333}
+.cols{column-count:${pc.columns};column-gap:9mm;column-rule:${pc.rule && pc.columns > 1 ? '.7pt solid #333' : 'none'}}
 .sec{break-inside:avoid;break-after:avoid;border:1pt solid #111;background:#e4e5e9;text-align:center;font-variant:small-caps;font-weight:800;font-size:10.5pt;letter-spacing:.03em;padding:2pt 4pt;margin:3mm 0 2.5mm}
 .ins{font-style:italic;font-weight:700;margin:1mm 0}.q{break-inside:avoid;margin:0 0 2.2mm;padding-left:7mm;text-indent:-7mm}
 .q>b{display:inline-block;width:7mm;text-indent:0}.q .t{display:inline}.o{display:block;margin:.6mm 0 0 0;text-indent:0;padding-left:7mm;font-style:italic}
@@ -277,7 +299,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   const optLayout = q => {
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
     const len = Math.max(...o.map(x => x.text.length))
-    const cls = len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
+    const cls = pc.optStyle === 'two' ? 'two' : pc.optStyle === 'one' ? 'one' : len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
     return `<div class="o ${cls}">${o.map(x => `<span>(${x.k}) ${esc(x.text)}</span>`).join('')}</div>`
   }
   // Passage header for the first question of a run that shares a passage, plus the figure under a stem.
@@ -294,15 +316,15 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
-    const banner = `<div class="banner"><div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1><div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${secs.reduce((a, x) => a + x.items.length, 0) ? totalQ(t) : 0} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
+    const banner = `<div class="banner"><div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1><div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
     const sections = secs.map((x, si) => {
-      const head = `<div class="sec">Section–${letter(si)}: ${esc(x.label)}</div>`
+      const head = `<div class="sec">Section–${letter(si)}: ${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
       if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${esc(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
       return head + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
     }).join('')
-    return `${first ? banner : ''}${key ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
+    return `${first && pc.banner ? banner : ''}${key || !pc.note ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
 <div class="cols">${sections}</div>
-${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
+${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
   const docBody = (t, key, setIdx) => {
@@ -314,11 +336,11 @@ ${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} ques
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${esc(o.text)}</span>`).join('')
     const body = key
       ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${esc(q.explanation || '')}</td></tr>`)]).join('')}</table>`
-      : secs.map(x => `<div class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${esc(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
+      : secs.map(x => `<div class="sec">${esc(x.title)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${esc(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
     return `<div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 <div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
-${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
+${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
   const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
@@ -435,6 +457,49 @@ ${body}${count < totalQ(t) ? `<div class="conf">DRAFT — ${count} of ${totalQ(t
             <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 6 }}>{ver.sets > 1 && !ver.shuffleQ && !ver.shuffleOpts ? '⚠ Several sets without shuffling will be identical. ' : ''}The same shuffle is reproduced every time you print, and each answer key matches its set.</div>
           </div>
         </div>
+        <div style={{ marginTop: 14 }}>
+          <button className="px-hbtn" aria-expanded={showSettings} onClick={() => setShowSettings(v => !v)}>{showSettings ? '▾' : '▸'} Layout, fonts &amp; section builder</button>
+        </div>
+        {showSettings && (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: PX.tint, border: `1px solid ${line}` }}>
+            {(() => {
+              const lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }
+              const chk = (k, text) => <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={pc[k]} onChange={e => setPc({ ...pc, [k]: e.target.checked })} />{text}</label>
+              return (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Layout &amp; fonts</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10 }}>
+                    <label style={lab}>Columns<select className="px-input" value={pc.columns} onChange={e => setPc({ ...pc, columns: Number(e.target.value) })}><option value={2}>2 columns</option><option value={1}>1 column</option></select></label>
+                    <label style={lab}>Font<select className="px-input" value={pc.font} onChange={e => setPc({ ...pc, font: e.target.value })}>{Object.entries(FONT_STACKS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}</select></label>
+                    <label style={lab}>Size ({pc.size} pt)<input type="range" min="8" max="14" step="0.2" value={pc.size} onChange={e => setPc({ ...pc, size: Number(e.target.value) })} style={{ width: '100%' }} /></label>
+                    <label style={lab}>Line spacing<select className="px-input" value={pc.line} onChange={e => setPc({ ...pc, line: Number(e.target.value) })}>{[1.1, 1.2, 1.28, 1.4, 1.6, 1.8].map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+                    <label style={lab}>Options<select className="px-input" value={pc.optStyle} onChange={e => setPc({ ...pc, optStyle: e.target.value })}><option value="auto">Automatic (4-up / 2-up / stacked)</option><option value="two">Always 2 × 2</option><option value="one">Always stacked</option></select></label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>{chk('rule', 'Line between columns')}{chk('banner', 'Title banner')}{chk('note', 'Instruction note')}</div>
+                  </div>
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fff', border: `1px solid ${line}`, fontFamily: FONT_STACKS[pc.font][1], fontSize: `${pc.size}pt`, lineHeight: pc.line }}>
+                    <b>1.</b> Sample question — what is the value of 3/4 + 1/4?&nbsp;&nbsp;<i>(a) 1/2&nbsp;&nbsp;(b) 1&nbsp;&nbsp;(c) 3/4&nbsp;&nbsp;(d) 2</i>
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Section builder</div>
+                  <div style={{ fontSize: 12, color: PX.sub, marginBottom: 6 }}>Rename, reorder or hide sections and add an instruction line under each heading. Question serials (Q1, Q2…) follow this order.</div>
+                  {pc.sections.map((x, i) => (
+                    <div key={x.label} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'auto auto 1.2fr 1.6fr', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: i ? `1px solid ${line}` : 'none', opacity: x.include ? 1 : 0.55 }}>
+                      <span style={{ display: 'inline-flex', gap: 4 }}>
+                        <button className="px-hbtn" aria-label={`Move ${x.label} up`} disabled={i === 0} onClick={() => moveSection(x.label, -1)}>↑</button>
+                        <button className="px-hbtn" aria-label={`Move ${x.label} down`} disabled={i === pc.sections.length - 1} onClick={() => moveSection(x.label, 1)}>↓</button>
+                      </span>
+                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, fontWeight: 700 }}><input type="checkbox" checked={x.include} onChange={e => patchSection(x.label, { include: e.target.checked })} />Print</label>
+                      <input className="px-input" aria-label={`Title for ${x.label}`} value={x.title} onChange={e => patchSection(x.label, { title: e.target.value })} placeholder={x.label} />
+                      <input className="px-input" aria-label={`Instruction for ${x.label}`} value={x.instruction} onChange={e => patchSection(x.label, { instruction: e.target.value })} placeholder="Instruction line (optional), e.g. Read the passage and answer Q.1–5" />
+                    </div>))}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button className="px-btn gold" onClick={savePc}>Save for everyone</button>
+                    <button className="px-btn ghost" onClick={() => setPc(mergePaperConfig(cfg.sections, null))}>Reset to default</button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, false)}>👁 Preview paper</button>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>

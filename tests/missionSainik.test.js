@@ -165,3 +165,15 @@ test('versions: questions sharing a passage stay together and in order when shuf
     const i5 = ids.indexOf(5); assert.deepEqual(ids.slice(i5, i5 + 2), [5, 6])
   }
 })
+
+import { mergePaperConfig, orderedSections, defaultPaperConfig } from '../src/lib/missionSainikPaper.js'
+test('paper settings: defaults, saved order, hidden sections, bad values clamped', () => {
+  const secs = [{ label: 'Maths', q: 25 }, { label: 'Reasoning', q: 25 }, { label: 'GK', q: 25 }]
+  assert.equal(defaultPaperConfig(secs).columns, 2)
+  const pc = mergePaperConfig(secs, { columns: 3, size: 99, font: 'nope', sections: [{ label: 'GK', title: 'General Knowledge', include: true }, { label: 'Maths', include: false }, { label: 'Gone' }] })
+  assert.equal(pc.columns, 2); assert.equal(pc.size, 14); assert.equal(pc.font, 'times')
+  assert.deepEqual(pc.sections.map(s => s.label), ['GK', 'Maths', 'Reasoning'])           // saved order, unknown dropped, new appended
+  assert.deepEqual(orderedSections(secs, pc).map(s => s.title), ['General Knowledge', 'Reasoning'])   // Maths hidden
+  assert.equal(orderedSections(secs, pc, { onlyIncluded: false }).length, 3)
+  assert.equal(mergePaperConfig(secs, null).sections.length, 3)
+})

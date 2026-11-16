@@ -109,3 +109,35 @@ ${autoPrint ? '<script>window.onload=()=>window.print()</script>' : ''}</body></
 export function wordWrap(innerHtml, title = 'Paper') {
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title></head><body>${innerHtml}</body></html>`
 }
+
+// ── Paper settings: columns, fonts and the section builder ───────────────────────────────────────────
+export const FONT_STACKS = {
+  times: ["Times New Roman", "'Times New Roman',Times,serif"], georgia: ['Georgia', "Georgia,'Times New Roman',serif"],
+  garamond: ['Garamond', "Garamond,'EB Garamond','Times New Roman',serif"], cambria: ['Cambria', "Cambria,Georgia,serif"],
+  arial: ['Arial', 'Arial,Helvetica,sans-serif'], verdana: ['Verdana', 'Verdana,Geneva,sans-serif'], mono: ['Courier New', "'Courier New',monospace"],
+}
+export const defaultPaperConfig = sections => ({
+  columns: 2, rule: true, font: 'times', size: 10.4, line: 1.28, optStyle: 'auto', banner: true, note: true,
+  sections: sections.map(s => ({ label: s.label, title: s.label, instruction: '', include: true })),
+})
+// Merge a saved config over the defaults; keeps the saved order, appends sections that are new, drops ones that no longer exist.
+export function mergePaperConfig(sections, saved) {
+  const base = defaultPaperConfig(sections)
+  if (!saved || typeof saved !== 'object') return base
+  const out = { ...base, ...Object.fromEntries(Object.entries(saved).filter(([k]) => k !== 'sections' && k in base)) }
+  out.columns = out.columns === 1 ? 1 : 2
+  out.size = Math.min(14, Math.max(8, Number(out.size) || base.size)); out.line = Math.min(2, Math.max(1, Number(out.line) || base.line))
+  if (!FONT_STACKS[out.font]) out.font = 'times'
+  const known = new Map(base.sections.map(s => [s.label, s])), seen = new Set(), list = []
+  for (const s of Array.isArray(saved.sections) ? saved.sections : []) {
+    if (known.has(s.label) && !seen.has(s.label)) { seen.add(s.label); list.push({ ...known.get(s.label), title: String(s.title || s.label), instruction: String(s.instruction || ''), include: s.include !== false }) }
+  }
+  base.sections.forEach(s => { if (!seen.has(s.label)) list.push(s) })
+  out.sections = list
+  return out
+}
+// The sections that print, in the configured order, with their display title and instruction.
+export function orderedSections(sections, pc, { onlyIncluded = true } = {}) {
+  const by = new Map(sections.map(s => [s.label, s]))
+  return pc.sections.filter(c => by.has(c.label) && (!onlyIncluded || c.include)).map(c => ({ ...by.get(c.label), title: c.title || c.label, instruction: c.instruction || '', include: c.include }))
+}
