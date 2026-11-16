@@ -23,13 +23,26 @@ const CSS = `
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
 .msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease both}
+.msx-main .px-card{border-radius:22px;border:1px solid #ece6d6;box-shadow:0 4px 22px rgba(19,42,79,.07);overflow:hidden}
+/* Premium data tables */
+.msx-main .px-table{border-collapse:separate;border-spacing:0}
+.msx-main .px-table th{background:linear-gradient(180deg,#fbf7ea,#f3ebd5);color:#6b5a2a;border-bottom:2px solid #e0b95a;padding:14px 16px;font-size:10.5px;letter-spacing:.12em}
+.msx-main .px-table td{padding:14px 16px;border-bottom:1px solid #f1ece0;font-variant-numeric:tabular-nums;transition:background .15s;white-space:nowrap}
+.msx-main .px-table tbody tr:nth-child(even) td{background:#fdfbf6}
+.msx-main .px-table tbody tr:hover td{background:#f9f1da}
+.msx-main .px-table tbody tr:last-child td{border-bottom:0}
+.msx-main .px-table td:first-child{font-weight:800;color:var(--navy)}
+.msx-main .px-table td.msx-click{cursor:pointer}
+.msx-main .px-table td.msx-click:hover{background:#f5e9c4!important;box-shadow:inset 0 0 0 2px #e0b95a;border-radius:6px}
+.msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:11px;font-size:12.5px;background:#fff;border:1px solid #e6dfcc;transition:border-color .15s,box-shadow .15s}
+.msx-main .px-table input.px-input:focus{outline:0;border-color:#b8923a;box-shadow:0 0 0 3px rgba(184,146,58,.22)}
+.msx-main .px-table input.px-input::placeholder{color:#b3ab98}
 /* The module's inner screens were designed for a dark hero; on light cards their .px-hbtn buttons need a light skin. */
 .msx-main .px-hbtn{background:#fff;color:var(--navy);border:1px solid #d9d2c2;height:38px;box-shadow:0 1px 2px rgba(19,42,79,.08)}
 .msx-main .px-hbtn:hover{background:#f6efdc;transform:none}
 .msx-main select,.msx-main input[type=file]{background:#fff;color:var(--ink)}
 .msx-main input[type=file]{padding:8px!important}
-.msx-main .px-table td:first-child,.msx-main .px-table th:first-child{position:sticky;left:0;background:#fff;z-index:1;white-space:nowrap}
-.msx-main .px-table th:first-child{background:#faf8f3}
+.msx-main .px-table td:first-child,.msx-main .px-table th:first-child{white-space:nowrap}
 .msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:1px solid #e3e7ef;padding:8px 6px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(14,32,63,.10)}
 .msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--sub);padding:2px 0}
 .msx-pill{position:relative;width:62px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:background .2s,transform .2s}
