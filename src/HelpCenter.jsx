@@ -38,7 +38,7 @@ const PATHS = [
   { id: 'new', title: 'Everyone — start here', who: 'Any new staff member', minutes: 20, modules: ['dashboard', 'students', 'leave', 'notice', 'faceattendance'] },
   { id: 'accounts', title: 'Fees & Accounts', who: 'Accountant / fee counter', minutes: 60, modules: ['fees', 'studentfeeledger', 'feesetup', 'accounts', 'students', 'reports'] },
   { id: 'reception', title: 'Reception & Admissions', who: 'Reception / admission desk', minutes: 50, modules: ['reception', 'admissions', 'bulkadmission', 'students', 'fees', 'notice', 'invitation'] },
-  { id: 'teacher', title: 'Teaching staff', who: 'Teachers', minutes: 55, modules: ['attendance', 'timetable', 'teaching', 'exams', 'learninghub', 'courses', 'leave'] },
+  { id: 'teacher', title: 'Teaching staff', who: 'Teachers', minutes: 55, modules: ['attendance', 'timetable', 'teaching', 'exams', 'learninghub', 'courses', 'missionsainik', 'leave'] },
   { id: 'hostel', title: 'Housemaster / Warden', who: 'Hostel staff', minutes: 50, modules: ['hostel', 'attendance', 'kitchen', 'leave', 'notice'] },
   { id: 'admin', title: 'Administrator', who: 'Admins and managers', minutes: 90, modules: ['dashboard', 'fees', 'feesetup', 'students', 'admin', 'system', 'adminlink', 'student360', 'reports', 'checklist', 'hr', 'staff'] },
 ]

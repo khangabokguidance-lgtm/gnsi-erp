@@ -7,10 +7,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
+import MissionSainikBuilder from './MissionSainikBuilder'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
-  buildSeedRows, fullName, STATUS_FLOW, EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
+  buildSeedRows, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
 } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
@@ -184,7 +185,7 @@ export default function MissionSainik({ currentUser, perms }) {
   }, [])
 
   const me = (currentUser?.name || '').toLowerCase()
-  const isMe = name => !!name && me.includes(String(name).toLowerCase())
+  const isMe = name => nameMatches(currentUser?.name, name)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -296,7 +297,7 @@ export default function MissionSainik({ currentUser, perms }) {
     const lines = [head.join(',')].concat(rows.map(r => [
       r.kind, r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice', r.subject, fullName(r.setter), r.verifier ? fullName(r.verifier) : '',
       r.question_count ?? '', dueFor(r), r.status, r.submitted_on || '', r.verified_on || '', r.approved_on || '', r.remarks || '',
-    ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')))
+    ].map(v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }).join(',')))
     const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
     a.href = url; a.download = 'Mission_Sainik_2027_tasks.csv'; a.click()
@@ -334,6 +335,10 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const tabs = [
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
+    { id: 'prebuilder',  label: 'Pre Mock Builder',  icon: PIcon.pen },
+    { id: 'dailybuilder', label: 'Daily Test Builder', icon: PIcon.pen },
+    { id: 'practicebuilder', label: 'Practice Bank Builder', icon: PIcon.pen },
+    { id: 'megabuilder', label: 'Mega Mock Builder', icon: PIcon.pen },
     { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
     { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
     { id: 'activity',   label: 'Teacher activity', icon: PIcon.users },
@@ -580,7 +585,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
 
   // ── Teacher activity: tasks + study-material uploads per teacher ──────
   const Activity = () => {
-    const has = (who, name) => !!who && String(who).toLowerCase().includes(String(name).toLowerCase())
+    const has = nameMatches
     const daysAgo = iso => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null)
     const stats = ALL_PEOPLE.map(n => {
       const mine = rows.filter(r => r.setter === n)
@@ -739,6 +744,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const saveMaterial = async () => {
     const d = matDraft
     if (!d.title.trim()) return setMsg('❌ Give the material a title.')
+    if (d.link_url.trim() && !safeUrl(d.link_url)) return setMsg('❌ The link must start with http:// or https://')
     if (!d.file && !d.link_url.trim() && !d.body.trim()) return setMsg('❌ Type the material, choose a file or paste a link.')
     if (d.file && d.file.size > 50 * 1024 * 1024) return setMsg('❌ File is over 50 MB.')
     setBusy(true)
@@ -754,7 +760,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
       }
       const { error } = await supabase.from(MAT_TABLE).insert({
         title: d.title.trim(), subject: d.subject || null, test_no: Number(d.test_no) || 0,
-        link_url: d.link_url.trim() || null, body: d.body.trim() || null, file_path, file_name, note: d.note.trim() || null, uploaded_by: currentUser?.name || '',
+        link_url: safeUrl(d.link_url) || null, body: d.body.trim() || null, file_path, file_name, note: d.note.trim() || null, uploaded_by: currentUser?.name || '',
       })
       if (error) throw error
       setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
@@ -774,7 +780,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   }
   const openMaterial = async m => {
     if (m.body && !m.link_url && !m.file_path) return setViewMat(m)
-    if (m.link_url) return window.open(m.link_url, '_blank', 'noopener')
+    if (m.link_url) { const u = safeUrl(m.link_url); return u ? window.open(u, '_blank', 'noopener') : setMsg('❌ Unsafe link blocked.') }
     const { data, error } = await supabase.storage.from(MAT_BUCKET).createSignedUrl(m.file_path, 3600)
     if (error) return setMsg('❌ ' + error.message)
     window.open(data.signedUrl, '_blank', 'noopener')
@@ -913,6 +919,8 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} />}
             {tab === 'activity' && <Activity />}
             {tab === 'insights' && <Insights />}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}

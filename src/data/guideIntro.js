@@ -10,7 +10,7 @@ export const CHAPTER_ORDER = [
   ['ACADEMIC', ['attendance', 'exams', 'timetable', 'teaching', 'courses', 'learninghub', 'studylockers']],
   ['PEOPLE', ['kitchen', 'staff', 'hr', 'leave', 'hostel', 'awards', 'faceattendance']],
   ['OPERATIONS', ['reception', 'notice', 'social', 'connect', 'website', 'store']],
-  ['MANAGEMENT', ['reports', 'checklist', 'invitation', 'certificate', 'admin', 'student360', 'system', 'adminlink']],
+  ['MANAGEMENT', ['reports', 'checklist', 'missionsainik', 'invitation', 'certificate', 'admin', 'student360', 'system', 'adminlink']],
   ['HELP', ['help']],
 ]
 export const GROUP_TITLES = {
