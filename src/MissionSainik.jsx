@@ -336,6 +336,7 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
     { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
     { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
+    { id: 'activity',   label: 'Teacher activity', icon: PIcon.users },
     { id: 'insights',   label: 'Insights',    icon: PIcon.chart },
     { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
@@ -572,6 +573,54 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
               <b style={{ width: 28 }}>{i + 1}</b><span style={{ flex: 1 }}>{r.n}</span><span style={{ color: PX.sub }}>{r.tests} test(s)</span><b>{r.avg.toFixed(1)}</b>
             </div>
           ))}
+        </PremiumCard>
+      </>
+    )
+  }
+
+  // ── Teacher activity: tasks + study-material uploads per teacher ──────
+  const Activity = () => {
+    const has = (who, name) => !!who && String(who).toLowerCase().includes(String(name).toLowerCase())
+    const daysAgo = iso => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null)
+    const stats = ALL_PEOPLE.map(n => {
+      const mine = rows.filter(r => r.setter === n)
+      const ver = rows.filter(r => r.verifier === n)
+      const ups = mats.filter(m => has(m.uploaded_by, n))
+      const touches = [...rows.filter(r => has(r.updated_by, n)).map(r => r.updated_at), ...ups.map(m => m.created_at)].filter(Boolean).sort()
+      const last = touches[touches.length - 1] || null
+      return {
+        n, set: mine.length, submitted: mine.filter(r => r.status !== 'Pending').length, overdue: mine.filter(r => isOverdue(r, today)).length,
+        toVerify: ver.filter(r => r.status === 'Submitted').length, verified: ver.filter(r => r.status === 'Verified' || r.status === 'Approved').length,
+        uploads: ups.length, last, idle: daysAgo(last),
+      }
+    }).sort((a, b) => (b.overdue - a.overdue) || ((b.idle ?? 999) - (a.idle ?? 999)))
+    const feed = [
+      ...rows.filter(r => r.updated_by && r.updated_at).map(r => ({ at: r.updated_at, who: r.updated_by, text: `${r.status === 'Pending' ? 'updated' : r.status.toLowerCase()} ${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} · ${r.subject} (${fullName(r.setter)})`, icon: '✔' })),
+      ...mats.map(m => ({ at: m.created_at, who: m.uploaded_by, text: `uploaded study material “${m.title}”${m.subject ? ' · ' + m.subject : ''}`, icon: m.body && !m.file_path ? '📝' : '📎' })),
+    ].filter(x => x.who).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 40)
+    return (
+      <>
+        <PremiumCard title="Teacher activity" subtitle="Task progress and study-material uploads per teacher. “Idle” = days since their last update or upload." bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+          <table className="px-table" style={{ minWidth: 720 }}>
+            <thead><tr><th>Teacher</th><th>Sections set</th><th>Submitted</th><th>Overdue</th><th>To verify</th><th>Verified</th><th>Material uploads</th><th>Last activity</th></tr></thead>
+            <tbody>{stats.map(x => (
+              <tr key={x.n}>
+                <td><b>{fullName(x.n)}</b></td><td>{x.set}</td>
+                <td>{x.submitted}/{x.set} <div style={{ width: 70 }}><Bar value={x.submitted} total={x.set} /></div></td>
+                <td style={{ color: x.overdue ? PX.bad : undefined, fontWeight: x.overdue ? 700 : 400 }}>{x.overdue}</td>
+                <td>{x.toVerify}</td><td>{x.verified}</td>
+                <td>{x.uploads}</td>
+                <td style={{ color: x.idle == null || x.idle >= 3 ? PX.bad : PX.ok, fontWeight: 600 }}>{x.idle == null ? 'No activity' : x.idle === 0 ? 'Today' : x.idle + 'd idle'}</td>
+              </tr>))}
+            </tbody>
+          </table>
+        </PremiumCard>
+        <PremiumCard title="Recent activity" subtitle="Latest 40 task updates and uploads">
+          {!feed.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing yet.</div> : feed.map((f, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: i ? `1px solid ${PX.line || '#eef1f6'}` : 'none', fontSize: 13 }}>
+              <span>{f.icon}</span><span style={{ flex: 1 }}><b>{f.who}</b> {f.text}</span>
+              <span style={{ color: PX.sub, fontSize: 12, whiteSpace: 'nowrap' }}>{fmtShort(String(f.at).slice(0, 10))}</span>
+            </div>))}
         </PremiumCard>
       </>
     )
@@ -864,6 +913,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <>
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
+            {tab === 'activity' && <Activity />}
             {tab === 'insights' && <Insights />}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
             {tab === 'mock' && <MockSeries />}
