@@ -6,6 +6,7 @@
 // Progress is stored in the `mission_sainik_tasks` table (migration 20261201_mission_sainik_tasks.sql).
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
+import MissionSainikAnalyzer from './MissionSainikAnalyzer'
 import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
 import {
   ORDER_NO, ORDER_DATE, SUBMISSION_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
@@ -175,6 +176,8 @@ export default function MissionSainik({ currentUser, perms }) {
   const [marks, setMarks] = useState([])
   const [markDraft, setMarkDraft] = useState({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' })
   const [marksSetup, setMarksSetup] = useState(false)
+  const [results, setResults] = useState([])
+  const [resSetup, setResSetup] = useState(false)
 
   const me = (currentUser?.name || '').toLowerCase()
   const isMe = name => !!name && me.includes(String(name).toLowerCase())
@@ -204,6 +207,11 @@ export default function MissionSainik({ currentUser, perms }) {
     setMarks(b.data || [])
   }, [])
   useEffect(() => { loadExtra() }, [loadExtra])
+  const loadResults = useCallback(async () => {
+    const { data, error } = await supabase.from('mission_sainik_results').select('*').order('test_no')
+    if (error) { setResSetup(true); setResults([]) } else { setResSetup(false); setResults(data || []) }
+  }, [])
+  useEffect(() => { loadResults() }, [loadResults])
   const saveChapter = async (test_no, subject, chapter) => {
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
@@ -327,6 +335,8 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
   const tabs = [
     { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
     { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
+    { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
+    { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
     { id: 'insights',   label: 'Insights',    icon: PIcon.chart },
     { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
     { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
@@ -843,6 +853,8 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
             {tab === 'overview' && <Overview />}
             {tab === 'schedule' && <Schedule />}
             {tab === 'insights' && <Insights />}
+            {(tab === 'premock' || tab === 'megamock') && <MissionSainikAnalyzer key={tab} series={tab === 'premock' ? 'pre' : 'mega'} results={results} reload={loadResults}
+              setupNeeded={resSetup} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} />}
             {tab === 'mock' && <MockSeries />}
             {tab === 'allotment' && <Allotment />}
             {tab === 'mine' && <Mine />}
