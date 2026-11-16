@@ -1,0 +1,113 @@
+export default {
+  id: 'missionsainik',
+  title: 'Mission Sainik 2027',
+  group: 'MANAGEMENT',
+  roles: ['Admin', 'Teacher', 'Any staff'],
+  summary: 'One place to run Mission Sainik 2027 – Search for Extra Ordinary: who sets which questions for the 20 Pre Mock Tests, deadlines, verification, study material, marks, analysis and the Mega Mock series. Every logged-in staff member can use and manage everything here.',
+  before: [
+    'Your login name should contain your name as it appears on the Question Setting Panel (for example "Sumanta"). This is how "My tasks" and "Teacher activity" find your work.',
+    'An Admin must run the Mission Sainik database setup once (the SQL files in supabase/migrations). Until then a tab shows a "setup needed" note.',
+    'First time only: open the Overview tab and press "Create allotment" to load the 133 starting tasks (20 tests × 6 sections + practice sets).',
+  ],
+  tabs: [
+    { name: 'Overview', what: 'Deadline, progress by subject, next test, days left to the submission deadline and to AISSEE 2027. "Create allotment" lives here.' },
+    { name: 'Schedule', what: 'The 20 Pre Mock Tests (PMT-01 to PMT-20): date, day, drafts due, verification, final & print, and progress per test.' },
+    { name: 'Mock series', what: 'The Sainik Mega Mock series, 10–30 Jan 2027 (AISSEE pattern: 125 questions, 300 marks, 150 minutes, no negative marking).' },
+    { name: 'Allotment', what: 'Which teacher sets and which verifies each section of each test. Filter by test.' },
+    { name: 'My tasks / All tasks', what: 'Every task with its status. Filter by teacher, open a task to update it, export to CSV.' },
+    { name: 'Practice bank', what: 'Practice question sets per subject and teacher.' },
+    { name: 'Syllabus', what: 'The chapter for each subject of each test. Type it and click away to save; setters see it on their task.' },
+    { name: 'Marks tracker', what: 'Daily Class Test marks: Maths /60, Reasoning, Grammar, GK /20 each, total /120. Under 60% shows in red.' },
+    { name: 'Study material', what: 'Type or paste material, upload a file, or add a link. Typed material is stored in the portal and can be opened and printed.' },
+    { name: 'Teacher activity', what: 'Per teacher: sections set and submitted, overdue, to verify, uploads and days idle, plus a recent-activity feed.' },
+    { name: 'Insights', what: 'Delivery forecast, WhatsApp reminders, difficulty-mix check, score trend, weak chapters and leaderboard.' },
+    { name: 'Pre Mock Analyzer / Mega Mock Analyzer', what: 'The same analyzer as Exams: upload result sheets (Excel), then student, subject and batch analysis and A4 printouts. Data is shared with the Exams module.' },
+    { name: 'Panel', what: 'The Question Setting Panel and who verifies whom.' },
+  ],
+  steps: [
+    {
+      title: 'Set up the allotment (once)',
+      body: [
+        'Open Management → Mission Sainik → Overview.',
+        'Press "Create allotment". It adds every section of every test and the practice sets. It is safe to press again; existing rows are kept.',
+        'Check the Allotment tab. If someone is absent, open their task and change Setter or Verifier.',
+      ],
+    },
+    {
+      title: 'Question setter: set and submit your section',
+      body: [
+        'Open "My tasks" and click your task (for example PMT-05 · Mathematics).',
+        'Check the chapter shown on top (from the Syllabus tab).',
+        'Prepare a Word file named Subject_SetterName_PMT-XX.docx: 25 questions, four options A–D, the correct answer, a one-line explanation, the topic and the difficulty level.',
+        'Keep the mix about 40% easy, 40% medium, 20% hard. Enter the Easy / Medium / Hard counts in the task; a warning appears if the mix is off.',
+        'Enter the number of questions, add remarks if needed, and press "Mark submitted".',
+        'Hand the file in at the Head of the Institute\'s office. All material is due on or before 28 November 2026.',
+      ],
+      tip: 'Follow the latest AISSEE pattern and syllabus only. Do not submit without preparation and creativity.',
+    },
+    {
+      title: 'Verifier: check before it goes forward',
+      body: [
+        'Open "My tasks" and look for tasks with status Submitted where you are the verifier.',
+        'Check every question: correct answer, options, explanation, difficulty, syllabus.',
+        'If it is fine, press "Mark verified". If not, press "Move back to pending" and write what must be fixed in Remarks.',
+        'Nobody verifies their own questions.',
+      ],
+    },
+    {
+      title: 'Approve and print',
+      body: [
+        'Once a section is Verified, the Principal or in-charge presses "Mark approved".',
+        'The Schedule tab shows when each test is ready to print (the "Final & print" date).',
+        'Use the Notice button at the top to print the office notice.',
+      ],
+      tip: 'Status flows Pending → Submitted → Verified → Approved. Each step records its date and who made the change.',
+    },
+    {
+      title: 'Add study material',
+      body: [
+        'Open the Study material tab.',
+        'Give a title; choose the subject and test if it belongs to one.',
+        'Type or paste the text in the big box, or choose a file, or paste a link (Drive, YouTube). You can use more than one.',
+        'Press "Add material". Typed material appears in the library with "Open" and "🖨 Print" (A4 with the institute header).',
+        'Only the person who added an item or an admin should delete it; check before you press 🗑.',
+      ],
+    },
+    {
+      title: 'Record Daily Class Test marks and read the analysis',
+      body: [
+        'Open Marks tracker, choose the test and the batch or student, enter the four section marks and press "Save marks".',
+        'Open Insights to see the score trend, subjects under 60% matched to the chapter, and the leaderboard.',
+        'For the Pre Mock and Mega Mock results, open the analyzer tabs: upload the result sheet, then use the student, subject and batch views and print reports.',
+      ],
+    },
+    {
+      title: 'Chase late work (in-charge)',
+      body: [
+        'Open Teacher activity to see who is overdue or idle.',
+        'Open Insights → Delivery forecast. Press "💬 Remind on WhatsApp" next to a teacher; a message with their pending tasks opens in WhatsApp. Choose the person and send.',
+      ],
+    },
+  ],
+  tips: [
+    'The header shows the next test, days left to submission, how many sections are in, approved, overdue and the AISSEE countdown.',
+    'Overdue means a section is still Pending after its due date.',
+    'Qualifying rule used in analysis: at least 25% in every section and 40% overall.',
+    'Press 🔄 at the top to refresh after another teacher updates something.',
+  ],
+  mistakes: [
+    'Using different spellings of a student\'s name in the analyzer → the student appears as two people. Use one spelling.',
+    'Submitting a file with a different name format → use Subject_SetterName_PMT-XX.docx.',
+    'Forgetting to press "Mark submitted" after handing in the file → the task stays Pending and shows overdue.',
+    'Leaking questions → all questions stay confidential until the test is held. Do not share files outside the panel.',
+    'Seeing "No tasks matched your name" → your login name does not match the panel name. Ask an admin to link it or change the setter name on the task.',
+  ],
+  faq: [
+    { q: 'Who can change things here?', a: 'Every logged-in staff member can update, reassign, approve and upload. Changes are stamped with the user\'s name so you can see who did what in Teacher activity.' },
+    { q: 'A teacher is absent. What do I do?', a: 'Open their task and change the Setter (and Verifier) to someone else, then save.' },
+    { q: 'Can I change a test date or the deadline?', a: 'Dates are fixed by Office Order GNSI/MS-2027/PMT/2026/01. Any deviation needs the Principal\'s prior written approval; the dates themselves are changed in the portal code.' },
+    { q: 'Where do Pre Mock results come from?', a: 'From the same analyzer as the Exams module. Upload the Excel result sheet in the Pre Mock Analyzer tab.' },
+    { q: 'Is typed study material private?', a: 'It is visible to all logged-in staff. Do not paste unreleased test questions into Study material.' },
+  ],
+  related: ['checklist', 'exams', 'teaching'],
+}
