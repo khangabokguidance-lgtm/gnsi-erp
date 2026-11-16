@@ -16,12 +16,16 @@ function Ring({ pct, size = 112, stroke = 12, children }) {
   )
 }
 
-export default function MissionSainikHome({ name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile }) {
+export default function MissionSainikHome({ announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile }) {
   const hour = new Date().getHours()
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = String(name || '').replace(/^(sir|miss|mr|mrs)\s+/i, '').split(' ')[0] || 'Teacher'
   return (
     <>
+      {announcement && (
+        <div role="note" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', marginBottom: 12, borderRadius: 18, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13.5, fontWeight: 600, animation: 'msx-in .3s ease both' }}>
+          <span style={{ fontSize: 20 }}>📣</span><span style={{ flex: 1, whiteSpace: 'pre-wrap' }}>{announcement}</span>
+        </div>)}
       <div style={{ borderRadius: 28, padding: 18, marginBottom: 12, color: '#fff', background: 'linear-gradient(135deg,#132a4f,#1e3a6e 60%,#2a4f8f)', boxShadow: '0 14px 34px rgba(19,42,79,.4)', animation: 'msx-in .3s ease both' }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <Ring pct={stats.pct}>

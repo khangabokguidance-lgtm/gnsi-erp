@@ -18,6 +18,7 @@ import { PremiumStyles, PremiumCard, PX } from './premiumUI'
 import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
+import MissionSainikAdmin from './MissionSainikAdmin'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import {
@@ -226,6 +227,16 @@ function MissionSainikInner({ currentUser }) {
     const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
   }, [])
   useEffect(() => { loadSettings() }, [loadSettings])
+  const putSetting = async (key, value) => {
+    const { error } = await supabase.from('mission_sainik_settings').upsert({ key, value: String(value), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    if (error) { setMsg('❌ ' + error.message + ' (admins only; migration 20261209 must be run)'); return false }
+    audit('setting_' + key.split(':')[0], key, { value: key === 'announcement' ? '(text)' : value }); await loadSettings(); return true
+  }
+  const delSetting = async key => {
+    const { error } = await supabase.from('mission_sainik_settings').delete().eq('key', key)
+    if (error) { setMsg('❌ ' + error.message); return false }
+    audit('setting_clear_' + key.split(':')[0], key, null); await loadSettings(); return true
+  }
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
@@ -465,13 +476,7 @@ function MissionSainikInner({ currentUser }) {
             </div>))}
           <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Also run 20261208 (staff-only lockdown); it cannot be checked from here.</div>
         </PremiumCard>
-        <PremiumCard title="Audit log" subtitle="Latest 150 actions (cannot be edited or deleted)" right={<button className="px-hbtn" onClick={loadAudit}>Refresh</button>} bodyStyle={{ padding: 0, overflowX: 'auto' }}>
-          {!auditRows.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Press Refresh to load.</div> : (
-            <table className="px-table" style={{ minWidth: 560 }}>
-              <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Reference</th></tr></thead>
-              <tbody>{auditRows.map(a => <tr key={a.id}><td>{new Date(a.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td><PersonCell name={a.actor} size={28} /></td><td><Pill tone={/delete|purge|bulk/.test(a.action) ? 'bad' : /verify|approve|create/.test(a.action) ? 'ok' : /print|export/.test(a.action) ? 'gold' : 'info'}>{String(a.action).replace(/_/g, ' ')}</Pill></td><td style={{ color: PX.sub }}>{a.ref || ''}</td></tr>)}</tbody>
-            </table>)}
-        </PremiumCard>
+        <MissionSainikAdmin rows={rows} settings={settings} putSetting={putSetting} delSetting={delSetting} reload={load} setMsg={setMsg} audit={audit} currentUser={currentUser} today={today} auditRows={auditRows} loadAudit={loadAudit} isMobile={isMobile} dueFor={dueFor} />
       </>
     )
   }
@@ -1165,10 +1170,10 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
-            {tab === 'overview' && <><MissionSainikHome name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
+            {tab === 'overview' && <><MissionSainikHome announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} />}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
