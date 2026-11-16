@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- data loaders set state after fetching, as elsewhere in the portal */
 // MissionSainik.jsx — GNSI Portal · Management → Mission Sainik
 // Tracks the question setting for "Mission Sainik 2027 – Search for Extra Ordinary":
 // 20 Pre Mock Tests (6 sections × 25 questions each) plus the practice question bank.
@@ -9,9 +10,15 @@ import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import MissionSainikBuilder from './MissionSainikBuilder'
 import MissionSainikBoundary from './MissionSainikBoundary'
+import MissionSainikGuide from './MissionSainikGuide'
 import { isAdminRole } from './roles'
 import { fetchAll } from './lib/missionSainikQuestions'
-import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX, PIcon } from './premiumUI'
+import { buildNoticeHtml } from './lib/missionSainikNotice'
+import { PremiumStyles, PremiumCard, PX } from './premiumUI'
+import MissionSainikShell from './MissionSainikShell'
+import { NAV_GROUPS } from './lib/missionSainikNav'
+import MissionSainikHome from './MissionSainikHome'
+import { computeGame } from './lib/missionSainikGame'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -89,8 +96,8 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
     const next = allowed
     const mayEdit = isAdmin || next.length > 0
     return (
-      <div onClick={() => onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-        <div role="dialog" aria-modal="true" aria-label="Update task" onClick={e => e.stopPropagation()}
+      <div className="msx-overlay" onClick={() => onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Update task" onClick={e => e.stopPropagation()}
           style={{ width: 'min(480px,100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22, boxShadow: '0 30px 60px -20px rgba(0,0,0,.5)' }}>
           <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>
             {sel.kind === 'test' ? `PMT-${String(sel.test_no).padStart(2, '0')} · ` : 'Practice · '}{sel.subject}
@@ -176,6 +183,7 @@ function MissionSainikInner({ currentUser }) {
   const today = todayISO()
   const [settings, setSettings] = useState({})
   const [setForm, setSetForm] = useState(null)
+  const [boom, setBoom] = useState(false)
   const [auditRows, setAuditRows] = useState([])
   const [health, setHealth] = useState(null)
   const [bulk, setBulk] = useState({ subject: SUBJECTS[0].label, setter: '', verifier: '' })
@@ -186,12 +194,13 @@ function MissionSainikInner({ currentUser }) {
   const embargo = settings.embargo === 'on'
   const dueFor = t => dueForBase(t, SUBMISSION_DEADLINE)
   const isOverdue = (t, td) => t.status === 'Pending' && td > dueFor(t)
+  const celebrate = () => { setBoom(true); setTimeout(() => setBoom(false), 2000) }
   const audit = (action, ref, detail) => { supabase.from('mission_sainik_audit').insert({ actor: currentUser?.name || '', action, ref: ref || null, detail: detail || null }).then(() => {}, () => {}) } // best-effort
   const loadSettings = useCallback(async () => {
     const { data } = await supabase.from('mission_sainik_settings').select('*')
     const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
   }, [])
-  useEffect(() => { loadSettings() }, [loadSettings]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { loadSettings() }, [loadSettings])
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
@@ -220,12 +229,12 @@ function MissionSainikInner({ currentUser }) {
     } else { setSetup(false); setRows(data || []) }
     setLoading(false)
   }, [])
-  useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [load])
   const loadMats = useCallback(async () => {
     const { data, error } = await fetchAll(() => supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false }).order('id'))
     if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
   }, [])
-  useEffect(() => { loadMats() }, [loadMats]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { loadMats() }, [loadMats])
   const loadExtra = useCallback(async () => {
     const [a, b] = await Promise.all([fetchAll(() => supabase.from(SYL_TABLE).select('*').order('id')), fetchAll(() => supabase.from(MARKS_TABLE).select('*').order('test_no').order('batch').order('id'))])
     if (a.error || b.error) { setMarksSetup(true); return }
@@ -233,7 +242,7 @@ function MissionSainikInner({ currentUser }) {
     const m = {}; (a.data || []).forEach(r => { m[r.test_no + '|' + r.subject] = r.chapter || '' }); setSyl(m)
     setMarks(b.data || [])
   }, [])
-  useEffect(() => { loadExtra() }, [loadExtra]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { loadExtra() }, [loadExtra])
   const saveChapter = async (test_no, subject, chapter) => {
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
@@ -302,6 +311,7 @@ function MissionSainikInner({ currentUser }) {
     setRows(rs => rs.map(r => (r.id === task.id ? { ...r, ...next } : r)))
     setSel(s => (s && s.id === task.id ? { ...s, ...next } : s))
     setMsg('✅ Saved')
+    if (patch.status && STATUS_FLOW.indexOf(patch.status) > STATUS_FLOW.indexOf(task.status)) celebrate()
     audit(patch.status ? 'task_status' : patch.setter !== task.setter || (patch.verifier || null) !== (task.verifier || null) ? 'task_reassign' : 'task_note', `${task.kind}:${task.test_no}:${task.subject}`, { from: task.status, to: patch.status || task.status, setter: patch.setter, verifier: patch.verifier })
     return true
   }
@@ -328,26 +338,9 @@ function MissionSainikInner({ currentUser }) {
   }
 
   const printNotice = () => {
-    const rowsHtml = TESTS.map(t => `<tr><td><b>${t.id}</b></td><td>${esc(fmt(t.date))}</td><td>${esc(dayName(t.date))}</td><td>${esc(fmtShort(t.drafts))}</td><td>${esc(fmtShort(t.verify))}</td><td>${esc(fmtShort(t.print))}</td></tr>`).join('')
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Notice – Mission Sainik 2027</title>
-<style>@page{size:A4;margin:14mm}body{font-family:'Times New Roman',serif;color:#111827;font-size:12.5px;line-height:1.45}
-.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:8px}.lh h1{margin:0;font-size:21px;color:#132a4f;letter-spacing:.5px}
-.lh div{font-size:11.5px}.ref{display:flex;justify-content:space-between;font-weight:bold;margin:10px 0}
-h2{text-align:center;text-decoration:underline;letter-spacing:3px;color:#132a4f;margin:8px 0 4px}
-.sub{text-align:center;font-weight:bold;margin-bottom:10px}ol{padding-left:20px}li{margin-bottom:5px;text-align:justify}
-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}th{background:#132a4f;color:#fff;text-align:left}
-th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:right}</style></head><body>
-<div class="lh"><h1>GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE (GNSI)</h1><div>Khangabok, Thoubal, Manipur · Established 2016</div><div><b>OFFICE OF THE PRINCIPAL</b></div></div>
-<div class="ref"><span>No. ${esc(ORDER_NO)}</span><span>Date: ${esc(fmt(ORDER_DATE))}</span></div>
-<h2>NOTICE</h2><div class="sub">Schedule of 20 Pre Mock Tests under Mission Sainik 2027 and submission of study material by Question Setters.</div>
-<ol><li>The Institute shall conduct twenty (20) Pre Mock Tests, PMT-01 to PMT-20, on alternate days from ${esc(fmt(TESTS[0].date))} to ${esc(fmt(TESTS[19].date))}, in the latest AISSEE pattern. Each test has 150 questions for 300 marks, in six sections of 25 questions at 2 marks each.</li>
-<li><b>All study material</b> (the question sections of all twenty tests and the practice question bank) shall be submitted at the office of the Head of the Institute <b>on or before ${esc(fmt(SUBMISSION_DEADLINE))}</b>. The material for PMT-01 and PMT-02 is due on ${esc(fmtShort(TESTS[0].drafts))} and ${esc(fmtShort(TESTS[1].drafts))}.</li>
-<li>Every teacher on the Question Setting Panel sets questions and verifies a colleague's questions, never their own.</li>
-<li>No test or deadline falls on 13 December, 27 December 2026 or 1 January 2027.</li>
-<li>Any deviation requires the prior written approval of the Principal.</li></ol>
-<table><thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-<div class="sig"><b>(Moirangthem Himan Singh)</b><br>Founder &amp; Principal</div>
-<script>window.onload=function(){window.print()}</script></body></html>`
+    const syllabus = {}
+    Object.entries(syl).forEach(([k, v]) => { const [n, subj] = k.split('|'); syllabus[n + '|' + subj] = v })
+    const html = buildNoticeHtml({ orderNo: ORDER_NO, orderDate: ORDER_DATE, deadline: SUBMISSION_DEADLINE, examDate: EXAM_DATE, syl: syllabus, institute, marks })
     const w = window.open('', '_blank')
     if (!w) { setMsg('❌ Allow pop-ups to print the notice'); return }
     w.document.write(html); w.document.close()
@@ -434,27 +427,6 @@ th,td{border:1px solid #7a8194;padding:3px 6px}.sig{margin-top:26px;text-align:r
 
   // ── shared bits ────────────────────────────────────────────────────────
   const sectionStats = r => ({ done: r.filter(x => x.status !== 'Pending').length, ok: r.filter(x => x.status === 'Approved').length, n: r.length })
-  const tabs = [
-    { id: 'overview',   label: 'Overview',    icon: PIcon.chart },
-    { id: 'schedule',   label: 'Schedule',    icon: PIcon.calendar },
-    { id: 'prebuilder',  label: 'Pre Mock Builder',  icon: PIcon.pen },
-    { id: 'dailybuilder', label: 'Daily Test Builder', icon: PIcon.pen },
-    { id: 'practicebuilder', label: 'Practice Bank Builder', icon: PIcon.pen },
-    { id: 'megabuilder', label: 'Mega Mock Builder', icon: PIcon.pen },
-    { id: 'premock',    label: 'Pre Mock Analyzer',  icon: PIcon.chart },
-    { id: 'megamock',   label: 'Mega Mock Analyzer', icon: PIcon.chart },
-    { id: 'activity',   label: 'Teacher activity', icon: PIcon.users },
-    { id: 'insights',   label: 'Insights',    icon: PIcon.chart },
-    { id: 'mock',       label: 'Mock series', icon: PIcon.calendar },
-    { id: 'allotment',  label: 'Allotment',   icon: PIcon.list },
-    { id: 'mine',       label: isAdmin ? 'All tasks' : 'My tasks', icon: PIcon.pen, badge: isAdmin ? 0 : rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length },
-    { id: 'practice',   label: 'Practice bank', icon: PIcon.folder },
-    { id: 'syllabus',   label: 'Syllabus',    icon: PIcon.list },
-    { id: 'marks',      label: 'Marks tracker', icon: PIcon.chart },
-    { id: 'material',   label: 'Study material', icon: PIcon.folder },
-    { id: 'panel',      label: 'Panel',       icon: PIcon.users },
-    ...(isRealAdmin ? [{ id: 'admin', label: 'Admin', icon: PIcon.shield || PIcon.users }] : []),
-  ]
 
   // ── screens ────────────────────────────────────────────────────────────
   const Overview = () => {
@@ -983,6 +955,27 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     </>
   )
 
+  const myOpen = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted'))
+  const badges = { mine: myOpen.length || 0 }
+  const tabLabel = id => NAV_GROUPS.flatMap(g => g.items).find(i => i[0] === id)?.[2] || 'Mission Sainik'
+  const game = computeGame({ rows: rows.map(r => ({ ...r, due: dueFor(r) })), mats, userName: currentUser?.name || '', isMe, today })
+  const nextTaskRow = [...myOpen].sort((x, y) => dueFor(x).localeCompare(dueFor(y)))[0]
+  const nextTask = nextTaskRow ? {
+    row: nextTaskRow, late: isOverdue(nextTaskRow, today),
+    title: `${nextTaskRow.kind === 'test' ? 'PMT-' + String(nextTaskRow.test_no).padStart(2, '0') + ' · ' : 'Practice · '}${nextTaskRow.subject}`,
+    sub: `${isMe(nextTaskRow.setter) ? 'Set and submit' : 'Verify'} · due ${fmtShort(dueFor(nextTaskRow))}${isOverdue(nextTaskRow, today) ? ' · overdue' : (() => { const n = dayDiff(today, dueFor(nextTaskRow)); return n === 0 ? ' · today' : n > 0 ? ` · ${n}d left` : '' })()}`,
+  } : null
+  const homeStats = {
+    pct: total ? Math.round((approved / total) * 100) : 0,
+    deadlineLabel: daysToDeadline > 0 ? daysToDeadline + ' days to submit' : daysToDeadline === 0 ? 'Submit today' : 'Submission closed',
+    examLabel: daysToExam > 0 ? daysToExam + 'd' : daysToExam === 0 ? 'today' : 'held',
+    nextTest: nextTest ? nextTest.id.replace('PMT-', '') : 'Done', inLabel: `${submitted}/${total || seedCount}`, approved, overdue,
+  }
+  const quick = [
+    { id: 'prebuilder', icon: '🧱', label: 'Build', bg: '#e8f0fe' }, { id: 'mine', icon: '✅', label: 'Tasks', bg: '#e6f4ea', badge: myOpen.length },
+    { id: 'material', icon: '📎', label: 'Material', bg: '#fff6dc' }, { id: 'insights', icon: '💡', label: 'Insights', bg: '#fdecea' },
+  ]
+
   // ── render ─────────────────────────────────────────────────────────────
   if (setup) {
     return (
@@ -999,28 +992,16 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   }
 
   return (
-    <div className="px-root">
+    <div className="px-root" style={{ background: 'transparent', minHeight: 0 }}>
       <PremiumStyles />
-      <div className="px-wrap">
-        <PremiumHero eyebrow="GNSI · Mission Sainik 2027" title="Pre Mock & Mega Mock Tests" subtitle={`Search for Extra Ordinary · Pre Mock ${fmtShort(TESTS[0].date)} – ${fmtShort(TESTS[19].date)} · Mega Mock ${fmtShort(MOCK_TESTS[0].date)} – ${fmt(MOCK_TESTS[19].date)}`}
-          icon={<span style={{ fontSize: 24 }}>🎖️</span>} isMobile={isMobile}
-          actions={<>
-            <button className="px-hbtn" onClick={printNotice}>🖨 Notice</button>
-            <button className="px-hbtn" onClick={load} aria-label="Refresh">🔄</button>
-          </>}
-          stats={[
-            { label: 'Next test', value: nextTest ? nextTest.id : 'Done', sub: nextTest ? `${fmtShort(nextTest.date)} · ${dayName(nextTest.date)}` : 'All 20 held' },
-            { label: 'Submission', value: daysToDeadline > 0 ? daysToDeadline + 'd left' : daysToDeadline === 0 ? 'Today' : 'Closed', sub: 'by ' + fmtShort(SUBMISSION_DEADLINE) },
-            { label: 'In', value: `${submitted}/${total || seedCount}`, sub: 'submitted or beyond' },
-            { label: 'Approved', value: approved, sub: 'ready to print', tone: PX.goldLt },
-            { label: 'AISSEE 2027', value: daysToExam > 0 ? daysToExam + 'd' : daysToExam === 0 ? 'Today' : 'Held', sub: fmtShort(EXAM_DATE) + (nextMock ? ' · next mock ' + fmtShort(nextMock.date) : ''), tone: PX.goldLt },
-            { label: 'Overdue', value: overdue, sub: 'not submitted', tone: overdue ? '#fca5a5' : '#fff' },
-          ]} />
-        <PremiumTabs tabs={tabs} active={tab} onChange={setTab} style={{ marginBottom: 14 }} />
-        {msg && <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: msg.startsWith('❌') ? PX.badBg : PX.okBg, color: msg.startsWith('❌') ? PX.bad : PX.ok, fontSize: 13, fontWeight: 600 }}>{msg}</div>}
+      <MissionSainikShell active={tab} onChange={setTab} title={tab === 'overview' ? 'Mission Sainik' : tabLabel(tab)} subtitle={tab === 'overview' ? 'GNSI · 2027' : 'Mission Sainik'}
+        onBack={tab !== 'overview' ? () => setTab('overview') : undefined} badges={badges} isAdmin={isRealAdmin} msg={msg} confetti={boom}
+        actions={[{ label: 'Print notice', icon: '🖨', onClick: printNotice }, { label: 'Refresh', icon: '🔄', onClick: load }]}
+        fab={tab === 'overview' || tab === 'mine' ? { icon: '⬆', label: 'Upload questions', onClick: () => setTab('prebuilder') } : null}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
-            {tab === 'overview' && Overview()}
+            {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
+            {tab === 'overview' && <><MissionSainikHome name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
               currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} />}
@@ -1038,10 +1019,10 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             {tab === 'admin' && isRealAdmin && AdminPanel()}
           </>
         )}
-      </div>
+      </MissionSainikShell>
       {viewMat && (
-        <div onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
+        <div className="msx-overlay" onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
             <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>{viewMat.title}</div>
             <div style={{ fontSize: 12.5, color: PX.sub, margin: '4px 0 12px' }}>{[viewMat.subject || 'All subjects', viewMat.test_no ? 'Test ' + viewMat.test_no : null, viewMat.uploaded_by].filter(Boolean).join(' · ')}</div>
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{viewMat.body}</div>
