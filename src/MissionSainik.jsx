@@ -82,7 +82,7 @@ function Bar({ value, total, color = PX.gold }) {
 }
 
 // Update dialog — a top-level component so typing is never lost when the screen behind it re-renders.
-function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapter, deadline }) {
+function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapter, deadline, people, onDelete }) {
     const dueFor = t => dueForBase(t, deadline)
     const isOverdue = (t, td) => t.status === 'Pending' && td > dueFor(t)
     const [setter, setSetter] = useState(sel.setter || '')
@@ -133,7 +133,7 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
                     <label key={lbl} style={{ flex: 1, fontSize: 12, fontWeight: 700, color: PX.sub }}>{lbl}
                       <select className="px-input" value={val} onChange={e => fn(e.target.value)} style={{ marginTop: 4 }}>
                         <option value="">—</option>
-                        {[...new Set([...ALL_PEOPLE, val].filter(Boolean))].map(n => <option key={n} value={n}>{fullName(n)}</option>)}
+                        {[...new Set([...(people || ALL_PEOPLE), val].filter(Boolean))].map(n => <option key={n} value={n}>{fullName(n)}</option>)}
                       </select>
                     </label>
                   ))}
@@ -149,6 +149,7 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
                     {STATUS_FLOW.indexOf(s) > STATUS_FLOW.indexOf(sel.status) ? `Mark ${s.toLowerCase()}` : `Move back to ${s.toLowerCase()}`}
                   </button>
                 ))}
+                {onDelete && <button className="px-btn ghost" disabled={busy} style={{ color: PX.bad, marginLeft: 'auto' }} onClick={() => onDelete(sel)}>🗑 Delete task</button>}
                 <button className="px-btn" disabled={busy}
                   onClick={async () => { if (await onSave(sel, { ...mixPatch(), remarks, setter, verifier: verifier || null, question_count: count === '' ? null : +count })) onClose() }}>Save notes</button>
               </div>
@@ -185,6 +186,11 @@ function MissionSainikInner({ currentUser }) {
   const [settings, setSettings] = useState({})
   const [setForm, setSetForm] = useState(null)
   const [boom, setBoom] = useState(false)
+  const [panelRows, setPanelRows] = useState([])
+  const [panelDraft, setPanelDraft] = useState(null)       // { id?, subject_key, name, role }
+  const [addTask, setAddTask] = useState(null)             // null | form for the Add task dialog
+  const [editMarksId, setEditMarksId] = useState(null)
+  const [editMat, setEditMat] = useState(null)
   const [taskView, setTaskView] = useState('needs')   // needs | mine | all
   const [statusF, setStatusF] = useState('')
   const [subjF, setSubjF] = useState('')
@@ -202,6 +208,18 @@ function MissionSainikInner({ currentUser }) {
   const isOverdue = (t, td) => t.status === 'Pending' && td > dueFor(t)
   const celebrate = () => { setBoom(true); setTimeout(() => setBoom(false), 2000) }
   const audit = (action, ref, detail) => { supabase.from('mission_sainik_audit').insert({ actor: currentUser?.name || '', action, ref: ref || null, detail: detail || null }).then(() => {}, () => {}) } // best-effort
+  const loadPanel = useCallback(async () => {
+    const { data, error } = await supabase.from('mission_sainik_panel').select('*').order('id')
+    setPanelRows(error ? [] : data || [])
+  }, [])
+  useEffect(() => { loadPanel() }, [loadPanel])
+  // Panel from the database when it has rows, otherwise the panel written in the code.
+  const panelSetters = key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'setter').map(r => r.name) : PANEL[key] || [])
+  const panelForBuilder = panelRows.length ? {
+    setters: Object.fromEntries(SUBJECTS.map(x => [x.key, panelSetters(x.key)])),
+    practice: Object.fromEntries(SUBJECTS.map(x => [x.key, panelRows.filter(r => r.subject_key === x.key && r.role !== 'setter').map(r => r.name)])),
+  } : null
+  const peopleAll = panelRows.length ? [...new Set(panelRows.map(r => r.name))].sort() : ALL_PEOPLE
   const loadSettings = useCallback(async () => {
     const { data } = await supabase.from('mission_sainik_settings').select('*')
     const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
@@ -265,7 +283,11 @@ function MissionSainikInner({ currentUser }) {
     }
     const { error } = await supabase.from(MARKS_TABLE).upsert(row, { onConflict: 'test_no,batch' })
     if (error) return setMsg('❌ ' + error.message)
-    audit('marks_save', `T${row.test_no} ${row.batch}`, null); setMsg('✅ Marks saved'); setMarkDraft({ ...markDraft, maths: '', reasoning: '', grammar: '', gk: '' }); loadExtra()
+    audit('marks_save', `T${row.test_no} ${row.batch}`, null); setMsg('✅ Marks saved'); setMarkDraft({ ...markDraft, maths: '', reasoning: '', grammar: '', gk: '' }); setEditMarksId(null); loadExtra()
+  }
+  const editMarks = r => {
+    setMarkDraft({ test_no: r.test_no, batch: r.batch || '', maths: r.maths ?? '', reasoning: r.reasoning ?? '', grammar: r.grammar ?? '', gk: r.gk ?? '' })
+    setEditMarksId(r.id); window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
   const deleteMarks = async r => {
     if (!window.confirm('Delete this entry?')) return
@@ -322,6 +344,28 @@ function MissionSainikInner({ currentUser }) {
     return true
   }
 
+  const deleteTask = async task => {
+    if (!window.confirm(`Delete ${task.kind === 'test' ? 'PMT-' + String(task.test_no).padStart(2, '0') + ' · ' : 'Practice · '}${task.subject} (${fullName(task.setter)})? This cannot be undone.`)) return
+    setBusy(true)
+    const { error } = await supabase.from(TABLE).delete().eq('id', task.id)
+    setBusy(false)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('task_delete', `${task.kind}:${task.test_no}:${task.subject}`, { setter: task.setter, status: task.status })
+    setSel(null); setMsg('🗑 Task deleted'); load()
+  }
+  const newTaskForm = kind => ({ kind, test_no: 1, subject: SUBJECTS[0].label, setter: '', verifier: '', question_count: kind === 'test' ? 25 : '' })
+  const createTask = async () => {
+    const f = addTask
+    if (!f.setter.trim()) return setMsg('❌ Choose or type the setter.')
+    if (!f.subject.trim()) return setMsg('❌ Enter the subject.')
+    const row = { kind: f.kind, test_no: f.kind === 'test' ? Number(f.test_no) : 0, subject: f.subject.trim(), setter: f.setter.trim(), verifier: f.verifier.trim() || null,
+      question_count: f.question_count === '' ? null : Number(f.question_count), status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }
+    setBusy(true)
+    const { error } = await supabase.from(TABLE).insert(row)
+    setBusy(false)
+    if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That setter already has this section.' : error.message))
+    audit('task_add', `${row.kind}:${row.test_no}:${row.subject}`, { setter: row.setter }); setAddTask(null); setMsg('✅ Task added'); load()
+  }
   const createAllotment = async () => {
     setBusy(true)
     const { error } = await supabase.from(TABLE).upsert(buildSeedRows(), { onConflict: 'kind,test_no,subject,setter', ignoreDuplicates: true })
@@ -353,7 +397,7 @@ function MissionSainikInner({ currentUser }) {
   }
 
   // ── Admin: launch settings, setup check, bulk reassign, audit log ───────
-  const ALL_PEOPLE_OPTS = [...new Set([...Object.values(PANEL).flat(), ...Object.values(PRACTICE_PANEL).flatMap(p => [p.verifier, ...p.assistants])])].sort()
+  const ALL_PEOPLE_OPTS = panelRows.length ? peopleAll : [...new Set([...Object.values(PANEL).flat(), ...Object.values(PRACTICE_PANEL).flatMap(p => [p.verifier, ...p.assistants])])].sort()
   const loadAudit = async () => {
     const { data, error } = await supabase.from('mission_sainik_audit').select('*').order('at', { ascending: false }).limit(150)
     setAuditRows(error ? [] : data || [])
@@ -362,7 +406,7 @@ function MissionSainikInner({ currentUser }) {
     const checks = [['mission_sainik_tasks', 'id', '20261201'], ['mission_sainik_materials', 'id', '20261202'], ['mission_sainik_materials', 'body', '20261205 (typed material)'],
       ['mission_sainik_syllabus', 'id', '20261203'], ['mission_sainik_marks', 'id', '20261203'], ['mission_sainik_tasks', 'easy_count', '20261204'],
       ['mission_sainik_questions', 'id', '20261206'], ['mission_sainik_questions', 'deleted_at', '20261209'], ['mission_sainik_settings', 'key', '20261209'],
-      ['mission_sainik_audit', 'id', '20261209'], ['mission_sainik_signoffs', 'id', '20261209']]
+      ['mission_sainik_audit', 'id', '20261209'], ['mission_sainik_signoffs', 'id', '20261209'], ['mission_sainik_panel', 'id', '20261210 (editable panel)']]
     const out = []
     for (const [t, c, mig] of checks) { const { error } = await supabase.from(t).select(c).limit(1); out.push({ t, c, mig, ok: !error }) }
     setHealth(out)
@@ -668,7 +712,7 @@ function MissionSainikInner({ currentUser }) {
   const Activity = () => {
     const has = nameMatches
     const daysAgo = iso => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null)
-    const stats = ALL_PEOPLE.map(n => {
+    const stats = peopleAll.map(n => {
       const mine = rows.filter(r => r.setter === n)
       const ver = rows.filter(r => r.verifier === n)
       const ups = mats.filter(m => has(m.uploaded_by, n))
@@ -798,7 +842,7 @@ function MissionSainikInner({ currentUser }) {
           {['', 'Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(st => chip(statusF === st, st || 'Any status', () => { setStatusF(st); setTaskLimit(30) }, count(st)))}
         </div>
         <PremiumCard title={taskView === 'needs' ? 'Needs your action' : taskView === 'mine' ? 'All my tasks' : 'All tasks'} subtitle={`${list.length} shown · earliest deadline first`}
-          right={<button className="px-btn ghost" onClick={exportCsv}>Export CSV</button>} bodyStyle={{ padding: 0 }}>
+          right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-btn gold" onClick={() => setAddTask(newTaskForm('test'))}>＋ Add task</button><button className="px-btn ghost" onClick={exportCsv}>Export CSV</button></span>} bodyStyle={{ padding: 0 }}>
           {list.length === 0
             ? <div style={{ padding: 24, textAlign: 'center', color: PX.sub, fontSize: 14 }}>
               {taskView === 'needs' ? '🎉 Nothing needs you right now.' : taskView === 'mine' ? `No tasks matched “${currentUser?.name || 'your name'}”. Ask the Principal to link your name, or open Everyone.` : 'Nothing to show.'}
@@ -813,7 +857,7 @@ function MissionSainikInner({ currentUser }) {
 
 
   const Practice = () => (
-    <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" bodyStyle={{ padding: 0 }}>
+    <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" right={<button className="px-btn gold" onClick={() => setAddTask(newTaskForm('practice'))}>＋ Add practice set</button>} bodyStyle={{ padding: 0 }}>
       {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
       {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
@@ -824,29 +868,69 @@ function MissionSainikInner({ currentUser }) {
     </PremiumCard>
   )
 
+  const savePanelMember = async () => {
+    const d = panelDraft
+    if (!d.name.trim()) return setMsg('❌ Enter the teacher\'s name.')
+    const row = { subject_key: d.subject_key, name: d.name.trim().replace(/^(sir|miss|mr|mrs)\s+/i, ''), role: d.role, created_by: currentUser?.name || '' }
+    const q = d.id ? supabase.from('mission_sainik_panel').update(row).eq('id', d.id) : supabase.from('mission_sainik_panel').insert(row)
+    const { error } = await q
+    if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That person is already on the panel for this subject and role.' : error.message + ' (run migration 20261210)'))
+    audit(d.id ? 'panel_edit' : 'panel_add', d.subject_key, row); setPanelDraft(null); setMsg('✅ Panel saved'); loadPanel()
+  }
+  const deletePanelMember = async m => {
+    if (!window.confirm(`Remove ${fullName(m.name)} from the ${SUBJECTS.find(x => x.key === m.subject_key)?.label} panel? Their existing tasks stay.`)) return
+    const { error } = await supabase.from('mission_sainik_panel').delete().eq('id', m.id)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('panel_delete', m.subject_key, { name: m.name, role: m.role }); loadPanel()
+  }
+  const loadPanelFromNotice = async () => {
+    if (!window.confirm('Load the panel from the notice (Annexure-II)? This fills the editable panel with the notice\'s setters, verifiers and assistants.')) return
+    const rows = SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ subject_key: x.key, name, role: 'setter' })), { subject_key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ subject_key: x.key, name, role: 'assistant' }))])
+    const { error } = await supabase.from('mission_sainik_panel').upsert(rows.map(r => ({ ...r, created_by: currentUser?.name || '' })), { onConflict: 'subject_key,name,role' })
+    if (error) return setMsg('❌ ' + error.message + ' (run migration 20261210)')
+    audit('panel_load_notice', null, { rows: rows.length }); loadPanel()
+  }
+  const ROLE_TONE = { setter: 'info', verifier: 'ok', assistant: 'gold' }
   const Panel = () => (
     <>
-      <div style={{ fontSize: 13, color: PX.sub, margin: '0 2px 12px' }}>Every teacher listed sets questions for both the tests and the practice bank. Nobody verifies their own questions.</div>
+      <PremiumCard title="Question Setting Panel" subtitle="Add, edit or remove panel members. Until you add members here, the panel from the notice is used."
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: 'setter' })}>＋ Add member</button>
+          {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
+        </span>}>
+        {panelDraft && (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.4fr 1fr auto', gap: 10, alignItems: 'end' }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter</option><option value="verifier">Verifier</option><option value="assistant">Assistant</option></select></label>
+            <span style={{ display: 'flex', gap: 8 }}><button className="px-btn gold" onClick={savePanelMember}>{panelDraft.id ? 'Update' : 'Add'}</button><button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button></span>
+          </div>)}
+        {!panelDraft && <div style={{ fontSize: 13, color: PX.sub }}>{panelRows.length ? `${panelRows.length} members on the editable panel.` : 'Showing the panel from the notice. Press “Load from notice” to start editing it.'}</div>}
+      </PremiumCard>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,minmax(0,1fr))', gap: 14 }}>
-        {SUBJECTS.map(s => {
-          const list = PANEL[s.key]
+        {SUBJECTS.map(sub => {
+          const members = panelRows.length ? panelRows.filter(r => r.subject_key === sub.key) : PANEL[sub.key].map(name => ({ name, role: 'setter', subject_key: sub.key, builtin: true }))
           return (
-            <PremiumCard key={s.key} title={s.label} subtitle={s.key === 'gk' ? 'Checked by Sir Arunkumar or the Principal' : list.length === 2 ? 'Each verifies the other' : list.join(' → ') + ' → ' + list[0]}>
-              {list.map(n => {
-                const mineRows = tests.filter(r => r.subject === s.label && r.setter === n)
+            <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}>
+              {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
+              {members.map((m, i) => {
+                const mine = tests.filter(r => r.subject === sub.label && r.setter === m.name)
                 return (
-                  <div key={n} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13.5, borderBottom: `1px solid ${PX.line}` }}>
-                    <span style={{ fontWeight: 600 }}>{fullName(n)}</span>
-                    <span style={{ color: PX.sub }}>{mineRows.length || '—'} tests · {mineRows.filter(r => r.status !== 'Pending').length} in</span>
-                  </div>
-                )
+                  <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
+                    <PersonCell name={m.name} size={30} sub={m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null}>{fullName(m.name)}</PersonCell>
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role}</Pill>
+                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role })} aria-label={`Edit ${m.name}`}>✎</button>
+                        <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
+                    </span>
+                  </div>)
               })}
-            </PremiumCard>
-          )
+            </PremiumCard>)
         })}
       </div>
     </>
   )
+
 
   const saveMaterial = async () => {
     const d = matDraft
@@ -856,6 +940,23 @@ function MissionSainikInner({ currentUser }) {
     if (d.file && d.file.size > 50 * 1024 * 1024) return setMsg('❌ File is over 50 MB.')
     setBusy(true)
     try {
+      if (editMat) {                                    // edit an existing item (optionally replace its file)
+        const patch = { title: d.title.trim(), subject: d.subject || null, test_no: Number(d.test_no) || 0, link_url: safeUrl(d.link_url) || null, body: d.body.trim() || null, note: d.note.trim() || null }
+        if (d.file) {
+          const safe = d.file.name.replace(/[^\w.-]+/g, '_')
+          const who = (currentUser?.name || 'staff').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          const path = `mission-sainik/${who}/${Date.now()}-${safe}`
+          const { error: upErr } = await supabase.storage.from(MAT_BUCKET).upload(path, d.file, { upsert: false })
+          if (upErr) throw upErr
+          if (editMat.file_path) await supabase.storage.from(MAT_BUCKET).remove([editMat.file_path])
+          patch.file_path = path; patch.file_name = d.file.name
+        }
+        const { error } = await supabase.from(MAT_TABLE).update(patch).eq('id', editMat.id)
+        if (error) throw error
+        audit('material_edit', patch.title, { id: editMat.id }); setEditMat(null)
+        setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
+        setMsg('✅ Material updated'); loadMats(); setBusy(false); return
+      }
       let file_path = null, file_name = null
       if (d.file) {
         const safe = d.file.name.replace(/[^\w.-]+/g, '_')
@@ -891,6 +992,11 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     const { data, error } = await supabase.storage.from(MAT_BUCKET).createSignedUrl(m.file_path, 3600)
     if (error) return setMsg('❌ ' + error.message)
     window.open(data.signedUrl, '_blank', 'noopener')
+  }
+  const startEditMat = m => {
+    setEditMat(m); setFileKey(k => k + 1)
+    setMatDraft({ title: m.title || '', subject: m.subject || '', test_no: m.test_no || 0, link_url: m.link_url || '', note: m.note || '', body: m.body || '', file: null })
+    window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
   const deleteMaterial = async m => {
     if (!window.confirm(`Delete “${m.title}”?`)) return
@@ -929,7 +1035,10 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <input className="px-input" aria-label="Batch / student" placeholder="Batch / student" value={markDraft.batch} onChange={e => setMarkDraft({ ...markDraft, batch: e.target.value })} />
           {MARK_COLS.map(([k, lbl, max]) => <input key={k} className="px-input" type="number" min="0" max={max} aria-label={`${lbl} /${max}`} placeholder={`${lbl} /${max}`} value={markDraft[k]} onChange={e => setMarkDraft({ ...markDraft, [k]: e.target.value })} />)}
         </div>
-        <button className="px-btn gold" style={{ marginTop: 12 }} onClick={saveMarks}>Save marks</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+          <button className="px-btn gold" onClick={saveMarks}>{editMarksId ? 'Update marks' : 'Save marks'}</button>
+          {editMarksId && <><span style={{ fontSize: 13, color: PX.sub }}>Editing T{markDraft.test_no} · {markDraft.batch || 'no batch'}</span><button className="px-btn ghost" onClick={() => { setEditMarksId(null); setMarkDraft({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' }) }}>Cancel</button></>}
+        </div>
       </PremiumCard>
       <PremiumCard title={`Entries (${marks.length})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}>
         {!marks.length ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : (
@@ -942,7 +1051,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
                   <td>T{r.test_no}</td><td>{r.batch ? <PersonCell name={r.batch} size={28}>{r.batch}</PersonCell> : '—'}</td>
                   {MARK_COLS.map(([k, , m]) => <td key={k}><ScorePill v={r[k]} max={m} /></td>)}
                   <td><ScorePill v={tot} max={120} /></td>
-                  <td><button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}><button className="px-hbtn" onClick={() => editMarks(r)} aria-label="Edit">✎</button> <button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>
                 </tr>)
             })}</tbody>
           </table>
@@ -953,7 +1062,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   const materialTab = (
     <>
       {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
-      <PremiumCard title="Upload study material" subtitle="Notes, PDFs, images or a link — visible to all staff">
+      <PremiumCard title={editMat ? 'Edit study material' : 'Upload study material'} subtitle="Notes, PDFs, images or a link — visible to all staff">
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr', gap: 10 }}>
           <input style={inp} aria-label="Title" placeholder="Title" value={matDraft.title} onChange={e => setMatDraft({ ...matDraft, title: e.target.value })} />
           <select style={inp} aria-label="Subject" value={matDraft.subject} onChange={e => setMatDraft({ ...matDraft, subject: e.target.value })}>
@@ -967,7 +1076,11 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <textarea style={{ ...inp, gridColumn: '1 / -1', minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }} aria-label="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" placeholder="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" value={matDraft.body} onChange={e => setMatDraft({ ...matDraft, body: e.target.value })} />
           <input style={inp} aria-label="Note (optional)" placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
         </div>
-        <button className="px-hbtn" style={{ marginTop: 12 }} disabled={busy} onClick={saveMaterial}>{busy ? 'Uploading…' : '⬆ Add material'}</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+          <button className="px-btn gold" disabled={busy} onClick={saveMaterial}>{busy ? 'Saving…' : editMat ? '✔ Save changes' : '⬆ Add material'}</button>
+          {editMat && <><span style={{ fontSize: 13, color: PX.sub }}>Editing “{editMat.title}”{editMat.file_name ? ' · choose a file only to replace ' + editMat.file_name : ''}</span>
+            <button className="px-btn ghost" onClick={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}>Cancel</button></>}
+        </div>
       </PremiumCard>
       <PremiumCard title={`Library (${mats.length})`}>
         {!mats.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div>}
@@ -980,7 +1093,8 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             </div>
             <button className="px-hbtn" onClick={() => openMaterial(m)}>Open</button>
             {m.body && <button className="px-hbtn" onClick={() => printMaterial(m)}>🖨 Print</button>}
-            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => deleteMaterial(m)}>🗑</button>}
+            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => startEditMat(m)} aria-label="Edit material">✎</button>}
+            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => deleteMaterial(m)} aria-label="Delete material">🗑</button>}
           </div>
         ))}
       </PremiumCard>
@@ -1036,7 +1150,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             {tab === 'overview' && <><MissionSainikHome name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} />}
+              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
@@ -1065,7 +1179,33 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           </div>
         </div>
       )}
-      {sel && <TaskDialog key={sel.id} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
+      {addTask && (
+        <div className="msx-overlay" onClick={() => setAddTask(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Add task" onClick={e => e.stopPropagation()} style={{ width: 'min(480px,100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
+            <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy, marginBottom: 12 }}>{addTask.kind === 'test' ? 'Add a test section' : 'Add a practice set'}</div>
+            {(() => {
+              const f = addTask, set = patch => setAddTask({ ...f, ...patch }), lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginTop: 10 }
+              return (
+                <>
+                  <label style={lab}>Type<select className="px-input" value={f.kind} onChange={e => set({ kind: e.target.value, test_no: 1, question_count: e.target.value === 'test' ? 25 : '' })}><option value="test">Pre Mock test section</option><option value="practice">Practice set</option></select></label>
+                  {f.kind === 'test' && <label style={lab}>Test<select className="px-input" value={f.test_no} onChange={e => set({ test_no: e.target.value })}>{TESTS.map(t => <option key={t.no} value={t.no}>{t.id} · {fmtShort(t.date)}</option>)}</select></label>}
+                  <label style={lab}>Subject<input className="px-input" list="ms-subjects" value={f.subject} onChange={e => set({ subject: e.target.value })} /></label>
+                  <datalist id="ms-subjects">{SUBJECTS.map(x => <option key={x.key} value={x.label} />)}</datalist>
+                  <label style={lab}>Setter<input className="px-input" list="ms-people" value={f.setter} onChange={e => set({ setter: e.target.value })} placeholder="Choose or type a name" /></label>
+                  <label style={lab}>Verifier (optional)<input className="px-input" list="ms-people" value={f.verifier} onChange={e => set({ verifier: e.target.value })} /></label>
+                  <datalist id="ms-people">{peopleAll.map(n => <option key={n} value={n} />)}</datalist>
+                  <label style={lab}>Questions<input className="px-input" type="number" min="0" value={f.question_count} onChange={e => set({ question_count: e.target.value })} /></label>
+                </>
+              )
+            })()}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="px-btn ghost" onClick={() => setAddTask(null)}>Cancel</button>
+              <button className="px-btn gold" disabled={busy} onClick={createTask}>Add task</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {sel && <TaskDialog key={sel.id} people={peopleAll} onDelete={deleteTask} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
 }

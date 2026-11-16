@@ -22,7 +22,7 @@ const CSS = `
 .msx-rail h4{margin:14px 10px 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
-.msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease both}
+.msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease backwards}
 .msx-main .px-card{border-radius:22px;border:1px solid #ece6d6;box-shadow:0 4px 22px rgba(19,42,79,.07);overflow:hidden}
 /* Premium data tables */
 .msx-main .px-table{border-collapse:separate;border-spacing:0}
