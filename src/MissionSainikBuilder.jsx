@@ -114,7 +114,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
     setBin(b.error ? [] : b.data || [])
   }, [series])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
 
   const bySec = useMemo(() => {
     const m = {}; qs.forEach(q => { (m[q.test_no + '|' + q.section] = m[q.test_no + '|' + q.section] || []).push(q) }); return m
@@ -269,6 +269,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
   const blocked = t => embargo && !isAdmin && dateOf(t) && today < dateOf(t)
+  const F = FONT_STACKS[pc.font][1]
   const docCss = `@page{size:A4;margin:14mm}body{font-family:${F};color:#111827;font-size:${(pc.size * 1.2).toFixed(1)}px;line-height:${pc.line + 0.15}}
 .lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:6px;margin-bottom:8px}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
 .meta{display:flex;justify-content:space-between;font-weight:700;margin:6px 0 8px}.note{font-size:11.5px;color:#444;margin-bottom:6px}
@@ -279,7 +280,6 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   // One document body for one version (Set A/B/…) — paper or answer key.
   // "Exam book" layout (modelled on printed Sainik School papers): two columns, small-caps section boxes, bold numbers,
   // italic (a)(b)(c)(d) options laid out 4-up / 2-up / stacked by length, running header and page badge.
-  const F = FONT_STACKS[pc.font][1]
   const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${esc(cfg.name).toUpperCase()} TEST (MODEL SET)  ●●  MISSION SAINIK 2027";font:700 8.5pt ${F};color:#222;vertical-align:bottom;padding-bottom:2mm}
 @bottom-center{content:"P-" counter(page);font:800 9.5pt ${F};color:#111}}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:${F};color:#111;font-size:${pc.size}pt;line-height:${pc.line};margin:0}
