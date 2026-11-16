@@ -893,7 +893,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
     <div className="px-root">
       <PremiumStyles />
       <div className="px-wrap">
-        <PremiumHero eyebrow="GNSI · Mission Sainik 2027" title="Pre Mock Tests" subtitle={`Search for Extra Ordinary · 20 tests · ${fmtShort(TESTS[0].date)} – ${fmt(TESTS[19].date)}`}
+        <PremiumHero eyebrow="GNSI · Mission Sainik 2027" title="Pre Mock & Mega Mock Tests" subtitle={`Search for Extra Ordinary · Pre Mock ${fmtShort(TESTS[0].date)} – ${fmtShort(TESTS[19].date)} · Mega Mock ${fmtShort(MOCK_TESTS[0].date)} – ${fmt(MOCK_TESTS[19].date)}`}
           icon={<span style={{ fontSize: 24 }}>🎖️</span>} isMobile={isMobile}
           actions={<>
             <button className="px-hbtn" onClick={printNotice}>🖨 Notice</button>
