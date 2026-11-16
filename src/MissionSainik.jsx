@@ -121,7 +121,8 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose }) {
 export default function MissionSainik({ currentUser, perms }) {
   const isMobile = useIsMobile()
   const isAdmin = isAdminRole(currentUser?.role)
-  const canEdit = isAdmin || !!perms?.edit
+  // Open to every logged-in staff member: non-admins can only move tasks they set or verify (see allowedStatuses).
+  const canEdit = true
   const [tab, setTab] = useState('overview')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)

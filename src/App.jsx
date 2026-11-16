@@ -1042,7 +1042,7 @@ function AppInner() {
 
   // FIX 1: use unified isAdminRole in canAccess
   const canAccess = (key) => {
-    if (key === 'dashboard' || key === 'help') return true
+    if (key === 'dashboard' || key === 'help' || key === 'missionsainik') return true
     // Face Attendance check-in must be reachable by any staff member with a
     // linked profile, not gated by the permission matrix like admin tools —
     // the component itself only exposes enrollment management to admins.
