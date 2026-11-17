@@ -19,6 +19,29 @@ const store = {
 }
 
 const CSS = `
+/* ── Comfort baseline: calmer surfaces, easier-to-read text, friendlier controls ── */
+.msx{--bg:#f4f6fa;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+.msx ::selection{background:rgba(184,146,58,.28)}
+.msx-main{font-size:15px;line-height:1.5}
+.msx-main .px-card{margin-bottom:16px;border-radius:20px;border-color:#ebe6da;box-shadow:0 1px 2px rgba(19,42,79,.04),0 10px 28px -20px rgba(19,42,79,.28)}
+.msx-main .px-card-h{padding:16px 20px}.msx-main .px-card-t{font-size:17px;letter-spacing:.005em}.msx-main .px-card-s{font-size:13px;line-height:1.45;color:#56647c}
+.msx-main .px-input,.msx-main select,.msx-main textarea{font-size:15px;padding:11px 14px;border-radius:12px;border:1.5px solid #ddd6c6;background:#fff;transition:border-color .15s,box-shadow .15s}
+.msx-main .px-input:hover,.msx-main select:hover,.msx-main textarea:hover{border-color:#cbbf9f}
+.msx-main .px-input:focus,.msx-main select:focus,.msx-main textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px rgba(184,146,58,.18)}
+.msx-main ::placeholder{color:#7c869a;opacity:1}
+.msx-main input[type=checkbox],.msx-main input[type=radio]{width:19px;height:19px;accent-color:var(--navy);cursor:pointer}
+.msx-main .px-btn,.msx-main .px-hbtn{min-height:42px;font-size:14px;border-radius:12px;transition:transform .12s,box-shadow .15s,background .15s,filter .15s}
+.msx-main .px-btn:hover:not(:disabled){filter:brightness(1.06);box-shadow:0 6px 16px -8px rgba(19,42,79,.5)}.msx-main .px-btn:active:not(:disabled),.msx-main .px-hbtn:active{transform:scale(.97)}
+.msx-main .px-btn:disabled{opacity:.5;cursor:not-allowed}
+.msx-main .px-table th{font-size:11.5px;letter-spacing:.07em;padding:13px 16px}.msx-main .px-table td{font-size:14.5px}
+.msx-main .px-table tbody tr{transition:background .12s}.msx-main .px-table tbody tr:hover{background:#faf6ea}
+.msx-main .px-tabs{gap:4px}.msx-main .px-tab{font-size:14px;padding:9px 15px;border-radius:11px;transition:background .15s,color .15s}
+.msx-main button:disabled{cursor:not-allowed}
+.msx-main *{scrollbar-width:thin;scrollbar-color:#cfd6e4 transparent}
+.msx-main details>summary{cursor:pointer;padding:6px 0}
+.msx-snack{font-size:14.5px;line-height:1.4;border-radius:16px}.msx-snack.ok{background:#14532d}.msx-snack.bad{background:#7f1d1d}
+.msx-ri{font-size:14.5px;padding:11px 14px}.msx-ri.on{box-shadow:inset 3px 0 0 var(--gold)}
+@media (max-width:700px){.msx-main{padding:12px 10px 128px}.msx-main .px-card-h{padding:14px 16px}.msx-bi{font-size:12px}}
 .msx-disp{position:fixed;top:64px;right:10px;z-index:80;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:20px;padding:16px;box-shadow:0 16px 48px rgba(10,20,40,.35);animation:msx-up .2s both;color:var(--ink)}
 .msx-disp h3{margin:0 0 2px;font-size:16px}.msx-disp p{margin:0 0 10px;font-size:12px;color:var(--sub)}.msx-disp h5{margin:12px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub)}
 .msx-seg{display:flex;gap:4px;background:#f1ede3;border-radius:12px;padding:3px}.msx-seg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;color:var(--sub);background:transparent}
