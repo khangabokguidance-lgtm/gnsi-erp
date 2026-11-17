@@ -456,7 +456,7 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
         </div>
         <div style={{ flex: 1, overflow: 'auto', background: '#e9ecf2', padding: k === 'text' ? (isMobile ? 8 : 18) : 0, display: 'flex', flexDirection: 'column' }}>
           {k === 'text' && (
-            <div style={{ background: '#fff', maxWidth: '210mm', width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '16mm 14mm', boxShadow: '0 4px 20px rgba(15,27,46,.2)', minHeight: '60%' }}>
+            <div style={{ background: '#fff', maxWidth: '210mm', width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '16mm 14mm', boxShadow: '0 4px 20px rgba(15,27,46,.2)', minHeight: '60%', flexShrink: 0, boxSizing: 'border-box' }}>
               <div style={{ textAlign: 'center', borderBottom: '3px double #132a4f', paddingBottom: 6, marginBottom: 10, fontFamily: 'Georgia,serif' }}><div style={{ fontSize: 19, fontWeight: 700, color: '#132a4f' }}>{instName}</div><div style={{ fontSize: 11.5, color: '#555' }}>Mission Sainik 2027 · Study Material</div></div>
               <div style={{ font: '700 20px Georgia,serif' }}>{m.title}</div>
               <div style={{ font: '12px system-ui,sans-serif', color: PX.sub, margin: '2px 0 2px' }}>{[m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : ''].filter(Boolean).join(' · ')}</div>
