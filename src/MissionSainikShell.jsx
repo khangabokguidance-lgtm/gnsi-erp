@@ -19,6 +19,15 @@ const store = {
 }
 
 const CSS = `
+.msx-disp{position:fixed;top:64px;right:10px;z-index:80;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:20px;padding:16px;box-shadow:0 16px 48px rgba(10,20,40,.35);animation:msx-up .2s both;color:var(--ink)}
+.msx-disp h3{margin:0 0 2px;font-size:16px}.msx-disp p{margin:0 0 10px;font-size:12px;color:var(--sub)}.msx-disp h5{margin:12px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub)}
+.msx-seg{display:flex;gap:4px;background:#f1ede3;border-radius:12px;padding:3px}.msx-seg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;color:var(--sub);background:transparent}
+.msx-seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(15,27,46,.18)}
+.msx[data-size=lg] .msx-main,.msx[data-size=lg] .msx-rail{zoom:1.12}.msx[data-size=xl] .msx-main,.msx[data-size=xl] .msx-rail{zoom:1.26}
+.msx[data-comfort=roomy] .msx-main .px-card,.msx[data-comfort=roomy] .msx-main .px-table td{line-height:1.6}.msx[data-comfort=roomy] .msx-main button,.msx[data-comfort=roomy] .msx-main input,.msx[data-comfort=roomy] .msx-main select{min-height:44px}
+html.msx-warm{filter:sepia(.2) brightness(.97) saturate(.95)}
+html.msx-dark{filter:invert(.9) hue-rotate(180deg);background:#fff}html.msx-dark img,html.msx-dark video,html.msx-dark iframe,html.msx-dark canvas{filter:invert(1) hue-rotate(180deg)}
+@media print{html.msx-warm,html.msx-dark{filter:none!important}}
 .msx-find{position:relative;margin:0 4px 6px}.msx-find input{width:100%;height:42px;border-radius:999px;border:1.5px solid #d9d2c2;background:#fff;padding:0 40px 0 38px;font:600 14px inherit;font-family:inherit;color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
 .msx-find input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,146,58,.2)}.msx-find .ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;opacity:.6}
 .msx-find kbd{position:absolute;right:12px;top:50%;transform:translateY(-50%);font:700 11px inherit;font-family:inherit;color:var(--sub);border:1px solid #d9d2c2;border-radius:6px;padding:1px 6px;background:#faf8f3}
@@ -129,6 +138,16 @@ export function Confetti({ show }) {
 export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
   const [q, setQ] = useState('')
+  const [disp, setDisp] = useState(false)
+  const [prefs, setPrefs] = useState(() => ({ size: 'md', theme: 'light', comfort: 'normal', ...store.get('msx-prefs', {}) }))
+  const setPref = patch => setPrefs(p => { const n = { ...p, ...patch }; store.set('msx-prefs', n); return n })
+  // Eye-comfort themes tint the whole page (so dialogs and previews follow); removed again when leaving the module.
+  useEffect(() => {
+    const el = document.documentElement
+    el.classList.toggle('msx-warm', prefs.theme === 'warm'); el.classList.toggle('msx-dark', prefs.theme === 'dark')
+    return () => el.classList.remove('msx-warm', 'msx-dark')
+  }, [prefs.theme])
+  useEffect(() => { if (disp) { const k = e => e.key === 'Escape' && setDisp(false); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) } }, [disp])
   const [hi, setHi] = useState(0)
   const [pins, setPins] = useState(() => store.get('msx-pins', []))
   const [recent, setRecent] = useState(() => store.get('msx-recent', []))
@@ -190,11 +209,12 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
   )
   const bad = msg && msg.startsWith('❌')
   return (
-    <div className="msx">
+    <div className="msx" data-size={prefs.size} data-comfort={prefs.comfort}>
       <style>{CSS}</style>
       <header className="msx-top">
         {onBack ? <button className="msx-tap msx-ic" aria-label="Back to Home" onClick={onBack}>←</button> : <span className="msx-ic" aria-hidden="true">🎖️</span>}
         <h1><small>{subtitle}</small>{title}</h1>
+        <button className="msx-tap msx-ic" aria-label="Display comfort: text size and theme" title="Display comfort" aria-expanded={disp} onClick={() => setDisp(v => !v)} style={{ fontSize: 15, fontWeight: 800 }}>Aa</button>
         <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
         {actions.map(a => <button key={a.label} className="msx-tap msx-ic" aria-label={a.label} title={a.label} onClick={a.onClick}>{a.icon}</button>)}
       </header>
@@ -256,6 +276,21 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
                 <div style={{ fontSize: 12, color: 'var(--sub)', textAlign: 'center', marginTop: 14 }}>Tap ☆ on any section to pin it here and in the side menu.</div>
               </>
             )}
+          </div>
+        </>
+      )}
+      {disp && (
+        <>
+          <div onClick={() => setDisp(false)} style={{ position: 'fixed', inset: 0, zIndex: 79 }} />
+          <div className="msx-disp" role="dialog" aria-label="Display comfort">
+            <h3>Display comfort</h3><p>Pick what is easiest on your eyes. Saved on this device.</p>
+            <h5>Text size</h5>
+            <div className="msx-seg" role="group" aria-label="Text size">{[['md', 'A', 'Normal'], ['lg', 'A+', 'Large'], ['xl', 'A++', 'Extra large']].map(([k, t, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.size === k ? ' on' : '')} aria-pressed={prefs.size === k} title={l} onClick={() => setPref({ size: k })}>{t}</button>)}</div>
+            <h5>Colours</h5>
+            <div className="msx-seg" role="group" aria-label="Colour theme">{[['light', '☀️ Light'], ['warm', '🌅 Warm'], ['dark', '🌙 Dark']].map(([k, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.theme === k ? ' on' : '')} aria-pressed={prefs.theme === k} onClick={() => setPref({ theme: k })}>{l}</button>)}</div>
+            <h5>Spacing</h5>
+            <div className="msx-seg" role="group" aria-label="Spacing">{[['normal', 'Normal'], ['roomy', 'Roomy (bigger buttons)']].map(([k, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.comfort === k ? ' on' : '')} aria-pressed={prefs.comfort === k} onClick={() => setPref({ comfort: k })}>{l}</button>)}</div>
+            <button type="button" className="msx-tap" style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 12, background: '#f1ede3', fontWeight: 700, fontSize: 13 }} onClick={() => setPref({ size: 'md', theme: 'light', comfort: 'normal' })}>Reset to default</button>
           </div>
         </>
       )}
