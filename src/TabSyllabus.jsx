@@ -854,12 +854,12 @@ const staffName = _name
 
   // ─── Render ───────────────────────────────────────────────────────────────────
   const subNavItems = [
-    ['official','Official Syllabus'],
-    ['overview','Batch Tracker'],
-    ['heatmap','Heatmap'],
-    ['schedule','Schedule'],
-    ['digest','Digest'],
-    ...(isAdmin ? [['settings','Course Duration'],['import','Import'],['copy','Copy']] : []),
+    ['official','📘','Official Syllabus','Exam pattern & chapters'],
+    ['overview','📊','Batch Tracker','Progress per batch'],
+    ['heatmap','🔥','Heatmap','Coverage at a glance'],
+    ['schedule','🗓️','Schedule','Plan topic dates'],
+    ['digest','📰','Digest','Weekly summary'],
+    ...(isAdmin ? [['settings','⚙️','Course Duration','Set course length'],['import','⬆️','Import','Bulk add via CSV'],['copy','📋','Copy','Clone a syllabus']] : []),
   ]
   const isTracker = activeSubView !== 'official'
 
@@ -868,17 +868,26 @@ const staffName = _name
       {toastEl}
       {confirmDel && <ConfirmModal title="Delete Syllabus" message="Delete this syllabus entry and all its topics?" confirmLabel="Delete" danger onConfirm={()=>handleDelete(confirmDel)} onCancel={()=>setConfirmDel(null)}/>}
 
-      {/* ── Sub-nav ── */}
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginBottom:16 }}>
-        <nav className="px-tabs" role="tablist" aria-label="Syllabus views" style={{ marginBottom:0, flexWrap:'wrap' }}>
-          {subNavItems.map(([key,label]) => (
-            <button key={key} type="button" role="tab" aria-selected={activeSubView===key} className={'px-tab'+(activeSubView===key?' on':'')} onClick={()=>setActiveSubView(key)}>
-              {label}
-            </button>
-          ))}
+      {/* ── Sub-nav: icon cards with a one-line hint ── */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'stretch', marginBottom:16 }}>
+        <nav role="tablist" aria-label="Syllabus views" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(138px,1fr))', gap:8, flex:'1 1 520px' }}>
+          {subNavItems.map(([key,icon,label,hint]) => {
+            const on = activeSubView===key
+            return (
+              <button key={key} type="button" role="tab" aria-selected={on} onClick={()=>setActiveSubView(key)}
+                style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', padding:'10px 12px', borderRadius:14, cursor:'pointer', fontFamily:'inherit',
+                  border:`1.5px solid ${on?PX.gold:PX.line}`, background:on?PX.goldBg:'#fff', boxShadow:on?'0 2px 8px rgba(184,146,58,.18)':'none', transition:'all .15s' }}>
+                <span aria-hidden="true" style={{ fontSize:20, lineHeight:1 }}>{icon}</span>
+                <span style={{ minWidth:0 }}>
+                  <span style={{ display:'block', fontSize:13.5, fontWeight:700, color:on?PX.ink:PX.ink2 }}>{label}</span>
+                  <span style={{ display:'block', fontSize:11, color:PX.sub, marginTop:1 }}>{hint}</span>
+                </span>
+              </button>
+            )
+          })}
         </nav>
         {isTracker && (
-          <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+          <div style={{ marginLeft:'auto', display:'flex', gap:6, alignItems:'center' }}>
             <button onClick={exportCSV} className="px-btn ghost" style={{ padding:'8px 14px', fontSize:12.5 }}>Export CSV</button>
             <button onClick={()=>window.print()} className="px-btn ghost" style={{ padding:'8px 14px', fontSize:12.5 }}>Print</button>
           </div>
