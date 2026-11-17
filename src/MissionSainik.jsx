@@ -20,6 +20,7 @@ import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import MissionSainikMaterial from './MissionSainikMaterial'
+import SmartPaperMaker from './SmartPaperMaker'
 import { materialDocHtml, renderMaterial, MATERIAL_CSS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
@@ -259,6 +260,7 @@ function MissionSainikInner({ currentUser }) {
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
   const [fileKey, setFileKey] = useState(0)
   const [viewMat, setViewMat] = useState(null)
+  const [paperMaker, setPaperMaker] = useState(false)
   const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
   useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
@@ -933,16 +935,43 @@ function MissionSainikInner({ currentUser }) {
       const m = {}; (error ? [] : data || []).forEach(q => { m[q.test_no + '|' + q.section] = (m[q.test_no + '|' + q.section] || 0) + 1 }); setPracCounts(m)
     })()
   }, [tab])
+  const practiceSets = (() => {
+    const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
+    const groups = SUBJECTS.map((sub, si) => ({ sub, tone: TONES[si % 6], sets: Array.from({ length: PRACTICE_PANEL[sub.key]?.sets || 1 }, (_, i) => ({ no: i + 1, n: pracCounts[(i + 1) + '|' + sub.label] || 0 })) }))
+    const all = groups.flatMap(g => g.sets), done = all.filter(x => x.n >= 25).length, started = all.filter(x => x.n > 0 && x.n < 25).length, qn = all.reduce((t, x) => t + x.n, 0), target = all.length * 25
+    const pct = target ? Math.round((qn / target) * 100) : 0
+    const Ring = ({ n, tone }) => { const r = 19, c = 2 * Math.PI * r, f = Math.min(1, n / 25); return (<svg width="50" height="50" viewBox="0 0 50 50" aria-hidden="true" style={{ flex: 'none' }}><circle cx="25" cy="25" r={r} fill="none" stroke="#eef1f6" strokeWidth="5" /><circle cx="25" cy="25" r={r} fill="none" stroke={n >= 25 ? '#0f7a4c' : tone} strokeWidth="5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - f)} transform="rotate(-90 25 25)" /><text x="25" y="29" textAnchor="middle" fontSize="12" fontWeight="800" fill="#132a4f">{n >= 25 ? '✓' : n}</text></svg>) }
+    return (
+      <div style={{ padding: isMobile ? 12 : '16px 18px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)' }}>
+        <div style={{ borderRadius: 22, padding: isMobile ? '14px 14px' : '18px 22px', marginBottom: 14, color: '#fff', background: 'linear-gradient(135deg,#132a4f 0%,#1e3a6e 58%,#2f5aa3 100%)', boxShadow: '0 16px 36px -22px rgba(19,42,79,.7)', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>Practice bank</div>
+            <div style={{ fontFamily: PX.serif, fontSize: isMobile ? 22 : 26, fontWeight: 600 }}>{qn} <span style={{ fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,.7)' }}>of {target} questions</span></div>
+            <div style={{ height: 8, borderRadius: 99, background: 'rgba(255,255,255,.18)', margin: '8px 0 4px', overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', borderRadius: 99, background: 'linear-gradient(90deg,#b8923a,#f0e1b8)' }} /></div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.75)' }}>{pct}% complete · open any set to add, edit, preview or scan questions</div>
+          </div>
+          <button type="button" onClick={() => setPaperMaker(true)} style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(180deg,#e9d9b0,#d9bf79)', color: '#132a4f', fontWeight: 800, fontSize: 14, padding: '12px 18px', borderRadius: 16, boxShadow: '0 10px 22px -12px rgba(0,0,0,.5)' }}>🧠 Smart paper maker</button>
+          <div style={{ display: 'flex', gap: 8 }}>{[[done, 'Sets done'], [started, 'In progress'], [all.length - done - started, 'Empty']].map(([n, l]) => <div key={l} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.18)', borderRadius: 16, padding: '8px 14px', textAlign: 'center', minWidth: 74 }}><div style={{ font: '700 20px Georgia,serif' }}>{n}</div><div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#e9d9b0', fontWeight: 700 }}>{l}</div></div>)}</div>
+        </div>
+        {groups.map(g => (
+          <div key={g.sub.key} style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 2px 6px' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: g.tone }} /><b style={{ fontSize: 13.5 }}>{g.sub.label}</b><span style={{ fontSize: 12, color: PX.sub }}>{g.sets.reduce((t, x) => t + x.n, 0)}/{g.sets.length * 25}</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,150px),1fr))', gap: 8 }}>
+              {g.sets.map(x => (
+                <button key={x.no} type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} aria-label={`${g.sub.label} set ${x.no}, ${x.n} of 25 questions`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: `1.5px solid ${x.n >= 25 ? '#bfe3cc' : PX.line}`, background: x.n >= 25 ? '#f7fcf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', borderLeft: `4px solid ${g.tone}`, boxShadow: '0 1px 2px rgba(19,42,79,.05)', transition: 'transform .15s,box-shadow .15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 24px -16px rgba(19,42,79,.5)' }} onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05)' }}>
+                  <Ring n={x.n} tone={g.tone} />
+                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>Set {x.no}</span><span style={{ display: 'block', fontSize: 11.5, color: x.n >= 25 ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= 25 ? 'Complete' : x.n ? `${x.n}/25 · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
+                </button>))}
+            </div>
+          </div>))}
+      </div>
+    )
+  })()
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" right={<button className="px-btn gold" onClick={() => setAddTask(newTaskForm('practice'))}>＋ Add practice set</button>} bodyStyle={{ padding: 0 }}>
-      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${PX.line}` }}>
-        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Add questions to the practice bank</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {SUBJECTS.flatMap(sub => Array.from({ length: PRACTICE_PANEL[sub.key]?.sets || 1 }, (_, i) => (
-            <button key={sub.key + i} className="px-btn ghost" onClick={() => goAddQuestions(sub.label, i + 1)}>＋ {sub.short} · Set {i + 1}<span style={{ marginLeft: 8, fontWeight: 800, color: (pracCounts[(i + 1) + '|' + sub.label] || 0) >= 25 ? PX.ok : PX.sub }}>{pracCounts[(i + 1) + '|' + sub.label] || 0}/25</span></button>)))}
-        </div>
-        <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>Opens the Practice Bank builder on that subject and set — paste or upload up to 25 questions per set.</div>
-      </div>
+      {practiceSets}
       {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
       {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
@@ -1345,6 +1374,8 @@ function MissionSainikInner({ currentUser }) {
           </>
         )}
       </MissionSainikShell>
+      {paperMaker && <SmartPaperMaker subjects={SUBJECTS} institute={institute} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} setMsg={setMsg} onClose={() => setPaperMaker(false)}
+        onUseAsNotes={({ title, subject, body }) => { setPaperMaker(false); setEditMat(null); setMatDraft({ title, subject: subject || '', test_no: 0, link_url: '', note: '', body, file: null }); setTab('material') }} />}
       {viewMat && (
         <div className="msx-overlay" onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>

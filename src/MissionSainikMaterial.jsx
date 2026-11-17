@@ -8,6 +8,10 @@ import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
 import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, wordCount, embedFor, kindOf, outline } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
+import { supabase } from './supabase'
+import { fetchAll } from './lib/missionSainikQuestions'
+import { mathPlain } from './lib/mathText'
+import { questionsToNotes } from './lib/questionNotes'
 
 const DRAFT_KEY = 'msm-draft:v1'
 const blank = { title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }
@@ -51,7 +55,7 @@ function pageBox(o) {
   const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg = MARGIN_MM[o.margin] || MARGIN_MM.normal
   return { cw: Math.round((W - 2 * mg[1]) * MM), ch: Math.round((H - mg[0] - mg[2]) * MM) }
 }
-const CSS_ALL = MATH_CSS + MATERIAL_CSS
+export const CSS_ALL = MATH_CSS + MATERIAL_CSS
 function estimatePages(m, opts) {
   return new Promise(resolve => {
     const { cw, ch } = pageBox(opts), f = document.createElement('iframe')
@@ -76,7 +80,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [tab, setTab] = useState('library')
   const [view, setView] = useState(isMobile ? 'edit' : 'split')
   const [restored, setRestored] = useState(false)
-  const [scan, setScan] = useState(false), [focus, setFocus] = useState(false)
+  const [scan, setScan] = useState(false), [focus, setFocus] = useState(false), [picker, setPicker] = useState(false)
   const [figErr, setFigErr] = useState('')
   const [layout, setLayout] = useState({ columns: 1, size: 13 })
   const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
@@ -90,6 +94,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const me = useMemo(() => creatorOf(staff, userName), [staff, userName])
   const creator = useCallback(m => creatorOf(staff, m.uploaded_by), [staff])
 
+  useEffect(() => { if (editMat || draft.title || draft.body) setTab('create') }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editMat) setTab('create') }, [editMat])
   useEffect(() => { save('msm-print', popts) }, [popts])
   const toggleFav = id => setFavs(f => { const n = f.includes(id) ? f.filter(x => x !== id) : [...f, id]; save('msm-fav', n); return n })
@@ -260,6 +265,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                         ['▦ Table', 'Insert a table', () => insertBlock('| Column 1 | Column 2 | Column 3 |\n|---|---|---|\n| a | b | c |\n| d | e | f |')], ['─', 'Divider line', () => insertBlock('---')]].map(([l, t, f]) => <button key={t} type="button" title={t} aria-label={t} onMouseDown={e => e.preventDefault()} onClick={f} style={{ ...tbtn, fontStyle: l === 'I' ? 'italic' : undefined, fontWeight: l === 'B' ? 900 : 700 }}>{l}</button>)}
                       <label title="Upload a figure" style={{ ...tbtn, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>🖼 Figure<input type="file" accept="image/*" aria-label="Upload a figure" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) addFigure(f) }} /></label>
                       <button type="button" title="Scan a figure" onClick={() => setScan(true)} style={tbtn}>📷 Scan</button>
+                      <button type="button" title="Insert questions from the Practice bank" onClick={() => setPicker(true)} style={{ ...tbtn, background: '#eef6ff', borderColor: '#9ec3f2' }}>❓ From Practice bank</button>
                     </div>
                     <div className="msm-strip" role="toolbar" aria-label="Maths symbols" style={{ marginTop: 5, alignItems: 'center' }}>
                       <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#8a6118', marginRight: 4, flexShrink: 0 }}>Maths</span>
@@ -358,6 +364,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
         </div>
       )}
 
+      {picker && <QuestionPicker subjects={subjects} isMobile={isMobile} onClose={() => setPicker(false)} onInsert={t => { setPicker(false); insertBlock(t) }} />}
       {scan && <ScanFigure title="Scan a figure for your notes" maxW={720} cap={220000} onClose={() => setScan(false)} onDone={u => { setScan(false); insertBlock(figureLine(u, 'Figure')) }} />}
       {printFor && <PrintDialog m={printFor} opts={popts} setOpts={setPopts} creator={creatorOf(staff, printFor.uploaded_by || userName)} onClose={() => setPrintFor(null)} onPrint={o => doPrint(printFor, o)} onWord={o => doWord(printFor, o)} isMobile={isMobile} instName={instName} />}
       {viewer != null && shown[viewer] && (
@@ -370,7 +377,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 }
 
 // ── Print options: save paper with compact layouts, see the page count change, credit the creator ──
-function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWord, isMobile, instName }) {
+export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWord, isMobile, instName }) {
   const [reviewer, setReviewer] = useState(''), [pages, setPages] = useState(null), [base, setBase] = useState(null), [fitting, setFitting] = useState(false)
   const o = { ...opts, reviewer, institute: instName, author: creator }
   const upd = patch => setOpts(p => ({ ...p, ...patch }))
@@ -504,3 +511,61 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
   )
 }
 const Msg = ({ err }) => <div style={{ margin: 'auto', padding: 24, color: err ? '#8f1d14' : PX.sub, fontSize: 14 }}>{err ? '❌ ' + err : 'Loading preview…'}</div>
+
+// ── Insert questions from the Practice bank into the notes (as a tidy MCQ block) ──
+function QuestionPicker({ subjects, onInsert, onClose, isMobile }) {
+  const [rows, setRows] = useState(null), [err, setErr] = useState('')
+  const [subj, setSubj] = useState(''), [setNo, setSetNo] = useState(''), [q, setQ] = useState(''), [sel, setSel] = useState([])
+  const [answers, setAnswers] = useState(true), [explain, setExplain] = useState(false)
+  useEffect(() => {
+    let live = true
+    ;(async () => {
+      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', 'practice').is('deleted_at', null).order('id'))
+      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', 'practice').order('id')))
+      if (!live) return
+      if (error) setErr(error.message || 'Could not load the Practice bank'); else setRows(data || [])
+    })()
+    return () => { live = false }
+  }, [])
+  useEffect(() => { const k = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  const sets = useMemo(() => [...new Set((rows || []).filter(r => !subj || r.section === subj).map(r => r.test_no))].sort((a, b) => a - b), [rows, subj])
+  const shown = useMemo(() => (rows || []).filter(r => (!subj || r.section === subj) && (!setNo || String(r.test_no) === setNo) && (!q.trim() || [r.question, r.topic, r.option_a, r.option_b, r.option_c, r.option_d].join(' ').toLowerCase().includes(q.trim().toLowerCase()))), [rows, subj, setNo, q])
+  const toggle = id => setSel(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]))
+  const chosen = (rows || []).filter(r => sel.includes(r.id))
+  const chip = on => ({ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: PX.ink2, whiteSpace: 'nowrap', flexShrink: 0 })
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 14 }}>
+      <div role="dialog" aria-modal="true" aria-label="Insert questions from the Practice bank" onClick={e => e.stopPropagation()} style={{ width: 'min(760px,100%)', height: isMobile ? '92vh' : '86vh', background: '#fff', borderRadius: isMobile ? '26px 26px 0 0' : 24, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', background: 'linear-gradient(135deg,#132a4f,#2f5aa3)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#e9d9b0' }}>Practice bank</div><div style={{ fontFamily: PX.serif, fontSize: 19, fontWeight: 600 }}>Insert questions into your notes</div></div>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 17 }}>×</button>
+        </div>
+        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${PX.line}` }}>
+          <input style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 99, border: `1.5px solid ${PX.line}`, fontSize: isMobile ? 16 : 14, fontFamily: 'inherit' }} type="search" placeholder="🔍 Search questions or topics…" aria-label="Search questions" value={q} onChange={e => setQ(e.target.value)} />
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 8 }}><button type="button" style={chip(!subj)} onClick={() => { setSubj(''); setSetNo('') }}>All subjects</button>{subjects.map(x => <button key={x.key} type="button" style={chip(subj === x.label)} onClick={() => { setSubj(subj === x.label ? '' : x.label); setSetNo('') }}>{x.short}</button>)}</div>
+          {sets.length > 1 && <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 6 }}><button type="button" style={chip(!setNo)} onClick={() => setSetNo('')}>All sets</button>{sets.map(n => <button key={n} type="button" style={chip(setNo === String(n))} onClick={() => setSetNo(setNo === String(n) ? '' : String(n))}>Set {n}</button>)}</div>}
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '4px 14px' }}>
+          {err && <div role="alert" style={{ padding: 14, color: '#8f1d14' }}>❌ {err}</div>}
+          {!rows && !err && <div style={{ padding: 24, color: PX.sub, textAlign: 'center' }}>Loading the Practice bank…</div>}
+          {rows && !shown.length && <div style={{ padding: 24, color: PX.sub, textAlign: 'center' }}>{rows.length ? 'No questions match.' : 'The Practice bank has no questions yet.'}</div>}
+          {shown.map(r => (
+            <label key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 4px', borderBottom: `1px solid ${PX.line}`, cursor: 'pointer' }}>
+              <input type="checkbox" checked={sel.includes(r.id)} onChange={() => toggle(r.id)} style={{ width: 20, height: 20, marginTop: 2, flexShrink: 0 }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 14, color: PX.ink, lineHeight: 1.4 }}>{mathPlain(r.question)}{r.image_data ? ' 🖼' : ''}</span>
+                <span style={{ display: 'block', fontSize: 11.5, color: PX.sub, marginTop: 2 }}>{[r.section, 'Set ' + r.test_no, r.topic, r.difficulty].filter(Boolean).join(' · ')}</span>
+              </span>
+            </label>))}
+        </div>
+        <div style={{ padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', borderTop: `1px solid ${PX.line}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: '#fcfbf7' }}>
+          <button type="button" className="px-btn ghost" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => setSel(sel.length === shown.length ? [] : shown.map(r => r.id))}>{sel.length && sel.length === shown.length ? 'Clear' : `Select all ${shown.length}`}</button>
+          <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={answers} onChange={e => setAnswers(e.target.checked)} />Answers</label>
+          <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 13 }}><input type="checkbox" checked={explain} onChange={e => setExplain(e.target.checked)} />Explanations</label>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="px-btn gold" style={{ minHeight: 44 }} disabled={!chosen.length} onClick={() => onInsert(questionsToNotes(chosen, { answers, explain }))}>Insert {chosen.length || ''} question{chosen.length === 1 ? '' : 's'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}

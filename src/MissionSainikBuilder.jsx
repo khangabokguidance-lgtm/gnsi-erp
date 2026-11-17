@@ -9,6 +9,7 @@ import { PremiumCard, PX } from './premiumUI'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
+import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
@@ -67,6 +68,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [showBin, setShowBin] = useState(false)
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
   const [scanEdit, setScanEdit] = useState(false)
+  const [studio, setStudio] = useState(null)   // id of the question open in the full-screen editor
   const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false, layout: 'book' })   // paper versions (Set A, B, C…)
   const [preview, setPreview] = useState(null)   // { html, title }
   const LS_PC = 'ms_paper_cfg_' + series
@@ -235,6 +237,14 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     if (error) return setMsg('❌ ' + error.message)
     audit('edit_question', `${series}:${d.test_no}:${d.section}`, { id: d.id })
     await clearSignoff(d.test_no, d.section); setEditQ(null); setMsg('✅ Question updated (verification reset)'); load()
+  }
+  // Save one question from the full-screen editor (same rules as the old inline form).
+  const saveQuestionPatch = async (q, patch) => {
+    if (!canEdit(q.test_no, q.section)) { setMsg('❌ Only the section setter or an admin can edit this question.'); return false }
+    const { error } = await supabase.from(TABLE).update(patch).eq('id', q.id)
+    if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
+    audit('edit_question', `${series}:${q.test_no}:${q.section}`, { id: q.id })
+    await clearSignoff(q.test_no, q.section); setMsg('✅ Question saved (verification reset)'); await load(); return true
   }
   const restore = async q => {
     if (!(isAdmin || canEdit(q.test_no, q.section))) return
@@ -763,7 +773,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
-              {mayEdit && <button className="px-hbtn" onClick={() => { setEditQ({ ...q }); setOpen('') }} aria-label="Edit question">✎</button>}
+              {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
             </div>
             {editQ && editQ.id === q.id && (
@@ -829,6 +839,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <iframe title="Paper preview" srcDoc={preview.html} style={{ flex: 1, border: 0, width: '100%', background: '#eef1f6' }} sandbox="" />
           </div>
         </div>
+      )}
+      {studio != null && secList.some(x => x.id === studio) && (
+        <QuestionEditor list={secList} startIndex={secList.findIndex(x => x.id === studio)} startNo={startOf(section)} title={`${sec.title || section}`} subtitle={`${tid(testNo)} · ${section}`}
+          canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
       {isMobile && mayEdit && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
