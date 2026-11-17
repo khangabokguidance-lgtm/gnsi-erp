@@ -1,11 +1,38 @@
 // MissionSainikShell.jsx — Android-style app shell for the Mission Sainik module:
 // top app bar, bottom navigation (phones) / navigation rail (desktop), an "All tabs" bottom sheet, snackbar, FAB and confetti.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 
 const BOTTOM = [['overview', '🏠', 'Home'], ['mine', '✅', 'Tasks'], ['prebuilder', '🧱', 'Build'], ['insights', '💡', 'Insights']]
 
+// What each section is for — shown in search results and used as search keywords.
+const HINTS = {
+  overview: 'Dashboard, countdown, what needs attention', schedule: 'Test dates and deadlines calendar', mock: 'Mock series list and results', allotment: 'Who sets which paper',
+  syllabus: 'Chapter plan for each test', panel: 'Teachers, setters, verifiers', mine: 'My assigned tasks, submit and verify', practice: 'Practice sets and questions',
+  material: 'Notes, PDFs, links for students', prebuilder: 'Build Pre Mock test papers, upload questions', megabuilder: 'Build Mega Mock papers', dailybuilder: 'Build Daily class tests',
+  practicebuilder: 'Build practice sets (25 per subject)', marks: 'Enter and import test marks', premock: 'Analyse Pre Mock results', megamock: 'Analyse Mega Mock results',
+  activity: 'Teacher upload and task activity', insights: 'Weak chapters, trends, tips', guide: 'Step-by-step help for every screen', admin: 'Locks, approvals, backup, audit log',
+}
+const store = {
+  get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } },
+}
+
 const CSS = `
+.msx-find{position:relative;margin:0 4px 6px}.msx-find input{width:100%;height:42px;border-radius:999px;border:1.5px solid #d9d2c2;background:#fff;padding:0 40px 0 38px;font:600 14px inherit;font-family:inherit;color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.msx-find input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,146,58,.2)}.msx-find .ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;opacity:.6}
+.msx-find kbd{position:absolute;right:12px;top:50%;transform:translateY(-50%);font:700 11px inherit;font-family:inherit;color:var(--sub);border:1px solid #d9d2c2;border-radius:6px;padding:1px 6px;background:#faf8f3}
+.msx-find .x{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;font-size:16px;color:var(--sub)}
+.msx-res{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:14px;text-align:left;animation:msx-fade .15s both}.msx-res:hover,.msx-res.hi{background:#f6efdc}
+.msx-res b{display:block;font-size:14px;color:var(--ink)}.msx-res small{display:block;font-size:12px;color:var(--sub);margin-top:1px}.msx-res .ic{font-size:22px;width:38px;height:38px;border-radius:12px;background:#eef2f9;display:flex;align-items:center;justify-content:center;flex:none}
+.msx-pin{width:28px;height:28px;border-radius:50%;font-size:15px;color:#b8b2a2;flex:none;margin-left:auto}.msx-pin.on{color:var(--gold)}.msx-pin:hover{background:rgba(184,146,58,.15)}
+.msx-ri .msx-pin{opacity:0;transition:opacity .15s}.msx-ri:hover .msx-pin,.msx-ri .msx-pin.on{opacity:1}
+.msx-tile{position:relative}.msx-tile .msx-pin{position:absolute;top:2px;right:6px;width:24px;height:24px;font-size:13px;margin:0;opacity:.85}
+.msx-sheet .msx-sticky{position:sticky;top:-10px;z-index:2;background:#fff;padding:2px 0 8px}
+.msx button:focus-visible,.msx input:focus-visible{outline:2.5px solid var(--gold);outline-offset:2px}
+.msx-ri{transition:background .15s,transform .12s,padding-left .15s}.msx-ri:hover{padding-left:18px}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 .msx{--navy:#132a4f;--navy2:#1e3a6e;--gold:#b8923a;--goldlt:#e9d9b0;--bg:#f2f4f8;--card:#fff;--ink:#0f1b2e;--sub:#5d6b82;--ok:#0f7a4c;--bad:#b42318;
   font-family:'Plus Jakarta Sans','Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;position:relative;-webkit-tap-highlight-color:transparent}
 .msx *{box-sizing:border-box}
@@ -101,6 +128,23 @@ export function Confetti({ show }) {
 
 export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
+  const [q, setQ] = useState('')
+  const [hi, setHi] = useState(0)
+  const [pins, setPins] = useState(() => store.get('msx-pins', []))
+  const [recent, setRecent] = useState(() => store.get('msx-recent', []))
+  const railFind = useRef(null), sheetFind = useRef(null)
+  const togglePin = id => setPins(p => { const n = p.includes(id) ? p.filter(x => x !== id) : [...p, id]; store.set('msx-pins', n); return n })
+  // "/" or Ctrl+K jumps to search: the rail on desktop, the All-sections sheet on phones.
+  useEffect(() => {
+    const k = e => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable
+      if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault()
+        if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) }
+      }
+    }
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
+  }, [])
   useEffect(() => { if (sheet) { const k = e => e.key === 'Escape' && setSheet(false); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) } }, [sheet])
   // Label every table cell with its column heading so the phone card layout can show it.
   useEffect(() => {
@@ -109,9 +153,41 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
       t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || '' }))
     })
   })
-  const go = id => { try { navigator.vibrate?.(8) } catch { /* not supported */ } setSheet(false); onChange(id); window.scrollTo?.({ top: 0 }) }
+  const go = id => {
+    try { navigator.vibrate?.(8) } catch { /* not supported */ }
+    setSheet(false); setQ(''); onChange(id); window.scrollTo?.({ top: 0 })
+    setRecent(r => { const n = [id, ...r.filter(x => x !== id)].slice(0, 5); store.set('msx-recent', n); return n })
+  }
   const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
   const inBottom = BOTTOM.some(b => b[0] === active)
+  const flat = useMemo(() => groups.flatMap(g => g.items.map(([id, ic, label]) => ({ id, ic, label, group: g.title, hint: HINTS[id] || '' }))), [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+  const byId = Object.fromEntries(flat.map(x => [x.id, x]))
+  const needle = q.trim().toLowerCase()
+  const results = needle ? flat.filter(x => (x.label + ' ' + x.hint + ' ' + x.group).toLowerCase().includes(needle)) : []
+  const pinned = pins.map(id => byId[id]).filter(Boolean)
+  const recents = recent.filter(id => id !== active && !pins.includes(id)).map(id => byId[id]).filter(Boolean).slice(0, 4)
+  const onFindKey = e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(results.length - 1, h + 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)) }
+    else if (e.key === 'Enter' && results[hi]) go(results[hi].id)
+    else if (e.key === 'Escape') { setQ(''); e.currentTarget.blur() }
+  }
+  const finder = (ref, placeholder) => (
+    <div className="msx-find">
+      <span className="ic" aria-hidden="true">🔍</span>
+      <input ref={ref} type="search" value={q} onChange={e => { setQ(e.target.value); setHi(0) }} onKeyDown={onFindKey} placeholder={placeholder} aria-label="Find a section" enterKeyHint="go" />
+      {q ? <button type="button" className="msx-tap x" aria-label="Clear search" onClick={() => setQ('')}>×</button> : <kbd aria-hidden="true">/</kbd>}
+    </div>
+  )
+  const resultList = (
+    <div role="listbox" aria-label="Search results">
+      {results.length === 0 && <div style={{ padding: '14px 12px', fontSize: 13.5, color: 'var(--sub)' }}>No section matches “{q}”. Try “marks”, “paper”, “syllabus” or “teacher”.</div>}
+      {results.map((x, i) => (
+        <button key={x.id} type="button" role="option" aria-selected={i === hi} className={'msx-tap msx-res' + (i === hi ? ' hi' : '')} onClick={() => go(x.id)} onMouseEnter={() => setHi(i)}>
+          <span className="ic">{x.ic}</span><span style={{ minWidth: 0 }}><b>{x.label}</b><small>{x.group} · {x.hint}</small></span>
+        </button>))}
+    </div>
+  )
   const bad = msg && msg.startsWith('❌')
   return (
     <div className="msx">
@@ -119,17 +195,30 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
       <header className="msx-top">
         {onBack ? <button className="msx-tap msx-ic" aria-label="Back to Home" onClick={onBack}>←</button> : <span className="msx-ic" aria-hidden="true">🎖️</span>}
         <h1><small>{subtitle}</small>{title}</h1>
+        <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
         {actions.map(a => <button key={a.label} className="msx-tap msx-ic" aria-label={a.label} title={a.label} onClick={a.onClick}>{a.icon}</button>)}
       </header>
       <div className="msx-body">
         <nav className="msx-rail" aria-label="Mission Sainik sections">
-          {groups.map(g => (
-            <div key={g.title}><h4>{g.title}</h4>
-              {g.items.map(([id, ic, label]) => (
-                <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}>
-                  <span style={{ fontSize: 19 }}>{ic}</span>{label}{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
-                </button>))}
-            </div>))}
+          {finder(railFind, 'Find a section…')}
+          {needle ? resultList : (
+            <>
+              {pinned.length > 0 && <div><h4>⭐ Pinned</h4>
+                {pinned.map(x => (
+                  <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)}>
+                    <span style={{ fontSize: 19 }}>{x.ic}</span>{x.label}<span role="button" tabIndex={0} aria-label={`Unpin ${x.label}`} className="msx-pin on" onClick={e => { e.stopPropagation(); togglePin(x.id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(x.id) } }}>★</span>
+                  </button>))}
+              </div>}
+              {groups.map(g => (
+                <div key={g.title}><h4>{g.title}</h4>
+                  {g.items.map(([id, ic, label]) => (
+                    <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}>
+                      <span style={{ fontSize: 19 }}>{ic}</span>{label}{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
+                      <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} title={pins.includes(id) ? 'Unpin' : 'Pin to top'} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} style={badges[id] ? { marginLeft: 6 } : undefined} onClick={e => { e.stopPropagation(); togglePin(id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(id) } }}>{pins.includes(id) ? '★' : '☆'}</span>
+                    </button>))}
+                </div>))}
+            </>
+          )}
         </nav>
         <main className="msx-main" key={active}>{children}</main>
       </div>
@@ -148,13 +237,25 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
           <div className="msx-scrim" onClick={() => setSheet(false)} />
           <div className="msx-sheet" role="dialog" aria-modal="true" aria-label="All sections">
             <div className="grab" />
-            {groups.map(g => (
-              <div key={g.title}><h4>{g.title}</h4>
-                <div className="msx-grid">
-                  {g.items.map(([id, ic, label]) => (
-                    <button key={id} className={'msx-tap msx-tile' + (active === id ? ' on' : '')} onClick={() => go(id)}><span>{ic}</span>{label}</button>))}
-                </div>
-              </div>))}
+            <div className="msx-sticky">{finder(sheetFind, 'Find a section… e.g. marks, paper')}</div>
+            {needle ? resultList : (
+              <>
+                {[['⭐ Pinned', pinned], ['🕘 Recent', recents]].filter(([, l]) => l.length).map(([t, list]) => (
+                  <div key={t}><h4>{t}</h4>
+                    <div className="msx-grid">{list.map(x => <button key={x.id} className={'msx-tap msx-tile' + (active === x.id ? ' on' : '')} onClick={() => go(x.id)}><span>{x.ic}</span>{x.label}</button>)}</div>
+                  </div>))}
+                {groups.map(g => (
+                  <div key={g.title}><h4>{g.title}</h4>
+                    <div className="msx-grid">
+                      {g.items.map(([id, ic, label]) => (
+                        <button key={id} className={'msx-tap msx-tile' + (active === id ? ' on' : '')} onClick={() => go(id)}><span>{ic}</span>{label}
+                          <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} onClick={e => { e.stopPropagation(); togglePin(id) }}>{pins.includes(id) ? '★' : '☆'}</span>
+                        </button>))}
+                    </div>
+                  </div>))}
+                <div style={{ fontSize: 12, color: 'var(--sub)', textAlign: 'center', marginTop: 14 }}>Tap ☆ on any section to pin it here and in the side menu.</div>
+              </>
+            )}
           </div>
         </>
       )}
