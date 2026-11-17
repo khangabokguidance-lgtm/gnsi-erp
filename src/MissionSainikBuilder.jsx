@@ -321,6 +321,32 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
 .pass{text-align:justify;margin:0 0 2mm;text-indent:4mm}.fig{text-align:center;margin:1.5mm 0 1mm;text-indent:0;padding-left:0}.fig img{max-width:100%;max-height:48mm}
 .sol{padding-left:7mm;text-indent:-7mm;margin:0 0 1.6mm;break-inside:avoid}.sol>b:first-child{display:inline-block;width:7mm;text-indent:0}.sol .m{font-size:8.5pt;color:#555;font-style:italic}
 .conf{margin-top:3mm;font-size:8.5pt;color:#a00;text-align:center;break-inside:avoid}.meta{font-weight:700;font-size:9.5pt;display:flex;justify-content:space-between;margin:0 0 2mm}.note{font-size:9.5pt;font-style:italic;margin-bottom:2mm}`
+  // ── Branding: logo, name, tagline, cover page, watermark, footer ──
+  const brand = pc.brand || {}
+  const instName = brand.name?.trim() || institute?.name || 'Guidance Navodaya & Sainik Institute'
+  const accent = /^#[0-9a-f]{6}$/i.test(brand.accent || '') ? brand.accent : '#132a4f'
+  const logoImg = brand.logo && /^data:image\//.test(brand.logo) ? `<img class="logo" src="${brand.logo}" alt="">` : ''
+  const brandCss = `.logo{max-height:18mm;max-width:34mm;object-fit:contain;flex:none}.bn-t{font:600 8.5pt ${F};color:#444;margin-top:1mm}
+.cover{min-height:255mm;display:flex;flex-direction:column;align-items:center;text-align:center;padding:6mm 4mm 0;break-after:page;page-break-after:always}
+.cover .logo{max-height:30mm;max-width:60mm;margin-bottom:4mm}.cover h1{margin:0;font:800 22pt ${F};color:${accent};font-variant:small-caps}.cover .tag{font:600 10pt ${F};color:#555;margin:1mm 0 8mm}
+.cover h2{margin:0 0 2mm;font:800 17pt ${F};border-top:2.2pt solid ${accent};border-bottom:2.2pt solid ${accent};padding:3mm 8mm}.cover .facts{font:700 10.5pt ${F};margin:3mm 0 7mm}
+.cover table{width:100%;border-collapse:collapse;margin-bottom:7mm}.cover td{border:.8pt solid #333;padding:4mm 3mm;font:700 10.5pt ${F};text-align:left;width:50%}.cover td span{display:inline-block;min-width:60%;border-bottom:.6pt dotted #666}
+.cover ol{text-align:left;margin:0;padding-left:6mm;font:10.5pt ${F};line-height:1.55;width:100%}.cover .dn{margin-top:auto;padding-top:8mm;font:800 11pt ${F};color:#a00;letter-spacing:.06em}
+.wm{position:fixed;left:0;right:0;top:42%;text-align:center;font:800 64pt ${F};color:rgba(19,42,79,.07);transform:rotate(-28deg);z-index:0;pointer-events:none;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.ftr{position:fixed;left:0;right:0;bottom:0;text-align:center;font:600 8pt ${F};color:#555;border-top:.5pt solid #bbb;padding-top:1mm}`
+  const coverHtml = (t, key, setIdx) => {
+    if (!brand.cover || key) return ''
+    const secs = assemble(t, setIdx)
+    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const date = cfg.tests.find(x => x.no === t)?.date
+    const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
+    const marks = secs.reduce((a, x) => a + x.q * x.marks, 0)
+    const lines = String(brand.instructions || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean)
+    return `<div class="cover">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div class="tag">${esc(brand.tagline)}</div>` : '<div class="tag">&nbsp;</div>'}
+<h2>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}</h2><div class="facts">${[date ? fmtShort(date) : '', cfg.noMarks ? '' : `${printTotal(t)} questions`, cfg.noMarks ? '' : `${marks} marks`, cfg.noMarks ? '' : cfg.duration].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')}</div>
+<table><tr><td>Candidate's name: <span></span></td><td>Roll / GCC no.: <span></span></td></tr><tr><td>Batch: <span></span></td><td>Signature: <span></span></td></tr></table>
+${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}<div class="dn">DO NOT OPEN UNTIL TOLD TO DO SO</div></div>`
+  }
   const optLayout = q => {
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
     const len = Math.max(...o.map(x => x.text.length))
@@ -341,7 +367,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
-    const banner = `<div class="banner"><div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1><div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
+    const banner = `<div class="banner">${logoImg}<div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(instName)}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1>${brand.tagline ? `<div class="bn-t">${esc(brand.tagline)}</div>` : ''}<div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
     const sections = secs.map((x, si) => {
       const head = `<div class="sec">Section–${letter(si)}: ${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
       if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${esc(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
@@ -362,19 +388,19 @@ ${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(
     const body = key
       ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${esc(q.explanation || '')}</td></tr>`)]).join('')}</table>`
       : secs.map(x => `<div class="sec">${esc(x.title)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${esc(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
-    return `<div class="lh"><h1>${esc(institute?.name || 'Guidance Navodaya & Sainik Institute')}</h1><div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
+    return `<div class="lh">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div>${esc(brand.tagline)}</div>` : ''}<div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 <div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
 ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
-  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
+  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => coverHtml(t, key, i) + (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
   // On screen (the preview) the print CSS is shown as an A4 sheet on a grey desk — margins, running header and page frame
   // that @page rules only give when printing. Print output is unchanged.
   const previewCss = `.empty{display:none}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
 .run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
 .empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
-  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${previewCss}</style></head><body>${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   const printDoc = (t, key) => {
@@ -386,7 +412,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
   const exportWord = (t, key) => {
     if (!ready0(t)) return
-    const html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
+    const html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}${brandCss.replace(/\.wm\{[^}]*\}|\.ftr\{[^}]*\}/g, '')}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
@@ -396,6 +422,60 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: totalQ(t), setLabel: ver.sets > 1 ? '____' : '' })); w.document.close()
     audit('print_omr', `${series}:${t}`, null)
+  }
+  // ── Portable question bank (JSON): back up, share between institutes, reuse in another series ──
+  const bankRows = scope => {
+    const out = []
+    const tests = scope === 'all' ? cfg.tests : cfg.tests.filter(t => t.no === testNo)
+    tests.forEach(t => cfg.sections.forEach(sc => {
+      if (scope === 'section' && !(t.no === testNo && sc.label === section)) return
+      get(t.no, sc.label).forEach(q => out.push({ test_no: t.no, section: sc.label, question: q.question, option_a: q.option_a, option_b: q.option_b, option_c: q.option_c, option_d: q.option_d, answer: q.answer, explanation: q.explanation || '', topic: q.topic || '', difficulty: q.difficulty || null, ...(q.passage ? { passage: q.passage } : {}) }))
+    }))
+    return out
+  }
+  const exportBank = scope => {
+    if (embargo && !isAdmin) return setMsg('🔒 Bank export is locked until the test dates (embargo).')
+    const list = bankRows(scope)
+    if (!list.length) return setMsg('❌ Nothing to export here yet.')
+    const data = { format: 'gnsi-qbank', version: 1, series, institute: instName, exported_at: new Date().toISOString(), count: list.length, questions: list }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }))
+    const a = document.createElement('a'); a.href = url; a.download = `QBank_${series}_${scope === 'all' ? 'all' : scope === 'test' ? tid(testNo) : tid(testNo) + '_' + sec.short}.json`.replace(/\s+/g, '_'); a.click(); URL.revokeObjectURL(url)
+    audit('bank_export', `${series}:${scope}`, { count: list.length }); setMsg(`✅ ${list.length} question(s) exported`)
+  }
+  const importBank = async e => {
+    const file = e.target.files?.[0]; e.target.value = ''
+    if (!file) return
+    let data
+    try { data = JSON.parse(await file.text()) } catch { return setMsg('❌ That file is not valid JSON.') }
+    if (data?.format !== 'gnsi-qbank' || !Array.isArray(data.questions)) return setMsg('❌ Not a question-bank file (expected format “gnsi-qbank”).')
+    const ok = x => x && String(x.question || '').trim() && ['option_a', 'option_b', 'option_c', 'option_d'].every(k => String(x[k] || '').trim()) && /^[A-D]$/i.test(String(x.answer || ''))
+    const list = data.questions.filter(ok)
+    if (!list.length) return setMsg('❌ No valid questions in the file.')
+    if (list.length > 600) return setMsg('❌ Import at most 600 questions at a time.')
+    const places = new Set(list.map(q => `${q.test_no}|${q.section}`))
+    const keep = places.size > 1 && window.confirm(`The file has ${list.length} questions from ${places.size} places.\n\nOK = keep their original test and section.\nCancel = add all of them to ${tid(testNo)} · ${section}.`)
+    const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    const seen = new Map(), rows = []; let dupes = 0, denied = 0
+    for (const q of list) {
+      const t = keep ? Number(q.test_no) : testNo, sc = keep ? q.section : section
+      if (!cfg.tests.some(x => x.no === t) || !cfg.sections.some(x => x.label === sc)) { denied++; continue }
+      if (!canEdit(t, sc)) { denied++; continue }
+      const key = `${t}|${sc}`
+      if (!seen.has(key)) seen.set(key, new Set(get(t, sc).map(x => norm(x.question))))
+      const set = seen.get(key), n = norm(q.question)
+      if (set.has(n)) { dupes++; continue }
+      set.add(n)
+      rows.push({ question: String(q.question).trim(), option_a: String(q.option_a).trim(), option_b: String(q.option_b).trim(), option_c: String(q.option_c).trim(), option_d: String(q.option_d).trim(), answer: String(q.answer).toUpperCase(), explanation: q.explanation || '', topic: q.topic || '', difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : null, ...(q.passage ? { passage: String(q.passage) } : {}), series, test_no: t, section: sc, uploaded_by: currentUser?.name || '' })
+    }
+    if (!rows.length) return setMsg(`❌ Nothing imported — ${dupes} duplicate(s), ${denied} not allowed or not matching this series.`)
+    if (!window.confirm(`Import ${rows.length} question(s)?${dupes ? `\n${dupes} duplicate(s) will be skipped.` : ''}${denied ? `\n${denied} not allowed here will be skipped.` : ''}`)) return
+    setBusy(true)
+    const { error } = await supabase.from(TABLE).insert(rows)
+    setBusy(false)
+    if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages)' : ''))
+    audit('bank_import', series, { count: rows.length, dupes, denied, keep })
+    for (const key of seen.keys()) { const [t, sc] = key.split('|'); await clearSignoff(Number(t), sc) }
+    setMsg(`✅ ${rows.length} question(s) imported${dupes ? ` · ${dupes} duplicate(s) skipped` : ''}`); load()
   }
   const downloadTemplate = () => { const url = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'Mission_Sainik_questions_template.csv'; a.click(); URL.revokeObjectURL(url) }
   // Bulk actions on the ticked questions of the current section
@@ -541,6 +621,28 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fff', border: `1px solid ${line}`, fontFamily: FONT_STACKS[pc.font][1], fontSize: `${pc.size}pt`, lineHeight: pc.line }}>
                     <b>1.</b> Sample question — what is the value of 3/4 + 1/4?&nbsp;&nbsp;<i>(a) 1/2&nbsp;&nbsp;(b) 1&nbsp;&nbsp;(c) 3/4&nbsp;&nbsp;(d) 2</i>
                   </div>
+                  <div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Branding, cover page &amp; watermark</div>
+                  <div style={{ fontSize: 12, color: PX.sub, marginBottom: 8 }}>Make printed papers carry your institute's identity — also lets another institute use the portal with its own name and logo. Leave a box empty to use the default.</div>
+                  {(() => {
+                    const b = pc.brand || {}, setB = patch => setPc({ ...pc, brand: { ...b, ...patch } })
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <label style={lab}>Institute name on papers<input className="px-input" value={b.name || ''} onChange={e => setB({ name: e.target.value })} placeholder={institute?.name || 'Institute name'} /></label>
+                        <label style={lab}>Tagline<input className="px-input" value={b.tagline || ''} onChange={e => setB({ tagline: e.target.value })} placeholder="e.g. Coaching for Sainik · Navodaya · RMS" /></label>
+                        <label style={lab}>Watermark (printed faintly on every page)<input className="px-input" value={b.watermark || ''} onChange={e => setB({ watermark: e.target.value })} placeholder="e.g. CONFIDENTIAL or institute name" /></label>
+                        <label style={lab}>Footer line<input className="px-input" value={b.footer || ''} onChange={e => setB({ footer: e.target.value })} placeholder="e.g. Khangabok, Thoubal · Ph 98xxxxxx" /></label>
+                        <div style={{ ...lab, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          <span>Logo</span>
+                          {b.logo && <img src={b.logo} alt="Logo" style={{ maxHeight: 44, maxWidth: 90, objectFit: 'contain', borderRadius: 6, border: `1px solid ${line}`, background: '#fff' }} />}
+                          <input type="file" accept="image/*" aria-label="Upload logo" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { setB({ logo: await figFromFile(f) }) } catch (er) { setMsg('❌ ' + er.message) } e.target.value = '' }} />
+                          {b.logo && <button type="button" className="px-btn ghost" onClick={() => setB({ logo: '' })}>Remove</button>}
+                        </div>
+                        <label style={lab}>Accent colour<input type="color" value={accent} onChange={e => setB({ accent: e.target.value })} style={{ display: 'block', width: 56, height: 36, border: `1px solid ${line}`, borderRadius: 8, padding: 2, background: '#fff' }} /></label>
+                        <label style={{ ...lab, gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: PX.ink }}><input type="checkbox" checked={!!b.cover} onChange={e => setB({ cover: e.target.checked })} />Print a cover page (name, roll no., instructions, “do not open”) before the questions</label>
+                        {b.cover && <label style={{ ...lab, gridColumn: '1 / -1' }}>Cover-page instructions (one per line)<textarea className="px-input" rows={5} value={b.instructions || ''} onChange={e => setB({ instructions: e.target.value })} /></label>}
+                      </div>
+                    )
+                  })()}
                   <div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Section builder</div>
                   <div style={{ fontSize: 12, color: PX.sub, marginBottom: 6 }}>Rename, reorder or hide sections and add an instruction line under each heading. Question serials (Q1, Q2…) follow this order.</div>
                   {pc.sections.map((x, i) => (
@@ -577,6 +679,14 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         {mayEdit ? (
           <>
             {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
+              <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
+              <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
+              <button type="button" className="px-hbtn" onClick={() => exportBank('test')}>⬇ This {cfg.noun === 'Set' ? 'set' : 'test'}</button>
+              <button type="button" className="px-hbtn" onClick={() => exportBank('all')}>⬇ Everything</button>
+              <label className="px-hbtn" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>⬆ Import JSON<input type="file" accept=".json,application/json" aria-label="Import a question bank file" onChange={importBank} style={{ display: 'none' }} /></label>
+              <span style={{ fontSize: 11.5, color: PX.sub }}>Back up, move to another series, or share with another institute. Duplicates are skipped.</span>
+            </div>
             <div role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
               {[['cards', '🗂️ Question cards'], ['paste', '📋 Paste / file']].map(([k, l]) => (
                 <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
