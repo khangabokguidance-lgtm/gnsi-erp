@@ -22,6 +22,28 @@ const TEMPLATES = {
   'Worksheet': '# Practice worksheet\n\nName: ____________   Date: ________\n\n## Section A — Short answers\n1. ______________________________\n2. ______________________________\n3. ______________________________\n\n## Section B — Fill in the blanks\n1. The sum of angles of a triangle is ____ °.\n2. \\frac{1}{2} + \\frac{1}{4} = ____\n\n> Teacher: Answers — A1 …, A2 …, B1 180, B2 \\frac{3}{4}.\n',
 }
 
+
+// Premium page header + title block shared by the live preview and the full preview
+const SheetHead = ({ name }) => (
+  <div style={{ textAlign: 'center', marginBottom: 14 }}>
+    <div style={{ height: 5, borderRadius: 3, background: 'linear-gradient(90deg,#b8923a,#f0e1b8 50%,#b8923a)', marginBottom: 12 }} />
+    <div style={{ fontFamily: 'Georgia,serif', fontSize: 17, fontWeight: 700, color: '#132a4f', letterSpacing: '.14em', textTransform: 'uppercase' }}>{name}</div>
+    <div style={{ fontFamily: 'system-ui,sans-serif', fontSize: 10.5, fontWeight: 700, letterSpacing: '.22em', textTransform: 'uppercase', color: '#b8923a', marginTop: 3 }}>Mission Sainik 2027 · Study Material</div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: 8 }}><span style={{ height: 1, width: 60, background: 'linear-gradient(90deg,transparent,#b8923a)' }} /><span style={{ color: '#b8923a', fontSize: 11 }}>◆</span><span style={{ height: 1, width: 60, background: 'linear-gradient(270deg,transparent,#b8923a)' }} /></div>
+  </div>
+)
+const TitleBlock = ({ title, subject, test, by, designation }) => (
+  <div style={{ marginBottom: 14 }}>
+    <div style={{ font: '700 25px/1.2 Georgia,serif', color: '#0f1b2e' }}>{title || <span style={{ color: '#9aa5b8' }}>Title</span>}</div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0 6px' }}>
+      <span style={{ font: '700 11.5px system-ui,sans-serif', background: '#eef2f9', color: '#1e3a6e', borderRadius: 99, padding: '3px 11px' }}>{subject || 'All subjects'}</span>
+      {test ? <span style={{ font: '700 11.5px system-ui,sans-serif', background: '#faf1d9', color: '#8a6118', borderRadius: 99, padding: '3px 11px' }}>Test {test}</span> : null}
+    </div>
+    {by ? <div style={{ font: '12.5px system-ui,sans-serif', color: '#2e3b52' }}>Prepared by <b>{by}</b>{designation ? <span style={{ color: '#5d6b82' }}>, {designation}</span> : null}</div> : null}
+    <div style={{ height: 1, background: 'linear-gradient(90deg,#b8923a,#e8e3d8 60%,transparent)', marginTop: 12 }} />
+  </div>
+)
+
 // ── Page estimate: lay the real print document out in a hidden frame at the page width and count pages ──
 const MM = 3.7795
 const MARGIN_MM = { normal: [16, 14, 18], narrow: [10, 10, 12], minimal: [6, 7, 8] }
@@ -159,10 +181,8 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const emb = embedFor(draft.link_url)
   const livePreview = (
     <div style={{ background: '#fff', border: `1px solid ${PX.line}`, borderRadius: 8, padding: isMobile ? '18px 16px' : '22px 26px', boxShadow: '0 10px 30px -14px rgba(15,27,46,.35)', minHeight: 260 }}>
-      <div style={{ textAlign: 'center', borderBottom: '3px double #132a4f', paddingBottom: 6, marginBottom: 10, fontFamily: 'Georgia,serif' }}><div style={{ fontSize: 18, fontWeight: 700, color: '#132a4f' }}>{instName}</div><div style={{ fontSize: 11.5, color: '#555' }}>Mission Sainik 2027 · Study Material</div></div>
-      <div style={{ font: '700 19px Georgia,serif' }}>{draft.title || <span style={{ color: '#9aa5b8' }}>Title</span>}</div>
-      <div style={{ font: '11.5px system-ui,sans-serif', color: PX.sub }}>{[draft.subject || 'All subjects', Number(draft.test_no) ? 'Test ' + draft.test_no : ''].filter(Boolean).join(' · ')}</div>
-      <div style={{ font: '12px system-ui,sans-serif', color: '#2e3b52', margin: '1px 0 10px' }}>Prepared by <b>{(editMat?.uploaded_by) || userName || 'You'}</b>{(editMat ? creator(editMat).designation : me.designation) ? `, ${editMat ? creator(editMat).designation : me.designation}` : ''}</div>
+      <SheetHead name={instName} />
+      <TitleBlock title={draft.title} subject={draft.subject} test={Number(draft.test_no) || 0} by={(editMat?.uploaded_by) || userName || 'You'} designation={editMat ? creator(editMat).designation : me.designation} />
       {draft.body.trim() ? <div className="md" style={{ fontSize: layout.size }} dangerouslySetInnerHTML={{ __html: renderMaterial(draft.body) }} /> : <div style={{ color: '#9aa5b8', fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>Start typing — your notes appear here exactly as they will print.</div>}
       {fileUrl && draft.file?.type === 'application/pdf' && <iframe title="PDF preview" src={fileUrl} style={{ width: '100%', height: 360, border: `1px solid ${PX.line}`, marginTop: 12 }} />}
       {fileUrl && /^image/.test(draft.file?.type || '') && <img src={fileUrl} alt="Attached" style={{ maxWidth: '100%', marginTop: 12, borderRadius: 6 }} />}
@@ -456,11 +476,9 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
         </div>
         <div style={{ flex: 1, overflow: 'auto', background: '#e9ecf2', padding: k === 'text' ? (isMobile ? 8 : 18) : 0, display: 'flex', flexDirection: 'column' }}>
           {k === 'text' && (
-            <div style={{ background: '#fff', maxWidth: '210mm', width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '16mm 14mm', boxShadow: '0 4px 20px rgba(15,27,46,.2)', minHeight: '60%' }}>
-              <div style={{ textAlign: 'center', borderBottom: '3px double #132a4f', paddingBottom: 6, marginBottom: 10, fontFamily: 'Georgia,serif' }}><div style={{ fontSize: 19, fontWeight: 700, color: '#132a4f' }}>{instName}</div><div style={{ fontSize: 11.5, color: '#555' }}>Mission Sainik 2027 · Study Material</div></div>
-              <div style={{ font: '700 20px Georgia,serif' }}>{m.title}</div>
-              <div style={{ font: '12px system-ui,sans-serif', color: PX.sub, margin: '2px 0 2px' }}>{[m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : ''].filter(Boolean).join(' · ')}</div>
-              <div style={{ font: '12.5px system-ui,sans-serif', color: '#2e3b52', margin: '0 0 12px' }}>Prepared by <b>{creator.name}</b>{creator.designation ? `, ${creator.designation}` : ''}</div>
+            <div style={{ background: '#fff', maxWidth: '210mm', width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '16mm 14mm', boxShadow: '0 18px 44px -18px rgba(15,27,46,.45), 0 2px 6px rgba(15,27,46,.12)', borderRadius: 4, minHeight: '60%', flexShrink: 0, boxSizing: 'border-box' }}>
+              <SheetHead name={instName} />
+              <TitleBlock title={m.title} subject={m.subject} test={m.test_no} by={creator.name} designation={creator.designation} />
               <div className="md" style={{ fontSize: layout.size, columnCount: layout.columns, columnGap: 28 }} dangerouslySetInnerHTML={{ __html: renderMaterial(m.body) }} />
             </div>
           )}
