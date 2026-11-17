@@ -4,9 +4,11 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
 import { PX } from './premiumUI'
 import { parseQuestions } from './lib/missionSainikQuestions'
-import { figFromFile } from './lib/figImage'
+import { figFromFile, svgToJpeg } from './lib/figImage'
+import { vennSvg, vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
 import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
 import { csvToQuestionText } from './lib/missionSainikPaper'
+import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture } from './lib/mathText'
 
 export const blankCard = () => ({ id: Math.random().toString(36).slice(2), question: '', a: '', b: '', c: '', d: '', ans: '', exp: '', topic: '', level: '', passage: '', type: 'normal', image: '', showMore: false, collapsed: false })
 const clean = s => String(s || '').replace(/\s*\n\s*/g, ' ').trim()
@@ -28,13 +30,24 @@ const missingOf = c => {
   if (!c.question.trim()) m.push('question')
   ;['a', 'b', 'c', 'd'].forEach(k => { if (!c[k].trim()) m.push('option ' + k.toUpperCase()) })
   if (!c.ans) m.push('correct answer')
-  if (c.type === 'figure' && !c.image) m.push('figure picture')
+  if ((c.type === 'figure' || c.type === 'venn') && !c.image) m.push(c.type === 'venn' ? 'Venn diagram' : 'figure picture')
+  if (c.type === 'nonverbal' && !c.image && !allOptionPictures(c)) m.push('figure or picture options')
   if (c.type === 'passage' && !c.passage.trim() && !c.image) m.push('passage text or picture')
   return m
 }
 
 export const cardsProblems = cards => cards.filter(c => { const m = missingOf(c); return m && m.length }).length
-const TYPES = [['normal', '📝 Normal'], ['figure', '🖼️ Figure'], ['passage', '📖 Passage']]
+// Insert buttons for the maths toolbar: [label, text, caret offset from the start of the insert, title]
+const MATH_TOOLS = [
+  ['a⁄b', '\\frac{}{}', 6, 'Fraction (type the top, then the bottom)'], ['½', '½', 1, 'One half'], ['¼', '¼', 1, 'One quarter'], ['¾', '¾', 1, 'Three quarters'],
+  ['x²', '^{2}', 4, 'Power / square'], ['xⁿ', '^{}', 2, 'Power'], ['x₂', '_{}', 2, 'Subscript'], ['√', '\\sqrt{}', 6, 'Square root'],
+  ['×', '×', 1, 'Multiply'], ['÷', '÷', 1, 'Divide'], ['±', '±', 1, 'Plus or minus'], ['≤', '≤', 1, 'Less than or equal'], ['≥', '≥', 1, 'Greater than or equal'], ['≠', '≠', 1, 'Not equal'],
+  ['π', 'π', 1, 'Pi'], ['°', '°', 1, 'Degree'], ['∠', '∠', 1, 'Angle'], ['△', '△', 1, 'Triangle'], ['∴', '∴', 1, 'Therefore'], ['→', '→', 1, 'Arrow'], ['₹', '₹', 1, 'Rupee'],
+]
+const TYPES = [['normal', '📝 Normal'], ['figure', '🖼️ Figure'], ['venn', '🔵 Venn diagram'], ['nonverbal', '🔷 Non-verbal figure'], ['passage', '📖 Passage']]
+// Intelligence "picture" chapters (names match the official syllabus) — tapping one sets the question's topic.
+const PICTURE_CHAPTERS = ['Figure Series', 'Odd Figure Out', 'Mirror Image', 'Water Image', 'Paper Folding', 'Embedded Figure', 'Figure Matching', 'Pattern Completion', 'Figure Series Completion', 'Geometrical Figure Completion', 'Space Visualisation', 'Counting Figures']
+const allOptionPictures = c => ['a', 'b', 'c', 'd'].every(k => hasPicture(c[k]))
 const TONES = { A: '#2563eb', B: '#7c3aed', C: '#d97706', D: '#db2777' }
 const field = { width: '100%', boxSizing: 'border-box', border: `1px solid ${PX.line}`, borderRadius: 10, padding: '9px 11px', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: PX.ink, outline: 'none' }
 const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -56,21 +69,21 @@ function PaperPreview({ cards, startNo, title, showAns }) {
       {list.map((c, i) => {
         const p = c.passage.trim(); const showP = p && p !== last; last = p
         const opts = ['a', 'b', 'c', 'd'].map(k => ({ k, text: c[k].trim() }))
-        const len = Math.max(...opts.map(o => o.text.length))
+        const len = Math.max(...opts.map(o => mathPlain(o.text).length))
         const cls = len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
         const ok = c.question.trim() && opts.every(o => o.text) && c.ans
         return (
           <div key={c.id} style={{ marginBottom: 12, breakInside: 'avoid' }}>
-            {(showP || (c.type === 'passage' && c.image && !p)) && <><div style={{ fontStyle: 'italic', fontWeight: 700 }}>Read the following passage and answer the questions:</div>{p && <div style={{ textAlign: 'justify', margin: '2px 0 6px', textIndent: 18 }}>{p}</div>}</>}
-            <div style={{ display: 'flex', gap: 8 }}><b style={{ minWidth: 26 }}>{startNo + i}.</b><span>{c.question.trim() || <i style={{ color: '#b45309' }}>(question missing)</i>}</span></div>
-            {c.type !== 'normal' && (c.image ? <div style={{ textAlign: 'center', margin: '4px 0' }}><img src={c.image} alt={c.type === 'passage' ? 'Passage' : 'Figure'} style={{ maxWidth: '100%', maxHeight: 190 }} /></div> : <div style={{ margin: '3px 0 0 26px', fontSize: 11.5, color: '#b45309', fontFamily: 'system-ui,sans-serif' }}>⚠ {c.type === 'figure' ? 'Figure picture not added yet' : ''}</div>)}
+            {(showP || (c.type === 'passage' && c.image && !p)) && <><div style={{ fontStyle: 'italic', fontWeight: 700 }}>Read the following passage and answer the questions:</div>{p && <div style={{ textAlign: 'justify', margin: '2px 0 6px', textIndent: 18 }} dangerouslySetInnerHTML={{ __html: mathToHtml(p) }} />}</>}
+            <div style={{ display: 'flex', gap: 8 }}><b style={{ minWidth: 26 }}>{startNo + i}.</b>{c.question.trim() ? <span dangerouslySetInnerHTML={{ __html: mathToHtml(c.question.trim()) }} /> : <i style={{ color: '#b45309' }}>(question missing)</i>}</div>
+            {c.type !== 'normal' && (c.image ? <div style={{ textAlign: 'center', margin: '4px 0' }}><img src={c.image} alt={c.type === 'passage' ? 'Passage' : 'Figure'} style={{ maxWidth: '100%', maxHeight: 190 }} /></div> : <div style={{ margin: '3px 0 0 26px', fontSize: 11.5, color: '#b45309', fontFamily: 'system-ui,sans-serif' }}>⚠ {c.type === 'venn' ? 'Venn diagram not added yet' : c.type === 'nonverbal' ? (allOptionPictures(c) ? '' : 'Figure not added yet') : c.type === 'figure' ? 'Figure picture not added yet' : ''}</div>)}
             <div style={{ margin: '3px 0 0 26px', fontStyle: 'italic', display: cls === 'two' ? 'grid' : 'flex', gridTemplateColumns: '1fr 1fr', flexDirection: cls === 'one' ? 'column' : undefined, gap: cls === 'four' ? 14 : '2px 14px', flexWrap: 'wrap' }}>
               {opts.map(o => {
                 const right = showAns && c.ans === o.k.toUpperCase()
-                return <span key={o.k} style={{ fontWeight: right ? 800 : 400, color: right ? '#15803d' : undefined, background: right ? '#dcfce7' : undefined, borderRadius: 4, padding: right ? '0 4px' : 0 }}>({o.k}) {o.text || <i style={{ color: '#b45309' }}>(missing)</i>}{right ? ' ✓' : ''}</span>
+                return <span key={o.k} style={{ fontWeight: right ? 800 : 400, color: right ? '#15803d' : undefined, background: right ? '#dcfce7' : undefined, borderRadius: 4, padding: right ? '0 4px' : 0 }}>({o.k}) {o.text ? <span dangerouslySetInnerHTML={{ __html: mathToHtml(o.text) }} /> : <i style={{ color: '#b45309' }}>(missing)</i>}{right ? ' ✓' : ''}</span>
               })}
             </div>
-            {showAns && (c.exp.trim() || c.topic.trim() || c.level) && <div style={{ margin: '4px 0 0 26px', fontSize: 12, fontFamily: 'system-ui,sans-serif', color: '#5d6b82' }}>{[c.level, c.topic.trim()].filter(Boolean).join(' · ')}{c.exp.trim() ? ` — ${c.exp.trim()}` : ''}</div>}
+            {showAns && (c.exp.trim() || c.topic.trim() || c.level) && <div style={{ margin: '4px 0 0 26px', fontSize: 12, fontFamily: 'system-ui,sans-serif', color: '#5d6b82' }}>{[c.level, c.topic.trim()].filter(Boolean).join(' · ')}{c.exp.trim() ? <span> — <span dangerouslySetInnerHTML={{ __html: mathToHtml(c.exp.trim()) }} /></span> : null}</div>}
             {!ok && <div style={{ margin: '3px 0 0 26px', fontSize: 11.5, color: '#b45309', fontFamily: 'system-ui,sans-serif' }}>⚠ Incomplete — won't upload until fixed</div>}
           </div>
         )
@@ -79,6 +92,7 @@ function PaperPreview({ cards, startNo, title, showAns }) {
   )
 }
 
+export const ADDER_CSS = ''
 export default function MultiQuestionAdder({ cards, setCards, remaining, startNo = 1, title = 'Section', existing = [], draftKey, isMobile }) {
   const refs = useRef({})
   const [view, setView] = useState(isMobile ? 'edit' : 'split')   // edit | split | preview
@@ -117,6 +131,9 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     if (e.altKey && /^[a-d]$/i.test(e.key)) { e.preventDefault(); upd(c.id, { ans: e.key.toUpperCase() }) }   // Alt+A…D marks the answer
     else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); addAfter(c.id, 1, c) }      // Ctrl+Enter: next question
   }
+  const pickOptionImage = async (id, k, file) => {
+    try { const u = await figFromFile(file, { maxW: 260, quality: 0.72, cap: 60000, label: 'Option picture' }); setCards(cs => cs.map(c => (c.id === id ? { ...c, [k]: withPicture(c[k], u) } : c))) } catch (er) { setImgErr(er.message) }
+  }
   const pickImage = async (id, file) => { try { upd(id, { image: await figFromFile(file) }) } catch (er) { setImgErr(er.message) } }
   const [imgErr, setImgErr] = useState('')
 
@@ -142,6 +159,24 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     setTimeout(() => refs.current[fresh[0].id]?.focus(), 30)
     return next
   })
+  const activeField = useRef(null)   // { id, field, el } — the box the maths toolbar types into
+  const track = (id, field) => e => { activeField.current = { id, field, el: e.currentTarget } }
+  const insertMath = (text, caret) => {
+    const a = activeField.current
+    if (!a || !a.el || !document.contains(a.el)) { setImgErr('Click inside a question, option or explanation box first, then tap a symbol.'); return }
+    setImgErr('')
+    const el = a.el, start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? start
+    const next = el.value.slice(0, start) + text + el.value.slice(end)
+    upd(a.id, { [a.field]: next })
+    setTimeout(() => { try { el.focus(); el.setSelectionRange(start + caret, start + caret) } catch { /* element replaced */ } }, 20)
+  }
+  const [vennFor, setVennFor] = useState(null)
+  const [vennDraft, setVennDraft] = useState({ sets: 2, labels: ['', '', ''], v: {}, universe: true })
+  const [presetFor, setPresetFor] = useState(null)   // { id, k } — picking a relationship diagram for an option
+  const pickPreset = async presetId => {
+    const t = presetFor; setPresetFor(null); if (!t) return
+    try { const u = await svgToJpeg(vennPresetSvg(presetId), 200, 120, { scale: 1.2, quality: 0.8 }); setCards(cs => cs.map(c => (c.id === t.id ? { ...c, [t.k]: withPicture(c[t.k], u) } : c))) } catch (er) { setImgErr(er.message) }
+  }
   const [undo, setUndo] = useState(null)   // { card, index } of the last removed question
   const undoTimer = useRef(null)
   const remove = id => {
@@ -203,6 +238,17 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       )}
       {showEdit && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, marginBottom: 10, padding: '6px 8px', borderRadius: 12, background: '#fffaf0', border: '1px solid #ead9a8', boxShadow: '0 2px 8px rgba(19,42,79,.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }} role="toolbar" aria-label="Maths symbols">
+            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#8a6118', flexShrink: 0, marginRight: 4 }}>Maths</span>
+            {MATH_TOOLS.map(([label, text, caret, title]) => (
+              <button key={title} type="button" title={title} aria-label={title} onMouseDown={e => e.preventDefault()} onClick={() => insertMath(text, caret)}
+                style={{ flexShrink: 0, minWidth: 36, height: 34, padding: '0 8px', borderRadius: 9, border: `1px solid ${PX.line}`, background: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "Georgia,'Times New Roman',serif", color: PX.ink }}>{label}</button>))}
+          </div>
+          <div style={{ fontSize: 11, color: PX.sub, margin: '4px 2px 0' }}>Click a box, then a symbol. <b>a⁄b</b> makes a stacked fraction: type the top and bottom inside the braces, e.g. <code>\frac{'{3}{4}'}</code>. Powers: <code>x^2</code> · roots: <code>\sqrt{'{16}'}</code>. The preview shows exactly how it prints.</div>
+        </div>
+      )}
+      {showEdit && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', marginBottom: 10, borderRadius: 12, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Apply to all</span>
           {['Easy', 'Medium', 'Hard'].map(l => <button key={l} type="button" aria-pressed={bulk.level === l} onClick={() => setBulk(b => ({ ...b, level: b.level === l ? '' : l }))} style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${bulk.level === l ? PX.gold : PX.line}`, background: bulk.level === l ? PX.goldBg : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
@@ -215,6 +261,21 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       )}
       {undo && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px', padding: '9px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}><span style={{ flex: 1 }}>Question removed.</span><button type="button" onClick={doUndo} style={{ border: 'none', background: '#e9d9b0', color: '#132a4f', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>Undo</button><button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16 }}>×</button></div>}
+      {presetFor && (
+        <div onClick={() => setPresetFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
+          <div role="dialog" aria-label="Venn relationship diagrams" onClick={e => e.stopPropagation()} style={{ width: 'min(520px,100%)', maxHeight: '86vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}><b style={{ flex: 1, fontSize: 16 }}>Pick a diagram for option {presetFor.k.toUpperCase()}</b><button type="button" aria-label="Close" onClick={() => setPresetFor(null)} style={{ border: 'none', background: '#f1ede3', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 16 }}>×</button></div>
+            <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 10 }}>Relationship diagrams, e.g. "Which diagram shows Doctors, Men and Teachers?". Pick one for each option.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
+              {VENN_PRESETS.map(p => (
+                <button key={p.id} type="button" onClick={() => pickPreset(p.id)} style={{ border: `1.5px solid ${PX.line}`, borderRadius: 12, background: '#fff', padding: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ display: 'block' }} dangerouslySetInnerHTML={{ __html: vennPresetSvg(p.id).replace(/ width="\d+" height="\d+"/, ' style="width:100%;height:auto"') }} />
+                  <span style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: PX.ink2, marginTop: 2 }}>{p.name}</span>
+                </button>))}
+            </div>
+          </div>
+        </div>
+      )}
       {imgErr && <div role="alert" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 10, background: '#fdecea', color: '#8f1d14', fontSize: 13 }}>❌ {imgErr} <button type="button" onClick={() => setImgErr('')} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>×</button></div>}
       <div style={{ display: 'grid', gridTemplateColumns: view === 'split' ? 'minmax(0,1fr) minmax(0,1fr)' : '1fr', gap: 16, alignItems: 'start' }}>
         {showEdit && (
@@ -240,19 +301,48 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                     {!c.collapsed && (
                       <div style={{ padding: 12, display: 'grid', gap: 10 }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Question type">
-                          {TYPES.map(([k, l]) => <button key={k} type="button" aria-pressed={c.type === k} onClick={() => upd(c.id, { type: k, ...(k === 'normal' ? { image: '' } : {}) })}
+                          {TYPES.map(([k, l]) => <button key={k} type="button" aria-pressed={c.type === k} onClick={() => upd(c.id, { type: k, ...(k === 'normal' ? { image: '' } : {}), ...(k === 'venn' && !c.topic ? { topic: 'Venn Diagram' } : {}) })}
                             style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${c.type === k ? PX.navy : PX.line}`, background: c.type === k ? '#e4ebf6' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
                         </div>
-                        {c.type === 'passage' && <textarea rows={3} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 14 }} placeholder="Reading passage text — add the same text to each question that shares it (or upload the passage as a picture below)" aria-label="Passage" value={c.passage} onChange={e => upd(c.id, { passage: e.target.value })} />}
+                        {c.type === 'passage' && <textarea rows={3} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 14 }} placeholder="Reading passage text — add the same text to each question that shares it (or upload the passage as a picture below)" aria-label="Passage" value={c.passage} onChange={e => upd(c.id, { passage: e.target.value })} onFocus={track(c.id, 'passage')} />}
                         {c.type !== 'normal' && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, border: `1.5px dashed ${c.image ? '#bfe3cc' : '#d9c28a'}`, background: c.image ? '#f7fcf9' : '#fffaf0' }}>
-                            {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'figure' ? '🖼️' : '📖'}</span>}
-                            <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
+                            {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'passage' ? '📖' : c.type === 'venn' ? '🔵' : c.type === 'nonverbal' ? '🔷' : '🖼️'}</span>}
+                            <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'venn' ? 'Draw the Venn diagram below, or upload one' : c.type === 'nonverbal' ? 'Add the question figure (or give all four options as pictures)' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
                             <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '📷 Add picture'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
                             {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
                           </div>
                         )}
-                        <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question — or paste a whole question with its options (A–D) and I'll split it" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} onPaste={e => onQuestionPaste(e, c.id)} />
+                        {(c.type === 'nonverbal' || c.type === 'figure') && (
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Chapter</span>
+                            {PICTURE_CHAPTERS.map(ch => <button key={ch} type="button" aria-pressed={c.topic === ch} onClick={() => upd(c.id, { topic: c.topic === ch ? '' : ch })} style={{ padding: '3px 9px', borderRadius: 99, border: `1.5px solid ${c.topic === ch ? PX.gold : PX.line}`, background: c.topic === ch ? PX.goldBg : '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{ch}</button>)}
+                          </div>
+                        )}
+                        {c.type === 'venn' && (
+                          <div>
+                            <button type="button" className="px-btn ghost" style={gbtn} aria-expanded={vennFor === c.id} onClick={() => setVennFor(v => (v === c.id ? null : c.id))}>{vennFor === c.id ? '▾' : '▸'} 🎨 Draw a Venn diagram</button>
+                            {vennFor === c.id && (
+                              <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: '#f4f8ff', border: '1px solid #cfe0f7' }}>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                                  {[2, 3].map(n => <button key={n} type="button" aria-pressed={vennDraft.sets === n} onClick={() => setVennDraft(d => ({ ...d, sets: n }))} style={{ padding: '4px 11px', borderRadius: 99, border: `1.5px solid ${vennDraft.sets === n ? PX.navy : PX.line}`, background: vennDraft.sets === n ? '#e4ebf6' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{n} sets</button>)}
+                                  <label style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" checked={vennDraft.universe} onChange={e => setVennDraft(d => ({ ...d, universe: e.target.checked }))} />Outer box</label>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: 6 }}>
+                                  {Array.from({ length: vennDraft.sets }, (_, i) => <input key={'l' + i} style={{ ...field, padding: '6px 9px', fontSize: 13 }} placeholder={`Name of set ${'ABC'[i]}`} aria-label={`Name of set ${'ABC'[i]}`} value={vennDraft.labels[i] || ''} onChange={e => setVennDraft(d => ({ ...d, labels: Object.assign([...d.labels], { [i]: e.target.value }) }))} />)}
+                                </div>
+                                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub, margin: '8px 0 4px' }}>Numbers or words in each part (optional)</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(84px,1fr))', gap: 6 }}>
+                                  {(vennDraft.sets === 3 ? [['a', 'Only A'], ['b', 'Only B'], ['c', 'Only C'], ['ab', 'A and B'], ['ac', 'A and C'], ['bc', 'B and C'], ['abc', 'All three'], ['out', 'Outside']] : [['a', 'Only A'], ['b', 'Only B'], ['ab', 'A and B'], ['out', 'Outside']]).map(([k, l]) => (
+                                    <input key={k} style={{ ...field, padding: '6px 9px', fontSize: 13 }} placeholder={l} aria-label={l} value={vennDraft.v[k] || ''} onChange={e => setVennDraft(d => ({ ...d, v: { ...d.v, [k]: e.target.value } }))} />))}
+                                </div>
+                                <div style={{ margin: '10px 0', textAlign: 'center', background: '#fff', borderRadius: 8, border: `1px solid ${PX.line}`, padding: 6 }} dangerouslySetInnerHTML={{ __html: vennSvg(vennDraft).replace(/ width="\d+" height="\d+"/, ' style="max-width:100%;height:auto;max-height:210px"') }} />
+                                <button type="button" className="px-btn gold" style={gbtn} onClick={async () => { try { const big = vennDraft.sets === 3; upd(c.id, { image: await svgToJpeg(vennSvg(vennDraft), 320, big ? 290 : 210, { scale: 1.6 }) }); setVennFor(null) } catch (er) { setImgErr(er.message) } }}>Use this diagram as the question figure</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question — or paste a whole question with its options (A–D) and I'll split it" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} onPaste={e => onQuestionPaste(e, c.id)} onFocus={track(c.id, 'question')} />
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))', gap: 8 }}>
                           {['A', 'B', 'C', 'D'].map(k => {
                             const on = c.ans === k
@@ -260,9 +350,14 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1.5px solid ${on ? TONES[k] : PX.line}`, background: on ? TONES[k] + '14' : '#fff', borderRadius: 12, padding: '4px 6px 4px 4px' }}>
                                 <button type="button" aria-pressed={on} aria-label={`Mark ${k} as the correct answer`} title="Tap to mark correct" onClick={() => upd(c.id, { ans: on ? '' : k })}
                                   style={{ width: 34, height: 34, borderRadius: 9, border: 'none', background: on ? TONES[k] : '#f1ede3', color: on ? '#fff' : PX.ink2, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>{on ? '✓' : k}</button>
-                                <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', background: 'transparent', padding: '6px 2px' }} placeholder={`Option ${k}`} aria-label={`Question ${i + 1} option ${k}`} value={c[k.toLowerCase()]}
-                                  onChange={e => upd(c.id, { [k.toLowerCase()]: e.target.value })}
+                                {hasPicture(c[k.toLowerCase()]) && <img src={pictureOf(c[k.toLowerCase()])} alt={`Option ${k} picture`} style={{ height: 34, maxWidth: 70, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff', flexShrink: 0 }} />}
+                                <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', background: 'transparent', padding: '6px 2px' }} placeholder={hasPicture(c[k.toLowerCase()]) ? 'Optional caption' : `Option ${k}`} aria-label={`Question ${i + 1} option ${k}`} value={withoutPicture(c[k.toLowerCase()])}
+                                  onFocus={track(c.id, k.toLowerCase())}
+                                  onChange={e => upd(c.id, { [k.toLowerCase()]: withPicture(e.target.value, pictureOf(c[k.toLowerCase()])) })}
                                   onKeyDown={e => { if (k === 'D' && e.key === 'Enter') { e.preventDefault(); addAfter(c.id, 1, c) } }} />
+                                {c.type === 'venn' && <button type="button" title="Pick a Venn relationship diagram" aria-label={`Pick a Venn diagram for option ${k}`} onClick={() => setPresetFor({ id: c.id, k: k.toLowerCase() })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>🔵</button>}
+                                <label title={hasPicture(c[k.toLowerCase()]) ? 'Replace picture' : 'Use a picture for this option'} style={{ cursor: 'pointer', fontSize: 16, padding: '0 3px', flexShrink: 0, opacity: hasPicture(c[k.toLowerCase()]) ? 1 : .55 }}>🖼<input type="file" accept="image/*" aria-label={`Picture for option ${k}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickOptionImage(c.id, k.toLowerCase(), f) } }} /></label>
+                                {hasPicture(c[k.toLowerCase()]) && <button type="button" aria-label={`Remove picture from option ${k}`} onClick={() => upd(c.id, { [k.toLowerCase()]: withoutPicture(c[k.toLowerCase()]) })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: PX.sub, flexShrink: 0 }}>×</button>}
                               </div>
                             )
                           })}
@@ -276,7 +371,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                         {c.showMore && (
                           <div style={{ display: 'grid', gap: 8 }}>
                             <input style={field} placeholder="Topic (e.g. Fractions)" aria-label="Topic" value={c.topic} onChange={e => upd(c.id, { topic: e.target.value })} />
-                            <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} />
+                            <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} onFocus={track(c.id, 'exp')} />
                           </div>
                         )}
                       </div>
