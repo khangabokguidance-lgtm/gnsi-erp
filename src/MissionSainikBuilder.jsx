@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
+import MultiQuestionAdder, { blankCard, cardsToText } from './MultiQuestionAdder'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
@@ -76,6 +77,8 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [testNo, setTestNo] = useState(startTest || 1)
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
+  const [addMode, setAddMode] = useState('cards')   // cards | paste
+  const [cards, setCards] = useState(() => [blankCard()])
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
   const [signoffs, setSignoffs] = useState([])
@@ -178,7 +181,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   }
 
   const tid = n => (cfg.noun === 'Set' ? `Set ${n}` : `${cfg.prefix}-${String(n).padStart(2, '0')}`)
-  const parsed = useMemo(() => parseQuestions(text), [text])
+  const parsed = useMemo(() => parseQuestions(addMode === 'cards' ? cardsToText(cards) : text), [text, cards, addMode])
   const upload = async () => {
     if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
     if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
@@ -195,7 +198,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
     if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : ''))
-    setText(''); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
+    setText(''); setCards([blankCard()]); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
     audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
     await clearSignoff(testNo, section)
     await load()
@@ -341,7 +344,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const sections = secs.map((x, si) => {
       const head = `<div class="sec">Section–${letter(si)}: ${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
       if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${esc(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
-      return head + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
+      return head + (x.items.length ? '' : `<div class="empty">No questions uploaded yet — Q${x.from}–Q${x.from + x.q - 1}</div>`) + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${esc(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
     }).join('')
     return `${first && pc.banner ? banner : ''}${key || !pc.note ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
 <div class="cols">${sections}</div>
@@ -365,7 +368,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
   const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
-  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}</style></head><body>${bodies.map((b, i) => `<div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+  // On screen (the preview) the print CSS is shown as an A4 sheet on a grey desk — margins, running header and page frame
+  // that @page rules only give when printing. Print output is unchanged.
+  const previewCss = `.empty{display:none}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
+.run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
+.empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
+  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${previewCss}</style></head><body>${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   const printDoc = (t, key) => {
@@ -538,6 +546,22 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         {mayEdit ? (
           <>
             {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
+            <div role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
+              {[['cards', '🗂️ Question cards'], ['paste', '📋 Paste / file']].map(([k, l]) => (
+                <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
+              ))}
+            </div>
+            {addMode === 'cards' ? (
+              <>
+                <MultiQuestionAdder cards={cards} setCards={setCards} remaining={sec.q - secList.length} />
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: 0, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
+                  <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
+                  <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
+                  <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : `⬆ Upload ${parsed.questions.length || ''} question${parsed.questions.length === 1 ? '' : 's'}`}</button>
+                </div>
+              </>
+            ) : (
+              <>
             <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
               Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
               <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
@@ -551,6 +575,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               </span>
               <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
             </div>
+              </>
+            )}
           </>
         ) : (
           <div style={{ padding: '8px 12px', borderRadius: 10, background: PX.tint, fontSize: 13, color: PX.sub }}>

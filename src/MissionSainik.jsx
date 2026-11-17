@@ -1396,27 +1396,66 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       )}
       {addTask && (
         <div className="msx-overlay" onClick={() => setAddTask(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Add task" onClick={e => e.stopPropagation()} style={{ width: 'min(480px,100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
-            <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy, marginBottom: 12 }}>{addTask.kind === 'test' ? 'Add a test section' : 'Add a practice set'}</div>
+          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Add task" onClick={e => e.stopPropagation()} style={{ width: 'min(520px,100%)', maxHeight: '92vh', overflow: 'auto', background: '#fff', borderRadius: 20, padding: 0 }}>
             {(() => {
-              const f = addTask, set = patch => setAddTask({ ...f, ...patch }), lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginTop: 10 }
+              const f = addTask, set = patch => setAddTask({ ...f, ...patch })
+              const isTest = f.kind === 'test'
+              const subj = SUBJECTS.find(x => x.label === f.subject)
+              const setters = subj ? panelSetters(subj.key) : []
+              const verifiers = (peopleAll || []).filter(n => n !== f.setter.trim())
+              const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
+              const lab = { display: 'block', fontSize: 11, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: PX.sub, margin: '16px 0 6px' }
+              const chip = (on, tone) => ({ padding: isMobile ? '9px 14px' : '7px 13px', borderRadius: 99, border: `1.5px solid ${on ? tone || PX.gold : PX.line}`, background: on ? (tone ? tone + '18' : PX.goldBg) : '#fff', color: on ? PX.ink : PX.ink2, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' })
+              const qn = f.question_count === '' ? 0 : Number(f.question_count)
+              const missing = !f.setter.trim() ? 'Choose a setter to continue' : !f.subject.trim() ? 'Choose a subject' : ''
               return (
                 <>
-                  <label style={lab}>Type<select className="px-input" value={f.kind} onChange={e => set({ kind: e.target.value, test_no: 1, question_count: e.target.value === 'test' ? 25 : '' })}><option value="test">Pre Mock test section</option><option value="practice">Practice set</option></select></label>
-                  {f.kind === 'test' && <label style={lab}>Test<select className="px-input" value={f.test_no} onChange={e => set({ test_no: e.target.value })}>{TESTS.map(t => <option key={t.no} value={t.no}>{t.id} · {fmtShort(t.date)}</option>)}</select></label>}
-                  <label style={lab}>Subject<input className="px-input" list="ms-subjects" value={f.subject} onChange={e => set({ subject: e.target.value })} /></label>
-                  <datalist id="ms-subjects">{SUBJECTS.map(x => <option key={x.key} value={x.label} />)}</datalist>
-                  <label style={lab}>Setter<input className="px-input" list="ms-people" value={f.setter} onChange={e => set({ setter: e.target.value })} placeholder="Choose or type a name" /></label>
-                  <label style={lab}>Verifier (optional)<input className="px-input" list="ms-people" value={f.verifier} onChange={e => set({ verifier: e.target.value })} /></label>
-                  <datalist id="ms-people">{peopleAll.map(n => <option key={n} value={n} />)}</datalist>
-                  <label style={lab}>Questions<input className="px-input" type="number" min="0" value={f.question_count} onChange={e => set({ question_count: e.target.value })} /></label>
+                  <div style={{ padding: '20px 24px 16px', background: 'linear-gradient(135deg,#1b3a6b,#0e2040)', color: '#fff', position: 'relative' }}>
+                    <button type="button" aria-label="Close" onClick={() => setAddTask(null)} style={{ position: 'absolute', right: 14, top: 12, border: 'none', background: 'rgba(255,255,255,.14)', color: '#fff', width: 30, height: 30, borderRadius: '50%', cursor: 'pointer', fontSize: 16 }}>×</button>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: PX.goldLt }}>New assignment</div>
+                    <div style={{ fontFamily: PX.serif, fontSize: 23, fontWeight: 600, marginTop: 2 }}>{isTest ? 'Add a test section' : 'Add a practice set'}</div>
+                    <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.7)', marginTop: 3 }}>{isTest ? 'Give a setter one subject section of a Pre Mock test.' : 'Give a setter a practice set of up to 25 questions.'}</div>
+                  </div>
+                  <div style={{ padding: '4px 24px 8px' }}>
+                    <span style={lab}>Type</span>
+                    <div role="tablist" aria-label="Type" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2 }}>
+                      {[['practice', '📝 Practice set'], ['test', '📄 Pre Mock section']].map(([k, l]) => (
+                        <button key={k} type="button" role="tab" aria-selected={f.kind === k} onClick={() => set({ kind: k, test_no: 1, question_count: k === 'test' ? 25 : '' })}
+                          style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: f.kind === k ? '#fff' : 'transparent', boxShadow: f.kind === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: f.kind === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
+                      ))}
+                    </div>
+                    {isTest && <><span style={lab}>Test</span><select className="px-input" value={f.test_no} onChange={e => set({ test_no: e.target.value })} style={isMobile ? { fontSize: 16 } : undefined}>{TESTS.map(t => <option key={t.no} value={t.no}>{t.id} · {fmtShort(t.date)}</option>)}</select></>}
+                    <span style={lab}>Subject</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {SUBJECTS.map((x, i) => <button key={x.key} type="button" aria-pressed={f.subject === x.label} style={chip(f.subject === x.label, TONES[i % 6])} onClick={() => set({ subject: x.label, setter: '' })}>{x.short}</button>)}
+                    </div>
+                    <span style={lab}>Setter{subj ? ` · ${subj.short} panel` : ''}</span>
+                    {setters.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>{setters.map(n => <button key={n} type="button" aria-pressed={f.setter === n} style={chip(f.setter === n)} onClick={() => set({ setter: n, verifier: f.verifier === n ? '' : f.verifier })}>👤 {n}</button>)}</div>}
+                    <input className="px-input" list="ms-people" value={f.setter} onChange={e => set({ setter: e.target.value })} placeholder="…or type another name" aria-label="Setter" style={isMobile ? { fontSize: 16 } : undefined} />
+                    <span style={lab}>Verifier <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: PX.faint }}>(optional — a different teacher)</span></span>
+                    {verifiers.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>{verifiers.slice(0, 8).map(n => <button key={n} type="button" aria-pressed={f.verifier === n} style={chip(f.verifier === n)} onClick={() => set({ verifier: f.verifier === n ? '' : n })}>🔍 {n}</button>)}</div>}
+                    <input className="px-input" list="ms-people" value={f.verifier} onChange={e => set({ verifier: e.target.value })} placeholder="…or type another name" aria-label="Verifier" style={isMobile ? { fontSize: 16 } : undefined} />
+                    <datalist id="ms-people">{peopleAll.map(n => <option key={n} value={n} />)}</datalist>
+                    <span style={lab}>Questions</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${PX.line}`, borderRadius: 12, overflow: 'hidden' }}>
+                        <button type="button" aria-label="Fewer questions" onClick={() => set({ question_count: Math.max(0, qn - 5) })} style={{ width: 40, height: 40, border: 'none', background: '#faf8f3', fontSize: 18, cursor: 'pointer' }}>−</button>
+                        <input type="number" min="0" aria-label="Questions" value={f.question_count} onChange={e => set({ question_count: e.target.value })} style={{ width: 56, height: 40, border: 'none', textAlign: 'center', fontSize: 16, fontWeight: 700, outline: 'none' }} />
+                        <button type="button" aria-label="More questions" onClick={() => set({ question_count: qn + 5 })} style={{ width: 40, height: 40, border: 'none', background: '#faf8f3', fontSize: 18, cursor: 'pointer' }}>+</button>
+                      </div>
+                      {[10, 15, 20, 25].map(n => <button key={n} type="button" aria-pressed={qn === n} style={chip(qn === n)} onClick={() => set({ question_count: n })}>{n}</button>)}
+                    </div>
+                  </div>
+                  <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: `1px solid ${PX.line}`, padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 160, fontSize: 12.5, color: missing ? '#b45309' : PX.sub }}>
+                      {missing ? '⚠️ ' + missing : <>✓ <b style={{ color: PX.ink }}>{f.setter.trim()}</b> · {subj?.short || f.subject}{isTest ? ` · ${TESTS.find(t => String(t.no) === String(f.test_no))?.id || ''}` : ' practice set'}{qn ? ` · ${qn} Q` : ''}</>}
+                    </div>
+                    <button className="px-btn ghost" onClick={() => setAddTask(null)}>Cancel</button>
+                    <button className="px-btn gold" disabled={busy || !!missing} onClick={createTask}>Add task</button>
+                  </div>
                 </>
               )
             })()}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-              <button className="px-btn ghost" onClick={() => setAddTask(null)}>Cancel</button>
-              <button className="px-btn gold" disabled={busy} onClick={createTask}>Add task</button>
-            </div>
           </div>
         </div>
       )}
