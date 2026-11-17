@@ -116,8 +116,11 @@ export const FONT_STACKS = {
   garamond: ['Garamond', "Garamond,'EB Garamond','Times New Roman',serif"], cambria: ['Cambria', "Cambria,Georgia,serif"],
   arial: ['Arial', 'Arial,Helvetica,sans-serif'], verdana: ['Verdana', 'Verdana,Geneva,sans-serif'], mono: ['Courier New', "'Courier New',monospace"],
 }
+export const DEFAULT_COVER_INSTRUCTIONS = 'Do not open this booklet until you are told to do so.\nEach question has four options; choose the one correct answer and darken its bubble on the OMR sheet.\nUse a blue or black ball-point pen only. Do not fold or stain the OMR sheet.\nRough work may be done in the space provided or on the last page.\nMobile phones and electronic devices are not allowed in the examination hall.'
 export const defaultPaperConfig = sections => ({
   columns: 2, rule: true, font: 'times', size: 10.4, line: 1.28, optStyle: 'auto', banner: true, note: true,
+  // White-label branding, cover page, watermark and footer (all optional; empty = the institute's defaults).
+  brand: { name: '', tagline: '', logo: '', accent: '#132a4f', watermark: '', footer: '', cover: false, instructions: DEFAULT_COVER_INSTRUCTIONS },
   sections: sections.map(s => ({ label: s.label, title: s.label, instruction: '', include: true })),
 })
 // Merge a saved config over the defaults; keeps the saved order, appends sections that are new, drops ones that no longer exist.
@@ -126,6 +129,9 @@ export function mergePaperConfig(sections, saved) {
   if (!saved || typeof saved !== 'object') return base
   const out = { ...base, ...Object.fromEntries(Object.entries(saved).filter(([k]) => k !== 'sections' && k in base)) }
   out.columns = out.columns === 1 ? 1 : 2
+  out.brand = { ...base.brand, ...(saved.brand && typeof saved.brand === 'object' ? saved.brand : {}) }
+  if (!/^#[0-9a-f]{6}$/i.test(out.brand.accent)) out.brand.accent = base.brand.accent
+  if (out.brand.logo && !/^data:image\//.test(out.brand.logo)) out.brand.logo = ''
   out.size = Math.min(14, Math.max(8, Number(out.size) || base.size)); out.line = Math.min(2, Math.max(1, Number(out.line) || base.line))
   if (!FONT_STACKS[out.font]) out.font = 'times'
   const known = new Map(base.sections.map(s => [s.label, s])), seen = new Set(), list = []
