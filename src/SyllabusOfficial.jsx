@@ -61,7 +61,7 @@ function subjectsFor(course, cls) {
 
 const chip = (tone, bg) => ({ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, color: tone, background: bg, whiteSpace: 'nowrap', letterSpacing: '.02em' })
 
-function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, query, open, onToggle, manualRows = [], canAdd, canDelete, onAdd, onDelete }) {
+function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, query, open, onToggle, manualRows = [], canAdd, canDelete, onAdd, onDelete, onRename }) {
   const [adding, setAdding] = useState(false), [draft, setDraft] = useState('')
   const manualBy = Object.fromEntries(manualRows.map(r => [normName(r.chapter_name), r]))
   const taughtCount = chapters.filter(c => coverage[c]?.taught > 0).length
@@ -109,6 +109,7 @@ function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, qu
               <span style={{ fontSize: 11.5, color: cv.taught ? PX.ok : PX.faint, whiteSpace: 'nowrap', fontWeight: 600 }}>
                 {cv.taught ? `Taught ${cv.taught}× · ${fmtDate(cv.last)}` : 'Not yet'}
               </span>
+              {man && canAdd && <button type="button" aria-label={`Rename manual chapter ${c}`} title="Rename this manual chapter" onClick={() => onRename(man)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#5b21b6', fontSize: 14, padding: '0 2px' }}>✎</button>}
               {man && canDelete && <button type="button" aria-label={`Remove manual chapter ${c}`} title="Remove this manual chapter" onClick={() => onDelete(man)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b42318', fontSize: 15, padding: '0 2px' }}>✕</button>}
             </li>
           )
@@ -200,6 +201,14 @@ export default function SyllabusOfficial({ logs = [], canAdd = false, canDelete 
     setSaving(false)
     if (error) return say('Could not save: ' + error.message)
     say(`✓ ${fresh.length} chapter${fresh.length === 1 ? '' : 's'} added to ${subj}`); setAddForm({ subject: '', newSubject: '', text: '' }); setAddOpen(false); loadManual()
+  }
+  const renameManual = async row => {
+    const name = window.prompt('Rename this chapter:', row.chapter_name); if (name == null) return
+    const n = name.trim(); if (!n || n === row.chapter_name) return
+    if ((subjects[row.subject_name] || []).some(c => normName(c) === normName(n) && normName(c) !== normName(row.chapter_name))) return say('A chapter with that name is already listed.')
+    const { error } = await supabase.from('syllabus_topics').update({ chapter_name: n }).eq('id', row.id)
+    if (error) return say('Could not rename: ' + error.message)
+    say('✓ Chapter renamed'); loadManual()
   }
   const removeManual = async row => {
     if (!window.confirm(`Remove the manual chapter “${row.chapter_name}” from ${row.subject_name}?`)) return
@@ -355,7 +364,7 @@ export default function SyllabusOfficial({ logs = [], canAdd = false, canDelete 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,320px),1fr))', gap: 14, alignItems: 'start' }}>
         {Object.entries(subjects).map(([s, chs]) => (
           <SubjectCard key={s} subject={s} chapters={chs} coverage={coverage[s] || {}} section={sectionFor(pattern, s)}
-            baseSet={baseSets[s] || new Set()} filter={filter} query={query} manualRows={manualBySubject[s] || []} canAdd={canAdd} canDelete={canDelete} onAdd={addChapters} onDelete={removeManual}
+            baseSet={baseSets[s] || new Set()} filter={filter} query={query} manualRows={manualBySubject[s] || []} canAdd={canAdd} canDelete={canDelete} onAdd={addChapters} onDelete={removeManual} onRename={renameManual}
             open={!!openSubjects[s]} onToggle={() => setOpenSubjects(o => ({ ...o, [s]: !o[s] }))} />
         ))}
       </div>

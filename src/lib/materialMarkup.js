@@ -9,13 +9,25 @@ import { mathToHtml } from './mathText.js'
 
 const FIG_RE = /^\[\[img:(data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+)(?:\|([^\]]*))?\]\]$/
 const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-export const figureLine = (dataUrl, caption = '') => `[[img:${dataUrl}${caption ? '|' + caption.replace(/[\]\n|]/g, ' ') : ''}]]`
+export const figureLine = (dataUrl, caption = '', width = 0) => {
+  const cap = String(caption || '').replace(/[\]\n|]/g, ' ').trim(), w = Math.round(Number(width) || 0)
+  return `[[img:${dataUrl}${cap || w ? '|' + cap : ''}${w >= 20 && w < 100 ? '|' + w + '%' : ''}]]`
+}
+// Read a figure line back: { url, caption, width } (width 0 = full), or null when the line is not a figure.
+export function parseFigureLine(line) {
+  const m = String(line || '').trim().match(FIG_RE); if (!m) return null
+  const mm = (m[2] || '').match(/^(.*?)(?:\|(\d{2,3})%)?$/s)
+  return { url: m[1], caption: (mm[1] || '').trim(), width: mm[2] ? Math.min(100, Math.max(20, Number(mm[2]))) : 0 }
+}
 
 const CALLOUTS = { teacher: ['Teacher', 'teacher'], note: ['Note', 'info'], tip: ['Tip', 'tip'], formula: ['Formula', 'formula'], important: ['Important', 'warn'], remember: ['Remember', 'warn'], example: ['Example', 'ex'], warning: ['Warning', 'warn'] }
 
 function inline(t) {
   let s = mathToHtml(t)
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<i>$2</i>').replace(/==([^=\n]+)==/g, '<mark>$1</mark>')
+  s = s.replace(/~~([^~\n]+)~~/g, '<s>$1</s>').replace(/`([^`\n]+)`/g, '<code>$1</code>')
+  s = s.replace(/(?<![_\w])__(?=[^\s_])([^_\n]*[^\s_])__(?![_\w])/g, '<u>$1</u>')                      // "____" blanks are left alone
+  s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)<>"]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
   return s
 }
 
@@ -27,7 +39,7 @@ export function renderMaterial(src, opts = {}) {
   let html = '', para = [], list = null, quote = null, table = null, choices = null
   const flushPara = () => { if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = [] } }
   const flushOpts = () => { if (choices) { html += `<div class="opts">${choices.map(([k, t]) => `<div class="op"><span class="ol">${k}</span><span>${inline(t)}</span></div>`).join('')}</div>`; choices = null } }
-  const flushList = () => { if (list) { html += `<${list.t}>${list.items.map(x => `<li>${inline(x)}</li>`).join('')}</${list.t}>`; list = null } }
+  const flushList = () => { if (list) { html += `<${list.t}>${list.items.map(x => { const c = x.match(/^\[( |x|X)\]\s+(.*)$/); return c ? `<li class="chk">${c[1] === ' ' ? '☐' : '☑'} ${inline(c[2])}</li>` : `<li>${inline(x)}</li>` }).join('')}</${list.t}>`; list = null } }
   const flushQuote = () => {
     if (!quote) return
     const first = quote[0] || '', m = first.match(/^(teacher|note|tip|formula|important|remember|example|warning)\s*[:\-–]\s*(.*)$/i)
@@ -55,7 +67,7 @@ export function renderMaterial(src, opts = {}) {
     }
     if ((m = t.match(/^(?:answer|ans)\s*[:\-–]\s*(.+)$/i))) { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable(); html += `<div class="ans"><b>Answer</b> ${inline(m[1])}</div>`; continue }
     if (choices) flushOpts()
-    if ((m = t.match(FIG_RE))) { flushAll(); html += `<figure><img src="${m[1]}" alt="">${m[2] ? `<figcaption>${escHtml(m[2].trim())}</figcaption>` : ''}</figure>`; continue }
+    if ((m = parseFigureLine(t))) { flushAll(); html += `<figure><img src="${m.url}" alt=""${m.width ? ` style="max-width:${m.width}%"` : ''}>${m.caption ? `<figcaption>${escHtml(m.caption)}</figcaption>` : ''}</figure>`; continue }
     if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(t)) { flushAll(); html += '<hr>'; continue }
     if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); html += `<h${m[1].length} id="h${++hc}">${inline(m[2])}</h${m[1].length}>`; continue }
     if (t.startsWith('>')) { flushPara(); flushList(); flushTable(); (quote ||= []).push(t.replace(/^>\s?/, '')); continue }
@@ -82,7 +94,9 @@ export const MATERIAL_CSS = `.md{font-family:Georgia,'Times New Roman',serif;col
 .md h1{font-size:23px;color:#132a4f;margin:18px 0 8px;border-bottom:2.5px solid #b8923a;padding-bottom:4px;letter-spacing:.01em}.md h2{font-size:18px;color:#132a4f;margin:16px 0 6px}.md h3{font-size:15px;color:#2e3b52;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
 .md p{margin:0 0 9px}.md ul,.md ol{margin:0 0 10px;padding-left:24px}.md li{margin:2px 0}.md hr{border:0;border-top:1px solid #cfd6e4;margin:14px 0}.md mark{background:#fff1b8;padding:0 2px}
 .md table{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:13px;break-inside:avoid}.md th,.md td{border:1px solid #9aa5b8;padding:5px 9px;text-align:left;vertical-align:top}.md th{background:#eef1f6}
-.md figure{margin:10px 0;text-align:center;break-inside:avoid}.md figure img{max-width:100%;max-height:320px}.md figcaption{font:italic 12px system-ui,sans-serif;color:#5d6b82;margin-top:3px}
+.md figure{margin:10px 0;text-align:center;break-inside:avoid}.md figure img{max-width:100%;max-height:320px}.md li.chk{list-style:none;margin-left:-18px}.md code{font:.9em ui-monospace,Menlo,Consolas,monospace;background:#f1f3f7;padding:0 4px;border-radius:3px}.md a{color:#1d4ed8}.md s{opacity:.7}
+.md.compact{line-height:1.38;font-size:12px}.md.compact p{margin:0 0 4px}.md.compact h1{margin:9px 0 3px;font-size:1.35em;padding-bottom:2px}.md.compact h2{margin:8px 0 3px;font-size:1.15em}.md.compact h3{margin:6px 0 2px}.md.compact ul,.md.compact ol{margin:0 0 5px;padding-left:19px}.md.compact li{margin:0}.md.compact table{margin:4px 0 7px}.md.compact th,.md.compact td{padding:2px 6px}.md.compact .box{margin:4px 0 7px;padding:4px 9px}.md.compact figure{margin:5px 0}.md.compact figure img{max-height:230px}.md.compact hr{margin:7px 0}.md.compact .opts{margin-bottom:3px}.md.compact p.q{margin:6px 0 3px}
+.md figcaption{font:italic 12px system-ui,sans-serif;color:#5d6b82;margin-top:3px}
 .md .box{margin:8px 0 12px;padding:8px 12px;border-left:4px solid #2563eb;background:#eef4ff;border-radius:4px;break-inside:avoid}.md .box.tip{border-color:#16a34a;background:#eefaf2}.md .box.formula{border-color:#7c3aed;background:#f4f0ff;font-size:15px}
 .md .box.teacher{border-color:#be123c;background:#fff1f3}.md .box.warn{border-color:#d97706;background:#fff6e5}
 .md p.q{font-weight:600;margin:12px 0 5px;padding-left:10px;border-left:3px solid #b8923a;break-after:avoid}.md .opts{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:0 0 6px 13px;break-inside:avoid}.md .op{display:flex;gap:8px;align-items:baseline}.md .ol{flex:none;width:1.6em;height:1.6em;line-height:1.6em;border-radius:50%;background:#eef1f6;color:#132a4f;font:700 .78em system-ui,sans-serif;text-align:center}

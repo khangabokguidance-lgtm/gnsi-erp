@@ -11,6 +11,7 @@ import { materialDocHtml, PRINT_DEFAULTS } from './lib/materialMarkup'
 import { creatorOf } from './lib/staffLookup'
 import { PrintDialog, CSS_ALL } from './MissionSainikMaterial'
 import { questionsToNotes } from './lib/questionNotes'
+import QuestionEditor from './QuestionEditor'
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } }
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
@@ -23,7 +24,8 @@ const SET_WORD = { practice: 'Practice sets', daily: 'Daily tests', pre: 'Pre Mo
 
 export default function SmartPaperMaker({ subjects, institute, staff = [], userName = '', isMobile, isAdmin = false, onClose, onUseAsNotes, setMsg }) {
   const [source, setSource] = useState('practice')
-  const [adv, setAdv] = useState(false)   // advanced options are tucked away so the quick start stays simple
+  const [adv, setAdv] = useState(false)
+  const [editIdx, setEditIdx] = useState(null)   // question open in the editor (edits belong to this paper only)   // advanced options are tucked away so the quick start stays simple
   const [bank, setBank] = useState(null), [err, setErr] = useState('')
   const [spec, setSpec] = useState(() => ({ ...DEFAULT, ...load('psm-spec', {}) }))
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6) + 1)
@@ -67,12 +69,19 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
   const run = useCallback((newSeed, keepLocked = true) => {
     if (!bank) return
     const r = buildPaper(bank, { ...spec, avoidUsed: spec.avoidOn ? used : [] }, { seed: newSeed, locked: keepLocked ? locked.filter(id => picked.some(q => q.id === id)) : [], exclude: removed })
-    setRes(r); setPicked(r.picked); setStep('paper')
+    const cur = new Map(picked.map(q => [q.id, q]))
+    setRes(r); setPicked(r.picked.map(q => (locked.includes(q.id) && cur.has(q.id) ? cur.get(q.id) : q))); setStep('paper')
   }, [bank, spec, used, locked, removed, picked])
   const generate = () => { const s = Math.floor(Math.random() * 1e6) + 1; setSeed(s); run(s) }
   const toggleLock = id => setLocked(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]))
   const remove = q => { setRemoved(r => [...r, q.id]); setPicked(p => p.filter(x => x.id !== q.id)); setLocked(l => l.filter(x => x !== q.id)) }
   const swap = q => { const n = swapOne(bank, picked, q, { ...spec, avoidUsed: spec.avoidOn ? used : [] }, Math.floor(Math.random() * 1e6) + 1); if (!n) return setMsg?.('No other question with the same subject and level to swap in.'); setPicked(p => p.map(x => (x.id === q.id ? n : x))); setLocked(l => l.filter(x => x !== q.id)) }
+  const move = (i, d) => setPicked(p => { const j = i + d; if (j < 0 || j >= p.length) return p; const n = [...p];[n[i], n[j]] = [n[j], n[i]]; return n })
+  const addOwn = () => {
+    const blank = { id: 'own-' + Date.now(), section: picked[picked.length - 1]?.section || chosenSubjects[0] || 'Mathematics', test_no: 0, question: '', option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null, passage: null, image_data: null, own: true }
+    setPicked(p => [...p, blank]); setEditIdx(picked.length)
+  }
+  const closeEditor = () => { setPicked(p => p.filter(q => !(q.own && !String(q.question).trim()))); setEditIdx(null) }
   const markUsed = () => { const n = [...new Set([...picked.map(q => q.id), ...used])].slice(0, 600); setUsed(n); save('psm-used', n) }
 
   // ── the documents ──
@@ -186,7 +195,8 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
             <button type="button" className="px-btn ghost" onClick={() => run(seed + 1 + Math.floor(Math.random() * 1000))}>🔀 Shuffle again</button>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, fontWeight: 700 }}><input type="checkbox" checked={showAns} onChange={e => setShowAns(e.target.checked)} />Show answers</label>
-            <span style={{ fontSize: 12, color: PX.sub }}>🔒 locked questions stay when you shuffle</span>
+            <button type="button" className="px-btn ghost" onClick={addOwn}>＋ Add my own question</button>
+            <span style={{ fontSize: 12, color: PX.sub }}>🔒 locked questions stay when you shuffle · ✎ edits apply to this paper only</span>
           </div>
           {picked.map((q, i) => {
             const lv = levelOf(q), lock = locked.includes(q.id)
@@ -201,10 +211,14 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
                     <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 99, color: LV[lv][0], background: LV[lv][1] }}>{lv}</span>
                     <span style={{ fontSize: 11.5, color: PX.sub }}>{[q.section, 'Set ' + q.test_no, q.topic].filter(Boolean).join(' · ')}</span>
                     {used.includes(q.id) && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 700 }}>used before</span>}
+                    {q.own && <span style={{ fontSize: 11, color: '#5b21b6', fontWeight: 700 }}>added by you</span>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 'none' }}>
                   <button type="button" title={lock ? 'Unlock' : 'Lock — keep when shuffling'} aria-label={lock ? 'Unlock question' : 'Lock question'} aria-pressed={lock} onClick={() => toggleLock(q.id)} style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${PX.line}`, background: lock ? '#faf1d9' : '#fff', cursor: 'pointer' }}>{lock ? '🔒' : '🔓'}</button>
+                  <button type="button" title="Edit this question (for this paper only)" aria-label="Edit question" onClick={() => setEditIdx(i)} style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer' }}>✎</button>
+                  <button type="button" title="Move up" aria-label="Move question up" disabled={i === 0} onClick={() => move(i, -1)} style={{ width: 36, height: 28, borderRadius: 11, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', opacity: i === 0 ? .4 : 1 }}>▲</button>
+                  <button type="button" title="Move down" aria-label="Move question down" disabled={i === picked.length - 1} onClick={() => move(i, 1)} style={{ width: 36, height: 28, borderRadius: 11, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', opacity: i === picked.length - 1 ? .4 : 1 }}>▼</button>
                   <button type="button" title="Swap for another" aria-label="Swap question" onClick={() => swap(q)} style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer' }}>🔄</button>
                   <button type="button" title="Remove" aria-label="Remove question" onClick={() => remove(q)} style={{ width: 36, height: 36, borderRadius: 11, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', color: PX.bad }}>✕</button>
                 </div>
@@ -256,6 +270,10 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
           <button className="px-btn ghost" style={{ minHeight: 46 }} onClick={() => { markUsed(); onUseAsNotes({ title, subject: chosenSubjects.length === 1 ? chosenSubjects[0] : '', body: paperBody(true) }) }}>📎 Use as study notes</button>
         </>}
       </div>
+      {editIdx != null && picked[editIdx] && (
+        <QuestionEditor list={picked} startIndex={editIdx} startNo={1} title={title} subtitle="Edits apply to this paper only — the bank is not changed" canEdit hasPictureCols isMobile={isMobile}
+          onSave={async (q, patch) => { setPicked(p => p.map(x => (x.id === q.id ? { ...x, ...patch } : x))); return true }} onDelete={async q => remove(q)} onClose={closeEditor} setMsg={setMsg} />
+      )}
       {printFor && <PrintDialog m={printFor} opts={popts} setOpts={setPopts} creator={me} onClose={() => setPrintFor(null)} onPrint={o => doPrint(printFor, o)} onWord={o => doWord(printFor, o)} isMobile={isMobile} instName={instName} />}
       {preview && (
         <div onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.62)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 0 : 14 }}>
