@@ -1024,7 +1024,7 @@ function MissionSainikInner({ currentUser }) {
           </div>)}
         {!panelDraft && <div style={{ fontSize: 13, color: PX.sub }}>{panelRows.length ? `${panelRows.length} members on the editable panel.` : 'Showing the panel from the notice. Press “Load from notice” to start editing it.'}</div>}
       </PremiumCard>
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,minmax(0,1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: 14 }}>
         {SUBJECTS.map(sub => {
           const members = panelRows.length ? panelRows.filter(r => r.subject_key === sub.key) : PANEL[sub.key].map(name => ({ name, role: 'setter', subject_key: sub.key, builtin: true }))
           return (
@@ -1034,7 +1034,7 @@ function MissionSainikInner({ currentUser }) {
                 const mine = tests.filter(r => r.subject === sub.label && r.setter === m.name)
                 return (
                   <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
-                    <span style={{ flex: '1 1 150px', minWidth: 0, whiteSpace: 'nowrap' }}>
+                    <span style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <PersonCell name={m.name} size={30} sub={m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
