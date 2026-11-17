@@ -989,9 +989,10 @@ function MissionSainikInner({ currentUser }) {
     const d = panelDraft
     if (!d.name.trim()) return setMsg('❌ Enter the teacher\'s name.')
     const row = { subject_key: d.subject_key, name: d.name.trim().replace(/^(sir|miss|mr|mrs)\s+/i, ''), role: d.role, created_by: currentUser?.name || '' }
+    if (d.question_quota !== undefined) row.question_quota = d.question_quota === '' || d.question_quota == null ? null : Math.max(0, Math.floor(Number(d.question_quota)) || 0)
     const q = d.id ? supabase.from('mission_sainik_panel').update(row).eq('id', d.id) : supabase.from('mission_sainik_panel').insert(row)
     const { error } = await q
-    if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That person is already on the panel for this subject and role.' : error.message + ' (run migration 20261210)'))
+    if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That person is already on the panel for this subject and role.' : error.message + ' (run migrations 20261210 and 20261215)'))
     audit(d.id ? 'panel_edit' : 'panel_add', d.subject_key, row); setPanelDraft(null); setMsg('✅ Panel saved'); loadPanel()
   }
   const deletePanelMember = async m => {
@@ -1016,10 +1017,11 @@ function MissionSainikInner({ currentUser }) {
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
         {panelDraft && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.4fr 1fr auto', gap: 10, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.4fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter</option><option value="verifier">Verifier</option><option value="assistant">Assistant</option></select></label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions to upload<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
             <span style={{ display: 'flex', gap: 8 }}><button className="px-btn gold" onClick={savePanelMember}>{panelDraft.id ? 'Update' : 'Add'}</button><button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button></span>
           </div>)}
         {!panelDraft && <div style={{ fontSize: 13, color: PX.sub }}>{panelRows.length ? `${panelRows.length} members on the editable panel.` : 'Showing the panel from the notice. Press “Load from notice” to start editing it.'}</div>}
@@ -1035,11 +1037,11 @@ function MissionSainikInner({ currentUser }) {
                 return (
                   <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
                     <span style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <PersonCell name={m.name} size={30} sub={m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role}</Pill>
-                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role })} aria-label={`Edit ${m.name}`}>✎</button>
+                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '' })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
                   </div>)
