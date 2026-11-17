@@ -57,13 +57,14 @@ function pageBox(o) {
 }
 export const CSS_ALL = MATH_CSS + MATERIAL_CSS
 function estimatePages(m, opts) {
+  const nup = opts.nup === 2
   return new Promise(resolve => {
-    const { cw, ch } = pageBox(opts), f = document.createElement('iframe')
+    const { cw, ch } = nup ? { cw: Math.round(285 * MM), ch: Math.round(198 * MM) } : pageBox(opts), f = document.createElement('iframe')
     f.style.cssText = `position:fixed;left:-99999px;top:0;width:${cw}px;height:${ch}px;border:0;visibility:hidden`
     let done = false
     const finish = v => { if (done) return; done = true; f.remove(); resolve(v) }
-    f.onload = () => { try { finish(Math.max(1, Math.ceil((f.contentDocument.documentElement.scrollHeight - 6) / ch))) } catch { finish(null) } }
-    f.srcdoc = materialDocHtml(m, { ...opts, auto: false }, CSS_ALL)
+    f.onload = () => { try { const d = f.contentDocument, h = nup ? d.querySelector('.panel').scrollHeight : d.documentElement.scrollHeight - 6; finish(Math.max(1, Math.ceil(h / ch))) } catch { finish(null) } }
+    f.srcdoc = materialDocHtml(m, { ...opts, auto: false }, CSS_ALL + (nup ? '.sheet{height:auto!important;overflow:visible!important}.panel{overflow:visible!important}' : ''))
     document.body.appendChild(f)
     setTimeout(() => finish(null), 5000)
   })
@@ -226,7 +227,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
-    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1 }, CSS_ALL) } finally { setMathStacked(true) }
+    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1, nup: 1 }, CSS_ALL) } finally { setMathStacked(true) }
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = String(m.title || 'notes').replace(/[^\w-]+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
   }
@@ -472,7 +473,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 
 // ── Print options: save paper with compact layouts, see the page count change, credit the creator ──
 export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWord, isMobile, instName }) {
-  const [reviewer, setReviewer] = useState(''), [pages, setPages] = useState(null), [base, setBase] = useState(null), [fitting, setFitting] = useState(false)
+  const [reviewer, setReviewer] = useState(''), [pages, setPages] = useState(null), [base, setBase] = useState(null), [fitting, setFitting] = useState(false), [note, setNote] = useState('')
   const o = { ...opts, reviewer, institute: instName, author: creator }
   const upd = patch => setOpts(p => ({ ...p, ...patch }))
   const key = JSON.stringify([m.body, m.title, opts, creator, reviewer])
@@ -485,6 +486,15 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
     return () => { live = false; clearTimeout(t) }
   }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const k = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  // Class set: two copies per sheet when the paper is short enough, otherwise 2 columns with the space saver.
+  const classSet = async () => {
+    const common = { margin: 'narrow', compact: true, size: 11, header: 'compact', studentLine: true, answerGrid: true, optStyle: 'auto' }
+    setFitting(true)
+    const p2 = await estimatePages(m, { ...o, ...common, nup: 2, columns: 1 })
+    if (p2 === 1) { upd({ ...common, nup: 2, columns: 1 }); setNote('') }
+    else { upd({ ...common, nup: 1, columns: 2 }); setNote(`Too long for 2 copies per sheet (it needs ${p2 ?? 'several'} sides), so it uses 2 columns with the space saver. Short papers of about 6 questions or fewer fit 2 per sheet.`) }
+    setFitting(false)
+  }
   const fit = async () => {
     setFitting(true)
     let best = null
@@ -496,7 +506,11 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
   const Row = ({ label, children }) => <div style={{ margin: '12px 0 0' }}><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub, marginBottom: 6 }}>{label}</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{children}</div></div>
   const Opt = ({ k, v, l }) => <button type="button" aria-pressed={opts[k] === v} style={chip(opts[k] === v)} onClick={() => upd({ [k]: v })}>{l}</button>
   const Tog = ({ k, l }) => <button type="button" aria-pressed={!!opts[k]} style={chip(!!opts[k])} onClick={() => upd({ [k]: !opts[k] })}>{opts[k] ? '✓ ' : ''}{l}</button>
-  const saved = base != null && pages != null ? base - pages : 0
+  const nup = opts.nup === 2, students = Math.max(1, Math.min(500, Number(opts.copies) || 1))
+  const sheetsNow = pages == null ? null : nup ? (pages === 1 ? Math.ceil(students / 2) : null) : pages * students
+  const sheetsBase = base == null ? null : base * students
+  const sheetsSaved = sheetsNow != null && sheetsBase != null ? sheetsBase - sheetsNow : 0
+  const blocked = nup && pages != null && pages > 1
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 14 }}>
       <div role="dialog" aria-modal="true" aria-label="Print options" onClick={e => e.stopPropagation()} style={{ width: 'min(620px,100%)', maxHeight: isMobile ? '92vh' : '90vh', overflow: 'auto', background: '#fff', borderRadius: isMobile ? '26px 26px 0 0' : 24, padding: 0, boxShadow: '0 24px 60px rgba(10,20,40,.4)' }}>
@@ -504,9 +518,10 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
           <div style={{ display: 'flex', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#e9d9b0' }}>Print options</div><div style={{ fontFamily: PX.serif, fontSize: 19, fontWeight: 600 }}>{m.title}</div></div>
             <button type="button" aria-label="Close" onClick={onClose} style={{ border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 17 }}>×</button></div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-            <span style={{ background: 'rgba(255,255,255,.16)', borderRadius: 14, padding: '6px 14px', fontWeight: 800, fontSize: 15 }}>{pages == null ? 'Counting pages…' : `≈ ${pages} page${pages === 1 ? '' : 's'}`}</span>
-            {saved > 0 && <span style={{ background: '#0f7a4c', borderRadius: 14, padding: '6px 12px', fontWeight: 800, fontSize: 13 }}>Saves {saved} sheet{saved === 1 ? '' : 's'} ({Math.round((saved / base) * 100)}%)</span>}
-            {base != null && <span style={{ fontSize: 12, color: 'rgba(255,255,255,.7)' }}>standard layout: {base}</span>}
+            <span style={{ background: 'rgba(255,255,255,.16)', borderRadius: 14, padding: '6px 14px', fontWeight: 800, fontSize: 15 }}>{pages == null ? 'Counting pages…' : nup ? (pages === 1 ? '✓ Fits one side' : `✗ ${pages} sides — too long`) : `≈ ${pages} page${pages === 1 ? '' : 's'}`}</span>
+            {sheetsNow != null && <span style={{ background: 'rgba(255,255,255,.16)', borderRadius: 14, padding: '6px 12px', fontWeight: 800, fontSize: 13 }}>{sheetsNow} sheet{sheetsNow === 1 ? '' : 's'} for {students} student{students === 1 ? '' : 's'}</span>}
+            {sheetsSaved > 0 && <span style={{ background: '#0f7a4c', borderRadius: 14, padding: '6px 12px', fontWeight: 800, fontSize: 13 }}>Saves {sheetsSaved} sheet{sheetsSaved === 1 ? '' : 's'} ({Math.round((sheetsSaved / sheetsBase) * 100)}%)</span>}
+            {base != null && <span style={{ fontSize: 12, color: 'rgba(255,255,255,.7)' }}>standard: {base} page{base === 1 ? '' : 's'} each</span>}
           </div>
         </div>
         <div style={{ padding: '4px 20px 20px' }}>
@@ -515,7 +530,18 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'narrow', columns: 2, size: 12, compact: true, header: 'compact' })}>⚡ Save paper</button>
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'minimal', columns: 3, size: 10.5, compact: true, header: 'compact', inkSaver: true })}>📚 Ultra compact</button>
             <button type="button" style={{ ...chip(false), background: '#eef6ff', borderColor: '#9ec3f2' }} disabled={fitting} onClick={fit}>{fitting ? 'Fitting…' : '✨ Fit to fewest pages'}</button>
+            <button type="button" style={{ ...chip(false), background: '#eaf7ef', borderColor: '#9bd3b0' }} disabled={fitting} onClick={classSet}>👥 Class set (student lines + answer sheet)</button>
+            {note && <div role="status" style={{ flexBasis: '100%', fontSize: 12, color: '#8a5a00', background: '#fff7e6', border: '1px solid #f1d9a8', borderRadius: 10, padding: '6px 10px' }}>{note}</div>}
           </Row>
+          <Row label="Copies — how many students need one">
+            {[10, 20, 30, 40, 60].map(n => <button key={n} type="button" style={chip(students === n)} aria-pressed={students === n} onClick={() => upd({ copies: n })}>{n}</button>)}
+            <input type="number" min="1" max="500" aria-label="Number of students" value={opts.copies} onChange={e => upd({ copies: e.target.value })} style={{ width: 76, padding: '6px 10px', borderRadius: 12, border: `1.5px solid ${PX.line}`, fontSize: isMobile ? 16 : 13.5, fontFamily: 'inherit' }} />
+          </Row>
+          <Row label="Copies per sheet"><Opt k="nup" v={1} l="1 per sheet" /><Opt k="nup" v={2} l="2 per sheet (A4 landscape, cut in half)" /></Row>
+          {nup && <div style={{ fontSize: 12, color: blocked ? PX.bad : PX.sub, marginTop: 6 }}>{blocked ? '⚠ This is too long to fit one side. Shorten it, choose a smaller text size, or use 2 columns instead.' : 'Two identical copies print side by side with a cut line. Paper size, margins and columns are set automatically.'}</div>}
+          <Row label="Options (A–D) layout"><Opt k="optStyle" v="auto" l="Automatic" /><Opt k="optStyle" v="four" l="4 across" /><Opt k="optStyle" v="two" l="2 × 2" /><Opt k="optStyle" v="one" l="1 per line" /></Row>
+          <Row label="Font"><Opt k="font" v="serif" l="Georgia" /><Opt k="font" v="times" l="Times (compact)" /><Opt k="font" v="sans" l="Arial" /><Opt k="font" v="narrow" l="Narrow (smallest)" /></Row>
+          <Row label="Extras for a class set"><Tog k="studentLine" l="Name / roll / date line" /><Tog k="answerGrid" l="Answer-sheet bubbles" /><Tog k="smallFigs" l="Smaller figures" /></Row>
           <Row label="Paper"><Opt k="paper" v="a4" l="A4" /><Opt k="paper" v="a5" l="A5" /><Opt k="landscape" v={false} l="Portrait" /><Opt k="landscape" v={true} l="Landscape" /></Row>
           <Row label="Margins"><Opt k="margin" v="normal" l="Normal" /><Opt k="margin" v="narrow" l="Narrow" /><Opt k="margin" v="minimal" l="Minimal" /></Row>
           <Row label="Columns"><Opt k="columns" v={1} l="1" /><Opt k="columns" v={2} l="2" /><Opt k="columns" v={3} l="3" /></Row>
@@ -531,11 +557,11 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
-            <button className="px-btn gold" style={{ flex: '1 1 160px', minHeight: 46, fontSize: 15 }} onClick={() => { onPrint(o); onClose() }}>🖨 Print / Save PDF</button>
+            <button className="px-btn gold" style={{ flex: '1 1 160px', minHeight: 46, fontSize: 15 }} disabled={blocked} onClick={() => { onPrint(o); onClose() }}>🖨 {nup ? `Print ${sheetsNow ?? ''} sheet${sheetsNow === 1 ? '' : 's'}` : 'Print / Save PDF'}</button>
             <button className="px-btn ghost" style={{ minHeight: 46 }} onClick={() => onWord(o)}>📝 Word</button>
             <button className="px-btn ghost" style={{ minHeight: 46 }} onClick={onClose}>Cancel</button>
           </div>
-          <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 8 }}>Tip: in the browser's print window choose “Save as PDF”, set Margins to “Default” and tick “Background graphics”. Page counts are estimates.</div>
+          <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 8 }}>Tip: in the browser's print window set Margins to “Default” (or “None” for 2 per sheet), tick “Background graphics”, and print on both sides to halve the paper again. Page counts are estimates.</div>
         </div>
       </div>
     </div>

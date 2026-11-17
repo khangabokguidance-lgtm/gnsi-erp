@@ -37,5 +37,5 @@ test('fractions and a picture option survive the round trip', () => {
 
 test('a whole paper builds into a printable document', () => {
   const d = materialDocHtml({ title: 'Paper', body: '**Time:** 30 min\n\n## Maths\n\n' + questionsToNotes([q(1)], { answers: false }), uploaded_by: 'Sir X' }, { institute: 'Acme', author: { name: 'Sir X', designation: 'Teacher' } })
-  assert.ok(d.includes('Prepared by <b>Sir X</b>, Teacher') && d.includes('class="opts"') && d.includes('>Maths</h2>'))
+  assert.ok(d.includes('Prepared by <b>Sir X</b>, Teacher') && d.includes('class="opts ') && d.includes('>Maths</h2>'))
 })

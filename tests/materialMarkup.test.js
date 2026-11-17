@@ -117,7 +117,7 @@ test('plain-text multiple-choice questions become a question, an options grid an
 
 test('a blank line between the question and its options still attaches them', () => {
   const h = renderMaterial('Which is a noun?\n\nA) run\nB) table')
-  assert.ok(h.includes('<p class="q">Which is a noun?</p>') && h.includes('class="opts"'))
+  assert.ok(h.includes('<p class="q">Which is a noun?</p>') && h.includes('class="opts '))
 })
 
 test('options and answers are escaped and ordinary paragraphs are untouched', () => {
@@ -158,4 +158,49 @@ test('figure width and caption round trip', () => {
 test('compact class exists in the material css', async () => {
   const { MATERIAL_CSS } = await import('../src/lib/materialMarkup.js')
   assert.ok(MATERIAL_CSS.includes('.md.compact'))
+})
+
+import { answerGridHtml, FONTS } from '../src/lib/materialMarkup.js'
+
+const mcq = (opts) => `Which?\n${opts.map((t, i) => `${'ABCD'[i]}) ${t}`).join('\n')}`
+
+test('options layout: auto picks 4-up, 2-up or 1 per line by length; a fixed style wins', () => {
+  assert.ok(renderMaterial(mcq(['1', '2', '3', '4'])).includes('class="opts four"'))
+  assert.ok(renderMaterial(mcq(['a medium length one', 'another medium one', 'third medium', 'fourth medium'])).includes('class="opts two"'))
+  assert.ok(renderMaterial(mcq(['x'.repeat(50), 'y', 'z', 'w'])).includes('class="opts one"'))
+  assert.ok(renderMaterial(mcq(['1', '2', '3', '4']), { optStyle: 'one' }).includes('class="opts one"'))
+  assert.ok(renderMaterial(mcq(['1', '2', '3', '4']), { optStyle: 'two' }).includes('class="opts two"'))
+})
+
+test('answer grid has one cell per question with A to D bubbles', () => {
+  const g = answerGridHtml(12)
+  assert.equal((g.match(/class="agc"/g) || []).length, 12)
+  assert.equal(answerGridHtml(0), '')
+  const body = [mcq(['1', '2', '3', '4']), mcq(['1', '2', '3', '4']), mcq(['1', '2', '3', '4'])].join('\n\n')
+  const d = materialDocHtml({ title: 'T', body }, { answerGrid: true })
+  assert.equal((d.match(/class="agc"/g) || []).length, 3)
+  assert.ok(!materialDocHtml({ title: 'T', body }, {}).includes('class="agc"'))
+})
+
+test('student line, narrow font and small figures options', () => {
+  const d = materialDocHtml({ title: 'T', body: 'x' }, { studentLine: true, font: 'narrow', smallFigs: true })
+  assert.ok(d.includes('class="stu"') && d.includes('Name:') && d.includes('Roll no.:') && d.includes('Arial Narrow') && d.includes('max-height:120px'))
+  assert.ok(!materialDocHtml({ title: 'T', body: 'x' }, {}).includes('class="stu"'))
+  assert.ok(FONTS.times.includes('Times New Roman'))
+})
+
+test('2-up prints two copies per sheet on A4 landscape and rounds the sheets up for the class size', () => {
+  const one = materialDocHtml({ title: 'T', body: 'x' }, { nup: 2, copies: 1 })
+  assert.ok(one.includes('size:A4 landscape') && (one.match(/class="panel"/g) || []).length === 2 && (one.match(/class="sheet"/g) || []).length === 1)
+  const thirty = materialDocHtml({ title: 'T', body: 'x' }, { nup: 2, copies: 30 })
+  assert.equal((thirty.match(/class="sheet"/g) || []).length, 15)
+  assert.equal((materialDocHtml({ title: 'T', body: 'x' }, { nup: 2, copies: 31 }).match(/class="sheet"/g) || []).length, 16)
+  assert.ok(!materialDocHtml({ title: 'T', body: 'x' }, {}).includes('class="sheet"'))
+})
+
+test('in narrow columns (3 columns or 2-up) 4-across options become 2 x 2', () => {
+  assert.ok(renderMaterial(mcq(['1', '2', '3', '4']), { narrow: true }).includes('class="opts two"'))
+  assert.ok(materialDocHtml({ title: 'T', body: mcq(['1', '2', '3', '4']) }, { columns: 3 }).includes('class="opts two"'))
+  assert.ok(materialDocHtml({ title: 'T', body: mcq(['1', '2', '3', '4']) }, { nup: 2 }).includes('class="opts two"'))
+  assert.ok(materialDocHtml({ title: 'T', body: mcq(['1', '2', '3', '4']) }, { columns: 2 }).includes('class="opts four"'))
 })
