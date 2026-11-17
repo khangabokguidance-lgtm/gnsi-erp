@@ -181,7 +181,12 @@ function MissionSainikInner({ currentUser }) {
   const isAdmin = true
   // Open to every logged-in staff member: non-admins can only move tasks they set or verify (see allowedStatuses).
   const canEdit = true
-  const [tab, setTab] = useState('overview')
+  // Workspace: reopen on the tab you were last using.
+  const [tab, setTab] = useState(() => {
+    try { const t = localStorage.getItem('ms-last-tab'); if (t && NAV_GROUPS.some(g => g.items.some(i => i[0] === t && t !== 'admin'))) return t } catch { /* private mode */ }
+    return 'overview'
+  })
+  useEffect(() => { try { localStorage.setItem('ms-last-tab', tab) } catch { /* private mode */ } }, [tab])
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [setup, setSetup] = useState(false) // table missing → migration not run yet
@@ -286,18 +291,25 @@ function MissionSainikInner({ currentUser }) {
     setTaskView(rows.some(r => isMe(r.setter) || isMe(r.verifier)) ? 'mine' : 'all')
   }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const loadedAt = useRef(Date.now())
+  const load = useCallback(async quiet => {
+    if (quiet !== true) setLoading(true)
     const { data, error } = await fetchAll(() => supabase.from(TABLE).select('*').order('kind').order('test_no').order('id'))
     if (error) {
       const text = `${error.code || ''} ${error.message || ''}`
       if (/42P01|PGRST205|does not exist|schema cache/i.test(text)) setSetup(true)
-      else setMsg('Could not load: ' + error.message)
-      setRows([])
+      else if (quiet !== true) setMsg('Could not load: ' + error.message)
+      if (quiet !== true) setRows([])
     } else { setSetup(false); setRows(data || []) }
+    loadedAt.current = Date.now()
     setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+  // Keep a long-open workspace fresh: when you come back to the tab after a while, quietly pull the latest tasks.
+  useEffect(() => {
+    const back = () => { if (document.visibilityState === 'visible' && Date.now() - loadedAt.current > 90000) load(true) }
+    document.addEventListener('visibilitychange', back); return () => document.removeEventListener('visibilitychange', back)
+  }, [load])
   const loadMats = useCallback(async () => {
     const { data, error } = await fetchAll(() => supabase.from(MAT_TABLE).select('*').order('created_at', { ascending: false }).order('id'))
     if (error) { setMatSetup(true); setMats([]) } else { setMatSetup(false); setMats(data || []) }
