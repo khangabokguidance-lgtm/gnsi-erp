@@ -19,6 +19,9 @@ import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
+import MissionSainikMaterial from './MissionSainikMaterial'
+import { materialDocHtml, renderMaterial, MATERIAL_CSS } from './lib/materialMarkup'
+import { MATH_CSS } from './lib/mathText'
 import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
 import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
@@ -207,7 +210,6 @@ function MissionSainikInner({ currentUser }) {
   const [sylQuery, setSylQuery] = useState('')
   const [marksImport, setMarksImport] = useState(null)               // null | text
   const [marksFilter, setMarksFilter] = useState(0)
-  const [matQ, setMatQ] = useState(''), [matSubj, setMatSubj] = useState(''), [matSort, setMatSort] = useState('new')
   const [taskView, setTaskView] = useState('needs')   // needs | mine | all
   const [statusF, setStatusF] = useState('')
   const [subjF, setSubjF] = useState('')
@@ -1036,7 +1038,7 @@ function MissionSainikInner({ currentUser }) {
         if (error) throw error
         audit('material_edit', patch.title, { id: editMat.id }); setEditMat(null)
         setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
-        setMsg('✅ Material updated'); loadMats(); setBusy(false); return
+        setMsg('✅ Material updated'); loadMats(); setBusy(false); return true
       }
       let file_path = null, file_name = null
       if (d.file) {
@@ -1054,18 +1056,20 @@ function MissionSainikInner({ currentUser }) {
       if (error) throw error
       setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }); setFileKey(k => k + 1)
       setMsg('✅ Material added.'); audit('material_add', d.title.trim(), { file: !!d.file, link: !!d.link_url.trim(), text: !!d.body.trim() }); loadMats()
+      setBusy(false); return true
     } catch (e) { setMsg('❌ ' + (e.message || 'Upload failed')) }
     setBusy(false)
+    return false
   }
   const printMaterial = m => {
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(m.title)}</title><style>@page{size:A4;margin:16mm}body{font-family:Georgia,'Times New Roman',serif;color:#111827;font-size:13.5px;line-height:1.6}
-.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:8px;margin-bottom:12px}.lh h1{margin:0;font-size:20px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
-h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:12px}pre{white-space:pre-wrap;font-family:inherit;margin:0}</style></head><body>
-<div class="lh"><h1>${esc(institute.name)}</h1><div>Mission Sainik 2027 · Study Material</div></div>
-<h2>${esc(m.title)}</h2><div class="meta">${esc([m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : '', m.uploaded_by].filter(Boolean).join(' · '))}</div>
-<pre>${esc(m.body)}</pre><script>window.onload=()=>window.print()</script></body></html>`)
+    w.document.write(materialDocHtml(m, { institute: institute.name, auto: true }, MATH_CSS + MATERIAL_CSS))
     w.document.close()
+  }
+  const materialFileUrl = async m => {
+    const { data, error } = await supabase.storage.from(MAT_BUCKET).createSignedUrl(m.file_path, 3600)
+    if (error) throw error
+    return data.signedUrl
   }
   const openMaterial = async m => {
     if (m.body && !m.link_url && !m.file_path) return setViewMat(m)
@@ -1263,53 +1267,11 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
       </PremiumCard>
     </>
   )
-  const matsShown = mats.filter(m => (!matSubj || m.subject === matSubj) && (!matQ.trim() || [m.title, m.note, m.body, m.uploaded_by].join(' ').toLowerCase().includes(matQ.trim().toLowerCase())))
-    .sort((a, b) => (matSort === 'title' ? String(a.title).localeCompare(String(b.title)) : matSort === 'old' ? String(a.created_at).localeCompare(String(b.created_at)) : String(b.created_at).localeCompare(String(a.created_at))))
   const materialTab = (
-    <>
-      {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
-      <PremiumCard title={editMat ? 'Edit study material' : 'Upload study material'} subtitle="Notes, PDFs, images or a link — visible to all staff">
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 1fr', gap: 10 }}>
-          <input style={inp} aria-label="Title" placeholder="Title" value={matDraft.title} onChange={e => setMatDraft({ ...matDraft, title: e.target.value })} />
-          <select style={inp} aria-label="Subject" value={matDraft.subject} onChange={e => setMatDraft({ ...matDraft, subject: e.target.value })}>
-            <option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}
-          </select>
-          <select style={inp} aria-label="Test" value={matDraft.test_no} onChange={e => setMatDraft({ ...matDraft, test_no: e.target.value })}>
-            <option value={0}>All tests</option>{TESTS.map(t => <option key={t.id} value={t.no ?? t.id}>{t.id}</option>)}
-          </select>
-          <input key={fileKey} style={inp} type="file" aria-label="Choose a file" onChange={e => setMatDraft({ ...matDraft, file: e.target.files?.[0] || null })} />
-          <input style={inp} aria-label="…or paste a link (Drive, YouTube)" placeholder="…or paste a link (Drive, YouTube)" value={matDraft.link_url} onChange={e => setMatDraft({ ...matDraft, link_url: e.target.value })} />
-          <textarea style={{ ...inp, gridColumn: '1 / -1', minHeight: 140, resize: 'vertical', fontFamily: 'inherit' }} aria-label="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" placeholder="Type or paste the study material here — it is saved in the portal and can be printed (or attach a file / link instead)" value={matDraft.body} onChange={e => setMatDraft({ ...matDraft, body: e.target.value })} />
-          <input style={inp} aria-label="Note (optional)" placeholder="Note (optional)" value={matDraft.note} onChange={e => setMatDraft({ ...matDraft, note: e.target.value })} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-          <button className="px-btn gold" disabled={busy} onClick={saveMaterial}>{busy ? 'Saving…' : editMat ? '✔ Save changes' : '⬆ Add material'}</button>
-          {editMat && <><span style={{ fontSize: 13, color: PX.sub }}>Editing “{editMat.title}”{editMat.file_name ? ' · choose a file only to replace ' + editMat.file_name : ''}</span>
-            <button className="px-btn ghost" onClick={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}>Cancel</button></>}
-        </div>
-      </PremiumCard>
-      <PremiumCard title={`Library (${matsShown.length}${matsShown.length !== mats.length ? ' of ' + mats.length : ''})`}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-          <input className="px-input" style={{ flex: '1 1 160px' }} type="search" value={matQ} onChange={e => setMatQ(e.target.value)} placeholder="Search title, note or text…" aria-label="Search material" />
-          <select className="px-input" style={{ flex: '0 1 170px' }} value={matSubj} onChange={e => setMatSubj(e.target.value)} aria-label="Filter by subject"><option value="">All subjects</option>{SUBJECTS.map(x => <option key={x.key} value={x.label}>{x.label}</option>)}</select>
-          <select className="px-input" style={{ flex: '0 1 150px' }} value={matSort} onChange={e => setMatSort(e.target.value)} aria-label="Sort material"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="title">Title A–Z</option></select>
-        </div>
-        {!matsShown.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>{mats.length ? 'No material matches these filters.' : 'Nothing uploaded yet.'}</div>}
-        {matsShown.map(m => (
-          <div key={m.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 4px', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 20 }}>{m.link_url ? '🔗' : m.body && !m.file_path ? '📝' : '📄'}</span>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{m.title}</div>
-              <div style={{ fontSize: 12, color: PX.sub }}>{[m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : null, m.uploaded_by, fmtShort(String(m.created_at).slice(0, 10))].filter(Boolean).join(' · ')}{m.note ? ' — ' + m.note : ''}</div>
-            </div>
-            <button className="px-hbtn" onClick={() => openMaterial(m)}>Open</button>
-            {m.body && <button className="px-hbtn" onClick={() => printMaterial(m)}>🖨 Print</button>}
-            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => startEditMat(m)} aria-label="Edit material">✎</button>}
-            {(isAdmin || isMe(m.uploaded_by)) && <button className="px-hbtn" onClick={() => deleteMaterial(m)} aria-label="Delete material">🗑</button>}
-          </div>
-        ))}
-      </PremiumCard>
-    </>
+    <MissionSainikMaterial mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
+      onSave={saveMaterial} onCancelEdit={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}
+      onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
+      institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} />
   )
 
   const myOpen = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted'))
@@ -1386,7 +1348,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
           <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
             <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>{viewMat.title}</div>
             <div style={{ fontSize: 12.5, color: PX.sub, margin: '4px 0 12px' }}>{[viewMat.subject || 'All subjects', viewMat.test_no ? 'Test ' + viewMat.test_no : null, viewMat.uploaded_by].filter(Boolean).join(' · ')}</div>
-            <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{viewMat.body}</div>
+            <style>{MATH_CSS + MATERIAL_CSS}</style><div className="md" dangerouslySetInnerHTML={{ __html: renderMaterial(viewMat.body) }} />
             <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="px-btn gold" onClick={() => printMaterial(viewMat)}>🖨 Print</button>
               <button className="px-btn ghost" onClick={() => setViewMat(null)}>Close</button>

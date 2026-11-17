@@ -39,7 +39,7 @@ const missingOf = c => {
 
 export const cardsProblems = cards => cards.filter(c => { const m = missingOf(c); return m && m.length }).length
 // Insert buttons for the maths toolbar: [label, text, caret offset from the start of the insert, title]
-const MATH_TOOLS = [
+export const MATH_TOOLS = [
   ['a⁄b', '\\frac{}{}', 6, 'Fraction (type the top, then the bottom)'], ['½', '½', 1, 'One half'], ['¼', '¼', 1, 'One quarter'], ['¾', '¾', 1, 'Three quarters'],
   ['x²', '^{2}', 4, 'Power / square'], ['xⁿ', '^{}', 2, 'Power'], ['x₂', '_{}', 2, 'Subscript'], ['√', '\\sqrt{}', 6, 'Square root'],
   ['×', '×', 1, 'Multiply'], ['÷', '÷', 1, 'Divide'], ['±', '±', 1, 'Plus or minus'], ['≤', '≤', 1, 'Less than or equal'], ['≥', '≥', 1, 'Greater than or equal'], ['≠', '≠', 1, 'Not equal'],
