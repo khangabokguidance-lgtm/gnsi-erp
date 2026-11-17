@@ -37,7 +37,7 @@ const flowSvg = (w = 640) => {
   const bw = 82, gap = (w - FLOW.length * bw) / (FLOW.length - 1)
   const parts = FLOW.map((f, i) => {
     const x = i * (bw + gap)
-    return `${r(x, 6, bw, 52, i === 4 ? G : N, 10)}${tx(x + bw / 2, 24, f[0], 12, i === 4 ? N : G, 800, 'middle')}${tx(x + bw / 2, 38, f[1], 7.5, '#fff', 700, 'middle')}${i < FLOW.length - 1 ? `<path d="M${x + bw + 2} 32 l${gap - 4} 0" stroke="${G}" stroke-width="2" marker-end="url(#a)"/>` : ''}${tx(x + bw / 2, 78, f[2], 5.6, '#4b5870', 500, 'middle')}`
+    return `${r(x, 6, bw, 52, i === 4 ? G : N, 10)}${tx(x + bw / 2, 24, f[0], 12, i === 4 ? N : G, 800, 'middle')}${tx(x + bw / 2, 39, f[1], 9, '#fff', 700, 'middle')}${i < FLOW.length - 1 ? `<path d="M${x + bw + 2} 32 l${gap - 4} 0" stroke="${G}" stroke-width="2" marker-end="url(#a)"/>` : ''}${tx(x + bw / 2, 78, f[2], 5.6, '#4b5870', 500, 'middle')}`
   }).join('')
   return `<svg viewBox="0 0 ${w} 88" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mission Sainik workflow"><defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="${G}"/></marker></defs>${parts}</svg>`
 }
@@ -88,7 +88,13 @@ h1{margin:0;color:${N};text-align:center;font-size:20px}.s{text-align:center;col
   return (
     <>
       <PremiumCard title="How Mission Sainik works" subtitle="From allotment to analysis — follow the gold step to print." right={<button className="px-hbtn" onClick={print}>🖨 Print this guide</button>}>
-        <div style={{ overflowX: 'auto' }}><div style={{ minWidth: 560 }} dangerouslySetInnerHTML={{ __html: flowSvg() }} /></div>
+        {isMobile
+          ? <ol style={{ listStyle: 'none', margin: 0, padding: '12px 16px', display: 'grid', gap: 8 }}>{FLOW.map((f, i) => (
+              <li key={f[0]} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 14, background: i === 4 ? PX.goldBg : PX.tint, border: `1px solid ${i === 4 ? PX.goldLine : PX.line}` }}>
+                <b style={{ width: 28, height: 28, borderRadius: '50%', background: i === 4 ? PX.gold : PX.navy, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none', fontSize: 13 }}>{f[0]}</b>
+                <span style={{ minWidth: 0 }}><b style={{ display: 'block', color: PX.navy, fontSize: 14.5 }}>{f[1]}</b><span style={{ fontSize: 12.5, color: PX.sub }}>{f[2]}</span></span>
+              </li>))}</ol>
+          : <div style={{ overflowX: 'auto' }}><div style={{ minWidth: 560 }} dangerouslySetInnerHTML={{ __html: flowSvg() }} /></div>}
       </PremiumCard>
       <PremiumCard title="Quick start by role">
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: 10 }}>

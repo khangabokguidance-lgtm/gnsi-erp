@@ -120,6 +120,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const testCount = t => live(t).reduce((a, s) => a + Math.min(get(t, s.label).length, s.q), 0)
   const totalQ = t => live(t).reduce((a, s) => a + s.q, 0)
 
+  const mineAt = (t, s) => !isAdmin && settersOf(t, s.label).some(isMe)
   // Who may upload to a section: its setter (Pre Mock: the allotted setter; Mega Mock: the panel of its subjects) or an admin.
   const settersOf = (t, s) => cfg.panel === 'practice'
     ? (() => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practice?.[key]?.length) return panel.practice[key]; const p = PRACTICE_PANEL[key]; return p ? [p.verifier, ...p.assistants] : [] })()
@@ -517,6 +518,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
+  const nextMine = (() => { for (const t of cfg.tests) for (const s of live(t.no)) if (mineAt(t.no, s) && get(t.no, s.label).length < s.q) return { t: t.no, s }; return null })()
   return (
     <div className="msb">
       <style>{msbCss}</style>
@@ -538,12 +540,17 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             })}
           </div>
         )}
+        {nextMine && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: PX.goldBg, borderBottom: `1px solid ${PX.goldLine}` }}>
+            <span style={{ flex: '1 1 220px', fontSize: 13, color: PX.ink }}>⭐ <b>Yours:</b> {tid(nextMine.t)} · {nextMine.s.short} — {get(nextMine.t, nextMine.s.label).length}/{nextMine.s.q} questions in</span>
+            <button type="button" className="px-btn gold" onClick={() => { setTestNo(nextMine.t); setSection(nextMine.s.label) }}>Continue →</button>
+          </div>)}
         {!isMobile && <table className="px-table" style={{ minWidth: 640 }}>
           <thead><tr><th>{cfg.noun === 'Set' ? 'Set' : 'Test'}</th>{cfg.sections.map(s => <th key={s.label}>{s.short}</th>)}<th>Total</th><th /></tr></thead>
           <tbody>{cfg.tests.map(t => (
             <tr key={t.no} style={t.no === testNo ? { background: PX.tint } : undefined}>
               <td><button style={{ all: 'unset', cursor: 'pointer', fontWeight: 700, color: PX.navy }} onClick={() => setTestNo(t.no)}>{tid(t.no)}</button><div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : ''}</div></td>
-              {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label}><CountPill n={get(t.no, s.label).length} q={s.q} /></td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
+              {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label} style={mineAt(t.no, s) ? { boxShadow: `inset 0 0 0 2px ${PX.gold}`, borderRadius: 8 } : undefined} title={mineAt(t.no, s) ? 'Your section' : undefined}><CountPill n={get(t.no, s.label).length} q={s.q} /></td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
               <td><b>{testCount(t.no)}/{totalQ(t.no)}</b></td>
               <td>{testReady(t.no) ? <Pill tone="ok">Ready</Pill> : null}</td>
             </tr>))}

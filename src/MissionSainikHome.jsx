@@ -41,9 +41,9 @@ export default function MissionSainikHome({ upcoming = [], announcement, name, s
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, overflowX: 'auto', paddingBottom: 2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(72px,1fr))', gap: 8, marginTop: 14 }}>
           {[['Next test', stats.nextTest], ['In', stats.inLabel], ['Approved', stats.approved], ['Overdue', stats.overdue]].map(([l, v]) => (
-            <div key={l} style={{ flex: '1 0 auto', minWidth: 78, background: 'rgba(255,255,255,.1)', borderRadius: 16, padding: '8px 12px', textAlign: 'center' }}>
+            <div key={l} style={{ minWidth: 0, background: 'rgba(255,255,255,.1)', borderRadius: 16, padding: '8px 6px', textAlign: 'center' }}>
               <div style={{ fontSize: 17, fontWeight: 800, color: l === 'Overdue' && Number(v) > 0 ? '#fca5a5' : '#fff' }}>{v}</div>
               <div style={{ fontSize: 10.5, color: '#e9d9b0', fontWeight: 700, letterSpacing: '.06em' }}>{l.toUpperCase()}</div>
             </div>))}
