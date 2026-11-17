@@ -20,6 +20,7 @@ import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import MissionSainikMaterial from './MissionSainikMaterial'
+import SmartPaperMaker from './SmartPaperMaker'
 import { materialDocHtml, renderMaterial, MATERIAL_CSS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
@@ -259,6 +260,7 @@ function MissionSainikInner({ currentUser }) {
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
   const [fileKey, setFileKey] = useState(0)
   const [viewMat, setViewMat] = useState(null)
+  const [paperMaker, setPaperMaker] = useState(false)
   const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
   useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
@@ -948,6 +950,7 @@ function MissionSainikInner({ currentUser }) {
             <div style={{ height: 8, borderRadius: 99, background: 'rgba(255,255,255,.18)', margin: '8px 0 4px', overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', borderRadius: 99, background: 'linear-gradient(90deg,#b8923a,#f0e1b8)' }} /></div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,.75)' }}>{pct}% complete · open any set to add, edit, preview or scan questions</div>
           </div>
+          <button type="button" onClick={() => setPaperMaker(true)} style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(180deg,#e9d9b0,#d9bf79)', color: '#132a4f', fontWeight: 800, fontSize: 14, padding: '12px 18px', borderRadius: 16, boxShadow: '0 10px 22px -12px rgba(0,0,0,.5)' }}>🧠 Smart paper maker</button>
           <div style={{ display: 'flex', gap: 8 }}>{[[done, 'Sets done'], [started, 'In progress'], [all.length - done - started, 'Empty']].map(([n, l]) => <div key={l} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.18)', borderRadius: 16, padding: '8px 14px', textAlign: 'center', minWidth: 74 }}><div style={{ font: '700 20px Georgia,serif' }}>{n}</div><div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#e9d9b0', fontWeight: 700 }}>{l}</div></div>)}</div>
         </div>
         {groups.map(g => (
@@ -1371,6 +1374,8 @@ function MissionSainikInner({ currentUser }) {
           </>
         )}
       </MissionSainikShell>
+      {paperMaker && <SmartPaperMaker subjects={SUBJECTS} institute={institute} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} setMsg={setMsg} onClose={() => setPaperMaker(false)}
+        onUseAsNotes={({ title, subject, body }) => { setPaperMaker(false); setEditMat(null); setMatDraft({ title, subject: subject || '', test_no: 0, link_url: '', note: '', body, file: null }); setTab('material') }} />}
       {viewMat && (
         <div className="msx-overlay" onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>

@@ -11,6 +11,7 @@ import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
 import { fetchAll } from './lib/missionSainikQuestions'
 import { mathPlain } from './lib/mathText'
+import { questionsToNotes } from './lib/questionNotes'
 
 const DRAFT_KEY = 'msm-draft:v1'
 const blank = { title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }
@@ -54,7 +55,7 @@ function pageBox(o) {
   const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg = MARGIN_MM[o.margin] || MARGIN_MM.normal
   return { cw: Math.round((W - 2 * mg[1]) * MM), ch: Math.round((H - mg[0] - mg[2]) * MM) }
 }
-const CSS_ALL = MATH_CSS + MATERIAL_CSS
+export const CSS_ALL = MATH_CSS + MATERIAL_CSS
 function estimatePages(m, opts) {
   return new Promise(resolve => {
     const { cw, ch } = pageBox(opts), f = document.createElement('iframe')
@@ -93,6 +94,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const me = useMemo(() => creatorOf(staff, userName), [staff, userName])
   const creator = useCallback(m => creatorOf(staff, m.uploaded_by), [staff])
 
+  useEffect(() => { if (editMat || draft.title || draft.body) setTab('create') }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editMat) setTab('create') }, [editMat])
   useEffect(() => { save('msm-print', popts) }, [popts])
   const toggleFav = id => setFavs(f => { const n = f.includes(id) ? f.filter(x => x !== id) : [...f, id]; save('msm-fav', n); return n })
@@ -375,7 +377,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 }
 
 // ── Print options: save paper with compact layouts, see the page count change, credit the creator ──
-function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWord, isMobile, instName }) {
+export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWord, isMobile, instName }) {
   const [reviewer, setReviewer] = useState(''), [pages, setPages] = useState(null), [base, setBase] = useState(null), [fitting, setFitting] = useState(false)
   const o = { ...opts, reviewer, institute: instName, author: creator }
   const upd = patch => setOpts(p => ({ ...p, ...patch }))
@@ -511,21 +513,6 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
 const Msg = ({ err }) => <div style={{ margin: 'auto', padding: 24, color: err ? '#8f1d14' : PX.sub, fontSize: 14 }}>{err ? '❌ ' + err : 'Loading preview…'}</div>
 
 // ── Insert questions from the Practice bank into the notes (as a tidy MCQ block) ──
-function questionsToNotes(rows, { answers, explain }) {
-  let lastPassage = ''
-  return rows.map((q, i) => {
-    const out = []
-    if (q.passage && q.passage !== lastPassage) out.push(`> Note: Passage — ${String(q.passage).replace(/\s*\n\s*/g, ' ')}`, '')
-    lastPassage = q.passage || ''
-    if (q.image_data) out.push(figureLine(q.image_data, 'Figure'))
-    out.push(`Q${i + 1}. ${String(q.question).replace(/\s*\n\s*/g, ' ')}`)
-    ;['A', 'B', 'C', 'D'].forEach(k => out.push(`${k}) ${String(q['option_' + k.toLowerCase()]).replace(/\s*\n\s*/g, ' ')}`))
-    if (answers) out.push(`Answer: ${q.answer}) ${mathPlain(q['option_' + String(q.answer).toLowerCase()]).replace(/\n/g, ' ')}`.replace(/\) IMG$/, ')'))
-    if (explain && q.explanation) out.push('', `> Note: ${String(q.explanation).replace(/\s*\n\s*/g, ' ')}`)
-    return out.join('\n')
-  }).join('\n\n')
-}
-
 function QuestionPicker({ subjects, onInsert, onClose, isMobile }) {
   const [rows, setRows] = useState(null), [err, setErr] = useState('')
   const [subj, setSubj] = useState(''), [setNo, setSetNo] = useState(''), [q, setQ] = useState(''), [sel, setSel] = useState([])
