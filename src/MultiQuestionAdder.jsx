@@ -5,6 +5,8 @@ import { useRef, useState, useEffect, useMemo } from 'react'
 import { PX } from './premiumUI'
 import { parseQuestions } from './lib/missionSainikQuestions'
 import { figFromFile } from './lib/figImage'
+import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
+import { csvToQuestionText } from './lib/missionSainikPaper'
 
 export const blankCard = () => ({ id: Math.random().toString(36).slice(2), question: '', a: '', b: '', c: '', d: '', ans: '', exp: '', topic: '', level: '', passage: '', type: 'normal', image: '', showMore: false, collapsed: false })
 const clean = s => String(s || '').replace(/\s*\n\s*/g, ' ').trim()
@@ -86,12 +88,34 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
   const loaded = useRef(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkText, setBulkText] = useState('')
-  const bulk2 = useMemo(() => parseQuestions(bulkText), [bulkText])
+  const bulkClean = useMemo(() => applyAnswerKey(bulkText), [bulkText])
+  const bulk2 = useMemo(() => parseQuestions(bulkClean), [bulkClean])
+  const loadBulkFile = e => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => setBulkText(/\.csv$/i.test(f.name) ? csvToQuestionText(String(r.result || '')) : String(r.result || '')); r.readAsText(f) }
   const addBulk = () => {
     if (!bulk2.questions.length) return
     const made = bulk2.questions.map(q => ({ ...blankCard(), question: q.question, a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d, ans: q.answer, exp: q.explanation || '', topic: q.topic || '', level: q.difficulty || '', type: q.passage ? 'passage' : 'normal', passage: q.passage || '' }))
     setCards(cs => [...(cs.every(isEmptyCard) ? [] : cs), ...made])
     setBulkText(''); setBulkOpen(false)
+  }
+  // Paste a whole question (with its options) into the question box → it fills the card. Several questions → bulk paste.
+  const onQuestionPaste = (e, id) => {
+    const text = e.clipboardData?.getData('text') || ''
+    if (!/\n/.test(text)) return
+    if (countQuestionStarts(text) >= 2) { e.preventDefault(); setBulkText(text); setBulkOpen(true); return }
+    const f = splitPastedQuestion(text)
+    if (f) { e.preventDefault(); upd(id, f) }
+  }
+  const onCardPaste = (e, c) => {
+    const file = [...(e.clipboardData?.files || [])].find(x => /^image\//.test(x.type))
+    if (file) { e.preventDefault(); setImgErr(''); upd(c.id, { type: c.type === 'normal' ? 'figure' : c.type }); pickImage(c.id, file) }
+  }
+  const onCardDrop = (e, c) => {
+    const file = [...(e.dataTransfer?.files || [])].find(x => /^image\//.test(x.type))
+    if (file) { e.preventDefault(); setImgErr(''); upd(c.id, { type: c.type === 'normal' ? 'figure' : c.type }); pickImage(c.id, file) }
+  }
+  const onCardKey = (e, c) => {
+    if (e.altKey && /^[a-d]$/i.test(e.key)) { e.preventDefault(); upd(c.id, { ans: e.key.toUpperCase() }) }   // Alt+A…D marks the answer
+    else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); addAfter(c.id, 1, c) }      // Ctrl+Enter: next question
   }
   const pickImage = async (id, file) => { try { upd(id, { image: await figFromFile(file) }) } catch (er) { setImgErr(er.message) } }
   const [imgErr, setImgErr] = useState('')
@@ -118,7 +142,14 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     setTimeout(() => refs.current[fresh[0].id]?.focus(), 30)
     return next
   })
-  const remove = id => setCards(cs => (cs.length > 1 ? cs.filter(c => c.id !== id) : [blankCard()]))
+  const [undo, setUndo] = useState(null)   // { card, index } of the last removed question
+  const undoTimer = useRef(null)
+  const remove = id => {
+    const i = cards.findIndex(c => c.id === id)
+    if (i >= 0 && !isEmptyCard(cards[i])) { setUndo({ card: cards[i], index: i }); clearTimeout(undoTimer.current); undoTimer.current = setTimeout(() => setUndo(null), 8000) }
+    setCards(cs => (cs.length > 1 ? cs.filter(c => c.id !== id) : [blankCard()]))
+  }
+  const doUndo = () => { if (!undo) return; setCards(cs => { const base = cs.length === 1 && isEmptyCard(cs[0]) ? [] : cs; const n = [...base]; n.splice(Math.min(undo.index, n.length), 0, undo.card); return n }); setUndo(null) }
   const dup = c => setCards(cs => { const i = cs.findIndex(x => x.id === c.id); return [...cs.slice(0, i + 1), { ...c, id: blankCard().id }, ...cs.slice(i + 1)] })
   const move = (id, d) => setCards(cs => { const i = cs.findIndex(c => c.id === id), j = i + d; if (j < 0 || j >= cs.length) return cs; const n = [...cs]; [n[i], n[j]] = [n[j], n[i]]; return n })
   const filled = cards.filter(c => !isEmptyCard(c))
@@ -158,10 +189,11 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
           <button type="button" className="px-btn ghost" style={{ ...gbtn, width: '100%', borderStyle: 'dashed' }} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>{bulkOpen ? '▾' : '▸'} 📋 Bulk paste — add many questions at once</button>
           {bulkOpen && (
             <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
-              <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 6 }}>Paste from Word, Excel or a text file. Each question: the question, options A–D, <b>Ans: B</b> (optional <b>Exp:</b>, <b>Topic:</b>, <b>Level:</b>). For a reading passage put a <b>Passage: …</b> line before its questions. They become cards you can check, then add pictures to the figure and passage questions.</div>
+              <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 6 }}>Paste from Word, Excel or a text file. Each question: the question, options A–D, <b>Ans: B</b> (optional <b>Exp:</b>, <b>Topic:</b>, <b>Level:</b>). Have the answers at the end instead? Add a line like <b>Answer key: 1-B 2-C 3-A</b>. For a reading passage put a <b>Passage: …</b> line before its questions. They become cards you can check, then add pictures to the figure and passage questions.</div>
               <pre style={{ background: '#fff', border: `1px solid ${PX.line}`, padding: 8, borderRadius: 8, fontSize: 12, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{'Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B'}</pre>
               <textarea rows={8} style={{ ...field, fontFamily: 'monospace', fontSize: isMobile ? 16 : 12, resize: 'vertical' }} placeholder="Paste questions here…" aria-label="Bulk paste questions" value={bulkText} onChange={e => setBulkText(e.target.value)} />
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>📂 Load .txt / .csv<input type="file" accept=".txt,.csv,text/plain,text/csv" aria-label="Load questions from a file" style={{ display: 'none' }} onChange={loadBulkFile} /></label>
                 <span style={{ fontSize: 12.5, color: bulk2.errors.length ? PX.bad : PX.sub }}>{bulkText.trim() ? (bulk2.errors.length ? bulk2.errors.slice(0, 2).join(' · ') : `${bulk2.questions.length} question(s) found`) : ''}{bulkText.trim() && bulk2.errors.length && bulk2.questions.length ? ` · ${bulk2.questions.length} OK` : ''}</span>
                 <button type="button" className="px-btn ghost" style={{ ...gbtn, marginLeft: 'auto' }} onClick={() => { setBulkText(''); setBulkOpen(false) }}>Cancel</button>
                 <button type="button" className="px-btn gold" style={gbtn} disabled={!bulk2.questions.length} onClick={addBulk}>Add {bulk2.questions.length || ''} to cards</button>
@@ -182,6 +214,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
           </span>
         </div>
       )}
+      {undo && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px', padding: '9px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}><span style={{ flex: 1 }}>Question removed.</span><button type="button" onClick={doUndo} style={{ border: 'none', background: '#e9d9b0', color: '#132a4f', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>Undo</button><button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16 }}>×</button></div>}
       {imgErr && <div role="alert" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 10, background: '#fdecea', color: '#8f1d14', fontSize: 13 }}>❌ {imgErr} <button type="button" onClick={() => setImgErr('')} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>×</button></div>}
       <div style={{ display: 'grid', gridTemplateColumns: view === 'split' ? 'minmax(0,1fr) minmax(0,1fr)' : '1fr', gap: 16, alignItems: 'start' }}>
         {showEdit && (
@@ -193,7 +226,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                 const dupMsg = seenAt[c.id]
                 const n = numOf(c.id)
                 return (
-                  <div key={c.id} style={{ border: `1.5px solid ${dupMsg ? '#f5b5b0' : ok ? '#bfe3cc' : miss ? '#f1d9a8' : PX.line}`, borderRadius: 16, background: ok && !dupMsg ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
+                  <div key={c.id} onPaste={e => onCardPaste(e, c)} onDragOver={e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault() }} onDrop={e => onCardDrop(e, c)} onKeyDown={e => onCardKey(e, c)} style={{ border: `1.5px solid ${dupMsg ? '#f5b5b0' : ok ? '#bfe3cc' : miss ? '#f1d9a8' : PX.line}`, borderRadius: 16, background: ok && !dupMsg ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: c.collapsed ? 'none' : `1px solid ${PX.line}`, background: '#fcfbf7' }}>
                       <button type="button" onClick={() => upd(c.id, { collapsed: !c.collapsed })} aria-expanded={!c.collapsed} aria-label={c.collapsed ? 'Expand question' : 'Collapse question'} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: PX.navy, color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>{n ?? i + 1}</button>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: dupMsg ? PX.bad : ok ? PX.ok : miss ? '#b45309' : PX.faint, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -219,7 +252,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                             {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
                           </div>
                         )}
-                        <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question…" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} />
+                        <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question — or paste a whole question with its options (A–D) and I'll split it" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} onPaste={e => onQuestionPaste(e, c.id)} />
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))', gap: 8 }}>
                           {['A', 'B', 'C', 'D'].map(k => {
                             const on = c.ans === k
@@ -256,7 +289,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
               <button type="button" className="px-btn ghost" style={{ flex: 1, borderStyle: 'dashed' }} onClick={() => addAfter(null, 1, cards[cards.length - 1])}>＋ Add question</button>
               <button type="button" className="px-btn ghost" style={{ borderStyle: 'dashed' }} onClick={() => addAfter(null, 5, cards[cards.length - 1])}>＋ Add 5</button>
             </div>
-            <div style={{ fontSize: 11.5, color: PX.faint, marginTop: 6 }}>Tip: tap a letter to mark the correct answer · Enter in option D starts the next question (topic, level and passage carry over) · ▲▼ reorder.</div>
+            <div style={{ fontSize: 11.5, color: PX.faint, marginTop: 6 }}>Tips: tap a letter (or Alt+A–D) to mark the answer · Enter in option D or Ctrl+Enter starts the next question · paste a whole question into the box and it splits itself · paste or drop a picture onto a card for figures · ▲▼ reorder.</div>
           </div>
         )}
         {showPrev && (
