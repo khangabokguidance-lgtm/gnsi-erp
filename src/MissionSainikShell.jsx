@@ -150,6 +150,7 @@ html{scroll-behavior:smooth}
   .msx-main .px-card-h{flex-wrap:wrap}
   .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
   .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
+  .msx-top{gap:2px}.msx-top .msx-ic{width:38px;height:38px;font-size:18px}.msx-top h1{font-size:18px}
   /* comfortable thumb targets; 16px inputs stop iOS zooming the page on focus */
   .msx-main .px-hbtn,.msx-main .px-btn{min-height:42px}
   .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px}

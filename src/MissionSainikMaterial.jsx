@@ -274,7 +274,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 .msm-in:focus{outline:none;border-color:#b8923a!important;box-shadow:0 0 0 4px rgba(184,146,58,.18)}
 .msm-strip{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.msm-strip::-webkit-scrollbar{display:none}
 .msm-fav{border:none;background:transparent;cursor:pointer;font-size:19px;line-height:1;padding:2px 4px}
-@media (max-width:700px){.msm-item .px-hbtn,.msm-item .px-btn{min-height:42px}}`}</style>
+@media (max-width:700px){.msm-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;overflow:visible}.msm-stats .msm-stat{min-width:0;padding:8px 2px}.msm-stats .msm-stat span{font-size:8.5px;letter-spacing:.04em}.msm-item .px-hbtn,.msm-item .px-btn{min-height:42px}}`}</style>
       {matSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261202_mission_sainik_materials.sql</b> in Supabase to enable study material.</div>}
 
       <div className="msm-hero">
@@ -284,7 +284,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
             <div style={{ fontFamily: PX.serif, fontSize: isMobile ? 24 : 28, fontWeight: 600, lineHeight: 1.15 }}>Study material</div>
             <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 3 }}>Write, preview and print notes. Every item carries its creator's name and designation.</div>
           </div>
-          <div className="msm-strip" style={{ maxWidth: '100%' }}>
+          <div className="msm-strip msm-stats" style={{ maxWidth: '100%' }}>
             {[[mats.length, 'Total'], [kinds.text || 0, 'Notes'], [(kinds.pdf || 0) + (kinds.image || 0) + (kinds.office || 0) + (kinds.file || 0), 'Files'], [kinds.link || 0, 'Links'], [mine, 'Mine']].map(([n, l]) => <div key={l} className="msm-stat"><b>{n}</b><span>{l}</span></div>)}
           </div>
         </div>
