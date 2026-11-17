@@ -3,7 +3,8 @@
 // exam pattern, every chapter per subject, and how much has been taught
 // (matched from Daily Logs). Chapters kept only for existing data are
 // listed separately so nothing saved under them is lost.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { supabase } from './supabase'
 import { PX, PIcon } from './premiumUI'
 import { COURSES, COURSE_LIST, TAXONOMY_BASE } from './qbankTaxonomy'
 import {
@@ -60,7 +61,9 @@ function subjectsFor(course, cls) {
 
 const chip = (tone, bg) => ({ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, color: tone, background: bg, whiteSpace: 'nowrap', letterSpacing: '.02em' })
 
-function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, query, open, onToggle }) {
+function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, query, open, onToggle, manualRows = [], canAdd, canDelete, onAdd, onDelete }) {
+  const [adding, setAdding] = useState(false), [draft, setDraft] = useState('')
+  const manualBy = Object.fromEntries(manualRows.map(r => [normName(r.chapter_name), r]))
   const taughtCount = chapters.filter(c => coverage[c]?.taught > 0).length
   const pct = chapters.length ? Math.round((taughtCount / chapters.length) * 100) : 0
   const q = normName(query)
@@ -93,22 +96,36 @@ function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, qu
       <ol style={{ listStyle: 'none', margin: 0, padding: '6px 10px 10px', display: 'grid', gap: 2, flex: 1 }}>
         {list.map(c => {
           const cv = coverage[c] || {}
-          const isNew = !baseSet.has(normName(c))
+          const man = manualBy[normName(c)]
+          const isNew = !baseSet.has(normName(c)) && !man
           return (
             <li key={c} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 8px', borderRadius: 10, background: cv.taught ? '#f3faf6' : 'transparent' }}>
               <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: cv.taught ? PX.ok : PX.line2 }} />
               <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: PX.ink2 }}>
                 {c}
                 {isNew && <span style={{ ...chip('#8a6118', PX.goldBg), marginLeft: 6 }}>New</span>}
+                {man && <span style={{ ...chip('#5b21b6', '#f1eaff'), marginLeft: 6 }} title="Added manually">Manual</span>}
               </span>
               <span style={{ fontSize: 11.5, color: cv.taught ? PX.ok : PX.faint, whiteSpace: 'nowrap', fontWeight: 600 }}>
                 {cv.taught ? `Taught ${cv.taught}× · ${fmtDate(cv.last)}` : 'Not yet'}
               </span>
+              {man && canDelete && <button type="button" aria-label={`Remove manual chapter ${c}`} title="Remove this manual chapter" onClick={() => onDelete(man)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b42318', fontSize: 15, padding: '0 2px' }}>✕</button>}
             </li>
           )
         })}
         {!list.length && <li style={{ fontSize: 12.5, color: PX.faint, padding: 8 }}>No chapters match.</li>}
       </ol>
+      {canAdd && (
+        <div style={{ padding: '0 14px 12px' }}>
+          {adding ? (
+            <form onSubmit={e => { e.preventDefault(); if (draft.trim()) { onAdd(subject, [draft]); setDraft(''); setAdding(false) } }} style={{ display: 'flex', gap: 6 }}>
+              <input className="px-input" autoFocus style={{ flex: 1 }} value={draft} onChange={e => setDraft(e.target.value)} placeholder="New chapter name" aria-label={`New chapter for ${subject}`} />
+              <button type="submit" className="px-btn gold" style={{ padding: '7px 14px', fontSize: 13 }} disabled={!draft.trim()}>Add</button>
+              <button type="button" className="px-btn ghost" style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => { setAdding(false); setDraft('') }}>×</button>
+            </form>
+          ) : <button type="button" onClick={() => setAdding(true)} className="px-btn ghost" style={{ width: '100%', padding: '7px 12px', fontSize: 12.5, borderStyle: 'dashed' }}>＋ Add chapter to {subject}</button>}
+        </div>
+      )}
       {!q && filter === 'all' && shown.length > LIMIT && (
         <button type="button" onClick={onToggle} className="px-btn ghost" style={{ margin: '0 16px 14px', padding: '7px 12px', fontSize: 12.5 }}>
           {open ? 'Show fewer' : `Show all ${shown.length} chapters`}
@@ -131,7 +148,7 @@ function useNarrow() {
   return narrow
 }
 
-export default function SyllabusOfficial({ logs = [] }) {
+export default function SyllabusOfficial({ logs = [], canAdd = false, canDelete = false }) {
   const narrow = useNarrow()
   const [course, setCourse] = useState('sainik')
   const classes = classesOf(course)
@@ -147,8 +164,49 @@ export default function SyllabusOfficial({ logs = [] }) {
   const totals = pattern ? patternTotals(pattern) : null
   const clsLabel = cls ? `Class ${cls}` : 'Class 5–8'
 
-  // Subjects in exam-section order; Foundation falls back to its course lists.
-  const subjects = subjectsFor(course, cls)
+  // Official subjects in exam-section order, plus chapters added by hand (stored in the shared chapter catalogue).
+  const base = subjectsFor(course, cls)
+  const [manualRows, setManualRows] = useState([]), [toast, setToast] = useState(''), [saving, setSaving] = useState(false)
+  const [addOpen, setAddOpen] = useState(false), [addForm, setAddForm] = useState({ subject: '', newSubject: '', text: '' })
+  const loadManual = useCallback(async () => {
+    const { data, error } = await supabase.from('syllabus_topics').select('id, course, subject_name, chapter_name, display_order, syllabus_id').order('display_order').order('chapter_name')
+    if (error) return
+    setManualRows((data || []).filter(r => !r.syllabus_id && String(r.course || '').trim().toLowerCase() === course && r.subject_name && r.chapter_name))
+  }, [course])
+  useEffect(() => { loadManual() }, [loadManual])
+  const manualBySubject = useMemo(() => {
+    const by = {}
+    manualRows.forEach(r => {
+      const official = (base[r.subject_name] || []).some(c => normName(c) === normName(r.chapter_name))
+      if (!official) (by[r.subject_name] ||= []).push(r)
+    })
+    return by
+  }, [manualRows, base])
+  const subjects = useMemo(() => {
+    const out = Object.fromEntries(Object.entries(base).map(([s, l]) => [s, [...l]]))
+    Object.entries(manualBySubject).forEach(([s, rows]) => { const l = out[s] ||= []; const seen = new Set(l.map(normName)); rows.forEach(r => { if (!seen.has(normName(r.chapter_name))) { l.push(r.chapter_name); seen.add(normName(r.chapter_name)) } }) })
+    return out
+  }, [base, manualBySubject])
+  const say = m => { setToast(m); setTimeout(() => setToast(''), 3500) }
+  const addChapters = async (subject, names) => {
+    const subj = String(subject || '').trim()
+    const have = new Set((subjects[subj] || []).map(normName)), seen = new Set()
+    const fresh = names.map(n => String(n).trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '').trim()).filter(n => n && !have.has(normName(n)) && !seen.has(normName(n)) && seen.add(normName(n)))
+    if (!subj) return say('Choose or type a subject first.')
+    if (!fresh.length) return say('Nothing new to add — those chapters are already listed.')
+    setSaving(true)
+    const start = Math.max(0, ...manualRows.filter(r => r.subject_name === subj).map(r => Number(r.display_order) || 0)) + 1
+    const { error } = await supabase.from('syllabus_topics').insert(fresh.map((n, i) => ({ course, subject_name: subj, chapter_name: n, display_order: start + i, subtopics: [] })))
+    setSaving(false)
+    if (error) return say('Could not save: ' + error.message)
+    say(`✓ ${fresh.length} chapter${fresh.length === 1 ? '' : 's'} added to ${subj}`); setAddForm({ subject: '', newSubject: '', text: '' }); setAddOpen(false); loadManual()
+  }
+  const removeManual = async row => {
+    if (!window.confirm(`Remove the manual chapter “${row.chapter_name}” from ${row.subject_name}?`)) return
+    const { error } = await supabase.from('syllabus_topics').delete().eq('id', row.id)
+    if (error) return say('Could not remove: ' + error.message)
+    say('Chapter removed'); loadManual()
+  }
 
   const courseLogs = useMemo(() => logs.filter(l => logInCourse(l, course)), [logs, course])
   const coverage = useMemo(() => Object.fromEntries(Object.entries(subjects).map(([s, chs]) => [s, chapterCoverage(chs, s, courseLogs)])), [subjects, courseLogs])
@@ -266,11 +324,38 @@ export default function SyllabusOfficial({ logs = [] }) {
         </div>
       </div>
 
+      {canAdd && (
+        <div className="px-card" style={{ marginBottom: 14, borderStyle: addOpen ? 'solid' : 'dashed', borderColor: addOpen ? PX.gold : undefined }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 16px' }}>
+            <div style={{ flex: 1, minWidth: 200 }}><div style={{ fontFamily: PX.serif, fontSize: 16, fontWeight: 600 }}>Add syllabus manually</div><div style={{ fontSize: 12.5, color: PX.sub }}>Add chapters (or a whole new subject) that are not in the official list. Shared with all staff.</div></div>
+            <button type="button" className={addOpen ? 'px-btn ghost' : 'px-btn gold'} onClick={() => setAddOpen(v => !v)}>{addOpen ? 'Cancel' : '＋ Add chapters'}</button>
+          </div>
+          {addOpen && (
+            <form onSubmit={e => { e.preventDefault(); addChapters(addForm.subject === '__new' ? addForm.newSubject : addForm.subject, addForm.text.split(/\r?\n|;/)) }} style={{ padding: '0 16px 16px', display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject
+                  <select className="px-input" style={{ marginTop: 4 }} value={addForm.subject} onChange={e => setAddForm(f => ({ ...f, subject: e.target.value }))} aria-label="Subject">
+                    <option value="">Choose…</option>{Object.keys(subjects).map(sj => <option key={sj} value={sj}>{sj}</option>)}<option value="__new">＋ New subject…</option>
+                  </select></label>
+                {addForm.subject === '__new' && <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>New subject name<input className="px-input" style={{ marginTop: 4 }} value={addForm.newSubject} onChange={e => setAddForm(f => ({ ...f, newSubject: e.target.value }))} placeholder="e.g. Computer Science" aria-label="New subject name" /></label>}
+              </div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Chapters — one per line (paste a whole list)
+                <textarea className="px-input" rows={5} style={{ marginTop: 4, resize: 'vertical' }} value={addForm.text} onChange={e => setAddForm(f => ({ ...f, text: e.target.value }))} placeholder={'Fractions revision\nWord problems\nMental maths tricks'} aria-label="Chapters" /></label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="submit" className="px-btn gold" disabled={saving || !(addForm.subject === '__new' ? addForm.newSubject.trim() : addForm.subject) || !addForm.text.trim()}>{saving ? 'Saving…' : 'Add to syllabus'}</button>
+                <span style={{ fontSize: 12, color: PX.sub }}>{addForm.text.split(/\r?\n|;/).filter(x => x.trim()).length} chapter(s) · {course === 'foundation' ? 'Foundation' : COURSES[course].label}</span>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+      {toast && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, margin: '0 0 12px', padding: '10px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}>{toast}</div>}
+
       {/* Subjects */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,320px),1fr))', gap: 14, alignItems: 'start' }}>
         {Object.entries(subjects).map(([s, chs]) => (
           <SubjectCard key={s} subject={s} chapters={chs} coverage={coverage[s] || {}} section={sectionFor(pattern, s)}
-            baseSet={baseSets[s] || new Set()} filter={filter} query={query}
+            baseSet={baseSets[s] || new Set()} filter={filter} query={query} manualRows={manualBySubject[s] || []} canAdd={canAdd} canDelete={canDelete} onAdd={addChapters} onDelete={removeManual}
             open={!!openSubjects[s]} onToggle={() => setOpenSubjects(o => ({ ...o, [s]: !o[s] }))} />
         ))}
       </div>
