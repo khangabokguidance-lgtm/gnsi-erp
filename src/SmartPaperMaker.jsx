@@ -102,7 +102,7 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
   const optsFor = o => ({ ...o, institute: instName, author: me })
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg?.('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(m, { ...optsFor(o), auto: true }, CSS_ALL)); w.document.close(); markUsed() }
   const doWord = (m, o) => {
-    setMathStacked(false); let html; try { html = materialDocHtml(m, { ...optsFor(o), columns: 1 }, CSS_ALL) } finally { setMathStacked(true) }
+    setMathStacked(false); let html; try { html = materialDocHtml(m, { ...optsFor(o), columns: 1, nup: 1 }, CSS_ALL) } finally { setMathStacked(true) }
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = m.title.replace(/[^\w-]+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url); markUsed()
   }

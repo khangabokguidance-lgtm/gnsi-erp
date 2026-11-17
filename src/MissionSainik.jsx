@@ -21,6 +21,7 @@ import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import MissionSainikMaterial from './MissionSainikMaterial'
 import SmartPaperMaker from './SmartPaperMaker'
+import SetPrintDialog from './SetPrintDialog'
 import { materialDocHtml, renderMaterial, MATERIAL_CSS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
@@ -261,6 +262,7 @@ function MissionSainikInner({ currentUser }) {
   const [fileKey, setFileKey] = useState(0)
   const [viewMat, setViewMat] = useState(null)
   const [paperMaker, setPaperMaker] = useState(false)
+  const [printSet, setPrintSet] = useState(null)   // { subject, setNo } — print a Practice bank set
   const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
   useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
@@ -958,12 +960,13 @@ function MissionSainikInner({ currentUser }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 2px 6px' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: g.tone }} /><b style={{ fontSize: 13.5 }}>{g.sub.label}</b><span style={{ fontSize: 12, color: PX.sub }}>{g.sets.reduce((t, x) => t + x.n, 0)}/{g.sets.length * 25}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,150px),1fr))', gap: 8 }}>
               {g.sets.map(x => (
-                <button key={x.no} type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} aria-label={`${g.sub.label} set ${x.no}, ${x.n} of 25 questions`}
+                <div key={x.no} style={{ position: 'relative' }}><button type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} aria-label={`${g.sub.label} set ${x.no}, ${x.n} of 25 questions`}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: `1.5px solid ${x.n >= 25 ? '#bfe3cc' : PX.line}`, background: x.n >= 25 ? '#f7fcf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', borderLeft: `4px solid ${g.tone}`, boxShadow: '0 1px 2px rgba(19,42,79,.05)', transition: 'transform .15s,box-shadow .15s' }}
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 24px -16px rgba(19,42,79,.5)' }} onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05)' }}>
                   <Ring n={x.n} tone={g.tone} />
                   <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>Set {x.no}</span><span style={{ display: 'block', fontSize: 11.5, color: x.n >= 25 ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= 25 ? 'Complete' : x.n ? `${x.n}/25 · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
-                </button>))}
+                </button>
+                {x.n > 0 && <button type="button" title="Print this set (2 columns, space saver, class copies)" aria-label={`Print ${g.sub.label} set ${x.no}`} onClick={() => setPrintSet({ subject: g.sub.label, setNo: x.no })} style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: 10, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', fontSize: 14 }}>🖨</button>}</div>))}
             </div>
           </div>))}
       </div>
@@ -1374,6 +1377,7 @@ function MissionSainikInner({ currentUser }) {
           </>
         )}
       </MissionSainikShell>
+      {printSet && <SetPrintDialog subject={printSet.subject} setNo={printSet.setNo} instName={institute?.name} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} setMsg={setMsg} onClose={() => setPrintSet(null)} />}
       {paperMaker && <SmartPaperMaker subjects={SUBJECTS} institute={institute} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} isAdmin={isRealAdmin} setMsg={setMsg} onClose={() => setPaperMaker(false)}
         onUseAsNotes={({ title, subject, body }) => { setPaperMaker(false); setEditMat(null); setMatDraft({ title, subject: subject || '', test_no: 0, link_url: '', note: '', body, file: null }); setTab('material') }} />}
       {viewMat && (
