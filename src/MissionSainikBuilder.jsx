@@ -98,7 +98,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     try { localStorage.setItem(LS_PC, JSON.stringify(pc)) } catch { /* storage blocked */ }
     const { error } = await supabase.from('mission_sainik_paper_cfg').upsert({ series, config: pc, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'series' })
     audit('paper_settings', series, { columns: pc.columns, font: pc.font })
-    setMsg(error ? '✅ Saved on this device. Run migration 20261212 to share these settings with everyone.' : '✅ Paper settings saved for everyone')
+    setMsg(error ? (isAdmin ? '✅ Saved on this device. Run migration 20261212 to share these settings with everyone.' : '🔒 Only admins can change paper settings for everyone.') : '✅ Paper settings saved for everyone')
   }
   const patchSection = (label, patch) => setPc({ ...pc, sections: pc.sections.map(x => (x.label === label ? { ...x, ...patch } : x)) })
   const moveSection = (label, d) => { const a = [...pc.sections], i = a.findIndex(x => x.label === label), j = i + d; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; setPc({ ...pc, sections: a }) }
@@ -435,6 +435,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   }
   const exportBank = scope => {
     if (embargo && !isAdmin) return setMsg('🔒 Bank export is locked until the test dates (embargo).')
+    if (!isAdmin && (scope !== 'section' || !canEdit(testNo, section))) return setMsg('🔒 Staff can export only their own section. Ask an admin for a full export.')
     const list = bankRows(scope)
     if (!list.length) return setMsg('❌ Nothing to export here yet.')
     const data = { format: 'gnsi-qbank', version: 1, series, institute: instName, exported_at: new Date().toISOString(), count: list.length, questions: list }
@@ -599,10 +600,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 6 }}>{ver.sets > 1 && !ver.shuffleQ && !ver.shuffleOpts ? '⚠ Several sets without shuffling will be identical. ' : ''}The same shuffle is reproduced every time you print, and each answer key matches its set.</div>
           </div>
         </div>
-        <div style={{ marginTop: 14 }}>
+        {isAdmin && <div style={{ marginTop: 14 }}>
           <button className="px-hbtn" aria-expanded={showSettings} onClick={() => setShowSettings(v => !v)}>{showSettings ? '▾' : '▸'} Layout, fonts &amp; section builder</button>
-        </div>
-        {showSettings && (
+        </div>}
+        {isAdmin && showSettings && (
           <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: PX.tint, border: `1px solid ${line}` }}>
             {(() => {
               const lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }
@@ -682,10 +683,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
-              <button type="button" className="px-hbtn" onClick={() => exportBank('test')}>⬇ This {cfg.noun === 'Set' ? 'set' : 'test'}</button>
-              <button type="button" className="px-hbtn" onClick={() => exportBank('all')}>⬇ Everything</button>
+              {isAdmin && <button type="button" className="px-hbtn" onClick={() => exportBank('test')}>⬇ This {cfg.noun === 'Set' ? 'set' : 'test'}</button>}
+              {isAdmin && <button type="button" className="px-hbtn" onClick={() => exportBank('all')}>⬇ Everything</button>}
               <label className="px-hbtn" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>⬆ Import JSON<input type="file" accept=".json,application/json" aria-label="Import a question bank file" onChange={importBank} style={{ display: 'none' }} /></label>
-              <span style={{ fontSize: 11.5, color: PX.sub }}>Back up, move to another series, or share with another institute. Duplicates are skipped.</span>
+              <span style={{ fontSize: 11.5, color: PX.sub }}>{isAdmin ? 'Back up, move to another series, or share with another institute. Duplicates are skipped.' : 'You can export or import your own section. Duplicates are skipped.'}</span>
             </div>
             <div role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
               {[['cards', '🗂️ Question cards'], ['paste', '📋 Paste / file']].map(([k, l]) => (
