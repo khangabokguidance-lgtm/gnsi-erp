@@ -81,6 +81,8 @@ html{scroll-behavior:smooth}
 .msx-rail h4{margin:14px 10px 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
+.msx-main.has-fab{padding-bottom:150px}
+.msx-main .px-table.msx-compact th,.msx-main .px-table.msx-compact td{padding:12px 9px;font-size:13.5px}
 .msx-rail{transition:width .2s ease}
 .msx-rail-tg{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 0 6px auto;border-radius:10px;color:var(--sub);font-size:16px;font-weight:800}.msx-rail-tg:hover{background:#e6ebf4}
 .msx-rail.slim{width:68px;padding-inline:8px}.msx-rail.slim .msx-rail-tg{margin-inline:auto}
@@ -156,7 +158,8 @@ html{scroll-behavior:smooth}
   .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px}
   /* clear the slimmer bottom bar */
   .msx-fab{bottom:calc(66px + env(safe-area-inset-bottom))}.msx-snack{bottom:calc(62px + env(safe-area-inset-bottom))}
-  .msx-allot .msx-acell{align-items:flex-end}
+  .msx-allot .msx-acell{flex-direction:row;align-items:center;gap:8px;padding:6px 10px}
+  .msx-main.has-fab{padding-bottom:150px}
 }
 @keyframes msx-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes msx-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
@@ -288,7 +291,7 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
             </>
           )}
         </nav>
-        <main className="msx-main" key={active}>{children}</main>
+        <main className={'msx-main' + (fab ? ' has-fab' : '')} key={active}>{children}</main>
       </div>
       <nav className="msx-bottom" aria-label="Primary">
         {BOTTOM.map(([id, ic, label]) => (

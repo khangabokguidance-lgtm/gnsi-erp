@@ -5,7 +5,7 @@
 // Who sets what, who verifies, deadlines, and progress: Pending → Submitted → Verified → Approved.
 // Plan and deadlines: missionSainikData.js (Office Order GNSI/MS-2027/PMT/2026/01).
 // Progress is stored in the `mission_sainik_tasks` table (migration 20261201_mission_sainik_tasks.sql).
-import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { supabase } from './supabase'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import MissionSainikBuilder from './MissionSainikBuilder'
@@ -276,6 +276,15 @@ function MissionSainikInner({ currentUser }) {
   }, [])
 
   const isMe = name => nameMatches(currentUser?.name, name)
+  // Tasks tab: if nothing is waiting on me when the data first loads, open on my tasks (or everyone's) instead of an empty list.
+  const taskViewAuto = useRef(false)
+  useEffect(() => {
+    if (taskViewAuto.current || !rows.length) return
+    taskViewAuto.current = true
+    const needs = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length
+    if (needs) return
+    setTaskView(rows.some(r => isMe(r.setter) || isMe(r.verifier)) ? 'mine' : 'all')
+  }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -596,7 +605,7 @@ function MissionSainikInner({ currentUser }) {
         <span style={{ fontSize: 11.5, color: PX.sub }}>No test or deadline on 13 Dec, 27 Dec, 1 Jan</span>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table className="px-table">
+        <table className="px-table msx-compact">
           <thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th><th>Sections</th><th>Status</th></tr></thead>
           <tbody>
             {TESTS.map(t => {
@@ -715,7 +724,7 @@ function MissionSainikInner({ currentUser }) {
               {setters.map(x => (
                 <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
                   <PersonCell name={x.n} size={30}>{fullName(x.n)}</PersonCell>
-                  <span style={{ flex: 1, fontSize: 12.5, color: x.late ? PX.bad : PX.sub }}>{x.l.length} pending{x.late ? ` · ${x.late} overdue` : ''}</span>
+                  <span style={{ flex: '1 1 auto', fontSize: 12.5, color: x.late ? PX.bad : PX.sub }}>{x.l.length} pending{x.late ? ` · ${x.late} overdue` : ''}</span>
                   <button className="px-hbtn" onClick={() => remind(x)}>💬 Remind on WhatsApp</button>
                 </div>
               ))}
@@ -961,13 +970,13 @@ function MissionSainikInner({ currentUser }) {
         {groups.map(g => (
           <div key={g.sub.key} style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 2px 6px' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: g.tone }} /><b style={{ fontSize: 13.5 }}>{g.sub.label}</b><span style={{ fontSize: 12, color: PX.sub }}>{g.sets.reduce((t, x) => t + x.n, 0)}/{g.sets.length * 25}</span></div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,150px),1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))', gap: 10 }}>
               {g.sets.map(x => (
                 <div key={x.no} style={{ position: 'relative' }}><button type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} aria-label={`${g.sub.label} set ${x.no}, ${x.n} of 25 questions`}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: `1.5px solid ${x.n >= 25 ? '#bfe3cc' : PX.line}`, background: x.n >= 25 ? '#f7fcf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', borderLeft: `4px solid ${g.tone}`, boxShadow: '0 1px 2px rgba(19,42,79,.05)', transition: 'transform .15s,box-shadow .15s' }}
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 24px -16px rgba(19,42,79,.5)' }} onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05)' }}>
                   <Ring n={x.n} tone={g.tone} />
-                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>Set {x.no}</span><span style={{ display: 'block', fontSize: 11.5, color: x.n >= 25 ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= 25 ? 'Complete' : x.n ? `${x.n}/25 · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
+                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>Set {x.no}</span><span style={{ display: 'block', fontSize: 11.5, whiteSpace: 'nowrap', color: x.n >= 25 ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= 25 ? 'Complete' : x.n ? `${x.n}/25 · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
                 </button>
                 {x.n > 0 && <button type="button" title="Print this set (2 columns, space saver, class copies)" aria-label={`Print ${g.sub.label} set ${x.no}`} onClick={() => setPrintSet({ subject: g.sub.label, setNo: x.no })} style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: 10, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', fontSize: 14 }}>🖨</button>}</div>))}
             </div>
@@ -1039,7 +1048,10 @@ function MissionSainikInner({ currentUser }) {
                 const mine = tests.filter(r => r.subject === sub.label && r.setter === m.name)
                 return (
                   <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
-                    <span style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span role={m.role === 'setter' ? 'button' : undefined} tabIndex={m.role === 'setter' ? 0 : undefined} title={m.role === 'setter' ? `See ${fullName(m.name)}'s tasks` : undefined}
+                      onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
+                      onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
+                      style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
                       <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -1277,6 +1289,7 @@ function MissionSainikInner({ currentUser }) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
           <button className="px-btn gold" onClick={saveMarks}>{editMarksId ? 'Update marks' : 'Save marks'}</button>
+          {!editMarksId && <span style={{ fontSize: 13, color: PX.sub }}>Saving for <b>T{markDraft.test_no}</b> · {markDraft.batch.trim() || 'no batch yet'}</span>}
           {editMarksId && <><span style={{ fontSize: 13, color: PX.sub }}>Editing T{markDraft.test_no} · {markDraft.batch || 'no batch'}</span><button className="px-btn ghost" onClick={() => { setEditMarksId(null); setMarkDraft({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' }) }}>Cancel</button></>}
         </div>
       </PremiumCard>

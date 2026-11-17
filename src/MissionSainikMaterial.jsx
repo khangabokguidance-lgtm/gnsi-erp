@@ -281,8 +281,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', position: 'relative' }}>
           <div style={{ flex: '1 1 240px', minWidth: 0 }}>
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>Mission Sainik</div>
-            <div style={{ fontFamily: PX.serif, fontSize: isMobile ? 24 : 28, fontWeight: 600, lineHeight: 1.15 }}>Study material</div>
-            <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.72)', marginTop: 3 }}>Write, preview and print notes. Every item carries its creator's name and designation.</div>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,.85)', marginTop: 4, lineHeight: 1.45 }}>Write, preview and print notes. Every item carries its creator's name and designation.</div>
           </div>
           <div className="msm-strip msm-stats" style={{ maxWidth: '100%' }}>
             {[[mats.length, 'Total'], [kinds.text || 0, 'Notes'], [(kinds.pdf || 0) + (kinds.image || 0) + (kinds.office || 0) + (kinds.file || 0), 'Files'], [kinds.link || 0, 'Links'], [mine, 'Mine']].map(([n, l]) => <div key={l} className="msm-stat"><b>{n}</b><span>{l}</span></div>)}
