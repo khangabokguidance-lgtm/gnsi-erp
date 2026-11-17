@@ -4,7 +4,7 @@ import { renderMaterial, embedFor, kindOf, wordCount, figureLine, materialDocHtm
 
 test('headings, paragraphs, bold and italic', () => {
   const h = renderMaterial('# Fractions\n\nA **proper** fraction is *less* than 1.')
-  assert.ok(h.includes('<h1>Fractions</h1>'))
+  assert.ok(h.includes('>Fractions</h1>'))
   assert.ok(h.includes('<b>proper</b>') && h.includes('<i>less</i>'))
 })
 
@@ -66,5 +66,44 @@ test('kindOf', () => {
 
 test('document html escapes the title and includes the body', () => {
   const d = materialDocHtml({ title: '<b>T</b>', body: '# Hi', subject: 'Maths' }, { institute: 'Acme' })
-  assert.ok(!d.includes('<b>T</b>') && d.includes('&lt;b&gt;T') && d.includes('<h1>Hi</h1>') && d.includes('Acme'))
+  assert.ok(!d.includes('<b>T</b>') && d.includes('&lt;b&gt;T') && d.includes('>Hi</h1>') && d.includes('Acme'))
+})
+
+import { outline, PRINT_DEFAULTS } from '../src/lib/materialMarkup.js'
+
+test('headings get ids that match the outline', () => {
+  const src = '# One\ntext\n## Two\n### Three'
+  const h = renderMaterial(src)
+  const o = outline(src)
+  assert.deepEqual(o.map(x => x.id), ['h1', 'h2', 'h3'])
+  assert.deepEqual(o.map(x => x.level), [1, 2, 3])
+  for (const x of o) assert.ok(h.includes(`id="${x.id}"`))
+})
+
+test('teacher boxes can be hidden for the student copy', () => {
+  const src = '> Teacher: answer is 12\n\n> Note: visible'
+  assert.ok(renderMaterial(src).includes('class="box teacher"'))
+  const stu = renderMaterial(src, { teacher: false })
+  assert.ok(!stu.includes('answer is 12') && stu.includes('visible'))
+})
+
+test('print options: byline with designation, columns, compact, ink saver, header', () => {
+  const m = { title: 'T', body: '# A\n# B\n# C\ntext', subject: 'Maths', uploaded_by: 'Sir X' }
+  const d = materialDocHtml(m, { institute: 'Acme', author: { name: 'Sumanta', designation: 'Maths Teacher' }, reviewer: 'Kabiraj', columns: 2, compact: true, inkSaver: true, header: 'compact', toc: true, margin: 'minimal', paper: 'a5', landscape: true })
+  assert.ok(d.includes('Prepared by <b>Sumanta</b>, Maths Teacher') && d.includes('Reviewed by <b>Kabiraj</b>'))
+  assert.ok(d.includes('column-count:2') && d.includes('grayscale') && d.includes('class="lh1"') && d.includes('class="toc"'))
+  assert.ok(d.includes('size:A5 landscape') && d.includes('6mm 7mm 8mm'))
+})
+
+test('byline falls back to the uploader and can be switched off; header can be dropped', () => {
+  const m = { title: 'T', body: 'x', uploaded_by: 'Sir X' }
+  assert.ok(materialDocHtml(m).includes('Prepared by <b>Sir X</b>'))
+  assert.ok(!materialDocHtml(m, { byline: false }).includes('Prepared by'))
+  assert.ok(!materialDocHtml(m, { header: 'none' }).includes('class="lh"'))
+  assert.ok(PRINT_DEFAULTS.columns === 1)
+})
+
+test('author text is escaped', () => {
+  const d = materialDocHtml({ title: 'T', body: 'x' }, { author: { name: '<b>n</b>', designation: '<i>d</i>' } })
+  assert.ok(!d.includes('<b>n</b>') && !d.includes('<i>d</i>'))
 })
