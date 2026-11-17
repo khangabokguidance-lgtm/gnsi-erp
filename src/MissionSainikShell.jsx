@@ -93,6 +93,13 @@ html{scroll-behavior:smooth}
 .msx-main .px-table td:first-child{font-weight:800;color:var(--navy)}
 .msx-main .px-table td.msx-click{cursor:pointer}
 .msx-main .px-table td.msx-click:hover{background:#f5e9c4!important;box-shadow:inset 0 0 0 2px #e0b95a;border-radius:6px}
+.msx-main .px-table.msx-allot td{padding:8px 6px;vertical-align:middle}
+.msx-allot .msx-acell{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #efe8d4;border-radius:12px;padding:7px 9px;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s}
+.msx-main .msx-allot td.msx-click:hover{background:transparent!important;box-shadow:none}
+.msx-allot td.msx-click:hover .msx-acell{border-color:#e0b95a;box-shadow:0 5px 14px rgba(184,146,58,.28);transform:translateY(-1px)}
+.msx-allot .msx-adate{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:99px;background:#f6efdc;color:#6b5a2a;font-size:11px;font-weight:700}
+.msx-main .msx-allot tbody tr:nth-child(even) td{background:transparent}
+.msx-main .msx-allot tbody tr:hover td{background:transparent}
 .msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:11px;font-size:12.5px;background:#fff;border:1px solid #e6dfcc;transition:border-color .15s,box-shadow .15s}
 .msx-main .px-table input.px-input:focus{outline:0;border-color:#b8923a;box-shadow:0 0 0 3px rgba(184,146,58,.22)}
 .msx-main .px-table input.px-input::placeholder{color:#b3ab98}
