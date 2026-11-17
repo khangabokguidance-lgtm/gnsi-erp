@@ -11,7 +11,7 @@ const FIG_RE = /^\[\[img:(data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=
 const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 export const figureLine = (dataUrl, caption = '') => `[[img:${dataUrl}${caption ? '|' + caption.replace(/[\]\n|]/g, ' ') : ''}]]`
 
-const CALLOUTS = { note: ['Note', 'info'], tip: ['Tip', 'tip'], formula: ['Formula', 'formula'], important: ['Important', 'warn'], remember: ['Remember', 'warn'], example: ['Example', 'ex'], warning: ['Warning', 'warn'] }
+const CALLOUTS = { teacher: ['Teacher', 'teacher'], note: ['Note', 'info'], tip: ['Tip', 'tip'], formula: ['Formula', 'formula'], important: ['Important', 'warn'], remember: ['Remember', 'warn'], example: ['Example', 'ex'], warning: ['Warning', 'warn'] }
 
 function inline(t) {
   let s = mathToHtml(t)
@@ -19,16 +19,20 @@ function inline(t) {
   return s
 }
 
-export function renderMaterial(src) {
+// opts.teacher === false hides "> Teacher: …" boxes (the student copy).
+export function renderMaterial(src, opts = {}) {
+  const showTeacher = opts.teacher !== false
+  let hc = 0
   const lines = String(src ?? '').replace(/\r/g, '').split('\n')
   let html = '', para = [], list = null, quote = null, table = null
   const flushPara = () => { if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = [] } }
   const flushList = () => { if (list) { html += `<${list.t}>${list.items.map(x => `<li>${inline(x)}</li>`).join('')}</${list.t}>`; list = null } }
   const flushQuote = () => {
     if (!quote) return
-    const first = quote[0] || '', m = first.match(/^(note|tip|formula|important|remember|example|warning)\s*[:\-–]\s*(.*)$/i)
+    const first = quote[0] || '', m = first.match(/^(teacher|note|tip|formula|important|remember|example|warning)\s*[:\-–]\s*(.*)$/i)
     const [label, cls] = m ? CALLOUTS[m[1].toLowerCase()] : ['', 'info']
     const rest = m ? [m[2], ...quote.slice(1)] : quote
+    if (cls === 'teacher' && !showTeacher) { quote = null; return }
     html += `<div class="box ${cls}">${label ? `<b class="bl">${label}</b> ` : ''}${rest.filter(x => x !== '' || rest.length > 1).map(inline).join('<br>')}</div>`; quote = null
   }
   const flushTable = () => {
@@ -44,7 +48,7 @@ export function renderMaterial(src) {
     if (!t) { flushAll(); continue }
     if ((m = t.match(FIG_RE))) { flushAll(); html += `<figure><img src="${m[1]}" alt="">${m[2] ? `<figcaption>${escHtml(m[2].trim())}</figcaption>` : ''}</figure>`; continue }
     if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(t)) { flushAll(); html += '<hr>'; continue }
-    if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); html += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; continue }
+    if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); html += `<h${m[1].length} id="h${++hc}">${inline(m[2])}</h${m[1].length}>`; continue }
     if (t.startsWith('>')) { flushPara(); flushList(); flushTable(); (quote ||= []).push(t.replace(/^>\s?/, '')); continue }
     if (t.startsWith('|') && t.endsWith('|') && t.length > 2) { flushPara(); flushList(); flushQuote(); (table ||= []).push(t.slice(1, -1).split('|').map(c => c.trim())); continue }
     if ((m = t.match(/^(?:[-*•])\s+(.*)$/))) { flushPara(); flushQuote(); flushTable(); if (list?.t !== 'ul') { flushList(); list = { t: 'ul', items: [] } } list.items.push(m[1]); continue }
@@ -55,27 +59,55 @@ export function renderMaterial(src) {
   return html
 }
 
+// Headings in order, for a contents list / outline: [{ id, level, text }]
+export function outline(src) {
+  const out = []; let n = 0
+  for (const raw of String(src ?? '').replace(/\r/g, '').split('\n')) {
+    const m = raw.trim().match(/^(#{1,3})\s+(.*)$/)
+    if (m) out.push({ id: 'h' + ++n, level: m[1].length, text: m[2].replace(/[*=]/g, '').replace(/\\[a-z]+|[{}^]/gi, '').trim() })
+  }
+  return out
+}
+
 export const MATERIAL_CSS = `.md{font-family:Georgia,'Times New Roman',serif;color:#111827;line-height:1.6;font-size:14px}
 .md h1{font-size:23px;color:#132a4f;margin:18px 0 8px;border-bottom:2.5px solid #b8923a;padding-bottom:4px}.md h2{font-size:18px;color:#132a4f;margin:16px 0 6px}.md h3{font-size:15px;color:#2e3b52;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
 .md p{margin:0 0 9px}.md ul,.md ol{margin:0 0 10px;padding-left:24px}.md li{margin:2px 0}.md hr{border:0;border-top:1px solid #cfd6e4;margin:14px 0}.md mark{background:#fff1b8;padding:0 2px}
 .md table{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:13px;break-inside:avoid}.md th,.md td{border:1px solid #9aa5b8;padding:5px 9px;text-align:left;vertical-align:top}.md th{background:#eef1f6}
 .md figure{margin:10px 0;text-align:center;break-inside:avoid}.md figure img{max-width:100%;max-height:320px}.md figcaption{font:italic 12px system-ui,sans-serif;color:#5d6b82;margin-top:3px}
 .md .box{margin:8px 0 12px;padding:8px 12px;border-left:4px solid #2563eb;background:#eef4ff;border-radius:4px;break-inside:avoid}.md .box.tip{border-color:#16a34a;background:#eefaf2}.md .box.formula{border-color:#7c3aed;background:#f4f0ff;font-size:15px}
-.md .box.warn{border-color:#d97706;background:#fff6e5}.md .box.ex{border-color:#0891b2;background:#ebf9fc}.md .bl{font:800 11px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:4px}`
+.md .box.teacher{border-color:#be123c;background:#fff1f3}.md .box.warn{border-color:#d97706;background:#fff6e5}.md .box.ex{border-color:#0891b2;background:#ebf9fc}.md .bl{font:800 11px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:4px}`
 
 export const wordCount = s => (String(s || '').replace(/\[\[img:[^\]]*\]\]/g, ' ').match(/\S+/g) || []).length
 
-// Full printable page: institute header, title block, body, page-number footer.
-export function materialDocHtml(m, { institute = 'Guidance Navodaya & Sainik Institute', tagline = '', columns = 1, size = 13, auto = false, stacked = true } = {}, css = '') {
-  const meta = [m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : '', m.uploaded_by].filter(Boolean).map(escHtml).join(' · ')
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(m.title)}</title><style>@page{size:A4;margin:16mm 14mm 18mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0}
-.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:6px;margin-bottom:10px;font-family:Georgia,serif}.lh h1{margin:0;font-size:20px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
-.ti{font:700 19px Georgia,serif;margin:0 0 2px}.me{font:12px system-ui,sans-serif;color:#5d6b82;margin-bottom:10px}.md{font-size:${size}px}.cols{column-count:${columns};column-gap:9mm}.cols h1,.cols h2{break-after:avoid}
-.ft{position:fixed;left:0;right:0;bottom:0;text-align:center;font:600 8.5pt system-ui,sans-serif;color:#666}${css}</style></head><body>
-<div class="lh"><h1>${escHtml(institute)}</h1><div>${escHtml(tagline || 'Mission Sainik 2027 · Study Material')}</div></div>
-<div class="ti">${escHtml(m.title)}</div><div class="me">${meta}</div>
-<div class="md${columns > 1 ? ' cols' : ''}">${renderMaterial(m.body || '')}</div>
-<div class="ft">${escHtml(institute)} · ${escHtml(m.title)}</div>${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+// Print layouts that save paper: margins, columns, text size, compact spacing, ink saver, slim header, contents list.
+export const PRINT_DEFAULTS = { paper: 'a4', landscape: false, margin: 'normal', columns: 1, size: 13, compact: false, inkSaver: false, header: 'full', toc: false, teacher: true, byline: true }
+const MARGINS = { normal: '16mm 14mm 18mm', narrow: '10mm 10mm 12mm', minimal: '6mm 7mm 8mm' }
+
+// Full printable page: institute header, title block with the creator's name and designation, contents list, body, footer.
+export function materialDocHtml(m, o = {}, css = '') {
+  const opt = { ...PRINT_DEFAULTS, ...o }
+  const institute = opt.institute || 'Guidance Navodaya & Sainik Institute'
+  const author = opt.author || {}
+  const meta = [m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : ''].filter(Boolean).map(escHtml).join(' · ')
+  const by = opt.byline && (author.name || m.uploaded_by)
+    ? `<div class="by">Prepared by <b>${escHtml(author.name || m.uploaded_by)}</b>${author.designation ? `, ${escHtml(author.designation)}` : ''}${opt.reviewer ? ` · Reviewed by <b>${escHtml(opt.reviewer)}</b>` : ''}</div>` : ''
+  const heads = opt.toc ? outline(m.body || '') : []
+  const toc = heads.length >= 3 ? `<div class="toc"><b>Contents</b><ol>${heads.filter(h => h.level < 3).map(h => `<li class="l${h.level}"><a href="#${h.id}">${escHtml(h.text)}</a></li>`).join('')}</ol></div>` : ''
+  const lh = opt.header === 'none' ? '' : opt.header === 'compact'
+    ? `<div class="lh1"><b>${escHtml(institute)}</b> · ${escHtml(opt.tagline || 'Study Material')}</div>`
+    : `<div class="lh"><h1>${escHtml(institute)}</h1><div>${escHtml(opt.tagline || 'Mission Sainik 2027 · Study Material')}</div></div>`
+  const size = Math.max(8, Math.min(18, Number(opt.size) || 13)), cols = Math.max(1, Math.min(3, Number(opt.columns) || 1))
+  const paper = (opt.paper === 'a5' ? 'A5' : 'A4') + (opt.landscape ? ' landscape' : '')
+  const compactCss = opt.compact ? '.md{line-height:1.36}.md p{margin:0 0 4px}.md h1{margin:9px 0 3px;font-size:1.35em;padding-bottom:2px}.md h2{margin:8px 0 3px;font-size:1.15em}.md h3{margin:6px 0 2px}.md ul,.md ol{margin:0 0 5px;padding-left:19px}.md li{margin:0}.md table{margin:4px 0 7px}.md th,.md td{padding:2px 6px}.md .box{margin:4px 0 7px;padding:4px 9px}.md figure{margin:5px 0}.md figure img{max-height:230px}.md hr{margin:7px 0}' : ''
+  const inkCss = opt.inkSaver ? '.md .box,.md .box.tip,.md .box.formula,.md .box.warn,.md .box.ex,.md .box.teacher{background:none!important;border:1px solid #777!important;border-left:3px solid #333!important}.md th{background:none!important;font-weight:800}.md mark{background:none;text-decoration:underline}.md h1{border-bottom:1px solid #444;color:#000}.md h2,.md h3{color:#000}.lh{border-bottom:1px solid #444}.lh h1{color:#000}.md figure img{filter:grayscale(1) contrast(1.1)}' : ''
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(m.title)}</title><style>@page{size:${paper};margin:${MARGINS[opt.margin] || MARGINS.normal};@bottom-center{content:"${String(institute).replace(/["\\]/g, '')} · Page " counter(page) " of " counter(pages);font:8pt system-ui,sans-serif;color:#666}}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0}
+.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:5px;margin-bottom:8px;font-family:Georgia,serif}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11px;color:#555}.lh1{font:11px system-ui,sans-serif;color:#444;border-bottom:1px solid #999;padding-bottom:2px;margin-bottom:6px}
+.ti{font:700 ${opt.compact ? 17 : 19}px Georgia,serif;margin:0 0 1px}.me{font:11.5px system-ui,sans-serif;color:#5d6b82;margin-bottom:2px}.by{font:12px system-ui,sans-serif;color:#2e3b52;margin-bottom:${opt.compact ? 5 : 9}px}
+.md{font-size:${size}px}.cols{column-count:${cols};column-gap:7mm;${cols > 1 ? 'column-rule:.5pt solid #ccc;' : ''}}.cols h1,.cols h2,.cols h3{break-after:avoid}
+.toc{font:12px system-ui,sans-serif;border:1px solid #cfd6e4;border-radius:6px;padding:6px 12px;margin:0 0 8px;break-inside:avoid}.toc ol{margin:3px 0 0;padding-left:20px;columns:${cols > 1 ? 1 : 2}}.toc li.l2{margin-left:12px;color:#555}.toc a{color:inherit;text-decoration:none}
+body{padding-bottom:6mm}${compactCss}${inkCss}${css}</style></head><body>${lh}
+<div class="ti">${escHtml(m.title)}</div><div class="me">${meta}</div>${by}${toc}
+<div class="md${cols > 1 ? ' cols' : ''}">${renderMaterial(m.body || '', { teacher: opt.teacher })}</div>${opt.auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
 }
 
 // Preview helpers for links and files.

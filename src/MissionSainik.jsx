@@ -259,6 +259,8 @@ function MissionSainikInner({ currentUser }) {
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
   const [fileKey, setFileKey] = useState(0)
   const [viewMat, setViewMat] = useState(null)
+  const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
+  useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
   const [marks, setMarks] = useState([])
   const [markDraft, setMarkDraft] = useState({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' })
@@ -1271,7 +1273,7 @@ function MissionSainikInner({ currentUser }) {
     <MissionSainikMaterial mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
       onSave={saveMaterial} onCancelEdit={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}
       onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
-      institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} />
+      institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} staff={staffDir} userName={currentUser?.name || ''} />
   )
 
   const myOpen = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted'))
