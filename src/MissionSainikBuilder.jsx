@@ -8,6 +8,7 @@ import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
+import ScanFigure from './ScanFigure'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
@@ -65,6 +66,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const [bin, setBin] = useState([])
   const [showBin, setShowBin] = useState(false)
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
+  const [scanEdit, setScanEdit] = useState(false)
   const [ver, setVer] = useState({ sets: 1, shuffleQ: false, shuffleOpts: false, layout: 'book' })   // paper versions (Set A, B, C…)
   const [preview, setPreview] = useState(null)   // { html, title }
   const LS_PC = 'ms_paper_cfg_' + series
@@ -787,6 +789,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                             <span>Figure</span>
                             {editQ.image_data && <img src={editQ.image_data} alt="Figure" style={{ maxHeight: 70, borderRadius: 8, border: `1px solid ${line}` }} />}
                             <input type="file" accept="image/*" aria-label="Attach a figure" onChange={async e => { const f = e.target.files?.[0]; if (!f) return; try { set({ image_data: await figFromFile(f) }) } catch (er) { setMsg('❌ ' + er.message) } e.target.value = '' }} />
+                            <button className="px-btn ghost" type="button" onClick={() => setScanEdit(true)}>📷 Scan figure</button>
                             {editQ.image_data && <button className="px-btn ghost" type="button" onClick={() => set({ image_data: '' })}>Remove figure</button>}
                           </div>
                         </>
@@ -827,6 +830,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           </div>
         </div>
       )}
+      {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
       {isMobile && mayEdit && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
     </div>
   )

@@ -6,6 +6,7 @@ import { PX } from './premiumUI'
 import { parseQuestions } from './lib/missionSainikQuestions'
 import { figFromFile, svgToJpeg } from './lib/figImage'
 import { vennSvg, vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
+import ScanFigure from './ScanFigure'
 import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
 import { csvToQuestionText } from './lib/missionSainikPaper'
 import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture } from './lib/mathText'
@@ -170,6 +171,12 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     upd(a.id, { [a.field]: next })
     setTimeout(() => { try { el.focus(); el.setSelectionRange(start + caret, start + caret) } catch { /* element replaced */ } }, 20)
   }
+  const [scan, setScan] = useState(null)   // { id, k? } — scanning a figure (k = option letter for an option picture)
+  const onScanned = url => {
+    const t = scan; setScan(null); if (!t) return
+    if (t.k) setCards(cs => cs.map(c => (c.id === t.id ? { ...c, [t.k]: withPicture(c[t.k], url) } : c)))
+    else setCards(cs => cs.map(c => (c.id === t.id ? { ...c, image: url, type: c.type === 'normal' ? 'figure' : c.type } : c)))
+  }
   const [vennFor, setVennFor] = useState(null)
   const [vennDraft, setVennDraft] = useState({ sets: 2, labels: ['', '', ''], v: {}, universe: true })
   const [presetFor, setPresetFor] = useState(null)   // { id, k } — picking a relationship diagram for an option
@@ -261,6 +268,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       )}
       {undo && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px', padding: '9px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}><span style={{ flex: 1 }}>Question removed.</span><button type="button" onClick={doUndo} style={{ border: 'none', background: '#e9d9b0', color: '#132a4f', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>Undo</button><button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16 }}>×</button></div>}
+      {scan && <ScanFigure title={scan.k ? `Scan a picture for option ${scan.k.toUpperCase()}` : 'Scan a figure'} onDone={onScanned} onClose={() => setScan(null)} {...(scan.k ? { maxW: 260, quality: 0.72, cap: 60000, label: 'Option picture' } : {})} />}
       {presetFor && (
         <div onClick={() => setPresetFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
           <div role="dialog" aria-label="Venn relationship diagrams" onClick={e => e.stopPropagation()} style={{ width: 'min(520px,100%)', maxHeight: '86vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 16 }}>
@@ -309,7 +317,8 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, border: `1.5px dashed ${c.image ? '#bfe3cc' : '#d9c28a'}`, background: c.image ? '#f7fcf9' : '#fffaf0' }}>
                             {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'passage' ? '📖' : c.type === 'venn' ? '🔵' : c.type === 'nonverbal' ? '🔷' : '🖼️'}</span>}
                             <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'venn' ? 'Draw the Venn diagram below, or upload one' : c.type === 'nonverbal' ? 'Add the question figure (or give all four options as pictures)' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
-                            <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '📷 Add picture'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
+                            <button type="button" className="px-btn ghost" style={gbtn} onClick={() => setScan({ id: c.id })}>📷 Scan</button>
+                            <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '⬆ Upload'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
                             {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
                           </div>
                         )}
@@ -356,7 +365,8 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                                   onChange={e => upd(c.id, { [k.toLowerCase()]: withPicture(e.target.value, pictureOf(c[k.toLowerCase()])) })}
                                   onKeyDown={e => { if (k === 'D' && e.key === 'Enter') { e.preventDefault(); addAfter(c.id, 1, c) } }} />
                                 {c.type === 'venn' && <button type="button" title="Pick a Venn relationship diagram" aria-label={`Pick a Venn diagram for option ${k}`} onClick={() => setPresetFor({ id: c.id, k: k.toLowerCase() })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>🔵</button>}
-                                <label title={hasPicture(c[k.toLowerCase()]) ? 'Replace picture' : 'Use a picture for this option'} style={{ cursor: 'pointer', fontSize: 16, padding: '0 3px', flexShrink: 0, opacity: hasPicture(c[k.toLowerCase()]) ? 1 : .55 }}>🖼<input type="file" accept="image/*" aria-label={`Picture for option ${k}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickOptionImage(c.id, k.toLowerCase(), f) } }} /></label>
+                                <button type="button" title="Scan a picture for this option" aria-label={`Scan a picture for option ${k}`} onClick={() => setScan({ id: c.id, k: k.toLowerCase() })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, padding: '0 2px', flexShrink: 0, opacity: .6 }}>📷</button>
+                                <label title={hasPicture(c[k.toLowerCase()]) ? 'Replace picture' : 'Upload a picture for this option'} style={{ cursor: 'pointer', fontSize: 16, padding: '0 3px', flexShrink: 0, opacity: hasPicture(c[k.toLowerCase()]) ? 1 : .55 }}>🖼<input type="file" accept="image/*" aria-label={`Picture for option ${k}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickOptionImage(c.id, k.toLowerCase(), f) } }} /></label>
                                 {hasPicture(c[k.toLowerCase()]) && <button type="button" aria-label={`Remove picture from option ${k}`} onClick={() => upd(c.id, { [k.toLowerCase()]: withoutPicture(c[k.toLowerCase()]) })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13, color: PX.sub, flexShrink: 0 }}>×</button>}
                               </div>
                             )
