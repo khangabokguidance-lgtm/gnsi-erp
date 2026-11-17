@@ -200,6 +200,9 @@ function MissionSainikInner({ currentUser }) {
   const [taskSort, setTaskSort] = useState('due')
   const [pracCounts, setPracCounts] = useState({})
   const [sylImport, setSylImport] = useState(null)                   // null | text
+  const [sylView, setSylView] = useState('cards')                     // cards | grid
+  const [sylOnlyEmpty, setSylOnlyEmpty] = useState(false)
+  const [sylQuery, setSylQuery] = useState('')
   const [marksImport, setMarksImport] = useState(null)               // null | text
   const [marksFilter, setMarksFilter] = useState(0)
   const [matQ, setMatQ] = useState(''), [matSubj, setMatSubj] = useState(''), [matSort, setMatSort] = useState('new')
@@ -1095,7 +1098,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   }
   const syllabusTab = (
     <>{setupNote}
-      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type and click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
+      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
@@ -1103,20 +1106,96 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             <textarea className="px-input" rows={6} value={sylImport} onChange={e => setSylImport(e.target.value)} aria-label="Syllabus import" placeholder={'1, Maths, Fractions\n1, Science, Light'} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}><button className="px-btn gold" onClick={runSylImport}>Import chapters</button><button className="px-btn ghost" onClick={() => setSylImport(null)}>Cancel</button></div>
           </div>)}
-        <table className="px-table" style={{ minWidth: 900 }}>
-          <thead><tr><th>Test</th>{SUBJECTS.map(x => <th key={x.key}>{x.short}</th>)}</tr></thead>
-          <tbody>{TESTS.map(t => (
-            <tr key={t.no}>
-              <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
-              {SUBJECTS.map(x => (
-                <td key={x.key} style={{ padding: '8px 10px' }}>
-                  <input key={t.no + x.label + (syl[t.no + '|' + x.label] ?? '')} className="px-input" defaultValue={syl[t.no + '|' + x.label] || ''} aria-label="Chapter" placeholder="Chapter"
-                    onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
-                </td>
-              ))}
-            </tr>))}
-          </tbody>
-        </table>
+        {(() => {
+          const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
+          const tone = i => TONES[i % TONES.length]
+          const val = (t, x) => syl[t.no + '|' + x.label] || ''
+          const total = TESTS.length * SUBJECTS.length
+          const filled = TESTS.reduce((n, t) => n + SUBJECTS.filter(x => val(t, x)).length, 0)
+          const pctAll = total ? Math.round((filled / total) * 100) : 0
+          const q = sylQuery.trim().toLowerCase()
+          const visible = TESTS.filter(t => {
+            const empty = SUBJECTS.some(x => !val(t, x))
+            if (sylOnlyEmpty && !empty) return false
+            if (q && !(t.id.toLowerCase().includes(q) || SUBJECTS.some(x => val(t, x).toLowerCase().includes(q)))) return false
+            return true
+          })
+          const copyPrev = t => {
+            const prev = TESTS.find(p => p.no === t.no - 1)
+            if (!prev) return
+            SUBJECTS.forEach(x => { if (!val(t, x) && val(prev, x)) saveChapter(t.no, x.label, val(prev, x)) })
+          }
+          const chipBtn = on => ({ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', color: PX.ink2, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' })
+          return (
+            <>
+              <div style={{ padding: '14px 18px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)', position: 'sticky', left: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 5 }}>
+                      <b style={{ color: PX.ink }}>{filled} of {total} chapters planned</b><b style={{ color: pctAll === 100 ? PX.ok : PX.sub }}>{pctAll}%{pctAll === 100 ? ' 🎉' : ''}</b>
+                    </div>
+                    <div style={{ height: 9, borderRadius: 99, background: '#f1ede3', overflow: 'hidden' }}><div style={{ width: pctAll + '%', height: '100%', borderRadius: 99, background: `linear-gradient(90deg,${PX.gold},${PX.ok})`, transition: 'width .3s' }} /></div>
+                  </div>
+                  <input className="px-input" style={{ flex: '1 1 180px', maxWidth: 260 }} placeholder="🔍 Find test or chapter…" aria-label="Find test or chapter" value={sylQuery} onChange={e => setSylQuery(e.target.value)} />
+                  <button type="button" style={chipBtn(sylOnlyEmpty)} onClick={() => setSylOnlyEmpty(v => !v)} aria-pressed={sylOnlyEmpty}>✏️ Only tests with gaps</button>
+                  <span className="px-tabs" role="tablist" aria-label="Layout" style={{ marginBottom: 0 }}>
+                    {[['cards', '🗂️ Cards'], ['grid', '▦ Grid']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={sylView === k} className={'px-tab' + (sylView === k ? ' on' : '')} onClick={() => setSylView(k)} style={{ padding: '6px 12px', fontSize: 12.5 }}>{l}</button>)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                  {SUBJECTS.map((x, i) => {
+                    const n = TESTS.filter(t => val(t, x)).length
+                    return <span key={x.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 99, background: '#fff', border: `1px solid ${PX.line}`, fontSize: 11.5, fontWeight: 700, color: PX.ink2 }}><i style={{ width: 8, height: 8, borderRadius: '50%', background: tone(i) }} />{x.short} {n}/{TESTS.length}</span>
+                  })}
+                </div>
+              </div>
+              {visible.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: PX.faint }}>{sylOnlyEmpty && !q ? 'Every test has all its chapters. 🎉' : 'Nothing matches.'}</div>}
+              {sylView === 'cards' ? (
+                <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,340px),1fr))', gap: 12 }}>
+                  {visible.map(t => {
+                    const n = SUBJECTS.filter(x => val(t, x)).length
+                    const done = n === SUBJECTS.length
+                    const prevHas = t.no > 1 && SUBJECTS.some(x => !val(t, x) && syl[(t.no - 1) + '|' + x.label])
+                    return (
+                      <div key={t.no} style={{ border: `1px solid ${done ? '#bfe3cc' : PX.line}`, borderRadius: 16, background: done ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: `1px solid ${PX.line}` }}>
+                          <div style={{ flex: 1 }}><div style={{ fontFamily: PX.serif, fontSize: 16, fontWeight: 600, color: PX.navy }}>{t.id}</div><div style={{ fontSize: 11.5, color: PX.sub }}>{fmtShort(t.date)}</div></div>
+                          {prevHas && <button type="button" className="px-btn ghost" style={{ padding: '4px 9px', fontSize: 11.5 }} onClick={() => copyPrev(t)} title="Fill empty boxes from the previous test">↧ Copy prev</button>}
+                          <span style={{ padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: done ? '#dcfce7' : n ? PX.goldBg : '#f1ede3', color: done ? '#15803d' : '#8a6118' }}>{done ? '✓ Done' : `${n}/${SUBJECTS.length}`}</span>
+                        </div>
+                        <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {SUBJECTS.map((x, i) => (
+                            <label key={x.key} style={{ display: 'block', borderLeft: `4px solid ${tone(i)}`, borderRadius: 8, background: val(t, x) ? tone(i) + '12' : '#fafafa', padding: '5px 8px 6px' }}>
+                              <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: tone(i) }}>{x.short}</span>
+                              <input key={t.no + x.label + val(t, x)} defaultValue={val(t, x)} placeholder="Add chapter…" aria-label={`${t.id} ${x.short} chapter`}
+                                onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                                style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: PX.ink, padding: '2px 0', fontFamily: 'inherit' }} />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <table className="px-table" style={{ minWidth: 900 }}>
+                  <thead><tr><th>Test</th>{SUBJECTS.map(x => <th key={x.key}>{x.short}</th>)}</tr></thead>
+                  <tbody>{visible.map(t => (
+                    <tr key={t.no}>
+                      <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
+                      {SUBJECTS.map(x => (
+                        <td key={x.key} style={{ padding: '8px 10px' }}>
+                          <input key={t.no + x.label + val(t, x)} className="px-input" defaultValue={val(t, x)} aria-label="Chapter" placeholder="Chapter"
+                            onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
+                        </td>
+                      ))}
+                    </tr>))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )
+        })()}
       </PremiumCard>
     </>
   )
