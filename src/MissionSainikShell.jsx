@@ -150,6 +150,12 @@ html{scroll-behavior:smooth}
   .msx-main .px-card-h{flex-wrap:wrap}
   .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
   .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
+  /* comfortable thumb targets; 16px inputs stop iOS zooming the page on focus */
+  .msx-main .px-hbtn,.msx-main .px-btn{min-height:42px}
+  .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px}
+  /* clear the slimmer bottom bar */
+  .msx-fab{bottom:calc(66px + env(safe-area-inset-bottom))}.msx-snack{bottom:calc(62px + env(safe-area-inset-bottom))}
+  .msx-allot .msx-acell{align-items:flex-end}
 }
 @keyframes msx-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes msx-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
