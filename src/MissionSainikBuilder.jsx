@@ -6,7 +6,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
-import MultiQuestionAdder, { blankCard, cardsToText } from './MultiQuestionAdder'
+import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
+import { figFromFile } from './lib/figImage'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
@@ -44,28 +45,6 @@ const CFG = {
     sections: MOCK_SECTIONS.map(s => ({ label: s.label, short: s.label, q: s.q, marks: s.marks / s.q })),
     duration: '150 minutes',
   },
-}
-
-// Resize a picked image to at most 640px wide and return a compact data: URL (figures are stored with the question).
-function figFromFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!/^image\//.test(file.type)) return reject(new Error('Choose an image file.'))
-    const fr = new FileReader()
-    fr.onerror = () => reject(new Error('Could not read the image.'))
-    fr.onload = () => {
-      const img = new Image()
-      img.onerror = () => reject(new Error('Could not open the image.'))
-      img.onload = () => {
-        const k = Math.min(1, 640 / img.width), c = document.createElement('canvas')
-        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
-        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height)
-        const out = c.toDataURL('image/jpeg', 0.8)
-        out.length > 350000 ? reject(new Error('Figure is too large — use a smaller or simpler image.')) : resolve(out)
-      }
-      img.src = fr.result
-    }
-    fr.readAsDataURL(file)
-  })
 }
 
 export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
@@ -182,7 +161,14 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   }
 
   const tid = n => (cfg.noun === 'Set' ? `Set ${n}` : `${cfg.prefix}-${String(n).padStart(2, '0')}`)
-  const parsed = useMemo(() => parseQuestions(addMode === 'cards' ? cardsToText(cards) : text), [text, cards, addMode])
+  const parsedBase = useMemo(() => parseQuestions(addMode === 'cards' ? cardsToText(cards) : text), [text, cards, addMode])
+  // Question cards can carry a picture (figure / passage questions); parsed questions line up with the filled cards in order.
+  const parsed = useMemo(() => {
+    if (addMode !== 'cards') return parsedBase
+    const filled = cards.filter(c => !isEmptyCard(c))
+    const problems = cardsProblems(cards)
+    return { ...parsedBase, errors: problems && !parsedBase.errors.length ? [`${problems} question card(s) incomplete — see the red notes`] : parsedBase.errors, questions: parsedBase.questions.map((q, i) => (filled[i]?.image && filled[i].type !== 'normal' ? { ...q, image_data: filled[i].image } : q)) }
+  }, [parsedBase, cards, addMode])
   const upload = async () => {
     if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
     if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))

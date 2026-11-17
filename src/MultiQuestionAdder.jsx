@@ -3,15 +3,17 @@
 // existing parser, duplicate check and upload path validate and save them.
 import { useRef, useState, useEffect, useMemo } from 'react'
 import { PX } from './premiumUI'
+import { parseQuestions } from './lib/missionSainikQuestions'
+import { figFromFile } from './lib/figImage'
 
-export const blankCard = () => ({ id: Math.random().toString(36).slice(2), question: '', a: '', b: '', c: '', d: '', ans: '', exp: '', topic: '', level: '', passage: '', showMore: false, collapsed: false })
+export const blankCard = () => ({ id: Math.random().toString(36).slice(2), question: '', a: '', b: '', c: '', d: '', ans: '', exp: '', topic: '', level: '', passage: '', type: 'normal', image: '', showMore: false, collapsed: false })
 const clean = s => String(s || '').replace(/\s*\n\s*/g, ' ').trim()
 export const isEmptyCard = c => !(c.question.trim() || c.a.trim() || c.b.trim() || c.c.trim() || c.d.trim() || c.exp.trim() || c.topic.trim())
 
 export function cardsToText(cards) {
   let lastPassage = ''
   return cards.filter(c => !isEmptyCard(c)).map((c, i) => {
-    const p = clean(c.passage)
+    const p = c.type === 'passage' ? clean(c.passage) : ''
     let head = ''
     if (p !== lastPassage) { head = (lastPassage ? 'End passage\n' : '') + (p ? `Passage: ${p}\n` : ''); lastPassage = p }
     return `${head}Q${i + 1}. ${clean(c.question)}\nA) ${clean(c.a)}\nB) ${clean(c.b)}\nC) ${clean(c.c)}\nD) ${clean(c.d)}\nAns: ${c.ans}${c.exp.trim() ? `\nExp: ${clean(c.exp)}` : ''}${c.topic.trim() ? `\nTopic: ${clean(c.topic)}` : ''}${c.level ? `\nLevel: ${c.level}` : ''}`
@@ -24,14 +26,21 @@ const missingOf = c => {
   if (!c.question.trim()) m.push('question')
   ;['a', 'b', 'c', 'd'].forEach(k => { if (!c[k].trim()) m.push('option ' + k.toUpperCase()) })
   if (!c.ans) m.push('correct answer')
+  if (c.type === 'figure' && !c.image) m.push('figure picture')
+  if (c.type === 'passage' && !c.passage.trim() && !c.image) m.push('passage text or picture')
   return m
 }
 
+export const cardsProblems = cards => cards.filter(c => { const m = missingOf(c); return m && m.length }).length
+const TYPES = [['normal', '📝 Normal'], ['figure', '🖼️ Figure'], ['passage', '📖 Passage']]
 const TONES = { A: '#2563eb', B: '#7c3aed', C: '#d97706', D: '#db2777' }
 const field = { width: '100%', boxSizing: 'border-box', border: `1px solid ${PX.line}`, borderRadius: 10, padding: '9px 11px', fontSize: 14, fontFamily: 'inherit', background: '#fff', color: PX.ink, outline: 'none' }
 const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
-const readDraft = key => { try { const d = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(d) && d.length ? d : null } catch { return null } }
-const writeDraft = (key, cards) => { try { if (cards.every(isEmptyCard)) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(cards)) } catch { /* storage unavailable */ } }
+const readDraft = key => { try { const d = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(d) && d.length ? d.map(c => ({ ...blankCard(), ...c, type: c.type || (c.passage ? 'passage' : 'normal'), image: c.image || '' })) : null } catch { return null } }
+const writeDraft = (key, cards) => {
+  try { if (cards.every(isEmptyCard)) { localStorage.removeItem(key); return }; localStorage.setItem(key, JSON.stringify(cards)) }
+  catch { try { localStorage.setItem(key, JSON.stringify(cards.map(c => ({ ...c, image: '' })))) } catch { /* storage unavailable */ } }   // pictures are large: keep the text if they do not fit
+}
 
 // Paper-style rendering of the cards (same option layout rule as the printed paper).
 function PaperPreview({ cards, startNo, title, showAns }) {
@@ -50,8 +59,9 @@ function PaperPreview({ cards, startNo, title, showAns }) {
         const ok = c.question.trim() && opts.every(o => o.text) && c.ans
         return (
           <div key={c.id} style={{ marginBottom: 12, breakInside: 'avoid' }}>
-            {showP && <><div style={{ fontStyle: 'italic', fontWeight: 700 }}>Read the following passage and answer the questions:</div><div style={{ textAlign: 'justify', margin: '2px 0 6px', textIndent: 18 }}>{p}</div></>}
+            {(showP || (c.type === 'passage' && c.image && !p)) && <><div style={{ fontStyle: 'italic', fontWeight: 700 }}>Read the following passage and answer the questions:</div>{p && <div style={{ textAlign: 'justify', margin: '2px 0 6px', textIndent: 18 }}>{p}</div>}</>}
             <div style={{ display: 'flex', gap: 8 }}><b style={{ minWidth: 26 }}>{startNo + i}.</b><span>{c.question.trim() || <i style={{ color: '#b45309' }}>(question missing)</i>}</span></div>
+            {c.type !== 'normal' && (c.image ? <div style={{ textAlign: 'center', margin: '4px 0' }}><img src={c.image} alt={c.type === 'passage' ? 'Passage' : 'Figure'} style={{ maxWidth: '100%', maxHeight: 190 }} /></div> : <div style={{ margin: '3px 0 0 26px', fontSize: 11.5, color: '#b45309', fontFamily: 'system-ui,sans-serif' }}>⚠ {c.type === 'figure' ? 'Figure picture not added yet' : ''}</div>)}
             <div style={{ margin: '3px 0 0 26px', fontStyle: 'italic', display: cls === 'two' ? 'grid' : 'flex', gridTemplateColumns: '1fr 1fr', flexDirection: cls === 'one' ? 'column' : undefined, gap: cls === 'four' ? 14 : '2px 14px', flexWrap: 'wrap' }}>
               {opts.map(o => {
                 const right = showAns && c.ans === o.k.toUpperCase()
@@ -74,6 +84,17 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
   const [restored, setRestored] = useState(false)
   const [bulk, setBulk] = useState({ level: '', topic: '' })
   const loaded = useRef(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkText, setBulkText] = useState('')
+  const bulk2 = useMemo(() => parseQuestions(bulkText), [bulkText])
+  const addBulk = () => {
+    if (!bulk2.questions.length) return
+    const made = bulk2.questions.map(q => ({ ...blankCard(), question: q.question, a: q.option_a, b: q.option_b, c: q.option_c, d: q.option_d, ans: q.answer, exp: q.explanation || '', topic: q.topic || '', level: q.difficulty || '', type: q.passage ? 'passage' : 'normal', passage: q.passage || '' }))
+    setCards(cs => [...(cs.every(isEmptyCard) ? [] : cs), ...made])
+    setBulkText(''); setBulkOpen(false)
+  }
+  const pickImage = async (id, file) => { try { upd(id, { image: await figFromFile(file) }) } catch (er) { setImgErr(er.message) } }
+  const [imgErr, setImgErr] = useState('')
 
   // Each section has its own draft: load it when this section opens, autosave as you type.
   useEffect(() => {
@@ -92,7 +113,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
   const upd = (id, patch) => setCards(cs => cs.map(c => (c.id === id ? { ...c, ...patch } : c)))
   const addAfter = (id, n = 1, copyFrom) => setCards(cs => {
     const i = id ? cs.findIndex(c => c.id === id) : cs.length - 1
-    const fresh = Array.from({ length: n }, () => ({ ...blankCard(), ...(copyFrom ? { topic: copyFrom.topic, level: copyFrom.level, passage: copyFrom.passage, showMore: copyFrom.showMore } : {}) }))
+    const fresh = Array.from({ length: n }, () => ({ ...blankCard(), ...(copyFrom ? { topic: copyFrom.topic, level: copyFrom.level, type: copyFrom.type === 'passage' ? 'passage' : 'normal', passage: copyFrom.type === 'passage' ? copyFrom.passage : '', showMore: copyFrom.showMore } : {}) }))
     const next = [...cs.slice(0, i + 1), ...fresh, ...cs.slice(i + 1)]
     setTimeout(() => refs.current[fresh[0].id]?.focus(), 30)
     return next
@@ -133,6 +154,23 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       </div>
       {showEdit && (
+        <div style={{ marginBottom: 10 }}>
+          <button type="button" className="px-btn ghost" style={{ ...gbtn, width: '100%', borderStyle: 'dashed' }} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>{bulkOpen ? '▾' : '▸'} 📋 Bulk paste — add many questions at once</button>
+          {bulkOpen && (
+            <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
+              <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 6 }}>Paste from Word, Excel or a text file. Each question: the question, options A–D, <b>Ans: B</b> (optional <b>Exp:</b>, <b>Topic:</b>, <b>Level:</b>). For a reading passage put a <b>Passage: …</b> line before its questions. They become cards you can check, then add pictures to the figure and passage questions.</div>
+              <pre style={{ background: '#fff', border: `1px solid ${PX.line}`, padding: 8, borderRadius: 8, fontSize: 12, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{'Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B'}</pre>
+              <textarea rows={8} style={{ ...field, fontFamily: 'monospace', fontSize: isMobile ? 16 : 12, resize: 'vertical' }} placeholder="Paste questions here…" aria-label="Bulk paste questions" value={bulkText} onChange={e => setBulkText(e.target.value)} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: bulk2.errors.length ? PX.bad : PX.sub }}>{bulkText.trim() ? (bulk2.errors.length ? bulk2.errors.slice(0, 2).join(' · ') : `${bulk2.questions.length} question(s) found`) : ''}{bulkText.trim() && bulk2.errors.length && bulk2.questions.length ? ` · ${bulk2.questions.length} OK` : ''}</span>
+                <button type="button" className="px-btn ghost" style={{ ...gbtn, marginLeft: 'auto' }} onClick={() => { setBulkText(''); setBulkOpen(false) }}>Cancel</button>
+                <button type="button" className="px-btn gold" style={gbtn} disabled={!bulk2.questions.length} onClick={addBulk}>Add {bulk2.questions.length || ''} to cards</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {showEdit && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', marginBottom: 10, borderRadius: 12, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Apply to all</span>
           {['Easy', 'Medium', 'Hard'].map(l => <button key={l} type="button" aria-pressed={bulk.level === l} onClick={() => setBulk(b => ({ ...b, level: b.level === l ? '' : l }))} style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${bulk.level === l ? PX.gold : PX.line}`, background: bulk.level === l ? PX.goldBg : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
@@ -144,6 +182,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
           </span>
         </div>
       )}
+      {imgErr && <div role="alert" style={{ margin: '0 0 10px', padding: '8px 12px', borderRadius: 10, background: '#fdecea', color: '#8f1d14', fontSize: 13 }}>❌ {imgErr} <button type="button" onClick={() => setImgErr('')} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>×</button></div>}
       <div style={{ display: 'grid', gridTemplateColumns: view === 'split' ? 'minmax(0,1fr) minmax(0,1fr)' : '1fr', gap: 16, alignItems: 'start' }}>
         {showEdit && (
           <div>
@@ -167,6 +206,19 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                     </div>
                     {!c.collapsed && (
                       <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Question type">
+                          {TYPES.map(([k, l]) => <button key={k} type="button" aria-pressed={c.type === k} onClick={() => upd(c.id, { type: k, ...(k === 'normal' ? { image: '' } : {}) })}
+                            style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${c.type === k ? PX.navy : PX.line}`, background: c.type === k ? '#e4ebf6' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
+                        </div>
+                        {c.type === 'passage' && <textarea rows={3} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 14 }} placeholder="Reading passage text — add the same text to each question that shares it (or upload the passage as a picture below)" aria-label="Passage" value={c.passage} onChange={e => upd(c.id, { passage: e.target.value })} />}
+                        {c.type !== 'normal' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderRadius: 12, border: `1.5px dashed ${c.image ? '#bfe3cc' : '#d9c28a'}`, background: c.image ? '#f7fcf9' : '#fffaf0' }}>
+                            {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'figure' ? '🖼️' : '📖'}</span>}
+                            <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
+                            <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '📷 Add picture'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
+                            {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
+                          </div>
+                        )}
                         <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question…" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} />
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))', gap: 8 }}>
                           {['A', 'B', 'C', 'D'].map(k => {
@@ -186,13 +238,12 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Level</span>
                           {['Easy', 'Medium', 'Hard'].map(l => <button key={l} type="button" aria-pressed={c.level === l} onClick={() => upd(c.id, { level: c.level === l ? '' : l })}
                             style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${c.level === l ? PX.gold : PX.line}`, background: c.level === l ? PX.goldBg : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
-                          <button type="button" onClick={() => upd(c.id, { showMore: !c.showMore })} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: PX.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{c.showMore ? '− Less' : '＋ Explanation, topic, passage'}</button>
+                          <button type="button" onClick={() => upd(c.id, { showMore: !c.showMore })} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: PX.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{c.showMore ? '− Less' : '＋ Explanation, topic'}</button>
                         </div>
                         {c.showMore && (
                           <div style={{ display: 'grid', gap: 8 }}>
                             <input style={field} placeholder="Topic (e.g. Fractions)" aria-label="Topic" value={c.topic} onChange={e => upd(c.id, { topic: e.target.value })} />
                             <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} />
-                            <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Reading passage — questions with the same passage text are grouped under it" aria-label="Passage" value={c.passage} onChange={e => upd(c.id, { passage: e.target.value })} />
                           </div>
                         )}
                       </div>
