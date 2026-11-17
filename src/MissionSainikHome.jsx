@@ -82,6 +82,26 @@ export default function MissionSainikHome({ upcoming = [], announcement, name, s
             </div>))}
         </div>)}
 
+      {/* Plain-language "what do you want to do?" — the common jobs, one tap each */}
+      <div style={card}>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub, marginBottom: 8 }}>WHAT DO YOU WANT TO DO?</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,250px),1fr))', gap: 8 }}>
+          {[
+            ['prebuilder', '⬆️', 'Upload my questions', 'Add questions to a Pre Mock test', '#e8f0fe'],
+            ['practicebuilder', '🧩', 'Make a practice set', 'Add up to 25 questions per subject', '#e6f4ea'],
+            ['mine', '✅', 'See my tasks', 'What I must set or verify, and by when', '#fff6dc'],
+            ['syllabus', '📘', 'Check the syllabus', 'Which chapter is in which test', '#f3e8ff'],
+            ['marks', '📝', 'Enter test marks', 'Type or import results', '#fdecea'],
+            ['guide', '❓', 'I need help', 'Step-by-step guide for every screen', '#eef2f9'],
+          ].map(([id, ic, t, d, bg]) => (
+            <button key={id} type="button" className="msx-tap" onClick={() => onGo(id)} style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: '1px solid #eef1f6', background: '#fff' }}>
+              <span style={{ width: 44, height: 44, borderRadius: 14, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flex: 'none' }}>{ic}</span>
+              <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14.5, color: PX.ink }}>{t}</span><span style={{ display: 'block', fontSize: 12, color: PX.sub, marginTop: 1 }}>{d}</span></span>
+              <span style={{ color: PX.gold, fontWeight: 800, fontSize: 20 }}>›</span>
+            </button>))}
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
         {quick.map(q => (
           <button key={q.id} className="msx-tap" onClick={() => onGo(q.id)} style={{ ...card, marginBottom: 0, padding: '14px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 800, color: PX.ink, position: 'relative' }}>
