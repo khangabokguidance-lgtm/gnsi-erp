@@ -823,18 +823,19 @@ function MissionSainikInner({ currentUser }) {
           <span style={{ fontSize: 12, color: PX.sub }}>Matching cells stay bright; the rest fade.</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table className="px-table" style={{ minWidth: 720 }}>
-            <thead><tr><th>Test</th>{SUBJECTS.map(s => <th key={s.key}>{s.short}</th>)}</tr></thead>
+          <table className="px-table" style={{ minWidth: 600, width: '100%', tableLayout: 'fixed' }}>
+            <colgroup><col style={{ width: 84 }} />{SUBJECTS.map(s => <col key={s.key} />)}</colgroup>
+            <thead><tr><th style={{ paddingInline: 8 }}>Test</th>{SUBJECTS.map(s => <th key={s.key} style={{ paddingInline: 6 }}>{s.short}</th>)}</tr></thead>
             <tbody>
               {list.map(t => (
                 <tr key={t.no}>
-                  <td><b>{t.id}</b><div style={{ fontSize: 11, color: PX.sub }}>{fmtShort(t.date)}</div></td>
+                  <td style={{ paddingInline: 8 }}><b>{t.id}</b><div style={{ fontSize: 11, color: PX.sub }}>{fmtShort(t.date)}</div></td>
                   {SUBJECTS.map(s => {
                     const r = byCell[t.no + '|' + s.label]
                     if (!r) return <td key={s.key} style={{ color: PX.faint }}>—</td>
                     return (
-                      <td key={s.key} className="msx-click" onClick={() => setSel(r)} style={dim(r) ? { opacity: 0.25 } : undefined}>
-                        <PersonCell name={r.setter} size={26}>{r.setter}</PersonCell>
+                      <td key={s.key} className="msx-click" onClick={() => setSel(r)} style={{ paddingInline: 6, overflow: 'hidden', ...(dim(r) ? { opacity: 0.25 } : {}) }}>
+                        <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><PersonCell name={r.setter} size={22}>{r.setter}</PersonCell></span>
                         <div style={{ marginTop: 5 }}><Chip status={r.status} overdue={isOverdue(r, today)} small /></div>
                       </td>
                     )
