@@ -98,7 +98,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
     try { localStorage.setItem(LS_PC, JSON.stringify(pc)) } catch { /* storage blocked */ }
     const { error } = await supabase.from('mission_sainik_paper_cfg').upsert({ series, config: pc, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'series' })
     audit('paper_settings', series, { columns: pc.columns, font: pc.font })
-    setMsg(error ? (isAdmin ? '✅ Saved on this device. Run migration 20261212 to share these settings with everyone.' : '🔒 Only admins can change paper settings for everyone.') : '✅ Paper settings saved for everyone')
+    setMsg(error ? '✅ Saved on this device. Run migration 20261212 to share these settings with everyone.' : '✅ Paper settings saved for everyone')
   }
   const patchSection = (label, patch) => setPc({ ...pc, sections: pc.sections.map(x => (x.label === label ? { ...x, ...patch } : x)) })
   const moveSection = (label, d) => { const a = [...pc.sections], i = a.findIndex(x => x.label === label), j = i + d; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; setPc({ ...pc, sections: a }) }
@@ -600,10 +600,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 6 }}>{ver.sets > 1 && !ver.shuffleQ && !ver.shuffleOpts ? '⚠ Several sets without shuffling will be identical. ' : ''}The same shuffle is reproduced every time you print, and each answer key matches its set.</div>
           </div>
         </div>
-        {isAdmin && <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14 }}>
           <button className="px-hbtn" aria-expanded={showSettings} onClick={() => setShowSettings(v => !v)}>{showSettings ? '▾' : '▸'} Layout, fonts &amp; section builder</button>
-        </div>}
-        {isAdmin && showSettings && (
+        </div>
+        {showSettings && (
           <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: PX.tint, border: `1px solid ${line}` }}>
             {(() => {
               const lab = { display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }
@@ -622,7 +622,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fff', border: `1px solid ${line}`, fontFamily: FONT_STACKS[pc.font][1], fontSize: `${pc.size}pt`, lineHeight: pc.line }}>
                     <b>1.</b> Sample question — what is the value of 3/4 + 1/4?&nbsp;&nbsp;<i>(a) 1/2&nbsp;&nbsp;(b) 1&nbsp;&nbsp;(c) 3/4&nbsp;&nbsp;(d) 2</i>
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Branding, cover page &amp; watermark</div>
+                  {isAdmin ? <><div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Branding, cover page &amp; watermark</div>
                   <div style={{ fontSize: 12, color: PX.sub, marginBottom: 8 }}>Make printed papers carry your institute's identity — also lets another institute use the portal with its own name and logo. Leave a box empty to use the default.</div>
                   {(() => {
                     const b = pc.brand || {}, setB = patch => setPc({ ...pc, brand: { ...b, ...patch } })
@@ -644,6 +644,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                       </div>
                     )
                   })()}
+                  </> : <div style={{ fontSize: 12, color: PX.sub, margin: '12px 0 0' }}>🔒 Institute name, logo, watermark and cover page are set by an admin.</div>}
                   <div style={{ fontWeight: 800, fontSize: 13, margin: '14px 0 6px' }}>Section builder</div>
                   <div style={{ fontSize: 12, color: PX.sub, marginBottom: 6 }}>Rename, reorder or hide sections and add an instruction line under each heading. Question serials (Q1, Q2…) follow this order.</div>
                   {pc.sections.map((x, i) => (

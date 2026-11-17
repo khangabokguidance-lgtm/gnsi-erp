@@ -12,12 +12,29 @@ create policy mission_sainik_panel_admin_upd on public.mission_sainik_panel as r
 drop policy if exists mission_sainik_panel_admin_del on public.mission_sainik_panel;
 create policy mission_sainik_panel_admin_del on public.mission_sainik_panel as restrictive for delete to authenticated using (public.qbank_is_admin());
 
--- 2. Paper settings, branding and watermark are printed on every paper: only admins may change them.
+-- 2. Paper layout (columns, fonts, section titles) is low-harm and easy to reset, so every staff member may change it.
+--    Branding (institute name, logo, watermark, cover page) is printed on every paper: only admins may change that part.
+--    For non-admins the saved branding is kept exactly as it was, whatever they send.
+create or replace function public.mission_sainik_keep_brand()
+returns trigger language plpgsql as $$
+begin
+  if public.qbank_is_admin() then return new; end if;
+  if tg_op = 'INSERT' then
+    new.config := new.config - 'brand';
+  elsif old.config ? 'brand' then
+    new.config := jsonb_set(new.config, '{brand}', old.config -> 'brand');
+  else
+    new.config := new.config - 'brand';
+  end if;
+  return new;
+end $$;
+drop trigger if exists mission_sainik_paper_cfg_keep_brand on public.mission_sainik_paper_cfg;
+create trigger mission_sainik_paper_cfg_keep_brand before insert or update on public.mission_sainik_paper_cfg
+  for each row execute function public.mission_sainik_keep_brand();
 drop policy if exists mission_sainik_paper_cfg_admin_write on public.mission_sainik_paper_cfg;
-create policy mission_sainik_paper_cfg_admin_write on public.mission_sainik_paper_cfg as restrictive for insert to authenticated with check (public.qbank_is_admin());
 drop policy if exists mission_sainik_paper_cfg_admin_upd on public.mission_sainik_paper_cfg;
-create policy mission_sainik_paper_cfg_admin_upd on public.mission_sainik_paper_cfg as restrictive for update to authenticated using (public.qbank_is_admin()) with check (public.qbank_is_admin());
 drop policy if exists mission_sainik_paper_cfg_admin_del on public.mission_sainik_paper_cfg;
+-- Resetting a paper type's layout is a delete: admins only (staff can still "Reset to default" in the app, which saves defaults).
 create policy mission_sainik_paper_cfg_admin_del on public.mission_sainik_paper_cfg as restrictive for delete to authenticated using (public.qbank_is_admin());
 
 -- 3. Questions: staff soft-delete (recycle bin, an UPDATE); permanent delete is admin-only.
