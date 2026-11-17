@@ -720,7 +720,7 @@ function MissionSainikInner({ currentUser }) {
             {card('Pace needed', pace + '/day', 'sections to clear daily', pace > 15)}
           </div>
           {setters.length > 0 && (
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, maxWidth: 680 }}>
               {setters.map(x => (
                 <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${PX.line || '#eef1f6'}`, flexWrap: 'wrap' }}>
                   <PersonCell name={x.n} size={30}>{fullName(x.n)}</PersonCell>
