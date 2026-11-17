@@ -59,7 +59,7 @@ const writeDraft = (key, cards) => {
 }
 
 // Paper-style rendering of the cards (same option layout rule as the printed paper).
-function PaperPreview({ cards, startNo, title, showAns }) {
+export function PaperPreview({ cards, startNo, title, showAns }) {
   const list = cards.filter(c => !isEmptyCard(c))
   let last = ''
   const serif = "Georgia,'Times New Roman',serif"
