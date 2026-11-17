@@ -30,6 +30,19 @@ function spread(bucket, r, used) {
   return [...run(fresh), ...run(stale)]
 }
 
+// Split the Easy/Medium/Hard targets across subjects so the whole paper matches the mix, not just each subject.
+export function allocateLevels(count, mix, quotas) {
+  const keys = ['Easy', 'Medium', 'Hard'], G = levelTargets(count, mix), left = { ...G }, out = {}
+  Object.keys(quotas).forEach(s => {
+    const qn = quotas[s], t = { Easy: 0, Medium: 0, Hard: 0 }
+    keys.forEach(k => { t[k] = Math.max(0, Math.min(left[k], Math.floor((G[k] * qn) / count))) })
+    let rem = qn - keys.reduce((a, k) => a + t[k], 0)
+    while (rem > 0) { const k = [...keys].sort((a, b) => (left[b] - t[b]) - (left[a] - t[a]))[0]; t[k]++; rem-- }
+    keys.forEach(k => { left[k] -= t[k] }); out[s] = t
+  })
+  return out
+}
+
 export function buildPaper(bank, spec, { seed = 1, locked = [], exclude = [] } = {}) {
   const r = rng(seed), used = new Set(spec.avoidUsed || []), skip = new Set(exclude)
   const count = Math.max(1, Math.min(200, Number(spec.count) || 1))
@@ -42,11 +55,13 @@ export function buildPaper(bank, spec, { seed = 1, locked = [], exclude = [] } =
   const shortfall = { Easy: 0, Medium: 0, Hard: 0 }
   // subject quotas: split evenly, remainder to the first subjects
   const quota = Object.fromEntries(subjects.map((s, i) => [s, Math.floor(count / subjects.length) + (i < count % subjects.length ? 1 : 0)]))
+  const alloc = allocateLevels(count, spec.mix || { Easy: 40, Medium: 40, Hard: 20 }, quota)
   for (const s of subjects) {
-    const need0 = quota[s] - picked.filter(q => q.section === s).length
+    const lockedHere = picked.filter(q => q.section === s).length
+    const need0 = quota[s] - lockedHere
     if (need0 <= 0) continue
     const mineAll = pool.filter(q => q.section === s && !have.has(q.id))
-    const targets = levelTargets(need0, spec.mix || { Easy: 40, Medium: 40, Hard: 20 })
+    const targets = lockedHere ? levelTargets(need0, spec.mix || { Easy: 40, Medium: 40, Hard: 20 }) : alloc[s]
     const buckets = { Easy: [], Medium: [], Hard: [] }; spread(mineAll, r, used).forEach(q => buckets[levelOf(q)].push(q))
     const take = (q, left) => {                      // a reading passage comes with its other questions
       const group = q.passage ? mineAll.filter(x => x.passage === q.passage && !have.has(x.id)) : [q]
