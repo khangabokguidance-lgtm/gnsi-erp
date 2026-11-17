@@ -19,6 +19,7 @@ import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
+import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
 import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
@@ -1099,7 +1100,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
   }
   const syllabusTab = (
     <>{setupNote}
-      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
+      <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
@@ -1121,6 +1122,14 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
             if (q && !(t.id.toLowerCase().includes(q) || SUBJECTS.some(x => val(t, x).toLowerCase().includes(q)))) return false
             return true
           })
+          // Suggestions: official AISSEE chapters (all classes) of the same subject family; unused ones first.
+          const used = new Set(TESTS.flatMap(t => SUBJECTS.map(x => val(t, x).toLowerCase())))
+          const suggest = x => {
+            const fam = subjectFamily(x.label)
+            const fams = fam === 'gk' ? ['gk', 'social'] : [fam]
+            const list = [...new Set(classesOf('sainik').flatMap(c => Object.entries(officialSubjects('sainik', c)).filter(([n]) => fams.includes(subjectFamily(n))).flatMap(([, chs]) => chs)))]
+            return [...list.filter(c => !used.has(c.toLowerCase())), ...list.filter(c => used.has(c.toLowerCase()))]
+          }
           const copyPrev = t => {
             const prev = TESTS.find(p => p.no === t.no - 1)
             if (!prev) return
@@ -1150,6 +1159,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
                   })}
                 </div>
               </div>
+              {SUBJECTS.map(x => <datalist key={x.key} id={'syl-sug-' + x.key}>{suggest(x).map(c => <option key={c} value={c} />)}</datalist>)}
               {visible.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: PX.faint }}>{sylOnlyEmpty && !q ? 'Every test has all its chapters. 🎉' : 'Nothing matches.'}</div>}
               {sylView === 'cards' || isMobile ? (
                 <div style={{ padding: isMobile ? 10 : 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,340px),1fr))', gap: isMobile ? 10 : 12 }}>
@@ -1170,7 +1180,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
                           {SUBJECTS.map((x, i) => (
                             <label key={x.key} style={{ display: 'block', borderLeft: `4px solid ${tone(i)}`, borderRadius: 8, background: val(t, x) ? tone(i) + '12' : '#fafafa', padding: isMobile ? '8px 12px 9px' : '5px 8px 6px' }}>
                               <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: tone(i) }}>{x.short}</span>
-                              <input key={t.no + x.label + val(t, x)} defaultValue={val(t, x)} placeholder="Add chapter…" aria-label={`${t.id} ${x.short} chapter`}
+                              <input key={t.no + x.label + val(t, x)} defaultValue={val(t, x)} placeholder="Add chapter…" list={'syl-sug-' + x.key} aria-label={`${t.id} ${x.short} chapter`}
                                 onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                                 style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: isMobile ? 16 : 13, minHeight: isMobile ? 30 : undefined, color: PX.ink, padding: '2px 0', fontFamily: 'inherit' }} enterKeyHint="done" />
                             </label>
@@ -1188,7 +1198,7 @@ h2{margin:0 0 4px;font-size:18px}.meta{color:#555;font-size:12px;margin-bottom:1
                       <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
                       {SUBJECTS.map(x => (
                         <td key={x.key} style={{ padding: '8px 10px' }}>
-                          <input key={t.no + x.label + val(t, x)} className="px-input" defaultValue={val(t, x)} aria-label="Chapter" placeholder="Chapter"
+                          <input key={t.no + x.label + val(t, x)} className="px-input" defaultValue={val(t, x)} aria-label="Chapter" placeholder="Chapter" list={'syl-sug-' + x.key}
                             onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
                         </td>
                       ))}
