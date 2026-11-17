@@ -101,6 +101,35 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
   const [restored, setRestored] = useState(false)
   const [bulk, setBulk] = useState({ level: '', topic: '' })
   const loaded = useRef(false)
+  // ── undo / redo for the whole set of cards, and find & replace across them ──
+  const hist = useRef({ stack: [cards], i: 0, skip: false, timer: null })
+  const [, bump] = useState(0)
+  useEffect(() => {
+    const h = hist.current
+    if (h.skip) { h.skip = false; return }
+    if (h.stack[h.i] === cards) return
+    clearTimeout(h.timer)
+    h.timer = setTimeout(() => { if (h.stack[h.i] !== cards) { h.stack = [...h.stack.slice(0, h.i + 1), cards].slice(-60); h.i = h.stack.length - 1; bump(n => n + 1) } }, 500)
+    return () => clearTimeout(h.timer)
+  }, [cards])
+  const flushHist = () => { const h = hist.current; clearTimeout(h.timer); if (h.stack[h.i] !== cards) { h.stack = [...h.stack.slice(0, h.i + 1), cards].slice(-60); h.i = h.stack.length - 1 } }
+  const canUndo = hist.current.i > 0 || hist.current.stack[hist.current.i] !== cards, canRedo = hist.current.i < hist.current.stack.length - 1
+  const undoAll = () => { flushHist(); const h = hist.current; if (h.i > 0) { h.i--; h.skip = true; setCards(h.stack[h.i]); bump(n => n + 1) } }
+  const redoAll = () => { const h = hist.current; if (h.i < h.stack.length - 1) { h.i++; h.skip = true; setCards(h.stack[h.i]); bump(n => n + 1) } }
+  const [fr, setFr] = useState({ open: false, find: '', repl: '', cs: false })
+  const TEXT_FIELDS = ['question', 'a', 'b', 'c', 'd', 'exp', 'topic', 'passage']
+  const reFor = f => new RegExp(f.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), f.cs ? 'g' : 'gi')
+  const frHits = useMemo(() => {
+    if (!fr.open || !fr.find) return []
+    const re = reFor(fr)
+    return cards.map((c, i) => ({ id: c.id, i, n: TEXT_FIELDS.reduce((t, k) => t + ((withoutPicture(c[k] || '').match(re) || []).length), 0) })).filter(x => x.n)
+  }, [fr, cards]) // eslint-disable-line react-hooks/exhaustive-deps
+  const frTotal = frHits.reduce((t, x) => t + x.n, 0)
+  const replaceEverywhere = () => {
+    if (!frTotal) return
+    const re = reFor(fr)
+    setCards(cs => cs.map(c => { const o = { ...c }; TEXT_FIELDS.forEach(k => { const t = c[k] || ''; if (!t) return; const pic = pictureOf(t); const txt = withoutPicture(t); if (re.test(txt)) { re.lastIndex = 0; o[k] = withPicture(txt.replace(re, () => fr.repl), pic) } re.lastIndex = 0 }); return o }))
+  }
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkText, setBulkText] = useState('')
   const bulkClean = useMemo(() => applyAnswerKey(bulkText), [bulkText])
@@ -228,6 +257,25 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
       </div>
       {showEdit && (
         <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" className="px-btn ghost" style={gbtn} disabled={!canUndo} onClick={undoAll} title="Undo the last change to the cards">↶ Undo</button>
+            <button type="button" className="px-btn ghost" style={gbtn} disabled={!canRedo} onClick={redoAll} title="Redo">↷ Redo</button>
+            <button type="button" className="px-btn ghost" style={{ ...gbtn, background: fr.open ? PX.goldBg : undefined }} aria-pressed={fr.open} onClick={() => setFr(f => ({ ...f, open: !f.open }))}>🔎 Find &amp; replace</button>
+          </div>
+          {fr.open && (
+            <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 12, background: '#fffaf0', border: '1px solid #ead9a8', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input style={{ ...field, width: 150, padding: '6px 10px', fontSize: isMobile ? 16 : 13 }} aria-label="Find" placeholder="Find…" value={fr.find} onChange={e => setFr(f => ({ ...f, find: e.target.value }))} autoFocus />
+              <input style={{ ...field, width: 150, padding: '6px 10px', fontSize: isMobile ? 16 : 13 }} aria-label="Replace with" placeholder="Replace with…" value={fr.repl} onChange={e => setFr(f => ({ ...f, repl: e.target.value }))} />
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}><input type="checkbox" checked={fr.cs} onChange={e => setFr(f => ({ ...f, cs: e.target.checked }))} />Aa</label>
+              <button type="button" className="px-btn gold" style={gbtn} disabled={!frTotal} onClick={replaceEverywhere}>Replace all ({frTotal})</button>
+              <span style={{ fontSize: 12, color: PX.sub }}>{fr.find ? (frTotal ? `in question${frHits.length === 1 ? '' : 's'}: ` : 'No matches') : 'Searches questions, options, explanations and topics'}</span>
+              {frHits.map(h => <button key={h.id} type="button" onClick={() => document.getElementById('qc-' + h.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} style={{ padding: '2px 9px', borderRadius: 99, border: `1px solid ${PX.line}`, background: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>#{h.i + 1} ×{h.n}</button>)}
+            </div>
+          )}
+        </div>
+      )}
+      {showEdit && (
+        <div style={{ marginBottom: 10 }}>
           <button type="button" className="px-btn ghost" style={{ ...gbtn, width: '100%', borderStyle: 'dashed' }} aria-expanded={bulkOpen} onClick={() => setBulkOpen(v => !v)}>{bulkOpen ? '▾' : '▸'} 📋 Bulk paste — add many questions at once</button>
           {bulkOpen && (
             <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
@@ -295,7 +343,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                 const dupMsg = seenAt[c.id]
                 const n = numOf(c.id)
                 return (
-                  <div key={c.id} onPaste={e => onCardPaste(e, c)} onDragOver={e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault() }} onDrop={e => onCardDrop(e, c)} onKeyDown={e => onCardKey(e, c)} style={{ border: `1.5px solid ${dupMsg ? '#f5b5b0' : ok ? '#bfe3cc' : miss ? '#f1d9a8' : PX.line}`, borderRadius: 16, background: ok && !dupMsg ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
+                  <div key={c.id} id={'qc-' + c.id} onPaste={e => onCardPaste(e, c)} onDragOver={e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault() }} onDrop={e => onCardDrop(e, c)} onKeyDown={e => onCardKey(e, c)} style={{ border: `1.5px solid ${dupMsg ? '#f5b5b0' : ok ? '#bfe3cc' : miss ? '#f1d9a8' : PX.line}`, borderRadius: 16, background: ok && !dupMsg ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: c.collapsed ? 'none' : `1px solid ${PX.line}`, background: '#fcfbf7' }}>
                       <button type="button" onClick={() => upd(c.id, { collapsed: !c.collapsed })} aria-expanded={!c.collapsed} aria-label={c.collapsed ? 'Expand question' : 'Collapse question'} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: PX.navy, color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>{n ?? i + 1}</button>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: dupMsg ? PX.bad : ok ? PX.ok : miss ? '#b45309' : PX.faint, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

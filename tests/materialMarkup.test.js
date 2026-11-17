@@ -124,3 +124,38 @@ test('options and answers are escaped and ordinary paragraphs are untouched', ()
   assert.ok(!renderMaterial('Q?\nA) <b>x</b>\nAnswer: <i>y</i>').includes('<b>x</b>'))
   assert.equal(renderMaterial('Just a paragraph'), '<p>Just a paragraph</p>')
 })
+
+import { parseFigureLine } from '../src/lib/materialMarkup.js'
+
+test('underline, strike, code and links', () => {
+  const h = renderMaterial('This is __underlined__, ~~old~~ and `code`, see [the site](https://example.com/a?x=1&y=2).')
+  assert.ok(h.includes('<u>underlined</u>') && h.includes('<s>old</s>') && h.includes('<code>code</code>'))
+  assert.ok(h.includes('<a href="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">the site</a>'))
+})
+
+test('unsafe links are not made clickable and blanks are not underlined', () => {
+  assert.ok(!renderMaterial('[x](javascript:alert(1))').includes('<a '))
+  assert.ok(!renderMaterial('[x](data:text/html,hi)').includes('<a '))
+  const blanks = renderMaterial('Name: ____________   Date: ________')
+  assert.ok(!blanks.includes('<u>'))
+})
+
+test('checklists', () => {
+  const h = renderMaterial('- [ ] revise\n- [x] done')
+  assert.ok(h.includes('☐ revise') && h.includes('☑ done') && h.includes('class="chk"'))
+})
+
+test('figure width and caption round trip', () => {
+  const u = 'data:image/png;base64,AAAA'
+  assert.deepEqual(parseFigureLine(figureLine(u, 'A shape', 50)), { url: u, caption: 'A shape', width: 50 })
+  assert.deepEqual(parseFigureLine(figureLine(u, '', 75)), { url: u, caption: '', width: 75 })
+  assert.deepEqual(parseFigureLine(figureLine(u, 'Only caption')), { url: u, caption: 'Only caption', width: 0 })
+  assert.equal(parseFigureLine('not a figure'), null)
+  assert.ok(renderMaterial(figureLine(u, 'x', 50)).includes('style="max-width:50%"'))
+  assert.ok(!renderMaterial(figureLine(u, 'x')).includes('max-width:'))
+})
+
+test('compact class exists in the material css', async () => {
+  const { MATERIAL_CSS } = await import('../src/lib/materialMarkup.js')
+  assert.ok(MATERIAL_CSS.includes('.md.compact'))
+})

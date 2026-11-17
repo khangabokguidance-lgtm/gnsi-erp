@@ -6,7 +6,7 @@ import ScanFigure from './ScanFigure'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
-import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, wordCount, embedFor, kindOf, outline } from './lib/materialMarkup'
+import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
 import { fetchAll } from './lib/missionSainikQuestions'
@@ -82,7 +82,8 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [restored, setRestored] = useState(false)
   const [scan, setScan] = useState(false), [focus, setFocus] = useState(false), [picker, setPicker] = useState(false)
   const [figErr, setFigErr] = useState('')
-  const [layout, setLayout] = useState({ columns: 1, size: 13 })
+  const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, ...load('msm-layout', {}) }))
+  useEffect(() => { save('msm-layout', layout) }, [layout])
   const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
   const [viewer, setViewer] = useState(null)
   const [favs, setFavs] = useState(() => load('msm-fav', [])), [recent, setRecent] = useState(() => load('msm-recent', []))
@@ -116,6 +117,53 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   }, [draft, editMat])
   useEffect(() => { if (!focus) return; const k = e => e.key === 'Escape' && setFocus(false); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [focus])
 
+  // ── undo / redo (own history, because toolbar edits and templates replace the text programmatically) ──
+  const hist = useRef({ stack: [draft.body], i: 0, skip: false, timer: null })
+  const [, bump] = useState(0)
+  const flushHist = () => { const h = hist.current; clearTimeout(h.timer); if (h.stack[h.i] !== draft.body) { h.stack = [...h.stack.slice(0, h.i + 1), draft.body].slice(-100); h.i = h.stack.length - 1; bump(n => n + 1) } }
+  useEffect(() => {
+    const h = hist.current
+    if (h.skip) { h.skip = false; return }
+    clearTimeout(h.timer)
+    h.timer = setTimeout(() => { if (h.stack[h.i] !== draft.body) { h.stack = [...h.stack.slice(0, h.i + 1), draft.body].slice(-100); h.i = h.stack.length - 1; bump(n => n + 1) } }, 450)
+    return () => clearTimeout(h.timer)
+  }, [draft.body])
+  const canUndo = hist.current.i > 0 || hist.current.stack[hist.current.i] !== draft.body, canRedo = hist.current.i < hist.current.stack.length - 1
+  const undo = () => { flushHist(); const h = hist.current; if (h.i > 0) { h.i--; h.skip = true; set({ body: h.stack[h.i] }); bump(n => n + 1) } }
+  const redo = () => { const h = hist.current; if (h.i < h.stack.length - 1) { h.i++; h.skip = true; set({ body: h.stack[h.i] }); bump(n => n + 1) } }
+
+  // ── find & replace ──
+  const [fr, setFr] = useState({ open: false, find: '', repl: '', cs: false })
+  const [frAt, setFrAt] = useState(-1)
+  const matches = useMemo(() => {
+    if (!fr.open || !fr.find) return []
+    const hay = fr.cs ? draft.body : draft.body.toLowerCase(), nd = fr.cs ? fr.find : fr.find.toLowerCase(), out = []
+    for (let i = hay.indexOf(nd); i >= 0 && out.length < 5000; i = hay.indexOf(nd, i + Math.max(1, nd.length))) out.push(i)
+    return out
+  }, [fr, draft.body])
+  const gotoMatch = n => {
+    const el = ta.current; if (!el || !matches.length) return
+    const k = ((n % matches.length) + matches.length) % matches.length, at = matches[k]
+    setFrAt(k); el.focus(); el.setSelectionRange(at, at + fr.find.length)
+    const line = el.value.slice(0, at).split('\n').length - 1; el.scrollTop = Math.max(0, line * 22 - 80)
+  }
+  const replaceOne = () => {
+    const el = ta.current; if (!el || !matches.length) return
+    const k = frAt >= 0 && frAt < matches.length ? frAt : 0, at = matches[k]
+    set({ body: draft.body.slice(0, at) + fr.repl + draft.body.slice(at + fr.find.length) }); setFrAt(k)
+  }
+  const replaceAll = () => {
+    if (!matches.length) return
+    const esc = fr.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    set({ body: draft.body.replace(new RegExp(esc, fr.cs ? 'g' : 'gi'), () => fr.repl) }); setMsg(`✓ Replaced ${matches.length} match${matches.length === 1 ? '' : 'es'}`)
+  }
+
+  // ── figures in the notes: thumbnails with caption, width and remove ──
+  const figs = useMemo(() => draft.body.split('\n').map((l, i) => ({ i, f: parseFigureLine(l) })).filter(x => x.f), [draft.body])
+  const setFig = (i, patch) => { const lines = draft.body.split('\n'), f = { ...parseFigureLine(lines[i]), ...patch }; lines[i] = figureLine(f.url, f.caption, f.width); set({ body: lines.join('\n') }) }
+  const dropFig = i => { const lines = draft.body.split('\n'); lines.splice(i, 1); set({ body: lines.join('\n') }) }
+  const moveFig = (i, d) => { const lines = draft.body.split('\n'), j = i + d; if (j < 0 || j >= lines.length) return; [lines[i], lines[j]] = [lines[j], lines[i]]; set({ body: lines.join('\n') }) }
+
   // ── editor helpers ──
   const edit = fn => {
     const el = ta.current; if (!el) return
@@ -130,6 +178,16 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
     const block = v.slice(s, e).split('\n').map((l, i) => (numbered ? `${i + 1}. ` : pfx) + l.replace(/^(#{1,3}\s+|[-*•]\s+|\d+[.)]\s+|>\s?)/, '')).join('\n')
     return { text: v.slice(0, s) + block + v.slice(e), start: s, end: s + block.length }
   })
+  const clearFormat = () => edit((v, a, b) => {
+    const s0 = a === b ? v.lastIndexOf('\n', a - 1) + 1 : a, e0 = a === b ? (v.indexOf('\n', b) < 0 ? v.length : v.indexOf('\n', b)) : b
+    const t = v.slice(s0, e0).split('\n').map(l => (parseFigureLine(l) ? l : l.replace(/^(#{1,3}\s+|>\s?(?:(?:note|tip|formula|important|example|teacher)\s*:\s*)?|[-*•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/i, '').replace(/\*\*|==|~~|`|(?<![_\w])__(?=[^\s_])|(?<=[^\s_])__(?![_\w])/g, '').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2'))).join('\n')
+    return { text: v.slice(0, s0) + t + v.slice(e0), start: s0, end: s0 + t.length }
+  })
+  const addLink = () => {
+    const url = window.prompt('Link address (must start with http:// or https://):', 'https://'); if (!url) return
+    if (!/^https?:\/\//i.test(url.trim())) return setFigErr('A link must start with http:// or https://')
+    setFigErr(''); edit((v, a, b) => { const sel = v.slice(a, b) || 'link text', t = `[${sel}](${url.trim()})`; return { text: v.slice(0, a) + t + v.slice(b), start: a + 1, end: a + 1 + sel.length } })
+  }
   const insertAt = (txt, caret) => edit((v, a, b) => ({ text: v.slice(0, a) + txt + v.slice(b), start: a + (caret ?? txt.length) }))
   const insertBlock = txt => edit((v, a) => { const pre = a > 0 && v[a - 1] !== '\n' ? '\n' : ''; return { text: v.slice(0, a) + pre + txt + '\n' + v.slice(a), start: a + pre.length + txt.length + 1 } })
   const addFigure = async file => { setFigErr(''); try { insertBlock(figureLine(await figFromFile(file, { maxW: 720, quality: 0.8, cap: 220000 }), 'Figure')) } catch (e) { setFigErr(e.message) } }
@@ -144,7 +202,9 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const onEditorKey = e => {
     if (!(e.ctrlKey || e.metaKey)) return
     const k = e.key.toLowerCase()
-    if (k === 'b') { e.preventDefault(); wrap('**') } else if (k === 'i') { e.preventDefault(); wrap('*') } else if (k === 's') { e.preventDefault(); submit() }
+    if (k === 'b') { e.preventDefault(); wrap('**') } else if (k === 'i') { e.preventDefault(); wrap('*') } else if (k === 'u') { e.preventDefault(); wrap('__') } else if (k === 'k') { e.preventDefault(); addLink() } else if (k === 's') { e.preventDefault(); submit() }
+    else if (k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo() } else if (k === 'y') { e.preventDefault(); redo() }
+    else if (k === 'f' || k === 'h') { e.preventDefault(); const sel = ta.current ? ta.current.value.slice(ta.current.selectionStart, ta.current.selectionEnd) : ''; setFr(f => ({ ...f, open: true, find: sel && !sel.includes('\n') ? sel : f.find })) }
   }
 
   // ── library ──
@@ -162,6 +222,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   // ── printing ──
   const asDoc = m => ({ ...m, uploaded_by: m.uploaded_by || userName })
   const printOptsFor = (m, o) => ({ ...o, institute: instName, author: creatorOf(staff, m.uploaded_by || userName) })
+  const openPrint = m => { setPopts(p => ({ ...p, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
@@ -188,7 +249,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
     <div style={{ background: '#fff', border: `1px solid ${PX.line}`, borderRadius: 8, padding: isMobile ? '18px 16px' : '22px 26px', boxShadow: '0 10px 30px -14px rgba(15,27,46,.35)', minHeight: 260 }}>
       <SheetHead name={instName} />
       <TitleBlock title={draft.title} subject={draft.subject} test={Number(draft.test_no) || 0} by={(editMat?.uploaded_by) || userName || 'You'} designation={editMat ? creator(editMat).designation : me.designation} />
-      {draft.body.trim() ? <div className="md" style={{ fontSize: layout.size }} dangerouslySetInnerHTML={{ __html: renderMaterial(draft.body) }} /> : <div style={{ color: '#9aa5b8', fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>Start typing — your notes appear here exactly as they will print.</div>}
+      {draft.body.trim() ? <div className={'md' + (layout.saver ? ' compact' : '')} style={bodyStyle(layout)} dangerouslySetInnerHTML={{ __html: renderMaterial(draft.body) }} /> : <div style={{ color: '#9aa5b8', fontStyle: 'italic', fontFamily: 'Georgia,serif' }}>Start typing — your notes appear here exactly as they will print.</div>}
       {fileUrl && draft.file?.type === 'application/pdf' && <iframe title="PDF preview" src={fileUrl} style={{ width: '100%', height: 360, border: `1px solid ${PX.line}`, marginTop: 12 }} />}
       {fileUrl && /^image/.test(draft.file?.type || '') && <img src={fileUrl} alt="Attached" style={{ maxWidth: '100%', marginTop: 12, borderRadius: 6 }} />}
       {draft.file && !fileUrl && <div style={{ marginTop: 12, padding: 10, background: '#f4f1e8', borderRadius: 8, fontSize: 13 }}>📎 {draft.file.name} will be attached.</div>}
@@ -260,11 +321,15 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                 <div>
                   <div className="msm-glass" style={{ position: 'sticky', top: focus ? 0 : 0, zIndex: 4, borderRadius: 14, padding: '7px 8px', marginBottom: 8, boxShadow: '0 6px 18px -12px rgba(19,42,79,.4)' }}>
                     <div className="msm-strip" role="toolbar" aria-label="Formatting" style={{ alignItems: 'center' }}>
+                      <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!canUndo} onMouseDown={e => e.preventDefault()} onClick={undo} style={{ ...tbtn, opacity: canUndo ? 1 : .4 }}>↶</button>
+                      <button type="button" title="Redo (Ctrl+Y)" aria-label="Redo" disabled={!canRedo} onMouseDown={e => e.preventDefault()} onClick={redo} style={{ ...tbtn, opacity: canRedo ? 1 : .4 }}>↷</button>
+                      <button type="button" title="Find and replace (Ctrl+F)" aria-label="Find and replace" aria-pressed={fr.open} onClick={() => setFr(f => ({ ...f, open: !f.open }))} style={{ ...tbtn, background: fr.open ? '#faf1d9' : tbtn.background }}>🔎</button>
                       {[['H1', 'Heading', () => linePrefix('# ')], ['H2', 'Subheading', () => linePrefix('## ')], ['B', 'Bold (Ctrl+B)', () => wrap('**')], ['I', 'Italic (Ctrl+I)', () => wrap('*')], ['▮', 'Highlight', () => wrap('==')], ['•', 'Bullet list', () => linePrefix('- ')], ['1.', 'Numbered list', () => linePrefix('', true)],
                         ['ℹ️ Note', 'Note box', () => linePrefix('> Note: ')], ['💡 Tip', 'Tip box', () => linePrefix('> Tip: ')], ['∑ Formula', 'Formula box', () => linePrefix('> Formula: ')], ['⚠ Important', 'Important box', () => linePrefix('> Important: ')], ['Ex.', 'Example box', () => linePrefix('> Example: ')], ['🎓 Teacher', 'Teacher-only box (left out of the student copy)', () => linePrefix('> Teacher: ')],
                         ['▦ Table', 'Insert a table', () => insertBlock('| Column 1 | Column 2 | Column 3 |\n|---|---|---|\n| a | b | c |\n| d | e | f |')], ['─', 'Divider line', () => insertBlock('---')]].map(([l, t, f]) => <button key={t} type="button" title={t} aria-label={t} onMouseDown={e => e.preventDefault()} onClick={f} style={{ ...tbtn, fontStyle: l === 'I' ? 'italic' : undefined, fontWeight: l === 'B' ? 900 : 700 }}>{l}</button>)}
                       <label title="Upload a figure" style={{ ...tbtn, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>🖼 Figure<input type="file" accept="image/*" aria-label="Upload a figure" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) addFigure(f) }} /></label>
                       <button type="button" title="Scan a figure" onClick={() => setScan(true)} style={tbtn}>📷 Scan</button>
+                      {[['U', 'Underline (Ctrl+U)', () => wrap('__')], ['S̶', 'Strikethrough', () => wrap('~~')], ['</>', 'Code', () => wrap('`')], ['🔗', 'Link (Ctrl+K)', addLink], ['☑', 'Checklist', () => linePrefix('- [ ] ')], ['⌫', 'Clear formatting', clearFormat]].map(([l, t, f]) => <button key={t} type="button" title={t} aria-label={t} onMouseDown={e => e.preventDefault()} onClick={f} style={{ ...tbtn, textDecoration: l === 'U' ? 'underline' : undefined }}>{l}</button>)}
                       <button type="button" title="Insert questions from the Practice bank" onClick={() => setPicker(true)} style={{ ...tbtn, background: '#eef6ff', borderColor: '#9ec3f2' }}>❓ From Practice bank</button>
                     </div>
                     <div className="msm-strip" role="toolbar" aria-label="Maths symbols" style={{ marginTop: 5, alignItems: 'center' }}>
@@ -272,6 +337,35 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                       {MATH_TOOLS.map(([l, t, c, title]) => <button key={title} type="button" title={title} aria-label={title} onMouseDown={e => e.preventDefault()} onClick={() => insertAt(t, c)} style={{ ...tbtn, fontFamily: 'Georgia,serif', fontSize: 15 }}>{l}</button>)}
                     </div>
                   </div>
+                  {fr.open && (
+                    <div className="msm-glass" style={{ borderRadius: 14, padding: '8px 10px', marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input className="msm-in" aria-label="Find" placeholder="Find…" value={fr.find} onChange={e => { setFr(f => ({ ...f, find: e.target.value })); setFrAt(-1) }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); gotoMatch(frAt + (e.shiftKey ? -1 : 1)) } else if (e.key === 'Escape') setFr(f => ({ ...f, open: false })) }} style={{ ...inp, width: 150, padding: '7px 10px', fontSize: isMobile ? 16 : 13 }} autoFocus />
+                      <input className="msm-in" aria-label="Replace with" placeholder="Replace with…" value={fr.repl} onChange={e => setFr(f => ({ ...f, repl: e.target.value }))} style={{ ...inp, width: 150, padding: '7px 10px', fontSize: isMobile ? 16 : 13 }} />
+                      <span style={{ fontSize: 12, color: matches.length ? PX.ink2 : PX.sub, minWidth: 70 }}>{fr.find ? (matches.length ? `${frAt >= 0 ? frAt + 1 : 0} of ${matches.length}` : 'No matches') : ''}</span>
+                      <button type="button" className="px-btn ghost" style={{ padding: '5px 10px', fontSize: 12.5 }} disabled={!matches.length} onClick={() => gotoMatch(frAt - 1)}>↑</button>
+                      <button type="button" className="px-btn ghost" style={{ padding: '5px 10px', fontSize: 12.5 }} disabled={!matches.length} onClick={() => gotoMatch(frAt + 1)}>↓</button>
+                      <button type="button" className="px-btn ghost" style={{ padding: '5px 10px', fontSize: 12.5 }} disabled={!matches.length} onClick={replaceOne}>Replace</button>
+                      <button type="button" className="px-btn ghost" style={{ padding: '5px 10px', fontSize: 12.5 }} disabled={!matches.length} onClick={replaceAll}>Replace all</button>
+                      <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}><input type="checkbox" checked={fr.cs} onChange={e => setFr(f => ({ ...f, cs: e.target.checked }))} />Aa</label>
+                      <button type="button" aria-label="Close find" onClick={() => setFr(f => ({ ...f, open: false }))} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16 }}>×</button>
+                    </div>
+                  )}
+                  {figs.length > 0 && (
+                    <details style={{ marginBottom: 8, border: `1px solid ${PX.line}`, borderRadius: 14, background: '#fff' }}>
+                      <summary style={{ cursor: 'pointer', padding: '8px 12px', fontSize: 13, fontWeight: 700 }}>🖼 Figures in these notes ({figs.length}) — caption, size, order</summary>
+                      <div style={{ padding: '0 12px 10px', display: 'grid', gap: 8 }}>
+                        {figs.map(({ i, f }, n) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <img src={f.url} alt="" style={{ height: 42, maxWidth: 70, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}` }} />
+                            <input className="msm-in" aria-label={`Caption for figure ${n + 1}`} placeholder="Caption" value={f.caption} onChange={e => setFig(i, { caption: e.target.value })} style={{ ...inp, flex: '1 1 120px', width: 'auto', padding: '6px 9px', fontSize: isMobile ? 16 : 13 }} />
+                            <select aria-label={`Width of figure ${n + 1}`} className="msm-in" value={f.width || 100} onChange={e => setFig(i, { width: Number(e.target.value) })} style={{ ...inp, width: 'auto', padding: '6px 8px', fontSize: 13 }}>{[[100, 'Full width'], [75, '75%'], [50, 'Half'], [33, 'Third']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                            <button type="button" className="px-hbtn" aria-label="Move figure up" onClick={() => moveFig(i, -1)}>▲</button>
+                            <button type="button" className="px-hbtn" aria-label="Move figure down" onClick={() => moveFig(i, 1)}>▼</button>
+                            <button type="button" className="px-hbtn" aria-label="Remove figure" onClick={() => dropFig(i)}>🗑</button>
+                          </div>))}
+                      </div>
+                    </details>
+                  )}
                   {figErr && <div role="alert" style={{ margin: '0 0 8px', padding: '7px 11px', borderRadius: 10, background: '#fdecea', color: '#8f1d14', fontSize: 13 }}>❌ {figErr}</div>}
                   <div className="msm-strip" style={{ alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub, flexShrink: 0 }}>Start from</span>
@@ -291,7 +385,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13 }}>Live preview</b><span style={{ fontSize: 12, color: PX.sub }}>as it will print</span>
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                    <select aria-label="Preview size" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.size} onChange={e => setLayout(l => ({ ...l, size: Number(e.target.value) }))}>{[[12, 'Small text'], [13, 'Medium text'], [15, 'Large text']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                    <LayoutControls layout={layout} setLayout={setLayout} inp={inp} />
                   </span>
                 </div>
                 {livePreview}
@@ -299,7 +393,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap', position: 'sticky', bottom: isMobile && !focus ? 'calc(72px + env(safe-area-inset-bottom))' : 0, background: '#fff', padding: '10px 0', borderTop: `1px solid ${PX.line}`, zIndex: 4 }}>
               <button className="px-btn gold" disabled={busy} onClick={submit} style={{ minHeight: 44 }}>{busy ? 'Saving…' : editMat ? '✔ Save changes' : '⬆ Add material'}</button>
-              <button className="px-btn ghost" style={{ minHeight: 44 }} disabled={!draft.body.trim()} onClick={() => setPrintFor({ title: draft.title || 'Untitled notes', body: draft.body, subject: draft.subject, test_no: Number(draft.test_no) || 0, uploaded_by: editMat?.uploaded_by || userName })}>🖨 Print options</button>
+              <button className="px-btn ghost" style={{ minHeight: 44 }} disabled={!draft.body.trim()} onClick={() => openPrint({ title: draft.title || 'Untitled notes', body: draft.body, subject: draft.subject, test_no: Number(draft.test_no) || 0, uploaded_by: editMat?.uploaded_by || userName })}>🖨 Print options</button>
               {editMat && <><span style={{ fontSize: 13, color: PX.sub }}>Editing “{editMat.title}”{editMat.file_name ? ' · choose a file only to replace ' + editMat.file_name : ''}</span><button className="px-btn ghost" onClick={() => { onCancelEdit(); setTab('library') }}>Cancel</button></>}
             </div>
           </div>
@@ -350,7 +444,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button className="px-btn gold" style={{ padding: '8px 16px', fontSize: 13 }} onClick={() => openViewer(i)}>👁 Preview</button>
-                      {m.body && <button className="px-hbtn" onClick={() => setPrintFor(m)}>🖨 Print</button>}
+                      {m.body && <button className="px-hbtn" onClick={() => openPrint(m)}>🖨 Print</button>}
                       <button className="px-hbtn" onClick={() => onOpen(m)}>Open</button>
                       {m.body && <button className="px-hbtn" title="Copy into a new draft" aria-label="Duplicate material" onClick={() => duplicate(m)}>⧉</button>}
                       {canManage(m) && <button className="px-hbtn" onClick={() => onEdit(m)} aria-label="Edit material">✎</button>}
@@ -370,7 +464,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
       {viewer != null && shown[viewer] && (
         <Viewer m={shown[viewer]} index={viewer} total={shown.length} onIndex={i => { setViewer(i); }} onClose={() => setViewer(null)} getFileUrl={getFileUrl} instName={instName} layout={layout} setLayout={setLayout} creator={creator(shown[viewer])}
           fav={favs.includes(shown[viewer].id)} onFav={() => toggleFav(shown[viewer].id)} onDuplicate={m => { setViewer(null); duplicate(m) }}
-          canManage={canManage} onEdit={m => { setViewer(null); onEdit(m) }} onDelete={m => { setViewer(null); onDelete(m) }} onOpen={onOpen} onPrint={m => setPrintFor(m)} isMobile={isMobile} />
+          canManage={canManage} onEdit={m => { setViewer(null); onEdit(m) }} onDelete={m => { setViewer(null); onDelete(m) }} onOpen={onOpen} onPrint={m => openPrint(m)} isMobile={isMobile} />
       )}
     </>
   )
@@ -448,6 +542,21 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
   )
 }
 
+// Page layout for the preview: 1 or 2 columns, and a space saver (tighter spacing, smaller text) like the print layouts.
+const bodyStyle = l => ({ fontSize: l.saver ? Math.min(l.size, 12) : l.size, columnCount: l.columns, columnGap: l.columns > 1 ? 26 : undefined, columnRule: l.columns > 1 ? '1px solid #dde1ea' : undefined })
+function LayoutControls({ layout, setLayout, inp }) {
+  const on = layout.columns === 2 && layout.saver
+  const pill = a => ({ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${a ? '#b8923a' : '#e8e3d8'}`, background: a ? '#f6efdc' : '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <select aria-label="Columns" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
+      <button type="button" aria-pressed={layout.saver} style={pill(layout.saver)} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver }))}>{layout.saver ? '✓ ' : ''}Space saver</button>
+      <button type="button" aria-pressed={on} style={pill(on)} title="2 columns + space saver" onClick={() => setLayout(l => (on ? { ...l, columns: 1, saver: false } : { ...l, columns: 2, saver: true }))}>⚡ 2-col saver</button>
+      <select aria-label="Text size" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.size} onChange={e => setLayout(l => ({ ...l, size: Number(e.target.value) }))}>{[[11, 'Tiny'], [12, 'Small'], [13, 'Medium'], [15, 'Large']].map(([v, l]) => <option key={v} value={v}>{l} text</option>)}</select>
+    </span>
+  )
+}
+
 // ── Full-screen preview of any material, with previous / next ──
 function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layout, setLayout, creator, fav, onFav, onDuplicate, canManage, onEdit, onDelete, onOpen, onPrint, isMobile }) {
   const k = kindOf(m), [ic, kl] = KIND[k]
@@ -486,7 +595,7 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
             <div style={{ background: '#fff', maxWidth: '210mm', width: '100%', margin: '0 auto', padding: isMobile ? '18px 16px' : '16mm 14mm', boxShadow: '0 18px 44px -18px rgba(15,27,46,.45), 0 2px 6px rgba(15,27,46,.12)', borderRadius: 4, minHeight: '60%', flexShrink: 0, boxSizing: 'border-box' }}>
               <SheetHead name={instName} />
               <TitleBlock title={m.title} subject={m.subject} test={m.test_no} by={creator.name} designation={creator.designation} />
-              <div className="md" style={{ fontSize: layout.size, columnCount: layout.columns, columnGap: 28 }} dangerouslySetInnerHTML={{ __html: renderMaterial(m.body) }} />
+              <div className={'md' + (layout.saver ? ' compact' : '')} style={bodyStyle(layout)} dangerouslySetInnerHTML={{ __html: renderMaterial(m.body) }} />
             </div>
           )}
           {k === 'image' && (url ? <img src={url} alt={m.title} style={{ maxWidth: '100%', maxHeight: '100%', margin: 'auto', objectFit: 'contain' }} /> : <Msg err={err} />)}
@@ -498,7 +607,7 @@ function Viewer({ m, index, total, onIndex, onClose, getFileUrl, instName, layou
           {m.body && k !== 'text' && <div style={{ background: '#fff', padding: 14, fontSize: 13.5, borderTop: `1px solid ${PX.line}` }}><div className="md" dangerouslySetInnerHTML={{ __html: renderMaterial(m.body) }} /></div>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', borderTop: `1px solid ${PX.line}`, background: '#fff' }}>
-          {k === 'text' && <select aria-label="Preview size" style={{ padding: '7px 9px', borderRadius: 10, border: `1.5px solid ${PX.line}`, fontSize: 13 }} value={layout.size} onChange={e => setLayout(l => ({ ...l, size: Number(e.target.value) }))}>{[[12, 'Small'], [13, 'Medium'], [15, 'Large']].map(([v, l]) => <option key={v} value={v}>{l} text</option>)}</select>}
+          {k === 'text' && <LayoutControls layout={layout} setLayout={setLayout} inp={{ padding: '7px 9px', borderRadius: 10, border: `1.5px solid ${PX.line}`, fontSize: 13 }} />}
           <span style={{ flex: 1 }} />
           {m.body && <button className="px-btn gold" style={{ minHeight: 42 }} onClick={() => onPrint(m)}>🖨 Print…</button>}
           {m.body && <button className="px-btn ghost" style={{ minHeight: 42 }} title="Copy into a new draft" onClick={() => onDuplicate(m)}>⧉ Duplicate</button>}
