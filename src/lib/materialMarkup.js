@@ -24,8 +24,9 @@ export function renderMaterial(src, opts = {}) {
   const showTeacher = opts.teacher !== false
   let hc = 0
   const lines = String(src ?? '').replace(/\r/g, '').split('\n')
-  let html = '', para = [], list = null, quote = null, table = null
+  let html = '', para = [], list = null, quote = null, table = null, choices = null
   const flushPara = () => { if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = [] } }
+  const flushOpts = () => { if (choices) { html += `<div class="opts">${choices.map(([k, t]) => `<div class="op"><span class="ol">${k}</span><span>${inline(t)}</span></div>`).join('')}</div>`; choices = null } }
   const flushList = () => { if (list) { html += `<${list.t}>${list.items.map(x => `<li>${inline(x)}</li>`).join('')}</${list.t}>`; list = null } }
   const flushQuote = () => {
     if (!quote) return
@@ -41,11 +42,19 @@ export function renderMaterial(src, opts = {}) {
     const head = rows[0], body = rows.slice(1)
     html += `<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${head.map((_, i) => `<td>${inline(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>`; table = null
   }
-  const flushAll = () => { flushPara(); flushList(); flushQuote(); flushTable() }
+  const flushAll = () => { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable() }
   for (const raw of lines) {
     const ln = raw.trimEnd(), t = ln.trim()
     let m
     if (!t) { flushAll(); continue }
+    // Multiple-choice questions typed as plain text: "A) …" lines become an options grid, "Answer: …" a highlighted answer.
+    if ((m = t.match(/^\(?([A-Da-d])[.)]\s+(.*)$/))) {
+      flushPara(); flushList(); flushQuote(); flushTable()
+      if (!choices) { choices = []; if (html.endsWith('</p>')) { const i = html.lastIndexOf('<p>'); if (i >= 0) html = html.slice(0, i) + '<p class="q">' + html.slice(i + 3) } }
+      choices.push([m[1].toUpperCase(), m[2]]); continue
+    }
+    if ((m = t.match(/^(?:answer|ans)\s*[:\-–]\s*(.+)$/i))) { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable(); html += `<div class="ans"><b>Answer</b> ${inline(m[1])}</div>`; continue }
+    if (choices) flushOpts()
     if ((m = t.match(FIG_RE))) { flushAll(); html += `<figure><img src="${m[1]}" alt="">${m[2] ? `<figcaption>${escHtml(m[2].trim())}</figcaption>` : ''}</figure>`; continue }
     if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(t)) { flushAll(); html += '<hr>'; continue }
     if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); html += `<h${m[1].length} id="h${++hc}">${inline(m[2])}</h${m[1].length}>`; continue }
@@ -70,12 +79,15 @@ export function outline(src) {
 }
 
 export const MATERIAL_CSS = `.md{font-family:Georgia,'Times New Roman',serif;color:#111827;line-height:1.6;font-size:14px}
-.md h1{font-size:23px;color:#132a4f;margin:18px 0 8px;border-bottom:2.5px solid #b8923a;padding-bottom:4px}.md h2{font-size:18px;color:#132a4f;margin:16px 0 6px}.md h3{font-size:15px;color:#2e3b52;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+.md h1{font-size:23px;color:#132a4f;margin:18px 0 8px;border-bottom:2.5px solid #b8923a;padding-bottom:4px;letter-spacing:.01em}.md h2{font-size:18px;color:#132a4f;margin:16px 0 6px}.md h3{font-size:15px;color:#2e3b52;margin:12px 0 4px;text-transform:uppercase;letter-spacing:.04em}
 .md p{margin:0 0 9px}.md ul,.md ol{margin:0 0 10px;padding-left:24px}.md li{margin:2px 0}.md hr{border:0;border-top:1px solid #cfd6e4;margin:14px 0}.md mark{background:#fff1b8;padding:0 2px}
 .md table{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:13px;break-inside:avoid}.md th,.md td{border:1px solid #9aa5b8;padding:5px 9px;text-align:left;vertical-align:top}.md th{background:#eef1f6}
 .md figure{margin:10px 0;text-align:center;break-inside:avoid}.md figure img{max-width:100%;max-height:320px}.md figcaption{font:italic 12px system-ui,sans-serif;color:#5d6b82;margin-top:3px}
 .md .box{margin:8px 0 12px;padding:8px 12px;border-left:4px solid #2563eb;background:#eef4ff;border-radius:4px;break-inside:avoid}.md .box.tip{border-color:#16a34a;background:#eefaf2}.md .box.formula{border-color:#7c3aed;background:#f4f0ff;font-size:15px}
-.md .box.teacher{border-color:#be123c;background:#fff1f3}.md .box.warn{border-color:#d97706;background:#fff6e5}.md .box.ex{border-color:#0891b2;background:#ebf9fc}.md .bl{font:800 11px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:4px}`
+.md .box.teacher{border-color:#be123c;background:#fff1f3}.md .box.warn{border-color:#d97706;background:#fff6e5}
+.md p.q{font-weight:600;margin:12px 0 5px;padding-left:10px;border-left:3px solid #b8923a;break-after:avoid}.md .opts{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin:0 0 6px 13px;break-inside:avoid}.md .op{display:flex;gap:8px;align-items:baseline}.md .ol{flex:none;width:1.6em;height:1.6em;line-height:1.6em;border-radius:50%;background:#eef1f6;color:#132a4f;font:700 .78em system-ui,sans-serif;text-align:center}
+.md .ans{display:inline-block;margin:2px 0 10px 13px;padding:2px 12px;border-radius:99px;background:#eaf7ef;border:1px solid #b9e2c6;color:#14633f;font-size:.92em}.md .ans b{font:800 .72em system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;margin-right:6px}
+@media (max-width:520px){.md .opts{grid-template-columns:1fr}}.md .box.ex{border-color:#0891b2;background:#ebf9fc}.md .bl{font:800 11px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-right:4px}`
 
 export const wordCount = s => (String(s || '').replace(/\[\[img:[^\]]*\]\]/g, ' ').match(/\S+/g) || []).length
 
@@ -101,7 +113,7 @@ export function materialDocHtml(m, o = {}, css = '') {
   const compactCss = opt.compact ? '.md{line-height:1.36}.md p{margin:0 0 4px}.md h1{margin:9px 0 3px;font-size:1.35em;padding-bottom:2px}.md h2{margin:8px 0 3px;font-size:1.15em}.md h3{margin:6px 0 2px}.md ul,.md ol{margin:0 0 5px;padding-left:19px}.md li{margin:0}.md table{margin:4px 0 7px}.md th,.md td{padding:2px 6px}.md .box{margin:4px 0 7px;padding:4px 9px}.md figure{margin:5px 0}.md figure img{max-height:230px}.md hr{margin:7px 0}' : ''
   const inkCss = opt.inkSaver ? '.md .box,.md .box.tip,.md .box.formula,.md .box.warn,.md .box.ex,.md .box.teacher{background:none!important;border:1px solid #777!important;border-left:3px solid #333!important}.md th{background:none!important;font-weight:800}.md mark{background:none;text-decoration:underline}.md h1{border-bottom:1px solid #444;color:#000}.md h2,.md h3{color:#000}.lh{border-bottom:1px solid #444}.lh h1{color:#000}.md figure img{filter:grayscale(1) contrast(1.1)}' : ''
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(m.title)}</title><style>@page{size:${paper};margin:${MARGINS[opt.margin] || MARGINS.normal};@bottom-center{content:"${String(institute).replace(/["\\]/g, '')} · Page " counter(page) " of " counter(pages);font:8pt system-ui,sans-serif;color:#666}}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0}
-.lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:5px;margin-bottom:8px;font-family:Georgia,serif}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11px;color:#555}.lh1{font:11px system-ui,sans-serif;color:#444;border-bottom:1px solid #999;padding-bottom:2px;margin-bottom:6px}
+.lh{text-align:center;border-bottom:1px solid #b8923a;padding-bottom:6px;margin-bottom:9px;font-family:Georgia,serif}.lh:before{content:"";display:block;height:4px;background:linear-gradient(90deg,#b8923a,#f0e1b8,#b8923a);margin-bottom:7px}.lh h1{margin:0;font-size:17px;color:#132a4f;letter-spacing:.12em;text-transform:uppercase}.lh div{font-size:10px;color:#b8923a;font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin-top:2px}.lh1{font:11px system-ui,sans-serif;color:#444;border-bottom:1px solid #999;padding-bottom:2px;margin-bottom:6px}
 .ti{font:700 ${opt.compact ? 17 : 19}px Georgia,serif;margin:0 0 1px}.me{font:11.5px system-ui,sans-serif;color:#5d6b82;margin-bottom:2px}.by{font:12px system-ui,sans-serif;color:#2e3b52;margin-bottom:${opt.compact ? 5 : 9}px}
 .md{font-size:${size}px}.cols{column-count:${cols};column-gap:7mm;${cols > 1 ? 'column-rule:.5pt solid #ccc;' : ''}}.cols h1,.cols h2,.cols h3{break-after:avoid}
 .toc{font:12px system-ui,sans-serif;border:1px solid #cfd6e4;border-radius:6px;padding:6px 12px;margin:0 0 8px;break-inside:avoid}.toc ol{margin:3px 0 0;padding-left:20px;columns:${cols > 1 ? 1 : 2}}.toc li.l2{margin-left:12px;color:#555}.toc a{color:inherit;text-decoration:none}

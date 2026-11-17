@@ -107,3 +107,20 @@ test('author text is escaped', () => {
   const d = materialDocHtml({ title: 'T', body: 'x' }, { author: { name: '<b>n</b>', designation: '<i>d</i>' } })
   assert.ok(!d.includes('<b>n</b>') && !d.includes('<i>d</i>'))
 })
+
+test('plain-text multiple-choice questions become a question, an options grid and an answer pill', () => {
+  const h = renderMaterial("What is the feminine gender of 'Duke'?\nA) Duchess\nB) Queen\nC) Princess\nD) Lady\nAnswer: A) Duchess")
+  assert.ok(h.includes('<p class="q">'))
+  assert.equal((h.match(/class="op"/g) || []).length, 4)
+  assert.ok(h.includes('<span class="ol">A</span>') && h.includes('class="ans"') && h.includes('Duchess</div>'))
+})
+
+test('a blank line between the question and its options still attaches them', () => {
+  const h = renderMaterial('Which is a noun?\n\nA) run\nB) table')
+  assert.ok(h.includes('<p class="q">Which is a noun?</p>') && h.includes('class="opts"'))
+})
+
+test('options and answers are escaped and ordinary paragraphs are untouched', () => {
+  assert.ok(!renderMaterial('Q?\nA) <b>x</b>\nAnswer: <i>y</i>').includes('<b>x</b>'))
+  assert.equal(renderMaterial('Just a paragraph'), '<p>Just a paragraph</p>')
+})
