@@ -70,7 +70,7 @@ function SubjectCard({ subject, chapters, coverage, section, baseSet, filter, qu
   const list = open || q || filter !== 'all' ? shown : shown.slice(0, LIMIT)
   if (!shown.length && (q || filter !== 'all')) return null
   return (
-    <div className="px-card" style={{ display: 'flex', flexDirection: 'column' }}>
+    <div className="px-card" id={'syl-' + normName(subject).replace(/\s+/g, '-')} style={{ display: 'flex', flexDirection: 'column', scrollMarginTop: 120 }}>
       <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ minWidth: 0 }}>
@@ -238,12 +238,30 @@ export default function SyllabusOfficial({ logs = [] }) {
         {!pattern && <div style={{ marginTop: 12, fontSize: 12.5, color: 'rgba(255,255,255,.7)' }}>Board-aligned Class 5–8 course following the NCERT textbooks — there is no entrance exam pattern.</div>}
       </section>
 
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <input className="px-input" style={{ flex: '1 1 220px', maxWidth: 360 }} placeholder="Search chapters…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search chapters" />
-        <div className="px-tabs" role="tablist" aria-label="Chapter filter" style={{ marginBottom: 0 }}>
-          {[['all', 'All'], ['pending', 'Not yet taught'], ['taught', 'Taught'], ...(newCount ? [['new', 'New']] : [])].map(([k, t]) => (
-            <button key={k} type="button" role="tab" aria-selected={filter === k} className={'px-tab' + (filter === k ? ' on' : '')} onClick={() => setFilter(k)} style={{ padding: '7px 12px', fontSize: 12.5 }}>{t}</button>
+      {/* Toolbar (sticks while scrolling the subject cards) */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--px-bg, #faf8f3)', padding: '8px 0', marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 360 }}>
+            <input className="px-input" style={{ width: '100%', paddingRight: 32 }} placeholder="🔍 Search chapters…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search chapters" />
+            {query && <button type="button" aria-label="Clear search" onClick={() => setQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: PX.sub, fontSize: 16 }}>×</button>}
+          </div>
+          <div className="px-tabs" role="tablist" aria-label="Chapter filter" style={{ marginBottom: 0 }}>
+            {[['all', 'All'], ['pending', 'Not yet taught'], ['taught', 'Taught'], ...(newCount ? [['new', 'New']] : [])].map(([k, t]) => (
+              <button key={k} type="button" role="tab" aria-selected={filter === k} className={'px-tab' + (filter === k ? ' on' : '')} onClick={() => setFilter(k)} style={{ padding: '7px 12px', fontSize: 12.5 }}>{t}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            <button type="button" className="px-btn ghost" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => setOpenSubjects(Object.fromEntries(Object.keys(subjects).map(s => [s, true])))}>Expand all</button>
+            <button type="button" className="px-btn ghost" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => setOpenSubjects({})}>Collapse all</button>
+          </div>
+        </div>
+        {/* Jump straight to a subject */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          {Object.keys(subjects).map(s => (
+            <button key={s} type="button" onClick={() => document.getElementById('syl-' + normName(s).replace(/\s+/g, '-'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              style={{ padding: '4px 11px', borderRadius: 99, border: `1px solid ${PX.line}`, background: '#fff', color: PX.ink2, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {s}
+            </button>
           ))}
         </div>
       </div>
