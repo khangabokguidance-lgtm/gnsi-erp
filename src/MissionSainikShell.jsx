@@ -41,7 +41,7 @@ const CSS = `
 .msx-main details>summary{cursor:pointer;padding:6px 0}
 .msx-snack{font-size:14.5px;line-height:1.4;border-radius:16px}.msx-snack.ok{background:#14532d}.msx-snack.bad{background:#7f1d1d}
 .msx-ri{font-size:14.5px;padding:11px 14px}.msx-ri.on{box-shadow:inset 3px 0 0 var(--gold)}
-@media (max-width:700px){.msx-main{padding:12px 10px 128px}.msx-main .px-card-h{padding:14px 16px}.msx-bi{font-size:12px}}
+@media (max-width:700px){.msx-main{padding:12px 10px 92px}.msx-main .px-card-h{padding:14px 16px}.msx-bi{font-size:12px}}
 .msx-disp{position:fixed;top:64px;right:10px;z-index:80;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:20px;padding:16px;box-shadow:0 16px 48px rgba(10,20,40,.35);animation:msx-up .2s both;color:var(--ink)}
 .msx-disp h3{margin:0 0 2px;font-size:16px}.msx-disp p{margin:0 0 10px;font-size:12px;color:var(--sub)}.msx-disp h5{margin:12px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub)}
 .msx-seg{display:flex;gap:4px;background:#f1ede3;border-radius:12px;padding:3px}.msx-seg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;color:var(--sub);background:transparent}
@@ -81,6 +81,13 @@ html{scroll-behavior:smooth}
 .msx-rail h4{margin:14px 10px 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
+.msx-rail{transition:width .2s ease}
+.msx-rail-tg{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 0 6px auto;border-radius:10px;color:var(--sub);font-size:16px;font-weight:800}.msx-rail-tg:hover{background:#e6ebf4}
+.msx-rail.slim{width:68px;padding-inline:8px}.msx-rail.slim .msx-rail-tg{margin-inline:auto}
+.msx-rail.slim .msx-find,.msx-rail.slim .msx-lbl,.msx-rail.slim .msx-pin{display:none}
+.msx-rail.slim h4{height:1px;margin:10px 12px;padding:0;font-size:0;background:#e3dcc8}
+.msx-rail.slim .msx-ri{position:relative;justify-content:center;padding:10px 0;gap:0;border-radius:14px}
+.msx-rail.slim .msx-ri .msx-badge{position:absolute!important;top:2px;right:6px;margin:0!important}
 .msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease backwards}
 .msx-main .px-card{border-radius:22px;border:1px solid #ece6d6;box-shadow:0 4px 22px rgba(19,42,79,.07);overflow:hidden}
 /* Premium data tables */
@@ -93,6 +100,13 @@ html{scroll-behavior:smooth}
 .msx-main .px-table td:first-child{font-weight:800;color:var(--navy)}
 .msx-main .px-table td.msx-click{cursor:pointer}
 .msx-main .px-table td.msx-click:hover{background:#f5e9c4!important;box-shadow:inset 0 0 0 2px #e0b95a;border-radius:6px}
+.msx-main .px-table.msx-allot td{padding:8px 6px;vertical-align:middle}
+.msx-allot .msx-acell{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #efe8d4;border-radius:12px;padding:7px 9px;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s}
+.msx-main .msx-allot td.msx-click:hover{background:transparent!important;box-shadow:none}
+.msx-allot td.msx-click:hover .msx-acell{border-color:#e0b95a;box-shadow:0 5px 14px rgba(184,146,58,.28);transform:translateY(-1px)}
+.msx-allot .msx-adate{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:99px;background:#f6efdc;color:#6b5a2a;font-size:11px;font-weight:700}
+.msx-main .msx-allot tbody tr:nth-child(even) td{background:transparent}
+.msx-main .msx-allot tbody tr:hover td{background:transparent}
 .msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:11px;font-size:12.5px;background:#fff;border:1px solid #e6dfcc;transition:border-color .15s,box-shadow .15s}
 .msx-main .px-table input.px-input:focus{outline:0;border-color:#b8923a;box-shadow:0 0 0 3px rgba(184,146,58,.22)}
 .msx-main .px-table input.px-input::placeholder{color:#b3ab98}
@@ -102,9 +116,9 @@ html{scroll-behavior:smooth}
 .msx-main select,.msx-main input[type=file]{background:#fff;color:var(--ink)}
 .msx-main input[type=file]{padding:8px!important}
 .msx-main .px-table td:first-child,.msx-main .px-table th:first-child{white-space:nowrap}
-.msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:1px solid #e3e7ef;padding:8px 6px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(14,32,63,.10)}
-.msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--sub);padding:2px 0}
-.msx-pill{position:relative;width:62px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:background .2s,transform .2s}
+.msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:1px solid #e3e7ef;padding:4px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(14,32,63,.10)}
+.msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10.5px;font-weight:600;color:var(--sub);padding:1px 0}
+.msx-pill{position:relative;width:54px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:background .2s,transform .2s}
 .msx-bi.on{color:var(--navy);font-weight:800}.msx-bi.on .msx-pill{background:var(--goldlt);transform:scale(1.05)}
 .msx-badge{position:absolute;top:-3px;right:6px;min-width:17px;height:17px;border-radius:9px;background:var(--bad);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
 .msx-fab{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:35;display:flex;align-items:center;gap:8px;height:56px;padding:0 20px;border-radius:18px;background:var(--gold);color:#fff;font-weight:800;font-size:14px;box-shadow:0 10px 24px rgba(184,146,58,.55)}
@@ -160,6 +174,9 @@ export function Confetti({ show }) {
 
 export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
+  const [slim, setSlim] = useState(() => store.get('msx-rail-slim', true))
+  const slimRef = useRef(slim); slimRef.current = slim
+  const toggleSlim = () => setSlim(v => { store.set('msx-rail-slim', !v); return !v })
   const [q, setQ] = useState('')
   const [disp, setDisp] = useState(false)
   const [prefs, setPrefs] = useState(() => ({ size: 'md', theme: 'light', comfort: 'normal', ...store.get('msx-prefs', {}) }))
@@ -182,7 +199,7 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable
       if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault()
-        if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) }
+        if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) }
       }
     }
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
@@ -238,25 +255,26 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
         {onBack ? <button className="msx-tap msx-ic" aria-label="Back to Home" onClick={onBack}>←</button> : <span className="msx-ic" aria-hidden="true">🎖️</span>}
         <h1><small>{subtitle}</small>{title}</h1>
         <button className="msx-tap msx-ic" aria-label="Display comfort: text size and theme" title="Display comfort" aria-expanded={disp} onClick={() => setDisp(v => !v)} style={{ fontSize: 15, fontWeight: 800 }}>Aa</button>
-        <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
+        <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
         {actions.map(a => <button key={a.label} className="msx-tap msx-ic" aria-label={a.label} title={a.label} onClick={a.onClick}>{a.icon}</button>)}
       </header>
       <div className="msx-body">
-        <nav className="msx-rail" aria-label="Mission Sainik sections">
+        <nav className={'msx-rail' + (slim ? ' slim' : '')} aria-label="Mission Sainik sections">
+          <button type="button" className="msx-tap msx-rail-tg" onClick={toggleSlim} aria-label={slim ? 'Expand menu' : 'Collapse menu'} title={slim ? 'Expand menu' : 'Collapse menu'}>{slim ? '»' : '«'}</button>
           {finder(railFind, 'Find a section…')}
-          {needle ? resultList : (
+          {needle && !slim ? resultList : (
             <>
               {pinned.length > 0 && <div><h4>⭐ Pinned</h4>
                 {pinned.map(x => (
-                  <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)}>
-                    <span style={{ fontSize: 19 }}>{x.ic}</span>{x.label}<span role="button" tabIndex={0} aria-label={`Unpin ${x.label}`} className="msx-pin on" onClick={e => { e.stopPropagation(); togglePin(x.id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(x.id) } }}>★</span>
+                  <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)} title={x.label}>
+                    <span style={{ fontSize: 19 }}>{x.ic}</span><span className="msx-lbl">{x.label}</span><span role="button" tabIndex={0} aria-label={`Unpin ${x.label}`} className="msx-pin on" onClick={e => { e.stopPropagation(); togglePin(x.id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(x.id) } }}>★</span>
                   </button>))}
               </div>}
               {groups.map(g => (
                 <div key={g.title}><h4>{g.title}</h4>
                   {g.items.map(([id, ic, label]) => (
-                    <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}>
-                      <span style={{ fontSize: 19 }}>{ic}</span>{label}{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
+                    <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)} title={label}>
+                      <span style={{ fontSize: 19 }}>{ic}</span><span className="msx-lbl">{label}</span>{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
                       <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} title={pins.includes(id) ? 'Unpin' : 'Pin to top'} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} style={badges[id] ? { marginLeft: 6 } : undefined} onClick={e => { e.stopPropagation(); togglePin(id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(id) } }}>{pins.includes(id) ? '★' : '☆'}</span>
                     </button>))}
                 </div>))}
