@@ -1374,7 +1374,7 @@ function MissionSainikInner({ currentUser }) {
           </>
         )}
       </MissionSainikShell>
-      {paperMaker && <SmartPaperMaker subjects={SUBJECTS} institute={institute} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} setMsg={setMsg} onClose={() => setPaperMaker(false)}
+      {paperMaker && <SmartPaperMaker subjects={SUBJECTS} institute={institute} staff={staffDir} userName={currentUser?.name || ''} isMobile={isMobile} isAdmin={isRealAdmin} setMsg={setMsg} onClose={() => setPaperMaker(false)}
         onUseAsNotes={({ title, subject, body }) => { setPaperMaker(false); setEditMat(null); setMatDraft({ title, subject: subject || '', test_no: 0, link_url: '', note: '', body, file: null }); setTab('material') }} />}
       {viewMat && (
         <div className="msx-overlay" onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>

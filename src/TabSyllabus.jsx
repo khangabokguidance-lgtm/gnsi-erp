@@ -894,7 +894,7 @@ const staffName = _name
         )}
       </div>
 
-      {activeSubView==='official' && <SyllabusOfficial logs={logs} />}
+      {activeSubView==='official' && <SyllabusOfficial logs={logs} canAdd={isAdmin || isStaff} canDelete={isAdmin} />}
 
       {/* Role badge */}
       {isTracker && <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>

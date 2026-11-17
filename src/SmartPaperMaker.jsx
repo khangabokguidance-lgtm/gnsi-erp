@@ -18,7 +18,12 @@ const LV = { Easy: ['#16a34a', '#e6f6ec'], Medium: ['#d97706', '#fff3dd'], Hard:
 const MIXES = [['Balanced 40/40/20', { Easy: 40, Medium: 40, Hard: 20 }], ['Easy 70/30/0', { Easy: 70, Medium: 30, Hard: 0 }], ['Even thirds', { Easy: 34, Medium: 33, Hard: 33 }], ['Challenge 20/40/40', { Easy: 20, Medium: 40, Hard: 40 }]]
 const DEFAULT = { title: '', count: 20, subjects: [], sets: [], topics: [], mix: { Easy: 40, Medium: 40, Hard: 20 }, figures: true, passages: true, avoidOn: true, marks: 1, minutes: 30, instructions: 'Read each question carefully. Choose the one correct answer. There is no negative marking.' }
 
-export default function SmartPaperMaker({ subjects, institute, staff = [], userName = '', isMobile, onClose, onUseAsNotes, setMsg }) {
+const SOURCES = [['practice', '📝 Practice bank', false], ['daily', '🗓️ Daily tests', false], ['pre', '🧱 Pre Mock', true], ['mega', '🏗️ Mega Mock', true]]
+const SET_WORD = { practice: 'Practice sets', daily: 'Daily tests', pre: 'Pre Mock tests', mega: 'Mega Mock tests' }
+
+export default function SmartPaperMaker({ subjects, institute, staff = [], userName = '', isMobile, isAdmin = false, onClose, onUseAsNotes, setMsg }) {
+  const [source, setSource] = useState('practice')
+  const [adv, setAdv] = useState(false)   // advanced options are tucked away so the quick start stays simple
   const [bank, setBank] = useState(null), [err, setErr] = useState('')
   const [spec, setSpec] = useState(() => ({ ...DEFAULT, ...load('psm-spec', {}) }))
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1e6) + 1)
@@ -38,14 +43,16 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
 
   useEffect(() => {
     let live = true
+    setBank(null); setErr('')
     ;(async () => {
-      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', 'practice').is('deleted_at', null).order('id'))
-      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', 'practice').order('id')))
+      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', source).is('deleted_at', null).order('id'))
+      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('*').eq('series', source).order('id')))
       if (!live) return
-      if (error) setErr(error.message || 'Could not load the Practice bank'); else setBank(data || [])
+      if (error) setErr(error.message || 'Could not load the question bank'); else setBank(data || [])
     })()
     return () => { live = false }
-  }, [])
+  }, [source])
+  const changeSource = k => { if (k === source) return; setSource(k); setRes(null); setPicked([]); setLocked([]); setRemoved([]); set({ subjects: [], sets: [], topics: [] }) }
 
   // ── what is available for this blueprint ──
   const subjectCounts = useMemo(() => { const c = {}; (bank || []).forEach(q => { c[q.section] = (c[q.section] || 0) + 1 }); return c }, [bank])
@@ -103,13 +110,30 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
 
   const plan = (
     <div>
+      <div style={card}>
+        <span style={lab}>Questions come from</span>
+        <div style={strip}>{SOURCES.filter(([, , adminOnly]) => !adminOnly || isAdmin).map(([k, l]) => <button key={k} type="button" style={chip(source === k)} aria-pressed={source === k} onClick={() => changeSource(k)}>{l}{source === k && bank ? <span style={{ opacity: .6 }}> {bank.length}</span> : null}</button>)}</div>
+        {(source === 'pre' || source === 'mega') && <div style={{ fontSize: 12, color: '#b45309', marginTop: 8 }}>🔒 Pre Mock and Mega Mock questions are confidential until the test date — only admins can draw from them. Use papers made this way for internal revision only.</div>}
+      </div>
+      <div style={{ ...card, border: '1.5px solid #e3d3a6', background: 'linear-gradient(180deg,#fffdf6,#fff)' }}>
+        <div style={{ fontFamily: PX.serif, fontSize: 18, fontWeight: 600, marginBottom: 2 }}>Make a paper in 3 taps</div>
+        <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 12 }}>Pick the subject, how many questions and how hard — then press the gold button.</div>
+        <span style={lab}>1 · Subject <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(tap one or more; none = all subjects)</span></span>
+        <div style={strip}>{Object.keys(subjectCounts).map(label => { const x = subjects.find(y => y.label === label); return <button key={label} type="button" style={chip(spec.subjects.includes(label))} aria-pressed={spec.subjects.includes(label)} onClick={() => { toggleIn('subjects', label); set({ sets: [], topics: [] }) }}>{x?.short || label} <span style={{ opacity: .6 }}>{subjectCounts[label]}</span></button> })}</div>
+        <span style={{ ...lab, marginTop: 14 }}>2 · How many questions</span>
+        <div style={strip}>{[10, 15, 20, 25, 30, 40, 50].map(n => <button key={n} type="button" style={chip(spec.count === n)} aria-pressed={spec.count === n} onClick={() => set({ count: n })}>{n}</button>)}</div>
+        <span style={{ ...lab, marginTop: 14 }}>3 · How hard</span>
+        <div style={strip}>{[['😊 Easy', { Easy: 70, Medium: 30, Hard: 0 }], ['⚖️ Mixed', { Easy: 40, Medium: 40, Hard: 20 }], ['🔥 Challenge', { Easy: 20, Medium: 40, Hard: 40 }]].map(([l, m]) => <button key={l} type="button" style={chip(JSON.stringify(spec.mix) === JSON.stringify(m))} aria-pressed={JSON.stringify(spec.mix) === JSON.stringify(m)} onClick={() => set({ mix: m })}>{l}</button>)}</div>
+        <button type="button" className="px-btn gold" style={{ width: '100%', minHeight: 50, fontSize: 16, marginTop: 16 }} disabled={!bank || !bank.length || total === 0} onClick={generate}>🧠 Make my paper</button>
+        <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 8, textAlign: 'center' }}>{total} questions available for these choices</div>
+        <button type="button" onClick={() => setAdv(v => !v)} aria-expanded={adv} style={{ marginTop: 10, width: '100%', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, color: PX.navy, padding: '8px 0' }}>{adv ? '▾ Hide extra options' : '▸ More options — chapters, sets, exact mix, rules'}</button>
+      </div>
+      {adv && <>
       {presets.length > 0 && <div style={card}><span style={lab}>Saved blueprints</span><div style={strip}>{presets.map(p => <button key={p.name} type="button" style={chip(false)} onClick={() => setSpec({ ...DEFAULT, ...p.spec })}>★ {p.name}</button>)}</div></div>}
       <div style={card}>
         <span style={lab}>Title</span>
         <input style={field} aria-label="Paper title" placeholder="e.g. Fractions practice paper — Class 6" value={spec.title} onChange={e => set({ title: e.target.value })} />
-        <span style={{ ...lab, marginTop: 14 }}>Subjects {bank ? <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(none ticked = all)</span> : null}</span>
-        <div style={strip}>{subjects.filter(x => subjectCounts[x.label]).map(x => <button key={x.key} type="button" style={chip(spec.subjects.includes(x.label))} aria-pressed={spec.subjects.includes(x.label)} onClick={() => { toggleIn('subjects', x.label); set({ sets: [], topics: [] }) }}>{x.short} <span style={{ opacity: .6 }}>{subjectCounts[x.label]}</span></button>)}</div>
-        {setOptions.length > 1 && <><span style={{ ...lab, marginTop: 14 }}>Practice sets to draw from</span><div style={strip}>{setOptions.map(n => <button key={n} type="button" style={chip(spec.sets.includes(n))} onClick={() => { toggleIn('sets', n); set({ topics: [] }) }}>Set {n}</button>)}</div></>}
+        {setOptions.length > 1 && <><span style={{ ...lab, marginTop: 14 }}>{SET_WORD[source]} to draw from</span><div style={strip}>{setOptions.map(n => <button key={n} type="button" style={chip(spec.sets.includes(n))} onClick={() => { toggleIn('sets', n); set({ topics: [] }) }}>{source === 'practice' ? 'Set' : 'Test'} {n}</button>)}</div></>}
         {topicCounts.length > 0 && <><span style={{ ...lab, marginTop: 14 }}>Chapters / topics <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>(none ticked = all)</span></span><div style={{ ...strip, maxHeight: 130, overflowY: 'auto' }}>{topicCounts.map(([t, n]) => <button key={t} type="button" style={chip(spec.topics.includes(t))} aria-pressed={spec.topics.includes(t)} onClick={() => toggleIn('topics', t)}>{t} <span style={{ opacity: .6 }}>{n}</span></button>)}</div></>}
       </div>
       <div style={card}>
@@ -140,6 +164,7 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
         </div>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub, marginTop: 10 }}>Instructions<textarea style={{ ...field, marginTop: 4, resize: 'vertical' }} rows={2} value={spec.instructions} onChange={e => set({ instructions: e.target.value })} /></label>
       </div>
+      </>}
     </div>
   )
 
@@ -157,6 +182,7 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
             {Object.values(res.shortfall).some(Boolean) && picked.length >= spec.count && <div style={{ marginTop: 8, fontSize: 12.5, color: '#e9d9b0' }}>Not enough {Object.entries(res.shortfall).filter(([, n]) => n).map(([k, n]) => `${k} (${n} short)`).join(', ')} questions — other levels filled in.</div>}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>{Object.entries(picked.reduce((a, q) => { const t = (q.topic || '').trim() || 'Other'; a[t] = (a[t] || 0) + 1; return a }, {})).map(([t, n]) => <span key={t} style={{ background: 'rgba(255,255,255,.14)', borderRadius: 99, padding: '3px 10px', fontSize: 11.5, fontWeight: 700 }}>{t} {n}</span>)}</div>
           </div>
+          <div role="status" style={{ margin: '0 0 12px', padding: '10px 14px', borderRadius: 14, background: '#eaf7ef', border: '1px solid #b9e2c6', color: '#14633f', fontSize: 13.5, fontWeight: 600 }}>✓ Your paper is ready. Look through the questions (🔄 swap any you don't like), then tap <b>🖨 Paper</b> below to print it.</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
             <button type="button" className="px-btn ghost" onClick={() => run(seed + 1 + Math.floor(Math.random() * 1000))}>🔀 Shuffle again</button>
             <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, fontWeight: 700 }}><input type="checkbox" checked={showAns} onChange={e => setShowAns(e.target.checked)} />Show answers</label>
@@ -192,16 +218,25 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
 
   const ready = res && picked.length > 0
   return (
-    <div role="dialog" aria-modal="true" aria-label="Smart paper maker" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#eef1f6', display: 'flex', flexDirection: 'column' }}>
+    <div className="psm" role="dialog" aria-modal="true" aria-label="Smart paper maker" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#eef1f6', display: 'flex', flexDirection: 'column' }}>
+      <style>{`.psm button:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.4)}`}</style>
       <div style={{ background: 'linear-gradient(135deg,#132a4f,#2f5aa3)', color: '#fff', padding: isMobile ? '10px 12px' : '12px 22px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', boxShadow: '0 8px 24px -14px rgba(10,20,40,.7)' }}>
         <button type="button" aria-label="Close" onClick={onClose} style={{ border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', width: 38, height: 38, borderRadius: '50%', cursor: 'pointer', fontSize: 18 }}>×</button>
-        <div style={{ flex: '1 1 200px' }}><div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#e9d9b0' }}>Practice bank</div><div style={{ fontFamily: PX.serif, fontSize: isMobile ? 18 : 22, fontWeight: 600 }}>🧠 Smart paper maker</div></div>
+        <div style={{ flex: '1 1 200px' }}><div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#e9d9b0' }}>{SOURCES.find(x => x[0] === source)[1].replace(/^\S+\s/, '')}</div><div style={{ fontFamily: PX.serif, fontSize: isMobile ? 18 : 22, fontWeight: 600 }}>🧠 Smart paper maker</div></div>
         {isMobile && <div role="tablist" aria-label="Step" style={{ display: 'inline-flex', padding: 3, background: 'rgba(255,255,255,.16)', borderRadius: 12 }}>{[['plan', '1 Plan'], ['paper', `2 Paper${picked.length ? ' (' + picked.length + ')' : ''}`]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={step === k} onClick={() => setStep(k)} style={{ padding: '7px 12px', borderRadius: 9, border: 'none', background: step === k ? '#fff' : 'transparent', color: step === k ? '#132a4f' : '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}</div>}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: isMobile ? 10 : 18 }}>
         {err && <div role="alert" style={{ padding: 14, color: '#8f1d14' }}>❌ {err}</div>}
         {!bank && !err && <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading the Practice bank…</div>}
-        {bank && !bank.length && <div style={{ ...card, textAlign: 'center', padding: 30 }}>The Practice bank has no questions yet. Add some from the Practice bank sets first.</div>}
+        {bank && !bank.length && (
+          <div style={{ ...card, textAlign: 'center', padding: isMobile ? 22 : 34, maxWidth: 560, margin: '20px auto' }}>
+            <div style={{ fontSize: 42 }}>📭</div>
+            <div style={{ fontFamily: PX.serif, fontSize: 20, fontWeight: 600, margin: '6px 0 4px' }}>No questions in {SOURCES.find(x => x[0] === source)[1].replace(/^\S+\s/, '')} yet</div>
+            <div style={{ fontSize: 13.5, color: PX.sub, lineHeight: 1.5 }}>The paper maker picks from questions that have already been uploaded. Add questions first (open a set in the Practice bank, or use a test builder), then come back and press Generate.</div>
+            <div style={{ ...strip, justifyContent: 'center', marginTop: 14 }}>{SOURCES.filter(([k, , adminOnly]) => k !== source && (!adminOnly || isAdmin)).map(([k, l]) => <button key={k} type="button" style={chip(false)} onClick={() => changeSource(k)}>Try {l.replace(/^\S+\s/, '')}</button>)}</div>
+          </div>
+        )}
+        {bank && bank.length > 0 && total === 0 && <div role="status" style={{ ...card, background: '#fff7e6', borderColor: '#f1d9a8', color: '#8a5a00', fontSize: 13.5 }}>⚠ No questions match the subjects, sets or chapters you ticked. Untick some of them to widen the search.</div>}
         {bank && bank.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(320px,400px) minmax(0,1fr)', gap: 18, alignItems: 'start', maxWidth: 1180, margin: '0 auto' }}>
             {(!isMobile || step === 'plan') && <div>{plan}</div>}
@@ -211,6 +246,7 @@ export default function SmartPaperMaker({ subjects, institute, staff = [], userN
       </div>
       <div style={{ background: '#fff', borderTop: `1px solid ${PX.line}`, padding: `10px ${isMobile ? 12 : 22}px calc(10px + env(safe-area-inset-bottom))`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', boxShadow: '0 -8px 24px -18px rgba(19,42,79,.4)' }}>
         <button className="px-btn gold" style={{ minHeight: 46, fontSize: 15 }} disabled={!bank || !bank.length || total === 0} onClick={generate}>🧠 {res ? 'Regenerate' : 'Generate paper'}</button>
+        {(!bank || !bank.length || total === 0) && <span role="status" style={{ fontSize: 12.5, color: '#b45309', fontWeight: 700, flex: '1 1 200px' }}>{!bank ? (err ? '❌ Could not load questions' : 'Loading questions…') : !bank.length ? '⚠ Nothing to build from — this question bank is empty.' : '⚠ No questions match your choices.'}</span>}
         <button className="px-btn ghost" style={{ minHeight: 46 }} onClick={savePreset} title="Save this blueprint to reuse">★ Save blueprint</button>
         <span style={{ flex: 1 }} />
         {ready && <>

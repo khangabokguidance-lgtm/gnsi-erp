@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPaper, levelTargets, swapOne, rng, levelOf } from '../src/lib/paperMaker.js'
+import { buildPaper, levelTargets, allocateLevels, swapOne, rng, levelOf } from '../src/lib/paperMaker.js'
 
 const mk = (n, section, level, topic, extra = {}) => Array.from({ length: n }, (_, i) => ({ id: `${section}-${level}-${topic}-${i}`, section, difficulty: level, topic, test_no: 1 + (i % 2), question: `${topic} ${level} ${i}`, ...extra }))
 const bank = [...mk(20, 'Maths', 'Easy', 'Fractions'), ...mk(20, 'Maths', 'Medium', 'Decimals'), ...mk(10, 'Maths', 'Hard', 'Algebra'), ...mk(15, 'Science', 'Easy', 'Light'), ...mk(15, 'Science', 'Medium', 'Force')]
@@ -87,3 +87,19 @@ test('swapOne gives a different question with the same subject and level', () =>
 })
 
 test('rng is deterministic and in [0,1)', () => { const a = rng(5), b = rng(5); for (let i = 0; i < 5; i++) { const x = a(); assert.equal(x, b()); assert.ok(x >= 0 && x < 1) } })
+
+test('the whole paper matches the mix even when the count does not divide by subjects', () => {
+  const big = [...mk(30, 'Maths', 'Easy', 'A'), ...mk(30, 'Maths', 'Medium', 'B'), ...mk(30, 'Maths', 'Hard', 'C'), ...mk(30, 'Sci', 'Easy', 'A'), ...mk(30, 'Sci', 'Medium', 'B'), ...mk(30, 'Sci', 'Hard', 'C'), ...mk(30, 'Eng', 'Easy', 'A'), ...mk(30, 'Eng', 'Medium', 'B'), ...mk(30, 'Eng', 'Hard', 'C')]
+  for (const count of [10, 20, 25, 40]) {
+    const r = buildPaper(big, { count, subjects: ['Maths', 'Sci', 'Eng'], mix: { Easy: 40, Medium: 40, Hard: 20 } }, { seed: 3 })
+    assert.equal(r.picked.length, count)
+    const want = levelTargets(count, { Easy: 40, Medium: 40, Hard: 20 })
+    assert.deepEqual(r.byLevel, want, 'count ' + count)
+  }
+})
+
+test('allocateLevels rows add up to each subject quota and columns to the targets', () => {
+  const q = { A: 7, B: 7, C: 6 }, a = allocateLevels(20, { Easy: 40, Medium: 40, Hard: 20 }, q)
+  for (const s of Object.keys(q)) assert.equal(a[s].Easy + a[s].Medium + a[s].Hard, q[s])
+  assert.deepEqual({ Easy: a.A.Easy + a.B.Easy + a.C.Easy, Medium: a.A.Medium + a.B.Medium + a.C.Medium, Hard: a.A.Hard + a.B.Hard + a.C.Hard }, { Easy: 8, Medium: 8, Hard: 4 })
+})
