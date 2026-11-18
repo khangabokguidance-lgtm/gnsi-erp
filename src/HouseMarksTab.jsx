@@ -71,15 +71,17 @@ function textToMatrix(t) {
 const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
 
 // Numbered section header: gold badge + title + optional hint / right-side actions.
-function Step({ n, title, hint, right }) {
+function Step({ n, title, hint, right, summary, open = true, onToggle }) {
+  const collapsible = !!onToggle
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: collapsible && !open ? 0 : 14, flexWrap: 'wrap' }}>
       <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg,#E2C57E,${GOLD})`, color: NAVY, fontWeight: 800, fontSize: 14, boxShadow: '0 6px 12px -6px rgba(201,162,75,.9)', flex: 'none' }}>{n}</span>
       <div style={{ flex: '1 1 160px', minWidth: 0 }}>
         <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 19, fontWeight: 700, color: NAVY, lineHeight: 1.15 }}>{title}</div>
-        {hint && <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>{hint}</div>}
+        <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2, overflow: collapsible && !open ? 'hidden' : 'visible', textOverflow: 'ellipsis', whiteSpace: collapsible && !open ? 'nowrap' : 'normal' }}>{collapsible && !open ? (summary || hint) : hint}</div>
       </div>
       {right}
+      {collapsible && <button type="button" onClick={onToggle} aria-expanded={open} style={{ border: '1.5px solid #d3dbe7', background: '#fff', color: NAVY, borderRadius: 11, padding: '7px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38, fontFamily: 'inherit' }}>{open ? 'Done ▴' : '✎ Edit'}</button>}
     </div>
   )
 }
@@ -105,6 +107,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [openDet, setOpenDet] = useState(() => !test.name.trim())   // step 1 starts open only for a brand-new test
+  const [openStu, setOpenStu] = useState(false)                       // step 2 starts as a one-line summary
+  const [justSaved, setJustSaved] = useState(false)
+  const nameRef = useRef(null)
   const [bulkCols, setBulkCols] = useState([])        // one text block per subject, one line per student (sheet order)
   const [saveAfter, setSaveAfter] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -155,6 +161,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
   useEffect(() => { if (saveAfter) { setSaveAfter(false); save() } })
+  useEffect(() => { if (dirty) setJustSaved(false) }, [dirty])
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
 
   // Auto-remember: every edit is kept on this computer (debounced), and the test setup is the next default.
@@ -285,6 +292,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setDirty(true)
   }
 
+  // One tap marks a student absent in every subject (or clears it) - handy on phones, where the number keypad has no letters.
+  const toggleAbsentRow = sid => {
+    setMarks(prev => {
+      const cur = prev[sid] || []
+      const allAb = test.subjects.length > 0 && test.subjects.every((_, i) => cur[i] === 'AB')
+      return { ...prev, [sid]: test.subjects.map(() => allAb ? null : 'AB') }
+    })
+    setDirty(true)
+  }
   const setPreset = p => {
     setTest(t => ({ ...t, preset: p, subjects: clone(PRESETS[p].subjects) }))
     setMarks({}); setDirty(true)
@@ -437,7 +453,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
   }
   const save = async () => {
-    if (!test.name.trim()) { flash('err', 'Give the test a name first.'); return }
+    if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
     const compact = {}
     roster.forEach(s => {
@@ -453,7 +469,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const { data, error } = await q
     setBusy(false)
     if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
-    setTest(t => ({ ...t, id: data.id })); setDirty(false); lsDel(draftKey); loadSaved()
+    setTest(t => ({ ...t, id: data.id })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved()
     // Progress records: one row per student per test, so a student's results can be followed over time.
     const rankedPcts = Object.values(calc).filter(c => c.rank).map(c => c.pct)
     const classAvg = rankedPcts.length ? rankedPcts.reduce((a, b) => a + b, 0) / rankedPcts.length : null
@@ -588,12 +604,22 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           <button type="button" style={btn(false)} onClick={discardDraft}>Discard</button>
         </div>
       )}
+      {justSaved && !dirty && (
+        <div role="status" style={{ ...card, padding: '14px 16px', background: 'linear-gradient(135deg,#ecfdf5,#f0fdf9)', borderColor: '#a7f3d0', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 200px', color: '#047857', fontWeight: 700, fontSize: 14 }}>✅ Saved{test.name ? <> “{test.name}”</> : null}. Send the result sheet now:</span>
+          <button type="button" style={{ ...btn(true), background: '#128C4A', borderColor: '#128C4A' }} onClick={() => exportPdf(true)} disabled={pdfBusy}>📤 Share PDF</button>
+          <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy}>📄 Download PDF</button>
+          <button type="button" style={{ ...btn(false), border: '1.5px solid transparent', color: '#64748b' }} onClick={() => setJustSaved(false)}>Dismiss</button>
+        </div>
+      )}
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." />
+        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
+          summary={`${test.name.trim() || 'Untitled test'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
+        {openDet && <div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
+          <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
@@ -619,10 +645,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           {!subjectLocked && <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>}
           <span style={{ fontSize: 12, color: '#64748b' }}>{subjectLocked ? 'One-subject test: name it and set the maximum.' : '“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.'}</span>
         </div>
+        </div>}
       </div>
 
       <div style={card}>
-        <Step n={2} title="Students" hint="Who is sitting this test. Use your house, the whole school, or a saved list." />
+        <Step n={2} title="Students" hint="Who is sitting this test. Use your house, the whole school, or a saved list." open={openStu} onToggle={() => setOpenStu(v => !v)}
+          summary={`${roster.length} student${roster.length === 1 ? '' : 's'} on the sheet${mode === 'all' ? ` · your house${lockHouse ? ' (' + lockHouse + ')' : ''}` : test.group ? ' · ' + test.group : ''}`} />
+        {openStu && <div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginRight: 4 }}>{roster.length} on this sheet</span>
           <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🏠 My house ({pool.length})</button>
@@ -685,6 +714,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Saved lists are stored in the database, so you can load them on any phone or computer.'}</div>
           </div>
         )}
+        </div>}
       </div>
 
       {bulkOpen && <div style={{ ...card, border: `2px solid ${GOLD}` }}>
@@ -812,8 +842,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   return (
                     <tr key={s.id} style={{ background: rowBg }}>
                       <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
-                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.gcc_no ? `GCC ${s.gcc_no}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}{s.house ? ` · ${s.house}` : ''}</div>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
+                            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.gcc_no ? `GCC ${s.gcc_no}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}{s.house ? ` · ${s.house}` : ''}</div>
+                          </div>
+                          <button type="button" onClick={() => toggleAbsentRow(s.id)} aria-label={`Mark ${s.name} absent`} title="Absent in all subjects" style={{ flex: 'none', minHeight: 28, padding: '2px 7px', fontSize: 11, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${c.absent ? '#f59e0b' : '#d3dbe7'}`, background: c.absent ? '#fef3c7' : '#fff', color: c.absent ? '#92400e' : '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>AB</button>
+                        </div>
                       </td>
                       {test.subjects.map((sub, i) => {
                         const v = m[i] ?? null, st = cellState(v, sub), filled = v !== null && v !== ''
@@ -929,7 +964,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         <div style={{ flex: '1 1 200px', fontSize: 13 }}>
           <b>{stats.entered}/{stats.students}</b> entered{stats.bad ? <span style={{ color: '#fca5a5' }}> · {stats.bad} need fixing</span> : null}{dirty ? <span style={{ color: '#fcd34d' }}> · ● unsaved</span> : <span style={{ color: '#86efac' }}> · saved</span>}
         </div>
-        <button type="button" onClick={exportXlsx} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>⬇ Excel</button>
+        <button type="button" onClick={() => exportPdf(true)} disabled={pdfBusy || !stats.entered} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>📤 Share PDF</button>
         <button type="button" onClick={save} disabled={busy} style={{ ...btn(false), background: 'linear-gradient(135deg,#E2C57E,#C9A24B)', color: '#0B1E3D', border: 'none', padding: '9px 22px' }}>{busy ? 'Saving…' : test.id ? '💾 Update test' : '💾 Save test'}</button>
       </div>
     </div>
