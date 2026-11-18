@@ -100,8 +100,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const pool = useMemo(() => (students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [students])
-  // Whole-school list: in "Pick students" mode any housemaster can add a
-  // student from any house (or a day scholar), not only their own.
+  // Students available to pick: Hostel.jsx passes only the housemaster's own
+  // house (admins get everyone), so nobody can add another house's students.
   const school = useMemo(() => (allStudents || students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [allStudents, students])
@@ -465,7 +465,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         </div>
         {mode === 'selected' && (
           <div>
-            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search any student in the school by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search your students by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
             {(pickQ.trim() || !picked.length) && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 6, maxWidth: 360 }}>
                 {addable.length ? addable.map(s => (
