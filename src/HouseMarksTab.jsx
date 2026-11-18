@@ -499,7 +499,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   <input type="checkbox" checked={picked.includes(s.id) || ticks.includes(s.id)} disabled={picked.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
                   <span style={{ flex: 1, minWidth: 0 }}>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
                   <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
-                  {picked.includes(s.id) && <span style={{ fontSize: 11, fontWeight: 700, color: '#047857' }}>✓ on sheet</span>}
+                  {picked.includes(s.id)
+                    ? <button type="button" onClick={e => { e.preventDefault(); unpickStudent(s.id) }} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', flex: 'none' }}>✓ On sheet · Remove</button>
+                    : <button type="button" onClick={e => { e.preventDefault(); setPicked(p => [...new Set([...p, s.id])]); setTicks(t => t.filter(x => x !== s.id)); setDirty(true) }} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
                 </label>
               )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
             </div>
