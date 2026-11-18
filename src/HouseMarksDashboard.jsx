@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
-import { analyze } from './HouseMarksPast'
+import { analyze } from './houseMarksAnalyze'
 
 // Admin dashboard: every house, every housemaster and every test in one view, with edit / delete.
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', LINE = '#e2e8f0'
@@ -12,6 +12,14 @@ const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransfo
 const pct = v => v == null ? '–' : v.toFixed(1) + '%'
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const NOHOUSE = 'No house'
+
+const Tile = ({ l, v, sub }) => (
+  <div style={{ flex: '1 1 120px', border: `1px solid ${LINE}`, borderRadius: 14, padding: '9px 12px', background: '#fff' }}>
+    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase' }}>{l}</div>
+    <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, lineHeight: 1.2 }}>{v}</div>
+    {sub ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{sub}</div> : null}
+  </div>
+)
 
 export default function HouseMarksDashboard({ school = [], onOpenTest }) {
   const [rows, setRows] = useState(null)
@@ -75,13 +83,6 @@ export default function HouseMarksDashboard({ school = [], onOpenTest }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Housemaster', 'Tests', 'Students entered', 'Last saved'], ...data.teachers.map(x => [x.name, x.tests.size, x.students, x.last ? x.last.slice(0, 10) : ''])]), 'Housemasters')
     XLSX.writeFile(wb, 'Marks_dashboard.xlsx')
   }
-  const Tile = ({ l, v, sub }) => (
-    <div style={{ flex: '1 1 120px', border: `1px solid ${LINE}`, borderRadius: 14, padding: '9px 12px', background: '#fff' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase' }}>{l}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, lineHeight: 1.2 }}>{v}</div>
-      {sub ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{sub}</div> : null}
-    </div>
-  )
   const maxAvg = Math.max(1, ...data.hl.map(x => x.avg || 0))
 
   return (

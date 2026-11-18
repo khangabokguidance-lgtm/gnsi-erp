@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
-import { GRADES, gradeOf, gradeColor, medal, buildCalc, subjSig, parseMark, cellState } from './houseMarksCalc'
+import { GRADES, gradeColor, medal, buildCalc, subjSig, parseMark, cellState } from './houseMarksCalc'
 import HouseMarksPast from './HouseMarksPast'
 import HouseMarksGroups from './HouseMarksGroups'
 import HouseMarksDashboard from './HouseMarksDashboard'
@@ -147,7 +147,6 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   const [adminIds, setAdminIds] = useState([])   // admin only: every student of the opened test, whoever entered them
   const pool = useMemo(() => school.filter(x => classExtra.includes(x.id) || adminIds.includes(x.id)), [school, classExtra, adminIds])
   const roster = useMemo(() => mode === 'all' ? pool : school.filter(s => picked.includes(s.id)), [pool, school, mode, picked])
-  const houses = useMemo(() => [...new Set(school.map(s => s.house).filter(Boolean))].sort(), [school])
   const classes = useMemo(() => [...new Set(school.map(s => s.class_name).filter(Boolean))].sort(), [school])
   // Everyone matching the search / house / class filters who is not already on the sheet.
   const addable = useMemo(() => {
@@ -247,7 +246,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setTest(t => t.group.trim() ? t : { ...t, group: name })
     setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check groups”.` : ''}`)
   }
-  const useGroup = g => {
+  const applyGroup = g => {
     const live = new Set(school.map(x => x.id))
     const ids = g.ids.filter(id => live.has(id))
     setMyClass(ids); setMode('all'); setDirty(true)
@@ -266,28 +265,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     const { error } = await upsertRow(CLASS_ROW, ids)
     if (error) flash('err', 'Saved on this computer only: run supabase/RUN_house_test_marks.sql so My class follows you to other devices.')
   }
-  const addToClass = id => {
-    if (!classExtra.includes(id)) setMyClass([...classExtra, id])
-    if (mode === 'selected') addStudents([id])
-    flash('ok', 'Added to My class.')
-  }
   const removeFromClass = id => { setMyClass(classExtra.filter(x => x !== id)); if (mode === 'selected') setPicked(p => p.filter(x => x !== id)); flash('ok', 'Removed from My class.') }
-  const addToGroup = async (g, ids) => {
-    const next = [...new Set([...g.ids, ...ids])]
-    if (groupsDb) { const { error } = await supabase.from('house_test_groups').update({ student_ids: next, updated_at: new Date().toISOString() }).eq('id', g.id); if (error) { flash('err', 'Could not update the group: ' + error.message); return } }
-    const upd = groups.map(x => x.id === g.id ? { ...x, ids: next } : x)
-    setGroups(upd); if (!groupsDb) lsSet(groupsKey, upd)
-    flash('ok', `Added to group “${g.name}” (${next.length} students).`)
-  }
-  const addToNewGroup = async ids => {
-    const name = (window.prompt('Name for the new group, e.g. Class VI Navodaya') || '').trim()
-    if (!name || name === CLASS_ROW) return
-    const exist = groups.find(g => g.name.toLowerCase() === name.toLowerCase())
-    if (exist) { addToGroup(exist, ids); return }
-    const { error } = await upsertRow(name, ids)
-    if (error) { const next = [...groups, { id: Date.now(), name, ids }]; setGroups(next); lsSet(groupsKey, next); setGroupsDb(false); flash('err', 'Group saved on this computer only.'); return }
-    await loadGroups(); flash('ok', `Group “${name}” created with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
-  }
   // Students who sit in more than one saved list.
   const dupes = useMemo(() => {
     const m = new Map()
@@ -421,7 +399,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     }
     await loadTemplates(); flash('ok', `Template “${name}” saved for all teachers.`)
   }
-  const useTemplate = t => {
+  const applyTemplate = t => {
     if (dirty && Object.keys(marks).length && !window.confirm('Switch to this template? Marks you typed for the current sheet will be cleared.')) return
     setTest(x => ({ ...x, id: null, kind: 'other', chapter: '', name: t.name, preset: t.subjects.length === 1 ? 'single' : 'custom', subjects: clone(t.subjects) }))
     setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
@@ -546,7 +524,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
       const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
       const landscape = test.subjects.length > 4
       const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
-      const mx = 12, W = doc.internal.pageSize.getWidth()
+      const mx = 12
       let y = pdfLetterhead(doc, { title: 'Test Result' + (test.name ? ' – ' + test.name : ''), margin: mx, date: test.date ? new Date(test.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined })
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105)
       const info = [test.group ? `Group: ${test.group}` : null, `Students: ${roster.length}`, `Maximum: ${maxTotal}`, stats.avg == null ? null : `Average: ${stats.avg.toFixed(1)}`, stats.high == null ? null : `Highest: ${stats.high}`, stats.absent ? `Absent: ${stats.absent}` : null].filter(Boolean).join('   ·   ')
@@ -766,6 +744,13 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     if (!error && data) setShared({ ...data })
   }, [])
   const [testOwner, setTestOwner] = useState(null)
+  // closing the tab or refreshing with unsaved marks asks first (marks are also kept in an auto-saved draft)
+  useEffect(() => {
+    if (!dirty) return
+    const f = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', f)
+    return () => window.removeEventListener('beforeunload', f)
+  }, [dirty])
   const openSaved = r => {
     const byId = {}; school.forEach(s => { byId[s.id] = s })
     setTestOwner(r.created_by || null); loadShared(r.id)
@@ -973,7 +958,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
           <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Saved templates:</span>
           {templates.map(t => (
             <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
-              <button type="button" onClick={() => useTemplate(t)} title={t.subjects.map(x => `${x.n} ${x.max}`).join(' + ')} style={{ border: 0, background: 'transparent', padding: '7px 6px 7px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{t.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {t.subjects.reduce((a, x) => a + Number(x.max || 0), 0)}</span></button>
+              <button type="button" onClick={() => applyTemplate(t)} title={t.subjects.map(x => `${x.n} ${x.max}`).join(' + ')} style={{ border: 0, background: 'transparent', padding: '7px 6px 7px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{t.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {t.subjects.reduce((a, x) => a + Number(x.max || 0), 0)}</span></button>
               {(canDelete || !t.created_by || t.created_by === meKey) && <button type="button" aria-label={`Delete template ${t.name}`} onClick={() => delTemplate(t)} style={{ border: 0, background: 'transparent', padding: '7px 10px 7px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>}
             </span>
           ))}
@@ -1062,7 +1047,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
               {groups.map(g => (
                 <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
-                  <button type="button" onClick={() => useGroup(g)} title={`Make My class = ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '7px 6px 7px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
+                  <button type="button" onClick={() => applyGroup(g)} title={`Make My class = ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '7px 6px 7px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
                   <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '7px 10px 7px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
                 </span>
               ))}
@@ -1110,7 +1095,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
                         <button type="button" onClick={() => setMgrList(open ? null : g.id)} style={{ border: 0, background: 'transparent', fontWeight: 800, color: NAVY, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{open ? '▾' : '▸'} {g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length} students</span></button>
                         {dupLists[g.name] ? <span style={{ fontSize: 11, fontWeight: 800, color: '#92400e', background: '#fef3c7', borderRadius: 99, padding: '2px 8px' }}>{dupLists[g.name]} shared</span> : null}
                         <span style={{ flex: 1 }} />
-                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }} onClick={() => useGroup(g)}>Use</button>
+                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }} onClick={() => applyGroup(g)}>Use</button>
                         <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => delGroup(g)}>Delete list</button>
                       </div>
                       {open && (
@@ -1542,6 +1527,22 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
 }
 
 // Two views: enter marks, and look back at every shared test with analysis. The entry view stays mounted so unsaved marks are never lost when switching.
+// A crash inside the Marks tab shows a message and a Retry button instead of blanking the whole portal.
+class HmBoundary extends Component {
+  constructor(p) { super(p); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  componentDidCatch(err) { try { console.error('HouseMarksTab crashed:', err) } catch { /* ignore */ } }
+  render() {
+    if (!this.state.err) return this.props.children
+    return (
+      <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 16, padding: 18, fontSize: 14 }}>
+        <b>Something went wrong in this tab.</b> Your saved marks are safe in the database{this.props.hint ? '. ' + this.props.hint : ''}.
+        <div style={{ marginTop: 10 }}><button type="button" onClick={() => this.setState({ err: null })} style={{ padding: '9px 16px', borderRadius: 11, border: '1.5px solid #fecaca', background: '#fff', color: '#b91c1c', fontWeight: 700, cursor: 'pointer' }}>↻ Try again</button></div>
+      </div>
+    )
+  }
+}
+
 export default function HouseMarksTab(props) {
   const [view, setView] = useState('enter')
   const [openReq, setOpenReq] = useState(null)
@@ -1555,10 +1556,10 @@ export default function HouseMarksTab(props) {
       <div role="tablist" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 14, background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: 16, fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif" }}>
         {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}{tab('groups', '👥 Group list')}{isAdminRole(props.currentUser?.role) && tab('dash', '🏠 Dashboard')}
       </div>
-      <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HouseMarksEntry {...props} openRequest={openReq} /></div>
-      {view === 'groups' && <HouseMarksGroups school={props.allStudents || props.students || []} isAdmin={isAdminRole(props.currentUser?.role)} />}
-      {view === 'dash' && isAdminRole(props.currentUser?.role) && <HouseMarksDashboard school={props.allStudents || props.students || []} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
-      {view === 'past' && <HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
+      <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HmBoundary hint="Marks you typed but did not save are kept as a draft on this device"><HouseMarksEntry {...props} openRequest={openReq} /></HmBoundary></div>
+      {view === 'groups' && <HmBoundary key="groups"><HouseMarksGroups school={props.allStudents || props.students || []} isAdmin={isAdminRole(props.currentUser?.role)} /></HmBoundary>}
+      {view === 'dash' && isAdminRole(props.currentUser?.role) && <HmBoundary key="dash"><HouseMarksDashboard school={props.allStudents || props.students || []} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} /></HmBoundary>}
+      {view === 'past' && <HmBoundary key="past"><HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} /></HmBoundary>}
     </div>
   )
 }
