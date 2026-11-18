@@ -1088,20 +1088,30 @@ function MissionSainikInner({ currentUser }) {
             <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}>
               {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
               {members.map((m, i) => {
-                const mine = tests.filter(r => r.subject === sub.label && r.setter === m.name)
+                const pre = tests.filter(r => r.subject === sub.label && r.setter === m.name).sort((a, b) => a.test_no - b.test_no)
+                const prac = practice.filter(r => subjectOfPractice(r).key === sub.key && r.setter === m.name)
+                const mine = [...pre, ...prac]
+                const chipTone = r => r.status === 'Pending' ? { bg: '#f1ede3', fg: '#8a6118' } : { bg: '#dcfce7', fg: '#15803d' }
+                const taskChips = (label, list, tabKey, name) => list.length > 0 && (
+                  <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, paddingLeft: 40 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub, marginRight: 4 }}>{label} · {list.filter(r => r.status !== 'Pending').length}/{list.length} in</span>
+                    {list.map(r => { const t = chipTone(r); return <button key={r.id} type="button" title={`${r.status} — open ${fullName(m.name)}'s tasks`} onClick={() => { setPerson(m.name); setTaskView('all'); setTab(tabKey) }} style={{ border: 'none', cursor: 'pointer', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: t.bg, color: t.fg, fontFamily: 'inherit' }}>{tabKey === 'practice' ? `Set ${setNoFor(r)}` : 'PMT-' + String(r.test_no).padStart(2, '0')}</button> })}
+                  </div>)
                 return (
                   <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
                     <span role={m.role === 'setter' ? 'button' : undefined} tabIndex={m.role === 'setter' ? 0 : undefined} title={m.role === 'setter' ? `See ${fullName(m.name)}'s tasks` : undefined}
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
                       style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
-                      <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${mine.length || 0} tests · ${mine.filter(r => r.status !== 'Pending').length} in` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role}</Pill>
                       {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '' })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
+                    {taskChips('Pre Mock', pre, 'mine', m.name)}
+                    {taskChips('Practice', prac, 'practice', m.name)}
                   </div>)
               })}
             </PremiumCard>)
