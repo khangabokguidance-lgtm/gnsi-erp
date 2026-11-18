@@ -20,6 +20,7 @@ const NAVY = '#0B1E3D', GOLD = '#C9A24B', LINE = '#e2e8f0'
 const PRESETS = {
   jnvst: { label: 'JNVST (Mental Ability 50 · Arithmetic 25 · Language 25)', subjects: [{ n: 'Mental Ability', max: 50, min: '' }, { n: 'Arithmetic', max: 25, min: 7 }, { n: 'Language', max: 25, min: '' }] },
   arith: { label: 'Arithmetic only (25)', subjects: [{ n: 'Arithmetic', max: 25, min: 7 }] },
+  single: { label: 'One subject only', subjects: [{ n: 'Subject', max: 25, min: '' }], locked: true },
   custom: { label: 'Custom subjects', subjects: [{ n: 'Marks', max: 100, min: '' }] },
 }
 
@@ -71,12 +72,24 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const [dirty, setDirty] = useState(false)
   const [paste, setPaste] = useState('')
   const [search, setSearch] = useState('')
+  const [mode, setMode] = useState('all')          // 'all' = whole house, 'selected' = hand-picked students
+  const [picked, setPicked] = useState([])         // student ids when mode === 'selected'
+  const [pickQ, setPickQ] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
 
-  const roster = useMemo(() => (students || [])
+  const pool = useMemo(() => (students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [students])
+  const roster = useMemo(() => mode === 'all' ? pool : pool.filter(s => picked.includes(s.id)), [pool, mode, picked])
+  const addable = useMemo(() => {
+    const q = pickQ.trim().toLowerCase()
+    return pool.filter(s => !picked.includes(s.id) && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q))).slice(0, 8)
+  }, [pool, picked, pickQ])
+  const pickStudent = id => { setPicked(p => p.includes(id) ? p : [...p, id]); setPickQ(''); setDirty(true) }
+  const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
+  const pickAllShown = () => { setPicked(pool.map(s => s.id)); setDirty(true) }
+  const subjectLocked = !!PRESETS[test.preset]?.locked
 
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
 
@@ -142,12 +155,12 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     setMarks({}); setDirty(true)
   }
   const updSubject = (i, field, val) => {
-    setTest(t => { const subjects = clone(t.subjects); subjects[i][field] = field === 'n' ? val : (val === '' ? '' : Number(val)); return { ...t, preset: 'custom', subjects } })
+    setTest(t => { const subjects = clone(t.subjects); subjects[i][field] = field === 'n' ? val : (val === '' ? '' : Number(val)); return { ...t, preset: t.preset === 'single' ? 'single' : 'custom', subjects } })
     setDirty(true)
   }
-  const addSubject = () => { setTest(t => ({ ...t, preset: 'custom', subjects: [...t.subjects, { n: 'Subject ' + (t.subjects.length + 1), max: 25, min: '' }] })); setMarks(m => { const c = {}; Object.keys(m).forEach(k => { c[k] = [...m[k], null] }); return c }); setDirty(true) }
+  const addSubject = () => { if (subjectLocked) return; setTest(t => ({ ...t, preset: 'custom', subjects: [...t.subjects, { n: 'Subject ' + (t.subjects.length + 1), max: 25, min: '' }] })); setMarks(m => { const c = {}; Object.keys(m).forEach(k => { c[k] = [...m[k], null] }); return c }); setDirty(true) }
   const delSubject = i => {
-    if (test.subjects.length < 2) return
+    if (test.subjects.length < 2 || subjectLocked) return
     setTest(t => ({ ...t, preset: 'custom', subjects: t.subjects.filter((_, j) => j !== i) }))
     setMarks(m => { const c = {}; Object.keys(m).forEach(k => { c[k] = m[k].filter((_, j) => j !== i) }); return c })
     setDirty(true)
@@ -182,7 +195,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     setMarks(next); setDirty(true)
     const noCols = map.filter(j => j < 0).length
     flash(miss.length || noCols ? 'err' : 'ok',
-      `${ok} matched${miss.length ? `, ${miss.length} not in this house (${miss.slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''})` : ''}${noCols ? `. ${noCols} subject column(s) not found in the header.` : '.'}`)
+      `${ok} matched${miss.length ? `, ${miss.length} not on this sheet (${miss.slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''})` : ''}${noCols ? `. ${noCols} subject column(s) not found in the header.` : '.'}`)
   }
   const onFile = f => {
     if (!f) return
@@ -222,10 +235,12 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
     const compact = {}
     roster.forEach(s => {
-      const m = marks[s.id]; if (!m || m.every(v => v === null || v === undefined)) return
+      const m = marks[s.id] || test.subjects.map(() => null)
+      if (mode === 'all' && m.every(v => v === null || v === undefined)) return
       compact[s.id] = { gcc: s.gcc_no || '', name: s.name || '', m }
     })
-    if (!Object.keys(compact).length) { flash('err', 'No marks entered yet.'); return }
+    if (!Object.keys(compact).length) { flash('err', mode === 'selected' ? 'Add at least one student first.' : 'No marks entered yet.'); return }
+    if (!Object.values(compact).some(v => v.m.some(x => x !== null && x !== undefined))) { flash('err', 'No marks entered yet.'); return }
     setBusy(true)
     const row = { test_name: test.name.trim(), test_date: test.date || todayStr(), house: lockHouse || 'All', subjects: test.subjects, marks: compact, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }
     const q = test.id ? supabase.from('house_test_marks').update(row).eq('id', test.id).select('id').single() : supabase.from('house_test_marks').insert(row).select('id').single()
@@ -237,7 +252,10 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const openSaved = r => {
     const byId = {}; roster.forEach(s => { byId[s.id] = s })
     const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
-    setTest({ id: r.id, name: r.test_name, date: r.test_date, preset: 'custom', subjects: r.subjects || clone(PRESETS.jnvst.subjects) })
+    const ids = Object.keys(mk)
+    const subs = r.subjects || clone(PRESETS.jnvst.subjects)
+    setTest({ id: r.id, name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    if (ids.length < pool.length) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const delSaved = async r => {
@@ -249,7 +267,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
-    setTest({ id: null, name: '', date: todayStr(), preset: 'jnvst', subjects: clone(PRESETS.jnvst.subjects) }); setMarks({}); setDirty(false)
+    setTest({ id: null, name: '', date: todayStr(), preset: 'jnvst', subjects: clone(PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false)
   }
 
   const shown = roster.filter(s => !search.trim() || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(search.trim().toLowerCase()))
@@ -290,13 +308,45 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
             <label style={lab}>{i === 0 ? 'Subject' : <span style={{ visibility: 'hidden' }}>Subject</span>}<input style={inp} value={s.n} onChange={e => updSubject(i, 'n', e.target.value)} /></label>
             <label style={lab}>{i === 0 ? 'Max' : <span style={{ visibility: 'hidden' }}>Max</span>}<input style={inp} type="number" min="1" value={s.max} onChange={e => updSubject(i, 'max', e.target.value)} /></label>
             <label style={lab}>{i === 0 ? 'Min' : <span style={{ visibility: 'hidden' }}>Min</span>}<input style={inp} type="number" min="0" value={s.min} onChange={e => updSubject(i, 'min', e.target.value)} /></label>
-            <button type="button" style={{ ...btn(false), padding: 0 }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2}>✕</button>
+            <button type="button" style={{ ...btn(false), padding: 0 }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2 || subjectLocked}>✕</button>
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>
-          <span style={{ fontSize: 12, color: '#64748b' }}>“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.</span>
+          {!subjectLocked && <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>}
+          <span style={{ fontSize: 12, color: '#64748b' }}>{subjectLocked ? 'One-subject test: name it and set the maximum.' : '“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.'}</span>
         </div>
+      </div>
+
+      <div style={card}>
+        <p style={h}>Students in this test</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <button type="button" style={btn(mode === 'all')} onClick={() => { setMode('all'); setDirty(true) }}>Whole house ({pool.length})</button>
+          <button type="button" style={btn(mode === 'selected')} onClick={() => { setMode('selected'); setDirty(true) }}>Pick students{mode === 'selected' ? ` (${picked.length})` : ''}</button>
+        </div>
+        {mode === 'selected' && (
+          <div>
+            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search your students by name or GCC No to add" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+            {(pickQ.trim() || !picked.length) && (
+              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 6, maxWidth: 360 }}>
+                {addable.length ? addable.map(s => (
+                  <button key={s.id} type="button" onClick={() => pickStudent(s.id)} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 10px', background: '#fff', border: 0, borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
+                    <span>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}</span></span><span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
+                  </button>
+                )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No more students match.</div>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+              {roster.map(s => (
+                <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: `1px solid ${LINE}`, borderRadius: 99, padding: '4px 6px 4px 10px', fontSize: 12 }}>
+                  {s.name}
+                  <button type="button" aria-label={`Remove ${s.name}`} onClick={() => unpickStudent(s.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b', fontSize: 13 }}>✕</button>
+                </span>
+              ))}
+              {!picked.length && <span style={{ fontSize: 12, color: '#64748b' }}>No students picked yet.</span>}
+            </div>
+            <div style={{ marginTop: 8 }}><button type="button" style={btn(false)} onClick={pickAllShown}>Add all {pool.length}</button></div>
+          </div>
+        )}
       </div>
 
       <div style={card}>
