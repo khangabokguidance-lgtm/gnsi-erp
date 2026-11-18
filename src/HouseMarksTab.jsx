@@ -414,8 +414,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const inp = { padding: '8px 10px', border: `1px solid #cbd5e1`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', minHeight: 38, width: '100%', background: '#fff' }
   const btn = (primary) => ({ padding: '8px 14px', borderRadius: 8, border: `1px solid ${primary ? NAVY : '#cbd5e1'}`, background: primary ? NAVY : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38 })
   const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#64748b', minWidth: 0 }
-  const cellBg = st => st === 'err' ? { background: '#fee2e2', color: '#b91c1c' } : st === 'low' ? { background: '#fef3c7', color: '#92400e' } : {}
   const th = { padding: '8px 8px', background: '#f1f5f9', fontSize: 12, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0 }
+  const thG = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
+  const markBox = st => st === 'err' ? { background: '#fee2e2', color: '#b91c1c', border: '2px solid #ef4444' } : st === 'low' ? { background: '#fef3c7', color: '#92400e', border: '2px solid #f59e0b' } : { background: '#fff', color: NAVY, border: '2px solid #cbd5e1' }
   const td = { padding: 0, borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap' }
 
   return (
@@ -601,31 +602,38 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
-          <div style={{ overflowX: 'auto', border: `1px solid ${LINE}`, borderRadius: 10 }}>
-            <table ref={tableRef} style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+          <div style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
+            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}`}</style>
+            <table ref={tableRef} style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
               <thead><tr>
-                <th style={th}>#</th><th style={th}>GCC</th><th style={th}>Name</th>
-                {test.subjects.map((s, i) => <th key={i} style={th}>{s.n || 'Subject'}<div style={{ fontWeight: 400 }}>out of {s.max}</div></th>)}
-                <th style={th}>Total<div style={{ fontWeight: 400 }}>out of {maxTotal}</div></th><th style={th}>%</th><th style={th}>Rank</th>
+                <th style={{ ...thG, textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 118 }}>Student</th>
+                {test.subjects.map((s, i) => <th key={i} style={thG}>{s.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {s.max}</div></th>)}
+                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Rank</th>
               </tr></thead>
               <tbody>
                 {shown.map((s, idx) => {
                   const c = calc[s.id] || {}, m = marks[s.id] || []
+                  const rowBg = activeRow === s.id ? '#fff8e6' : idx % 2 ? '#f8fafc' : '#fff'
+                  const cell = { borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 6px' }
                   return (
-                    <tr key={s.id} style={{ background: activeRow === s.id ? '#fff8e6' : idx % 2 ? '#fafbfd' : '#fff', boxShadow: activeRow === s.id ? 'inset 3px 0 0 #C9A24B' : 'none' }}>
-                      <td style={{ ...td, padding: '6px 8px', color: '#94a3b8' }}>{idx + 1}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace' }}>{s.gcc_no || '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', minWidth: 150 }}>{s.name}<div style={{ fontSize: 11, color: '#94a3b8' }}>{s.class_name || ''}</div></td>
-                      {test.subjects.map((sub, i) => (
-                        <td key={i} style={td}>
-                          <input aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
-                            onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="·"
-                            style={{ width: 84, border: 0, padding: '11px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 600, background: 'transparent', outline: 'none', ...cellBg(cellState(m[i] ?? null, sub)) }} />
-                        </td>
-                      ))}
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace' }}>{c.absent ? 'Absent' : c.n ? c.tot : '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace', color: !c.n ? '#94a3b8' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c', fontWeight: 700 }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : '–'}</td>
+                    <tr key={s.id} style={{ background: rowBg }}>
+                      <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.gcc_no ? `GCC ${s.gcc_no}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}{s.house ? ` · ${s.house}` : ''}</div>
+                      </td>
+                      {test.subjects.map((sub, i) => {
+                        const v = m[i] ?? null, st = cellState(v, sub), filled = v !== null && v !== ''
+                        return (
+                          <td key={i} style={cell}>
+                            <input className="hm-in" aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
+                              onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="–"
+                              style={{ width: 72, height: 48, boxSizing: 'border-box', textAlign: 'center', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 800, borderRadius: 12, outline: 'none', ...markBox(st), ...(st === '' && filled ? { background: '#f0fdf4', borderColor: '#86efac', color: '#065f46' } : {}) }} />
+                          </td>
+                        )
+                      })}
+                      <td style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
+                      <td style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
                 })}
@@ -633,7 +641,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             </table>
           </div>
         )}
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Red = invalid or above the maximum. Amber = below the minimum. Ties share a rank.</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Green = entered · Red = invalid or above the maximum · Amber = below the minimum. Ties share a rank.</div>
       </div>
 
       <div style={card}>
