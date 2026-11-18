@@ -25,7 +25,7 @@ import SmartPaperMaker from './SmartPaperMaker'
 import SetPrintDialog from './SetPrintDialog'
 import { materialDocHtml, renderMaterial, MATERIAL_CSS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
-import { officialSubjects, classesOf, subjectFamily } from './officialSyllabus'
+import { officialSubjects, subjectFamily } from './officialSyllabus'
 import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
@@ -1174,8 +1174,7 @@ function MissionSainikInner({ currentUser }) {
     const fams = x => (subjectFamily(x.label) === 'gk' ? ['gk', 'social'] : [subjectFamily(x.label)])
     const chaptersFor = x => {
       const pick = cls => Object.entries(officialSubjects('sainik', cls)).filter(([n]) => fams(x).includes(subjectFamily(n))).flatMap(([, chs]) => chs)
-      const first = pick(6)
-      return [...new Set(first.length ? first : classesOf('sainik').flatMap(pick))]
+      return [...new Set(pick(6))]   // Class VI syllabus only
     }
     const rowsNew = []
     SUBJECTS.forEach(x => {
@@ -1218,7 +1217,8 @@ function MissionSainikInner({ currentUser }) {
           const suggest = x => {
             const fam = subjectFamily(x.label)
             const fams = fam === 'gk' ? ['gk', 'social'] : [fam]
-            const list = [...new Set(classesOf('sainik').flatMap(c => Object.entries(officialSubjects('sainik', c)).filter(([n]) => fams.includes(subjectFamily(n))).flatMap(([, chs]) => chs)))]
+            // Mission Sainik prepares Class VI aspirants, so suggest only the Class VI syllabus (Appendix II).
+            const list = [...new Set(Object.entries(officialSubjects('sainik', 6)).filter(([n]) => fams.includes(subjectFamily(n))).flatMap(([, chs]) => chs))]
             return [...list.filter(c => !used.has(c.toLowerCase())), ...list.filter(c => used.has(c.toLowerCase()))]
           }
           const copyPrev = t => {
