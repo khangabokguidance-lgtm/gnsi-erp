@@ -213,7 +213,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   useEffect(() => { loadGroups() }, [loadGroups])
   const saveAsGroup = async () => {
     const name = groupName.trim()
-    if (!name) { flash('err', 'Type a name for this list first, e.g. “Class VI Navodaya”.'); return }
+    if (!name) { flash('err', 'Type a name for your group first, e.g. “Class VI Navodaya”.'); return }
     if (!roster.length) { flash('err', 'Add some students first.'); return }
     const ids = roster.map(x => x.id)
     const overlap = new Set()
@@ -226,7 +226,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
     }
     setTest(t => t.group.trim() ? t : { ...t, group: name })
-    setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check lists”.` : ''}`)
+    setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check groups”.` : ''}`)
   }
   const useGroup = g => {
     const live = new Set(school.map(s => s.id))
@@ -545,7 +545,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }
   const needGroup = () => {
     if (test.group.trim()) return false
-    setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your saved lists).')
+    setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your groups).')
     setTimeout(() => { groupRef.current?.focus(); groupRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80)
     return true
   }
@@ -774,19 +774,19 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <Step n={2} title="Students" hint="Who is sitting this test. Use your house, the whole school, or a saved list." open={openStu} onToggle={() => setOpenStu(v => !v)}
-          summary={`${roster.length} student${roster.length === 1 ? '' : 's'} on the sheet${mode === 'all' ? ` · your house${lockHouse ? ' (' + lockHouse + ')' : ''}` : test.group ? ' · ' + test.group : ''}`} />
+        <Step n={2} title="Students" hint="Who is sitting this test. Pick any student from the institute's list, tap My class, or load one of your own groups." open={openStu} onToggle={() => setOpenStu(v => !v)}
+          summary={`${roster.length} student${roster.length === 1 ? '' : 's'} on the sheet${mode === 'all' ? ` · my class${lockHouse ? ' (' + lockHouse + ')' : ''}` : test.group ? ' · ' + test.group : ''}`} />
         {openStu && <div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginRight: 4 }}>{roster.length} on this sheet</span>
-          <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🏠 My house ({pool.length})</button>
+          <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🎓 My class ({pool.length})</button>
           <button type="button" style={btn(false)} onClick={() => editPicked(() => school.map(x => x.id))}>🏫 Whole school ({school.length})</button>
           <button type="button" style={{ ...btn(false), color: '#b91c1c' }} onClick={clearStudents} disabled={!roster.length}>Clear all</button>
         </div>
 
         {groups.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Saved lists:</span>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>My groups:</span>
             {groups.map(g => (
               <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
                 <button type="button" onClick={() => useGroup(g)} title={`Load ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '6px 6px 6px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
@@ -799,7 +799,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         {groups.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <button type="button" onClick={() => setMgrOpen(v => !v)} style={{ ...btn(false), minHeight: 34, fontSize: 12.5, borderColor: dupes.length ? '#f59e0b' : LINE, background: dupes.length ? '#fffbeb' : '#fff' }}>
-              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ lists · Check lists` : '🗂 Manage my lists'} {mgrOpen ? '▴' : '▾'}
+              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ groups · Check groups` : '🗂 Manage my groups'} {mgrOpen ? '▴' : '▾'}
             </button>
             {mgrOpen && (
               <div style={{ marginTop: 8, border: `1px solid ${LINE}`, borderRadius: 14, padding: 12, background: '#fbfcfe' }}>
@@ -879,10 +879,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
               {roster.length > 24 && <button type="button" onClick={() => setShowAllChips(v => !v)} style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }}>{showAllChips ? 'Show fewer' : `Show all ${roster.length}`}</button>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
-              <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name this list, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
-              <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save this list</button>
+              <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name your group, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
+              <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save as my group</button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Your saved lists are stored in the database under your login, so only you see them and you can load them on any phone or computer.'}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Your groups are stored in the database under your login, so only you see them and you can load them on any phone or computer.'}</div>
           </div>
         )}
         </div>}
@@ -997,7 +997,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             ))}
           </div>
         )}
-        {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
+        {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in your class yet. Search the institute's list above to add some.</div> : (
           <div className="hm-gridwrap" style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
             <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}
                 .hm-ab1{display:none}
@@ -1093,7 +1093,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
               </div>
             </div>
             <div className="hm-seg" role="group" aria-label="Analyse by" style={{ marginBottom: 12, flexWrap: 'wrap', maxWidth: '100%' }}>
-              {[['lists', `Saved lists (${analysis.lists.length})`], ['classes', `Class (${analysis.classes.length})`], ['houses', `House (${analysis.houses.length})`], ['subjects', 'Subjects']].map(([k, l]) => (
+              {[['lists', `My groups (${analysis.lists.length})`], ['classes', `Class (${analysis.classes.length})`], ['houses', `House (${analysis.houses.length})`], ['subjects', 'Subjects']].map(([k, l]) => (
                 <button key={k} type="button" aria-pressed={anTab === k} onClick={() => setAnTab(k)} style={anTab === k ? { background: NAVY, color: '#fff', fontWeight: 800 } : { fontWeight: 700, color: NAVY }}>{l}</button>
               ))}
             </div>
@@ -1113,7 +1113,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                 ))}
               </div>
             ) : (analysis[anTab].length === 0 ? (
-              <div style={{ fontSize: 13, color: '#64748b' }}>{anTab === 'lists' ? 'No saved lists contain students on this sheet. Save a list in step 2 to compare groups.' : 'Nothing to group yet.'}</div>
+              <div style={{ fontSize: 13, color: '#64748b' }}>{anTab === 'lists' ? 'None of your groups contain students on this sheet. Save a group in step 2 to compare groups.' : 'Nothing to group yet.'}</div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10 }}>
                 {[...analysis[anTab]].sort((a, b) => (b.avgPct ?? -1) - (a.avgPct ?? -1)).map(g => (
@@ -1145,7 +1145,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             {anTab === 'lists' && dupes.length > 0 && (
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: '#92400e', marginTop: 10, cursor: 'pointer' }}>
                 <input type="checkbox" checked={anOnce} onChange={e => setAnOnce(e.target.checked)} />
-                ⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one list. Tick to count each student only in the first list they appear in.
+                ⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one group. Tick to count each student only in the first group they appear in.
               </label>
             )}
           </>
