@@ -70,6 +70,22 @@ function textToMatrix(t) {
 }
 const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
 
+// Numbered section header: gold badge + title + optional hint / right-side actions.
+function Step({ n, title, hint, right, summary, open = true, onToggle }) {
+  const collapsible = !!onToggle
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: collapsible && !open ? 0 : 14, flexWrap: 'wrap' }}>
+      <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg,#E2C57E,${GOLD})`, color: NAVY, fontWeight: 800, fontSize: 14, boxShadow: '0 6px 12px -6px rgba(201,162,75,.9)', flex: 'none' }}>{n}</span>
+      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+        <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 19, fontWeight: 700, color: NAVY, lineHeight: 1.15 }}>{title}</div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2, overflow: collapsible && !open ? 'hidden' : 'visible', textOverflow: 'ellipsis', whiteSpace: collapsible && !open ? 'nowrap' : 'normal' }}>{collapsible && !open ? (summary || hint) : hint}</div>
+      </div>
+      {right}
+      {collapsible && <button type="button" onClick={onToggle} aria-expanded={open} style={{ border: '1.5px solid #d3dbe7', background: '#fff', color: NAVY, borderRadius: 11, padding: '7px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38, fontFamily: 'inherit' }}>{open ? 'Done ▴' : '✎ Edit'}</button>}
+    </div>
+  )
+}
+
 export default function HouseMarksTab({ students = [], allStudents = null, lockHouse = '', currentUser }) {
   const canDelete = isAdminRole(currentUser?.role)
   const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
@@ -82,7 +98,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [mode, setMode] = useState('all')          // 'all' = whole house, 'selected' = hand-picked students
   const [picked, setPicked] = useState([])         // student ids when mode === 'selected'
   const [pickQ, setPickQ] = useState('')
-  const [ticks, setTicks] = useState([])           // multi-picker: ticked, not yet added
+  const [showAllChips, setShowAllChips] = useState(false)
   const [fHouse, setFHouse] = useState('')
   const [fClass, setFClass] = useState('')
   const [busy, setBusy] = useState(false)
@@ -90,6 +106,14 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const tableRef = useRef(null)
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [openDet, setOpenDet] = useState(() => !test.name.trim())   // step 1 starts open only for a brand-new test
+  const [openStu, setOpenStu] = useState(false)                       // step 2 starts as a one-line summary
+  const [justSaved, setJustSaved] = useState(false)
+  const nameRef = useRef(null)
+  const [bulkCols, setBulkCols] = useState([])        // one text block per subject, one line per student (sheet order)
+  const [saveAfter, setSaveAfter] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [activeRow, setActiveRow] = useState(null)
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
@@ -118,7 +142,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)))
   }, [school, picked, pickQ, fHouse, fClass])
   const shownAddable = addable.slice(0, 200)
-  const tickable = shownAddable.filter(s => !picked.includes(s.id))
+  const onSheet = useMemo(() => new Set(roster.map(x => x.id)), [roster])
+  const searching = !!(pickQ.trim() || fHouse || fClass)
   // Sheet search also looks at the whole school: matches not yet on the sheet can be added in one tap.
   const searchHits = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -126,17 +151,17 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const onSheet = new Set(roster.map(s => s.id))
     return school.filter(s => !onSheet.has(s.id) && (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)).slice(0, 8)
   }, [search, school, roster])
-  const addFromSearch = id => {
-    setPicked(p => [...new Set([...(mode === 'all' ? pool.map(s => s.id) : p), id])])
-    setMode('selected'); setDirty(true)
-  }
-  const toggleTick = id => setTicks(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
-  const tickAllShown = () => setTicks(t => [...new Set([...t, ...tickable.map(s => s.id)])])
-  const addTicked = () => { if (!ticks.length) return; const n = ticks.length; setPicked(p => [...new Set([...p, ...ticks])]); setTicks([]); setDirty(true); flash('ok', `${n} student${n === 1 ? '' : 's'} added.`) }
-  const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
-  const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
+  const addFromSearch = id => addStudents([id])
+  // Every change to the student list goes through here: the first change turns the default
+  // "whole house" into an explicit list, so there is only one thing to understand.
+  const editPicked = fn => { setPicked(fn(mode === 'all' ? pool.map(x => x.id) : picked)); setMode('selected'); setDirty(true) }
+  const addStudents = ids => editPicked(p => [...new Set([...p, ...ids])])
+  const unpickStudent = id => { editPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }) }
+  const clearStudents = () => { editPicked(() => []); setMarks({}) }
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
+  useEffect(() => { if (saveAfter) { setSaveAfter(false); save() } })
+  useEffect(() => { if (dirty) setJustSaved(false) }, [dirty])
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
 
   // Auto-remember: every edit is kept on this computer (debounced), and the test setup is the next default.
@@ -151,14 +176,38 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
-  const saveGroups = next => { setGroups(next); lsSet(groupsKey, next) }
-  const saveAsGroup = () => {
+  // Saved student lists live in the database (house_test_groups) so they follow the
+  // housemaster to any phone or computer. If the table is not created yet, they fall back
+  // to this computer only.
+  const gHouse = lockHouse || 'All'
+  const [groupsDb, setGroupsDb] = useState(null)   // null = unknown, true = database, false = this computer only
+  const loadGroups = useCallback(async () => {
+    const { data, error } = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+    if (error) { setGroupsDb(false); return }
+    setGroupsDb(true)
+    let rows = data || []
+    const local = lsGet('house_marks_groups_' + gHouse.replace(/^All$/, 'all'))
+    if (!rows.length && Array.isArray(local) && local.length) {   // one-time move of lists saved on this computer
+      await supabase.from('house_test_groups').upsert(local.map(g => ({ house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'house,name' })
+      const r2 = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+      rows = r2.data || []
+    }
+    setGroups(rows.map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
+  }, [gHouse])
+  useEffect(() => { loadGroups() }, [loadGroups])
+  const saveAsGroup = async () => {
     const name = groupName.trim()
-    if (!name) { flash('err', 'Type a group or class name first, e.g. “Class VI Navodaya”.'); return }
-    if (!picked.length) { flash('err', 'Pick the students for this group first.'); return }
-    const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
-    saveGroups([...others, { id: Date.now(), name, ids: picked }].sort((a, b) => a.name.localeCompare(b.name)))
-    setGroupName(''); flash('ok', `Group “${name}” saved with ${picked.length} student${picked.length === 1 ? '' : 's'}.`)
+    if (!name) { flash('err', 'Type a name for this list first, e.g. “Class VI Navodaya”.'); return }
+    if (!roster.length) { flash('err', 'Add some students first.'); return }
+    const ids = roster.map(x => x.id)
+    const { error } = await supabase.from('house_test_groups').upsert({ house: gHouse, name, student_ids: ids, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }, { onConflict: 'house,name' })
+    if (error) {
+      const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
+      const next = [...others, { id: Date.now(), name, ids }].sort((a, b) => a.name.localeCompare(b.name))
+      setGroups(next); lsSet(groupsKey, next); setGroupsDb(false)
+      flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
+    }
+    setGroupName(''); await loadGroups(); flash('ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
   }
   const useGroup = g => {
     const live = new Set(school.map(s => s.id))
@@ -167,7 +216,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setTest(t => ({ ...t, group: g.name, name: t.name.trim() ? t.name : g.name + ' – ' }))
     flash('ok', `${g.name}: ${ids.length} student${ids.length === 1 ? '' : 's'} loaded${ids.length < g.ids.length ? ` (${g.ids.length - ids.length} no longer active)` : ''}.`)
   }
-  const delGroup = g => { if (window.confirm(`Delete the group “${g.name}”? The students themselves are not affected.`)) saveGroups(groups.filter(x => x.id !== g.id)) }
+  const delGroup = async g => {
+    if (!window.confirm(`Delete the list “${g.name}”? The students themselves are not affected.`)) return
+    if (groupsDb) { const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadGroups() }
+    else { const next = groups.filter(x => x.id !== g.id); setGroups(next); lsSet(groupsKey, next) }
+  }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
   useEffect(() => {
@@ -239,6 +292,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setDirty(true)
   }
 
+  // One tap marks a student absent in every subject (or clears it) - handy on phones, where the number keypad has no letters.
+  const toggleAbsentRow = sid => {
+    setMarks(prev => {
+      const cur = prev[sid] || []
+      const allAb = test.subjects.length > 0 && test.subjects.every((_, i) => cur[i] === 'AB')
+      return { ...prev, [sid]: test.subjects.map(() => allAb ? null : 'AB') }
+    })
+    setDirty(true)
+  }
   const setPreset = p => {
     setTest(t => ({ ...t, preset: p, subjects: clone(PRESETS[p].subjects) }))
     setMarks({}); setDirty(true)
@@ -315,14 +377,83 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const ws = XLSX.utils.aoa_to_sheet([['Test', test.name], ['House', lockHouse || 'All houses'], ['Date', test.date], ['Maximum total', maxTotal], [], headRow(), ...bodyRows()])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Results'); XLSX.writeFile(wb, baseName() + '.xlsx')
   }
+  // ── PDF result sheet: school letterhead, ranked table, ready to share ──
+  const exportPdf = async (share) => {
+    if (!roster.length || !stats.entered) { flash('err', 'Enter some marks first.'); return }
+    setPdfBusy(true)
+    try {
+      const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
+      const landscape = test.subjects.length > 4
+      const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
+      const mx = 12, W = doc.internal.pageSize.getWidth()
+      let y = pdfLetterhead(doc, { title: 'Test Result' + (test.name ? ' – ' + test.name : ''), margin: mx, date: test.date ? new Date(test.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105)
+      const info = [lockHouse ? `House: ${lockHouse}` : 'All houses', test.group ? `Group: ${test.group}` : null, `Students: ${roster.length}`, `Maximum: ${maxTotal}`, stats.avg == null ? null : `Average: ${stats.avg.toFixed(1)}`, stats.high == null ? null : `Highest: ${stats.high}`, stats.absent ? `Absent: ${stats.absent}` : null].filter(Boolean).join('   ·   ')
+      doc.text(info, mx, y); y += 4
+      const sorted = sortedForExport()
+      const body = sorted.map(st => {
+        const c = calc[st.id], m = marks[st.id] || []
+        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+      })
+      const nSub = test.subjects.length
+      autoTable(doc, {
+        startY: y,
+        head: [['Rank', 'Student', 'GCC', 'Class', ...test.subjects.map(x => `${x.n}\n/${x.max}`), 'Total\n/' + maxTotal, '%', 'Remark']],
+        body,
+        margin: { left: mx, right: mx, bottom: 16 },
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+        headStyles: { fillColor: [11, 30, 61], textColor: 255, halign: 'center', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { halign: 'center', fontStyle: 'bold', cellWidth: 12 }, 1: { fontStyle: 'bold', cellWidth: 'auto' } },
+        didParseCell: d => {
+          if (d.section !== 'body') return
+          const ci = d.column.index
+          if (ci >= 4 && ci < 4 + nSub) {
+            d.cell.styles.halign = 'center'
+            const st = sorted[d.row.index], v = (marks[st.id] || [])[ci - 4]
+            const cs = cellState(v ?? null, test.subjects[ci - 4])
+            if (cs === 'err') { d.cell.styles.fillColor = [254, 226, 226]; d.cell.styles.textColor = [185, 28, 28] }
+            else if (cs === 'low') { d.cell.styles.fillColor = [254, 243, 199]; d.cell.styles.textColor = [146, 64, 14] }
+          }
+          if (ci === 4 + nSub || ci === 5 + nSub) { d.cell.styles.halign = 'center'; d.cell.styles.fontStyle = 'bold' }
+          if (ci === 0 && Number(d.cell.raw) >= 1 && Number(d.cell.raw) <= 3) { d.cell.styles.fillColor = [[226, 197, 126], [226, 232, 240], [231, 200, 160]][Number(d.cell.raw) - 1] }
+        },
+      })
+      const endY = doc.lastAutoTable?.finalY || y
+      doc.setFontSize(8); doc.setTextColor(100, 116, 139)
+      if (endY < doc.internal.pageSize.getHeight() - 24) doc.text('Amber = below the minimum mark · Red = invalid mark · AB = absent · Equal totals share a rank.', mx, endY + 6)
+      pdfFooters(doc, { margin: mx })
+      const blob = doc.output('blob'), fname = baseName() + '.pdf'
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      if (share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: test.name || 'Test result', text: `${test.name || 'Test result'} – result sheet` }); flash('ok', 'Shared.') }
+        catch (e) { if (e?.name !== 'AbortError') { download(blob, fname); flash('ok', 'Could not open sharing, so the PDF was downloaded instead.') } }
+      } else { download(blob, fname); flash('ok', share ? 'Sharing is not available on this device, so the PDF was downloaded.' : 'PDF downloaded.') }
+    } catch (e) { flash('err', 'Could not make the PDF: ' + (e?.message || e)) }
+    setPdfBusy(false)
+  }
   const template = () => {
     const rows = [['GCC No', 'Name', ...test.subjects.map(s => s.n)], ...roster.map(s => [s.gcc_no || '', s.name || '', ...test.subjects.map(() => '')])]
     download(new Blob(['﻿' + rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' }), 'marks-template-' + (lockHouse || 'all').toLowerCase().replace(/\W+/g, '-') + '.csv')
   }
 
   // ── save / open / delete ──
+  // ── Enter all marks at once: one column of text per subject, one line per student ──
+  const openBulk = () => {
+    setBulkCols(test.subjects.map((_, j) => roster.map(s => { const v = (marks[s.id] || [])[j]; return v === null || v === undefined ? '' : String(v) }).join('\n')))
+    setBulkOpen(true); setShowImport(false)
+  }
+  const bulkLines = j => (bulkCols[j] ?? '').split('\n')
+  const bulkExtra = Math.max(0, ...bulkCols.map((c, j) => bulkLines(j).filter(x => x.trim() !== '').length - roster.length))
+  const applyBulk = (thenSave) => {
+    const next = { ...marks }
+    roster.forEach((s, i) => { next[s.id] = test.subjects.map((_, j) => parseMark((bulkLines(j)[i] ?? '').trim())) })
+    setMarks(next); setDirty(true); setBulkOpen(false)
+    if (thenSave) setSaveAfter(true)
+    else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
+  }
   const save = async () => {
-    if (!test.name.trim()) { flash('err', 'Give the test a name first.'); return }
+    if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
     const compact = {}
     roster.forEach(s => {
@@ -338,7 +469,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const { data, error } = await q
     setBusy(false)
     if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
-    setTest(t => ({ ...t, id: data.id })); setDirty(false); lsDel(draftKey); loadSaved()
+    setTest(t => ({ ...t, id: data.id })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved()
     // Progress records: one row per student per test, so a student's results can be followed over time.
     const rankedPcts = Object.values(calc).filter(c => c.rank).map(c => c.pct)
     const classAvg = rankedPcts.length ? rankedPcts.reduce((a, b) => a + b, 0) / rankedPcts.length : null
@@ -409,17 +540,49 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const progressPct = stats.students ? Math.round(stats.entered / stats.students * 100) : 0
 
   // ── styles ──
-  const card = { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 12, padding: 16, marginBottom: 14 }
-  const h = { fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 10px' }
-  const inp = { padding: '8px 10px', border: `1px solid #cbd5e1`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', minHeight: 38, width: '100%', background: '#fff' }
-  const btn = (primary) => ({ padding: '8px 14px', borderRadius: 8, border: `1px solid ${primary ? NAVY : '#cbd5e1'}`, background: primary ? NAVY : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38 })
-  const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#64748b', minWidth: 0 }
-  const cellBg = st => st === 'err' ? { background: '#fee2e2', color: '#b91c1c' } : st === 'low' ? { background: '#fef3c7', color: '#92400e' } : {}
+  const card = { background: '#fff', border: '1px solid #e3e9f1', borderRadius: 18, padding: 20, marginBottom: 16, boxShadow: '0 1px 2px rgba(11,30,61,.04), 0 14px 30px -22px rgba(11,30,61,.28)' }
+  const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }
+  const inp = { padding: '9px 12px', border: '1.5px solid #d3dbe7', borderRadius: 11, fontSize: 14.5, boxSizing: 'border-box', minHeight: 42, width: '100%', background: '#fff', color: NAVY, fontFamily: 'inherit' }
+  const btn = (primary) => ({ padding: '9px 16px', borderRadius: 11, border: `1.5px solid ${primary ? NAVY : '#d3dbe7'}`, background: primary ? `linear-gradient(180deg,#16335f,${NAVY})` : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13.5, cursor: 'pointer', minHeight: 42, fontFamily: 'inherit', boxShadow: primary ? '0 6px 14px -8px rgba(11,30,61,.7)' : 'none' })
+  const lab = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: '#64748b', minWidth: 0 }
+  const bulkHead = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
   const th = { padding: '8px 8px', background: '#f1f5f9', fontSize: 12, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0 }
+  const thG = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
+  const markBox = st => st === 'err' ? { background: '#fee2e2', color: '#b91c1c', border: '2px solid #ef4444' } : st === 'low' ? { background: '#fef3c7', color: '#92400e', border: '2px solid #f59e0b' } : { background: '#fff', color: NAVY, border: '2px solid #cbd5e1' }
   const td = { padding: 0, borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap' }
 
   return (
-    <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+    <div className="hm-root" style={{ maxWidth: 1180, margin: '0 auto', fontFamily: "'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif", color: NAVY }}>
+      <style>{`
+        .hm-root *{box-sizing:border-box}
+        .hm-root button{transition:transform .12s ease,box-shadow .12s ease,background-color .12s ease,border-color .12s ease,filter .12s ease}
+        .hm-root button:not(:disabled):hover{filter:brightness(.97);transform:translateY(-1px)}
+        .hm-root button:not(:disabled):active{transform:translateY(0);filter:brightness(.94)}
+        .hm-root button:disabled{opacity:.45;cursor:not-allowed}
+        .hm-root button.hm-tile:disabled{opacity:1;cursor:default}
+        .hm-root button:focus-visible,.hm-root [role=button]:focus-visible{outline:3px solid rgba(201,162,75,.65);outline-offset:2px}
+        .hm-root input:not([type=checkbox]),.hm-root select,.hm-root textarea{transition:border-color .12s ease,box-shadow .12s ease}
+        .hm-root input:not([type=checkbox]):focus,.hm-root select:focus,.hm-root textarea:focus{outline:none;border-color:${NAVY};box-shadow:0 0 0 4px rgba(201,162,75,.30)}
+        .hm-root ::placeholder{color:#9aa8bb}
+        .hm-seg{display:inline-flex;border:1.5px solid #d3dbe7;border-radius:12px;overflow:hidden;background:#fff}
+        .hm-seg button{border:0!important;border-radius:0!important;min-height:40px!important;box-shadow:none!important;border-right:1px solid #e3e9f1!important}
+        .hm-seg button:last-child{border-right:0!important}
+        .hm-seg button:not(:disabled):hover{background:#f4f7fb!important;transform:none!important}
+        .hm-subrow{display:grid;grid-template-columns:28px minmax(0,1fr) 84px 84px 40px;gap:8px;align-items:center}
+        .hm-subhead{padding:0 2px 6px;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b}
+        .hm-cap{display:none;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:3px}
+        @media (max-width:560px){
+          .hm-subhead{display:none}
+          .hm-subrow{grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 40px;row-gap:6px;padding-bottom:12px;border-bottom:1px dashed #d3dbe7}
+          .hm-subrow:last-child{padding-bottom:0;border-bottom:0}
+          .hm-subrow .hm-badge{grid-row:1 / 3;align-self:start;margin-top:6px}
+          .hm-subrow .hm-nm{grid-column:2 / 5}
+          .hm-subrow .hm-cap{display:block}
+        }
+        .hm-lift{transition:box-shadow .15s ease,transform .15s ease,border-color .15s ease}
+        .hm-lift:hover{box-shadow:0 12px 26px -16px rgba(11,30,61,.4);transform:translateY(-1px);border-color:#c7d2e2!important}
+        @media (prefers-reduced-motion:reduce){.hm-root *{transition:none!important;animation:none!important}}
+      `}</style>
       <div style={{ ...card, color: '#fff', border: 'none', padding: '20px 22px', background: 'radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 45%,#0B1E3D 85%)', boxShadow: '0 18px 40px -22px rgba(11,30,61,.6), inset 0 0 0 1px rgba(226,197,126,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
@@ -441,12 +604,22 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           <button type="button" style={btn(false)} onClick={discardDraft}>Discard</button>
         </div>
       )}
+      {justSaved && !dirty && (
+        <div role="status" style={{ ...card, padding: '14px 16px', background: 'linear-gradient(135deg,#ecfdf5,#f0fdf9)', borderColor: '#a7f3d0', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 200px', color: '#047857', fontWeight: 700, fontSize: 14 }}>✅ Saved{test.name ? <> “{test.name}”</> : null}. Send the result sheet now:</span>
+          <button type="button" style={{ ...btn(true), background: '#128C4A', borderColor: '#128C4A' }} onClick={() => exportPdf(true)} disabled={pdfBusy}>📤 Share PDF</button>
+          <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy}>📄 Download PDF</button>
+          <button type="button" style={{ ...btn(false), border: '1.5px solid transparent', color: '#64748b' }} onClick={() => setJustSaved(false)}>Dismiss</button>
+        </div>
+      )}
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <p style={h}>Test details</p>
+        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
+          summary={`${test.name.trim() || 'Untitled test'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
+        {openDet && <div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
+          <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
@@ -454,81 +627,128 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             </select>
           </label>
         </div>
-        {test.subjects.map((s, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 84px 84px 34px', gap: 8, marginBottom: 6, alignItems: 'end' }}>
-            <label style={lab}>{i === 0 ? 'Subject' : <span style={{ visibility: 'hidden' }}>Subject</span>}<input style={inp} value={s.n} onChange={e => updSubject(i, 'n', e.target.value)} /></label>
-            <label style={lab}>{i === 0 ? 'Max' : <span style={{ visibility: 'hidden' }}>Max</span>}<input style={inp} type="number" min="1" value={s.max} onChange={e => updSubject(i, 'max', e.target.value)} /></label>
-            <label style={lab}>{i === 0 ? 'Min' : <span style={{ visibility: 'hidden' }}>Min</span>}<input style={inp} type="number" min="0" value={s.min} onChange={e => updSubject(i, 'min', e.target.value)} /></label>
-            <button type="button" style={{ ...btn(false), padding: 0 }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2 || subjectLocked}>✕</button>
+        <div style={{ background: '#f6f8fb', border: '1px solid #e3e9f1', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+          <div className="hm-subrow hm-subhead">
+            <span /><span>Subject</span><span>Max marks</span><span>Min to pass</span><span />
           </div>
-        ))}
+          {test.subjects.map((s, i) => (
+            <div key={i} className="hm-subrow" style={{ marginBottom: i === test.subjects.length - 1 ? 0 : 8 }}>
+              <span aria-hidden="true" className="hm-badge" style={{ width: 28, height: 28, borderRadius: 9, background: NAVY, color: '#E2C57E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12 }}>{i + 1}</span>
+              <div className="hm-nm"><span className="hm-cap">Subject</span><input style={inp} value={s.n} aria-label={`Subject ${i + 1} name`} onChange={e => updSubject(i, 'n', e.target.value)} /></div>
+              <div><span className="hm-cap">Max marks</span><input style={{ ...inp, textAlign: 'center' }} type="number" min="1" aria-label={`Subject ${i + 1} maximum`} value={s.max} onChange={e => updSubject(i, 'max', e.target.value)} /></div>
+              <div><span className="hm-cap">Min to pass</span><input style={{ ...inp, textAlign: 'center' }} type="number" min="0" aria-label={`Subject ${i + 1} minimum`} placeholder="–" value={s.min} onChange={e => updSubject(i, 'min', e.target.value)} /></div>
+              <button type="button" style={{ ...btn(false), padding: 0, color: '#94a3b8' }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2 || subjectLocked}>✕</button>
+            </div>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {!subjectLocked && <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>}
           <span style={{ fontSize: 12, color: '#64748b' }}>{subjectLocked ? 'One-subject test: name it and set the maximum.' : '“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.'}</span>
         </div>
+        </div>}
       </div>
 
       <div style={card}>
-        <p style={h}>Students in this test</p>
+        <Step n={2} title="Students" hint="Who is sitting this test. Use your house, the whole school, or a saved list." open={openStu} onToggle={() => setOpenStu(v => !v)}
+          summary={`${roster.length} student${roster.length === 1 ? '' : 's'} on the sheet${mode === 'all' ? ` · your house${lockHouse ? ' (' + lockHouse + ')' : ''}` : test.group ? ' · ' + test.group : ''}`} />
+        {openStu && <div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginRight: 4 }}>{roster.length} on this sheet</span>
+          <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🏠 My house ({pool.length})</button>
+          <button type="button" style={btn(false)} onClick={() => editPicked(() => school.map(x => x.id))}>🏫 Whole school ({school.length})</button>
+          <button type="button" style={{ ...btn(false), color: '#b91c1c' }} onClick={clearStudents} disabled={!roster.length}>Clear all</button>
+        </div>
+
         {groups.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>My groups:</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Saved lists:</span>
             {groups.map(g => (
               <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
                 <button type="button" onClick={() => useGroup(g)} title={`Load ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '6px 6px 6px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
-                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '6px 10px 6px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
+                <button type="button" aria-label={`Delete list ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '6px 10px 6px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
               </span>
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <button type="button" style={btn(mode === 'all')} onClick={() => { setMode('all'); setDirty(true) }}>Whole house ({pool.length})</button>
-          <button type="button" style={btn(mode === 'selected' && picked.length === school.length && school.length > 0)} onClick={() => { setMode('selected'); setPicked(school.map(x => x.id)); setDirty(true) }}>Whole school ({school.length})</button>
-          <button type="button" style={btn(mode === 'selected')} onClick={() => { setMode('selected'); setDirty(true) }}>Pick students{mode === 'selected' ? ` (${picked.length})` : ''}</button>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="🔍 Find a student to add: name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+          <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
+          <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fClass} onChange={e => setFClass(e.target.value)} aria-label="Filter by class"><option value="">All classes</option>{classes.map(x => <option key={x} value={x}>{x}</option>)}</select>
         </div>
-        {mode === 'selected' && (
+        {searching ? (
           <div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-              <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="Search any student by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
-              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
-              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fClass} onChange={e => setFClass(e.target.value)} aria-label="Filter by class"><option value="">All classes</option>{classes.map(x => <option key={x} value={x}>{x}</option>)}</select>
-            </div>
-            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, maxHeight: 260, overflowY: 'auto' }}>
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 10, maxHeight: 260, overflowY: 'auto' }}>
               {shownAddable.length ? shownAddable.map(s => (
-                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, background: ticks.includes(s.id) ? '#eff6ff' : '#fff', flexDirection: 'row', color: 'inherit' }}>
-                  <input type="checkbox" checked={picked.includes(s.id) || ticks.includes(s.id)} disabled={picked.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
-                  <span style={{ flex: 1, minWidth: 0 }}>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
-                  <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
-                  {picked.includes(s.id)
-                    ? <button type="button" onClick={e => { e.preventDefault(); unpickStudent(s.id) }} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', flex: 'none' }}>✓ On sheet · Remove</button>
-                    : <button type="button" onClick={e => { e.preventDefault(); setPicked(p => [...new Set([...p, s.id])]); setTicks(t => t.filter(x => x !== s.id)); setDirty(true) }} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
-                </label>
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, fontSize: 13, background: onSheet.has(s.id) ? '#f0fdf4' : '#fff' }}>
+                  <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{s.name}</b><span style={{ color: '#94a3b8' }}> · {s.gcc_no || ''} · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
+                  {onSheet.has(s.id)
+                    ? <button type="button" onClick={() => unpickStudent(s.id)} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', flex: 'none' }}>✓ Added · Remove</button>
+                    : <button type="button" onClick={() => addStudents([s.id])} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
+                </div>
               )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-              <button type="button" style={btn(true)} onClick={addTicked} disabled={!ticks.length}>{ticks.length ? `Add ${ticks.length} selected` : 'Add selected'}</button>
-              <button type="button" style={btn(false)} onClick={tickAllShown} disabled={!tickable.length}>Tick all shown ({tickable.length})</button>
-              <button type="button" style={btn(false)} onClick={() => setTicks([])} disabled={!ticks.length}>Clear ticks</button>
-              {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing first 200 of {addable.length}. Narrow with the filters.</span>}
+              <button type="button" style={btn(true)} onClick={() => addStudents(addable.map(x => x.id))} disabled={!addable.some(x => !onSheet.has(x.id))}>＋ Add all {addable.filter(x => !onSheet.has(x.id)).length} shown</button>
+              <button type="button" style={btn(false)} onClick={() => { setPickQ(''); setFHouse(''); setFClass('') }}>Done</button>
+              {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing 200 of {addable.length}; “Add all” adds every match.</span>}
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-              {roster.map(s => (
+          </div>
+        ) : <div style={{ fontSize: 12, color: '#64748b' }}>Type a name or GCC No, or pick a house or class, to add students from the whole school.</div>}
+
+        {roster.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(showAllChips ? roster : roster.slice(0, 24)).map(s => (
                 <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: `1px solid ${LINE}`, borderRadius: 99, padding: '4px 6px 4px 10px', fontSize: 12 }}>
                   {s.name}
                   <button type="button" aria-label={`Remove ${s.name}`} onClick={() => unpickStudent(s.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b', fontSize: 13 }}>✕</button>
                 </span>
               ))}
-              {!picked.length && <span style={{ fontSize: 12, color: '#64748b' }}>No students picked yet.</span>}
+              {roster.length > 24 && <button type="button" onClick={() => setShowAllChips(v => !v)} style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }}>{showAllChips ? 'Show fewer' : `Show all ${roster.length}`}</button>}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
-              <button type="button" style={btn(false)} onClick={pickMyHouse}>Add my whole house ({pool.length})</button>
-              <input style={{ ...inp, maxWidth: 240, flex: '1 1 180px' }} placeholder="Group / class name, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
-              <button type="button" style={btn(true)} onClick={saveAsGroup} disabled={!picked.length}>💾 Save as group</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+              <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name this list, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
+              <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save this list</button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Save the picked students once under a name; next time one tap loads the whole group. Groups are kept on this computer for {lockHouse || 'all houses'}.</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Saved lists are stored in the database, so you can load them on any phone or computer.'}</div>
           </div>
         )}
+        </div>}
       </div>
+
+      {bulkOpen && <div style={{ ...card, border: `2px solid ${GOLD}` }}>
+        <p style={h}>⚡ Enter all marks at once</p>
+        <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+          Type each mark on its own line (press Enter for the next student), or paste a whole column from Excel. Lines match the students in the order shown. Write <b>AB</b> for absent; leave a line empty for no mark.
+        </div>
+        <div style={{ overflow: 'auto', maxHeight: '60vh', border: `1px solid ${LINE}`, borderRadius: 12 }}>
+          <div style={{ display: 'flex', minWidth: 'max-content' }}>
+            <div style={{ position: 'sticky', left: 0, zIndex: 1, background: '#f8fafc', borderRight: `2px solid ${LINE}`, minWidth: 150, maxWidth: 190 }}>
+              <div style={{ ...bulkHead, textAlign: 'left', height: 46, boxSizing: 'border-box' }}>Student</div>
+              <div style={{ padding: '8px 0' }}>
+                {roster.map((s, i) => <div key={s.id} style={{ height: 30, lineHeight: '30px', padding: '0 10px', fontSize: 13.5, fontWeight: 700, color: NAVY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 11.5, marginRight: 6 }}>{i + 1}</span>{s.name}</div>)}
+              </div>
+            </div>
+            {test.subjects.map((sub, j) => (
+              <div key={j} style={{ borderRight: `1px solid ${LINE}`, minWidth: 110 }}>
+                <div style={{ ...bulkHead, height: 46, boxSizing: 'border-box', padding: '6px 10px' }}>{sub.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {sub.max}</div></div>
+                <div style={{ padding: '8px 0' }}>
+                  <textarea aria-label={`${sub.n} marks, one line per student`} wrap="off" spellCheck={false} inputMode="decimal" value={bulkCols[j] ?? ''}
+                    onChange={e => setBulkCols(c => c.map((x, k) => k === j ? e.target.value : x))}
+                    style={{ display: 'block', width: 110, height: Math.max(roster.length, 1) * 30 + 30, border: 0, outline: 'none', resize: 'none', overflow: 'hidden', padding: '0 10px', margin: 0, lineHeight: '30px', fontSize: 16, fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: NAVY, textAlign: 'center', background: 'repeating-linear-gradient(to bottom,#fff 0,#fff 30px,#f1f5f9 30px,#f1f5f9 60px)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {bulkExtra > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: '#b45309', fontWeight: 700 }}>⚠ A column has {bulkExtra} more line{bulkExtra === 1 ? '' : 's'} than students ({roster.length}). Extra lines are ignored.</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+          <button type="button" style={btn(true)} onClick={() => applyBulk(true)} disabled={busy}>💾 Apply &amp; save test</button>
+          <button type="button" style={btn(false)} onClick={() => applyBulk(false)}>Apply to sheet</button>
+          <button type="button" style={btn(false)} onClick={() => setBulkOpen(false)}>Cancel</button>
+        </div>
+      </div>}
 
       {showImport && <div style={card}>
         <p style={h}>Import marks</p>
@@ -553,15 +773,19 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>}
 
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <p style={{ ...h, margin: 0 }}>Mark sheet {dirty && <span style={{ color: '#b45309', textTransform: 'none', letterSpacing: 0 }}>· unsaved changes</span>}</p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" style={btn(true)} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? 'Update test' : 'Save test'}</button>
-            <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
-            <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
-            <button type="button" style={btn(false)} onClick={newTest}>New test</button>
-          </div>
-        </div>
+        <Step n={3} title="Enter marks" hint={dirty ? 'You have unsaved changes.' : 'Type in the grid, enter everything at once, or import a sheet.'}
+          right={
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" style={{ ...btn(true), padding: '9px 20px' }} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? '💾 Update test' : '💾 Save test'}</button>
+              <div className="hm-seg" role="group" aria-label="Export">
+                <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy} title="Download a PDF result sheet">{pdfBusy ? '…' : '📄 PDF'}</button>
+                <button type="button" style={{ ...btn(false), color: '#128C4A' }} onClick={() => exportPdf(true)} disabled={pdfBusy} title="Share the PDF on WhatsApp or any app">📤 Share</button>
+                <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
+                <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
+              </div>
+              <button type="button" style={{ ...btn(false), border: '1.5px solid transparent', color: '#64748b' }} onClick={newTest}>＋ New test</button>
+            </div>
+          } />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(118px,1fr))', gap: 8, marginBottom: 12 }}>
           {[
             ['all', 'Students', stats.students, '#1e3a6e'],
@@ -574,8 +798,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           ].map(([key, l, v, color]) => {
             const on = key && filt === key
             return (
-              <button key={l} type="button" disabled={!key} onClick={() => key && setFilt(on && key !== 'all' ? 'all' : key)} aria-pressed={!!on}
-                style={{ textAlign: 'left', cursor: key ? 'pointer' : 'default', background: on ? color : '#fff', color: on ? '#fff' : '#0f1f3d', border: `1.5px solid ${on ? color : LINE}`, borderLeft: `4px solid ${color}`, borderRadius: 12, padding: '9px 12px', fontFamily: 'inherit', boxShadow: on ? `0 8px 18px -10px ${color}` : 'none', opacity: key || true ? 1 : 1 }}>
+              <button key={l} type="button" className="hm-tile" disabled={!key} onClick={() => key && setFilt(on && key !== 'all' ? 'all' : key)} aria-pressed={!!on}
+                style={{ textAlign: 'left', cursor: key ? 'pointer' : 'default', background: on ? color : '#fff', color: on ? '#fff' : '#0f1f3d', border: `1.5px solid ${on ? color : LINE}`, borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '11px 14px', fontFamily: 'inherit', boxShadow: on ? `0 8px 18px -10px ${color}` : '0 1px 2px rgba(11,30,61,.04)' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.1 }}>{v}</div>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', opacity: on ? .9 : .6, marginTop: 2 }}>{l}</div>
               </button>
@@ -585,7 +809,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <input style={{ ...inp, maxWidth: 300, flex: '1 1 200px' }} placeholder="🔍 Search any student by name or GCC No" value={search} onChange={e => setSearch(e.target.value)} />
           <button type="button" style={btn(false)} onClick={jumpNextEmpty}>⏭ Next empty</button>
-          <button type="button" style={btn(showImport)} onClick={() => setShowImport(v => !v)}>⬆ Import Excel / paste</button>
+          <button type="button" style={{ ...btn(true), background: bulkOpen ? '#1e3a66' : NAVY }} onClick={() => bulkOpen ? setBulkOpen(false) : openBulk()} disabled={!roster.length}>⚡ Enter all marks at once</button>
+          <button type="button" style={btn(showImport)} onClick={() => { setShowImport(v => !v); setBulkOpen(false) }}>⬆ Import Excel / paste</button>
           {filt !== 'all' && <button type="button" style={{ ...btn(false), color: '#b45309' }} onClick={() => setFilt('all')}>✕ Clear filter</button>}
           <span style={{ fontSize: 12, color: '#64748b', marginLeft: 'auto' }}>⌨ Enter / ↓ next student · ↑ previous · type <b>A</b> for absent</span>
         </div>
@@ -601,31 +826,43 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
-          <div style={{ overflowX: 'auto', border: `1px solid ${LINE}`, borderRadius: 10 }}>
-            <table ref={tableRef} style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+          <div style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
+            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}`}</style>
+            <table ref={tableRef} style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
               <thead><tr>
-                <th style={th}>#</th><th style={th}>GCC</th><th style={th}>Name</th>
-                {test.subjects.map((s, i) => <th key={i} style={th}>{s.n || 'Subject'}<div style={{ fontWeight: 400 }}>out of {s.max}</div></th>)}
-                <th style={th}>Total<div style={{ fontWeight: 400 }}>out of {maxTotal}</div></th><th style={th}>%</th><th style={th}>Rank</th>
+                <th style={{ ...thG, textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 118 }}>Student</th>
+                {test.subjects.map((s, i) => <th key={i} style={thG}>{s.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {s.max}</div></th>)}
+                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Rank</th>
               </tr></thead>
               <tbody>
                 {shown.map((s, idx) => {
                   const c = calc[s.id] || {}, m = marks[s.id] || []
+                  const rowBg = activeRow === s.id ? '#fff8e6' : idx % 2 ? '#f8fafc' : '#fff'
+                  const cell = { borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 6px' }
                   return (
-                    <tr key={s.id} style={{ background: activeRow === s.id ? '#fff8e6' : idx % 2 ? '#fafbfd' : '#fff', boxShadow: activeRow === s.id ? 'inset 3px 0 0 #C9A24B' : 'none' }}>
-                      <td style={{ ...td, padding: '6px 8px', color: '#94a3b8' }}>{idx + 1}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace' }}>{s.gcc_no || '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', minWidth: 150 }}>{s.name}<div style={{ fontSize: 11, color: '#94a3b8' }}>{s.class_name || ''}</div></td>
-                      {test.subjects.map((sub, i) => (
-                        <td key={i} style={td}>
-                          <input aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
-                            onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="·"
-                            style={{ width: 84, border: 0, padding: '11px 10px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 600, background: 'transparent', outline: 'none', ...cellBg(cellState(m[i] ?? null, sub)) }} />
-                        </td>
-                      ))}
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace' }}>{c.absent ? 'Absent' : c.n ? c.tot : '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontFamily: 'monospace', color: !c.n ? '#94a3b8' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c', fontWeight: 700 }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
-                      <td style={{ ...td, padding: '6px 8px', fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : '–'}</td>
+                    <tr key={s.id} style={{ background: rowBg }}>
+                      <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
+                            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{s.gcc_no ? `GCC ${s.gcc_no}` : ''}{s.class_name ? ` · ${s.class_name}` : ''}{s.house ? ` · ${s.house}` : ''}</div>
+                          </div>
+                          <button type="button" onClick={() => toggleAbsentRow(s.id)} aria-label={`Mark ${s.name} absent`} title="Absent in all subjects" style={{ flex: 'none', minHeight: 28, padding: '2px 7px', fontSize: 11, fontWeight: 800, borderRadius: 8, border: `1.5px solid ${c.absent ? '#f59e0b' : '#d3dbe7'}`, background: c.absent ? '#fef3c7' : '#fff', color: c.absent ? '#92400e' : '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>AB</button>
+                        </div>
+                      </td>
+                      {test.subjects.map((sub, i) => {
+                        const v = m[i] ?? null, st = cellState(v, sub), filled = v !== null && v !== ''
+                        return (
+                          <td key={i} style={cell}>
+                            <input className="hm-in" aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
+                              onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="–"
+                              style={{ width: 72, height: 48, boxSizing: 'border-box', textAlign: 'center', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 800, borderRadius: 12, outline: 'none', ...markBox(st), ...(st === '' && filled ? { background: '#f0fdf4', borderColor: '#86efac', color: '#065f46' } : {}) }} />
+                          </td>
+                        )
+                      })}
+                      <td style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
+                      <td style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
                 })}
@@ -633,11 +870,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             </table>
           </div>
         )}
-        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Red = invalid or above the maximum. Amber = below the minimum. Ties share a rank.</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Green = entered · Red = invalid or above the maximum · Amber = below the minimum. Ties share a rank.</div>
       </div>
 
       <div style={card}>
-        <p style={h}>📈 Student progress</p>
+        <Step n="📈" title="Student progress" hint="Pick a student to see their results across tests." />
         <select style={{ ...inp, maxWidth: 360 }} value={progId} onChange={e => setProgId(e.target.value)} aria-label="Choose a student to see progress">
           <option value="">Choose a student…</option>
           {school.map(s => <option key={s.id} value={s.id}>{s.name}{s.gcc_no ? ` · ${s.gcc_no}` : ''}</option>)}
@@ -697,26 +934,37 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <p style={h}>Saved tests</p>
-        {!saved.length ? <div style={{ color: '#64748b', fontSize: 13 }}>Nothing saved yet.</div> : saved.map(r => (
-          <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${r.id === test.id ? NAVY : LINE}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{r.test_date} · {r.house} · {Object.keys(r.marks || {}).length} students</div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" style={btn(false)} onClick={() => openSaved(r)}>Open</button>
-              {canDelete && <button type="button" style={{ ...btn(false), color: '#b91c1c' }} onClick={() => delSaved(r)} aria-label="Delete saved test">✕</button>}
-            </div>
+        <Step n="★" title="Saved tests" hint={saved.length ? `${saved.length} saved · tap Open to continue or reshare` : 'Tests you save will appear here.'} />
+        {!saved.length ? <div style={{ color: '#64748b', fontSize: 13, padding: '14px', border: '1.5px dashed #d3dbe7', borderRadius: 14, textAlign: 'center' }}>Nothing saved yet.</div> : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 10 }}>
+            {saved.map(r => {
+              const d = new Date(r.test_date + 'T00:00:00'), cur = r.id === test.id
+              return (
+                <div key={r.id} className="hm-lift" style={{ display: 'flex', gap: 12, alignItems: 'center', border: `1.5px solid ${cur ? GOLD : '#e3e9f1'}`, background: cur ? '#fffaf0' : '#fff', borderRadius: 14, padding: '10px 12px' }}>
+                  <div aria-hidden="true" style={{ width: 46, flex: 'none', textAlign: 'center', borderRadius: 11, background: NAVY, color: '#fff', padding: '5px 0', lineHeight: 1.05 }}>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>{isNaN(d) ? '–' : d.getDate()}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em', color: '#E2C57E', textTransform: 'uppercase' }}>{isNaN(d) ? '' : d.toLocaleDateString('en-IN', { month: 'short' })}</div>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{r.house} · {Object.keys(r.marks || {}).length} students{cur ? ' · open now' : ''}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                    <button type="button" style={{ ...btn(!cur), padding: '7px 14px', minHeight: 38 }} onClick={() => openSaved(r)}>Open</button>
+                    {canDelete && <button type="button" style={{ ...btn(false), color: '#b91c1c', padding: '7px 11px', minHeight: 38 }} onClick={() => delSaved(r)} aria-label="Delete saved test">✕</button>}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        ))}
+        )}
       </div>
 
       <div style={{ position: 'sticky', bottom: 10, zIndex: 20, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'rgba(11,30,61,.96)', color: '#fff', borderRadius: 14, padding: '10px 14px', boxShadow: '0 14px 30px -12px rgba(11,30,61,.7)' }}>
         <div style={{ flex: '1 1 200px', fontSize: 13 }}>
           <b>{stats.entered}/{stats.students}</b> entered{stats.bad ? <span style={{ color: '#fca5a5' }}> · {stats.bad} need fixing</span> : null}{dirty ? <span style={{ color: '#fcd34d' }}> · ● unsaved</span> : <span style={{ color: '#86efac' }}> · saved</span>}
         </div>
-        <button type="button" onClick={exportXlsx} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>⬇ Excel</button>
+        <button type="button" onClick={() => exportPdf(true)} disabled={pdfBusy || !stats.entered} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>📤 Share PDF</button>
         <button type="button" onClick={save} disabled={busy} style={{ ...btn(false), background: 'linear-gradient(135deg,#E2C57E,#C9A24B)', color: '#0B1E3D', border: 'none', padding: '9px 22px' }}>{busy ? 'Saving…' : test.id ? '💾 Update test' : '💾 Save test'}</button>
       </div>
     </div>
