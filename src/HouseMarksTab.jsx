@@ -41,6 +41,32 @@ const GRADES = [[90, 'A+'], [80, 'A'], [70, 'B+'], [60, 'B'], [50, 'C'], [40, 'D
 const gradeOf = p => (GRADES.find(([m]) => p >= m) || [0, 'E'])[1]
 const gradeColor = g => g === 'A+' || g === 'A' ? '#047857' : g === 'B+' || g === 'B' ? '#1d4ed8' : g === 'C' || g === 'D' ? '#a16207' : '#b91c1c'
 const medal = k => k === 0 ? '🥇' : k === 1 ? '🥈' : k === 2 ? '🥉' : ''
+function buildCalc(items, subjects, maxTotal) {
+    const out = {}
+    items.forEach(({ id, m }) => {
+      let tot = 0, n = 0, ab = 0, bad = false, low = false
+      subjects.forEach((sub, i) => {
+        const v = m[i] ?? null, st = cellState(v, sub)
+        if (st === 'err') bad = true
+        if (st === 'low') low = true
+        if (typeof v === 'number' && st !== 'err') { tot += v; n++ } else if (v === 'AB') ab++
+      })
+      out[id] = { tot, n, bad, low, complete: subjects.length > 0 && !bad && n + ab === subjects.length, partial: !bad && n + ab > 0 && n + ab < subjects.length, absent: subjects.length > 0 && ab === subjects.length, pct: maxTotal ? tot / maxTotal * 100 : 0, rank: null }
+    })
+    const ids = Object.keys(out).filter(id => out[id].n > 0 && out[id].complete).sort((a, b) => out[b].tot - out[a].tot)
+    let rk = 0, prev = null
+    ids.forEach((id, k) => { if (out[id].tot !== prev) { rk = k + 1; prev = out[id].tot } out[id].rank = rk })
+    const hasMin = subjects.some(sub => sub.min !== '' && sub.min != null && !isNaN(Number(sub.min)))
+    // percentile = share of ranked students this one scored higher than; grade from percent; pass = no mark below its minimum
+    ids.forEach(id => {
+      const c = out[id]
+      c.percentile = ids.length > 1 ? ids.filter(o => out[o].tot < c.tot).length / (ids.length - 1) * 100 : 100
+      c.grade = gradeOf(c.pct)
+      c.pass = c.complete && !c.absent && (hasMin ? !c.low : c.pct >= 40)
+    })
+    return out
+}
+const subjSig = subs => JSON.stringify((subs || []).map(x => [String(x.n || ''), Number(x.max || 0), x.min === '' || x.min == null ? '' : Number(x.min)]))
 function parseMark(v) {
   if (v === null || v === undefined) return null
   const s = String(v).trim()
@@ -125,6 +151,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
   const [groupName, setGroupName] = useState('')
+  const [shared, setShared] = useState(null)     // latest copy of the open shared test (all teachers' marks)
   const [classExtra, setClassExtra] = useState([])   // students any housemaster added to My class from the whole school list
   const [progId, setProgId] = useState('')           // student whose progress is shown
   const [progRows, setProgRows] = useState(null)     // null = not loaded, [] = none
@@ -310,8 +337,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
 
   const loadSaved = useCallback(async () => {
     let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at,created_by').order('test_date', { ascending: false }).limit(100)
-    if (lockHouse) q = q.eq('house', lockHouse)
-    const { data, error } = await q
+    const { data, error } = await q   // every teacher sees every test: one shared test, everyone enters their own students
     if (error) { setSaved([]); if (/house_test_marks/i.test(error.message || '')) flash('err', 'Saving is not set up yet: run supabase/RUN_house_test_marks.sql once in Supabase.'); return }
     setSaved(data || [])
   }, [lockHouse])
@@ -320,32 +346,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const maxTotal = test.subjects.reduce((a, s) => a + Number(s.max || 0), 0)
 
   // ── computed per student ──
-  const calc = useMemo(() => {
-    const out = {}
-    roster.forEach(s => {
-      const m = marks[s.id] || []
-      let tot = 0, n = 0, ab = 0, bad = false, low = false
-      test.subjects.forEach((sub, i) => {
-        const v = m[i] ?? null, st = cellState(v, sub)
-        if (st === 'err') bad = true
-        if (st === 'low') low = true
-        if (typeof v === 'number' && st !== 'err') { tot += v; n++ } else if (v === 'AB') ab++
-      })
-      out[s.id] = { tot, n, bad, low, complete: test.subjects.length > 0 && !bad && n + ab === test.subjects.length, partial: !bad && n + ab > 0 && n + ab < test.subjects.length, absent: test.subjects.length > 0 && ab === test.subjects.length, pct: maxTotal ? tot / maxTotal * 100 : 0, rank: null }
-    })
-    const ids = Object.keys(out).filter(id => out[id].n > 0 && out[id].complete).sort((a, b) => out[b].tot - out[a].tot)
-    let rk = 0, prev = null
-    ids.forEach((id, k) => { if (out[id].tot !== prev) { rk = k + 1; prev = out[id].tot } out[id].rank = rk })
-    const hasMin = test.subjects.some(sub => sub.min !== '' && sub.min != null && !isNaN(Number(sub.min)))
-    // percentile = share of ranked students this one scored higher than; grade from percent; pass = no mark below its minimum
-    ids.forEach(id => {
-      const c = out[id]
-      c.percentile = ids.length > 1 ? ids.filter(o => out[o].tot < c.tot).length / (ids.length - 1) * 100 : 100
-      c.grade = gradeOf(c.pct)
-      c.pass = c.complete && !c.absent && (hasMin ? !c.low : c.pct >= 40)
-    })
-    return out
-  }, [roster, marks, test.subjects, maxTotal])
+  const calc = useMemo(() => buildCalc(roster.map(s => ({ id: s.id, m: marks[s.id] || [] })), test.subjects, maxTotal), [roster, marks, test.subjects, maxTotal])
 
   const stats = useMemo(() => {
     const vals = Object.values(calc)
@@ -561,6 +562,62 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     } catch (e) { flash('err', 'Could not make the PDF: ' + (e?.message || e)) }
     setPdfBusy(false)
   }
+  const combined = useMemo(() => {
+    if (!shared || shared.id !== test.id) return null
+    const subs = shared.subjects || test.subjects
+    const mx = subs.reduce((a, x) => a + Number(x.max || 0), 0)
+    const entries = Object.entries(shared.marks || {})
+    const cc = buildCalc(entries.map(([id, e]) => ({ id, m: e.m || [] })), subs, mx)
+    const rows = entries.map(([id, e]) => { const st = school.find(x => x.id === id) || {}; return { id, name: st.name || e.name || 'Student', gcc: st.gcc_no || e.gcc || '', cls: st.class_name || '', teacher: e.byName || e.by || 'Teacher', c: cc[id], m: e.m || [] } })
+    const ranked = rows.filter(r => r.c && r.c.rank).sort((a, b) => a.c.rank - b.c.rank || String(a.name).localeCompare(String(b.name)))
+    const rest = rows.filter(r => !(r.c && r.c.rank)).sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    const tm = new Map(); rows.forEach(r => { if (!tm.has(r.teacher)) tm.set(r.teacher, []); tm.get(r.teacher).push(r) })
+    const teachers = [...tm].map(([name, list]) => { const rk = list.filter(r => r.c && r.c.rank).sort((a, b) => a.c.rank - b.c.rank); return { name, count: list.length, ranked: rk.length, avg: rk.length ? rk.reduce((a, r) => a + r.c.pct, 0) / rk.length : null, top: rk[0] || null } }).sort((a, b) => a.name.localeCompare(b.name))
+    return { subs, mx, rows, ranked, rest, teachers, avg: ranked.length ? ranked.reduce((a, r) => a + r.c.pct, 0) / ranked.length : null }
+  }, [shared, test.id, test.subjects, school])
+  const deliverPdf = async (doc, fname, share, title) => {
+    const blob = doc.output('blob'), file = new File([blob], fname, { type: 'application/pdf' })
+    if (share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title, text: title }); flash('ok', 'Shared.') }
+      catch (e) { if (e?.name !== 'AbortError') { download(blob, fname); flash('ok', 'Could not open sharing, so the PDF was downloaded instead.') } }
+    } else { download(blob, fname); flash('ok', share ? 'Sharing is not available on this device, so the PDF was downloaded.' : 'PDF downloaded.') }
+  }
+  const exportCombinedPdf = async share => {
+    if (!combined || !combined.rows.length) { flash('err', 'Nothing saved in this test yet.'); return }
+    setPdfBusy(true)
+    try {
+      const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
+      const landscape = combined.subs.length > 3
+      const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
+      const mx = 12
+      let y = pdfLetterhead(doc, { title: 'Combined Test Result – ' + (test.name || ''), margin: mx, date: test.date ? new Date(test.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105)
+      doc.text([`Students: ${combined.rows.length}`, `Teachers: ${combined.teachers.length}`, `Maximum: ${combined.mx}`, combined.avg == null ? null : `Average: ${combined.avg.toFixed(1)}%`].filter(Boolean).join('   ·   '), mx, y); y += 4
+      const all = [...combined.ranked, ...combined.rest]
+      autoTable(doc, {
+        startY: y,
+        head: [['Rank', 'Student', 'GCC', 'Class', 'Teacher', ...combined.subs.map(x => `${x.n}\n/${x.max}`), 'Total\n/' + combined.mx, '%', 'Grade']],
+        body: all.map(r => [r.c && r.c.rank ? r.c.rank : '–', r.name, r.gcc, r.cls, r.teacher, ...combined.subs.map((_, i) => r.m[i] ?? '–'), r.c && r.c.absent ? 'AB' : r.c && r.c.n ? r.c.tot : '–', r.c && r.c.n ? r.c.pct.toFixed(1) + '%' : '–', r.c && r.c.rank ? r.c.grade : (r.c && r.c.partial ? 'Incomplete' : '')]),
+        margin: { left: mx, right: mx, bottom: 16 },
+        styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 1.8, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+        headStyles: { fillColor: [11, 30, 61], textColor: 255, halign: 'center', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { halign: 'center', fontStyle: 'bold', cellWidth: 11 }, 1: { fontStyle: 'bold' } },
+        didParseCell: d => { if (d.section === 'body' && d.column.index === 0 && Number(d.cell.raw) >= 1 && Number(d.cell.raw) <= 3) d.cell.styles.fillColor = [[226, 197, 126], [226, 232, 240], [231, 200, 160]][Number(d.cell.raw) - 1] },
+      })
+      autoTable(doc, {
+        startY: (doc.lastAutoTable?.finalY || y) + 8,
+        head: [['Teacher', 'Students', 'Average %', 'Topper']],
+        body: combined.teachers.map(t => [t.name, `${t.ranked}/${t.count}`, t.avg == null ? '–' : t.avg.toFixed(1), t.top ? `${t.top.name} (${t.top.c.tot}/${combined.mx})` : '–']),
+        margin: { left: mx, right: mx, bottom: 16 },
+        styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+        headStyles: { fillColor: [201, 162, 75], textColor: [11, 30, 61], fontStyle: 'bold' },
+      })
+      pdfFooters(doc, { margin: mx })
+      await deliverPdf(doc, (baseName() + '-combined.pdf'), share, (test.name || 'Test') + ' – combined result')
+    } catch (e) { flash('err', 'Could not make the PDF: ' + (e?.message || e)) }
+    setPdfBusy(false)
+  }
   const template = () => {
     const rows = [['GCC No', 'Name', ...test.subjects.map(s => s.n)], ...roster.map(s => [s.gcc_no || '', s.name || '', ...test.subjects.map(() => '')])]
     download(new Blob(['﻿' + rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' }), 'marks-template-' + (lockHouse || 'all').toLowerCase().replace(/\W+/g, '-') + '.csv')
@@ -592,65 +649,91 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
     if (needGroup()) return
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
-    const compact = {}
+    const mine = {}
     roster.forEach(s => {
       const m = marks[s.id] || test.subjects.map(() => null)
       if (mode === 'all' && m.every(v => v === null || v === undefined)) return
-      compact[s.id] = { gcc: s.gcc_no || '', name: s.name || '', m }
+      mine[s.id] = { gcc: s.gcc_no || '', name: s.name || '', m, by: meKey, byName: currentUser?.name || meKey, group: test.group.trim() }
     })
-    if (!Object.keys(compact).length) { flash('err', mode === 'selected' ? 'Add at least one student first.' : 'No marks entered yet.'); return }
-    if (!Object.values(compact).some(v => v.m.some(x => x !== null && x !== undefined))) { flash('err', 'No marks entered yet.'); return }
-    Object.entries(keptRef.current).forEach(([k, v]) => { if (!compact[k]) compact[k] = v })   // inactive students keep their saved marks
-    if (test.id && testOwner && meKey && testOwner !== meKey && !window.confirm(`This test was created by ${testOwner}. Overwrite it with your changes?`)) return
+    if (!Object.keys(mine).length) { flash('err', mode === 'selected' ? 'Add at least one student first.' : 'No marks entered yet.'); return }
+    if (!Object.values(mine).some(v => v.m.some(x => x !== null && x !== undefined))) { flash('err', 'No marks entered yet.'); return }
     if (stats.partial && !window.confirm(`${stats.partial} student${stats.partial === 1 ? ' has' : 's have'} some marks missing and will not be ranked yet. Save anyway?`)) return
     setBusy(true)
-    const row = { test_name: test.name.trim(), test_date: test.date || todayStr(), house: lockHouse || 'All', subjects: test.subjects, marks: compact, updated_at: new Date().toISOString(), ...(test.id ? {} : { created_by: meKey || null }) }
-    let q
-    if (test.id) { q = supabase.from('house_test_marks').update(row).eq('id', test.id); if (loadedAtRef.current) q = q.eq('updated_at', loadedAtRef.current); q = q.select('id,updated_at') }
-    else q = supabase.from('house_test_marks').insert(row).select('id,updated_at').single()
-    let { data, error } = await q
-    if (!error && test.id) { data = Array.isArray(data) ? data[0] : data; if (!data) { setBusy(false); flash('err', 'Not saved: a colleague saved this test after you opened it. Open it again from Saved tests, then redo your changes.'); loadSaved(); return } }
+    let rowId = test.id, merged = mine
+    if (!rowId) {
+      const row = { test_name: test.name.trim(), test_date: test.date || todayStr(), house: lockHouse || 'All', subjects: test.subjects, marks: mine, created_by: meKey || null, updated_at: new Date().toISOString() }
+      const { data, error } = await supabase.from('house_test_marks').insert(row).select('id,updated_at').single()
+      if (error) { setBusy(false); flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
+      rowId = data.id; setTestOwner(meKey || null)
+    } else {
+      // Shared test: only this teacher's students are written; everyone else's marks are kept exactly as they are.
+      const r = await mergeSave(mine)
+      if (r.error) { setBusy(false); flash('err', r.error.code === 'subjects' ? 'Not saved: the subjects of this shared test were changed by another teacher. Open it again from Saved tests.' : 'Save failed: ' + r.error.message); return }
+      merged = r.merged
+    }
     setBusy(false)
-    if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
-    loadedAtRef.current = data.updated_at || row.updated_at; if (!test.id) setTestOwner(meKey || null)
-    setTest(t => ({ ...t, id: data.id })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved()
-    // Progress records: one row per student per test, so a student's results can be followed over time.
-    const rankedPcts = Object.values(calc).filter(c => c.rank).map(c => c.pct)
+    setTest(t => ({ ...t, id: rowId })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved(); loadShared(rowId)
+    // Progress records for every student in the shared test, ranked across all teachers.
+    const cc = buildCalc(Object.entries(merged).map(([id, e]) => ({ id, m: e.m || [] })), test.subjects, maxTotal)
+    const rankedPcts = Object.values(cc).filter(c => c.rank).map(c => c.pct)
     const classAvg = rankedPcts.length ? rankedPcts.reduce((a, b) => a + b, 0) / rankedPcts.length : null
-    const results = roster.filter(s => compact[s.id] && (calc[s.id].n > 0 || calc[s.id].absent)).map(s => {
-      const c = calc[s.id]
-      return { test_id: data.id, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name || null, class_name: s.class_name || null, group_name: test.group || null,
-        house: lockHouse || 'All', test_name: test.name.trim(), test_date: test.date || todayStr(), subjects: test.subjects, marks: compact[s.id].m,
-        total: c.n ? c.tot : null, max_total: maxTotal, percent: c.n ? Math.round(c.pct * 10) / 10 : null, rank: c.rank || null, ranked_of: stats.ranked || null,
+    const byId = {}; school.forEach(x => { byId[x.id] = x })
+    const results = Object.entries(merged).filter(([id]) => cc[id] && (cc[id].n > 0 || cc[id].absent)).map(([id, e]) => {
+      const c = cc[id], st = byId[id] || {}
+      return { test_id: rowId, student_id: String(id), gcc_no: (st.gcc_no || e.gcc) ? String(st.gcc_no || e.gcc) : null, student_name: st.name || e.name || null, class_name: st.class_name || null, group_name: e.group || test.group || null,
+        house: st.house || lockHouse || 'All', test_name: test.name.trim(), test_date: test.date || todayStr(), subjects: test.subjects, marks: e.m,
+        total: c.n ? c.tot : null, max_total: maxTotal, percent: c.n ? Math.round(c.pct * 10) / 10 : null, rank: c.rank || null, ranked_of: rankedPcts.length || null,
         class_avg_pct: classAvg == null ? null : Math.round(classAvg * 10) / 10, absent: !!c.absent, updated_at: new Date().toISOString() }
     })
-    // upsert first, then remove only the rows of students no longer in this test - a failure never wipes the old records
     const ins = results.length ? await supabase.from('house_test_results').upsert(results, { onConflict: 'test_id,student_id' }) : { error: null }
     if (!ins.error) {
-      const keep = Object.keys(compact).map(k => `"${String(k).replace(/"/g, '')}"`).join(',')
-      await supabase.from('house_test_results').delete().eq('test_id', data.id).not('student_id', 'in', `(${keep})`)
+      const keep = Object.keys(merged).map(k => `"${String(k).replace(/"/g, '')}"`).join(',')
+      await supabase.from('house_test_results').delete().eq('test_id', rowId).not('student_id', 'in', `(${keep})`)
     }
     if (ins.error) flash('err', /house_test_results/i.test(ins.error.message || '') ? 'Marks saved, but progress records are not set up: run the new part of supabase/RUN_house_test_marks.sql once in Supabase.' : 'Marks saved, but progress records failed: ' + ins.error.message)
-    else flash('ok', `Saved ${Object.keys(compact).length} students and their progress records.`)
+    else flash('ok', `Saved ${Object.keys(mine).length} of your students. The shared test now has ${Object.keys(merged).length} students.`)
   }
-  const keptRef = useRef({})      // saved marks of students who are no longer active: carried through re-saves so they are never lost
-  const loadedAtRef = useRef(null)  // updated_at of the saved test when it was opened: detects a colleague saving in between
+  const mergeSave = async mine => {
+    const touched = roster.map(x => x.id)
+    const canRename = !testOwner || testOwner === meKey
+    for (let k = 0; k < 4; k++) {
+      const cur = await supabase.from('house_test_marks').select('id,subjects,marks,updated_at').eq('id', test.id).single()
+      if (cur.error || !cur.data) return { error: cur.error || { message: 'This test no longer exists.' } }
+      if (subjSig(cur.data.subjects) !== subjSig(test.subjects)) return { error: { code: 'subjects', message: 'subjects changed' } }
+      const merged = { ...(cur.data.marks || {}) }
+      touched.forEach(id => { const e = merged[id]; if (!mine[id] && e && (!e.by || e.by === meKey)) delete merged[id] })
+      Object.assign(merged, mine)
+      const upd = { marks: merged, updated_at: new Date().toISOString(), ...(canRename ? { test_name: test.name.trim(), test_date: test.date || todayStr() } : {}) }
+      const r = await supabase.from('house_test_marks').update(upd).eq('id', test.id).eq('updated_at', cur.data.updated_at).select('id,updated_at')
+      if (r.error) return { error: r.error }
+      if (r.data && r.data[0]) return { merged, data: r.data[0] }
+    }
+    return { error: { message: 'Several teachers are saving at the same moment. Tap Save again.' } }
+  }
+  // The whole shared test (every teacher's students), used for the combined ranking and PDF.
+  const loadShared = useCallback(async id => {
+    if (!id) { setShared(null); return }
+    const { data, error } = await supabase.from('house_test_marks').select('id,test_name,test_date,subjects,marks,updated_at').eq('id', id).single()
+    if (!error && data) setShared({ ...data })
+  }, [])
   const [testOwner, setTestOwner] = useState(null)
   const openSaved = r => {
     const byId = {}; school.forEach(s => { byId[s.id] = s })
-    keptRef.current = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (!byId[sid]) keptRef.current[sid] = v })
-    loadedAtRef.current = r.updated_at || null; setTestOwner(r.created_by || null)
-    const nKept = Object.keys(keptRef.current).length
-    if (nKept) flash('ok', `${nKept} student${nKept === 1 ? '' : 's'} in this test ${nKept === 1 ? 'is' : 'are'} no longer active. Their saved marks are kept safely when you save.`)
-    const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
-    const ids = Object.keys(mk)
+    setTestOwner(r.created_by || null); loadShared(r.id)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
     setTest({ id: r.id, group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
-    // the group name was stored with each student's result row when the test was saved
-    supabase.from('house_test_results').select('group_name').eq('test_id', r.id).limit(1).then(({ data }) => { const gname = data && data[0] && data[0].group_name; if (gname) setTest(t => t.id === r.id && !t.group ? { ...t, group: gname } : t) }, () => {})
-    const inHouse = ids.length > 0 && ids.every(id => pool.some(s => s.id === id))
-    if (ids.length < pool.length || !inHouse) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
+    // Shared test: this teacher sees and edits only their own students; everyone else's marks stay untouched in the database.
+    const ent = r.marks || {}
+    const mineIds = Object.keys(ent).filter(id => byId[id] && (ent[id].by === meKey || (!ent[id].by && pool.some(x => x.id === id))))
+    const mk = {}; mineIds.forEach(id => { mk[id] = ent[id].m })
+    const myGroup = mineIds.map(id => ent[id].group).find(Boolean)
+    if (myGroup) setTest(t => t.id === r.id && !t.group ? { ...t, group: myGroup } : t)
+    else supabase.from('house_test_results').select('group_name').eq('test_id', r.id).limit(1).then(({ data }) => { const gname = data && data[0] && data[0].group_name; if (gname) setTest(t => t.id === r.id && !t.group ? { ...t, group: gname } : t) }, () => {})
+    const poolIds = pool.map(x => x.id)
+    if (mineIds.every(id => poolIds.includes(id))) { setMode('all'); setPicked([]) } else { setMode('selected'); setPicked([...new Set([...poolIds, ...mineIds])]) }
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
+    const others = Object.keys(ent).filter(id => !mineIds.includes(id)).length
+    if (others) flash('ok', `Shared test opened. ${others} student${others === 1 ? '' : 's'} entered by other teachers ${others === 1 ? 'is' : 'are'} kept safe. Enter marks for yours and save.`)
   }
   const delSaved = async r => {
     if (!window.confirm(`Delete saved test "${r.test_name}"?`)) return
@@ -661,7 +744,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
-    keptRef.current = {}; loadedAtRef.current = null; setTestOwner(null)
+    setTestOwner(null); setShared(null)
     const l = lastSetup(); setTest({ id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
@@ -1136,6 +1219,47 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
+        <Step n="🤝" title="Whole test · all teachers" hint="Every teacher opens the same test, enters marks for their own students and saves. All marks are combined here." right={test.id ? <button type="button" style={{ ...btn(false), minHeight: 36 }} onClick={() => loadShared(test.id)}>↻ Refresh</button> : null} />
+        {!test.id ? <div style={{ fontSize: 13, color: '#64748b' }}>Save this test first. Other teachers will then see it under “Saved tests”, open it and add their students.</div>
+          : !combined ? <div style={{ fontSize: 13, color: '#64748b' }}>Loading…</div> : (
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              {[['Students', combined.rows.length], ['Teachers', combined.teachers.length], ['Ranked', combined.ranked.length], ['Average', combined.avg == null ? '–' : combined.avg.toFixed(1) + '%']].map(([l, v]) => (
+                <div key={l} style={{ flex: '1 1 110px', border: `1px solid ${LINE}`, borderRadius: 14, padding: '8px 12px', background: '#fff' }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase' }}>{l}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: NAVY }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10, marginBottom: 12 }}>
+              {combined.teachers.map(t => (
+                <div key={t.name} style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: '10px 12px', background: t.name === (currentUser?.name || meKey) ? '#fffaf0' : '#fff' }}>
+                  <div style={{ fontWeight: 800, color: NAVY }}>{t.name}{t.name === (currentUser?.name || meKey) ? ' (you)' : ''}</div>
+                  <div style={{ fontSize: 12.5, color: '#475569', marginTop: 2 }}>{t.count} students · avg {t.avg == null ? '–' : t.avg.toFixed(1) + '%'}</div>
+                  {t.top && <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 2 }}>🥇 {t.top.name} · {t.top.c.tot}/{combined.mx}</div>}
+                </div>
+              ))}
+            </div>
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, overflow: 'hidden' }}>
+              {combined.ranked.slice(0, 10).map(r => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: `1px solid ${LINE}`, fontSize: 13.5, background: '#fff' }}>
+                  <b style={{ width: 34, color: NAVY }}>{r.c.rank <= 3 ? medal(r.c.rank - 1) : ''}{r.c.rank}</b>
+                  <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{r.name}</b><span style={{ color: '#94a3b8' }}> · {r.cls} · {r.teacher}</span></span>
+                  <b>{r.c.tot}</b><span style={{ color: gradeColor(r.c.grade), fontWeight: 800, width: 24, textAlign: 'right' }}>{r.c.grade}</span>
+                </div>
+              ))}
+              {!combined.ranked.length && <div style={{ padding: 12, fontSize: 13, color: '#64748b' }}>No complete marks yet.</div>}
+            </div>
+            {combined.ranked.length > 10 && <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Top 10 of {combined.ranked.length}. The PDF has everyone.</div>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+              <button type="button" style={btn(true)} onClick={() => exportCombinedPdf(true)} disabled={pdfBusy}>📤 Share combined PDF</button>
+              <button type="button" style={btn(false)} onClick={() => exportCombinedPdf(false)} disabled={pdfBusy}>📄 Download</button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={card}>
         <Step n="🏆" title="Analyser" hint="Toppers, averages and pass rates for every list, class and house on this sheet." />
         {!stats.ranked ? <div style={{ fontSize: 13, color: '#64748b' }}>Enter some marks to see the analysis.</div> : (
           <>
@@ -1276,7 +1400,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <Step n="★" title="Saved tests" hint={saved.length ? `${saved.length} saved · tap Open to continue or reshare` : 'Tests you save will appear here.'} />
+        <Step n="★" title="Saved tests" hint={saved.length ? `${saved.length} shared with all teachers · Open one, enter your students' marks, save` : 'Tests you save are shared with every teacher.'} />
         {!saved.length ? <div style={{ color: '#64748b', fontSize: 13, padding: '14px', border: '1.5px dashed #d3dbe7', borderRadius: 14, textAlign: 'center' }}>Nothing saved yet.</div> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 10 }}>
             {saved.map(r => {
@@ -1289,7 +1413,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>{r.house} · {Object.keys(r.marks || {}).length} students{r.created_by ? ` · by ${r.created_by}` : ''}{cur ? ' · open now' : ''}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Shared · {Object.keys(r.marks || {}).length} students · {new Set(Object.values(r.marks || {}).map(v => v.by).filter(Boolean)).size || 1} teacher{(new Set(Object.values(r.marks || {}).map(v => v.by).filter(Boolean)).size || 1) === 1 ? '' : 's'}{r.created_by ? ` · by ${r.created_by}` : ''}{cur ? ' · open now' : ''}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
                     <button type="button" style={{ ...btn(!cur), padding: '7px 14px', minHeight: 38 }} onClick={() => openSaved(r)}>Open</button>
