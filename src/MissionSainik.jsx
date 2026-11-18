@@ -67,6 +67,35 @@ function useIsMobile() {
   return m
 }
 
+// Several chapters in one syllabus cell. Stored as a single "A; B; C" string (no schema change);
+// shown as removable chips with an input that adds another chapter.
+const splitChapters = v => String(v || '').split(';').map(s => s.trim()).filter(Boolean)
+function ChapterMulti({ value, onSave, listId, label, placeholder, fontSize, minHeight, tint }) {
+  const items = splitChapters(value)
+  const [draft, setDraft] = useState('')
+  const commit = text => {
+    const t = String(text ?? draft).replace(/;/g, ',').trim(); setDraft('')
+    if (!t || items.some(c => c.toLowerCase() === t.toLowerCase())) return
+    onSave([...items, t].join('; '))
+  }
+  const remove = i => onSave(items.filter((_, j) => j !== i).join('; '))
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+      {items.map((c, i) => (
+        <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px 2px 8px', borderRadius: 99, background: tint || '#f1ede3', fontSize: Math.max(11, (fontSize || 13) - 1), fontWeight: 600, maxWidth: '100%' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</span>
+          <button type="button" aria-label={`Remove ${c}`} onClick={e => { e.preventDefault(); remove(i) }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 4px', fontSize: 14, lineHeight: 1, color: 'inherit' }}>×</button>
+        </span>
+      ))}
+      <input value={draft} list={listId} aria-label={label} placeholder={items.length ? 'Add another…' : placeholder}
+        onChange={e => { const ni = e.nativeEvent?.inputType; setDraft(e.target.value); if ((ni === undefined || ni === 'insertReplacementText') && e.target.value) commit(e.target.value) }}
+        onBlur={() => draft.trim() && commit()} onKeyDown={e => { if (e.key === 'Enter' || e.key === ';') { e.preventDefault(); commit() } }}
+        enterKeyHint="done"
+        style={{ flex: '1 1 110px', minWidth: 90, border: 'none', background: 'transparent', outline: 'none', fontSize: fontSize || 13, minHeight, padding: '2px 0', fontFamily: 'inherit', color: PX.ink }} />
+    </div>
+  )
+}
+
 function dueForBase(task, deadline) {
   if (task.kind === 'practice') return deadline
   return TESTS[task.test_no - 1]?.drafts || deadline
@@ -1213,7 +1242,7 @@ function MissionSainikInner({ currentUser }) {
             return true
           })
           // Suggestions: official AISSEE chapters (all classes) of the same subject family; unused ones first.
-          const used = new Set(TESTS.flatMap(t => SUBJECTS.map(x => val(t, x).toLowerCase())))
+          const used = new Set(TESTS.flatMap(t => SUBJECTS.flatMap(x => splitChapters(val(t, x)).map(c => c.toLowerCase()))))
           const suggest = x => {
             const fam = subjectFamily(x.label)
             const fams = fam === 'gk' ? ['gk', 'social'] : [fam]
@@ -1271,9 +1300,7 @@ function MissionSainikInner({ currentUser }) {
                           {SUBJECTS.map((x, i) => (
                             <label key={x.key} style={{ display: 'block', borderLeft: `4px solid ${tone(i)}`, borderRadius: 8, background: val(t, x) ? tone(i) + '12' : '#fafafa', padding: isMobile ? '8px 12px 9px' : '5px 8px 6px' }}>
                               <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: tone(i) }}>{x.short}</span>
-                              <input key={t.no + x.label + val(t, x)} defaultValue={val(t, x)} placeholder="Add chapter…" list={'syl-sug-' + x.key} aria-label={`${t.id} ${x.short} chapter`}
-                                onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                                style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: isMobile ? 16 : 13, minHeight: isMobile ? 30 : undefined, color: PX.ink, padding: '2px 0', fontFamily: 'inherit' }} enterKeyHint="done" />
+                              <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Add chapter…" fontSize={isMobile ? 16 : 13} minHeight={isMobile ? 30 : undefined} tint={tone(i) + '22'} />
                             </label>
                           ))}
                         </div>}
@@ -1289,8 +1316,7 @@ function MissionSainikInner({ currentUser }) {
                       <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
                       {SUBJECTS.map(x => (
                         <td key={x.key} style={{ padding: '8px 10px' }}>
-                          <input key={t.no + x.label + val(t, x)} className="px-input" defaultValue={val(t, x)} aria-label="Chapter" placeholder="Chapter" list={'syl-sug-' + x.key}
-                            onBlur={e => saveChapter(t.no, x.label, e.target.value.trim())} style={{ fontSize: 12 }} />
+                          <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Chapter" fontSize={12} />
                         </td>
                       ))}
                     </tr>))}
