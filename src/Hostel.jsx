@@ -14,6 +14,7 @@ import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWind
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
+import HouseMarksTab from './HouseMarksTab'
 import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, sendPushToStudent, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
@@ -256,6 +257,7 @@ const TABS = [
   { id: 'parentitems', label: '📦 Parent Items' },
   { id: 'journal', label: '📓 Journal' },
   { id: 'doubtsession', label: '💬 Doubt' },
+  { id: 'housemarks', label: '📝 Marks' },
   { id: 'classtimetable', label: '📚 Classes' },
   { id: 'neglectreport', label: '🚨 Neglect Report' },
   { id: 'hmrollreport', label: '📑 Roll Call Report' },
@@ -274,14 +276,14 @@ const TAB_GROUPS = [
   { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash', 'a4stock', 'studymaterial'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
   { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
-  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
+  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'housemarks', 'journal'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
 
 // A housemaster/housemistress logging in sees only these tabs, each
 // limited to their own house; everything else stays with the office.
 const HM_ROLES = ['house master', 'housemaster', 'house mistress', 'housemistress']
-const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'kitchen', 'schedule', 'classtimetable', 'transfer']
+const HM_TABS = ['hmdashboard', 'attendance', 'hmrollreport', 'neglectreport', 'leave', 'sickbay', 'discipline', 'nightduty', 'maintenance', 'journal', 'hmactivities', 'parentitems', 'doubtsession', 'housemarks', 'kitchen', 'schedule', 'classtimetable', 'transfer']
 
 // Rows of one house: matched by the row's student (when it has one) or by
 // the row's own house. No lockHouse = everything (admins, office staff).
@@ -12951,7 +12953,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','housemarks','neglectreport','hmrollreport','commandcentre']
   const [requestedTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -13115,6 +13117,7 @@ function Hostel() {
     journal: <JournalTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
+    housemarks: <HouseMarksTab students={myStudents} lockHouse={lockHouse} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} lockHouse={lockHouse} />,
     hmrollreport: <HMRollCallReportTab lockHouse={lockHouse} />,
     commandcentre: <CommandCentreTab students={students} currentUser={currentUser} />,
