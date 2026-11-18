@@ -19,6 +19,7 @@ import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import MissionSainikAdmin from './MissionSainikAdmin'
+import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
 import SmartPaperMaker from './SmartPaperMaker'
 import SetPrintDialog from './SetPrintDialog'
@@ -211,6 +212,7 @@ function MissionSainikInner({ currentUser }) {
   const [taskSort, setTaskSort] = useState('due')
   const [pracCounts, setPracCounts] = useState({})
   const [sylImport, setSylImport] = useState(null)                   // null | text
+  const [sylPage, setSylPage] = useState('plan')                  // plan | official | manual
   const [sylView, setSylView] = useState('cards')                     // cards | grid
   const [sylOnlyEmpty, setSylOnlyEmpty] = useState(false)
   const [sylOpen, setSylOpen] = useState({})                         // test no -> expanded (mobile)
@@ -1401,7 +1403,17 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'allotment' && Allotment()}
             {tab === 'mine' && Mine()}
             {tab === 'practice' && Practice()}
-            {tab === 'syllabus' && syllabusTab}
+            {tab === 'syllabus' && (
+              <>
+                <div role="tablist" aria-label="Syllabus pages" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {[['plan', '🗓 Plan'], ['official', '📘 Official syllabus 2027'], ['manual', '📖 Manual']].map(([k, l]) => (
+                    <button key={k} type="button" role="tab" aria-selected={sylPage === k} onClick={() => setSylPage(k)}
+                      style={{ padding: '9px 16px', borderRadius: 99, border: `1.5px solid ${sylPage === k ? PX.gold : PX.line}`, background: sylPage === k ? PX.goldBg : '#fff', color: sylPage === k ? PX.navy : PX.sub, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>))}
+                </div>
+                {sylPage === 'plan' && syllabusTab}
+                {sylPage === 'official' && <OfficialSyllabus isMobile={isMobile} />}
+                {sylPage === 'manual' && <SyllabusManual />}
+              </>)}
             {tab === 'marks' && marksTab}
             {tab === 'material' && materialTab}
             {tab === 'panel' && Panel()}
