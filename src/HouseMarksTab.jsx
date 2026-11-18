@@ -29,6 +29,13 @@ const norm = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const clone = o => JSON.parse(JSON.stringify(o))
 const todayStr = () => new Date().toLocaleDateString('en-CA')
 
+// ── Remembering: unsaved work (draft) and the last test setup live in this browser ──
+const lsGet = k => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null } catch { return null } }
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode / full */ } }
+const lsDel = k => { try { localStorage.removeItem(k) } catch { /* ignore */ } }
+const SETUP_KEY = 'house_marks_last_setup'
+const lastSetup = () => { const l = lsGet(SETUP_KEY); return l && PRESETS[l.preset] && Array.isArray(l.subjects) && l.subjects.length ? l : null }
+
 function parseMark(v) {
   if (v === null || v === undefined) return null
   const s = String(v).trim()
@@ -65,7 +72,7 @@ const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' 
 
 export default function HouseMarksTab({ students = [], lockHouse = '', currentUser }) {
   const canDelete = isAdminRole(currentUser?.role)
-  const [test, setTest] = useState(() => ({ id: null, name: '', date: todayStr(), preset: 'jnvst', subjects: clone(PRESETS.jnvst.subjects) }))
+  const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
   const [saved, setSaved] = useState([])
   const [msg, setMsg] = useState(null)             // { kind: 'ok'|'err', text }
@@ -81,6 +88,8 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
   const [activeRow, setActiveRow] = useState(null)
+  const draftKey = 'house_marks_draft_' + (lockHouse || 'all')
+  const [draft, setDraft] = useState(() => { const d = lsGet('house_marks_draft_' + (lockHouse || 'all')); return d && d.marks && Object.keys(d.marks).length ? d : null })
 
   const pool = useMemo(() => (students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
@@ -96,6 +105,20 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
+
+  // Auto-remember: every edit is kept on this computer (debounced), and the test setup is the next default.
+  useEffect(() => {
+    if (!dirty) return
+    const t = setTimeout(() => lsSet(draftKey, { ts: Date.now(), test, marks, mode, picked }), 400)
+    return () => clearTimeout(t)
+  }, [dirty, test, marks, mode, picked, draftKey])
+  useEffect(() => { lsSet(SETUP_KEY, { preset: test.preset, subjects: test.subjects }) }, [test.preset, test.subjects])
+  const restoreDraft = () => {
+    if (!draft) return
+    setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
+    flash('ok', 'Your unsaved marks are back.')
+  }
+  const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
   const loadSaved = useCallback(async () => {
     let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at').order('test_date', { ascending: false }).limit(100)
@@ -251,7 +274,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     const { data, error } = await q
     setBusy(false)
     if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
-    setTest(t => ({ ...t, id: data.id })); setDirty(false); flash('ok', `Saved ${Object.keys(compact).length} students.`); loadSaved()
+    setTest(t => ({ ...t, id: data.id })); setDirty(false); lsDel(draftKey); flash('ok', `Saved ${Object.keys(compact).length} students.`); loadSaved()
   }
   const openSaved = r => {
     const byId = {}; roster.forEach(s => { byId[s.id] = s })
@@ -271,7 +294,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
-    setTest({ id: null, name: '', date: todayStr(), preset: 'jnvst', subjects: clone(PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false)
+    const l = lastSetup(); setTest({ id: null, name: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
   const shown = roster
@@ -332,6 +355,13 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
         </div>
       </div>
 
+      {draft && !dirty && (
+        <div style={{ ...card, padding: '12px 16px', background: '#fff9ec', borderColor: '#eadbb2', color: '#7a4a00', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+          <span style={{ flex: 1, minWidth: 200 }}>📝 You have unsaved marks{draft.test?.name ? <> for <b>{draft.test.name}</b></> : null} from {new Date(draft.ts).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}.</span>
+          <button type="button" style={btn(true)} onClick={restoreDraft}>Restore</button>
+          <button type="button" style={btn(false)} onClick={discardDraft}>Discard</button>
+        </div>
+      )}
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
