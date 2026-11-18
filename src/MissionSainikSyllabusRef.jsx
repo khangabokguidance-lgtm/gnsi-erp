@@ -15,6 +15,15 @@ const KEY_DATES = [
 ]
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
+const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+function printSyllabus(cls, pattern, subjects) {
+  const w = window.open('', '_blank'); if (!w) return
+  const sec = n => pattern.sections.find(x => x.subject === n)
+  const blocks = subjects.map(([name, chs]) => { const s = sec(name); return `<h3>${esc(name)}${s ? ` <small>· ${s.questions} questions · ${s.questions * s.marksEach} marks</small>` : ''}</h3><ol>${chs.map(c => `<li>${esc(c)}</li>`).join('')}</ol>` }).join('')
+  w.document.write(`<!doctype html><title>AISSEE-2027 Class ${cls} syllabus</title><style>body{font:13px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0}h2{font-size:12.5px;font-weight:400;color:#444;margin:2px 0 14px}h3{font-size:14px;margin:16px 0 4px;border-bottom:1px solid #999}h3 small{font-weight:400;color:#555}ol{columns:2;margin:6px 0;padding-left:22px}li{break-inside:avoid}.f{margin-top:18px;font-size:11px;color:#555}</style><h1>AISSEE-2027 · Class ${cls} syllabus</h1><h2>${pattern.sections.reduce((n, x) => n + x.questions, 0)} questions · ${pattern.sections.reduce((n, x) => n + x.questions * x.marksEach, 0)} marks · ${pattern.durationMin} minutes · no negative marking · exam 31 Jan 2027</h2>${blocks}<div class="f">Source: NTA Information Bulletin AISSEE-2027, Appendix ${cls === 6 ? 'II' : 'III'}.</div><script>window.onload=()=>window.print()</script>`)
+  w.document.close()
+}
+
 export function OfficialSyllabus({ isMobile }) {
   const classes = classesOf('sainik')
   const [cls, setCls] = useState(classes.includes(6) ? 6 : classes[0])
@@ -29,6 +38,7 @@ export function OfficialSyllabus({ isMobile }) {
     <>
       <PremiumCard title="Official syllabus · AISSEE 2027" subtitle="Sainik School entrance exam (NTA): pattern, marks and every chapter by subject."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="px-hbtn" onClick={() => pattern && printSyllabus(cls, pattern, subjects)}>🖨 Print Class {cls} syllabus</button>
           <a className="px-hbtn" href="/syllabus/AISSEE-2027-Information-Bulletin.pdf" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📄 Information Bulletin (PDF)</a>
           <a className="px-hbtn" href={NTA_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>↗ NTA website</a>
         </span>}>
