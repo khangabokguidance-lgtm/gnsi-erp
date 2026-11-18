@@ -63,7 +63,7 @@ function textToMatrix(t) {
 }
 const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
 
-export default function HouseMarksTab({ students = [], lockHouse = '', currentUser }) {
+export default function HouseMarksTab({ students = [], allStudents = null, lockHouse = '', currentUser }) {
   const canDelete = isAdminRole(currentUser?.role)
   const [test, setTest] = useState(() => ({ id: null, name: '', date: todayStr(), preset: 'jnvst', subjects: clone(PRESETS.jnvst.subjects) }))
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
@@ -81,14 +81,19 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const pool = useMemo(() => (students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [students])
-  const roster = useMemo(() => mode === 'all' ? pool : pool.filter(s => picked.includes(s.id)), [pool, mode, picked])
+  // Whole-school list: in "Pick students" mode any housemaster can add a
+  // student from any house (or a day scholar), not only their own.
+  const school = useMemo(() => (allStudents || students || [])
+    .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [allStudents, students])
+  const roster = useMemo(() => mode === 'all' ? pool : school.filter(s => picked.includes(s.id)), [pool, school, mode, picked])
   const addable = useMemo(() => {
     const q = pickQ.trim().toLowerCase()
-    return pool.filter(s => !picked.includes(s.id) && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q))).slice(0, 8)
-  }, [pool, picked, pickQ])
+    return school.filter(s => !picked.includes(s.id) && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q))).slice(0, 8)
+  }, [school, picked, pickQ])
   const pickStudent = id => { setPicked(p => p.includes(id) ? p : [...p, id]); setPickQ(''); setDirty(true) }
   const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
-  const pickAllShown = () => { setPicked(pool.map(s => s.id)); setDirty(true) }
+  const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
@@ -180,7 +185,8 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
       mx = mx.slice(1)
     }
     const byGcc = new Map(), byName = new Map()
-    roster.forEach(s => { if (digits(s.gcc_no)) byGcc.set(digits(s.gcc_no), s); byName.set(norm(s.name), s) })
+    ;(mode === 'selected' ? school : roster).forEach(s => { if (digits(s.gcc_no)) byGcc.set(digits(s.gcc_no), s); byName.set(norm(s.name), s) })
+    const added = []
     let ok = 0; const miss = []
     const next = { ...marks }
     mx.forEach(row => {
@@ -190,12 +196,13 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
       if (!st) { miss.push(String(row[iN >= 0 ? iN : iG] ?? row[0] ?? '?')); return }
       const cur = (next[st.id] || test.subjects.map(() => null)).slice()
       map.forEach((j, i) => { if (j >= 0) { const v = parseMark(row[j]); if (v !== null) cur[i] = v } })
-      next[st.id] = cur; ok++
+      next[st.id] = cur; ok++; added.push(st.id)
     })
+    if (mode === 'selected' && added.length) setPicked(p => [...new Set([...p, ...added])])
     setMarks(next); setDirty(true)
     const noCols = map.filter(j => j < 0).length
     flash(miss.length || noCols ? 'err' : 'ok',
-      `${ok} matched${miss.length ? `, ${miss.length} not on this sheet (${miss.slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''})` : ''}${noCols ? `. ${noCols} subject column(s) not found in the header.` : '.'}`)
+      `${ok} matched${miss.length ? `, ${miss.length} not found (${miss.slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''})` : ''}${noCols ? `. ${noCols} subject column(s) not found in the header.` : '.'}`)
   }
   const onFile = f => {
     if (!f) return
@@ -250,12 +257,13 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     setTest(t => ({ ...t, id: data.id })); setDirty(false); flash('ok', `Saved ${Object.keys(compact).length} students.`); loadSaved()
   }
   const openSaved = r => {
-    const byId = {}; roster.forEach(s => { byId[s.id] = s })
+    const byId = {}; school.forEach(s => { byId[s.id] = s })
     const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
     const ids = Object.keys(mk)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
     setTest({ id: r.id, name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
-    if (ids.length < pool.length) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
+    const inHouse = ids.length > 0 && ids.every(id => pool.some(s => s.id === id))
+    if (ids.length < pool.length || !inHouse) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const delSaved = async r => {
@@ -325,14 +333,14 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
         </div>
         {mode === 'selected' && (
           <div>
-            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search your students by name or GCC No to add" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search any student in the school by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
             {(pickQ.trim() || !picked.length) && (
               <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 6, maxWidth: 360 }}>
                 {addable.length ? addable.map(s => (
                   <button key={s.id} type="button" onClick={() => pickStudent(s.id)} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 10px', background: '#fff', border: 0, borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
                     <span>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}</span></span><span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
                   </button>
-                )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No more students match.</div>}
+                )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
               </div>
             )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
@@ -344,7 +352,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
               ))}
               {!picked.length && <span style={{ fontSize: 12, color: '#64748b' }}>No students picked yet.</span>}
             </div>
-            <div style={{ marginTop: 8 }}><button type="button" style={btn(false)} onClick={pickAllShown}>Add all {pool.length}</button></div>
+            <div style={{ marginTop: 8 }}><button type="button" style={btn(false)} onClick={pickMyHouse}>Add my whole house ({pool.length})</button></div>
           </div>
         )}
       </div>
