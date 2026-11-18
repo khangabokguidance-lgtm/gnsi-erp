@@ -114,11 +114,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   // Everyone matching the search / house / class filters who is not already on the sheet.
   const addable = useMemo(() => {
     const q = pickQ.trim().toLowerCase()
-    return school.filter(s => !picked.includes(s.id)
-      && (!fHouse || s.house === fHouse) && (!fClass || s.class_name === fClass)
+    return school.filter(s => (!fHouse || s.house === fHouse) && (!fClass || s.class_name === fClass)
       && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)))
   }, [school, picked, pickQ, fHouse, fClass])
   const shownAddable = addable.slice(0, 200)
+  const tickable = shownAddable.filter(s => !picked.includes(s.id))
   // Sheet search also looks at the whole school: matches not yet on the sheet can be added in one tap.
   const searchHits = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -131,7 +131,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setMode('selected'); setDirty(true)
   }
   const toggleTick = id => setTicks(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
-  const tickAllShown = () => setTicks(t => [...new Set([...t, ...shownAddable.map(s => s.id)])])
+  const tickAllShown = () => setTicks(t => [...new Set([...t, ...tickable.map(s => s.id)])])
   const addTicked = () => { if (!ticks.length) return; const n = ticks.length; setPicked(p => [...new Set([...p, ...ticks])]); setTicks([]); setDirty(true); flash('ok', `${n} student${n === 1 ? '' : 's'} added.`) }
   const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
   const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
@@ -496,15 +496,18 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, maxHeight: 260, overflowY: 'auto' }}>
               {shownAddable.length ? shownAddable.map(s => (
                 <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, background: ticks.includes(s.id) ? '#eff6ff' : '#fff', flexDirection: 'row', color: 'inherit' }}>
-                  <input type="checkbox" checked={ticks.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
+                  <input type="checkbox" checked={picked.includes(s.id) || ticks.includes(s.id)} disabled={picked.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
                   <span style={{ flex: 1, minWidth: 0 }}>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
                   <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
+                  {picked.includes(s.id)
+                    ? <button type="button" onClick={e => { e.preventDefault(); unpickStudent(s.id) }} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', flex: 'none' }}>✓ On sheet · Remove</button>
+                    : <button type="button" onClick={e => { e.preventDefault(); setPicked(p => [...new Set([...p, s.id])]); setTicks(t => t.filter(x => x !== s.id)); setDirty(true) }} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
                 </label>
               )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-              <button type="button" style={btn(true)} onClick={addTicked} disabled={!ticks.length}>Add {ticks.length || ''} selected</button>
-              <button type="button" style={btn(false)} onClick={tickAllShown} disabled={!shownAddable.length}>Tick all shown ({shownAddable.length})</button>
+              <button type="button" style={btn(true)} onClick={addTicked} disabled={!ticks.length}>{ticks.length ? `Add ${ticks.length} selected` : 'Add selected'}</button>
+              <button type="button" style={btn(false)} onClick={tickAllShown} disabled={!tickable.length}>Tick all shown ({tickable.length})</button>
               <button type="button" style={btn(false)} onClick={() => setTicks([])} disabled={!ticks.length}>Clear ticks</button>
               {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing first 200 of {addable.length}. Narrow with the filters.</span>}
             </div>
