@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { GRADES, gradeOf, gradeColor, medal, buildCalc, subjSig, parseMark, cellState } from './houseMarksCalc'
 import HouseMarksPast from './HouseMarksPast'
+import HouseMarksGroups from './HouseMarksGroups'
 
 // ══════════════════════════════════════════════════════════════
 //  HOUSE MARKS TAB  (Hostel → 📝 Marks)
@@ -1507,9 +1508,10 @@ export default function HouseMarksTab(props) {
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto' }}>
       <div role="tablist" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 14, background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: 16, fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif" }}>
-        {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}
+        {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}{tab('groups', '👥 Group list')}
       </div>
       <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HouseMarksEntry {...props} openRequest={openReq} /></div>
+      {view === 'groups' && <HouseMarksGroups school={props.allStudents || props.students || []} />}
       {view === 'past' && <HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
     </div>
   )
