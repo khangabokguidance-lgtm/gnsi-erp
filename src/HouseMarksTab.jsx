@@ -115,6 +115,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [openStu, setOpenStu] = useState(false)                       // step 2 starts as a one-line summary
   const [justSaved, setJustSaved] = useState(false)
   const nameRef = useRef(null)
+  const groupRef = useRef(null)
   const [bulkCols, setBulkCols] = useState([])        // one text block per subject, one line per student (sheet order)
   const [saveAfter, setSaveAfter] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -177,7 +178,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   useEffect(() => { lsSet(SETUP_KEY, { preset: test.preset, subjects: test.subjects }) }, [test.preset, test.subjects])
   const restoreDraft = () => {
     if (!draft) return
-    setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
+    setTest({ group: '', ...draft.test }); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
   // Saved student lists live in the database (house_test_groups) so they follow the
@@ -222,6 +223,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       setGroups(next); lsSet(groupsKey, next); setGroupsDb(false)
       flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
     }
+    setTest(t => t.group.trim() ? t : { ...t, group: name })
     setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check lists”.` : ''}`)
   }
   const useGroup = g => {
@@ -446,6 +448,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   // ── PDF result sheet: school letterhead, ranked table, ready to share ──
   const exportPdf = async (share) => {
     if (!roster.length || !stats.entered) { flash('err', 'Enter some marks first.'); return }
+    if (needGroup()) return
     setPdfBusy(true)
     try {
       const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
@@ -532,8 +535,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (thenSave) setSaveAfter(true)
     else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
   }
+  const needGroup = () => {
+    if (test.group.trim()) return false
+    setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your saved lists).')
+    setTimeout(() => { groupRef.current?.focus(); groupRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80)
+    return true
+  }
   const save = async () => {
     if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
+    if (needGroup()) return
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
     const compact = {}
     roster.forEach(s => {
@@ -570,7 +580,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
     const ids = Object.keys(mk)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
-    setTest({ id: r.id, name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    setTest({ id: r.id, group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    // the group name was stored with each student's result row when the test was saved
+    supabase.from('house_test_results').select('group_name').eq('test_id', r.id).limit(1).then(({ data }) => { const gname = data && data[0] && data[0].group_name; if (gname) setTest(t => t.id === r.id && !t.group ? { ...t, group: gname } : t) }, () => {})
     const inHouse = ids.length > 0 && ids.every(id => pool.some(s => s.id === id))
     if (ids.length < pool.length || !inHouse) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -695,11 +707,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
-          summary={`${test.name.trim() || 'Untitled test'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
+        <Step n={1} title="Test details" hint="Name the test and its group (compulsory), set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
+          summary={`${test.name.trim() || 'Untitled test'} · ${test.group.trim() || '⚠ group name missing'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
         {openDet && <div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
+          <label style={{ ...lab, flex: '1 1 200px' }}>Name of the group <span style={{ color: '#dc2626' }}>*</span>
+            <input ref={groupRef} list="hm-group-names" style={{ ...inp, borderColor: test.group.trim() ? undefined : '#f59e0b' }} value={test.group} placeholder="e.g. Class VI Navodaya" required aria-required="true" onChange={e => { setTest(t => ({ ...t, group: e.target.value })); setDirty(true) }} />
+            <datalist id="hm-group-names">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
+          </label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
