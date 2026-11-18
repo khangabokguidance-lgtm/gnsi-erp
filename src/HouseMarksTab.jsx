@@ -27,6 +27,16 @@ const PRESETS = {
   custom: { label: 'Custom subjects', subjects: [{ n: 'Marks', max: 100, min: '' }] },
 }
 
+// JNVST 2027 Arithmetic booklet: 9 chapters (50 questions each) + the full mock paper (20 Q, 25 marks)
+const BOOKLET = [
+  { n: 1, t: 'Fractions' }, { n: 2, t: 'Measurement: length, mass, capacity, time, money' }, { n: 3, t: 'Perimeter and area' },
+  { n: 4, t: 'Simplification of numerical expressions' }, { n: 5, t: 'Number and numeric system' }, { n: 6, t: 'Four fundamental operations on whole numbers' },
+  { n: 7, t: 'Factors and multiples including their properties' }, { n: 8, t: 'Types of angles and simple applications' }, { n: 9, t: 'Data analysis: bar diagram, table and pictograph' },
+]
+const MOCK_NAME = 'Full mock paper'
+const chapterName = c => c === 'mock' ? MOCK_NAME : `Ch ${c} · ${BOOKLET[c - 1].t}`
+const chapterOf = name => { const n = String(name || ''); if (n === MOCK_NAME) return 'mock'; const m = n.match(/^Ch (\d) · /); return m && BOOKLET[+m[1] - 1] ? +m[1] : '' }
+
 const digits = v => String(v ?? '').replace(/\D/g, '')
 const norm = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const clone = o => JSON.parse(JSON.stringify(o))
@@ -77,7 +87,7 @@ function Step({ n, title, hint, right, summary, open = true, onToggle }) {
 
 function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', currentUser, openRequest = null }) {
   const canDelete = isAdminRole(currentUser?.role)
-  const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
+  const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, kind: 'booklet', chapter: '', name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
   const [saved, setSaved] = useState([])
   const [msg, setMsg] = useState(null)             // { kind: 'ok'|'err', text }
@@ -163,7 +173,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   useEffect(() => { lsSet(SETUP_KEY, { preset: test.preset, subjects: test.subjects }) }, [test.preset, test.subjects])
   const restoreDraft = () => {
     if (!draft) return
-    setTest({ group: '', ...draft.test }); setMarks(draft.marks || {}); setMode('all'); setPicked([]); if (draft.picked && draft.picked.length) setMyClass([...new Set([...classExtra, ...draft.picked])]); setDirty(true); setDraft(null)
+    setTest({ group: '', kind: 'other', chapter: '', ...draft.test }); setMarks(draft.marks || {}); setMode('all'); setPicked([]); if (draft.picked && draft.picked.length) setMyClass([...new Set([...classExtra, ...draft.picked])]); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
   // Saved student lists live in the database (house_test_groups) so they follow the
@@ -390,7 +400,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   }
   const useTemplate = t => {
     if (dirty && Object.keys(marks).length && !window.confirm('Switch to this template? Marks you typed for the current sheet will be cleared.')) return
-    setTest(x => ({ ...x, id: null, name: t.name, preset: t.subjects.length === 1 ? 'single' : 'custom', subjects: clone(t.subjects) }))
+    setTest(x => ({ ...x, id: null, kind: 'other', chapter: '', name: t.name, preset: t.subjects.length === 1 ? 'single' : 'custom', subjects: clone(t.subjects) }))
     setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
   }
   const delTemplate = async t => {
@@ -398,9 +408,28 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     if (tplDb) { const { error } = await supabase.from('house_test_templates').delete().eq('id', t.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadTemplates() }
     else { const next = templates.filter(x => x.id !== t.id); setTemplates(next); lsSet('house_marks_templates', next) }
   }
+  const chooseChapter = c => {
+    if (test.chapter === c) return
+    if (dirty && Object.keys(marks).length && !window.confirm('Switch chapter? Marks you typed for the current sheet will be cleared.')) return
+    const mock = c === 'mock'
+    setTest(t => ({ ...t, id: null, kind: 'booklet', chapter: c, name: chapterName(c), preset: mock ? 'arith' : 'arith50', subjects: clone((mock ? PRESETS.arith : PRESETS.arith50).subjects) }))
+    setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
+  }
+  const setKind = k => {
+    if (test.kind === k) return
+    if (dirty && Object.keys(marks).length && !window.confirm('Change the test type? Marks you typed for the current sheet will be cleared.')) return
+    setTest(t => ({ ...t, id: null, kind: k, chapter: '', name: '' }))
+    setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
+  }
+  const needChapter = () => {
+    if (test.kind !== 'booklet' || test.chapter) return false
+    setOpenDet(true); flash('err', 'Choose the chapter first. Tap one chapter of the booklet (or Full mock paper).')
+    setTimeout(() => { chapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80)
+    return true
+  }
   const quickTest = n => {
     if (dirty && Object.keys(marks).length && !window.confirm('Switch to this test? Marks you typed for the current sheet will be cleared.')) return
-    setTest(t => ({ ...t, id: null, name: `Test ${n}`, preset: 'arith50', subjects: clone(PRESETS.arith50.subjects) }))
+    setTest(t => ({ ...t, id: null, kind: 'other', chapter: '', name: `Test ${n}`, preset: 'arith50', subjects: clone(PRESETS.arith50.subjects) }))
     setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
   }
   const setPreset = p => {
@@ -482,7 +511,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   // ── PDF result sheet: school letterhead, ranked table, ready to share ──
   const exportPdf = async (share) => {
     if (!roster.length || !stats.entered) { flash('err', 'Enter some marks first.'); return }
-    if (needGroup()) return
+    if (needChapter() || needGroup()) return
     setPdfBusy(true)
     try {
       const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
@@ -626,6 +655,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     if (thenSave) setSaveAfter(true)
     else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
   }
+  const chapRef = useRef(null)
   const needGroup = () => {
     if (test.group.trim()) return false
     setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your groups).')
@@ -633,6 +663,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     return true
   }
   const save = async () => {
+    if (needChapter()) return
     if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
     if (needGroup()) return
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
@@ -708,7 +739,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     const byId = {}; school.forEach(s => { byId[s.id] = s })
     setTestOwner(r.created_by || null); loadShared(r.id)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
-    setTest({ id: r.id, group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    setTest({ id: r.id, kind: chapterOf(r.test_name) ? 'booklet' : 'other', chapter: chapterOf(r.test_name), group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
     // Shared test: this teacher sees and edits only their own students; everyone else's marks stay untouched in the database.
     const ent = r.marks || {}
     const mineIds = Object.keys(ent).filter(id => byId[id] && (ent[id].by === meKey || (!ent[id].by && pool.some(x => x.id === id))))
@@ -735,7 +766,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
     setTestOwner(null); setShared(null)
-    const l = lastSetup(); setTest({ id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
+    const l = lastSetup(); setTest({ id: null, kind: 'booklet', chapter: '', name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
   const shown = roster
@@ -848,22 +879,43 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <Step n={1} title="Test details" hint="Name the test and its group (compulsory), set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
+        <Step n={1} title="Test details" hint="Choose the booklet chapter (compulsory) and the group name, then set the date." open={openDet} onToggle={() => setOpenDet(v => !v)}
           summary={`${test.name.trim() || 'Untitled test'} · ${test.group.trim() || '⚠ group name missing'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
         {openDet && <div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Test type:</span>
+          {[['booklet', '📘 Booklet chapter test'], ['other', '📝 Other test']].map(([k, l]) => {
+            const on = (test.kind || 'other') === k
+            return <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={on} style={{ minHeight: 38, padding: '4px 14px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
+          })}
+        </div>
+        {test.kind === 'booklet' && (
+          <div ref={chapRef} style={{ border: `1.5px solid ${test.chapter ? '#a7f3d0' : '#f59e0b'}`, background: test.chapter ? '#f0fdf4' : '#fffbeb', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Choose the chapter <span style={{ color: '#dc2626' }}>*</span> <span style={{ fontWeight: 600, color: '#64748b' }}>· JNVST 2027 Arithmetic Booklet · each chapter is out of 50</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 6 }}>
+              {BOOKLET.map(c => {
+                const on = test.chapter === c.n
+                return <button key={c.n} type="button" onClick={() => chooseChapter(c.n)} aria-pressed={on} style={{ textAlign: 'left', minHeight: 44, padding: '6px 10px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.25 }}><b style={{ color: on ? '#E2C57E' : GOLD }}>Ch {c.n}</b> · {c.t}</button>
+              })}
+              <button type="button" onClick={() => chooseChapter('mock')} aria-pressed={test.chapter === 'mock'} style={{ textAlign: 'left', minHeight: 44, padding: '6px 10px', borderRadius: 10, border: `1.5px solid ${test.chapter === 'mock' ? NAVY : GOLD}`, background: test.chapter === 'mock' ? NAVY : '#fffaf0', color: test.chapter === 'mock' ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.25 }}><b style={{ color: test.chapter === 'mock' ? '#E2C57E' : GOLD }}>Day 10</b> · Full mock paper (25 marks, pass 7)</button>
+            </div>
+            {test.chapter && <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: '#047857' }}>✓ Test: {test.name}</div>}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
+          {test.kind !== 'booklet' && <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>}
           <label style={{ ...lab, flex: '1 1 200px' }}>Name of the group <span style={{ color: '#dc2626' }}>*</span>
             <input ref={groupRef} list="hm-group-names" style={{ ...inp, borderColor: test.group.trim() ? undefined : '#f59e0b' }} value={test.group} placeholder="e.g. Class VI Navodaya" required aria-required="true" onChange={e => { setTest(t => ({ ...t, group: e.target.value })); setDirty(true) }} />
             <datalist id="hm-group-names">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
           </label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
-          <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
+          {test.kind !== 'booklet' && <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
               {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-          </label>
+          </label>}
         </div>
+        {test.kind !== 'booklet' && <>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Quick test · Arithmetic / 50:</span>
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => {
@@ -882,6 +934,10 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
           {!templates.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>none yet</span>}
           <button type="button" onClick={saveTemplate} style={{ ...btn(false), minHeight: 34, padding: '4px 12px', fontSize: 12.5 }}>💾 Save this test setup as template</button>
         </div>
+        </>}
+        {test.kind === 'booklet' ? (
+          <div style={{ fontSize: 12.5, color: '#64748b' }}>Marks: {test.subjects.map(x => `${x.n} out of ${x.max}${x.min !== '' ? ` (pass ${x.min})` : ''}`).join(' + ')}. Fixed by the booklet.</div>
+        ) : <>
         <div style={{ background: '#f6f8fb', border: '1px solid #e3e9f1', borderRadius: 14, padding: 12, marginBottom: 12 }}>
           <div className="hm-subrow hm-subhead">
             <span /><span>Subject</span><span>Max marks</span><span>Min to pass</span><span />
@@ -900,6 +956,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
           {!subjectLocked && <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>}
           <span style={{ fontSize: 12, color: '#64748b' }}>{subjectLocked ? 'One-subject test: name it and set the maximum.' : '“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.'}</span>
         </div>
+        </>}
         </div>}
       </div>
 
