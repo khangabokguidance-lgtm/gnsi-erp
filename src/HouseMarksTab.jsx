@@ -36,6 +36,10 @@ const lsDel = k => { try { localStorage.removeItem(k) } catch { /* ignore */ } }
 const SETUP_KEY = 'house_marks_last_setup'
 const lastSetup = () => { const l = lsGet(SETUP_KEY); return l && PRESETS[l.preset] && Array.isArray(l.subjects) && l.subjects.length ? l : null }
 
+const GRADES = [[90, 'A+'], [80, 'A'], [70, 'B+'], [60, 'B'], [50, 'C'], [40, 'D'], [0, 'E']]
+const gradeOf = p => (GRADES.find(([m]) => p >= m) || [0, 'E'])[1]
+const gradeColor = g => g === 'A+' || g === 'A' ? '#047857' : g === 'B+' || g === 'B' ? '#1d4ed8' : g === 'C' || g === 'D' ? '#a16207' : '#b91c1c'
+const medal = k => k === 0 ? '🥇' : k === 1 ? '🥈' : k === 2 ? '🥉' : ''
 function parseMark(v) {
   if (v === null || v === undefined) return null
   const s = String(v).trim()
@@ -111,6 +115,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [openStu, setOpenStu] = useState(false)                       // step 2 starts as a one-line summary
   const [justSaved, setJustSaved] = useState(false)
   const nameRef = useRef(null)
+  const groupRef = useRef(null)
   const [bulkCols, setBulkCols] = useState([])        // one text block per subject, one line per student (sheet order)
   const [saveAfter, setSaveAfter] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -173,7 +178,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   useEffect(() => { lsSet(SETUP_KEY, { preset: test.preset, subjects: test.subjects }) }, [test.preset, test.subjects])
   const restoreDraft = () => {
     if (!draft) return
-    setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
+    setTest({ group: '', ...draft.test }); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
   // Saved student lists live in the database (house_test_groups) so they follow the
@@ -181,33 +186,45 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   // to this computer only.
   const gHouse = lockHouse || 'All'
   const [groupsDb, setGroupsDb] = useState(null)   // null = unknown, true = database, false = this computer only
+  // Every housemaster keeps their own lists: they are stored under the logged-in user (owner).
+  const me = String(currentUser?.username || currentUser?.name || currentUser?.id || '')
   const loadGroups = useCallback(async () => {
-    const { data, error } = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+    const q = () => supabase.from('house_test_groups').select('id,name,student_ids').eq('owner', me).order('name')
+    let { data, error } = await q()
     if (error) { setGroupsDb(false); return }
     setGroupsDb(true)
     let rows = data || []
+    // Lists made before owners existed (owner '') in this house are claimed by the first housemaster who opens the tab.
+    const legacy = await supabase.from('house_test_groups').select('id,name').eq('owner', '').eq('house', gHouse)
+    if (me && legacy.data && legacy.data.length) {
+      const mine = new Set(rows.map(r => r.name.toLowerCase()))
+      for (const l of legacy.data) { if (!mine.has(l.name.toLowerCase())) await supabase.from('house_test_groups').update({ owner: me }).eq('id', l.id) }
+      rows = (await q()).data || []
+    }
     const local = lsGet('house_marks_groups_' + gHouse.replace(/^All$/, 'all'))
     if (!rows.length && Array.isArray(local) && local.length) {   // one-time move of lists saved on this computer
-      await supabase.from('house_test_groups').upsert(local.map(g => ({ house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'house,name' })
-      const r2 = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
-      rows = r2.data || []
+      await supabase.from('house_test_groups').upsert(local.map(g => ({ owner: me, house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'owner,name' })
+      rows = (await q()).data || []
     }
     setGroups(rows.map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
-  }, [gHouse])
+  }, [gHouse, me])
   useEffect(() => { loadGroups() }, [loadGroups])
   const saveAsGroup = async () => {
     const name = groupName.trim()
     if (!name) { flash('err', 'Type a name for this list first, e.g. “Class VI Navodaya”.'); return }
     if (!roster.length) { flash('err', 'Add some students first.'); return }
     const ids = roster.map(x => x.id)
-    const { error } = await supabase.from('house_test_groups').upsert({ house: gHouse, name, student_ids: ids, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }, { onConflict: 'house,name' })
+    const overlap = new Set()
+    groups.filter(g => g.name.toLowerCase() !== name.toLowerCase()).forEach(g => g.ids.forEach(i => { if (ids.includes(i)) overlap.add(i) }))
+    const { error } = await supabase.from('house_test_groups').upsert({ owner: me, house: gHouse, name, student_ids: ids, created_by: me || null, updated_at: new Date().toISOString() }, { onConflict: 'owner,name' })
     if (error) {
       const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
       const next = [...others, { id: Date.now(), name, ids }].sort((a, b) => a.name.localeCompare(b.name))
       setGroups(next); lsSet(groupsKey, next); setGroupsDb(false)
       flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
     }
-    setGroupName(''); await loadGroups(); flash('ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
+    setTest(t => t.group.trim() ? t : { ...t, group: name })
+    setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check lists”.` : ''}`)
   }
   const useGroup = g => {
     const live = new Set(school.map(s => s.id))
@@ -220,6 +237,21 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (!window.confirm(`Delete the list “${g.name}”? The students themselves are not affected.`)) return
     if (groupsDb) { const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadGroups() }
     else { const next = groups.filter(x => x.id !== g.id); setGroups(next); lsSet(groupsKey, next) }
+  }
+  // Students who sit in more than one saved list.
+  const dupes = useMemo(() => {
+    const m = new Map()
+    groups.forEach(g => g.ids.forEach(id => { if (!m.has(id)) m.set(id, []); m.get(id).push(g.name) }))
+    return [...m].filter(([, n]) => n.length > 1).map(([id, names]) => ({ id, names, name: (school.find(x => x.id === id) || {}).name || 'Unknown student' }))
+  }, [groups, school])
+  const dupLists = useMemo(() => { const m = {}; dupes.forEach(d => d.names.forEach(n => { m[n] = (m[n] || 0) + 1 })); return m }, [dupes])
+  const [mgrOpen, setMgrOpen] = useState(false)
+  const [mgrList, setMgrList] = useState(null)
+  const removeFromGroup = async (g, sid) => {
+    const ids = g.ids.filter(i => i !== sid)
+    if (groupsDb) { const { error } = await supabase.from('house_test_groups').update({ student_ids: ids, updated_at: new Date().toISOString() }).eq('id', g.id); if (error) { flash('err', 'Could not update: ' + error.message); return } }
+    const next = groups.map(x => x.id === g.id ? { ...x, ids } : x)
+    setGroups(next); if (!groupsDb) lsSet(groupsKey, next)
   }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
@@ -263,6 +295,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const ids = Object.keys(out).filter(id => out[id].n > 0 && !out[id].bad).sort((a, b) => out[b].tot - out[a].tot)
     let rk = 0, prev = null
     ids.forEach((id, k) => { if (out[id].tot !== prev) { rk = k + 1; prev = out[id].tot } out[id].rank = rk })
+    // percentile = share of ranked students this one scored higher than; grade from percent; pass = no mark below its minimum
+    ids.forEach(id => {
+      const c = out[id]
+      c.percentile = ids.length > 1 ? ids.filter(o => out[o].tot < c.tot).length / (ids.length - 1) * 100 : 100
+      c.grade = gradeOf(c.pct)
+      c.pass = !c.low && !c.absent
+    })
     return out
   }, [roster, marks, test.subjects, maxTotal])
 
@@ -281,6 +320,35 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       high: tots.length ? Math.max(...tots) : null,
     }
   }, [calc, roster])
+
+  // ── Analyser: toppers and averages by saved list / class / house, plus subject-wise ──
+  const analysis = useMemo(() => {
+    const byTot = (a, b) => calc[b.id].tot - calc[a.id].tot || String(a.name).localeCompare(String(b.name))
+    const mk = (label, members) => {
+      if (!members.length) return null
+      const r = members.filter(x => calc[x.id]?.rank).sort(byTot)
+      const topTot = r.length ? calc[r[0].id].tot : null
+      return {
+        label, total: members.length, ranked: r.length, topTot,
+        toppers: r.filter(x => calc[x.id].tot === topTot),
+        top3: r.slice(0, 3),
+        avgPct: r.length ? r.reduce((a, x) => a + calc[x.id].pct, 0) / r.length : null,
+        passPct: r.length ? r.filter(x => calc[x.id].pass).length / r.length * 100 : null,
+      }
+    }
+    const by = f => { const m = new Map(); roster.forEach(x => { const k = f(x); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(x) } }); return [...m].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => mk(String(k), v)) }
+    const subjects = test.subjects.map((sub, i) => {
+      const vals = roster.map(x => ({ x, v: (marks[x.id] || [])[i] })).filter(o => typeof o.v === 'number' && cellState(o.v, sub) !== 'err')
+      if (!vals.length) return { n: sub.n, max: sub.max, count: 0 }
+      const hi = Math.max(...vals.map(o => o.v)), lo = Math.min(...vals.map(o => o.v))
+      const minV = sub.min === '' || sub.min == null ? null : Number(sub.min)
+      return { n: sub.n, max: sub.max, count: vals.length, avg: vals.reduce((a, o) => a + o.v, 0) / vals.length, hi, lo,
+        hiNames: vals.filter(o => o.v === hi).map(o => o.x.name), passPct: minV == null ? null : vals.filter(o => o.v >= minV).length / vals.length * 100 }
+    })
+    const gradeCount = {}; Object.values(calc).forEach(c => { if (c.rank) gradeCount[c.grade] = (gradeCount[c.grade] || 0) + 1 })
+    return { lists: groups.map(g => mk(g.name, roster.filter(x => g.ids.includes(x.id)))).filter(Boolean), classes: by(x => x.class_name), houses: by(x => x.house), overall: mk('Overall', roster), subjects, gradeCount }
+  }, [calc, roster, marks, test.subjects, groups])
+  const [anTab, setAnTab] = useState('lists')
 
   const setCell = (sid, i, raw) => {
     setMarks(prev => {
@@ -361,10 +429,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
 
   // ── export ──
   const sortedForExport = () => [...roster].sort((a, b) => (calc[a.id].rank || 9999) - (calc[b.id].rank || 9999) || String(a.name).localeCompare(String(b.name)))
-  const headRow = () => ['Rank', 'GCC No', 'Name', 'Class', ...test.subjects.map(s => s.n), 'Total', 'Percent', 'Remark']
+  const headRow = () => ['Rank', 'GCC No', 'Name', 'Class', ...test.subjects.map(s => s.n), 'Total', 'Percent', 'Grade', 'Percentile', 'Remark']
   const bodyRows = () => sortedForExport().map(s => {
     const c = calc[s.id], m = marks[s.id] || []
-    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.rank ? c.grade : '', c.rank ? c.percentile.toFixed(0) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
   })
   const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000) }
   const baseName = () => ((test.name || 'house-test') + (lockHouse ? '-' + lockHouse : '')).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
@@ -380,6 +448,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   // ── PDF result sheet: school letterhead, ranked table, ready to share ──
   const exportPdf = async (share) => {
     if (!roster.length || !stats.entered) { flash('err', 'Enter some marks first.'); return }
+    if (needGroup()) return
     setPdfBusy(true)
     try {
       const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
@@ -393,7 +462,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       const sorted = sortedForExport()
       const body = sorted.map(st => {
         const c = calc[st.id], m = marks[st.id] || []
-        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' + (c.rank ? ' · ' + c.grade : '') : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
       })
       const nSub = test.subjects.length
       autoTable(doc, {
@@ -419,7 +488,21 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           if (ci === 0 && Number(d.cell.raw) >= 1 && Number(d.cell.raw) <= 3) { d.cell.styles.fillColor = [[226, 197, 126], [226, 232, 240], [231, 200, 160]][Number(d.cell.raw) - 1] }
         },
       })
-      const endY = doc.lastAutoTable?.finalY || y
+      let endY = doc.lastAutoTable?.finalY || y
+      const tops = [...analysis.lists.map(g => ['List', g]), ...analysis.classes.map(g => ['Class', g]), ...(lockHouse ? [] : analysis.houses.map(g => ['House', g]))].filter(([, g]) => g.ranked)
+      if (tops.length) {
+        autoTable(doc, {
+          startY: endY + 10,
+          head: [['Group', 'Topper', 'Score', 'Students', 'Avg %', 'Pass %', '2nd & 3rd']],
+          body: tops.map(([k, g]) => [`${k}: ${g.label}`, g.toppers.map(x => x.name).join(', '), `${g.topTot}/${maxTotal} (${(g.topTot / (maxTotal || 1) * 100).toFixed(1)}%)`, `${g.ranked}/${g.total}`, g.avgPct == null ? '–' : g.avgPct.toFixed(1), g.passPct == null ? '–' : g.passPct.toFixed(0), g.top3.filter(x => !g.toppers.includes(x)).map(x => `${x.name} (${calc[x.id].tot})`).join(', ') || '–']),
+          margin: { left: mx, right: mx, bottom: 16 },
+          styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+          headStyles: { fillColor: [201, 162, 75], textColor: [11, 30, 61], fontStyle: 'bold' },
+          columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold' } },
+          didDrawPage: undefined,
+        })
+        endY = doc.lastAutoTable?.finalY || endY
+      }
       doc.setFontSize(8); doc.setTextColor(100, 116, 139)
       if (endY < doc.internal.pageSize.getHeight() - 24) doc.text('Amber = below the minimum mark · Red = invalid mark · AB = absent · Equal totals share a rank.', mx, endY + 6)
       pdfFooters(doc, { margin: mx })
@@ -452,8 +535,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (thenSave) setSaveAfter(true)
     else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
   }
+  const needGroup = () => {
+    if (test.group.trim()) return false
+    setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your saved lists).')
+    setTimeout(() => { groupRef.current?.focus(); groupRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80)
+    return true
+  }
   const save = async () => {
     if (!test.name.trim()) { setOpenDet(true); flash('err', 'Give the test a name first.'); setTimeout(() => { nameRef.current?.focus(); nameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80); return }
+    if (needGroup()) return
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
     const compact = {}
     roster.forEach(s => {
@@ -490,7 +580,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
     const ids = Object.keys(mk)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
-    setTest({ id: r.id, name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    setTest({ id: r.id, group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    // the group name was stored with each student's result row when the test was saved
+    supabase.from('house_test_results').select('group_name').eq('test_id', r.id).limit(1).then(({ data }) => { const gname = data && data[0] && data[0].group_name; if (gname) setTest(t => t.id === r.id && !t.group ? { ...t, group: gname } : t) }, () => {})
     const inHouse = ids.length > 0 && ids.every(id => pool.some(s => s.id === id))
     if (ids.length < pool.length || !inHouse) { setMode('selected'); setPicked(ids) } else { setMode('all'); setPicked([]) }
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -615,11 +707,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
-          summary={`${test.name.trim() || 'Untitled test'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
+        <Step n={1} title="Test details" hint="Name the test and its group (compulsory), set the date and choose the subjects." open={openDet} onToggle={() => setOpenDet(v => !v)}
+          summary={`${test.name.trim() || 'Untitled test'} · ${test.group.trim() || '⚠ group name missing'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
         {openDet && <div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
+          <label style={{ ...lab, flex: '1 1 200px' }}>Name of the group <span style={{ color: '#dc2626' }}>*</span>
+            <input ref={groupRef} list="hm-group-names" style={{ ...inp, borderColor: test.group.trim() ? undefined : '#f59e0b' }} value={test.group} placeholder="e.g. Class VI Navodaya" required aria-required="true" onChange={e => { setTest(t => ({ ...t, group: e.target.value })); setDirty(true) }} />
+            <datalist id="hm-group-names">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
+          </label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
@@ -671,6 +767,52 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
 
+        {groups.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <button type="button" onClick={() => setMgrOpen(v => !v)} style={{ ...btn(false), minHeight: 34, fontSize: 12.5, borderColor: dupes.length ? '#f59e0b' : LINE, background: dupes.length ? '#fffbeb' : '#fff' }}>
+              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ lists · Check lists` : '🗂 Manage my lists'} {mgrOpen ? '▴' : '▾'}
+            </button>
+            {mgrOpen && (
+              <div style={{ marginTop: 8, border: `1px solid ${LINE}`, borderRadius: 14, padding: 12, background: '#fbfcfe' }}>
+                {dupes.length > 0 && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 12.5, color: '#92400e' }}>
+                    <b>Duplicates</b> — same student in more than one list:
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{dupes.map(d => <li key={d.id}><b>{d.name}</b> → {d.names.join(', ')}</li>)}</ul>
+                  </div>
+                )}
+                {groups.map(g => {
+                  const open = mgrList === g.id
+                  return (
+                    <div key={g.id} style={{ borderTop: `1px solid ${LINE}`, padding: '8px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => setMgrList(open ? null : g.id)} style={{ border: 0, background: 'transparent', fontWeight: 800, color: NAVY, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{open ? '▾' : '▸'} {g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length} students</span></button>
+                        {dupLists[g.name] ? <span style={{ fontSize: 11, fontWeight: 800, color: '#92400e', background: '#fef3c7', borderRadius: 99, padding: '2px 8px' }}>{dupLists[g.name]} shared</span> : null}
+                        <span style={{ flex: 1 }} />
+                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }} onClick={() => useGroup(g)}>Use</button>
+                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => delGroup(g)}>Delete list</button>
+                      </div>
+                      {open && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                          {g.ids.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Empty list.</span>}
+                          {g.ids.map(id => {
+                            const st = school.find(x => x.id === id); const also = groups.filter(o => o.id !== g.id && o.ids.includes(id)).map(o => o.name)
+                            return (
+                              <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 8px', borderRadius: 8, background: also.length ? '#fffbeb' : '#fff', border: `1px solid ${also.length ? '#fcd34d' : LINE}` }}>
+                                <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{st ? st.name : 'Student no longer active'}</b>{st && st.class_name ? <span style={{ color: '#64748b' }}> · {st.class_name}</span> : null}{also.length ? <span style={{ color: '#92400e', fontSize: 11.5 }}> · also in {also.join(', ')}</span> : null}</span>
+                                <button type="button" aria-label={`Remove from ${g.name}`} onClick={() => removeFromGroup(g, id)} style={{ border: 0, background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Remove</button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
           <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="🔍 Find a student to add: name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
           <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
@@ -711,7 +853,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
               <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name this list, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
               <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save this list</button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Saved lists are stored in the database, so you can load them on any phone or computer.'}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Your saved lists are stored in the database under your login, so only you see them and you can load them on any phone or computer.'}</div>
           </div>
         )}
         </div>}
@@ -826,13 +968,28 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
-          <div style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
-            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}`}</style>
-            <table ref={tableRef} style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
+          <div className="hm-gridwrap" style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
+            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}
+              @media (max-width:640px){
+                .hm-gridwrap{overflow:visible!important;max-height:none!important;border:0!important;box-shadow:none!important;background:transparent!important;border-radius:0!important}
+                .hm-grid{display:block!important;min-width:0!important;width:100%!important}
+                .hm-grid thead{display:none!important}
+                .hm-grid tbody{display:block!important}
+                .hm-grid tr{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px 10px;background:#fff!important;border:1.5px solid #dbe3ee!important;border-radius:18px;padding:14px!important;margin:0 0 14px!important;box-shadow:0 2px 8px rgba(11,30,61,.07)}
+                .hm-grid tr[data-active]{border-color:#C9A24B!important;background:#fffaf0!important;box-shadow:0 0 0 3px rgba(201,162,75,.35)}
+                .hm-grid td{display:block!important;position:static!important;border:0!important;padding:0!important;min-width:0!important;max-width:none!important;background:transparent!important;box-shadow:none!important;text-align:left!important;white-space:normal!important}
+                .hm-grid td.hm-c-stu{grid-column:1/-1;padding-bottom:8px!important;border-bottom:1px solid #e2e8f0!important}
+                .hm-grid td.hm-c-mark::before{content:attr(data-sub);display:block;font-size:11.5px;font-weight:800;color:#0B1E3D;margin-bottom:5px;line-height:1.2}
+                .hm-grid td.hm-c-mark input{width:100%!important;height:58px!important;font-size:26px!important}
+                .hm-grid td.hm-c-sum{background:#f1f5f9!important;border-radius:12px;padding:7px 10px!important}
+                .hm-grid td.hm-c-sum::before{content:attr(data-sub);display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b;margin-bottom:2px}
+              }
+            `}</style>
+            <table ref={tableRef} data-rt-skip className="hm-grid" style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
               <thead><tr>
                 <th style={{ ...thG, textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 118 }}>Student</th>
                 {test.subjects.map((s, i) => <th key={i} style={thG}>{s.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {s.max}</div></th>)}
-                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Rank</th>
+                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Grade</th><th style={thG}>Rank</th>
               </tr></thead>
               <tbody>
                 {shown.map((s, idx) => {
@@ -840,8 +997,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   const rowBg = activeRow === s.id ? '#fff8e6' : idx % 2 ? '#f8fafc' : '#fff'
                   const cell = { borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 6px' }
                   return (
-                    <tr key={s.id} style={{ background: rowBg }}>
-                      <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
+                    <tr key={s.id} data-active={activeRow === s.id ? '1' : undefined} style={{ background: rowBg }}>
+                      <td className="hm-c-stu" style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
@@ -853,16 +1010,17 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                       {test.subjects.map((sub, i) => {
                         const v = m[i] ?? null, st = cellState(v, sub), filled = v !== null && v !== ''
                         return (
-                          <td key={i} style={cell}>
+                          <td key={i} className="hm-c-mark" data-sub={`${sub.n || 'Subject'} (${sub.max})`} style={cell}>
                             <input className="hm-in" aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
                               onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="–"
                               style={{ width: 72, height: 48, boxSizing: 'border-box', textAlign: 'center', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 800, borderRadius: 12, outline: 'none', ...markBox(st), ...(st === '' && filled ? { background: '#f0fdf4', borderColor: '#86efac', color: '#065f46' } : {}) }} />
                           </td>
                         )
                       })}
-                      <td style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
-                      <td style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
-                      <td style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td className="hm-c-sum" data-sub="Total" style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td className="hm-c-sum" data-sub="Percent" style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
+                      <td className="hm-c-sum" data-sub="Grade" style={{ ...cell, fontSize: 15, fontWeight: 800, color: c.n && !c.bad ? gradeColor(c.grade) : '#cbd5e1' }}>{c.rank ? c.grade : '–'}</td>
+                      <td className="hm-c-sum" data-sub="Rank" style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
                 })}
@@ -871,6 +1029,81 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Green = entered · Red = invalid or above the maximum · Amber = below the minimum. Ties share a rank.</div>
+      </div>
+
+      <div style={card}>
+        <Step n="🏆" title="Analyser" hint="Toppers, averages and pass rates for every list, class and house on this sheet." />
+        {!stats.ranked ? <div style={{ fontSize: 13, color: '#64748b' }}>Enter some marks to see the analysis.</div> : (
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              {analysis.overall.toppers.length > 0 && (
+                <div style={{ flex: '1 1 240px', borderRadius: 16, padding: '12px 14px', color: '#fff', background: `linear-gradient(135deg,${NAVY},#17325f)` }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: GOLD }}>🥇 OVERALL TOPPER{analysis.overall.toppers.length > 1 ? 'S' : ''}</div>
+                  <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 19, fontWeight: 700, marginTop: 2 }}>{analysis.overall.toppers.map(x => x.name).join(', ')}</div>
+                  <div style={{ fontSize: 13, opacity: .85 }}>{analysis.overall.topTot} / {maxTotal} · {(analysis.overall.topTot / (maxTotal || 1) * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              <div style={{ flex: '1 1 240px', border: `1px solid ${LINE}`, borderRadius: 16, padding: '12px 14px', background: '#fff' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: '#64748b' }}>GRADES</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  {GRADES.map(([, g]) => <span key={g} style={{ borderRadius: 10, padding: '4px 10px', background: '#f1f5f9', fontWeight: 800, fontSize: 13, color: gradeColor(g) }}>{g} · {analysis.gradeCount[g] || 0}</span>)}
+                </div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>A+ 90+ · A 80+ · B+ 70+ · B 60+ · C 50+ · D 40+ · E below 40 (percent of maximum)</div>
+              </div>
+            </div>
+            <div className="hm-seg" role="group" aria-label="Analyse by" style={{ marginBottom: 12, flexWrap: 'wrap', maxWidth: '100%' }}>
+              {[['lists', `Saved lists (${analysis.lists.length})`], ['classes', `Class (${analysis.classes.length})`], ['houses', `House (${analysis.houses.length})`], ['subjects', 'Subjects']].map(([k, l]) => (
+                <button key={k} type="button" aria-pressed={anTab === k} onClick={() => setAnTab(k)} style={anTab === k ? { background: NAVY, color: '#fff', fontWeight: 800 } : { fontWeight: 700, color: NAVY }}>{l}</button>
+              ))}
+            </div>
+            {anTab === 'subjects' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 10 }}>
+                {analysis.subjects.map((sb, i) => (
+                  <div key={i} style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: '10px 12px', background: '#fff' }}>
+                    <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>{sb.n || 'Subject'} <span style={{ color: '#94a3b8', fontWeight: 600 }}>/ {sb.max}</span></div>
+                    {!sb.count ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>No marks yet.</div> : (
+                      <div style={{ fontSize: 13, color: '#334155', marginTop: 6, lineHeight: 1.7 }}>
+                        <div>🥇 <b>{sb.hi}</b> · {sb.hiNames.slice(0, 3).join(', ')}{sb.hiNames.length > 3 ? ` +${sb.hiNames.length - 3}` : ''}</div>
+                        <div>Average <b>{sb.avg.toFixed(1)}</b> ({(sb.avg / (Number(sb.max) || 1) * 100).toFixed(0)}%) · Lowest <b>{sb.lo}</b></div>
+                        {sb.passPct != null && <div>Passed minimum: <b>{sb.passPct.toFixed(0)}%</b></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (analysis[anTab].length === 0 ? (
+              <div style={{ fontSize: 13, color: '#64748b' }}>{anTab === 'lists' ? 'No saved lists contain students on this sheet. Save a list in step 2 to compare groups.' : 'Nothing to group yet.'}</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10 }}>
+                {[...analysis[anTab]].sort((a, b) => (b.avgPct ?? -1) - (a.avgPct ?? -1)).map(g => (
+                  <div key={g.label} style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '12px 14px', background: '#fff', boxShadow: '0 1px 2px rgba(11,30,61,.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                      <b style={{ color: NAVY, fontSize: 15 }}>{g.label}</b>
+                      <span style={{ fontSize: 12, color: '#64748b' }}>{g.ranked}/{g.total} marked</span>
+                    </div>
+                    {!g.ranked ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>No marks entered for this group.</div> : (
+                      <>
+                        <div style={{ marginTop: 6, background: '#fffaf0', border: `1.5px solid ${GOLD}`, borderRadius: 12, padding: '8px 10px' }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#a16207' }}>TOPPER{g.toppers.length > 1 ? 'S' : ''}</div>
+                          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>🥇 {g.toppers.map(x => x.name).join(', ')}</div>
+                          <div style={{ fontSize: 12.5, color: '#475569' }}>{g.topTot} / {maxTotal} · {(g.topTot / (maxTotal || 1) * 100).toFixed(1)}%</div>
+                        </div>
+                        {g.top3.filter(x => !g.toppers.includes(x)).map((x, k) => (
+                          <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 2px 0', color: '#334155' }}><span>{medal(k + 1)} {x.name}</span><b>{calc[x.id].tot}</b></div>
+                        ))}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <span style={{ flex: 1, background: '#f1f5f9', borderRadius: 10, padding: '5px 8px', fontSize: 12 }}>Avg <b style={{ fontSize: 14 }}>{g.avgPct.toFixed(1)}%</b></span>
+                          <span style={{ flex: 1, background: '#f1f5f9', borderRadius: 10, padding: '5px 8px', fontSize: 12 }}>Pass <b style={{ fontSize: 14 }}>{g.passPct.toFixed(0)}%</b></span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+            {anTab === 'lists' && dupes.length > 0 && <div style={{ fontSize: 12, color: '#92400e', marginTop: 8 }}>⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one list, so they are counted in each of them.</div>}
+          </>
+        )}
       </div>
 
       <div style={card}>
