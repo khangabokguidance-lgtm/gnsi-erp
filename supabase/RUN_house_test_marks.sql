@@ -59,5 +59,8 @@ alter table public.house_test_groups disable row level security;
 
 -- ── Saved lists belong to each housemaster (run once; safe to re-run) ──
 alter table public.house_test_groups add column if not exists owner text not null default '';
-alter table public.house_test_groups drop constraint if exists house_test_groups_house_name_key;
+-- lists made before owners existed: if two houses used the same list name, rename the later ones so the new unique key can be built
+update public.house_test_groups g set name = g.name || ' (' || g.house || ')'
+ where g.id in (select id from (select id, row_number() over (partition by owner, name order by created_at, id) rn from public.house_test_groups) x where x.rn > 1);
 create unique index if not exists house_test_groups_owner_name_uidx on public.house_test_groups (owner, name);
+alter table public.house_test_groups drop constraint if exists house_test_groups_house_name_key;
