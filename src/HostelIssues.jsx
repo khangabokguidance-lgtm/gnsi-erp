@@ -11,7 +11,11 @@ import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, 
 import { loadConcessions, decideConcession, recordConcession, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { sessionOfDate } from './feeLedgerModel'
 import { LedgerLink } from './LedgerLinks'
+import { splitHostelTypeFrom, monthStart } from './hostelHistory'
 
+const SESSION_MONTHS = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March']
+const monthYear = (m, session) => { const start = Number(String(session).slice(0, 4)); return SESSION_MONTHS.indexOf(m) < 9 ? start : start + 1 }
+const nextMonthOf = lm => { if (!lm) return null; const i = SESSION_MONTHS.indexOf(lm.month); return i >= 0 && i < SESSION_MONTHS.length - 1 ? SESSION_MONTHS[i + 1] : null }
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const TONE = { pending: ['#9a5b00', '#fff4dc'], approved: ['#146c3a', '#e7f6ec'], rejected: ['#b42318', '#fde8e6'] }
@@ -48,6 +52,7 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
   const [wrong, setWrong] = useState(null)      // { issues, reviewed } | { error }
   const [audit, setAudit] = useState(null)
   const [beds, setBeds] = useState(null)        // Set of student ids with an active hostel bed
+  const [splitMonth, setSplitMonth] = useState({})   // gcc → month the current type started (mid-session fixer)
   const [bulk, setBulk] = useState(null)        // bulk-correction progress text
   const [busy, setBusy] = useState(null)
   const [detect, setDetect] = useState(null)    // { mismatches, matched, noData } | { error }
@@ -135,6 +140,32 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
     if (!quiet && !window.confirm(`Correct ${x.student.name}'s hostel type from ${x.recorded} to ${x.likely}?\n\n${x.count} of ${x.total} payment(s) this session were at the ${x.likely} rate. The corrected type applies to every month, so their dues are recalculated at the ${x.likely} rate. Payments and receipts are not changed.`)) return false
     await fixHostelType(x.student, x.likely, me)
     return true
+  }
+  // Fixer: the type was changed mid-session without an effective month. Keep the current type
+  // from the chosen month on; earlier months go back to the type those payments were made at.
+  const splitSuspect = async x => {
+    const m = splitMonth[x.student.gcc_no] || nextMonthOf(x.lastMonth) || 'April'
+    if (!window.confirm(`Fix ${x.student.name}'s hostel type by month?\n\n• Months before ${m}: ${x.likely}\n• ${m} onward: ${x.recorded} (as recorded)\n\nPayments and receipts are not changed; dues are recalculated per month. This is recorded in the audit trail.`)) return
+    setBusy('sp' + x.student.gcc_no)
+    try { await splitHostelTypeFrom({ student: x.student, earlierType: x.likely, effectiveFrom: monthStart(m, monthYear(m, session)), by: me }); reload() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  // Auto-fix: for every flagged student, keep the recorded type from the month after their last payment at
+  // the other type's rate, and price earlier months at that other type.
+  const autoSplittable = suspects.filter(x => !x.hasHistory && nextMonthOf(x.lastMonth))
+  const autoSplitAll = async () => {
+    if (!autoSplittable.length) { alert('Nothing to fix automatically.'); return }
+    const preview = autoSplittable.slice(0, 8).map(x => `• ${x.student.name}: ${x.likely} before ${nextMonthOf(x.lastMonth)}, ${x.recorded} from ${nextMonthOf(x.lastMonth)}`).join('\n')
+    if (!window.confirm(`Adjust ${autoSplittable.length} student(s) month by month?\n\nEach student keeps their recorded type from the month after their last payment at the other type's rate; earlier months go back to the type they paid.\n\n${preview}${autoSplittable.length > 8 ? `\n…and ${autoSplittable.length - 8} more` : ''}\n\nPayments and receipts are not changed. Every change is recorded in the audit trail.`)) return
+    let done = 0, failed = 0
+    for (const x of autoSplittable) {
+      setBulk(`Adjusting ${done + failed + 1} of ${autoSplittable.length}…`)
+      const m = nextMonthOf(x.lastMonth)
+      try { await splitHostelTypeFrom({ student: x.student, earlierType: x.likely, effectiveFrom: monthStart(m, monthYear(m, session)), by: me }); done++ } catch { failed++ }
+    }
+    setBulk(null)
+    alert(`${done} student(s) adjusted month by month${failed ? `, ${failed} failed — fix those one by one` : ''}.`)
+    reload()
   }
   const correctSuspect = async x => {
     setBusy('sx' + x.student.gcc_no)
@@ -261,8 +292,11 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
       </Section>
 
       <Section icon="🧭" label="Likely wrong hostel type" title="Likely wrong hostel type on record" count={suspects.length}
-        sub="Students whose payments this session were all at ANOTHER hostel type's rate and never at their recorded type's — the record is probably wrong (e.g. a Day Scholar saved as Boarder shows a false balance due). Correcting applies to every month; payments and receipts stay as they are."
-        action={suspects.length > 0 && <button style={btn('#9a3412')} disabled={!!bulk || !!busy} onClick={correctAll}>{bulk || `Correct all (${suspects.length})`}</button>}>
+        sub="Students whose payments this session were all at ANOTHER hostel type's rate and never at their recorded type's — the record is probably wrong (e.g. a Day Scholar saved as Boarder shows a false balance due). Correcting applies to every month; payments and receipts stay as they are. If the student changed type during the session, use “Changed in month → fix” with the month the new type started."
+        action={suspects.length > 0 && <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {autoSplittable.length > 0 && <button style={btn('#1e3a6e')} disabled={!!bulk || !!busy} onClick={autoSplitAll}>{bulk || `Auto-adjust month by month (${autoSplittable.length})`}</button>}
+          <button style={btn('#9a3412')} disabled={!!bulk || !!busy} onClick={correctAll}>{`Correct all (${suspects.length})`}</button>
+        </span>}>
         {!wrong && <div style={{ color: '#64748b', padding: '8px 0' }}>Scanning payments…</div>}
         {wrong && !wrong.error && suspects.length === 0 && <div style={{ color: '#146c3a', fontWeight: 700, padding: '8px 0' }}>✓ Every student's payments match their recorded hostel type.</div>}
         {suspects.map(x => (
@@ -274,7 +308,17 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
               </div>
               {x.likely !== 'Boarder' && hasBed(x.student) && <div style={{ fontSize: 11.5, color: '#b42318', marginTop: 3 }}>⚠ Holds an active hostel bed — confirm before changing to {x.likely}.</div>}
             </div>
-            <button disabled={busy === 'sx' + x.student.gcc_no || !!bulk} style={btn('#9a3412')} onClick={() => correctSuspect(x)}>Correct to {x.likely}</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {!x.hasHistory && (
+                <>
+                  <select style={inp} aria-label={`Month ${x.student.name} changed to ${x.recorded}`} value={splitMonth[x.student.gcc_no] || nextMonthOf(x.lastMonth) || 'April'} onChange={e => setSplitMonth(d => ({ ...d, [x.student.gcc_no]: e.target.value }))}>
+                    {SESSION_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <button disabled={busy === 'sp' + x.student.gcc_no || !!bulk} style={btn('#1e3a6e')} title={`Months before the chosen month stay ${x.likely}; from it on, ${x.recorded}`} onClick={() => splitSuspect(x)}>Changed in month → fix</button>
+                </>
+              )}
+              <button disabled={busy === 'sx' + x.student.gcc_no || !!bulk} style={btn('#9a3412')} onClick={() => correctSuspect(x)}>Correct to {x.likely}</button>
+            </div>
           </div>
         ))}
       </Section>
