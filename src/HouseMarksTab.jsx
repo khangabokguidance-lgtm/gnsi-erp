@@ -33,6 +33,7 @@ const todayStr = () => new Date().toLocaleDateString('en-CA')
 const lsGet = k => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null } catch { return null } }
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode / full */ } }
 const lsDel = k => { try { localStorage.removeItem(k) } catch { /* ignore */ } }
+const CLASS_ROW = '__my_class__'   // reserved list name that stores the extra students in My class
 const SETUP_KEY = 'house_marks_last_setup'
 const lastSetup = () => { const l = lsGet(SETUP_KEY); return l && PRESETS[l.preset] && Array.isArray(l.subjects) && l.subjects.length ? l : null }
 
@@ -124,6 +125,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
   const [groupName, setGroupName] = useState('')
+  const [classExtra, setClassExtra] = useState([])   // students any housemaster added to My class from the whole school list
   const [progId, setProgId] = useState('')           // student whose progress is shown
   const [progRows, setProgRows] = useState(null)     // null = not loaded, [] = none
   const [progErr, setProgErr] = useState('')
@@ -131,7 +133,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const draftKey = 'house_marks_draft_' + (lockHouse || 'all') + (meKey ? '_' + meKey : '')
   const [draft, setDraft] = useState(() => { const d = lsGet('house_marks_draft_' + (lockHouse || 'all')); return d && d.marks && Object.keys(d.marks).length ? d : null })
 
-  const pool = useMemo(() => (students || [])
+  const housePool = useMemo(() => (students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [students])
   // Whole-school list: in "Pick students" mode any housemaster can add a
@@ -139,6 +141,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const school = useMemo(() => (allStudents || students || [])
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [allStudents, students])
+  // My class = the housemaster's own students plus anyone they added from the school list.
+  const pool = useMemo(() => {
+    const have = new Set(housePool.map(x => x.id))
+    return [...housePool, ...school.filter(x => classExtra.includes(x.id) && !have.has(x.id))].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  }, [housePool, school, classExtra])
   const roster = useMemo(() => mode === 'all' ? pool : school.filter(s => picked.includes(s.id)), [pool, school, mode, picked])
   const houses = useMemo(() => [...new Set(school.map(s => s.house).filter(Boolean))].sort(), [school])
   const classes = useMemo(() => [...new Set(school.map(s => s.class_name).filter(Boolean))].sort(), [school])
@@ -189,6 +196,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const gHouse = lockHouse || 'All'
   const [groupsDb, setGroupsDb] = useState(null)   // null = unknown, true = database, false = this computer only
   // Every housemaster keeps their own lists: they are stored under the logged-in user (owner).
+  const classKey = 'house_marks_class_' + gHouse + '_' + String(currentUser?.username || currentUser?.name || currentUser?.id || '')
   const me = String(currentUser?.username || currentUser?.name || currentUser?.id || '')
   const loadGroups = useCallback(async () => {
     const q = () => supabase.from('house_test_groups').select('id,name,student_ids').eq('owner', me).order('name')
@@ -208,7 +216,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       await supabase.from('house_test_groups').upsert(local.map(g => ({ owner: me, house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'owner,name' })
       rows = (await q()).data || []
     }
-    setGroups(rows.map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
+    const mine = rows.find(r => r.name === CLASS_ROW)
+    setClassExtra(mine ? (Array.isArray(mine.student_ids) ? mine.student_ids : []) : (lsGet(classKey) || []))
+    setGroups(rows.filter(r => r.name !== CLASS_ROW).map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
   }, [gHouse, me])
   useEffect(() => { loadGroups() }, [loadGroups])
   const saveAsGroup = async () => {
@@ -239,6 +249,35 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (!window.confirm(`Delete the list “${g.name}”? The students themselves are not affected.`)) return
     if (groupsDb) { const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadGroups() }
     else { const next = groups.filter(x => x.id !== g.id); setGroups(next); lsSet(groupsKey, next) }
+  }
+  // ── add students from the school list to My class or to one of my groups ──
+  const upsertRow = async (name, ids) => supabase.from('house_test_groups').upsert({ owner: me, house: gHouse, name, student_ids: ids, created_by: me || null, updated_at: new Date().toISOString() }, { onConflict: 'owner,name' })
+  const setMyClass = async ids => {
+    setClassExtra(ids); lsSet(classKey, ids)
+    const { error } = await upsertRow(CLASS_ROW, ids)
+    if (error) flash('err', 'Saved on this computer only: run supabase/RUN_house_test_marks.sql so My class follows you to other devices.')
+  }
+  const addToClass = id => {
+    if (!classExtra.includes(id)) setMyClass([...classExtra, id])
+    if (mode === 'selected') addStudents([id])
+    flash('ok', 'Added to My class.')
+  }
+  const removeFromClass = id => { setMyClass(classExtra.filter(x => x !== id)); if (mode === 'selected') setPicked(p => p.filter(x => x !== id)); flash('ok', 'Removed from My class.') }
+  const addToGroup = async (g, ids) => {
+    const next = [...new Set([...g.ids, ...ids])]
+    if (groupsDb) { const { error } = await supabase.from('house_test_groups').update({ student_ids: next, updated_at: new Date().toISOString() }).eq('id', g.id); if (error) { flash('err', 'Could not update the group: ' + error.message); return } }
+    const upd = groups.map(x => x.id === g.id ? { ...x, ids: next } : x)
+    setGroups(upd); if (!groupsDb) lsSet(groupsKey, upd)
+    flash('ok', `Added to group “${g.name}” (${next.length} students).`)
+  }
+  const addToNewGroup = async ids => {
+    const name = (window.prompt('Name for the new group, e.g. Class VI Navodaya') || '').trim()
+    if (!name || name === CLASS_ROW) return
+    const exist = groups.find(g => g.name.toLowerCase() === name.toLowerCase())
+    if (exist) { addToGroup(exist, ids); return }
+    const { error } = await upsertRow(name, ids)
+    if (error) { const next = [...groups, { id: Date.now(), name, ids }]; setGroups(next); lsSet(groupsKey, next); setGroupsDb(false); flash('err', 'Group saved on this computer only.'); return }
+    await loadGroups(); flash('ok', `Group “${name}” created with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
   }
   // Students who sit in more than one saved list.
   const dupes = useMemo(() => {
@@ -796,10 +835,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
 
-        {groups.length > 0 && (
+        {(groups.length > 0 || classExtra.length > 0) && (
           <div style={{ marginBottom: 12 }}>
             <button type="button" onClick={() => setMgrOpen(v => !v)} style={{ ...btn(false), minHeight: 34, fontSize: 12.5, borderColor: dupes.length ? '#f59e0b' : LINE, background: dupes.length ? '#fffbeb' : '#fff' }}>
-              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ groups · Check groups` : '🗂 Manage my groups'} {mgrOpen ? '▴' : '▾'}
+              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ groups · Check groups` : '🗂 Manage my class & groups'} {mgrOpen ? '▴' : '▾'}
             </button>
             {mgrOpen && (
               <div style={{ marginTop: 8, border: `1px solid ${LINE}`, borderRadius: 14, padding: 12, background: '#fbfcfe' }}>
@@ -807,6 +846,18 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 12.5, color: '#92400e' }}>
                     <b>Duplicates</b> — same student in more than one list:
                     <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{dupes.map(d => <li key={d.id}><b>{d.name}</b> → {d.names.join(', ')}</li>)}</ul>
+                  </div>
+                )}
+                {classExtra.length > 0 && (
+                  <div style={{ paddingBottom: 8 }}>
+                    <b style={{ color: NAVY, fontSize: 14 }}>🎓 Added to My class <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {classExtra.length}</span></b>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                      {classExtra.map(id => { const st = school.find(x => x.id === id); return (
+                        <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 8px', borderRadius: 8, background: '#fff', border: `1px solid ${LINE}` }}>
+                          <span style={{ flex: 1 }}><b style={{ color: NAVY }}>{st ? st.name : 'Student no longer active'}</b>{st && st.class_name ? <span style={{ color: '#64748b' }}> · {st.class_name}</span> : null}</span>
+                          <button type="button" onClick={() => removeFromClass(id)} style={{ border: 0, background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Remove</button>
+                        </div>) })}
+                    </div>
                   </div>
                 )}
                 {groups.map(g => {
@@ -851,11 +902,23 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           <div>
             <div style={{ border: `1px solid ${LINE}`, borderRadius: 10, maxHeight: 260, overflowY: 'auto' }}>
               {shownAddable.length ? shownAddable.map(s => (
-                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, fontSize: 13, background: onSheet.has(s.id) ? '#f0fdf4' : '#fff' }}>
-                  <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{s.name}</b><span style={{ color: '#94a3b8' }}> · {s.gcc_no || ''} · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
-                  {onSheet.has(s.id)
-                    ? <button type="button" onClick={() => unpickStudent(s.id)} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', flex: 'none' }}>✓ Added · Remove</button>
-                    : <button type="button" onClick={() => addStudents([s.id])} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, fontSize: 13, background: onSheet.has(s.id) ? '#f0fdf4' : '#fff' }}>
+                  <span style={{ flex: '1 1 160px', minWidth: 0 }}><b style={{ color: NAVY }}>{s.name}</b><span style={{ color: '#94a3b8' }}> · {s.gcc_no || ''} · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flex: 'none' }}>
+                    {onSheet.has(s.id)
+                      ? <button type="button" onClick={() => unpickStudent(s.id)} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>✓ On sheet · Remove</button>
+                      : <button type="button" onClick={() => addStudents([s.id])} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>＋ Sheet</button>}
+                    {housePool.some(x => x.id === s.id)
+                      ? <span style={{ fontSize: 11.5, fontWeight: 700, color: '#047857', alignSelf: 'center' }}>🎓 in my class</span>
+                      : classExtra.includes(s.id)
+                        ? <button type="button" onClick={() => removeFromClass(s.id)} style={{ fontSize: 12, fontWeight: 700, color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>🎓 In my class ✕</button>
+                        : <button type="button" onClick={() => addToClass(s.id)} style={{ fontSize: 12, fontWeight: 700, color: NAVY, background: '#fff', border: `1px solid ${GOLD}`, borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}>＋ My class</button>}
+                    <select aria-label={`Add ${s.name} to a group`} value="" onChange={e => { const v = e.target.value; e.target.value = ''; if (v === '__new') addToNewGroup([s.id]); else if (v) addToGroup(groups.find(g => String(g.id) === v), [s.id]) }} style={{ fontSize: 12, fontWeight: 700, color: NAVY, border: '1px solid #d3dbe7', borderRadius: 6, padding: '5px 4px', background: '#fff', maxWidth: 120 }}>
+                      <option value="">＋ Group…</option>
+                      {groups.map(g => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+                      <option value="__new">＋ New group…</option>
+                    </select>
+                  </span>
                 </div>
               )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
             </div>
