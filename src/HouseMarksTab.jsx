@@ -36,6 +36,10 @@ const lsDel = k => { try { localStorage.removeItem(k) } catch { /* ignore */ } }
 const SETUP_KEY = 'house_marks_last_setup'
 const lastSetup = () => { const l = lsGet(SETUP_KEY); return l && PRESETS[l.preset] && Array.isArray(l.subjects) && l.subjects.length ? l : null }
 
+const GRADES = [[90, 'A+'], [80, 'A'], [70, 'B+'], [60, 'B'], [50, 'C'], [40, 'D'], [0, 'E']]
+const gradeOf = p => (GRADES.find(([m]) => p >= m) || [0, 'E'])[1]
+const gradeColor = g => g === 'A+' || g === 'A' ? '#047857' : g === 'B+' || g === 'B' ? '#1d4ed8' : g === 'C' || g === 'D' ? '#a16207' : '#b91c1c'
+const medal = k => k === 0 ? '🥇' : k === 1 ? '🥈' : k === 2 ? '🥉' : ''
 function parseMark(v) {
   if (v === null || v === undefined) return null
   const s = String(v).trim()
@@ -289,6 +293,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const ids = Object.keys(out).filter(id => out[id].n > 0 && !out[id].bad).sort((a, b) => out[b].tot - out[a].tot)
     let rk = 0, prev = null
     ids.forEach((id, k) => { if (out[id].tot !== prev) { rk = k + 1; prev = out[id].tot } out[id].rank = rk })
+    // percentile = share of ranked students this one scored higher than; grade from percent; pass = no mark below its minimum
+    ids.forEach(id => {
+      const c = out[id]
+      c.percentile = ids.length > 1 ? ids.filter(o => out[o].tot < c.tot).length / (ids.length - 1) * 100 : 100
+      c.grade = gradeOf(c.pct)
+      c.pass = !c.low && !c.absent
+    })
     return out
   }, [roster, marks, test.subjects, maxTotal])
 
@@ -307,6 +318,35 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       high: tots.length ? Math.max(...tots) : null,
     }
   }, [calc, roster])
+
+  // ── Analyser: toppers and averages by saved list / class / house, plus subject-wise ──
+  const analysis = useMemo(() => {
+    const byTot = (a, b) => calc[b.id].tot - calc[a.id].tot || String(a.name).localeCompare(String(b.name))
+    const mk = (label, members) => {
+      if (!members.length) return null
+      const r = members.filter(x => calc[x.id]?.rank).sort(byTot)
+      const topTot = r.length ? calc[r[0].id].tot : null
+      return {
+        label, total: members.length, ranked: r.length, topTot,
+        toppers: r.filter(x => calc[x.id].tot === topTot),
+        top3: r.slice(0, 3),
+        avgPct: r.length ? r.reduce((a, x) => a + calc[x.id].pct, 0) / r.length : null,
+        passPct: r.length ? r.filter(x => calc[x.id].pass).length / r.length * 100 : null,
+      }
+    }
+    const by = f => { const m = new Map(); roster.forEach(x => { const k = f(x); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(x) } }); return [...m].sort((a, b) => String(a[0]).localeCompare(String(b[0]))).map(([k, v]) => mk(String(k), v)) }
+    const subjects = test.subjects.map((sub, i) => {
+      const vals = roster.map(x => ({ x, v: (marks[x.id] || [])[i] })).filter(o => typeof o.v === 'number' && cellState(o.v, sub) !== 'err')
+      if (!vals.length) return { n: sub.n, max: sub.max, count: 0 }
+      const hi = Math.max(...vals.map(o => o.v)), lo = Math.min(...vals.map(o => o.v))
+      const minV = sub.min === '' || sub.min == null ? null : Number(sub.min)
+      return { n: sub.n, max: sub.max, count: vals.length, avg: vals.reduce((a, o) => a + o.v, 0) / vals.length, hi, lo,
+        hiNames: vals.filter(o => o.v === hi).map(o => o.x.name), passPct: minV == null ? null : vals.filter(o => o.v >= minV).length / vals.length * 100 }
+    })
+    const gradeCount = {}; Object.values(calc).forEach(c => { if (c.rank) gradeCount[c.grade] = (gradeCount[c.grade] || 0) + 1 })
+    return { lists: groups.map(g => mk(g.name, roster.filter(x => g.ids.includes(x.id)))).filter(Boolean), classes: by(x => x.class_name), houses: by(x => x.house), overall: mk('Overall', roster), subjects, gradeCount }
+  }, [calc, roster, marks, test.subjects, groups])
+  const [anTab, setAnTab] = useState('lists')
 
   const setCell = (sid, i, raw) => {
     setMarks(prev => {
@@ -387,10 +427,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
 
   // ── export ──
   const sortedForExport = () => [...roster].sort((a, b) => (calc[a.id].rank || 9999) - (calc[b.id].rank || 9999) || String(a.name).localeCompare(String(b.name)))
-  const headRow = () => ['Rank', 'GCC No', 'Name', 'Class', ...test.subjects.map(s => s.n), 'Total', 'Percent', 'Remark']
+  const headRow = () => ['Rank', 'GCC No', 'Name', 'Class', ...test.subjects.map(s => s.n), 'Total', 'Percent', 'Grade', 'Percentile', 'Remark']
   const bodyRows = () => sortedForExport().map(s => {
     const c = calc[s.id], m = marks[s.id] || []
-    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.rank ? c.grade : '', c.rank ? c.percentile.toFixed(0) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
   })
   const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000) }
   const baseName = () => ((test.name || 'house-test') + (lockHouse ? '-' + lockHouse : '')).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
@@ -419,7 +459,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       const sorted = sortedForExport()
       const body = sorted.map(st => {
         const c = calc[st.id], m = marks[st.id] || []
-        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' + (c.rank ? ' · ' + c.grade : '') : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
       })
       const nSub = test.subjects.length
       autoTable(doc, {
@@ -445,7 +485,21 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           if (ci === 0 && Number(d.cell.raw) >= 1 && Number(d.cell.raw) <= 3) { d.cell.styles.fillColor = [[226, 197, 126], [226, 232, 240], [231, 200, 160]][Number(d.cell.raw) - 1] }
         },
       })
-      const endY = doc.lastAutoTable?.finalY || y
+      let endY = doc.lastAutoTable?.finalY || y
+      const tops = [...analysis.lists.map(g => ['List', g]), ...analysis.classes.map(g => ['Class', g]), ...(lockHouse ? [] : analysis.houses.map(g => ['House', g]))].filter(([, g]) => g.ranked)
+      if (tops.length) {
+        autoTable(doc, {
+          startY: endY + 10,
+          head: [['Group', 'Topper', 'Score', 'Students', 'Avg %', 'Pass %', '2nd & 3rd']],
+          body: tops.map(([k, g]) => [`${k}: ${g.label}`, g.toppers.map(x => x.name).join(', '), `${g.topTot}/${maxTotal} (${(g.topTot / (maxTotal || 1) * 100).toFixed(1)}%)`, `${g.ranked}/${g.total}`, g.avgPct == null ? '–' : g.avgPct.toFixed(1), g.passPct == null ? '–' : g.passPct.toFixed(0), g.top3.filter(x => !g.toppers.includes(x)).map(x => `${x.name} (${calc[x.id].tot})`).join(', ') || '–']),
+          margin: { left: mx, right: mx, bottom: 16 },
+          styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+          headStyles: { fillColor: [201, 162, 75], textColor: [11, 30, 61], fontStyle: 'bold' },
+          columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold' } },
+          didDrawPage: undefined,
+        })
+        endY = doc.lastAutoTable?.finalY || endY
+      }
       doc.setFontSize(8); doc.setTextColor(100, 116, 139)
       if (endY < doc.internal.pageSize.getHeight() - 24) doc.text('Amber = below the minimum mark · Red = invalid mark · AB = absent · Equal totals share a rank.', mx, endY + 6)
       pdfFooters(doc, { margin: mx })
@@ -919,7 +973,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
               <thead><tr>
                 <th style={{ ...thG, textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 118 }}>Student</th>
                 {test.subjects.map((s, i) => <th key={i} style={thG}>{s.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {s.max}</div></th>)}
-                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Rank</th>
+                <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Grade</th><th style={thG}>Rank</th>
               </tr></thead>
               <tbody>
                 {shown.map((s, idx) => {
@@ -949,6 +1003,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                       })}
                       <td className="hm-c-sum" data-sub="Total" style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                       <td className="hm-c-sum" data-sub="Percent" style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
+                      <td className="hm-c-sum" data-sub="Grade" style={{ ...cell, fontSize: 15, fontWeight: 800, color: c.n && !c.bad ? gradeColor(c.grade) : '#cbd5e1' }}>{c.rank ? c.grade : '–'}</td>
                       <td className="hm-c-sum" data-sub="Rank" style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
@@ -958,6 +1013,81 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Green = entered · Red = invalid or above the maximum · Amber = below the minimum. Ties share a rank.</div>
+      </div>
+
+      <div style={card}>
+        <Step n="🏆" title="Analyser" hint="Toppers, averages and pass rates for every list, class and house on this sheet." />
+        {!stats.ranked ? <div style={{ fontSize: 13, color: '#64748b' }}>Enter some marks to see the analysis.</div> : (
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              {analysis.overall.toppers.length > 0 && (
+                <div style={{ flex: '1 1 240px', borderRadius: 16, padding: '12px 14px', color: '#fff', background: `linear-gradient(135deg,${NAVY},#17325f)` }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: GOLD }}>🥇 OVERALL TOPPER{analysis.overall.toppers.length > 1 ? 'S' : ''}</div>
+                  <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 19, fontWeight: 700, marginTop: 2 }}>{analysis.overall.toppers.map(x => x.name).join(', ')}</div>
+                  <div style={{ fontSize: 13, opacity: .85 }}>{analysis.overall.topTot} / {maxTotal} · {(analysis.overall.topTot / (maxTotal || 1) * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              <div style={{ flex: '1 1 240px', border: `1px solid ${LINE}`, borderRadius: 16, padding: '12px 14px', background: '#fff' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', color: '#64748b' }}>GRADES</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  {GRADES.map(([, g]) => <span key={g} style={{ borderRadius: 10, padding: '4px 10px', background: '#f1f5f9', fontWeight: 800, fontSize: 13, color: gradeColor(g) }}>{g} · {analysis.gradeCount[g] || 0}</span>)}
+                </div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>A+ 90+ · A 80+ · B+ 70+ · B 60+ · C 50+ · D 40+ · E below 40 (percent of maximum)</div>
+              </div>
+            </div>
+            <div className="hm-seg" role="group" aria-label="Analyse by" style={{ marginBottom: 12, flexWrap: 'wrap', maxWidth: '100%' }}>
+              {[['lists', `Saved lists (${analysis.lists.length})`], ['classes', `Class (${analysis.classes.length})`], ['houses', `House (${analysis.houses.length})`], ['subjects', 'Subjects']].map(([k, l]) => (
+                <button key={k} type="button" aria-pressed={anTab === k} onClick={() => setAnTab(k)} style={anTab === k ? { background: NAVY, color: '#fff', fontWeight: 800 } : { fontWeight: 700, color: NAVY }}>{l}</button>
+              ))}
+            </div>
+            {anTab === 'subjects' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 10 }}>
+                {analysis.subjects.map((sb, i) => (
+                  <div key={i} style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: '10px 12px', background: '#fff' }}>
+                    <div style={{ fontWeight: 800, color: NAVY, fontSize: 14 }}>{sb.n || 'Subject'} <span style={{ color: '#94a3b8', fontWeight: 600 }}>/ {sb.max}</span></div>
+                    {!sb.count ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>No marks yet.</div> : (
+                      <div style={{ fontSize: 13, color: '#334155', marginTop: 6, lineHeight: 1.7 }}>
+                        <div>🥇 <b>{sb.hi}</b> · {sb.hiNames.slice(0, 3).join(', ')}{sb.hiNames.length > 3 ? ` +${sb.hiNames.length - 3}` : ''}</div>
+                        <div>Average <b>{sb.avg.toFixed(1)}</b> ({(sb.avg / (Number(sb.max) || 1) * 100).toFixed(0)}%) · Lowest <b>{sb.lo}</b></div>
+                        {sb.passPct != null && <div>Passed minimum: <b>{sb.passPct.toFixed(0)}%</b></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (analysis[anTab].length === 0 ? (
+              <div style={{ fontSize: 13, color: '#64748b' }}>{anTab === 'lists' ? 'No saved lists contain students on this sheet. Save a list in step 2 to compare groups.' : 'Nothing to group yet.'}</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10 }}>
+                {[...analysis[anTab]].sort((a, b) => (b.avgPct ?? -1) - (a.avgPct ?? -1)).map(g => (
+                  <div key={g.label} style={{ border: `1px solid ${LINE}`, borderRadius: 16, padding: '12px 14px', background: '#fff', boxShadow: '0 1px 2px rgba(11,30,61,.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                      <b style={{ color: NAVY, fontSize: 15 }}>{g.label}</b>
+                      <span style={{ fontSize: 12, color: '#64748b' }}>{g.ranked}/{g.total} marked</span>
+                    </div>
+                    {!g.ranked ? <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>No marks entered for this group.</div> : (
+                      <>
+                        <div style={{ marginTop: 6, background: '#fffaf0', border: `1.5px solid ${GOLD}`, borderRadius: 12, padding: '8px 10px' }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#a16207' }}>TOPPER{g.toppers.length > 1 ? 'S' : ''}</div>
+                          <div style={{ fontWeight: 800, color: NAVY, fontSize: 15 }}>🥇 {g.toppers.map(x => x.name).join(', ')}</div>
+                          <div style={{ fontSize: 12.5, color: '#475569' }}>{g.topTot} / {maxTotal} · {(g.topTot / (maxTotal || 1) * 100).toFixed(1)}%</div>
+                        </div>
+                        {g.top3.filter(x => !g.toppers.includes(x)).map((x, k) => (
+                          <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 2px 0', color: '#334155' }}><span>{medal(k + 1)} {x.name}</span><b>{calc[x.id].tot}</b></div>
+                        ))}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <span style={{ flex: 1, background: '#f1f5f9', borderRadius: 10, padding: '5px 8px', fontSize: 12 }}>Avg <b style={{ fontSize: 14 }}>{g.avgPct.toFixed(1)}%</b></span>
+                          <span style={{ flex: 1, background: '#f1f5f9', borderRadius: 10, padding: '5px 8px', fontSize: 12 }}>Pass <b style={{ fontSize: 14 }}>{g.passPct.toFixed(0)}%</b></span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+            {anTab === 'lists' && dupes.length > 0 && <div style={{ fontSize: 12, color: '#92400e', marginTop: 8 }}>⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one list, so they are counted in each of them.</div>}
+          </>
+        )}
       </div>
 
       <div style={card}>
