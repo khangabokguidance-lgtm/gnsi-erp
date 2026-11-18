@@ -472,6 +472,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <button type="button" style={btn(mode === 'all')} onClick={() => { setMode('all'); setDirty(true) }}>Whole house ({pool.length})</button>
+          <button type="button" style={btn(mode === 'selected' && picked.length === school.length && school.length > 0)} onClick={() => { setMode('selected'); setPicked(school.map(x => x.id)); setDirty(true) }}>Whole school ({school.length})</button>
           <button type="button" style={btn(mode === 'selected')} onClick={() => { setMode('selected'); setDirty(true) }}>Pick students{mode === 'selected' ? ` (${picked.length})` : ''}</button>
         </div>
         {mode === 'selected' && (
