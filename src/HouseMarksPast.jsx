@@ -241,7 +241,7 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
 
       <div style={card}>
         <p style={h}>🗂 Tests ({shown.length})</p>
-        {rows == null ? <div style={{ color: '#64748b' }}>Loading…</div> : !shown.length ? <div style={{ color: '#64748b', fontSize: 13, padding: 14, border: '1.5px dashed #d3dbe7', borderRadius: 14, textAlign: 'center' }}>No tests match.</div> : (
+        {rows == null ? <div style={{ color: '#64748b' }}>Loading…</div> : !shown.length ? <div style={{ color: '#64748b', fontSize: 13, padding: 14, border: '1.5px dashed #d3dbe7', borderRadius: 14, textAlign: 'center', lineHeight: 1.6 }}>{err ? 'Could not load tests — see the red message above.' : !(rows || []).length ? <>No test has been saved yet.<br />Go to <b>✏️ Enter marks</b>, fill the marks and press <b>Save</b> — it will appear here for all staff.<br /><button type="button" style={{ ...btn(false), marginTop: 8 }} onClick={load}>↻ Check again</button></> : 'No tests match these filters. Press Clear.'}</div> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 10 }}>
             {shown.map(t => {
               const cur = t.id === selId, a = t.an
