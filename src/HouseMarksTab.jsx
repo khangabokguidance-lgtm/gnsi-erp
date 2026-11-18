@@ -181,33 +181,44 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   // to this computer only.
   const gHouse = lockHouse || 'All'
   const [groupsDb, setGroupsDb] = useState(null)   // null = unknown, true = database, false = this computer only
+  // Every housemaster keeps their own lists: they are stored under the logged-in user (owner).
+  const me = String(currentUser?.username || currentUser?.name || currentUser?.id || '')
   const loadGroups = useCallback(async () => {
-    const { data, error } = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+    const q = () => supabase.from('house_test_groups').select('id,name,student_ids').eq('owner', me).order('name')
+    let { data, error } = await q()
     if (error) { setGroupsDb(false); return }
     setGroupsDb(true)
     let rows = data || []
+    // Lists made before owners existed (owner '') in this house are claimed by the first housemaster who opens the tab.
+    const legacy = await supabase.from('house_test_groups').select('id,name').eq('owner', '').eq('house', gHouse)
+    if (me && legacy.data && legacy.data.length) {
+      const mine = new Set(rows.map(r => r.name.toLowerCase()))
+      for (const l of legacy.data) { if (!mine.has(l.name.toLowerCase())) await supabase.from('house_test_groups').update({ owner: me }).eq('id', l.id) }
+      rows = (await q()).data || []
+    }
     const local = lsGet('house_marks_groups_' + gHouse.replace(/^All$/, 'all'))
     if (!rows.length && Array.isArray(local) && local.length) {   // one-time move of lists saved on this computer
-      await supabase.from('house_test_groups').upsert(local.map(g => ({ house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'house,name' })
-      const r2 = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
-      rows = r2.data || []
+      await supabase.from('house_test_groups').upsert(local.map(g => ({ owner: me, house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'owner,name' })
+      rows = (await q()).data || []
     }
     setGroups(rows.map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
-  }, [gHouse])
+  }, [gHouse, me])
   useEffect(() => { loadGroups() }, [loadGroups])
   const saveAsGroup = async () => {
     const name = groupName.trim()
     if (!name) { flash('err', 'Type a name for this list first, e.g. “Class VI Navodaya”.'); return }
     if (!roster.length) { flash('err', 'Add some students first.'); return }
     const ids = roster.map(x => x.id)
-    const { error } = await supabase.from('house_test_groups').upsert({ house: gHouse, name, student_ids: ids, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }, { onConflict: 'house,name' })
+    const overlap = new Set()
+    groups.filter(g => g.name.toLowerCase() !== name.toLowerCase()).forEach(g => g.ids.forEach(i => { if (ids.includes(i)) overlap.add(i) }))
+    const { error } = await supabase.from('house_test_groups').upsert({ owner: me, house: gHouse, name, student_ids: ids, created_by: me || null, updated_at: new Date().toISOString() }, { onConflict: 'owner,name' })
     if (error) {
       const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
       const next = [...others, { id: Date.now(), name, ids }].sort((a, b) => a.name.localeCompare(b.name))
       setGroups(next); lsSet(groupsKey, next); setGroupsDb(false)
       flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
     }
-    setGroupName(''); await loadGroups(); flash('ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
+    setGroupName(''); await loadGroups(); flash(overlap.size ? 'err' : 'ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.${overlap.size ? ` ⚠ ${overlap.size} of them are also in another list — see “Check lists”.` : ''}`)
   }
   const useGroup = g => {
     const live = new Set(school.map(s => s.id))
@@ -220,6 +231,21 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     if (!window.confirm(`Delete the list “${g.name}”? The students themselves are not affected.`)) return
     if (groupsDb) { const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadGroups() }
     else { const next = groups.filter(x => x.id !== g.id); setGroups(next); lsSet(groupsKey, next) }
+  }
+  // Students who sit in more than one saved list.
+  const dupes = useMemo(() => {
+    const m = new Map()
+    groups.forEach(g => g.ids.forEach(id => { if (!m.has(id)) m.set(id, []); m.get(id).push(g.name) }))
+    return [...m].filter(([, n]) => n.length > 1).map(([id, names]) => ({ id, names, name: (school.find(x => x.id === id) || {}).name || 'Unknown student' }))
+  }, [groups, school])
+  const dupLists = useMemo(() => { const m = {}; dupes.forEach(d => d.names.forEach(n => { m[n] = (m[n] || 0) + 1 })); return m }, [dupes])
+  const [mgrOpen, setMgrOpen] = useState(false)
+  const [mgrList, setMgrList] = useState(null)
+  const removeFromGroup = async (g, sid) => {
+    const ids = g.ids.filter(i => i !== sid)
+    if (groupsDb) { const { error } = await supabase.from('house_test_groups').update({ student_ids: ids, updated_at: new Date().toISOString() }).eq('id', g.id); if (error) { flash('err', 'Could not update: ' + error.message); return } }
+    const next = groups.map(x => x.id === g.id ? { ...x, ids } : x)
+    setGroups(next); if (!groupsDb) lsSet(groupsKey, next)
   }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
@@ -671,6 +697,52 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
 
+        {groups.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <button type="button" onClick={() => setMgrOpen(v => !v)} style={{ ...btn(false), minHeight: 34, fontSize: 12.5, borderColor: dupes.length ? '#f59e0b' : LINE, background: dupes.length ? '#fffbeb' : '#fff' }}>
+              {dupes.length ? `⚠ ${dupes.length} student${dupes.length === 1 ? ' is' : 's are'} in 2+ lists · Check lists` : '🗂 Manage my lists'} {mgrOpen ? '▴' : '▾'}
+            </button>
+            {mgrOpen && (
+              <div style={{ marginTop: 8, border: `1px solid ${LINE}`, borderRadius: 14, padding: 12, background: '#fbfcfe' }}>
+                {dupes.length > 0 && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 12.5, color: '#92400e' }}>
+                    <b>Duplicates</b> — same student in more than one list:
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{dupes.map(d => <li key={d.id}><b>{d.name}</b> → {d.names.join(', ')}</li>)}</ul>
+                  </div>
+                )}
+                {groups.map(g => {
+                  const open = mgrList === g.id
+                  return (
+                    <div key={g.id} style={{ borderTop: `1px solid ${LINE}`, padding: '8px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => setMgrList(open ? null : g.id)} style={{ border: 0, background: 'transparent', fontWeight: 800, color: NAVY, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{open ? '▾' : '▸'} {g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length} students</span></button>
+                        {dupLists[g.name] ? <span style={{ fontSize: 11, fontWeight: 800, color: '#92400e', background: '#fef3c7', borderRadius: 99, padding: '2px 8px' }}>{dupLists[g.name]} shared</span> : null}
+                        <span style={{ flex: 1 }} />
+                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }} onClick={() => useGroup(g)}>Use</button>
+                        <button type="button" style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12, color: '#b91c1c' }} onClick={() => delGroup(g)}>Delete list</button>
+                      </div>
+                      {open && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                          {g.ids.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Empty list.</span>}
+                          {g.ids.map(id => {
+                            const st = school.find(x => x.id === id); const also = groups.filter(o => o.id !== g.id && o.ids.includes(id)).map(o => o.name)
+                            return (
+                              <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 8px', borderRadius: 8, background: also.length ? '#fffbeb' : '#fff', border: `1px solid ${also.length ? '#fcd34d' : LINE}` }}>
+                                <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{st ? st.name : 'Student no longer active'}</b>{st && st.class_name ? <span style={{ color: '#64748b' }}> · {st.class_name}</span> : null}{also.length ? <span style={{ color: '#92400e', fontSize: 11.5 }}> · also in {also.join(', ')}</span> : null}</span>
+                                <button type="button" aria-label={`Remove from ${g.name}`} onClick={() => removeFromGroup(g, id)} style={{ border: 0, background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Remove</button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
           <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="🔍 Find a student to add: name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
           <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
@@ -711,7 +783,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
               <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name this list, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
               <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save this list</button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Saved lists are stored in the database, so you can load them on any phone or computer.'}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Your saved lists are stored in the database under your login, so only you see them and you can load them on any phone or computer.'}</div>
           </div>
         )}
         </div>}
