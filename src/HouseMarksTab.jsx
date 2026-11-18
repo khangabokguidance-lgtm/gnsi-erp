@@ -195,6 +195,8 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   // Every housemaster keeps their own lists: they are stored under the logged-in user (owner).
   const classKey = 'house_marks_class_' + gHouse + '_' + String(currentUser?.username || currentUser?.name || currentUser?.id || '')
   const me = String(currentUser?.username || currentUser?.name || currentUser?.id || '')
+  const lastGroupKey = 'house_marks_lastgroup_' + me
+  const preRef = useRef(false)
   const loadGroups = useCallback(async () => {
     const q = () => supabase.from('house_test_groups').select('id,name,student_ids').eq('owner', me).order('name')
     let { data, error } = await q()
@@ -218,6 +220,14 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setGroups(rows.filter(r => r.name !== CLASS_ROW).map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
   }, [gHouse, me])
   useEffect(() => { loadGroups() }, [loadGroups])
+  // Pre-load: a new test opens with the housemaster's last group name, and that group's students if My class is empty.
+  useEffect(() => {
+    if (preRef.current || !groups.length) return
+    preRef.current = true
+    const g = groups.find(x => x.name === lsGet(lastGroupKey)); if (!g) return
+    setTest(t => (t.id || t.group.trim()) ? t : { ...t, group: g.name })
+    if (!classExtra.length) { const live = new Set(school.map(x => x.id)); const ids = g.ids.filter(id => live.has(id)); if (ids.length) { setMyClass(ids); setMode('all') } }
+  }, [groups]) // eslint-disable-line react-hooks/exhaustive-deps
   const saveAsGroup = async () => {
     const name = groupName.trim()
     if (!name) { flash('err', 'Type a name for your group first, e.g. “Class VI Navodaya”.'); return }
@@ -239,7 +249,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     const live = new Set(school.map(x => x.id))
     const ids = g.ids.filter(id => live.has(id))
     setMyClass(ids); setMode('all'); setDirty(true)
-    setTest(t => ({ ...t, group: g.name, name: t.name.trim() ? t.name : g.name + ' – ' }))
+    setTest(t => ({ ...t, group: g.name, name: t.name.trim() ? t.name : g.name + ' – ' })); lsSet(lastGroupKey, g.name)
     flash('ok', `My class is now “${g.name}”: ${ids.length} student${ids.length === 1 ? '' : 's'}${ids.length < g.ids.length ? ` (${g.ids.length - ids.length} no longer active)` : ''}.`)
   }
   const delGroup = async g => {
@@ -708,7 +718,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
       merged = r.merged
     }
     setBusy(false)
-    setTest(t => ({ ...t, id: rowId })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved(); loadShared(rowId)
+    setTest(t => ({ ...t, id: rowId })); if (test.group.trim()) lsSet(lastGroupKey, test.group.trim()); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved(); loadShared(rowId)
     // Progress records for every student in the shared test, ranked across all teachers.
     const cc = buildCalc(Object.entries(merged).map(([id, e]) => ({ id, m: e.m || [] })), test.subjects, maxTotal)
     const rankedPcts = Object.values(cc).filter(c => c.rank).map(c => c.pct)
@@ -784,7 +794,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
     setTestOwner(null); setShared(null)
-    const l = lastSetup(); setTest({ id: null, kind: 'booklet', chapter: '', name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
+    const l = lastSetup(); const lg = groups.find(x => x.name === lsGet(lastGroupKey)); setTest({ id: null, kind: 'booklet', chapter: '', name: '', group: lg ? lg.name : '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
   const shown = roster
