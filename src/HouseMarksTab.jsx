@@ -74,7 +74,7 @@ function Step({ n, title, hint, right, summary, open = true, onToggle }) {
   )
 }
 
-function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', currentUser }) {
+function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', currentUser, openRequest = null }) {
   const canDelete = isAdminRole(currentUser?.role)
   const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
@@ -692,6 +692,8 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     const others = Object.keys(ent).filter(id => !mineIds.includes(id)).length
     if (others) flash('ok', `Shared test opened. ${others} student${others === 1 ? '' : 's'} entered by other teachers ${others === 1 ? 'is' : 'are'} kept safe. Enter marks for yours and save.`)
   }
+  // A test chosen in the Past results view is opened here so any housemaster can continue it.
+  useEffect(() => { if (openRequest && openRequest.row) openSaved(openRequest.row) }, [openRequest])  // eslint-disable-line react-hooks/exhaustive-deps
   const delSaved = async r => {
     if (!window.confirm(`Delete saved test "${r.test_name}"?`)) return
     const { error } = await supabase.from('house_test_marks').delete().eq('id', r.id)
@@ -1397,6 +1399,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
 // Two views: enter marks, and look back at every shared test with analysis. The entry view stays mounted so unsaved marks are never lost when switching.
 export default function HouseMarksTab(props) {
   const [view, setView] = useState('enter')
+  const [openReq, setOpenReq] = useState(null)
   const NAVY = '#0B1E3D', GOLD = '#C9A24B'
   const tab = (k, label) => (
     <button type="button" onClick={() => setView(k)} aria-pressed={view === k}
@@ -1407,8 +1410,8 @@ export default function HouseMarksTab(props) {
       <div role="tablist" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 14, background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: 16, fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif" }}>
         {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}
       </div>
-      <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HouseMarksEntry {...props} /></div>
-      {view === 'past' && <HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} />}
+      <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HouseMarksEntry {...props} openRequest={openReq} /></div>
+      {view === 'past' && <HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
     </div>
   )
 }
