@@ -38,6 +38,16 @@ const MOCK_NAME = 'Full mock paper'
 const chapterName = c => c === 'mock' ? MOCK_NAME : `Ch ${c} · ${BOOKLET[c - 1].t}`
 const chapterOf = name => { const n = String(name || ''); if (n === MOCK_NAME) return 'mock'; const m = n.match(/^Ch (\d) · /); return m && BOOKLET[+m[1] - 1] ? +m[1] : '' }
 
+// Sainik School (AISSEE Class VI) sections: Language 50, Mathematics 150, Intelligence 50, General Knowledge 50 = 300
+const SAINIK = {
+  lang: { t: 'Language', subjects: [{ n: 'Language', max: 50, min: '' }] },
+  maths: { t: 'Mathematics', subjects: [{ n: 'Mathematics', max: 150, min: '' }] },
+  intel: { t: 'Intelligence', subjects: [{ n: 'Intelligence', max: 50, min: '' }] },
+  gk: { t: 'General Knowledge', subjects: [{ n: 'General Knowledge', max: 50, min: '' }] },
+  full: { t: 'Full paper (300)', subjects: [{ n: 'Language', max: 50, min: '' }, { n: 'Mathematics', max: 150, min: '' }, { n: 'Intelligence', max: 50, min: '' }, { n: 'General Knowledge', max: 50, min: '' }] },
+}
+const sainikOf = name => { const m = String(name || '').match(/^Sainik · (.+)$/); return m ? (Object.keys(SAINIK).find(k => SAINIK[k].t === m[1]) || '') : '' }
+
 const digits = v => String(v ?? '').replace(/\D/g, '')
 const norm = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const clone = o => JSON.parse(JSON.stringify(o))
@@ -416,6 +426,12 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setTest(t => ({ ...t, id: null, kind: 'booklet', chapter: c, name: chapterName(c), preset: mock ? 'arith' : 'arith50', subjects: clone((mock ? PRESETS.arith : PRESETS.arith50).subjects) }))
     setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
   }
+  const chooseSection = k => {
+    if (test.chapter === k) return
+    if (dirty && Object.keys(marks).length && !window.confirm('Switch section? Marks you typed for the current sheet will be cleared.')) return
+    setTest(t => ({ ...t, id: null, kind: 'sainik', chapter: k, name: 'Sainik · ' + SAINIK[k].t, preset: 'custom', subjects: clone(SAINIK[k].subjects) }))
+    setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
+  }
   const setKind = k => {
     if (test.kind === k) return
     if (dirty && Object.keys(marks).length && !window.confirm('Change the test type? Marks you typed for the current sheet will be cleared.')) return
@@ -423,8 +439,8 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
   }
   const needChapter = () => {
-    if (test.kind !== 'booklet' || test.chapter) return false
-    setOpenDet(true); flash('err', 'Choose the chapter first. Tap one chapter of the booklet (or Full mock paper).')
+    if ((test.kind !== 'booklet' && test.kind !== 'sainik') || test.chapter) return false
+    setOpenDet(true); flash('err', test.kind === 'sainik' ? 'Choose the Sainik section first (Language, Mathematics, Intelligence, General Knowledge or Full paper).' : 'Choose the chapter first. Tap one chapter of the booklet (or Full mock paper).')
     setTimeout(() => { chapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 80)
     return true
   }
@@ -657,6 +673,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
   }
   const chapRef = useRef(null)
+  const fixedKind = test.kind === 'booklet' || test.kind === 'sainik'
   const needGroup = () => {
     if (test.group.trim()) return false
     setOpenDet(true); flash('err', 'Name of the group is compulsory. Type it (or pick one of your groups).')
@@ -740,7 +757,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     const byId = {}; school.forEach(s => { byId[s.id] = s })
     setTestOwner(r.created_by || null); loadShared(r.id)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
-    setTest({ id: r.id, kind: chapterOf(r.test_name) ? 'booklet' : 'other', chapter: chapterOf(r.test_name), group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
+    setTest({ id: r.id, kind: chapterOf(r.test_name) ? 'booklet' : sainikOf(r.test_name) ? 'sainik' : 'other', chapter: chapterOf(r.test_name) || sainikOf(r.test_name), group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
     // Shared test: this teacher sees and edits only their own students; everyone else's marks stay untouched in the database.
     const ent = r.marks || {}
     const mineIds = Object.keys(ent).filter(id => byId[id] && (ent[id].by === meKey || (!ent[id].by && pool.some(x => x.id === id))))
@@ -885,11 +902,23 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
         {openDet && <div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Test type:</span>
-          {[['booklet', '📘 Booklet chapter test'], ['other', '📝 Other test']].map(([k, l]) => {
+          {[['booklet', '📘 Navodaya booklet chapter'], ['sainik', '🪖 Sainik section'], ['other', '📝 Any subject']].map(([k, l]) => {
             const on = (test.kind || 'other') === k
             return <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={on} style={{ minHeight: 38, padding: '4px 14px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
           })}
         </div>
+        {test.kind === 'sainik' && (
+          <div ref={chapRef} style={{ border: `1.5px solid ${test.chapter ? '#a7f3d0' : '#f59e0b'}`, background: test.chapter ? '#f0fdf4' : '#fffbeb', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Choose the Sainik section <span style={{ color: '#dc2626' }}>*</span> <span style={{ fontWeight: 600, color: '#64748b' }}>· you can still add any other subject below</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 6 }}>
+              {Object.entries(SAINIK).map(([k, v]) => {
+                const on = test.chapter === k
+                return <button key={k} type="button" onClick={() => chooseSection(k)} aria-pressed={on} style={{ textAlign: 'left', minHeight: 44, padding: '6px 10px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.25 }}>{v.t}{k !== 'full' ? <span style={{ color: on ? '#E2C57E' : GOLD }}> · {v.subjects[0].max}</span> : null}</button>
+              })}
+            </div>
+            {test.chapter && <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: '#047857' }}>✓ Test: {test.name}</div>}
+          </div>
+        )}
         {test.kind === 'booklet' && (
           <div ref={chapRef} style={{ border: `1.5px solid ${test.chapter ? '#a7f3d0' : '#f59e0b'}`, background: test.chapter ? '#f0fdf4' : '#fffbeb', borderRadius: 14, padding: 12, marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 8 }}>Choose the chapter <span style={{ color: '#dc2626' }}>*</span> <span style={{ fontWeight: 600, color: '#64748b' }}>· JNVST 2027 Arithmetic Booklet · each chapter is out of 50</span></div>
@@ -904,19 +933,19 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
           </div>
         )}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          {test.kind !== 'booklet' && <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>}
+          {!fixedKind && <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input ref={nameRef} style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>}
           <label style={{ ...lab, flex: '1 1 200px' }}>Name of the group <span style={{ color: '#dc2626' }}>*</span>
             <input ref={groupRef} list="hm-group-names" style={{ ...inp, borderColor: test.group.trim() ? undefined : '#f59e0b' }} value={test.group} placeholder="e.g. Class VI Navodaya" required aria-required="true" onChange={e => { setTest(t => ({ ...t, group: e.target.value })); setDirty(true) }} />
             <datalist id="hm-group-names">{groups.map(g => <option key={g.id} value={g.name} />)}</datalist>
           </label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
-          {test.kind !== 'booklet' && <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
+          {!fixedKind && <label style={{ ...lab, flex: '2 1 240px' }}>Subject preset
             <select style={inp} value={test.preset} onChange={e => setPreset(e.target.value)}>
               {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </label>}
         </div>
-        {test.kind !== 'booklet' && <>
+        {!fixedKind && <>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Quick test · Arithmetic / 50:</span>
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => {
