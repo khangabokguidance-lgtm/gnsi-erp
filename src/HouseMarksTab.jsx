@@ -90,6 +90,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const tableRef = useRef(null)
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkCols, setBulkCols] = useState([])        // one text block per subject, one line per student (sheet order)
+  const [saveAfter, setSaveAfter] = useState(false)
   const [activeRow, setActiveRow] = useState(null)
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
@@ -137,6 +140,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
+  useEffect(() => { if (saveAfter) { setSaveAfter(false); save() } })
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
 
   // Auto-remember: every edit is kept on this computer (debounced), and the test setup is the next default.
@@ -321,6 +325,20 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }
 
   // ── save / open / delete ──
+  // ── Enter all marks at once: one column of text per subject, one line per student ──
+  const openBulk = () => {
+    setBulkCols(test.subjects.map((_, j) => roster.map(s => { const v = (marks[s.id] || [])[j]; return v === null || v === undefined ? '' : String(v) }).join('\n')))
+    setBulkOpen(true); setShowImport(false)
+  }
+  const bulkLines = j => (bulkCols[j] ?? '').split('\n')
+  const bulkExtra = Math.max(0, ...bulkCols.map((c, j) => bulkLines(j).filter(x => x.trim() !== '').length - roster.length))
+  const applyBulk = (thenSave) => {
+    const next = { ...marks }
+    roster.forEach((s, i) => { next[s.id] = test.subjects.map((_, j) => parseMark((bulkLines(j)[i] ?? '').trim())) })
+    setMarks(next); setDirty(true); setBulkOpen(false)
+    if (thenSave) setSaveAfter(true)
+    else flash('ok', `Marks applied to ${roster.length} students. Check the sheet, then save.`)
+  }
   const save = async () => {
     if (!test.name.trim()) { flash('err', 'Give the test a name first.'); return }
     if (stats.bad) { flash('err', `Fix ${stats.bad} red cell(s) first.`); return }
@@ -415,6 +433,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const btn = (primary) => ({ padding: '8px 14px', borderRadius: 8, border: `1px solid ${primary ? NAVY : '#cbd5e1'}`, background: primary ? NAVY : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38 })
   const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#64748b', minWidth: 0 }
   const cellBg = st => st === 'err' ? { background: '#fee2e2', color: '#b91c1c' } : st === 'low' ? { background: '#fef3c7', color: '#92400e' } : {}
+  const bulkHead = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
   const th = { padding: '8px 8px', background: '#f1f5f9', fontSize: 12, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0 }
   const td = { padding: 0, borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap' }
 
@@ -530,6 +549,39 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         )}
       </div>
 
+      {bulkOpen && <div style={{ ...card, border: `2px solid ${GOLD}` }}>
+        <p style={h}>⚡ Enter all marks at once</p>
+        <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+          Type each mark on its own line (press Enter for the next student), or paste a whole column from Excel. Lines match the students in the order shown. Write <b>AB</b> for absent; leave a line empty for no mark.
+        </div>
+        <div style={{ overflow: 'auto', maxHeight: '60vh', border: `1px solid ${LINE}`, borderRadius: 12 }}>
+          <div style={{ display: 'flex', minWidth: 'max-content' }}>
+            <div style={{ position: 'sticky', left: 0, zIndex: 1, background: '#f8fafc', borderRight: `2px solid ${LINE}`, minWidth: 150, maxWidth: 190 }}>
+              <div style={{ ...bulkHead, textAlign: 'left', height: 46, boxSizing: 'border-box' }}>Student</div>
+              <div style={{ padding: '8px 0' }}>
+                {roster.map((s, i) => <div key={s.id} style={{ height: 30, lineHeight: '30px', padding: '0 10px', fontSize: 13.5, fontWeight: 700, color: NAVY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 11.5, marginRight: 6 }}>{i + 1}</span>{s.name}</div>)}
+              </div>
+            </div>
+            {test.subjects.map((sub, j) => (
+              <div key={j} style={{ borderRight: `1px solid ${LINE}`, minWidth: 110 }}>
+                <div style={{ ...bulkHead, height: 46, boxSizing: 'border-box', padding: '6px 10px' }}>{sub.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {sub.max}</div></div>
+                <div style={{ padding: '8px 0' }}>
+                  <textarea aria-label={`${sub.n} marks, one line per student`} wrap="off" spellCheck={false} inputMode="decimal" value={bulkCols[j] ?? ''}
+                    onChange={e => setBulkCols(c => c.map((x, k) => k === j ? e.target.value : x))}
+                    style={{ display: 'block', width: 110, height: Math.max(roster.length, 1) * 30 + 30, border: 0, outline: 'none', resize: 'none', overflow: 'hidden', padding: '0 10px', margin: 0, lineHeight: '30px', fontSize: 16, fontWeight: 800, fontFamily: 'ui-monospace, Menlo, monospace', color: NAVY, textAlign: 'center', background: 'repeating-linear-gradient(to bottom,#fff 0,#fff 30px,#f1f5f9 30px,#f1f5f9 60px)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {bulkExtra > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: '#b45309', fontWeight: 700 }}>⚠ A column has {bulkExtra} more line{bulkExtra === 1 ? '' : 's'} than students ({roster.length}). Extra lines are ignored.</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+          <button type="button" style={btn(true)} onClick={() => applyBulk(true)} disabled={busy}>💾 Apply &amp; save test</button>
+          <button type="button" style={btn(false)} onClick={() => applyBulk(false)}>Apply to sheet</button>
+          <button type="button" style={btn(false)} onClick={() => setBulkOpen(false)}>Cancel</button>
+        </div>
+      </div>}
+
       {showImport && <div style={card}>
         <p style={h}>Import marks</p>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
@@ -585,7 +637,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <input style={{ ...inp, maxWidth: 300, flex: '1 1 200px' }} placeholder="🔍 Search any student by name or GCC No" value={search} onChange={e => setSearch(e.target.value)} />
           <button type="button" style={btn(false)} onClick={jumpNextEmpty}>⏭ Next empty</button>
-          <button type="button" style={btn(showImport)} onClick={() => setShowImport(v => !v)}>⬆ Import Excel / paste</button>
+          <button type="button" style={{ ...btn(true), background: bulkOpen ? '#1e3a66' : NAVY }} onClick={() => bulkOpen ? setBulkOpen(false) : openBulk()} disabled={!roster.length}>⚡ Enter all marks at once</button>
+          <button type="button" style={btn(showImport)} onClick={() => { setShowImport(v => !v); setBulkOpen(false) }}>⬆ Import Excel / paste</button>
           {filt !== 'all' && <button type="button" style={{ ...btn(false), color: '#b45309' }} onClick={() => setFilt('all')}>✕ Clear filter</button>}
           <span style={{ fontSize: 12, color: '#64748b', marginLeft: 'auto' }}>⌨ Enter / ↓ next student · ↑ previous · type <b>A</b> for absent</span>
         </div>
