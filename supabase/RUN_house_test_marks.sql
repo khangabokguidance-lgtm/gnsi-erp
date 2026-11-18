@@ -64,3 +64,18 @@ update public.house_test_groups g set name = g.name || ' (' || g.house || ')'
  where g.id in (select id from (select id, row_number() over (partition by owner, name order by created_at, id) rn from public.house_test_groups) x where x.rn > 1);
 create unique index if not exists house_test_groups_owner_name_uidx on public.house_test_groups (owner, name);
 alter table public.house_test_groups drop constraint if exists house_test_groups_house_name_key;
+
+-- ── Reusable test templates (name + subjects), shared by all teachers (run once; safe to re-run) ──
+create table if not exists public.house_test_templates (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null unique,
+  subjects    jsonb not null default '[]'::jsonb,   -- [{n, max, min}]
+  created_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table public.house_test_templates disable row level security;
+-- starter templates: Test 1 to Test 9, Arithmetic out of 50
+insert into public.house_test_templates (name, subjects, created_by)
+select 'Test ' || n, '[{"n":"Arithmetic","max":50,"min":""}]'::jsonb, 'system' from generate_series(1, 9) n
+on conflict (name) do nothing;

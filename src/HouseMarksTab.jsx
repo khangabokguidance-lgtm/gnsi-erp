@@ -375,6 +375,38 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setDirty(true)
   }
   // One tap: "Test 1" … "Test 9", Arithmetic out of 50.
+  // Test templates (name + subjects) are kept in the database for every teacher to reuse.
+  const [templates, setTemplates] = useState(() => { const l = lsGet('house_marks_templates'); return Array.isArray(l) ? l : [] })
+  const [tplDb, setTplDb] = useState(null)
+  const loadTemplates = useCallback(async () => {
+    const { data, error } = await supabase.from('house_test_templates').select('id,name,subjects,created_by').order('name')
+    if (error) { setTplDb(false); return }
+    setTplDb(true); setTemplates((data || []).filter(t => Array.isArray(t.subjects) && t.subjects.length)); lsSet('house_marks_templates', data || [])
+  }, [])
+  useEffect(() => { loadTemplates() }, [loadTemplates])
+  const saveTemplate = async () => {
+    const name = test.name.trim()
+    if (!name) { setOpenDet(true); flash('err', 'Type the test name first, then save it as a template.'); setTimeout(() => nameRef.current?.focus(), 80); return }
+    if (!test.subjects.length) { flash('err', 'Add at least one subject first.'); return }
+    const row = { name, subjects: test.subjects, created_by: meKey || null, updated_at: new Date().toISOString() }
+    const { error } = await supabase.from('house_test_templates').upsert(row, { onConflict: 'name' })
+    if (error) {
+      const next = [...templates.filter(t => t.name.toLowerCase() !== name.toLowerCase()), { id: 'l' + Date.now(), ...row }].sort((a, b) => a.name.localeCompare(b.name))
+      setTemplates(next); lsSet('house_marks_templates', next); setTplDb(false)
+      flash('err', 'Template saved on this computer only. Run supabase/RUN_house_test_marks.sql so every teacher can use it.'); return
+    }
+    await loadTemplates(); flash('ok', `Template “${name}” saved for all teachers.`)
+  }
+  const useTemplate = t => {
+    if (dirty && Object.keys(marks).length && !window.confirm('Switch to this template? Marks you typed for the current sheet will be cleared.')) return
+    setTest(x => ({ ...x, id: null, name: t.name, preset: t.subjects.length === 1 ? 'single' : 'custom', subjects: clone(t.subjects) }))
+    setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
+  }
+  const delTemplate = async t => {
+    if (!window.confirm(`Delete the template “${t.name}”? Saved tests are not affected.`)) return
+    if (tplDb) { const { error } = await supabase.from('house_test_templates').delete().eq('id', t.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadTemplates() }
+    else { const next = templates.filter(x => x.id !== t.id); setTemplates(next); lsSet('house_marks_templates', next) }
+  }
   const quickTest = n => {
     if (dirty && Object.keys(marks).length && !window.confirm('Switch to this test? Marks you typed for the current sheet will be cleared.')) return
     setTest(t => ({ ...t, id: null, name: `Test ${n}`, preset: 'arith50', subjects: clone(PRESETS.arith50.subjects) }))
@@ -846,6 +878,17 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
             const on = test.name === `Test ${n}` && test.preset === 'arith50'
             return <button key={n} type="button" onClick={() => quickTest(n)} aria-pressed={on} style={{ minWidth: 64, minHeight: 38, padding: '4px 12px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Test {n}</button>
           })}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Saved templates:</span>
+          {templates.map(t => (
+            <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
+              <button type="button" onClick={() => useTemplate(t)} title={t.subjects.map(x => `${x.n} ${x.max}`).join(' + ')} style={{ border: 0, background: 'transparent', padding: '7px 6px 7px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{t.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {t.subjects.reduce((a, x) => a + Number(x.max || 0), 0)}</span></button>
+              {(canDelete || !t.created_by || t.created_by === meKey) && <button type="button" aria-label={`Delete template ${t.name}`} onClick={() => delTemplate(t)} style={{ border: 0, background: 'transparent', padding: '7px 10px 7px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>}
+            </span>
+          ))}
+          {!templates.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>none yet</span>}
+          <button type="button" onClick={saveTemplate} style={{ ...btn(false), minHeight: 34, padding: '4px 12px', fontSize: 12.5 }}>💾 Save this test setup as template</button>
         </div>
         <div style={{ background: '#f6f8fb', border: '1px solid #e3e9f1', borderRadius: 14, padding: 12, marginBottom: 12 }}>
           <div className="hm-subrow hm-subhead">
