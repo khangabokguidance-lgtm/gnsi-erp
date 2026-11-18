@@ -56,3 +56,8 @@ create table if not exists public.house_test_groups (
   unique (house, name)
 );
 alter table public.house_test_groups disable row level security;
+
+-- ── Saved lists belong to each housemaster (run once; safe to re-run) ──
+alter table public.house_test_groups add column if not exists owner text not null default '';
+alter table public.house_test_groups drop constraint if exists house_test_groups_house_name_key;
+create unique index if not exists house_test_groups_owner_name_uidx on public.house_test_groups (owner, name);
