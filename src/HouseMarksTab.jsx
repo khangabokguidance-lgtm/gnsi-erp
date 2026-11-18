@@ -5,6 +5,7 @@ import { isAdminRole } from './roles'
 import { GRADES, gradeOf, gradeColor, medal, buildCalc, subjSig, parseMark, cellState } from './houseMarksCalc'
 import HouseMarksPast from './HouseMarksPast'
 import HouseMarksGroups from './HouseMarksGroups'
+import HouseMarksDashboard from './HouseMarksDashboard'
 
 // ══════════════════════════════════════════════════════════════
 //  HOUSE MARKS TAB  (Hostel → 📝 Marks)
@@ -143,7 +144,8 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [allStudents, students])
   // My class = exactly the students this teacher added (saved under their login). Nothing is added automatically.
-  const pool = useMemo(() => school.filter(x => classExtra.includes(x.id)), [school, classExtra])
+  const [adminIds, setAdminIds] = useState([])   // admin only: every student of the opened test, whoever entered them
+  const pool = useMemo(() => school.filter(x => classExtra.includes(x.id) || adminIds.includes(x.id)), [school, classExtra, adminIds])
   const roster = useMemo(() => mode === 'all' ? pool : school.filter(s => picked.includes(s.id)), [pool, school, mode, picked])
   const houses = useMemo(() => [...new Set(school.map(s => s.house).filter(Boolean))].sort(), [school])
   const classes = useMemo(() => [...new Set(school.map(s => s.class_name).filter(Boolean))].sort(), [school])
@@ -699,7 +701,8 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     roster.forEach(s => {
       const m = marks[s.id] || test.subjects.map(() => null)
       if (mode === 'all' && m.every(v => v === null || v === undefined)) return
-      mine[s.id] = { gcc: s.gcc_no || '', name: s.name || '', m, by: meKey, byName: currentUser?.name || meKey, group: test.group.trim() }
+      const prev = canDelete && test.id ? (shared?.marks || {})[s.id] : null   // admin editing another teacher's student keeps that teacher on the record
+      mine[s.id] = { gcc: s.gcc_no || '', name: s.name || '', m, by: prev?.by || meKey, byName: prev?.by ? (prev.byName || prev.by) : (currentUser?.name || meKey), group: prev?.by ? (prev.group || test.group.trim()) : test.group.trim() }
     })
     if (!Object.keys(mine).length) { flash('err', mode === 'selected' ? 'Add at least one student first.' : 'No marks entered yet.'); return }
     if (!Object.values(mine).some(v => v.m.some(x => x !== null && x !== undefined))) { flash('err', 'No marks entered yet.'); return }
@@ -741,13 +744,13 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   }
   const mergeSave = async mine => {
     const touched = roster.map(x => x.id)
-    const canRename = !testOwner || testOwner === meKey
+    const canRename = canDelete || !testOwner || testOwner === meKey
     for (let k = 0; k < 4; k++) {
       const cur = await supabase.from('house_test_marks').select('id,subjects,marks,updated_at').eq('id', test.id).single()
       if (cur.error || !cur.data) return { error: cur.error || { message: 'This test no longer exists.' } }
       if (subjSig(cur.data.subjects) !== subjSig(test.subjects)) return { error: { code: 'subjects', message: 'subjects changed' } }
       const merged = { ...(cur.data.marks || {}) }
-      touched.forEach(id => { const e = merged[id]; if (!mine[id] && e && (!e.by || e.by === meKey)) delete merged[id] })
+      touched.forEach(id => { const e = merged[id]; if (!mine[id] && e && (canDelete || !e.by || e.by === meKey)) delete merged[id] })
       Object.assign(merged, mine)
       const upd = { marks: merged, updated_at: new Date().toISOString(), ...(canRename ? { test_name: test.name.trim(), test_date: test.date || todayStr() } : {}) }
       const r = await supabase.from('house_test_marks').update(upd).eq('id', test.id).eq('updated_at', cur.data.updated_at).select('id,updated_at')
@@ -770,17 +773,19 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     setTest({ id: r.id, kind: chapterOf(r.test_name) ? 'booklet' : sainikOf(r.test_name) ? 'sainik' : 'other', chapter: chapterOf(r.test_name) || sainikOf(r.test_name), group: '', name: r.test_name, date: r.test_date, preset: subs.length === 1 ? 'single' : 'custom', subjects: subs })
     // Shared test: this teacher sees and edits only their own students; everyone else's marks stay untouched in the database.
     const ent = r.marks || {}
-    const mineIds = Object.keys(ent).filter(id => byId[id] && (ent[id].by === meKey || (!ent[id].by && pool.some(x => x.id === id))))
+    const mineIds = Object.keys(ent).filter(id => byId[id] && (canDelete || ent[id].by === meKey || (!ent[id].by && pool.some(x => x.id === id))))
+    setAdminIds(canDelete ? mineIds : [])
     const mk = {}; mineIds.forEach(id => { mk[id] = ent[id].m })
     const myGroup = mineIds.map(id => ent[id].group).find(Boolean)
     if (myGroup) setTest(t => t.id === r.id && !t.group ? { ...t, group: myGroup } : t)
     else supabase.from('house_test_results').select('group_name').eq('test_id', r.id).limit(1).then(({ data }) => { const gname = data && data[0] && data[0].group_name; if (gname) setTest(t => t.id === r.id && !t.group ? { ...t, group: gname } : t) }, () => {})
-    const missing = mineIds.filter(id => !classExtra.includes(id))
+    const missing = canDelete ? [] : mineIds.filter(id => !classExtra.includes(id))
     if (missing.length) setMyClass([...classExtra, ...missing])
     setMode('all'); setPicked([])
     setMarks(mk); setDirty(false); window.scrollTo({ top: 0, behavior: 'smooth' })
     const others = Object.keys(ent).filter(id => !mineIds.includes(id)).length
-    if (others) flash('ok', `Shared test opened. ${others} student${others === 1 ? '' : 's'} entered by other teachers ${others === 1 ? 'is' : 'are'} kept safe. Enter marks for yours and save.`)
+    if (canDelete) flash('ok', `Admin: all ${mineIds.length} students of this test are open. You can change any teacher's marks, rename it or delete it.`)
+    else if (others) flash('ok', `Shared test opened. ${others} student${others === 1 ? '' : 's'} entered by other teachers ${others === 1 ? 'is' : 'are'} kept safe. Enter marks for yours and save.`)
   }
   // A test chosen in the Past results view is opened here so any housemaster can continue it.
   useEffect(() => { if (openRequest && openRequest.row) openSaved(openRequest.row) }, [openRequest])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -793,7 +798,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
-    setTestOwner(null); setShared(null)
+    setTestOwner(null); setShared(null); setAdminIds([])
     const l = lastSetup(); const lg = groups.find(x => x.name === lsGet(lastGroupKey)); setTest({ id: null, kind: 'booklet', chapter: '', name: '', group: lg ? lg.name : '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
@@ -910,6 +915,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
         <Step n={1} title="Test details" hint="Choose the booklet chapter (compulsory) and the group name, then set the date." open={openDet} onToggle={() => setOpenDet(v => !v)}
           summary={`${test.name.trim() || 'Untitled test'} · ${test.group.trim() || '⚠ group name missing'} · ${test.date} · ${test.subjects.map(x => `${x.n} ${x.max}`).join(' + ')}`} />
         {openDet && <div>
+        {canDelete && test.id && <div style={{ marginBottom: 10 }}><button type="button" style={{ ...btn(false), color: '#b91c1c', borderColor: '#fecaca' }} onClick={async () => { await delSaved({ id: test.id, test_name: test.name }); setAdminIds([]); setMarks({}); setShared(null); setDirty(false) }}>🗑 Delete this whole test (admin)</button></div>}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Test type:</span>
           {[['booklet', '📘 Navodaya booklet chapter'], ['sainik', '🪖 Sainik section'], ['other', '📝 Any subject']].map(([k, l]) => {
@@ -1547,10 +1553,11 @@ export default function HouseMarksTab(props) {
   return (
     <div style={{ maxWidth: 1180, margin: '0 auto' }}>
       <div role="tablist" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 14, background: '#fff', border: `1.5px solid ${GOLD}`, borderRadius: 16, fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif" }}>
-        {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}{tab('groups', '👥 Group list')}
+        {tab('enter', '✏️ Enter marks')}{tab('past', '📚 Past results & analysis')}{tab('groups', '👥 Group list')}{isAdminRole(props.currentUser?.role) && tab('dash', '🏠 Dashboard')}
       </div>
       <div style={{ display: view === 'enter' ? 'block' : 'none' }}><HouseMarksEntry {...props} openRequest={openReq} /></div>
-      {view === 'groups' && <HouseMarksGroups school={props.allStudents || props.students || []} />}
+      {view === 'groups' && <HouseMarksGroups school={props.allStudents || props.students || []} isAdmin={isAdminRole(props.currentUser?.role)} />}
+      {view === 'dash' && isAdminRole(props.currentUser?.role) && <HouseMarksDashboard school={props.allStudents || props.students || []} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
       {view === 'past' && <HouseMarksPast school={props.allStudents || props.students || []} currentUser={props.currentUser} onOpenTest={row => { setOpenReq({ row, n: Date.now() }); setView('enter') }} />}
     </div>
   )

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import { GRADES, gradeColor, medal, buildCalc } from './houseMarksCalc'
+import { isAdminRole } from './roles'
 
 // Past results & analysis: every shared test, visible to all staff (read-only).
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', LINE = '#e2e8f0'
@@ -12,7 +13,7 @@ const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransfo
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const pctTxt = v => v == null ? '–' : v.toFixed(1) + '%'
 
-function analyze(r, schoolById, group = '') {
+export function analyze(r, schoolById, group = '') {
   const subs = Array.isArray(r.subjects) ? r.subjects : []
   const mx = subs.reduce((a, x) => a + Number(x.max || 0), 0)
   const entries = Object.entries(r.marks || {}).filter(([, e]) => !group || (e.group || '') === group)
@@ -62,6 +63,15 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
+  const isAdmin = isAdminRole(currentUser?.role)
+  const delTest = async t => {
+    if (!window.confirm(`Delete the whole test "${t.test_name}" with all teachers' marks? This cannot be undone.`)) return
+    setBusy(true)
+    const { error } = await supabase.from('house_test_marks').delete().eq('id', t.id)
+    setBusy(false)
+    if (error) { setMsg('Delete failed: ' + error.message); return }
+    setSelId(''); setMsg('Test deleted.'); load()
+  }
   const load = async () => {
     setRows(null); setErr('')
     const { data, error } = await supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,created_by,updated_at').order('test_date', { ascending: false }).limit(300)
@@ -271,6 +281,7 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
               <div style={{ fontSize: 13, color: '#64748b' }}>{fmtDate(sel.test_date)} · out of {sel.an.mx} · {sel.an.subs.map(x => `${x.n} ${x.max}`).join(' + ')}</div>
             </div>
             {onOpenTest && <button type="button" style={{ ...btn(false), borderColor: GOLD }} onClick={() => onOpenTest(rows.find(r => r.id === sel.id))}>✏️ Open to enter marks</button>}
+            {isAdmin && <button type="button" style={{ ...btn(false), color: '#b91c1c', borderColor: '#fecaca' }} onClick={() => delTest(sel)} disabled={busy}>🗑 Delete test</button>}
             <button type="button" style={btn(true)} onClick={() => exportPdf(sel, true)} disabled={busy}>📤 Share PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportPdf(sel, false)} disabled={busy}>📄 PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportXlsx(sel)}>⬇ Excel</button>

@@ -10,13 +10,27 @@ const inp = { padding: '9px 12px', border: '1.5px solid #d3dbe7', borderRadius: 
 const btn = { padding: '9px 16px', borderRadius: 11, border: '1.5px solid #d3dbe7', background: '#fff', color: NAVY, fontWeight: 700, fontSize: 14, cursor: 'pointer', minHeight: 42, fontFamily: 'inherit' }
 const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 12px' }
 
-export default function HouseMarksGroups({ school = [] }) {
+export default function HouseMarksGroups({ school = [], isAdmin = false }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [owner, setOwner] = useState('')
   const [open, setOpen] = useState({})
   const [busy, setBusy] = useState(false)
+  const [addQ, setAddQ] = useState({})
+  const [note, setNote] = useState('')
+  // admin only: change any housemaster's list
+  const setIds = async (g, ids) => {
+    const { error } = await supabase.from('house_test_groups').update({ student_ids: ids, updated_at: new Date().toISOString() }).eq('id', g.id)
+    if (error) { setNote('Could not save: ' + error.message); return }
+    setRows(rs => (rs || []).map(r => r.id === g.id ? { ...r, student_ids: ids } : r)); setNote('')
+  }
+  const delGroup = async g => {
+    if (!window.confirm(`Delete "${g.name}" of ${g.owner}? The students themselves are not affected.`)) return
+    const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id)
+    if (error) { setNote('Could not delete: ' + error.message); return }
+    setRows(rs => (rs || []).filter(r => r.id !== g.id)); setNote('')
+  }
 
   const load = async () => {
     setRows(null); setErr('')
@@ -75,6 +89,7 @@ export default function HouseMarksGroups({ school = [] }) {
 
   return (
     <div>
+      {note && <div style={{ ...card, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: 14 }}>{note}</div>}
       {err && <div style={{ ...card, borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c', fontSize: 14 }}>{err}</div>}
       <div style={card}>
         <p style={h}>👥 Group list · every housemaster</p>
@@ -97,7 +112,19 @@ export default function HouseMarksGroups({ school = [] }) {
               <div key={g.id} style={{ ...card, marginBottom: 0, padding: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}><b style={{ fontSize: 15 }}>{g.name}</b><span style={{ fontSize: 12.5, fontWeight: 800, color: NAVY, background: '#fffaf0', border: `1.5px solid ${GOLD}`, borderRadius: 99, padding: '1px 10px' }}>{g.students.length}</span></div>
                 <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8 }}>🧑‍🏫 {g.owner}</div>
-                {list.map(s => <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13.5, padding: '4px 0', borderTop: `1px solid ${LINE}` }}><span>{dupe.has(s.id) ? '⚠ ' : ''}{s.name}</span><span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{s.class_name || ''}{s.gcc_no ? ` · ${s.gcc_no}` : ''}</span></div>)}
+                {list.map(s => <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13.5, padding: '4px 0', borderTop: `1px solid ${LINE}`, alignItems: 'center' }}><span>{dupe.has(s.id) ? '⚠ ' : ''}{s.name}</span><span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{s.class_name || ''}{s.gcc_no ? ` · ${s.gcc_no}` : ''}{isAdmin && <button type="button" aria-label={`Remove ${s.name}`} onClick={() => setIds(g, g.students.map(x => x.id).filter(id => id !== s.id))} style={{ border: 0, background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: 15, padding: '0 0 0 8px' }}>✕</button>}</span></div>)}
+                {isAdmin && (() => {
+                  const t = (addQ[g.id] || '').trim().toLowerCase()
+                  const have = new Set(g.students.map(x => x.id))
+                  const hits = t.length < 2 ? [] : school.filter(x => !have.has(x.id) && ((x.name || '').toLowerCase().includes(t) || String(x.gcc_no || '').includes(t))).slice(0, 5)
+                  return (
+                    <div style={{ marginTop: 8, borderTop: `1px dashed ${LINE}`, paddingTop: 8 }}>
+                      <input style={{ ...inp, width: '100%', minHeight: 38 }} value={addQ[g.id] || ''} onChange={e => setAddQ(a => ({ ...a, [g.id]: e.target.value }))} placeholder="＋ Add a student: type a name or GCC" aria-label={`Add a student to ${g.name}`} />
+                      {hits.map(x => <button key={x.id} type="button" onClick={() => { setIds(g, [...g.students.map(y => y.id), x.id]); setAddQ(a => ({ ...a, [g.id]: '' })) }} style={{ ...btn, display: 'block', width: '100%', textAlign: 'left', minHeight: 36, padding: '4px 10px', fontSize: 13, marginTop: 4 }}>＋ {x.name} <span style={{ color: '#64748b' }}>· {x.class_name || ''} {x.gcc_no || ''}</span></button>)}
+                      <button type="button" onClick={() => delGroup(g)} style={{ ...btn, marginTop: 8, minHeight: 36, padding: '4px 12px', fontSize: 13, color: '#b91c1c', borderColor: '#fecaca' }}>🗑 Delete this group</button>
+                    </div>
+                  )
+                })()}
                 {g.students.length > 5 && <button type="button" style={{ ...btn, marginTop: 8, minHeight: 36, padding: '4px 12px', fontSize: 13 }} onClick={() => setOpen(o => ({ ...o, [g.id]: !isOpen }))}>{isOpen ? 'Show less' : `Show all ${g.students.length}`}</button>}
               </div>
             )
