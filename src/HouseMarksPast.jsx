@@ -12,10 +12,10 @@ const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransfo
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const pctTxt = v => v == null ? '–' : v.toFixed(1) + '%'
 
-function analyze(r, schoolById) {
+function analyze(r, schoolById, group = '') {
   const subs = Array.isArray(r.subjects) ? r.subjects : []
   const mx = subs.reduce((a, x) => a + Number(x.max || 0), 0)
-  const entries = Object.entries(r.marks || {})
+  const entries = Object.entries(r.marks || {}).filter(([, e]) => !group || (e.group || '') === group)
   const cc = buildCalc(entries.map(([id, e]) => ({ id, m: e.m || [] })), subs, mx)
   const rows = entries.map(([id, e]) => {
     const st = schoolById[id] || {}
@@ -46,13 +46,14 @@ function analyze(r, schoolById) {
   }
 }
 
-export default function HouseMarksPast({ school = [], currentUser }) {
+export default function HouseMarksPast({ school = [], currentUser, onOpenTest }) {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [teacher, setTeacher] = useState('')
+  const [group, setGroup] = useState('')
   const [selId, setSelId] = useState('')
   const [tab, setTab] = useState('ranking')
   const [rankQ, setRankQ] = useState('')
@@ -70,7 +71,17 @@ export default function HouseMarksPast({ school = [], currentUser }) {
   useEffect(() => { load() }, [])
 
   const schoolById = useMemo(() => { const m = {}; school.forEach(s => { m[s.id] = s }); return m }, [school])
-  const tests = useMemo(() => (rows || []).map(r => ({ ...r, an: analyze(r, schoolById) })), [rows, schoolById])
+  const tests = useMemo(() => (rows || []).map(r => ({ ...r, an: analyze(r, schoolById, group) })).filter(t => !group || t.an.rows.length), [rows, schoolById, group])
+  // every group any teacher has used, across all tests (not affected by the group filter)
+  const allGroups = useMemo(() => {
+    const m = new Map()
+    ;(rows || []).forEach(r => Object.values(r.marks || {}).forEach(e => {
+      const g = (e.group || '').trim(); if (!g) return
+      if (!m.has(g)) m.set(g, { name: g, tests: new Map(), teachers: new Set(), students: new Set() })
+      const o = m.get(g); o.tests.set(r.id, r.test_date); o.teachers.add(e.byName || e.by || r.created_by || 'Not recorded'); o.students.add(e.name || e.gcc || '')
+    }))
+    return [...m.values()].map(o => ({ name: o.name, tests: o.tests.size, teachers: [...o.teachers], students: o.students.size, last: [...o.tests.values()].sort().pop() })).sort((a, b) => (b.last || '').localeCompare(a.last || '') || a.name.localeCompare(b.name))
+  }, [rows])
   const teacherNames = useMemo(() => [...new Set(tests.flatMap(t => t.an.teachers.map(x => x.name)))].sort(), [tests])
   const shown = useMemo(() => tests.filter(t =>
     (!q.trim() || t.test_name.toLowerCase().includes(q.trim().toLowerCase())) &&
@@ -189,6 +200,24 @@ export default function HouseMarksPast({ school = [], currentUser }) {
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', fontSize: 13.5, color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' }} onClick={() => setMsg('')}>{msg}</div>}
 
       <div style={card}>
+        <p style={h}>👥 All groups ({allGroups.length}) · made by every housemaster</p>
+        {!allGroups.length ? <div style={{ fontSize: 13, color: '#64748b' }}>No groups yet. A group name is saved with every test.</div> : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setGroup('')} aria-pressed={!group} style={{ ...btn(!group), minHeight: 40 }}>All groups</button>
+            {allGroups.map(g => (
+              <button key={g.name} type="button" onClick={() => { setGroup(group === g.name ? '' : g.name); setSelId('') }} aria-pressed={group === g.name} title={g.teachers.join(', ')}
+                style={{ textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', border: `1.5px solid ${group === g.name ? NAVY : '#e3e9f1'}`, background: group === g.name ? NAVY : '#fff', color: group === g.name ? '#fff' : NAVY, borderRadius: 14, padding: '8px 12px', minWidth: 150 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: 14 }}>{g.name}</span>
+                <span style={{ display: 'block', fontSize: 11.5, opacity: .8 }}>{g.tests} test{g.tests === 1 ? '' : 's'} · {g.students} student{g.students === 1 ? '' : 's'}</span>
+                <span style={{ display: 'block', fontSize: 11.5, opacity: .8 }}>{g.teachers.slice(0, 2).join(', ')}{g.teachers.length > 2 ? ` +${g.teachers.length - 2}` : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {group && <div style={{ fontSize: 12.5, color: '#92400e', marginTop: 10 }}>Showing only the students of group “{group}” in every test below: averages, rankings and the chart are for this group.</div>}
+      </div>
+
+      <div style={card}>
         <p style={h}>🔎 Find a test</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <input style={{ ...inp, flex: '2 1 200px' }} placeholder="Search test name" value={q} onChange={e => setQ(e.target.value)} />
@@ -197,7 +226,7 @@ export default function HouseMarksPast({ school = [], currentUser }) {
           <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, fontWeight: 700, color: '#64748b', flex: '1 1 160px' }}>TEACHER
             <select style={inp} value={teacher} onChange={e => setTeacher(e.target.value)}><option value="">All teachers</option>{teacherNames.map(n => <option key={n} value={n}>{n}</option>)}</select>
           </label>
-          <button type="button" style={{ ...btn(false), alignSelf: 'flex-end' }} onClick={() => { setQ(''); setFrom(''); setTo(''); setTeacher('') }}>Clear</button>
+          <button type="button" style={{ ...btn(false), alignSelf: 'flex-end' }} onClick={() => { setQ(''); setFrom(''); setTo(''); setTeacher(''); setGroup('') }}>Clear</button>
           <button type="button" style={{ ...btn(false), alignSelf: 'flex-end' }} onClick={load}>↻ Refresh</button>
         </div>
       </div>
@@ -241,6 +270,7 @@ export default function HouseMarksPast({ school = [], currentUser }) {
               <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 22, fontWeight: 700 }}>{sel.test_name}</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{fmtDate(sel.test_date)} · out of {sel.an.mx} · {sel.an.subs.map(x => `${x.n} ${x.max}`).join(' + ')}</div>
             </div>
+            {onOpenTest && <button type="button" style={{ ...btn(false), borderColor: GOLD }} onClick={() => onOpenTest(rows.find(r => r.id === sel.id))}>✏️ Open to enter marks</button>}
             <button type="button" style={btn(true)} onClick={() => exportPdf(sel, true)} disabled={busy}>📤 Share PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportPdf(sel, false)} disabled={busy}>📄 PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportXlsx(sel)}>⬇ Excel</button>
