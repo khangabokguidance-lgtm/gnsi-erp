@@ -90,6 +90,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const tableRef = useRef(null)
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [activeRow, setActiveRow] = useState(null)
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
@@ -314,6 +315,61 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const exportXlsx = () => {
     const ws = XLSX.utils.aoa_to_sheet([['Test', test.name], ['House', lockHouse || 'All houses'], ['Date', test.date], ['Maximum total', maxTotal], [], headRow(), ...bodyRows()])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Results'); XLSX.writeFile(wb, baseName() + '.xlsx')
+  }
+  // ── PDF result sheet: school letterhead, ranked table, ready to share ──
+  const exportPdf = async (share) => {
+    if (!roster.length || !stats.entered) { flash('err', 'Enter some marks first.'); return }
+    setPdfBusy(true)
+    try {
+      const [{ default: jsPDF }, { default: autoTable }, { pdfLetterhead, pdfFooters }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./reportKit')])
+      const landscape = test.subjects.length > 4
+      const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
+      const mx = 12, W = doc.internal.pageSize.getWidth()
+      let y = pdfLetterhead(doc, { title: 'Test Result' + (test.name ? ' – ' + test.name : ''), margin: mx, date: test.date ? new Date(test.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(71, 85, 105)
+      const info = [lockHouse ? `House: ${lockHouse}` : 'All houses', test.group ? `Group: ${test.group}` : null, `Students: ${roster.length}`, `Maximum: ${maxTotal}`, stats.avg == null ? null : `Average: ${stats.avg.toFixed(1)}`, stats.high == null ? null : `Highest: ${stats.high}`, stats.absent ? `Absent: ${stats.absent}` : null].filter(Boolean).join('   ·   ')
+      doc.text(info, mx, y); y += 4
+      const sorted = sortedForExport()
+      const body = sorted.map(st => {
+        const c = calc[st.id], m = marks[st.id] || []
+        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+      })
+      const nSub = test.subjects.length
+      autoTable(doc, {
+        startY: y,
+        head: [['Rank', 'Student', 'GCC', 'Class', ...test.subjects.map(x => `${x.n}\n/${x.max}`), 'Total\n/' + maxTotal, '%', 'Remark']],
+        body,
+        margin: { left: mx, right: mx, bottom: 16 },
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: [15, 27, 46], lineColor: [226, 232, 240], lineWidth: 0.1 },
+        headStyles: { fillColor: [11, 30, 61], textColor: 255, halign: 'center', fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: { 0: { halign: 'center', fontStyle: 'bold', cellWidth: 12 }, 1: { fontStyle: 'bold', cellWidth: 'auto' } },
+        didParseCell: d => {
+          if (d.section !== 'body') return
+          const ci = d.column.index
+          if (ci >= 4 && ci < 4 + nSub) {
+            d.cell.styles.halign = 'center'
+            const st = sorted[d.row.index], v = (marks[st.id] || [])[ci - 4]
+            const cs = cellState(v ?? null, test.subjects[ci - 4])
+            if (cs === 'err') { d.cell.styles.fillColor = [254, 226, 226]; d.cell.styles.textColor = [185, 28, 28] }
+            else if (cs === 'low') { d.cell.styles.fillColor = [254, 243, 199]; d.cell.styles.textColor = [146, 64, 14] }
+          }
+          if (ci === 4 + nSub || ci === 5 + nSub) { d.cell.styles.halign = 'center'; d.cell.styles.fontStyle = 'bold' }
+          if (ci === 0 && Number(d.cell.raw) >= 1 && Number(d.cell.raw) <= 3) { d.cell.styles.fillColor = [[226, 197, 126], [226, 232, 240], [231, 200, 160]][Number(d.cell.raw) - 1] }
+        },
+      })
+      const endY = doc.lastAutoTable?.finalY || y
+      doc.setFontSize(8); doc.setTextColor(100, 116, 139)
+      if (endY < doc.internal.pageSize.getHeight() - 24) doc.text('Amber = below the minimum mark · Red = invalid mark · AB = absent · Equal totals share a rank.', mx, endY + 6)
+      pdfFooters(doc, { margin: mx })
+      const blob = doc.output('blob'), fname = baseName() + '.pdf'
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      if (share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: test.name || 'Test result', text: `${test.name || 'Test result'} – result sheet` }); flash('ok', 'Shared.') }
+        catch (e) { if (e?.name !== 'AbortError') { download(blob, fname); flash('ok', 'Could not open sharing, so the PDF was downloaded instead.') } }
+      } else { download(blob, fname); flash('ok', share ? 'Sharing is not available on this device, so the PDF was downloaded.' : 'PDF downloaded.') }
+    } catch (e) { flash('err', 'Could not make the PDF: ' + (e?.message || e)) }
+    setPdfBusy(false)
   }
   const template = () => {
     const rows = [['GCC No', 'Name', ...test.subjects.map(s => s.n)], ...roster.map(s => [s.gcc_no || '', s.name || '', ...test.subjects.map(() => '')])]
@@ -559,6 +615,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             <button type="button" style={btn(true)} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? 'Update test' : 'Save test'}</button>
             <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
             <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
+            <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy}>{pdfBusy ? '…' : '📄 PDF'}</button>
+            <button type="button" style={{ ...btn(true), background: '#25D366', borderColor: '#25D366', color: '#fff' }} onClick={() => exportPdf(true)} disabled={pdfBusy}>📤 Share PDF</button>
             <button type="button" style={btn(false)} onClick={newTest}>New test</button>
           </div>
         </div>
