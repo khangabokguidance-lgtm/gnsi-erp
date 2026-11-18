@@ -88,6 +88,9 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
   const [activeRow, setActiveRow] = useState(null)
+  const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
+  const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
+  const [groupName, setGroupName] = useState('')
   const draftKey = 'house_marks_draft_' + (lockHouse || 'all')
   const [draft, setDraft] = useState(() => { const d = lsGet('house_marks_draft_' + (lockHouse || 'all')); return d && d.marks && Object.keys(d.marks).length ? d : null })
 
@@ -118,6 +121,23 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
+  const saveGroups = next => { setGroups(next); lsSet(groupsKey, next) }
+  const saveAsGroup = () => {
+    const name = groupName.trim()
+    if (!name) { flash('err', 'Type a group or class name first, e.g. “Class VI Navodaya”.'); return }
+    if (!picked.length) { flash('err', 'Pick the students for this group first.'); return }
+    const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
+    saveGroups([...others, { id: Date.now(), name, ids: picked }].sort((a, b) => a.name.localeCompare(b.name)))
+    setGroupName(''); flash('ok', `Group “${name}” saved with ${picked.length} student${picked.length === 1 ? '' : 's'}.`)
+  }
+  const useGroup = g => {
+    const live = new Set(pool.map(s => s.id))
+    const ids = g.ids.filter(id => live.has(id))
+    setMode('selected'); setPicked(ids); setDirty(true)
+    if (!test.name.trim()) setTest(t => ({ ...t, name: g.name + ' – ' }))
+    flash('ok', `${g.name}: ${ids.length} student${ids.length === 1 ? '' : 's'} loaded${ids.length < g.ids.length ? ` (${g.ids.length - ids.length} no longer in this house)` : ''}.`)
+  }
+  const delGroup = g => { if (window.confirm(`Delete the group “${g.name}”? The students themselves are not affected.`)) saveGroups(groups.filter(x => x.id !== g.id)) }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
   const loadSaved = useCallback(async () => {
@@ -391,6 +411,17 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
 
       <div style={card}>
         <p style={h}>Students in this test</p>
+        {groups.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>My groups:</span>
+            {groups.map(g => (
+              <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
+                <button type="button" onClick={() => useGroup(g)} title={`Load ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '6px 6px 6px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
+                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '6px 10px 6px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <button type="button" style={btn(mode === 'all')} onClick={() => { setMode('all'); setDirty(true) }}>Whole house ({pool.length})</button>
           <button type="button" style={btn(mode === 'selected')} onClick={() => { setMode('selected'); setDirty(true) }}>Pick students{mode === 'selected' ? ` (${picked.length})` : ''}</button>
@@ -416,7 +447,12 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
               ))}
               {!picked.length && <span style={{ fontSize: 12, color: '#64748b' }}>No students picked yet.</span>}
             </div>
-            <div style={{ marginTop: 8 }}><button type="button" style={btn(false)} onClick={pickAllShown}>Add all {pool.length}</button></div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+              <button type="button" style={btn(false)} onClick={pickAllShown}>Add all {pool.length}</button>
+              <input style={{ ...inp, maxWidth: 240, flex: '1 1 180px' }} placeholder="Group / class name, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
+              <button type="button" style={btn(true)} onClick={saveAsGroup} disabled={!picked.length}>💾 Save as group</button>
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Save the picked students once under a name; next time one tap loads the whole group. Groups are kept on this computer for {lockHouse || 'all houses'}.</div>
           </div>
         )}
       </div>
