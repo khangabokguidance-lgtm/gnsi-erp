@@ -72,7 +72,7 @@ const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' 
 
 export default function HouseMarksTab({ students = [], lockHouse = '', currentUser }) {
   const canDelete = isAdminRole(currentUser?.role)
-  const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
+  const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
   const [saved, setSaved] = useState([])
   const [msg, setMsg] = useState(null)             // { kind: 'ok'|'err', text }
@@ -91,6 +91,9 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
   const [groupName, setGroupName] = useState('')
+  const [progId, setProgId] = useState('')           // student whose progress is shown
+  const [progRows, setProgRows] = useState(null)     // null = not loaded, [] = none
+  const [progErr, setProgErr] = useState('')
   const draftKey = 'house_marks_draft_' + (lockHouse || 'all')
   const [draft, setDraft] = useState(() => { const d = lsGet('house_marks_draft_' + (lockHouse || 'all')); return d && d.marks && Object.keys(d.marks).length ? d : null })
 
@@ -134,11 +137,23 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     const live = new Set(pool.map(s => s.id))
     const ids = g.ids.filter(id => live.has(id))
     setMode('selected'); setPicked(ids); setDirty(true)
-    if (!test.name.trim()) setTest(t => ({ ...t, name: g.name + ' – ' }))
+    setTest(t => ({ ...t, group: g.name, name: t.name.trim() ? t.name : g.name + ' – ' }))
     flash('ok', `${g.name}: ${ids.length} student${ids.length === 1 ? '' : 's'} loaded${ids.length < g.ids.length ? ` (${g.ids.length - ids.length} no longer in this house)` : ''}.`)
   }
   const delGroup = g => { if (window.confirm(`Delete the group “${g.name}”? The students themselves are not affected.`)) saveGroups(groups.filter(x => x.id !== g.id)) }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
+
+  useEffect(() => {
+    if (!progId) { setProgRows(null); setProgErr(''); return }
+    let live = true
+    supabase.from('house_test_results').select('test_id,test_name,test_date,group_name,total,max_total,percent,rank,ranked_of,class_avg_pct,absent,subjects,marks').eq('student_id', String(progId)).order('test_date', { ascending: true }).limit(200)
+      .then(({ data, error }) => {
+        if (!live) return
+        if (error) { setProgRows([]); setProgErr(/house_test_results/i.test(error.message || '') ? 'Progress records are not set up yet: run the new part of supabase/RUN_house_test_marks.sql once in Supabase.' : error.message); return }
+        setProgErr(''); setProgRows(data || [])
+      })
+    return () => { live = false }
+  }, [progId, saved])
 
   const loadSaved = useCallback(async () => {
     let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at').order('test_date', { ascending: false }).limit(100)
@@ -294,7 +309,21 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
     const { data, error } = await q
     setBusy(false)
     if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
-    setTest(t => ({ ...t, id: data.id })); setDirty(false); lsDel(draftKey); flash('ok', `Saved ${Object.keys(compact).length} students.`); loadSaved()
+    setTest(t => ({ ...t, id: data.id })); setDirty(false); lsDel(draftKey); loadSaved()
+    // Progress records: one row per student per test, so a student's results can be followed over time.
+    const rankedPcts = Object.values(calc).filter(c => c.rank).map(c => c.pct)
+    const classAvg = rankedPcts.length ? rankedPcts.reduce((a, b) => a + b, 0) / rankedPcts.length : null
+    const results = roster.filter(s => compact[s.id] && (calc[s.id].n > 0 || calc[s.id].absent)).map(s => {
+      const c = calc[s.id]
+      return { test_id: data.id, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name || null, class_name: s.class_name || null, group_name: test.group || null,
+        house: lockHouse || 'All', test_name: test.name.trim(), test_date: test.date || todayStr(), subjects: test.subjects, marks: compact[s.id].m,
+        total: c.n ? c.tot : null, max_total: maxTotal, percent: c.n ? Math.round(c.pct * 10) / 10 : null, rank: c.rank || null, ranked_of: stats.ranked || null,
+        class_avg_pct: classAvg == null ? null : Math.round(classAvg * 10) / 10, absent: !!c.absent, updated_at: new Date().toISOString() }
+    })
+    const del = await supabase.from('house_test_results').delete().eq('test_id', data.id)
+    const ins = !del.error && results.length ? await supabase.from('house_test_results').insert(results) : { error: del.error }
+    if (ins.error) flash('err', /house_test_results/i.test(ins.error.message || '') ? 'Marks saved, but progress records are not set up: run the new part of supabase/RUN_house_test_marks.sql once in Supabase.' : 'Marks saved, but progress records failed: ' + ins.error.message)
+    else flash('ok', `Saved ${Object.keys(compact).length} students and their progress records.`)
   }
   const openSaved = r => {
     const byId = {}; roster.forEach(s => { byId[s.id] = s })
@@ -314,7 +343,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
-    const l = lastSetup(); setTest({ id: null, name: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
+    const l = lastSetup(); setTest({ id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
   const shown = roster
@@ -550,6 +579,66 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
           </div>
         )}
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Red = invalid or above the maximum. Amber = below the minimum. Ties share a rank.</div>
+      </div>
+
+      <div style={card}>
+        <p style={h}>📈 Student progress</p>
+        <select style={{ ...inp, maxWidth: 360 }} value={progId} onChange={e => setProgId(e.target.value)} aria-label="Choose a student to see progress">
+          <option value="">Choose a student…</option>
+          {pool.map(s => <option key={s.id} value={s.id}>{s.name}{s.gcc_no ? ` · ${s.gcc_no}` : ''}</option>)}
+        </select>
+        {progErr && <div style={{ fontSize: 13, color: '#b91c1c', marginTop: 8 }}>{progErr}</div>}
+        {progId && progRows && !progErr && !progRows.length && <div style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>No saved tests for this student yet. Save a test with their marks and the trend appears here.</div>}
+        {progRows && progRows.length > 0 && (() => {
+          const scored = progRows.filter(r => r.percent != null)
+          const avg = scored.length ? scored.reduce((a, r) => a + Number(r.percent), 0) / scored.length : null
+          const last = scored[scored.length - 1], prev = scored[scored.length - 2]
+          const delta = last && prev ? Number(last.percent) - Number(prev.percent) : null
+          const W = 560, H = 130, padL = 30, padR = 10, padT = 10, padB = 20
+          const xs = i => padL + (scored.length < 2 ? (W - padL - padR) / 2 : i * (W - padL - padR) / (scored.length - 1))
+          const ys = v => padT + (H - padT - padB) * (1 - Math.max(0, Math.min(100, v)) / 100)
+          const line = key => scored.map((r, i) => r[key] == null ? null : `${xs(i)},${ys(Number(r[key]))}`).filter(Boolean).join(' ')
+          return (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                {[['Tests', progRows.length], ['Average', avg == null ? '–' : avg.toFixed(1) + '%'], ['Latest', last ? Number(last.percent).toFixed(1) + '%' : '–'], ['Change', delta == null ? '–' : (delta >= 0 ? '▲ +' : '▼ ') + delta.toFixed(1)]].map(([l, v]) => (
+                  <div key={l} style={{ background: '#f1f5f9', borderRadius: 10, padding: '8px 14px', minWidth: 90 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Fraunces',Georgia,serif", color: l === 'Change' && delta != null ? (delta >= 0 ? '#047857' : '#b91c1c') : '#0f1f3d' }}>{v}</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#64748b' }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              {scored.length > 0 && (
+                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 640, height: 'auto', display: 'block', marginBottom: 10 }} role="img" aria-label="Percentage by test">
+                  {[0, 25, 50, 75, 100].map(g => <g key={g}><line x1={padL} x2={W - padR} y1={ys(g)} y2={ys(g)} stroke="#e2e8f0" strokeWidth="1" /><text x={padL - 4} y={ys(g) + 3} fontSize="9" textAnchor="end" fill="#94a3b8">{g}</text></g>)}
+                  <polyline points={line('class_avg_pct')} fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5 4" />
+                  <polyline points={line('percent')} fill="none" stroke={NAVY} strokeWidth="2.5" />
+                  {scored.map((r, i) => <circle key={r.test_id} cx={xs(i)} cy={ys(Number(r.percent))} r="3.5" fill={GOLD} stroke={NAVY} strokeWidth="1.5"><title>{`${r.test_name}: ${r.percent}%`}</title></circle>)}
+                </svg>
+              )}
+              <div style={{ fontSize: 11.5, color: '#64748b', marginBottom: 8 }}><span style={{ color: NAVY, fontWeight: 800 }}>━</span> student % &nbsp; <span style={{ color: '#94a3b8', fontWeight: 800 }}>╌</span> house average %</div>
+              <div style={{ overflowX: 'auto', border: `1px solid ${LINE}`, borderRadius: 10 }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520, fontSize: 13 }}>
+                  <thead><tr>{['Date', 'Test', 'Group', 'Total', '%', 'Rank', 'vs avg'].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
+                  <tbody>{[...progRows].reverse().map(r => {
+                    const d = r.percent != null && r.class_avg_pct != null ? Number(r.percent) - Number(r.class_avg_pct) : null
+                    return (
+                      <tr key={r.test_id}>
+                        <td style={{ ...td, padding: '7px 8px' }}>{r.test_date}</td>
+                        <td style={{ ...td, padding: '7px 8px' }}>{r.test_name}</td>
+                        <td style={{ ...td, padding: '7px 8px', color: '#64748b' }}>{r.group_name || '–'}</td>
+                        <td style={{ ...td, padding: '7px 8px', fontFamily: 'monospace' }}>{r.absent ? 'Absent' : r.total == null ? '–' : `${r.total}/${r.max_total}`}</td>
+                        <td style={{ ...td, padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{r.percent == null ? '–' : Number(r.percent).toFixed(1)}</td>
+                        <td style={{ ...td, padding: '7px 8px' }}>{r.rank ? `${r.rank}${r.ranked_of ? ' / ' + r.ranked_of : ''}` : '–'}</td>
+                        <td style={{ ...td, padding: '7px 8px', fontFamily: 'monospace', color: d == null ? '#94a3b8' : d >= 0 ? '#047857' : '#b91c1c' }}>{d == null ? '–' : (d >= 0 ? '+' : '') + d.toFixed(1)}</td>
+                      </tr>
+                    )
+                  })}</tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       <div style={card}>
