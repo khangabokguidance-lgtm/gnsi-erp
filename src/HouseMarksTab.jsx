@@ -21,6 +21,7 @@ import HouseMarksPast from './HouseMarksPast'
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', LINE = '#e2e8f0'
 const PRESETS = {
   jnvst: { label: 'JNVST (Mental Ability 50 · Arithmetic 25 · Language 25)', subjects: [{ n: 'Mental Ability', max: 50, min: '' }, { n: 'Arithmetic', max: 25, min: 7 }, { n: 'Language', max: 25, min: '' }] },
+  arith50: { label: 'Arithmetic only (50) · Tests 1 to 9', subjects: [{ n: 'Arithmetic', max: 50, min: '' }] },
   arith: { label: 'Arithmetic only (25)', subjects: [{ n: 'Arithmetic', max: 25, min: 7 }] },
   single: { label: 'One subject only', subjects: [{ n: 'Subject', max: 25, min: '' }], locked: true },
   custom: { label: 'Custom subjects', subjects: [{ n: 'Marks', max: 100, min: '' }] },
@@ -372,6 +373,12 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
       return { ...prev, [sid]: test.subjects.map(() => allAb ? null : 'AB') }
     })
     setDirty(true)
+  }
+  // One tap: "Test 1" … "Test 9", Arithmetic out of 50.
+  const quickTest = n => {
+    if (dirty && Object.keys(marks).length && !window.confirm('Switch to this test? Marks you typed for the current sheet will be cleared.')) return
+    setTest(t => ({ ...t, id: null, name: `Test ${n}`, preset: 'arith50', subjects: clone(PRESETS.arith50.subjects) }))
+    setMarks({}); setDirty(true); setTestOwner(null); setShared(null)
   }
   const setPreset = p => {
     setTest(t => ({ ...t, preset: p, subjects: clone(PRESETS[p].subjects) }))
@@ -832,6 +839,13 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
               {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </label>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginRight: 2 }}>Quick test · Arithmetic / 50:</span>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => {
+            const on = test.name === `Test ${n}` && test.preset === 'arith50'
+            return <button key={n} type="button" onClick={() => quickTest(n)} aria-pressed={on} style={{ minWidth: 64, minHeight: 38, padding: '4px 12px', borderRadius: 10, border: `1.5px solid ${on ? NAVY : '#d3dbe7'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : NAVY, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Test {n}</button>
+          })}
         </div>
         <div style={{ background: '#f6f8fb', border: '1px solid #e3e9f1', borderRadius: 14, padding: 12, marginBottom: 12 }}>
           <div className="hm-subrow hm-subhead">
