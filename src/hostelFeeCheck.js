@@ -95,6 +95,7 @@ const inSession = (month, year, session) => {
   return Number(year) === (m >= 4 ? st : st + 1)
 }
 const gccKey = v => String(parseInt(v) || 0)
+const MONTH_ORDER = { April: 4, May: 5, June: 6, July: 7, August: 8, September: 9, October: 10, November: 11, December: 12, January: 13, February: 14, March: 15 }
 
 // Configured rate for a session/course/batch/hostel type (any batch as a fallback,
 // the same way getFeeRates does). field: 'course_fee' | 'flat_fee'.
@@ -136,6 +137,9 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     const match = HOSTEL_TYPES.filter(t => t !== ownType).map(t => ({ type: t, rate: rateAt(t) })).find(x => x.rate > 0 && x.rate === paid)
     if (!match) return
     sx.other[match.type] = (sx.other[match.type] || 0) + 1
+    // latest fee month paid at that other type — a mid-session type change most likely took effect right after it
+    const mk = Number(year) * 12 + (MONTH_ORDER[month] || 0)
+    if (!sx.last || mk > sx.last.key) sx.last = { key: mk, month, year: Number(year) }
     if (paid >= own) return
     if (row.concession_status) { reviewed++; return }
     issues.push({
@@ -158,7 +162,7 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
   // none was at the recorded type's rate.
   const suspects = [...stats.values()].map(x => {
     const types = Object.keys(x.other)
-    return types.length === 1 && x.own === 0 ? { student: x.student, recorded: x.student.hostel_type || 'Day Scholar', likely: types[0], count: x.other[types[0]], total: x.total } : null
+    return types.length === 1 && x.own === 0 ? { student: x.student, recorded: x.student.hostel_type || 'Day Scholar', likely: types[0], count: x.other[types[0]], total: x.total, lastMonth: x.last ? { month: x.last.month, year: x.last.year } : null, hasHistory: (history.get(gccKey(x.student.gcc_no)) || []).length > 0 } : null
   }).filter(Boolean).sort((a, b) => b.count - a.count)
   return { issues: issues.sort((a, b) => b.shortBy - a.shortBy), reviewed, suspects }
 }

@@ -104,6 +104,30 @@ export async function changeHostelType({ student, toType, effectiveFrom, reason,
   } catch { /* audit is best-effort */ }
 }
 
+// Fixer for a type that was changed mid-session WITHOUT an effective month (so the whole session was
+// re-priced at the new type). Keeps the student's current type, but makes every month before
+// `effectiveFrom` count as `earlierType`. Payments and receipts are untouched. Admin only (RLS).
+export async function splitHostelTypeFrom({ student, earlierType, effectiveFrom, by }) {
+  const cur = currentType(student)
+  if (!HOSTEL_TYPE_LIST.includes(earlierType)) throw new Error('Choose Boarder, Day Boarder or Day Scholar.')
+  if (earlierType === cur) throw new Error(`${student.name} is already a ${cur} — nothing to split.`)
+  if (!/^\d{4}-\d{2}-01$/.test(effectiveFrom || '')) throw new Error('Choose the month the current type starts.')
+  const existing = await loadStudentHistory(student.gcc_no)
+  if (existing.length) throw new Error(`${student.name} already has a hostel-type timeline — adjust it from the student's ledger instead.`)
+  const { error } = await supabase.from('student_hostel_history').insert({
+    student_id: student.id != null ? String(student.id) : null, gcc_no: gccKey(student.gcc_no), student_name: student.name || null,
+    from_type: earlierType, to_type: cur, effective_from: effectiveFrom, reason: 'Type changed mid-session — earlier months keep the old type', changed_by: by || null,
+  })
+  if (error) throw new Error(missingTable(error) ? HISTORY_SETUP_MSG : error.message)
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'hostel_type_changed', changed_by: by || 'Admin', target_id: String(student.id ?? ''),
+      new_values: JSON.stringify({ gcc: student.gcc_no, student_name: student.name, from: earlierType, to: cur, effective_from: effectiveFrom, reason: 'Mid-session change fixed from the Hostel issues tab' }),
+      created_at: new Date().toISOString(),
+    })
+  } catch { /* audit is best-effort */ }
+}
+
 // Undo the latest change (admin): the student goes back to its from_type.
 export async function undoLastChange({ student, changes, by }) {
   const last = changes?.[changes.length - 1]
