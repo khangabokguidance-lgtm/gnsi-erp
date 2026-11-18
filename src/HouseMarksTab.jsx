@@ -826,9 +826,24 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           </div>
         )}
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
-          <div style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
-            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}`}</style>
-            <table ref={tableRef} style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
+          <div className="hm-gridwrap" style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
+            <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}
+              @media (max-width:640px){
+                .hm-gridwrap{overflow:visible!important;max-height:none!important;border:0!important;box-shadow:none!important;background:transparent!important;border-radius:0!important}
+                .hm-grid{display:block!important;min-width:0!important;width:100%!important}
+                .hm-grid thead{display:none!important}
+                .hm-grid tbody{display:block!important}
+                .hm-grid tr{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px 10px;background:#fff!important;border:1.5px solid #dbe3ee!important;border-radius:18px;padding:14px!important;margin:0 0 14px!important;box-shadow:0 2px 8px rgba(11,30,61,.07)}
+                .hm-grid tr[data-active]{border-color:#C9A24B!important;background:#fffaf0!important;box-shadow:0 0 0 3px rgba(201,162,75,.35)}
+                .hm-grid td{display:block!important;position:static!important;border:0!important;padding:0!important;min-width:0!important;max-width:none!important;background:transparent!important;box-shadow:none!important;text-align:left!important;white-space:normal!important}
+                .hm-grid td.hm-c-stu{grid-column:1/-1;padding-bottom:8px!important;border-bottom:1px solid #e2e8f0!important}
+                .hm-grid td.hm-c-mark::before{content:attr(data-sub);display:block;font-size:11.5px;font-weight:800;color:#0B1E3D;margin-bottom:5px;line-height:1.2}
+                .hm-grid td.hm-c-mark input{width:100%!important;height:58px!important;font-size:26px!important}
+                .hm-grid td.hm-c-sum{background:#f1f5f9!important;border-radius:12px;padding:7px 10px!important}
+                .hm-grid td.hm-c-sum::before{content:attr(data-sub);display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b;margin-bottom:2px}
+              }
+            `}</style>
+            <table ref={tableRef} data-rt-skip className="hm-grid" style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 560 }}>
               <thead><tr>
                 <th style={{ ...thG, textAlign: 'left', position: 'sticky', left: 0, zIndex: 3, minWidth: 118 }}>Student</th>
                 {test.subjects.map((s, i) => <th key={i} style={thG}>{s.n || 'Subject'}<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {s.max}</div></th>)}
@@ -840,8 +855,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   const rowBg = activeRow === s.id ? '#fff8e6' : idx % 2 ? '#f8fafc' : '#fff'
                   const cell = { borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 6px' }
                   return (
-                    <tr key={s.id} style={{ background: rowBg }}>
-                      <td style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
+                    <tr key={s.id} data-active={activeRow === s.id ? '1' : undefined} style={{ background: rowBg }}>
+                      <td className="hm-c-stu" style={{ ...cell, textAlign: 'left', position: 'sticky', left: 0, zIndex: 1, background: rowBg, minWidth: 118, maxWidth: 150, whiteSpace: 'normal', boxShadow: activeRow === s.id ? `inset 4px 0 0 ${GOLD}` : 'none', padding: '8px 10px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.25 }}><span style={{ color: '#94a3b8', fontWeight: 600, fontSize: 12, marginRight: 6 }}>{idx + 1}</span>{s.name}</div>
@@ -853,16 +868,16 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                       {test.subjects.map((sub, i) => {
                         const v = m[i] ?? null, st = cellState(v, sub), filled = v !== null && v !== ''
                         return (
-                          <td key={i} style={cell}>
+                          <td key={i} className="hm-c-mark" data-sub={`${sub.n || 'Subject'} (${sub.max})`} style={cell}>
                             <input className="hm-in" aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
                               onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="–"
                               style={{ width: 72, height: 48, boxSizing: 'border-box', textAlign: 'center', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 800, borderRadius: 12, outline: 'none', ...markBox(st), ...(st === '' && filled ? { background: '#f0fdf4', borderColor: '#86efac', color: '#065f46' } : {}) }} />
                           </td>
                         )
                       })}
-                      <td style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
-                      <td style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
-                      <td style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td className="hm-c-sum" data-sub="Total" style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td className="hm-c-sum" data-sub="Percent" style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
+                      <td className="hm-c-sum" data-sub="Rank" style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
                 })}
