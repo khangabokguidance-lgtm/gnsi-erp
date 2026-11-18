@@ -11,7 +11,7 @@ export function buildCalc(items, subjects, maxTotal) {
         const v = m[i] ?? null, st = cellState(v, sub)
         if (st === 'err') bad = true
         if (st === 'low') low = true
-        if (typeof v === 'number' && st !== 'err') { tot += v; n++ } else if (v === 'AB') ab++
+        if (typeof v === 'number' && st !== 'err') { tot += v; n++ } else if (v === 'AB') { ab++; if (sub.min !== '' && sub.min != null && !isNaN(Number(sub.min))) low = true }   // absent where a minimum applies cannot pass
       })
       out[id] = { tot, n, bad, low, complete: subjects.length > 0 && !bad && n + ab === subjects.length, partial: !bad && n + ab > 0 && n + ab < subjects.length, absent: subjects.length > 0 && ab === subjects.length, pct: maxTotal ? tot / maxTotal * 100 : 0, rank: null }
     })

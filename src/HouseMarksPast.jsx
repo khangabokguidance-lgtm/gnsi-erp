@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
-import { GRADES, gradeColor, medal, buildCalc } from './houseMarksCalc'
+import { GRADES, gradeColor, medal } from './houseMarksCalc'
+import { isAdminRole } from './roles'
+import { analyze } from './houseMarksAnalyze'
 
 // Past results & analysis: every shared test, visible to all staff (read-only).
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', LINE = '#e2e8f0'
@@ -12,39 +14,14 @@ const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransfo
 const fmtDate = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d : x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const pctTxt = v => v == null ? '–' : v.toFixed(1) + '%'
 
-function analyze(r, schoolById, group = '') {
-  const subs = Array.isArray(r.subjects) ? r.subjects : []
-  const mx = subs.reduce((a, x) => a + Number(x.max || 0), 0)
-  const entries = Object.entries(r.marks || {}).filter(([, e]) => !group || (e.group || '') === group)
-  const cc = buildCalc(entries.map(([id, e]) => ({ id, m: e.m || [] })), subs, mx)
-  const rows = entries.map(([id, e]) => {
-    const st = schoolById[id] || {}
-    return { id, name: st.name || e.name || 'Student', gcc: st.gcc_no || e.gcc || '', cls: st.class_name || '', house: st.house || '', teacher: e.byName || e.by || r.created_by || 'Not recorded', group: e.group || '', m: e.m || [], c: cc[id] }
-  })
-  const ranked = rows.filter(x => x.c && x.c.rank).sort((a, b) => a.c.rank - b.c.rank || a.name.localeCompare(b.name))
-  const rest = rows.filter(x => !(x.c && x.c.rank)).sort((a, b) => a.name.localeCompare(b.name))
-  const by = key => {
-    const m = new Map(); rows.forEach(x => { const k = key(x); if (k) { if (!m.has(k)) m.set(k, []); m.get(k).push(x) } })
-    return [...m].map(([name, list]) => {
-      const rk = list.filter(x => x.c && x.c.rank).sort((a, b) => a.c.rank - b.c.rank)
-      return { name, count: list.length, ranked: rk.length, avg: rk.length ? rk.reduce((a, x) => a + x.c.pct, 0) / rk.length : null, pass: rk.length ? rk.filter(x => x.c.pass).length / rk.length * 100 : null, top: rk[0] || null }
-    }).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
-  }
-  const subjects = subs.map((sub, i) => {
-    const vals = rows.map(x => ({ x, v: x.m[i] })).filter(o => typeof o.v === 'number' && o.v <= Number(sub.max))
-    if (!vals.length) return { n: sub.n, max: sub.max, count: 0 }
-    const hi = Math.max(...vals.map(o => o.v)), lo = Math.min(...vals.map(o => o.v)), minV = sub.min === '' || sub.min == null ? null : Number(sub.min)
-    return { n: sub.n, max: sub.max, count: vals.length, avg: vals.reduce((a, o) => a + o.v, 0) / vals.length, hi, lo, hiNames: vals.filter(o => o.v === hi).map(o => o.x.name), pass: minV == null ? null : vals.filter(o => o.v >= minV).length / vals.length * 100 }
-  })
-  const gradeCount = {}; ranked.forEach(x => { gradeCount[x.c.grade] = (gradeCount[x.c.grade] || 0) + 1 })
-  return {
-    subs, mx, rows, ranked, rest, subjects, gradeCount,
-    teachers: by(x => x.teacher), groups: by(x => x.group), classes: by(x => x.cls),
-    avg: ranked.length ? ranked.reduce((a, x) => a + x.c.pct, 0) / ranked.length : null,
-    pass: ranked.length ? ranked.filter(x => x.c.pass).length / ranked.length * 100 : null,
-    top: ranked[0] || null,
-  }
-}
+
+const Tile = ({ l, v, sub }) => (
+  <div style={{ flex: '1 1 120px', border: `1px solid ${LINE}`, borderRadius: 14, padding: '9px 12px', background: '#fff' }}>
+    <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase' }}>{l}</div>
+    <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, lineHeight: 1.2 }}>{v}</div>
+    {sub ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{sub}</div> : null}
+  </div>
+)
 
 export default function HouseMarksPast({ school = [], currentUser, onOpenTest }) {
   const [rows, setRows] = useState(null)
@@ -62,6 +39,15 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
+  const isAdmin = isAdminRole(currentUser?.role)
+  const delTest = async t => {
+    if (!window.confirm(`Delete the whole test "${t.test_name}" with all teachers' marks? This cannot be undone.`)) return
+    setBusy(true)
+    const { error } = await supabase.from('house_test_marks').delete().eq('id', t.id)
+    setBusy(false)
+    if (error) { setMsg('Delete failed: ' + error.message); return }
+    setSelId(''); setMsg('Test deleted.'); load()
+  }
   const load = async () => {
     setRows(null); setErr('')
     const { data, error } = await supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,created_by,updated_at').order('test_date', { ascending: false }).limit(300)
@@ -145,13 +131,6 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
     setBusy(false)
   }
 
-  const Tile = ({ l, v, sub }) => (
-    <div style={{ flex: '1 1 120px', border: `1px solid ${LINE}`, borderRadius: 14, padding: '9px 12px', background: '#fff' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#64748b', textTransform: 'uppercase' }}>{l}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, lineHeight: 1.2 }}>{v}</div>
-      {sub ? <div style={{ fontSize: 11.5, color: '#64748b' }}>{sub}</div> : null}
-    </div>
-  )
   const groupCards = list => !list.length ? <div style={{ fontSize: 13, color: '#64748b' }}>Nothing recorded for this view.</div> : (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))', gap: 10 }}>
       {list.map(g => (
@@ -271,6 +250,7 @@ export default function HouseMarksPast({ school = [], currentUser, onOpenTest })
               <div style={{ fontSize: 13, color: '#64748b' }}>{fmtDate(sel.test_date)} · out of {sel.an.mx} · {sel.an.subs.map(x => `${x.n} ${x.max}`).join(' + ')}</div>
             </div>
             {onOpenTest && <button type="button" style={{ ...btn(false), borderColor: GOLD }} onClick={() => onOpenTest(rows.find(r => r.id === sel.id))}>✏️ Open to enter marks</button>}
+            {isAdmin && <button type="button" style={{ ...btn(false), color: '#b91c1c', borderColor: '#fecaca' }} onClick={() => delTest(sel)} disabled={busy}>🗑 Delete test</button>}
             <button type="button" style={btn(true)} onClick={() => exportPdf(sel, true)} disabled={busy}>📤 Share PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportPdf(sel, false)} disabled={busy}>📄 PDF</button>
             <button type="button" style={btn(false)} onClick={() => exportXlsx(sel)}>⬇ Excel</button>
