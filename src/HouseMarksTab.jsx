@@ -108,6 +108,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
   const tableRef = useRef(null)
+  const [rowLimit, setRowLimit] = useState(60)   // big sheets (whole school) render in chunks so phones stay fast
   const [filt, setFilt] = useState('all')         // tile filter: all | entered | absent | low | bad
   const [showImport, setShowImport] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -126,7 +127,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [progId, setProgId] = useState('')           // student whose progress is shown
   const [progRows, setProgRows] = useState(null)     // null = not loaded, [] = none
   const [progErr, setProgErr] = useState('')
-  const draftKey = 'house_marks_draft_' + (lockHouse || 'all')
+  const meKey = String(currentUser?.username || currentUser?.name || currentUser?.id || '')
+  const draftKey = 'house_marks_draft_' + (lockHouse || 'all') + (meKey ? '_' + meKey : '')
   const [draft, setDraft] = useState(() => { const d = lsGet('house_marks_draft_' + (lockHouse || 'all')); return d && d.marks && Object.keys(d.marks).length ? d : null })
 
   const pool = useMemo(() => (students || [])
@@ -268,7 +270,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }, [progId, saved])
 
   const loadSaved = useCallback(async () => {
-    let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at').order('test_date', { ascending: false }).limit(100)
+    let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at,created_by').order('test_date', { ascending: false }).limit(100)
     if (lockHouse) q = q.eq('house', lockHouse)
     const { data, error } = await q
     if (error) { setSaved([]); if (/house_test_marks/i.test(error.message || '')) flash('err', 'Saving is not set up yet: run supabase/RUN_house_test_marks.sql once in Supabase.'); return }
@@ -290,17 +292,18 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         if (st === 'low') low = true
         if (typeof v === 'number' && st !== 'err') { tot += v; n++ } else if (v === 'AB') ab++
       })
-      out[s.id] = { tot, n, bad, low, absent: test.subjects.length > 0 && ab === test.subjects.length, pct: maxTotal ? tot / maxTotal * 100 : 0, rank: null }
+      out[s.id] = { tot, n, bad, low, complete: test.subjects.length > 0 && !bad && n + ab === test.subjects.length, partial: !bad && n + ab > 0 && n + ab < test.subjects.length, absent: test.subjects.length > 0 && ab === test.subjects.length, pct: maxTotal ? tot / maxTotal * 100 : 0, rank: null }
     })
-    const ids = Object.keys(out).filter(id => out[id].n > 0 && !out[id].bad).sort((a, b) => out[b].tot - out[a].tot)
+    const ids = Object.keys(out).filter(id => out[id].n > 0 && out[id].complete).sort((a, b) => out[b].tot - out[a].tot)
     let rk = 0, prev = null
     ids.forEach((id, k) => { if (out[id].tot !== prev) { rk = k + 1; prev = out[id].tot } out[id].rank = rk })
+    const hasMin = test.subjects.some(sub => sub.min !== '' && sub.min != null && !isNaN(Number(sub.min)))
     // percentile = share of ranked students this one scored higher than; grade from percent; pass = no mark below its minimum
     ids.forEach(id => {
       const c = out[id]
       c.percentile = ids.length > 1 ? ids.filter(o => out[o].tot < c.tot).length / (ids.length - 1) * 100 : 100
       c.grade = gradeOf(c.pct)
-      c.pass = !c.low && !c.absent
+      c.pass = c.complete && !c.absent && (hasMin ? !c.low : c.pct >= 40)
     })
     return out
   }, [roster, marks, test.subjects, maxTotal])
@@ -315,6 +318,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       ranked: ranked.length,
       bad: vals.filter(c => c.bad).length,
       low: vals.filter(c => c.low).length,
+      partial: vals.filter(c => c.partial).length,
       absent: vals.filter(c => c.absent).length,
       avg: tots.length ? tots.reduce((a, b) => a + b, 0) / tots.length : null,
       high: tots.length ? Math.max(...tots) : null,
@@ -322,6 +326,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }, [calc, roster])
 
   // ── Analyser: toppers and averages by saved list / class / house, plus subject-wise ──
+  const [anOnce, setAnOnce] = useState(false)
   const analysis = useMemo(() => {
     const byTot = (a, b) => calc[b.id].tot - calc[a.id].tot || String(a.name).localeCompare(String(b.name))
     const mk = (label, members) => {
@@ -346,8 +351,10 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         hiNames: vals.filter(o => o.v === hi).map(o => o.x.name), passPct: minV == null ? null : vals.filter(o => o.v >= minV).length / vals.length * 100 }
     })
     const gradeCount = {}; Object.values(calc).forEach(c => { if (c.rank) gradeCount[c.grade] = (gradeCount[c.grade] || 0) + 1 })
-    return { lists: groups.map(g => mk(g.name, roster.filter(x => g.ids.includes(x.id)))).filter(Boolean), classes: by(x => x.class_name), houses: by(x => x.house), overall: mk('Overall', roster), subjects, gradeCount }
-  }, [calc, roster, marks, test.subjects, groups])
+    const seen = new Set()
+    const lists = groups.map(g => { const mem = roster.filter(x => g.ids.includes(x.id) && !(anOnce && seen.has(x.id))); if (anOnce) mem.forEach(x => seen.add(x.id)); return mk(g.name, mem) }).filter(Boolean)
+    return { lists, classes: by(x => x.class_name), houses: by(x => x.house), overall: mk('Overall', roster), subjects, gradeCount }
+  }, [calc, roster, marks, test.subjects, groups, anOnce])
   const [anTab, setAnTab] = useState('lists')
 
   const setCell = (sid, i, raw) => {
@@ -432,7 +439,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const headRow = () => ['Rank', 'GCC No', 'Name', 'Class', ...test.subjects.map(s => s.n), 'Total', 'Percent', 'Grade', 'Percentile', 'Remark']
   const bodyRows = () => sortedForExport().map(s => {
     const c = calc[s.id], m = marks[s.id] || []
-    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.rank ? c.grade : '', c.rank ? c.percentile.toFixed(0) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+    return [c.rank || '', s.gcc_no || '', s.name || '', s.class_name || '', ...test.subjects.map((_, i) => m[i] ?? ''), c.n ? c.tot : '', c.n ? c.pct.toFixed(1) : '', c.rank ? c.grade : '', c.rank ? c.percentile.toFixed(0) : '', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.partial ? 'Incomplete' : c.low ? 'Below minimum' : '']
   })
   const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000) }
   const baseName = () => ((test.name || 'house-test') + (lockHouse ? '-' + lockHouse : '')).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
@@ -462,7 +469,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       const sorted = sortedForExport()
       const body = sorted.map(st => {
         const c = calc[st.id], m = marks[st.id] || []
-        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' + (c.rank ? ' · ' + c.grade : '') : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.low ? 'Below minimum' : '']
+        return [c.rank || '–', st.name || '', st.gcc_no || '', st.class_name || '', ...test.subjects.map((_, i) => m[i] ?? '–'), c.absent ? 'AB' : c.n ? c.tot : '–', c.n ? c.pct.toFixed(1) + '%' + (c.rank ? ' · ' + c.grade : '') : '–', c.absent ? 'Absent' : c.bad ? 'Check marks' : c.partial ? 'Incomplete' : c.low ? 'Below minimum' : '']
       })
       const nSub = test.subjects.length
       autoTable(doc, {
@@ -527,6 +534,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setBulkOpen(true); setShowImport(false)
   }
   const bulkLines = j => (bulkCols[j] ?? '').split('\n')
+  const bulkShort = bulkCols.map((c, j) => ({ n: test.subjects[j]?.n || 'Subject', k: bulkLines(j).filter(x => x.trim() !== '').length })).filter(x => x.k > 0 && x.k < roster.length)
   const bulkExtra = Math.max(0, ...bulkCols.map((c, j) => bulkLines(j).filter(x => x.trim() !== '').length - roster.length))
   const applyBulk = (thenSave) => {
     const next = { ...marks }
@@ -553,12 +561,19 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     })
     if (!Object.keys(compact).length) { flash('err', mode === 'selected' ? 'Add at least one student first.' : 'No marks entered yet.'); return }
     if (!Object.values(compact).some(v => v.m.some(x => x !== null && x !== undefined))) { flash('err', 'No marks entered yet.'); return }
+    Object.entries(keptRef.current).forEach(([k, v]) => { if (!compact[k]) compact[k] = v })   // inactive students keep their saved marks
+    if (test.id && testOwner && meKey && testOwner !== meKey && !window.confirm(`This test was created by ${testOwner}. Overwrite it with your changes?`)) return
+    if (stats.partial && !window.confirm(`${stats.partial} student${stats.partial === 1 ? ' has' : 's have'} some marks missing and will not be ranked yet. Save anyway?`)) return
     setBusy(true)
-    const row = { test_name: test.name.trim(), test_date: test.date || todayStr(), house: lockHouse || 'All', subjects: test.subjects, marks: compact, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }
-    const q = test.id ? supabase.from('house_test_marks').update(row).eq('id', test.id).select('id').single() : supabase.from('house_test_marks').insert(row).select('id').single()
-    const { data, error } = await q
+    const row = { test_name: test.name.trim(), test_date: test.date || todayStr(), house: lockHouse || 'All', subjects: test.subjects, marks: compact, updated_at: new Date().toISOString(), ...(test.id ? {} : { created_by: meKey || null }) }
+    let q
+    if (test.id) { q = supabase.from('house_test_marks').update(row).eq('id', test.id); if (loadedAtRef.current) q = q.eq('updated_at', loadedAtRef.current); q = q.select('id,updated_at') }
+    else q = supabase.from('house_test_marks').insert(row).select('id,updated_at').single()
+    let { data, error } = await q
+    if (!error && test.id) { data = Array.isArray(data) ? data[0] : data; if (!data) { setBusy(false); flash('err', 'Not saved: a colleague saved this test after you opened it. Open it again from Saved tests, then redo your changes.'); loadSaved(); return } }
     setBusy(false)
     if (error) { flash('err', /house_test_marks/i.test(error.message || '') && /exist|schema/i.test(error.message || '') ? 'Table missing: run supabase/RUN_house_test_marks.sql once in Supabase.' : 'Save failed: ' + error.message); return }
+    loadedAtRef.current = data.updated_at || row.updated_at; if (!test.id) setTestOwner(meKey || null)
     setTest(t => ({ ...t, id: data.id })); setDirty(false); setJustSaved(true); lsDel(draftKey); loadSaved()
     // Progress records: one row per student per test, so a student's results can be followed over time.
     const rankedPcts = Object.values(calc).filter(c => c.rank).map(c => c.pct)
@@ -570,13 +585,24 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         total: c.n ? c.tot : null, max_total: maxTotal, percent: c.n ? Math.round(c.pct * 10) / 10 : null, rank: c.rank || null, ranked_of: stats.ranked || null,
         class_avg_pct: classAvg == null ? null : Math.round(classAvg * 10) / 10, absent: !!c.absent, updated_at: new Date().toISOString() }
     })
-    const del = await supabase.from('house_test_results').delete().eq('test_id', data.id)
-    const ins = !del.error && results.length ? await supabase.from('house_test_results').insert(results) : { error: del.error }
+    // upsert first, then remove only the rows of students no longer in this test - a failure never wipes the old records
+    const ins = results.length ? await supabase.from('house_test_results').upsert(results, { onConflict: 'test_id,student_id' }) : { error: null }
+    if (!ins.error) {
+      const keep = Object.keys(compact).map(k => `"${String(k).replace(/"/g, '')}"`).join(',')
+      await supabase.from('house_test_results').delete().eq('test_id', data.id).not('student_id', 'in', `(${keep})`)
+    }
     if (ins.error) flash('err', /house_test_results/i.test(ins.error.message || '') ? 'Marks saved, but progress records are not set up: run the new part of supabase/RUN_house_test_marks.sql once in Supabase.' : 'Marks saved, but progress records failed: ' + ins.error.message)
     else flash('ok', `Saved ${Object.keys(compact).length} students and their progress records.`)
   }
+  const keptRef = useRef({})      // saved marks of students who are no longer active: carried through re-saves so they are never lost
+  const loadedAtRef = useRef(null)  // updated_at of the saved test when it was opened: detects a colleague saving in between
+  const [testOwner, setTestOwner] = useState(null)
   const openSaved = r => {
     const byId = {}; school.forEach(s => { byId[s.id] = s })
+    keptRef.current = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (!byId[sid]) keptRef.current[sid] = v })
+    loadedAtRef.current = r.updated_at || null; setTestOwner(r.created_by || null)
+    const nKept = Object.keys(keptRef.current).length
+    if (nKept) flash('ok', `${nKept} student${nKept === 1 ? '' : 's'} in this test ${nKept === 1 ? 'is' : 'are'} no longer active. Their saved marks are kept safely when you save.`)
     const mk = {}; Object.entries(r.marks || {}).forEach(([sid, v]) => { if (byId[sid]) mk[sid] = v.m })
     const ids = Object.keys(mk)
     const subs = r.subjects || clone(PRESETS.jnvst.subjects)
@@ -596,6 +622,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   }
   const newTest = () => {
     if (dirty && !window.confirm('Discard unsaved marks and start a new test?')) return
+    keptRef.current = {}; loadedAtRef.current = null; setTestOwner(null)
     const l = lastSetup(); setTest({ id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) }); setMarks({}); setMode('all'); setPicked([]); setDirty(false); lsDel(draftKey); setDraft(null)
   }
 
@@ -610,6 +637,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const focusCell = (r, c) => {
     const el = tableRef.current?.querySelector(`input[data-r="${r}"][data-c="${c}"]`)
     if (el) { el.focus(); el.select?.() }
+    else if (r >= rowLimit && r < shown.length) { setRowLimit(r + 30); setTimeout(() => focusCell(r, c), 80); return true }
     return !!el
   }
   const onCellKey = (e, r, c) => {
@@ -629,6 +657,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     }
     flash('ok', 'Every shown student has all marks. 🎉')
   }
+  useEffect(() => { setRowLimit(60) }, [search, filt, roster.length])
   const progressPct = stats.students ? Math.round(stats.entered / stats.students * 100) : 0
 
   // ── styles ──
@@ -884,6 +913,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             ))}
           </div>
         </div>
+        {bulkShort.length > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: '#b45309', fontWeight: 700 }}>⚠ Check the order: {bulkShort.map(x => `${x.n} has ${x.k} of ${roster.length} marks`).join(' · ')}. Marks go to students by line number (see the names on the left), so a skipped line shifts everyone below it.</div>}
         {bulkExtra > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: '#b45309', fontWeight: 700 }}>⚠ A column has {bulkExtra} more line{bulkExtra === 1 ? '' : 's'} than students ({roster.length}). Extra lines are ignored.</div>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
           <button type="button" style={btn(true)} onClick={() => applyBulk(true)} disabled={busy}>💾 Apply &amp; save test</button>
@@ -970,6 +1000,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
           <div className="hm-gridwrap" style={{ overflow: 'auto', maxHeight: '72vh', border: `1px solid ${LINE}`, borderRadius: 14, boxShadow: '0 10px 30px -18px rgba(11,30,61,.45)' }}>
             <style>{`.hm-in{transition:border-color .12s,box-shadow .12s}.hm-in:focus{border-color:${NAVY}!important;box-shadow:0 0 0 4px rgba(201,162,75,.55);background:#fffdf5!important}.hm-in::placeholder{color:#cbd5e1}
+                .hm-ab1{display:none}
               @media (max-width:640px){
                 .hm-gridwrap{overflow:visible!important;max-height:none!important;border:0!important;box-shadow:none!important;background:transparent!important;border-radius:0!important}
                 .hm-grid{display:block!important;min-width:0!important;width:100%!important}
@@ -981,6 +1012,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                 .hm-grid td.hm-c-stu{grid-column:1/-1;padding-bottom:8px!important;border-bottom:1px solid #e2e8f0!important}
                 .hm-grid td.hm-c-mark::before{content:attr(data-sub);display:block;font-size:11.5px;font-weight:800;color:#0B1E3D;margin-bottom:5px;line-height:1.2}
                 .hm-grid td.hm-c-mark input{width:100%!important;height:58px!important;font-size:26px!important}
+                .hm-grid td.hm-c-mark .hm-ab1{display:block!important;width:100%;margin-top:5px;min-height:32px;font-size:11px;font-weight:800;border:1.5px solid #d3dbe7;border-radius:9px;background:#fff;color:#64748b;cursor:pointer;font-family:inherit}
                 .hm-grid td.hm-c-sum{background:#f1f5f9!important;border-radius:12px;padding:7px 10px!important}
                 .hm-grid td.hm-c-sum::before{content:attr(data-sub);display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b;margin-bottom:2px}
               }
@@ -992,7 +1024,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                 <th style={thG}>Total<div style={{ fontWeight: 500, opacity: .75, fontSize: 11 }}>out of {maxTotal}</div></th><th style={thG}>%</th><th style={thG}>Grade</th><th style={thG}>Rank</th>
               </tr></thead>
               <tbody>
-                {shown.map((s, idx) => {
+                {shown.slice(0, rowLimit).map((s, idx) => {
                   const c = calc[s.id] || {}, m = marks[s.id] || []
                   const rowBg = activeRow === s.id ? '#fff8e6' : idx % 2 ? '#f8fafc' : '#fff'
                   const cell = { borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap', textAlign: 'center', padding: '8px 6px' }
@@ -1014,13 +1046,15 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                             <input className="hm-in" aria-label={`${s.name} ${sub.n}`} inputMode="decimal" enterKeyHint="next" data-r={idx} data-c={i} value={m[i] ?? ''} onChange={e => setCell(s.id, i, e.target.value)}
                               onFocus={e => { e.target.select(); setActiveRow(s.id) }} onKeyDown={e => onCellKey(e, idx, i)} placeholder="–"
                               style={{ width: 72, height: 48, boxSizing: 'border-box', textAlign: 'center', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 800, borderRadius: 12, outline: 'none', ...markBox(st), ...(st === '' && filled ? { background: '#f0fdf4', borderColor: '#86efac', color: '#065f46' } : {}) }} />
+                          
+                            <button type="button" className="hm-ab1" tabIndex={-1} aria-label={`${s.name} ${sub.n} absent`} onClick={() => setCell(s.id, i, v === 'AB' ? '' : 'AB')} style={v === 'AB' ? { background: '#fef3c7', borderColor: '#f59e0b', color: '#92400e' } : undefined}>AB (absent)</button>
                           </td>
                         )
                       })}
                       <td className="hm-c-sum" data-sub="Total" style={cell}>{c.absent ? <span style={{ fontWeight: 700, color: '#b45309' }}>Absent</span> : c.n ? <span style={{ display: 'inline-block', minWidth: 46, padding: '6px 10px', borderRadius: 10, background: NAVY, color: '#fff', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 17, fontWeight: 800 }}>{c.tot}</span> : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                       <td className="hm-c-sum" data-sub="Percent" style={{ ...cell, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 15, fontWeight: 800, color: !c.n ? '#cbd5e1' : c.pct >= 60 ? '#047857' : c.pct >= 40 ? '#a16207' : '#b91c1c' }}>{c.n ? c.pct.toFixed(1) : '–'}</td>
                       <td className="hm-c-sum" data-sub="Grade" style={{ ...cell, fontSize: 15, fontWeight: 800, color: c.n && !c.bad ? gradeColor(c.grade) : '#cbd5e1' }}>{c.rank ? c.grade : '–'}</td>
-                      <td className="hm-c-sum" data-sub="Rank" style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
+                      <td className="hm-c-sum" data-sub="Rank" style={{ ...cell, fontSize: 16, fontWeight: 800, color: NAVY }}>{c.partial ? <span title="Some marks are missing, so no rank yet" style={{ fontSize: 12, fontWeight: 700, color: '#b45309' }}>⏳ incomplete</span> : c.rank ? (c.rank === 1 ? '🥇 1' : c.rank === 2 ? '🥈 2' : c.rank === 3 ? '🥉 3' : c.rank) : <span style={{ color: '#cbd5e1' }}>–</span>}</td>
                     </tr>
                   )
                 })}
@@ -1028,6 +1062,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             </table>
           </div>
         )}
+        {shown.length > rowLimit && (
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button type="button" style={btn(true)} onClick={() => setRowLimit(l => l + 60)}>Show next 60 students ({shown.length - rowLimit} more)</button>
+            <button type="button" style={{ ...btn(false), marginLeft: 8 }} onClick={() => setRowLimit(shown.length)}>Show all</button>
+          </div>
+        )}
+        {stats.partial > 0 && <div style={{ fontSize: 13, color: '#b45309', fontWeight: 700, marginTop: 8 }}>⏳ {stats.partial} student{stats.partial === 1 ? ' has' : 's have'} some marks missing, so no rank, grade or topper yet. Type AB for a subject they missed.</div>}
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Green = entered · Red = invalid or above the maximum · Amber = below the minimum. Ties share a rank.</div>
       </div>
 
@@ -1048,7 +1089,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                   {GRADES.map(([, g]) => <span key={g} style={{ borderRadius: 10, padding: '4px 10px', background: '#f1f5f9', fontWeight: 800, fontSize: 13, color: gradeColor(g) }}>{g} · {analysis.gradeCount[g] || 0}</span>)}
                 </div>
-                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>A+ 90+ · A 80+ · B+ 70+ · B 60+ · C 50+ · D 40+ · E below 40 (percent of maximum)</div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>A+ 90+ · A 80+ · B+ 70+ · B 60+ · C 50+ · D 40+ · E below 40 (percent of maximum). Pass = every mark at or above its minimum (or 40%+ overall when no minimums are set). Students with missing marks are not ranked.</div>
               </div>
             </div>
             <div className="hm-seg" role="group" aria-label="Analyse by" style={{ marginBottom: 12, flexWrap: 'wrap', maxWidth: '100%' }}>
@@ -1101,7 +1142,12 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                 ))}
               </div>
             ))}
-            {anTab === 'lists' && dupes.length > 0 && <div style={{ fontSize: 12, color: '#92400e', marginTop: 8 }}>⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one list, so they are counted in each of them.</div>}
+            {anTab === 'lists' && dupes.length > 0 && (
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: '#92400e', marginTop: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={anOnce} onChange={e => setAnOnce(e.target.checked)} />
+                ⚠ {dupes.length} student{dupes.length === 1 ? ' is' : 's are'} in more than one list. Tick to count each student only in the first list they appear in.
+              </label>
+            )}
           </>
         )}
       </div>
@@ -1180,7 +1226,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>{r.house} · {Object.keys(r.marks || {}).length} students{cur ? ' · open now' : ''}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{r.house} · {Object.keys(r.marks || {}).length} students{r.created_by ? ` · by ${r.created_by}` : ''}{cur ? ' · open now' : ''}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
                     <button type="button" style={{ ...btn(!cur), padding: '7px 14px', minHeight: 38 }} onClick={() => openSaved(r)}>Open</button>
