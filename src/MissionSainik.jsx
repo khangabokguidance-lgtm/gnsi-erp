@@ -1169,10 +1169,30 @@ function MissionSainikInner({ currentUser }) {
     if (error) return setMsg('❌ ' + error.message)
     audit('syllabus_import', null, { rows: list.length }); setSylImport(null); setMsg(`✅ ${list.length} chapter(s) imported`); loadExtra()
   }
+  // Draft a full plan: every EMPTY test × subject cell gets the next official AISSEE chapter of that subject (Class 6 list first), cycling through the list.
+  const suggestPlan = async () => {
+    const fams = x => (subjectFamily(x.label) === 'gk' ? ['gk', 'social'] : [subjectFamily(x.label)])
+    const chaptersFor = x => {
+      const pick = cls => Object.entries(officialSubjects('sainik', cls)).filter(([n]) => fams(x).includes(subjectFamily(n))).flatMap(([, chs]) => chs)
+      const first = pick(6)
+      return [...new Set(first.length ? first : classesOf('sainik').flatMap(pick))]
+    }
+    const rowsNew = []
+    SUBJECTS.forEach(x => {
+      const base = chaptersFor(x); if (!base.length) return
+      const list = x.key === 'vocab' ? [...base].reverse() : base   // Grammar and Vocabulary share the language list; reverse one so a test doesn't repeat the same chapter
+      TESTS.forEach((t, i) => { if (!syl[t.no + '|' + x.label]) rowsNew.push({ test_no: t.no, subject: x.label, chapter: list[i % list.length] }) })
+    })
+    if (!rowsNew.length) return setMsg('Every cell already has a chapter.')
+    if (!window.confirm(`Fill ${rowsNew.length} empty cell${rowsNew.length === 1 ? '' : 's'} with suggested chapters from the official syllabus? Chapters you already entered are kept, and you can edit any of them afterwards.`)) return
+    const { error } = await supabase.from(SYL_TABLE).upsert(rowsNew.map(r => ({ ...r, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() })), { onConflict: 'test_no,subject' })
+    if (error) return setMsg('❌ ' + error.message)
+    audit('syllabus_suggest', null, { rows: rowsNew.length }); setMsg(`✅ ${rowsNew.length} chapter(s) suggested — edit any you want to change`); loadExtra()
+  }
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
             <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
