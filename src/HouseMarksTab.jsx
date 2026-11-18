@@ -82,7 +82,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [mode, setMode] = useState('all')          // 'all' = whole house, 'selected' = hand-picked students
   const [picked, setPicked] = useState([])         // student ids when mode === 'selected'
   const [pickQ, setPickQ] = useState('')
-  const [ticks, setTicks] = useState([])           // multi-picker: ticked, not yet added
+  const [showAllChips, setShowAllChips] = useState(false)
   const [fHouse, setFHouse] = useState('')
   const [fClass, setFClass] = useState('')
   const [busy, setBusy] = useState(false)
@@ -118,7 +118,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)))
   }, [school, picked, pickQ, fHouse, fClass])
   const shownAddable = addable.slice(0, 200)
-  const tickable = shownAddable.filter(s => !picked.includes(s.id))
+  const onSheet = useMemo(() => new Set(roster.map(x => x.id)), [roster])
+  const searching = !!(pickQ.trim() || fHouse || fClass)
   // Sheet search also looks at the whole school: matches not yet on the sheet can be added in one tap.
   const searchHits = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -126,15 +127,13 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     const onSheet = new Set(roster.map(s => s.id))
     return school.filter(s => !onSheet.has(s.id) && (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)).slice(0, 8)
   }, [search, school, roster])
-  const addFromSearch = id => {
-    setPicked(p => [...new Set([...(mode === 'all' ? pool.map(s => s.id) : p), id])])
-    setMode('selected'); setDirty(true)
-  }
-  const toggleTick = id => setTicks(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
-  const tickAllShown = () => setTicks(t => [...new Set([...t, ...tickable.map(s => s.id)])])
-  const addTicked = () => { if (!ticks.length) return; const n = ticks.length; setPicked(p => [...new Set([...p, ...ticks])]); setTicks([]); setDirty(true); flash('ok', `${n} student${n === 1 ? '' : 's'} added.`) }
-  const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
-  const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
+  const addFromSearch = id => addStudents([id])
+  // Every change to the student list goes through here: the first change turns the default
+  // "whole house" into an explicit list, so there is only one thing to understand.
+  const editPicked = fn => { setPicked(fn(mode === 'all' ? pool.map(x => x.id) : picked)); setMode('selected'); setDirty(true) }
+  const addStudents = ids => editPicked(p => [...new Set([...p, ...ids])])
+  const unpickStudent = id => { editPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }) }
+  const clearStudents = () => { editPicked(() => []); setMarks({}) }
   const subjectLocked = !!PRESETS[test.preset]?.locked
 
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(m => (m && m.text === text ? null : m)), 5000) }
@@ -151,14 +150,38 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setTest(draft.test); setMarks(draft.marks || {}); setMode(draft.mode || 'all'); setPicked(draft.picked || []); setDirty(true); setDraft(null)
     flash('ok', 'Your unsaved marks are back.')
   }
-  const saveGroups = next => { setGroups(next); lsSet(groupsKey, next) }
-  const saveAsGroup = () => {
+  // Saved student lists live in the database (house_test_groups) so they follow the
+  // housemaster to any phone or computer. If the table is not created yet, they fall back
+  // to this computer only.
+  const gHouse = lockHouse || 'All'
+  const [groupsDb, setGroupsDb] = useState(null)   // null = unknown, true = database, false = this computer only
+  const loadGroups = useCallback(async () => {
+    const { data, error } = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+    if (error) { setGroupsDb(false); return }
+    setGroupsDb(true)
+    let rows = data || []
+    const local = lsGet('house_marks_groups_' + gHouse.replace(/^All$/, 'all'))
+    if (!rows.length && Array.isArray(local) && local.length) {   // one-time move of lists saved on this computer
+      await supabase.from('house_test_groups').upsert(local.map(g => ({ house: gHouse, name: g.name, student_ids: g.ids || [], updated_at: new Date().toISOString() })), { onConflict: 'house,name' })
+      const r2 = await supabase.from('house_test_groups').select('id,name,student_ids').eq('house', gHouse).order('name')
+      rows = r2.data || []
+    }
+    setGroups(rows.map(r => ({ id: r.id, name: r.name, ids: Array.isArray(r.student_ids) ? r.student_ids : [] })))
+  }, [gHouse])
+  useEffect(() => { loadGroups() }, [loadGroups])
+  const saveAsGroup = async () => {
     const name = groupName.trim()
-    if (!name) { flash('err', 'Type a group or class name first, e.g. “Class VI Navodaya”.'); return }
-    if (!picked.length) { flash('err', 'Pick the students for this group first.'); return }
-    const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
-    saveGroups([...others, { id: Date.now(), name, ids: picked }].sort((a, b) => a.name.localeCompare(b.name)))
-    setGroupName(''); flash('ok', `Group “${name}” saved with ${picked.length} student${picked.length === 1 ? '' : 's'}.`)
+    if (!name) { flash('err', 'Type a name for this list first, e.g. “Class VI Navodaya”.'); return }
+    if (!roster.length) { flash('err', 'Add some students first.'); return }
+    const ids = roster.map(x => x.id)
+    const { error } = await supabase.from('house_test_groups').upsert({ house: gHouse, name, student_ids: ids, created_by: currentUser?.username || currentUser?.name || null, updated_at: new Date().toISOString() }, { onConflict: 'house,name' })
+    if (error) {
+      const others = groups.filter(g => g.name.toLowerCase() !== name.toLowerCase())
+      const next = [...others, { id: Date.now(), name, ids }].sort((a, b) => a.name.localeCompare(b.name))
+      setGroups(next); lsSet(groupsKey, next); setGroupsDb(false)
+      flash('err', 'Saved on this computer only. Run supabase/RUN_house_test_marks.sql to save lists in the database.'); setGroupName(''); return
+    }
+    setGroupName(''); await loadGroups(); flash('ok', `List “${name}” saved with ${ids.length} student${ids.length === 1 ? '' : 's'}.`)
   }
   const useGroup = g => {
     const live = new Set(school.map(s => s.id))
@@ -167,7 +190,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     setTest(t => ({ ...t, group: g.name, name: t.name.trim() ? t.name : g.name + ' – ' }))
     flash('ok', `${g.name}: ${ids.length} student${ids.length === 1 ? '' : 's'} loaded${ids.length < g.ids.length ? ` (${g.ids.length - ids.length} no longer active)` : ''}.`)
   }
-  const delGroup = g => { if (window.confirm(`Delete the group “${g.name}”? The students themselves are not affected.`)) saveGroups(groups.filter(x => x.id !== g.id)) }
+  const delGroup = async g => {
+    if (!window.confirm(`Delete the list “${g.name}”? The students themselves are not affected.`)) return
+    if (groupsDb) { const { error } = await supabase.from('house_test_groups').delete().eq('id', g.id); if (error) { flash('err', 'Could not delete: ' + error.message); return }; await loadGroups() }
+    else { const next = groups.filter(x => x.id !== g.id); setGroups(next); lsSet(groupsKey, next) }
+  }
   const discardDraft = () => { lsDel(draftKey); setDraft(null) }
 
   useEffect(() => {
@@ -470,62 +497,66 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
 
       <div style={card}>
         <p style={h}>Students in this test</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginRight: 4 }}>{roster.length} on this sheet</span>
+          <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🏠 My house ({pool.length})</button>
+          <button type="button" style={btn(false)} onClick={() => editPicked(() => school.map(x => x.id))}>🏫 Whole school ({school.length})</button>
+          <button type="button" style={{ ...btn(false), color: '#b91c1c' }} onClick={clearStudents} disabled={!roster.length}>Clear all</button>
+        </div>
+
         {groups.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>My groups:</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>Saved lists:</span>
             {groups.map(g => (
               <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 99, border: `1.5px solid ${GOLD}`, background: '#fffaf0', overflow: 'hidden' }}>
                 <button type="button" onClick={() => useGroup(g)} title={`Load ${g.ids.length} students`} style={{ border: 0, background: 'transparent', padding: '6px 6px 6px 12px', fontWeight: 700, fontSize: 12.5, color: NAVY, cursor: 'pointer', fontFamily: 'inherit' }}>{g.name} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {g.ids.length}</span></button>
-                <button type="button" aria-label={`Delete group ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '6px 10px 6px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
+                <button type="button" aria-label={`Delete list ${g.name}`} onClick={() => delGroup(g)} style={{ border: 0, background: 'transparent', padding: '6px 10px 6px 4px', cursor: 'pointer', color: '#94a3b8', fontSize: 13 }}>✕</button>
               </span>
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <button type="button" style={btn(mode === 'all')} onClick={() => { setMode('all'); setDirty(true) }}>Whole house ({pool.length})</button>
-          <button type="button" style={btn(mode === 'selected' && picked.length === school.length && school.length > 0)} onClick={() => { setMode('selected'); setPicked(school.map(x => x.id)); setDirty(true) }}>Whole school ({school.length})</button>
-          <button type="button" style={btn(mode === 'selected')} onClick={() => { setMode('selected'); setDirty(true) }}>Pick students{mode === 'selected' ? ` (${picked.length})` : ''}</button>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="🔍 Find a student to add: name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+          <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
+          <select style={{ ...inp, flex: '1 1 120px', width: 'auto' }} value={fClass} onChange={e => setFClass(e.target.value)} aria-label="Filter by class"><option value="">All classes</option>{classes.map(x => <option key={x} value={x}>{x}</option>)}</select>
         </div>
-        {mode === 'selected' && (
+        {searching ? (
           <div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-              <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="Search any student by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
-              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
-              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fClass} onChange={e => setFClass(e.target.value)} aria-label="Filter by class"><option value="">All classes</option>{classes.map(x => <option key={x} value={x}>{x}</option>)}</select>
-            </div>
-            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, maxHeight: 260, overflowY: 'auto' }}>
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 10, maxHeight: 260, overflowY: 'auto' }}>
               {shownAddable.length ? shownAddable.map(s => (
-                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, background: ticks.includes(s.id) ? '#eff6ff' : '#fff', flexDirection: 'row', color: 'inherit' }}>
-                  <input type="checkbox" checked={picked.includes(s.id) || ticks.includes(s.id)} disabled={picked.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
-                  <span style={{ flex: 1, minWidth: 0 }}>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
-                  <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
-                  {picked.includes(s.id)
-                    ? <button type="button" onClick={e => { e.preventDefault(); unpickStudent(s.id) }} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', flex: 'none' }}>✓ On sheet · Remove</button>
-                    : <button type="button" onClick={e => { e.preventDefault(); setPicked(p => [...new Set([...p, s.id])]); setTicks(t => t.filter(x => x !== s.id)); setDirty(true) }} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
-                </label>
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, fontSize: 13, background: onSheet.has(s.id) ? '#f0fdf4' : '#fff' }}>
+                  <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: NAVY }}>{s.name}</b><span style={{ color: '#94a3b8' }}> · {s.gcc_no || ''} · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
+                  {onSheet.has(s.id)
+                    ? <button type="button" onClick={() => unpickStudent(s.id)} style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', flex: 'none' }}>✓ Added · Remove</button>
+                    : <button type="button" onClick={() => addStudents([s.id])} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: NAVY, border: 0, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', flex: 'none' }}>＋ Add</button>}
+                </div>
               )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-              <button type="button" style={btn(true)} onClick={addTicked} disabled={!ticks.length}>{ticks.length ? `Add ${ticks.length} selected` : 'Add selected'}</button>
-              <button type="button" style={btn(false)} onClick={tickAllShown} disabled={!tickable.length}>Tick all shown ({tickable.length})</button>
-              <button type="button" style={btn(false)} onClick={() => setTicks([])} disabled={!ticks.length}>Clear ticks</button>
-              {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing first 200 of {addable.length}. Narrow with the filters.</span>}
+              <button type="button" style={btn(true)} onClick={() => addStudents(addable.map(x => x.id))} disabled={!addable.some(x => !onSheet.has(x.id))}>＋ Add all {addable.filter(x => !onSheet.has(x.id)).length} shown</button>
+              <button type="button" style={btn(false)} onClick={() => { setPickQ(''); setFHouse(''); setFClass('') }}>Done</button>
+              {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing 200 of {addable.length}; “Add all” adds every match.</span>}
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-              {roster.map(s => (
+          </div>
+        ) : <div style={{ fontSize: 12, color: '#64748b' }}>Type a name or GCC No, or pick a house or class, to add students from the whole school.</div>}
+
+        {roster.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(showAllChips ? roster : roster.slice(0, 24)).map(s => (
                 <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: `1px solid ${LINE}`, borderRadius: 99, padding: '4px 6px 4px 10px', fontSize: 12 }}>
                   {s.name}
                   <button type="button" aria-label={`Remove ${s.name}`} onClick={() => unpickStudent(s.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b', fontSize: 13 }}>✕</button>
                 </span>
               ))}
-              {!picked.length && <span style={{ fontSize: 12, color: '#64748b' }}>No students picked yet.</span>}
+              {roster.length > 24 && <button type="button" onClick={() => setShowAllChips(v => !v)} style={{ ...btn(false), minHeight: 28, padding: '3px 10px', fontSize: 12 }}>{showAllChips ? 'Show fewer' : `Show all ${roster.length}`}</button>}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
-              <button type="button" style={btn(false)} onClick={pickMyHouse}>Add my whole house ({pool.length})</button>
-              <input style={{ ...inp, maxWidth: 240, flex: '1 1 180px' }} placeholder="Group / class name, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
-              <button type="button" style={btn(true)} onClick={saveAsGroup} disabled={!picked.length}>💾 Save as group</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+              <input style={{ ...inp, maxWidth: 260, flex: '1 1 180px' }} placeholder="Name this list, e.g. Class VI" value={groupName} onChange={e => setGroupName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAsGroup() }} />
+              <button type="button" style={btn(true)} onClick={saveAsGroup}>💾 Save this list</button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Save the picked students once under a name; next time one tap loads the whole group. Groups are kept on this computer for {lockHouse || 'all houses'}.</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>{groupsDb === false ? 'Lists are saved on this computer only (database table not created yet).' : 'Saved lists are stored in the database, so you can load them on any phone or computer.'}</div>
           </div>
         )}
       </div>

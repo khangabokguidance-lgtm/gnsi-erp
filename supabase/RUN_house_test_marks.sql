@@ -42,3 +42,17 @@ create table if not exists public.house_test_results (
 create index if not exists house_test_results_student_idx on public.house_test_results (student_id, test_date);
 create index if not exists house_test_results_gcc_idx on public.house_test_results (gcc_no, test_date);
 alter table public.house_test_results disable row level security;
+
+-- ── Saved student lists (one-tap "Class VI", "Navodaya batch"...), kept per house ──
+-- Run once in the Supabase SQL editor (safe to re-run). RLS is off, like the rest of the portal tables.
+create table if not exists public.house_test_groups (
+  id           uuid primary key default gen_random_uuid(),
+  house        text not null default 'All',
+  name         text not null,
+  student_ids  jsonb not null default '[]'::jsonb,   -- [student id, ...]
+  created_by   text,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  unique (house, name)
+);
+alter table public.house_test_groups disable row level security;
