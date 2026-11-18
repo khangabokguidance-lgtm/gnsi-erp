@@ -82,6 +82,9 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const [mode, setMode] = useState('all')          // 'all' = whole house, 'selected' = hand-picked students
   const [picked, setPicked] = useState([])         // student ids when mode === 'selected'
   const [pickQ, setPickQ] = useState('')
+  const [ticks, setTicks] = useState([])           // multi-picker: ticked, not yet added
+  const [fHouse, setFHouse] = useState('')
+  const [fClass, setFClass] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
   const tableRef = useRef(null)
@@ -106,11 +109,19 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
     .filter(s => s.status !== 'Inactive' && s.status !== 'Dropout')
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))), [allStudents, students])
   const roster = useMemo(() => mode === 'all' ? pool : school.filter(s => picked.includes(s.id)), [pool, school, mode, picked])
+  const houses = useMemo(() => [...new Set(school.map(s => s.house).filter(Boolean))].sort(), [school])
+  const classes = useMemo(() => [...new Set(school.map(s => s.class_name).filter(Boolean))].sort(), [school])
+  // Everyone matching the search / house / class filters who is not already on the sheet.
   const addable = useMemo(() => {
     const q = pickQ.trim().toLowerCase()
-    return school.filter(s => !picked.includes(s.id) && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q))).slice(0, 8)
-  }, [school, picked, pickQ])
-  const pickStudent = id => { setPicked(p => p.includes(id) ? p : [...p, id]); setPickQ(''); setDirty(true) }
+    return school.filter(s => !picked.includes(s.id)
+      && (!fHouse || s.house === fHouse) && (!fClass || s.class_name === fClass)
+      && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)))
+  }, [school, picked, pickQ, fHouse, fClass])
+  const shownAddable = addable.slice(0, 200)
+  const toggleTick = id => setTicks(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
+  const tickAllShown = () => setTicks(t => [...new Set([...t, ...shownAddable.map(s => s.id)])])
+  const addTicked = () => { if (!ticks.length) return; const n = ticks.length; setPicked(p => [...new Set([...p, ...ticks])]); setTicks([]); setDirty(true); flash('ok', `${n} student${n === 1 ? '' : 's'} added.`) }
   const unpickStudent = id => { setPicked(p => p.filter(x => x !== id)); setMarks(m => { const c = { ...m }; delete c[id]; return c }); setDirty(true) }
   const pickMyHouse = () => { setPicked(p => [...new Set([...p, ...pool.map(s => s.id)])]); setDirty(true) }
   const subjectLocked = !!PRESETS[test.preset]?.locked
@@ -465,16 +476,26 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
         </div>
         {mode === 'selected' && (
           <div>
-            <input style={{ ...inp, maxWidth: 360 }} placeholder="Search any student in the school by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
-            {(pickQ.trim() || !picked.length) && (
-              <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 6, maxWidth: 360 }}>
-                {addable.length ? addable.map(s => (
-                  <button key={s.id} type="button" onClick={() => pickStudent(s.id)} style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '8px 10px', background: '#fff', border: 0, borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
-                    <span>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}</span></span><span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
-                  </button>
-                )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <input style={{ ...inp, flex: '2 1 220px', width: 'auto' }} placeholder="Search any student by name or GCC No" value={pickQ} onChange={e => setPickQ(e.target.value)} />
+              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fHouse} onChange={e => setFHouse(e.target.value)} aria-label="Filter by house"><option value="">All houses</option>{houses.map(x => <option key={x} value={x}>{x}</option>)}</select>
+              <select style={{ ...inp, flex: '1 1 130px', width: 'auto' }} value={fClass} onChange={e => setFClass(e.target.value)} aria-label="Filter by class"><option value="">All classes</option>{classes.map(x => <option key={x} value={x}>{x}</option>)}</select>
+            </div>
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, maxHeight: 260, overflowY: 'auto' }}>
+              {shownAddable.length ? shownAddable.map(s => (
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, background: ticks.includes(s.id) ? '#eff6ff' : '#fff', flexDirection: 'row', color: 'inherit' }}>
+                  <input type="checkbox" checked={ticks.includes(s.id)} onChange={() => toggleTick(s.id)} style={{ width: 18, height: 18, flex: 'none' }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
+                  <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''}</span>
+                </label>
+              )) : <div style={{ padding: 10, fontSize: 13, color: '#64748b' }}>No student matches.</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+              <button type="button" style={btn(true)} onClick={addTicked} disabled={!ticks.length}>Add {ticks.length || ''} selected</button>
+              <button type="button" style={btn(false)} onClick={tickAllShown} disabled={!shownAddable.length}>Tick all shown ({shownAddable.length})</button>
+              <button type="button" style={btn(false)} onClick={() => setTicks([])} disabled={!ticks.length}>Clear ticks</button>
+              {addable.length > 200 && <span style={{ fontSize: 12, color: '#64748b' }}>Showing first 200 of {addable.length}. Narrow with the filters.</span>}
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
               {roster.map(s => (
                 <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: `1px solid ${LINE}`, borderRadius: 99, padding: '4px 6px 4px 10px', fontSize: 12 }}>
