@@ -813,6 +813,20 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
     setBusyId(null)
   }
 
+  // Requester takes back their own request (no different-admin rule — it's a safe no-op).
+  const doWithdraw = async (row) => {
+    if (!window.confirm(`Withdraw your ${row.action_type} request for "${row.snap?.student_name || row.record_id}"? Nothing will be changed in the books.`)) return
+    setBusyId(row.id)
+    try {
+      await rejectFeeActionRequest({ requestId: row.id, rejectedBy: myName, rejectedById: myId, rejectionReason: 'Withdrawn by requester' })
+      showToast('↩️ Request withdrawn.', '#5d6b82')
+      load()
+    } catch (err) {
+      showToast('Withdraw failed: ' + err.message, '#dc2626')
+    }
+    setBusyId(null)
+  }
+
   const doReject = async (row) => {
     const reason = window.prompt(`Reject this ${row.action_type} request for "${row.snap?.student_name || row.record_id}"?\n\nRejection reason (optional):`)
     if (reason === null) return
@@ -884,13 +898,26 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
                       >
                         ✅ Approve
                       </button>
-                      <button
-                        disabled={busyId === r.id}
-                        onClick={() => doReject(r)}
-                        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #d9d2c2', background: 'white', color: '#4b5870', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-                      >
-                        🚫 Reject
-                      </button>
+                      {isSelf ? (
+                        <button
+                          disabled={busyId === r.id}
+                          onClick={() => doWithdraw(r)}
+                          style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #d9d2c2', background: 'white', color: '#4b5870', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                        >
+                          ↩️ Withdraw
+                        </button>
+                      ) : (
+                        <button
+                          disabled={busyId === r.id}
+                          onClick={() => doReject(r)}
+                          style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #d9d2c2', background: 'white', color: '#4b5870', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                        >
+                          🚫 Reject
+                        </button>
+                      )}
+                      {isSelf && !(adminCount != null && adminCount <= 1) && (
+                        <div style={{ fontSize: 10.5, color: '#9a3412', marginTop: 4, fontWeight: 600 }}>Needs a different admin to approve</div>
+                      )}
                     </td>
                   </tr>
                 )

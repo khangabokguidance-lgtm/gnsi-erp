@@ -963,6 +963,14 @@ export const requestFeeActionRequest = async ({
   if (!reason || !reason.trim()) throw new Error('requestFeeActionRequest: a reason is required')
   if (actionType === 'revert') { const rp = revertReasonError(reason, await getFeeControls()); if (rp) throw new Error(rp) }   // fail here, not later at approval
 
+  // One open request per record: a second revert/delete for the same row
+  // while one is still pending only creates a duplicate for the approver.
+  {
+    const { data: open } = await supabase.from(TABLES.feeActionRequests).select('id, action_type, requested_by')
+      .eq('table_name', table).eq('record_id', id).eq('status', 'pending').limit(1)
+    if (open && open.length) throw new Error(`A ${open[0].action_type} request for this entry is already pending (filed by ${open[0].requested_by}). Wait for it to be approved, or have it withdrawn first.`)
+  }
+
   // Snapshot the row now, at request time — so the approving admin sees
   // exactly what they're being asked to revert/delete without needing to
   // separately look it up, and so the record survives even if the
