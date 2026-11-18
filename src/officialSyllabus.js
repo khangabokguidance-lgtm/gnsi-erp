@@ -1,10 +1,10 @@
 // officialSyllabus.js — the latest official entrance-exam syllabus and exam
 // pattern for every course, split by admission class.
 //
-// Sources (checked September 2026):
-//   • AISSEE (Sainik Schools) — NTA Information Bulletin: Class 6 and Class 9
-//     subjects, question counts, marks and durations; Class 9 chapters follow
-//     NCERT Class 8.
+// Sources:
+//   • AISSEE (Sainik Schools) — NTA Information Bulletin AISSEE-2027 (exam 31 Jan
+//     2027): scheme of examination (para 4.4) and the topic lists in Appendix II
+//     (Class VI) and Appendix III (Class IX), copied as printed.
 //   • JNVST (Navodaya) — NVS prospectus for the 2027 session: Class 6 now has
 //     Mental Ability + Environmental Studies + Arithmetic + Language (20
 //     questions each, 1.25 marks); Class 9 lateral entry: English, Hindi,
@@ -105,6 +105,64 @@ export const EXAM_PATTERNS = {
   },
 }
 
+// ── AISSEE-2027 topic lists (NTA Information Bulletin, Appendix II & III) ────
+const AISSEE6_MATHS = [
+  'Natural Numbers', 'LCM and HCF', 'Unitary Method', 'Fractions', 'Ratio and Proportion', 'Profit and Loss', 'Simplification',
+  'Average', 'Percentage', 'Area and Perimeter', 'Simple Interest', 'Lines and Angles', 'Complementary and Supplementary Angles',
+  'Conversion of Units', 'Roman Numerals', 'Types of Angles', 'Circle', 'Volume of Cube and Cuboids', 'Prime and Composite Numbers',
+  'Plane Figures', 'Decimal Numbers', 'Speed and Time', 'Operation on Numbers', 'Temperature', 'Arranging of Fractions',
+]
+const AISSEE_INTELLIGENCE = [
+  'Analogies (Mathematical & Verbal)', 'Pattern (Spatial and Mathematical)', 'Classification', 'Visual & Logical Reasoning',
+  'Series and Sequences', 'Critical Thinking and Problem Solving', 'Familial Relations',
+]
+const AISSEE6_LANGUAGE = [
+  'Comprehension Passage', 'Preposition', 'Article', 'Vocabulary', 'Verbs and Type', 'Confusing Words', 'Question Tags',
+  'Types of Sentence', 'Tense Forms', 'Kinds of Nouns', 'Kinds of Pronouns', 'Correct Spelling', 'Ordering of Words in Sentence',
+  'Sentence Formation', 'Antonyms', 'Synonyms', 'Adjectives', 'Interjection', 'Idioms and Phrases', 'Collective Nouns', 'Number',
+  'Gender', 'Adverbs', 'Rhyming Words', 'Singular / Plural',
+]
+const AISSEE6_GK = [
+  'National Symbol of India', 'India: at a Glance', 'Art & Culture of India (monuments, dance, music, religion, language, food & dress)',
+  'Indian Literacy and Cultural Award (current)', 'Natural & International Personality & Achievements (current)', 'Indian Defence System',
+  'Sports', 'National & International Organisation', 'Solar System & Our Earth', 'Mountain Terrain & Lifestyle',
+  'Water Cycle: Evaporation & Condensation', 'Energy (Renewable & Non-Renewable)', 'Climate (Earthquake, Flood & Natural Calamities)',
+  'Use of Water in Daily Life & Related Functions', 'Tasting, Digestion & Food Preservation',
+  'Life of Farmers, Farming Techniques, Seed Germination & Dispersal', 'Tribal Community & Forest', 'Scientific Devices Used in Daily Life',
+  'Water Pollution & Microbial Diseases', 'Relationship between Humans & Animals & Their Physical Functions',
+  'Function of Plant, Animal & Human', 'Super Senses & Young Ones of Animals',
+]
+const AISSEE9_MATHS = [
+  'Rational Numbers', 'Linear Equations in One Variable', 'Understanding Quadrilaterals', 'Triangles & its Properties', 'Angles Sum Property',
+  'Pythagoras Theorem', 'Square & Square Roots', 'Cubes & Cube Roots', 'Comparing Quantities', 'Percentage', 'Profit & Loss',
+  'Algebraic Expression', 'Simple Interest', 'Compound Interest', 'Discount', 'Visualizing Solid Shape', 'View of 2D & 3D Shapes',
+  "Euler's Formula", 'Mensuration', 'Area & Perimeter', 'Volume & Surface Area', 'Exponents & Powers', 'Direct and Inverse Proportion',
+  'Factorization', 'Data Handling', 'Bar Graph', 'Line Graph', 'Playing with Numbers', 'Divisibility Test', 'Statistics',
+  'Mean, Mode, Median of Raw Data', 'Probability', 'Parallel Lines', 'Time & Work',
+]
+const AISSEE9_ENGLISH = [
+  'Spotting Errors', 'Comprehension Passage', 'Antonyms', 'Synonyms', 'Prepositions', 'Articles', 'Types of Verbs', 'Tense Form', 'Narration',
+  'Modals', 'Confusing Words', 'Subject-Verb Agreement', 'Correct Spellings', 'Order of Words in a Sentence', 'Idioms and Phrases',
+  'Sentence Improvement', 'Change of Sentence as Directed', 'Sentence Formation', 'Phrase and Clauses', 'Kinds of Noun', 'Adjectives',
+  'Interjection', 'Question Tags', 'Adverbs', 'Conjunctions', 'Conditions', 'Comparison of Adjectives', 'Voices', 'Types of Sentences',
+  'Personal Pronoun', 'Change of Gender', 'Change of Number',
+]
+const AISSEE9_SCIENCE = [
+  'Fossil Fuel: Coal and Petroleum', 'Combustion and Flame', 'Cell Structure and Function', 'Reproduction in Plants & Animals',
+  'Force, Friction and Pressure', 'Sound and its Basics', 'Reflection and Dispersion of Light', 'Metals and Non Metals',
+  'Synthetic Fibers and Plastics', 'Chemical Effects of Electric Current', 'Stars and Solar Systems', 'Pollution of Air and Water',
+  'Global Warming', 'Micro-Organisms', 'Some Natural Phenomenon', 'How to Find Calorific Value of Fuel?', 'Electroplating and Artificial Jewellery',
+  'Relation between Types of Friction', 'Cropping Seasons', 'Agricultural Practices', 'Conservation of Plants and Animals',
+  'Biosphere Reserves, National Parks and Sanctuaries', 'Reaching the Age of Adolescence', 'Changes during Puberty', 'Endocrine Glands and Hormones',
+]
+const AISSEE9_SOCIAL = [
+  'Geographical Diversity of India', 'Resource & their Conservation', 'Weather & Climate', 'Land Form & Life', 'Locating Places on the Earth',
+  'Ocean & Continents', 'From the Rules to the Ruled: Type of Government', 'The Constitution of India', "Universal Franchise & India's Electoral System",
+  'The Parliament System: Legislature & Executive', 'Grassroot Democracy: Local & Self Government', 'From Barter to Money', 'Understanding Market',
+  'Economic Activity around Us', 'The Beginning of Indian Civilization', "India's Cultural Root", 'New Beginnings – City & State', 'The Rise of Empire',
+  'Age of Re-organization', 'The Gupta Era: an Age of Tireless Creativity', "Reshaping India's Political Map", 'The Rise of Marathas', 'The Colonial Era in India',
+]
+
 // ── Chapters per course, class and subject ──────────────────────────────────
 const NCERT8_MATHS = [
   'Rational Numbers', 'Linear Equations in One Variable', 'Understanding Quadrilaterals', 'Practical Geometry',
@@ -145,46 +203,19 @@ const HINDI_9 = [
 
 export const OFFICIAL_CHAPTERS = {
   sainik: {
+    // Exactly as printed in the NTA Information Bulletin AISSEE-2027, Appendix II (Class VI) and Appendix III (Class IX).
     6: {
-      Mathematics: [
-        'Natural Numbers', 'LCM and HCF', 'Fractions', 'Decimal Numbers', 'Ratio and Proportion', 'Percentage',
-        'Profit and Loss', 'Simple Interest', 'Average', 'Unitary Method', 'Area and Perimeter', 'Volume of Cube and Cuboids',
-        'Speed and Time', 'Lines and Angles', 'Types of Angles', 'Circle', 'Prime and Composite Numbers', 'Roman Numerals',
-        'Simplification', 'Conversion of Units', 'Operation on Numbers', 'Temperature', 'Plane Figures', 'Arranging of Fractions',
-        'Complementary and Supplementary Angles', 'Rounding Off Numbers', 'Measurement', 'Squares, Cubes and Roots',
-        'Data Handling', 'Time and Work',
-      ],
-      Intelligence: [
-        'Analogies', 'Classification', 'Pattern Completion', 'Series Completion', 'Coding Decoding', 'Mathematical Operations',
-        'Venn Diagram', 'Paper Folding', 'Embedded Figure', 'Mirror Image', 'Figure Matching', 'Figure Series', 'Odd Man Out',
-        'Geometrical Figure Completion', 'Space Visualisation', 'Order and Ranking', 'Blood Relations', 'Direction Test',
-        'Sitting Arrangement', 'Word Formation', 'Dictionary Word Order', 'Clock and Calendar',
-      ],
-      Language: [
-        'Comprehension Passage', 'Preposition', 'Article', 'Vocabulary', 'Verbs and Type', 'Confusing Words', 'Question Tags',
-        'Types of Sentences', 'Tense Forms', 'Kinds of Nouns', 'Kinds of Pronouns', 'Correct Spelling',
-        'Ordering of Words in Sentence', 'Sentence Formation', 'Antonyms', 'Synonyms', 'Adjectives', 'Interjection',
-        'Idioms and Phrases', 'Collective Nouns', 'Number', 'Gender', 'Adverbs', 'Rhyming Words', 'Conjunction',
-      ],
-      'General Knowledge': [
-        'Scientific Devices', 'Icons and Symbols of India', 'Major Religions of India', 'Art and Culture', 'Defence Awareness',
-        'Sports and Games', 'Relationship Animals and Humans', 'Taste and Digestion', 'Cooking and Preserving',
-        'Germination and Seed Dispersal', 'Traditional Water Harvesting', 'Water Pollution', 'Mountain Terrain',
-        'Historical Monuments', 'Shape of Earth', 'Non-Renewable Energy', 'Food Culture and Habitat', 'Young Ones of Animals',
-        'Functions of Body Parts', 'International Organizations', 'Indian Literary Awards', 'Natural Calamities',
-        'Evaporation and Water Cycle', 'Life of Farmers', 'Tribal Communities',
-      ],
+      Mathematics: AISSEE6_MATHS,
+      Intelligence: AISSEE_INTELLIGENCE,
+      Language: AISSEE6_LANGUAGE,
+      'General Knowledge': AISSEE6_GK,
     },
     9: {
-      Mathematics: NCERT8_MATHS,
-      Intelligence: [
-        'Analogies', 'Classification', 'Pattern Completion', 'Series Completion', 'Coding Decoding', 'Mathematical Operations',
-        'Blood Relations', 'Direction Test', 'Order and Ranking', 'Venn Diagram', 'Mirror Image', 'Paper Folding',
-        'Embedded Figure', 'Logical Reasoning',
-      ],
-      English: ENGLISH_GRAMMAR_9,
-      'General Science': NCERT8_SCIENCE,
-      'Social Science': NCERT8_SOCIAL,
+      Mathematics: AISSEE9_MATHS,
+      Intelligence: AISSEE_INTELLIGENCE,
+      English: AISSEE9_ENGLISH,
+      'General Science': AISSEE9_SCIENCE,
+      'Social Science': AISSEE9_SOCIAL,
     },
   },
   navodaya: {
