@@ -70,6 +70,20 @@ function textToMatrix(t) {
 }
 const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
 
+// Numbered section header: gold badge + title + optional hint / right-side actions.
+function Step({ n, title, hint, right }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+      <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg,#E2C57E,${GOLD})`, color: NAVY, fontWeight: 800, fontSize: 14, boxShadow: '0 6px 12px -6px rgba(201,162,75,.9)', flex: 'none' }}>{n}</span>
+      <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+        <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 19, fontWeight: 700, color: NAVY, lineHeight: 1.15 }}>{title}</div>
+        {hint && <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>{hint}</div>}
+      </div>
+      {right}
+    </div>
+  )
+}
+
 export default function HouseMarksTab({ students = [], allStudents = null, lockHouse = '', currentUser }) {
   const canDelete = isAdminRole(currentUser?.role)
   const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
@@ -510,11 +524,11 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const progressPct = stats.students ? Math.round(stats.entered / stats.students * 100) : 0
 
   // ── styles ──
-  const card = { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 12, padding: 16, marginBottom: 14 }
-  const h = { fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 10px' }
-  const inp = { padding: '8px 10px', border: `1px solid #cbd5e1`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', minHeight: 38, width: '100%', background: '#fff' }
-  const btn = (primary) => ({ padding: '8px 14px', borderRadius: 8, border: `1px solid ${primary ? NAVY : '#cbd5e1'}`, background: primary ? NAVY : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13, cursor: 'pointer', minHeight: 38 })
-  const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#64748b', minWidth: 0 }
+  const card = { background: '#fff', border: '1px solid #e3e9f1', borderRadius: 18, padding: 20, marginBottom: 16, boxShadow: '0 1px 2px rgba(11,30,61,.04), 0 14px 30px -22px rgba(11,30,61,.28)' }
+  const h = { fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#64748b', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 8 }
+  const inp = { padding: '9px 12px', border: '1.5px solid #d3dbe7', borderRadius: 11, fontSize: 14.5, boxSizing: 'border-box', minHeight: 42, width: '100%', background: '#fff', color: NAVY, fontFamily: 'inherit' }
+  const btn = (primary) => ({ padding: '9px 16px', borderRadius: 11, border: `1.5px solid ${primary ? NAVY : '#d3dbe7'}`, background: primary ? `linear-gradient(180deg,#16335f,${NAVY})` : '#fff', color: primary ? '#fff' : NAVY, fontWeight: 700, fontSize: 13.5, cursor: 'pointer', minHeight: 42, fontFamily: 'inherit', boxShadow: primary ? '0 6px 14px -8px rgba(11,30,61,.7)' : 'none' })
+  const lab = { display: 'flex', flexDirection: 'column', gap: 5, fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: '#64748b', minWidth: 0 }
   const bulkHead = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
   const th = { padding: '8px 8px', background: '#f1f5f9', fontSize: 12, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0 }
   const thG = { padding: '12px 10px', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, letterSpacing: '.03em', textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, borderBottom: `3px solid ${GOLD}` }
@@ -522,7 +536,37 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
   const td = { padding: 0, borderBottom: `1px solid ${LINE}`, whiteSpace: 'nowrap' }
 
   return (
-    <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+    <div className="hm-root" style={{ maxWidth: 1180, margin: '0 auto', fontFamily: "'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif", color: NAVY }}>
+      <style>{`
+        .hm-root *{box-sizing:border-box}
+        .hm-root button{transition:transform .12s ease,box-shadow .12s ease,background-color .12s ease,border-color .12s ease,filter .12s ease}
+        .hm-root button:not(:disabled):hover{filter:brightness(.97);transform:translateY(-1px)}
+        .hm-root button:not(:disabled):active{transform:translateY(0);filter:brightness(.94)}
+        .hm-root button:disabled{opacity:.45;cursor:not-allowed}
+        .hm-root button.hm-tile:disabled{opacity:1;cursor:default}
+        .hm-root button:focus-visible,.hm-root [role=button]:focus-visible{outline:3px solid rgba(201,162,75,.65);outline-offset:2px}
+        .hm-root input:not([type=checkbox]),.hm-root select,.hm-root textarea{transition:border-color .12s ease,box-shadow .12s ease}
+        .hm-root input:not([type=checkbox]):focus,.hm-root select:focus,.hm-root textarea:focus{outline:none;border-color:${NAVY};box-shadow:0 0 0 4px rgba(201,162,75,.30)}
+        .hm-root ::placeholder{color:#9aa8bb}
+        .hm-seg{display:inline-flex;border:1.5px solid #d3dbe7;border-radius:12px;overflow:hidden;background:#fff}
+        .hm-seg button{border:0!important;border-radius:0!important;min-height:40px!important;box-shadow:none!important;border-right:1px solid #e3e9f1!important}
+        .hm-seg button:last-child{border-right:0!important}
+        .hm-seg button:not(:disabled):hover{background:#f4f7fb!important;transform:none!important}
+        .hm-subrow{display:grid;grid-template-columns:28px minmax(0,1fr) 84px 84px 40px;gap:8px;align-items:center}
+        .hm-subhead{padding:0 2px 6px;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b}
+        .hm-cap{display:none;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin-bottom:3px}
+        @media (max-width:560px){
+          .hm-subhead{display:none}
+          .hm-subrow{grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) 40px;row-gap:6px;padding-bottom:12px;border-bottom:1px dashed #d3dbe7}
+          .hm-subrow:last-child{padding-bottom:0;border-bottom:0}
+          .hm-subrow .hm-badge{grid-row:1 / 3;align-self:start;margin-top:6px}
+          .hm-subrow .hm-nm{grid-column:2 / 5}
+          .hm-subrow .hm-cap{display:block}
+        }
+        .hm-lift{transition:box-shadow .15s ease,transform .15s ease,border-color .15s ease}
+        .hm-lift:hover{box-shadow:0 12px 26px -16px rgba(11,30,61,.4);transform:translateY(-1px);border-color:#c7d2e2!important}
+        @media (prefers-reduced-motion:reduce){.hm-root *{transition:none!important;animation:none!important}}
+      `}</style>
       <div style={{ ...card, color: '#fff', border: 'none', padding: '20px 22px', background: 'radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 45%,#0B1E3D 85%)', boxShadow: '0 18px 40px -22px rgba(11,30,61,.6), inset 0 0 0 1px rgba(226,197,126,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
@@ -547,7 +591,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       {msg && <div role="status" style={{ ...card, padding: '10px 14px', background: msg.kind === 'ok' ? '#ecfdf5' : '#fef2f2', borderColor: msg.kind === 'ok' ? '#a7f3d0' : '#fecaca', color: msg.kind === 'ok' ? '#047857' : '#b91c1c', fontSize: 13 }}>{msg.text}</div>}
 
       <div style={card}>
-        <p style={h}>Test details</p>
+        <Step n={1} title="Test details" hint="Name the test, set the date and choose the subjects." />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <label style={{ ...lab, flex: '2 1 220px' }}>Test name<input style={inp} value={test.name} placeholder="e.g. Weekly Test 7 – JNVST" onChange={e => { setTest(t => ({ ...t, name: e.target.value })); setDirty(true) }} /></label>
           <label style={{ ...lab, flex: '1 1 150px' }}>Date<input style={inp} type="date" value={test.date} onChange={e => { setTest(t => ({ ...t, date: e.target.value })); setDirty(true) }} /></label>
@@ -557,14 +601,20 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
             </select>
           </label>
         </div>
-        {test.subjects.map((s, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 84px 84px 34px', gap: 8, marginBottom: 6, alignItems: 'end' }}>
-            <label style={lab}>{i === 0 ? 'Subject' : <span style={{ visibility: 'hidden' }}>Subject</span>}<input style={inp} value={s.n} onChange={e => updSubject(i, 'n', e.target.value)} /></label>
-            <label style={lab}>{i === 0 ? 'Max' : <span style={{ visibility: 'hidden' }}>Max</span>}<input style={inp} type="number" min="1" value={s.max} onChange={e => updSubject(i, 'max', e.target.value)} /></label>
-            <label style={lab}>{i === 0 ? 'Min' : <span style={{ visibility: 'hidden' }}>Min</span>}<input style={inp} type="number" min="0" value={s.min} onChange={e => updSubject(i, 'min', e.target.value)} /></label>
-            <button type="button" style={{ ...btn(false), padding: 0 }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2 || subjectLocked}>✕</button>
+        <div style={{ background: '#f6f8fb', border: '1px solid #e3e9f1', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+          <div className="hm-subrow hm-subhead">
+            <span /><span>Subject</span><span>Max marks</span><span>Min to pass</span><span />
           </div>
-        ))}
+          {test.subjects.map((s, i) => (
+            <div key={i} className="hm-subrow" style={{ marginBottom: i === test.subjects.length - 1 ? 0 : 8 }}>
+              <span aria-hidden="true" className="hm-badge" style={{ width: 28, height: 28, borderRadius: 9, background: NAVY, color: '#E2C57E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12 }}>{i + 1}</span>
+              <div className="hm-nm"><span className="hm-cap">Subject</span><input style={inp} value={s.n} aria-label={`Subject ${i + 1} name`} onChange={e => updSubject(i, 'n', e.target.value)} /></div>
+              <div><span className="hm-cap">Max marks</span><input style={{ ...inp, textAlign: 'center' }} type="number" min="1" aria-label={`Subject ${i + 1} maximum`} value={s.max} onChange={e => updSubject(i, 'max', e.target.value)} /></div>
+              <div><span className="hm-cap">Min to pass</span><input style={{ ...inp, textAlign: 'center' }} type="number" min="0" aria-label={`Subject ${i + 1} minimum`} placeholder="–" value={s.min} onChange={e => updSubject(i, 'min', e.target.value)} /></div>
+              <button type="button" style={{ ...btn(false), padding: 0, color: '#94a3b8' }} aria-label="Remove subject" onClick={() => delSubject(i)} disabled={test.subjects.length < 2 || subjectLocked}>✕</button>
+            </div>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {!subjectLocked && <button type="button" style={btn(false)} onClick={addSubject}>+ Add subject</button>}
           <span style={{ fontSize: 12, color: '#64748b' }}>{subjectLocked ? 'One-subject test: name it and set the maximum.' : '“Min” is optional; below it a mark turns amber. JNVST needs 7 in Arithmetic.'}</span>
@@ -572,7 +622,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <p style={h}>Students in this test</p>
+        <Step n={2} title="Students" hint="Who is sitting this test. Use your house, the whole school, or a saved list." />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: NAVY, marginRight: 4 }}>{roster.length} on this sheet</span>
           <button type="button" style={btn(false)} onClick={() => editPicked(() => pool.map(x => x.id))}>🏠 My house ({pool.length})</button>
@@ -693,17 +743,19 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>}
 
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <p style={{ ...h, margin: 0 }}>Mark sheet {dirty && <span style={{ color: '#b45309', textTransform: 'none', letterSpacing: 0 }}>· unsaved changes</span>}</p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" style={btn(true)} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? 'Update test' : 'Save test'}</button>
-            <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
-            <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
-            <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy}>{pdfBusy ? '…' : '📄 PDF'}</button>
-            <button type="button" style={{ ...btn(true), background: '#25D366', borderColor: '#25D366', color: '#fff' }} onClick={() => exportPdf(true)} disabled={pdfBusy}>📤 Share PDF</button>
-            <button type="button" style={btn(false)} onClick={newTest}>New test</button>
-          </div>
-        </div>
+        <Step n={3} title="Enter marks" hint={dirty ? 'You have unsaved changes.' : 'Type in the grid, enter everything at once, or import a sheet.'}
+          right={
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" style={{ ...btn(true), padding: '9px 20px' }} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? '💾 Update test' : '💾 Save test'}</button>
+              <div className="hm-seg" role="group" aria-label="Export">
+                <button type="button" style={btn(false)} onClick={() => exportPdf(false)} disabled={pdfBusy} title="Download a PDF result sheet">{pdfBusy ? '…' : '📄 PDF'}</button>
+                <button type="button" style={{ ...btn(false), color: '#128C4A' }} onClick={() => exportPdf(true)} disabled={pdfBusy} title="Share the PDF on WhatsApp or any app">📤 Share</button>
+                <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
+                <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
+              </div>
+              <button type="button" style={{ ...btn(false), border: '1.5px solid transparent', color: '#64748b' }} onClick={newTest}>＋ New test</button>
+            </div>
+          } />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(118px,1fr))', gap: 8, marginBottom: 12 }}>
           {[
             ['all', 'Students', stats.students, '#1e3a6e'],
@@ -716,8 +768,8 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           ].map(([key, l, v, color]) => {
             const on = key && filt === key
             return (
-              <button key={l} type="button" disabled={!key} onClick={() => key && setFilt(on && key !== 'all' ? 'all' : key)} aria-pressed={!!on}
-                style={{ textAlign: 'left', cursor: key ? 'pointer' : 'default', background: on ? color : '#fff', color: on ? '#fff' : '#0f1f3d', border: `1.5px solid ${on ? color : LINE}`, borderLeft: `4px solid ${color}`, borderRadius: 12, padding: '9px 12px', fontFamily: 'inherit', boxShadow: on ? `0 8px 18px -10px ${color}` : 'none', opacity: key || true ? 1 : 1 }}>
+              <button key={l} type="button" className="hm-tile" disabled={!key} onClick={() => key && setFilt(on && key !== 'all' ? 'all' : key)} aria-pressed={!!on}
+                style={{ textAlign: 'left', cursor: key ? 'pointer' : 'default', background: on ? color : '#fff', color: on ? '#fff' : '#0f1f3d', border: `1.5px solid ${on ? color : LINE}`, borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '11px 14px', fontFamily: 'inherit', boxShadow: on ? `0 8px 18px -10px ${color}` : '0 1px 2px rgba(11,30,61,.04)' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.1 }}>{v}</div>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', opacity: on ? .9 : .6, marginTop: 2 }}>{l}</div>
               </button>
@@ -787,7 +839,7 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <p style={h}>📈 Student progress</p>
+        <Step n="📈" title="Student progress" hint="Pick a student to see their results across tests." />
         <select style={{ ...inp, maxWidth: 360 }} value={progId} onChange={e => setProgId(e.target.value)} aria-label="Choose a student to see progress">
           <option value="">Choose a student…</option>
           {school.map(s => <option key={s.id} value={s.id}>{s.name}{s.gcc_no ? ` · ${s.gcc_no}` : ''}</option>)}
@@ -847,19 +899,30 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       </div>
 
       <div style={card}>
-        <p style={h}>Saved tests</p>
-        {!saved.length ? <div style={{ color: '#64748b', fontSize: 13 }}>Nothing saved yet.</div> : saved.map(r => (
-          <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${r.id === test.id ? NAVY : LINE}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>{r.test_date} · {r.house} · {Object.keys(r.marks || {}).length} students</div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" style={btn(false)} onClick={() => openSaved(r)}>Open</button>
-              {canDelete && <button type="button" style={{ ...btn(false), color: '#b91c1c' }} onClick={() => delSaved(r)} aria-label="Delete saved test">✕</button>}
-            </div>
+        <Step n="★" title="Saved tests" hint={saved.length ? `${saved.length} saved · tap Open to continue or reshare` : 'Tests you save will appear here.'} />
+        {!saved.length ? <div style={{ color: '#64748b', fontSize: 13, padding: '14px', border: '1.5px dashed #d3dbe7', borderRadius: 14, textAlign: 'center' }}>Nothing saved yet.</div> : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 10 }}>
+            {saved.map(r => {
+              const d = new Date(r.test_date + 'T00:00:00'), cur = r.id === test.id
+              return (
+                <div key={r.id} className="hm-lift" style={{ display: 'flex', gap: 12, alignItems: 'center', border: `1.5px solid ${cur ? GOLD : '#e3e9f1'}`, background: cur ? '#fffaf0' : '#fff', borderRadius: 14, padding: '10px 12px' }}>
+                  <div aria-hidden="true" style={{ width: 46, flex: 'none', textAlign: 'center', borderRadius: 11, background: NAVY, color: '#fff', padding: '5px 0', lineHeight: 1.05 }}>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>{isNaN(d) ? '–' : d.getDate()}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em', color: '#E2C57E', textTransform: 'uppercase' }}>{isNaN(d) ? '' : d.toLocaleDateString('en-IN', { month: 'short' })}</div>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: NAVY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.test_name}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{r.house} · {Object.keys(r.marks || {}).length} students{cur ? ' · open now' : ''}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                    <button type="button" style={{ ...btn(!cur), padding: '7px 14px', minHeight: 38 }} onClick={() => openSaved(r)}>Open</button>
+                    {canDelete && <button type="button" style={{ ...btn(false), color: '#b91c1c', padding: '7px 11px', minHeight: 38 }} onClick={() => delSaved(r)} aria-label="Delete saved test">✕</button>}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        ))}
+        )}
       </div>
 
       <div style={{ position: 'sticky', bottom: 10, zIndex: 20, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'rgba(11,30,61,.96)', color: '#fff', borderRadius: 14, padding: '10px 14px', boxShadow: '0 14px 30px -12px rgba(11,30,61,.7)' }}>
