@@ -13117,7 +13117,7 @@ function Hostel() {
     journal: <JournalTab lockHouse={lockHouse} currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
-    housemarks: <HouseMarksTab students={myStudents} lockHouse={lockHouse} currentUser={currentUser} />,
+    housemarks: <HouseMarksTab students={myStudents} allStudents={students} lockHouse={lockHouse} currentUser={currentUser} />,
     neglectreport: <NeglectReportTab currentUser={currentUser} lockHouse={lockHouse} />,
     hmrollreport: <HMRollCallReportTab lockHouse={lockHouse} />,
     commandcentre: <CommandCentreTab students={students} currentUser={currentUser} />,
