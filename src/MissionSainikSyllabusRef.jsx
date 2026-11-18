@@ -7,6 +7,12 @@ import { PremiumCard, PX } from './premiumUI'
 import { EXAM_PATTERNS, classesOf, officialSubjects, patternTotals } from './officialSyllabus'
 
 const NTA_URL = 'https://exams.nta.nic.in/sainik-school-society/'
+// From the NTA Information Bulletin AISSEE-2027 (dates and fee table, pages 2 and 15–16).
+const KEY_DATES = [
+  ['Exam', '31 Jan 2027 (Sunday)'], ['Class VI timing', '2:00 – 4:30 pm'], ['Class IX timing', '2:00 – 5:00 pm'],
+  ['Apply online', '3 Nov – 2 Dec 2026'], ['Late fee ₹500', '3 – 6 Dec 2026'], ['Corrections', '7 – 9 Dec 2026'],
+  ['City slip', '11 Jan 2027'], ['Admit card', '25 Jan 2027'], ['Fee', '₹850 · SC/ST ₹700'],
+]
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
 export function OfficialSyllabus({ isMobile }) {
@@ -22,9 +28,19 @@ export function OfficialSyllabus({ isMobile }) {
   return (
     <>
       <PremiumCard title="Official syllabus · AISSEE 2027" subtitle="Sainik School entrance exam (NTA): pattern, marks and every chapter by subject."
-        right={<a className="px-hbtn" href={NTA_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>↗ NTA website</a>}>
-        <div role="note" style={{ padding: '9px 12px', borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
-          Last checked Sept 2026. Class 6 questions follow the Class 5 level and Class 9 follows NCERT Class 8. When NTA publishes the AISSEE 2027 Information Bulletin, compare its appendices (Class VI and Class IX syllabus) with this list.
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a className="px-hbtn" href="/syllabus/AISSEE-2027-Information-Bulletin.pdf" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📄 Information Bulletin (PDF)</a>
+          <a className="px-hbtn" href={NTA_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>↗ NTA website</a>
+        </span>}>
+        <div role="note" style={{ padding: '9px 12px', borderRadius: 12, background: PX.okBg, color: PX.ok, fontSize: 12.5, lineHeight: 1.5, marginBottom: 12 }}>
+          Source: NTA Information Bulletin AISSEE-2027 — scheme of examination (para 4.4) and the topic lists in Appendix II (Class VI) and Appendix III (Class IX). Language-section questions are based on topics dealt with till Class V.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginBottom: 14 }}>
+          {KEY_DATES.map(([l, v]) => (
+            <div key={l} style={{ background: '#fff', border: `1px solid ${PX.line}`, borderRadius: 12, padding: '8px 10px' }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase', color: PX.sub }}>{l}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: PX.navy, marginTop: 2 }}>{v}</div>
+            </div>))}
         </div>
         <div role="tablist" aria-label="Class" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {classes.map(c => <button key={c} type="button" role="tab" aria-selected={c === cls} style={pill(c === cls)} onClick={() => setCls(c)}>Class {c}</button>)}
@@ -78,7 +94,7 @@ const MANUAL = [
   ['Plan the chapters', ['Open Plan and find a test with “Add chapter…”.', 'Type a chapter or pick one of the suggestions (unused official chapters come first), then press Enter or click away. It saves by itself.', 'Use “Only tests with gaps” to see what is still empty and the Maths / Reasoning… chips for progress per subject.', 'Switch between Cards (easier on phones) and Grid (whole plan at once).']],
   ['Bulk import', ['Press Import and paste one line per chapter: test, subject, chapter — separated by a comma or a tab.', 'Subject can be Maths, Reasoning, Science, GK, Grammar or Vocab. Example: 1, Maths, Fractions.', 'Press Import chapters. Existing chapters for the same test and subject are replaced.', 'Press CSV to export the current plan.']],
   ['Setters and verifiers', ['Open your task: the chapter from this plan appears there.', 'Set questions on that chapter, at the level of the class you are preparing students for.', 'Verifiers check each question against the chapter before marking it verified.']],
-  ['Keeping it right', ['Match chapter names to the Official syllabus page so teachers and the analyzers use one spelling.', 'When NTA releases the 2027 Information Bulletin, compare the plan with its Class VI and Class IX appendices and fix any differences.', 'A changed chapter shows on the setter’s task the next time they open or refresh it.']],
+  ['Keeping it right', ['Match chapter names to the Official syllabus page so teachers and the analyzers use one spelling.', 'The Official syllabus page copies Appendix II (Class VI) and III (Class IX) of the AISSEE-2027 bulletin; if NTA amends the bulletin on its website, update officialSyllabus.js to match.', 'A changed chapter shows on the setter’s task the next time they open or refresh it.']],
 ]
 
 export function SyllabusManual() {
