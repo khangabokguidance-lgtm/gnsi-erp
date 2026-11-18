@@ -119,6 +119,17 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
       && (!q || (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)))
   }, [school, picked, pickQ, fHouse, fClass])
   const shownAddable = addable.slice(0, 200)
+  // Sheet search also looks at the whole school: matches not yet on the sheet can be added in one tap.
+  const searchHits = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return []
+    const onSheet = new Set(roster.map(s => s.id))
+    return school.filter(s => !onSheet.has(s.id) && (String(s.name || '') + ' ' + String(s.gcc_no || '')).toLowerCase().includes(q)).slice(0, 8)
+  }, [search, school, roster])
+  const addFromSearch = id => {
+    setPicked(p => [...new Set([...(mode === 'all' ? pool.map(s => s.id) : p), id])])
+    setMode('selected'); setDirty(true)
+  }
   const toggleTick = id => setTicks(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
   const tickAllShown = () => setTicks(t => [...new Set([...t, ...shownAddable.map(s => s.id)])])
   const addTicked = () => { if (!ticks.length) return; const n = ticks.length; setPicked(p => [...new Set([...p, ...ticks])]); setTicks([]); setDirty(true); flash('ok', `${n} student${n === 1 ? '' : 's'} added.`) }
@@ -569,12 +580,23 @@ export default function HouseMarksTab({ students = [], allStudents = null, lockH
           })}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <input style={{ ...inp, maxWidth: 300, flex: '1 1 200px' }} placeholder="🔍 Search name or GCC No" value={search} onChange={e => setSearch(e.target.value)} />
+          <input style={{ ...inp, maxWidth: 300, flex: '1 1 200px' }} placeholder="🔍 Search any student by name or GCC No" value={search} onChange={e => setSearch(e.target.value)} />
           <button type="button" style={btn(false)} onClick={jumpNextEmpty}>⏭ Next empty</button>
           <button type="button" style={btn(showImport)} onClick={() => setShowImport(v => !v)}>⬆ Import Excel / paste</button>
           {filt !== 'all' && <button type="button" style={{ ...btn(false), color: '#b45309' }} onClick={() => setFilt('all')}>✕ Clear filter</button>}
           <span style={{ fontSize: 12, color: '#64748b', marginLeft: 'auto' }}>⌨ Enter / ↓ next student · ↑ previous · type <b>A</b> for absent</span>
         </div>
+        {searchHits.length > 0 && (
+          <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, marginBottom: 10, maxWidth: 520, overflow: 'hidden' }}>
+            <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f8fafc' }}>FROM THE WHOLE SCHOOL · tap to add to this sheet</div>
+            {searchHits.map(s => (
+              <button key={s.id} type="button" onClick={() => addFromSearch(s.id)} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', padding: '8px 10px', background: '#fff', border: 0, borderTop: `1px solid ${LINE}`, cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
+                <span>{s.name}<span style={{ color: '#94a3b8' }}> · {s.class_name || ''}{s.house ? ' · ' + s.house : ''}</span></span>
+                <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{s.gcc_no || ''} ＋</span>
+              </button>
+            ))}
+          </div>
+        )}
         {!roster.length ? <div style={{ color: '#64748b', fontSize: 13 }}>No students in this house yet.</div> : (
           <div style={{ overflowX: 'auto', border: `1px solid ${LINE}`, borderRadius: 10 }}>
             <table ref={tableRef} style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
