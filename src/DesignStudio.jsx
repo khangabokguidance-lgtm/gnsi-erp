@@ -20,13 +20,14 @@ const TOOLS = [
   { id: 'invmaker',   label: 'Invites',     icon: '💌', perm: 'designstudio' },
   { id: 'invitation',  label: 'Invitation',  icon: '✉️', perm: 'invitation' },
   { id: 'certmaker',   label: 'Cert Maker',  icon: '🏅', perm: 'certificate' },
+  { id: 'mockcert',    label: 'Mock Cert',   icon: '🏆', perm: 'certificate' },
   { id: 'certificate', label: 'Certificates', icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
   { id: 'birthday',    label: 'Birthday',    icon: '🎂', perm: 'designstudio' },
 ]
 
 // self-contained editor page behind each iframe tool (used by "Open in new tab")
-const MAKER_FILE = { banner: 'banner-maker.html', backdrop: 'backdrop-maker.html', invmaker: 'invitation-maker.html', certmaker: 'certificate-maker.html' }
+const MAKER_FILE = { banner: 'banner-maker.html', backdrop: 'backdrop-maker.html', invmaker: 'invitation-maker.html', certmaker: 'certificate-maker.html', mockcert: 'mock-certificate-maker.html' }
 
 const TEMPLATES = [
   { id: 'gnsi',      name: 'GNSI Premium',        size: '7 × 21 ft · Landscape', cat: 'Banners' },
@@ -119,6 +120,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
     invmaker:    frame('invitation-maker.html'),
     invitation:  <div style={light}><InvitationGenerator currentUser={currentUser} /></div>,
     certmaker:   <CertificateMakerPortal currentUser={currentUser} />,
+    mockcert:    <CertificateMakerPortal currentUser={currentUser} file={`${BASE}/mock-certificate-maker.html`} title="Mock Test Certificates" />,
     certificate: <div style={light}><CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} /></div>,
     teachersday: <div style={light}><TeachersDayFrame /></div>,
     birthday:    <div style={light}><BirthdayCard /></div>,
