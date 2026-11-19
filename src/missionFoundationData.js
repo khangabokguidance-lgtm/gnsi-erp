@@ -42,10 +42,42 @@ const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d
 const weekdayOf = s => new Date(s + 'T00:00:00Z').getUTCDay() // 0 = Sunday, 1 = Monday
 
 // `count` dates, one a week on `weekday`, starting on the first such day on or after `start`.
-export function weeklyDates(start, count = DEFAULT_PLAN.count, weekday = DEFAULT_PLAN.weekday) {
+export function weeklyDates(start, count = DEFAULT_PLAN.count, weekday = DEFAULT_PLAN.weekday, everyWeeks = 1) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return []
   const first = addDays(start, (weekday - weekdayOf(start) + 7) % 7)
-  return Array.from({ length: Math.max(0, Math.min(52, Number(count) || 0)) }, (_, i) => addDays(first, i * 7))
+  const step = 7 * Math.max(1, Math.min(8, Number(everyWeeks) || 1))
+  return Array.from({ length: Math.max(0, Math.min(52, Number(count) || 0)) }, (_, i) => addDays(first, i * step))
+}
+
+export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// Test dates for a setup: repeat on a weekday (every 1–8 weeks), or a typed list of dates (any separator, any order).
+export function setupDates(setup = {}) {
+  if (setup.mode === 'dates') {
+    const found = String(setup.dates || '').match(/\d{4}-\d{2}-\d{2}/g) || []
+    return [...new Set(found)].filter(d => !Number.isNaN(Date.parse(d + 'T00:00:00Z'))).sort().slice(0, 52)
+  }
+  return weeklyDates(setup.start, setup.count, setup.weekday ?? DEFAULT_PLAN.weekday, setup.every)
+}
+
+// The default setup, which is also what the schedule creator starts from.
+export const defaultSetup = () => ({
+  mode: 'repeat', start: DEFAULT_PLAN.start, count: DEFAULT_PLAN.count, weekday: DEFAULT_PLAN.weekday, every: 1, dates: '',
+  prefix: 'Test', batches: [...BATCHES], duration_min: DEFAULT_TEST_MINUTES, start_time: '', venue: '', assign: true,
+  subjects: SUBJECTS.map(s => ({ label: s.label, on: true, questions: s.questions, marks_each: s.marks_each })),
+})
+
+// A setup taken from an existing test (its subjects, questions, marks, time, batches, hall and start time).
+export function setupFromTest(test, papers, base = defaultSetup()) {
+  const byLabel = Object.fromEntries((papers || []).map(p => [p.subject, p]))
+  const known = SUBJECTS.map(s => s.label)
+  const extra = (papers || []).filter(p => !known.includes(p.subject)).map(p => ({ label: p.subject, on: true, questions: p.questions, marks_each: p.marks_each }))
+  return {
+    ...base,
+    batches: test?.batches?.length ? [...test.batches] : base.batches,
+    duration_min: test?.duration_min || base.duration_min, start_time: test?.start_time || '', venue: test?.venue || '',
+    subjects: [...base.subjects.map(s => (byLabel[s.label] ? { ...s, on: true, questions: byLabel[s.label].questions, marks_each: byLabel[s.label].marks_each } : { ...s, on: false })), ...extra],
+  }
 }
 
 // Who checks a setter's paper: the next teacher of the same subject; with one teacher, the next subject's first teacher.
@@ -66,7 +98,9 @@ export function checkerFor(subject, setter, panel) {
 
 // The rows to create for a schedule: one test a week, each with all six subject papers.
 // Setters take turns within each subject. startNo numbers the tests after any that already exist.
-export function buildSchedule({ start = DEFAULT_PLAN.start, count = DEFAULT_PLAN.count, weekday = DEFAULT_PLAN.weekday, panel = DEFAULT_PANEL, startNo = 1, skipDates = [] }) {
+export function buildSchedule({ start = DEFAULT_PLAN.start, count = DEFAULT_PLAN.count, weekday = DEFAULT_PLAN.weekday, panel = DEFAULT_PANEL, startNo = 1, skipDates = [], setup = null }) {
+  const su = setup || { ...defaultSetup(), start, count, weekday }
+  const subjects = su.subjects.filter(s => s.on)
   const turns = {}
   const nextSetter = subject => {
     const list = panel[subject] || []
@@ -76,13 +110,16 @@ export function buildSchedule({ start = DEFAULT_PLAN.start, count = DEFAULT_PLAN
     return list[n % list.length]
   }
   const taken = new Set(skipDates)
-  return weeklyDates(start, count, weekday).filter(d => !taken.has(d)).map((date, i) => {
+  const prefix = String(su.prefix || 'Test').trim() || 'Test'
+  return setupDates(su).filter(d => !taken.has(d)).map((date, i) => {
     const no = startNo + i
+    const test = { test_no: no, test_date: date, title: `${prefix} ${String(no).padStart(2, '0')}`, batches: su.batches?.length ? [...su.batches] : [...BATCHES], status: 'Planned' }
+    if (setup) Object.assign(test, { duration_min: Number(su.duration_min) || DEFAULT_TEST_MINUTES, ...(su.start_time ? { start_time: su.start_time } : {}), ...(su.venue ? { venue: su.venue } : {}) })
     return {
-      test: { test_no: no, test_date: date, title: `Test ${String(no).padStart(2, '0')}`, batches: [...BATCHES], status: 'Planned' },
-      papers: SUBJECTS.map(s => {
-        const setter = nextSetter(s.label)
-        return { subject: s.label, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(s.label, setter, panel) : '', status: 'Pending' }
+      test,
+      papers: subjects.map(s => {
+        const setter = su.assign === false ? '' : nextSetter(s.label)
+        return { subject: s.label, questions: Number(s.questions) || 0, marks_each: Number(s.marks_each) || 0, setter, verifier: setter ? checkerFor(s.label, setter, panel) : '', status: 'Pending' }
       }),
     }
   })
