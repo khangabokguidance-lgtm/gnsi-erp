@@ -14,6 +14,7 @@ import { downloadCsv } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab, StudentsTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import { QuestionMakerTab } from './MissionFoundationPaper'
+import { testReportHtml, reportCardsHtml } from './lib/missionFoundationReport'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
   subjectByLabel, maxMarks, buildSchedule, foundationRoster, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
@@ -587,12 +588,21 @@ const markKey = (sid, subj) => `${sid}|${subj}`
 
 function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSaved }) {
   const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
-  const [batch, setBatch] = useState(BATCHES[0])
+  const [batch, setBatch] = useState(BATCHES[0])     // a batch, or 'Both'
+  const [subjectPick, setSubjectPick] = useState(null)  // null = not chosen yet (default below), 'all', or a subject label
   const [entries, setEntries] = useState({})   // `${student_id}|${subject}` → { marks, absent }
-  const [dirty, setDirty] = useState(false)
+  const [changed, setChanged] = useState(() => new Set())   // keys typed since the last save
+  const dirty = changed.size > 0
   const [busy, setBusy] = useState(false)
-  const papers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
-  const list = (students || []).filter(s => s.batchName === batch)
+  const testPapers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
+  // A teacher who sets exactly one subject of this test opens on that subject; everyone else on the full sheet.
+  const mine = testPapers.filter(p => nameMatches(me, p.setter))
+  const subject = subjectPick ?? (mine.length === 1 ? mine[0].subject : 'all')
+  const single = subject !== 'all' && testPapers.some(p => p.subject === subject)
+  const papers = useMemo(() => (single ? testPapers.filter(p => p.subject === subject) : testPapers), [single, testPapers, subject])
+  const list = (students || []).filter(s => (batch === 'Both' ? BATCHES.includes(s.batchName) : s.batchName === batch))
+  const filled = single ? list.filter(s => { const e = entries[markKey(s.id, subject)]; return e && (e.absent || (e.marks !== '' && e.marks != null)) }).length : 0
+  const nextBox = (i) => { const el = document.querySelector(`[data-mark-row="${i + 1}"]`); if (el) { el.focus(); el.select?.() } }
 
   useEffect(() => {
     if (!testId) { setEntries({}); return }
@@ -601,42 +611,81 @@ function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSav
       if (!live) return
       if (error) flash('Could not load marks: ' + error.message, true)
       setEntries(Object.fromEntries((data || []).map(r => [markKey(r.student_id, r.subject), { marks: r.marks ?? '', absent: r.absent }])))
-      setDirty(false)
+      setChanged(new Set())
     })
     return () => { live = false }
   }, [testId, flash])
 
-  const errors = list.flatMap(s => papers.map(p => markError(entries[markKey(s.id, p.subject)]?.marks, maxMarks(p)))).filter(Boolean).length
+  // Saving covers every subject and both batches, so switching subject or batch never loses typed marks.
+  const everyone = (students || []).filter(s => BATCHES.includes(s.batchName))
+  const errors = everyone.flatMap(s => testPapers.map(p => markError(entries[markKey(s.id, p.subject)]?.marks, maxMarks(p)))).filter(Boolean).length
   const save = async () => {
     if (errors) return flash(`Fix ${errors} mark(s) first: each must be from 0 to the paper's full marks.`, true)
-    const rows = list.flatMap(s => papers.map(p => {
+    const rows = everyone.flatMap(s => testPapers.map(p => {
+      if (!changed.has(markKey(s.id, p.subject))) return null
       const e = entries[markKey(s.id, p.subject)]
       if (!e || (!e.absent && (e.marks === '' || e.marks === null))) return null
-      return { test_id: testId, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name, batch, subject: p.subject,
+      return { test_id: testId, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name, batch: s.batchName, subject: p.subject,
         marks: e.absent ? null : Number(e.marks), absent: !!e.absent, entered_by: me, updated_at: now() }
     })).filter(Boolean)
     if (!rows.length) return flash('Nothing to save yet.', true)
     setBusy(true)
     const { error } = await supabase.from(T_MARKS).upsert(rows, { onConflict: 'test_id,student_id,subject' })
     setBusy(false)
-    if (error) flash('Not saved: ' + error.message, true); else { setDirty(false); flash(`Saved ${rows.length} marks for ${batch}.`); onSaved?.() }
+    if (error) flash('Not saved: ' + error.message, true); else { setChanged(new Set()); flash(`Saved ${rows.length} marks${single ? ' in ' + subject : ''} for ${batch === 'Both' ? 'Udaan and Pragati' : batch}.`); onSaved?.() }
   }
-  const set = (sid, subj, patch) => { setDirty(true); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
+  const set = (sid, subj, patch) => { setChanged(c => new Set(c).add(markKey(sid, subj))); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
   const absentAll = (sid, on) => papers.forEach(p => set(sid, p.subject, { absent: on }))
 
   if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   return (
-    <PremiumCard title="Enter marks" subtitle="All subjects of the test for one batch. Empty boxes are not saved. Tick AB for a student absent from the whole test." bodyStyle={{ padding: 0 }}
+    <PremiumCard title={single ? `Enter marks · ${subject}` : 'Enter marks'} subtitle={single ? 'One subject for every student. Type a mark and press Enter to go to the next student. Empty boxes are not saved.' : 'All subjects of the test for one batch. Empty boxes are not saved. Tick AB for a student absent from the whole test.'} bodyStyle={{ padding: 0 }}
       right={<Btn kind="gold" disabled={busy || !papers.length} onClick={save}>{busy ? 'Saving…' : dirty ? 'Save marks •' : 'Save marks'}</Btn>}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px' }}>
         <select className="px-input" aria-label="Test" value={testId} onChange={e => { if (!dirty || window.confirm('Leave without saving?')) setTestId(e.target.value) }} style={{ width: 'auto' }}>
           {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}
         </select>
-        <select className="px-input" aria-label="Batch" value={batch} onChange={e => setBatch(e.target.value)} style={{ width: 'auto' }}>{BATCHES.map(b => <option key={b}>{b}</option>)}</select>
+        <select className="px-input" aria-label="Batch" value={batch} onChange={e => setBatch(e.target.value)} style={{ width: 'auto' }}>{BATCHES.map(b => <option key={b}>{b}</option>)}<option value="Both">Both batches</option></select>
+        <div role="group" aria-label="Subject" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[{ key: 'all', label: 'All subjects' }, ...testPapers.map(p => ({ key: p.subject, label: subjectByLabel(p.subject)?.short || p.subject }))].map(o => (
+            <button key={o.key} type="button" className={'px-btn ' + (subject === o.key || (o.key === 'all' && !single) ? 'gold' : 'ghost')} aria-pressed={subject === o.key}
+              onClick={() => setSubjectPick(o.key)}>{o.label}</button>
+          ))}
+        </div>
+        {single && list.length > 0 && <span style={{ alignSelf: 'center', fontSize: 13, color: filled === list.length ? PX.ok : PX.sub, fontWeight: 700 }}>{filled} / {list.length} entered</span>}
       </div>
       {!papers.length ? <div style={{ padding: 20, color: PX.sub }}>This test has no papers.</div>
         : students === null ? <div style={{ padding: 20, color: PX.sub }}>Loading students…</div>
-        : !list.length ? <div style={{ padding: 20, color: PX.sub }}>No active students found in {batch}.</div> : (
+        : !list.length ? <div style={{ padding: 20, color: PX.sub }}>No active students found in {batch}.</div> : single ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="px-table" style={{ width: '100%' }}>
+              <thead><tr><th>#</th><th>Student</th>{batch === 'Both' && <th>Batch</th>}<th>{subject} /{maxMarks(papers[0]) || '?'}</th><th>Absent</th></tr></thead>
+              <tbody>
+                {list.map((s, i) => {
+                  const p = papers[0]
+                  const e = entries[markKey(s.id, p.subject)] || { marks: '', absent: false }
+                  const err = markError(e.marks, maxMarks(p))
+                  return (
+                    <tr key={s.id}>
+                      <td>{i + 1}</td>
+                      <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}<div style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500 }}>{s.gcc_no ? 'GCC ' + s.gcc_no : ''}</div></td>
+                      {batch === 'Both' && <td><Pill tone={s.batchName === 'Udaan' ? 'info' : 'gold'}>{s.batchName}</Pill></td>}
+                      <td>
+                        <input className="px-input" type="number" inputMode="decimal" min="0" max={maxMarks(p) || undefined} data-mark-row={i} aria-label={`${p.subject} marks for ${s.name}`} title={err || undefined}
+                          disabled={e.absent} placeholder={e.absent ? 'AB' : ''} value={e.absent ? '' : e.marks}
+                          onChange={ev => set(s.id, p.subject, { marks: ev.target.value })}
+                          onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); nextBox(i) } }}
+                          style={{ width: 90, padding: '7px 10px', fontSize: 15, borderColor: err ? PX.bad : undefined, background: err ? PX.badBg : undefined }} />
+                        {err && <div style={{ fontSize: 11.5, color: PX.bad }}>{err}</div>}
+                      </td>
+                      <td><input type="checkbox" aria-label={`${s.name} absent`} checked={!!e.absent} onChange={ev => set(s.id, p.subject, { absent: ev.target.checked })} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="px-table" style={{ width: '100%', minWidth: 760 }}>
               <thead><tr><th>#</th><th>Student</th>{papers.map(p => <th key={p.id}>{subjectByLabel(p.subject)?.short || p.subject} /{maxMarks(p) || '?'}</th>)}<th>AB</th></tr></thead>
@@ -697,10 +746,14 @@ function ResultsTab({ tests, papersByTest, flash, today }) {
     ...ranked.map(r => [r.rank ?? 'AB', r.student_name, r.gcc_no || '', r.batch, ...papers.map(p => r.subjects[p.subject] ?? ''), r.total, r.max, r.pct ?? '']),
   ])
 
+  const reportInput = () => ({ mission: MISSION_NAME, title: test?.title || 'Test ' + test?.test_no, date: fmt(test?.test_date), batch, papers, ranked,
+    rows: (rows || []).filter(r => batch === 'All' || r.batch === batch), short: l => subjectByLabel(l)?.short || l })
+  const openPrint = html => { const w = window.open('', '_blank'); if (!w) return flash('Allow pop-ups to print.', true); w.document.write(html); w.document.close() }
+
   if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   return (
     <PremiumCard title={`Results · ${test?.title || ''}`} subtitle={test ? `${fmt(test.test_date)} · ranked by percentage of the papers each student sat` : ''} bodyStyle={{ padding: 0 }}
-      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn onClick={() => window.print()} disabled={!ranked.length}>Print</Btn></div>}>
+      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn kind="gold" onClick={() => openPrint(testReportHtml(reportInput(), true))} disabled={!ranked.length}>🖨 Combined report</Btn><Btn onClick={() => openPrint(reportCardsHtml(reportInput(), true))} disabled={!ranked.length}>Report cards</Btn></div>}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px' }}>
         <select className="px-input" aria-label="Test" value={testId} onChange={e => setTestId(e.target.value)} style={{ width: 'auto' }}>
           {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}
