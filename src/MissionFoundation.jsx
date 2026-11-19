@@ -14,6 +14,7 @@ import { PersonCell, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
+import { QuestionMakerTab } from './MissionFoundationPaper'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
   subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
@@ -189,6 +190,7 @@ export default function MissionFoundation({ currentUser }) {
       { id: 'teaching', label: 'Teaching', icon: PIcon.cap, hint: 'Tick chapters as they are taught' },
       { id: 'material', label: 'Study material', icon: PIcon.folder, hint: 'Notes, worksheets and links' },
       { id: 'mine', label: 'My papers', icon: PIcon.pen, hint: 'Set and check question papers', badge: stats.mine },
+      { id: 'maker', label: 'Question maker', icon: PIcon.file, hint: 'One combined paper for all 6 subjects' },
     ] },
     { label: 'Test day', color: '#a7771f', tabs: [
       { id: 'conduct', label: 'Test day', icon: PIcon.shield, hint: 'Checklist, attendance and marks sheets' },
@@ -239,6 +241,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
+              {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }} />}
               {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, initialTest: activeTest, onSaved: loadMarks }} />}
