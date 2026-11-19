@@ -340,3 +340,87 @@ export function ChatTab({ me, isAdmin, flash }) {
   )
 }
 
+
+// ─── Students: the live roster from the ERP Students module ──────────────────
+// Nothing is copied: marks entry, test day sheets, results and prizes read the active Udaan / Pragati students
+// straight from the students table, so a new admission shows up here as soon as it is saved in Students.
+export function StudentsTab({ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }) {
+  const [q, setQ] = useState('')
+  const [batch, setBatch] = useState('All')
+  const [busy, setBusy] = useState('')
+  const sat = useMemo(() => {
+    const m = {}
+    ;(allMarks || []).forEach(r => { (m[r.student_id] ||= new Set()).add(r.test_id) })
+    return m
+  }, [allMarks])
+  if (students == null) return <PremiumCard title="Students" subtitle="Loading the Foundation students…" />
+  const count = b => students.filter(s => s.batchName === b).length
+  const needle = q.trim().toLowerCase()
+  const list = students.filter(s => (batch === 'All' || s.batchName === batch) && (!needle || `${s.name} ${s.gcc_no || ''} ${s.admission_no || ''}`.toLowerCase().includes(needle)))
+  const place = async (s, b) => {
+    setBusy(s.id)
+    const { error } = await supabase.from('students').update({ batch: b, course: 'Foundation' }).eq('id', s.id)
+    setBusy('')
+    if (error) return flash('Not saved: ' + error.message, true)
+    flash(`${s.name} is now in ${b}.`); reloadStudents()
+  }
+  const exportCsv = () => downloadCsv('Mission_Foundation_students.csv', [
+    ['Name', 'GCC', 'Admission no.', 'Batch', 'Phone', 'Tests with marks'],
+    ...list.map(s => [s.name, s.gcc_no || '', s.admission_no || '', s.batchName, s.phone || '', sat[s.id]?.size || 0]),
+  ])
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <PremiumCard title="Foundation students" subtitle="Live from the Students module. Every active Udaan and Pragati student is in marks entry, test day sheets, results and certificates automatically."
+        right={<div style={{ display: 'flex', gap: 8 }}><Btn onClick={reloadStudents}>↻ Refresh</Btn><Btn onClick={exportCsv} disabled={!list.length}>⬇ Excel</Btn></div>}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+          {[['All', students.length], ...BATCHES.map(b => [b, count(b)])].map(([b, n]) => (
+            <button key={b} type="button" onClick={() => setBatch(b)} aria-pressed={batch === b}
+              style={{ textAlign: 'left', border: `1.5px solid ${batch === b ? PX.gold : PX.line}`, background: batch === b ? PX.goldBg : '#fff', borderRadius: 14, padding: '10px 14px', cursor: 'pointer', font: 'inherit', color: PX.ink }}>
+              <div style={{ fontSize: 12, color: PX.sub }}>{b === 'All' ? 'All Foundation' : b}</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{n}</div>
+            </button>
+          ))}
+          {unplaced.length > 0 && (
+            <div style={{ border: `1.5px solid ${PX.warn}`, background: PX.warnBg, borderRadius: 14, padding: '10px 14px' }}>
+              <div style={{ fontSize: 12, color: PX.warn }}>No batch yet</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: PX.warn }}>{unplaced.length}</div>
+            </div>
+          )}
+        </div>
+        <input className="px-input" placeholder="Search name, GCC or admission no." aria-label="Search students" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 360, marginBottom: 10 }} />
+        <div style={{ overflowX: 'auto' }}>
+          <table className="px-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <thead><tr style={{ textAlign: 'left', color: PX.sub }}><th style={{ padding: 6 }}>#</th><th>Student</th><th>GCC</th><th>Batch</th><th>Phone</th><th>Tests with marks</th></tr></thead>
+            <tbody>
+              {list.map((s, i) => (
+                <tr key={s.id} style={{ borderTop: `1px solid ${PX.line}` }}>
+                  <td style={{ padding: 6, color: PX.faint }}>{i + 1}</td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={s.name} size={26} /><b>{s.name}</b></div></td>
+                  <td>{s.gcc_no || '—'}</td>
+                  <td><Pill tone={s.batchName === 'Udaan' ? 'info' : 'gold'}>{s.batchName}</Pill></td>
+                  <td>{s.phone || '—'}</td>
+                  <td>{sat[s.id]?.size || 0} / {tests.length}</td>
+                </tr>
+              ))}
+              {!list.length && <tr><td colSpan={6} style={{ padding: 14, color: PX.sub }}>{students.length ? 'No student matches.' : 'No active Udaan or Pragati students found in Students.'}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </PremiumCard>
+      {unplaced.length > 0 && (
+        <PremiumCard title={`${unplaced.length} Foundation student${unplaced.length === 1 ? '' : 's'} with no Udaan / Pragati batch`} subtitle="They are Foundation students but their batch is blank or unknown, so they are left out of marks entry. Put each one in a batch.">
+          <div style={{ display: 'grid', gap: 8 }}>
+            {unplaced.map(s => (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: `1px solid ${PX.line}`, borderRadius: 12, padding: '8px 12px' }}>
+                <Avatar name={s.name} size={26} />
+                <b style={{ flex: 1, minWidth: 140 }}>{s.name}</b>
+                <span style={{ fontSize: 12.5, color: PX.sub }}>GCC {s.gcc_no || '—'} · batch “{s.batch || 'blank'}”</span>
+                {isAdmin ? BATCHES.map(b => <Btn key={b} disabled={busy === s.id} onClick={() => place(s, b)}>Put in {b}</Btn>) : <span style={{ fontSize: 12, color: PX.faint }}>An admin can fix this in Students.</span>}
+              </div>
+            ))}
+          </div>
+        </PremiumCard>
+      )}
+    </div>
+  )
+}

@@ -8,15 +8,16 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
-import { canonicalBatch } from './courseMap'
 import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
-import { AnalyserTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
+import { AnalyserTab, MaterialTab, ChatTab, StudentsTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
+import { QuestionMakerTab } from './MissionFoundationPaper'
+import { testReportHtml, reportCardsHtml } from './lib/missionFoundationReport'
 import {
-  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN,
-  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest,
+  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
+  subjectByLabel, maxMarks, buildSchedule, foundationRoster, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -86,6 +87,9 @@ export default function MissionFoundation({ currentUser }) {
   const [prizes, setPrizes] = useState([])
   const [allMarks, setAllMarks] = useState(null)
   const [students, setStudents] = useState(null)
+  const [unplaced, setUnplaced] = useState([])
+  const [rosterTick, setRosterTick] = useState(0)
+  const reloadStudents = () => setRosterTick(n => n + 1)
   const today = todayISO()
 
   const flash = useCallback((text, bad) => { setMsg({ text, bad }); setTimeout(() => setMsg(null), bad ? 6000 : 3000) }, [])
@@ -125,11 +129,13 @@ export default function MissionFoundation({ currentUser }) {
   useEffect(() => { loadMarks() }, [loadMarks])
   useEffect(() => {
     let live = true
-    getActiveStudents('id,name,gcc_no,batch,course').then(rows => {
-      if (live) setStudents((rows || []).map(s => ({ ...s, batchName: canonicalBatch(s.batch) })).filter(s => BATCHES.includes(s.batchName)).sort((a, b) => String(a.name).localeCompare(String(b.name))))
+    getActiveStudents('id,name,gcc_no,admission_no,phone,course,batch,status').then(rows => {
+      if (!live) return
+      const r = foundationRoster(rows)
+      setStudents(r.placed); setUnplaced(r.unplaced)
     })
     return () => { live = false }
-  }, [])
+  }, [rosterTick])
   // The test the Teaching / Test day pages open on: the one picked elsewhere, else today's or the next one.
   const activeTest = (tests.some(t => t.id === workTest) && workTest) || focusTest(tests, today)?.id || ''
   const openWork = id => { setWorkTest(id); setOpenTest(id) }
@@ -184,11 +190,13 @@ export default function MissionFoundation({ currentUser }) {
     { label: 'Plan', color: '#185FA5', tabs: [
       { id: 'schedule', label: 'Schedule & syllabus', icon: PIcon.calendar, hint: '8 Monday tests, chapters and paper pattern' },
       { id: 'teachers', label: 'Teachers', icon: PIcon.users, hint: 'Who teaches and sets each subject' },
+      { id: 'students', label: 'Students', icon: PIcon.cap, hint: 'Every Udaan and Pragati student, live from Students', badge: unplaced.length },
     ] },
     { label: 'Teach', color: '#0f7a4c', tabs: [
       { id: 'teaching', label: 'Teaching', icon: PIcon.cap, hint: 'Tick chapters as they are taught' },
       { id: 'material', label: 'Study material', icon: PIcon.folder, hint: 'Notes, worksheets and links' },
       { id: 'mine', label: 'My papers', icon: PIcon.pen, hint: 'Set and check question papers', badge: stats.mine },
+      { id: 'maker', label: 'Question maker', icon: PIcon.file, hint: 'One combined paper for all 6 subjects' },
     ] },
     { label: 'Test day', color: '#a7771f', tabs: [
       { id: 'conduct', label: 'Test day', icon: PIcon.shield, hint: 'Checklist, attendance and marks sheets' },
@@ -239,6 +247,8 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
+              {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
+              {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }} />}
               {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, initialTest: activeTest, onSaved: loadMarks }} />}
@@ -304,7 +314,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
                 <label>Number of tests (one a week)<input className="px-input" type="number" min="1" max="52" value={gen.count} onChange={e => setGen({ ...gen, count: e.target.value })} /></label>
               </div>
               <div style={{ color: PX.sub, fontSize: 13.5 }}>
-                {fresh.length ? <>Mondays: {fresh.map(r => fmt(r.test.test_date)).join(', ')}. Each test has all 6 subjects; setters take turns within each subject. The pattern is {SUBJECTS[0].questions} questions × {SUBJECTS[0].marks_each} marks per subject until you change it.</> : 'Every Monday in that range already has a test.'}
+                {fresh.length ? <>Mondays: {fresh.map(r => fmt(r.test.test_date)).join(', ')}. Each test has all 6 subjects; setters take turns within each subject. All 6 subjects are one paper written in one sitting ({DEFAULT_TEST_MINUTES} minutes); each subject starts at {SUBJECTS[0].questions} questions × {SUBJECTS[0].marks_each} marks until you change it.</> : 'Every Monday in that range already has a test.'}
               </div>
               <div><Btn kind="gold" disabled={busy || !fresh.length} onClick={create}>{busy ? 'Creating…' : `Create ${fresh.length} tests`}</Btn></div>
             </div>
@@ -328,7 +338,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
                   <Pill tone={TEST_TONE[t.status]}>{t.status}</Pill>
                   <span aria-hidden="true">{open ? '▾' : '▸'}</span>
                 </button>
-                {open && <TestEditor {...{ test: t, papers: ps, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
+                {open && <TestEditor {...{ test: t, papers: ps, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
               </div>
             )
           })}
@@ -338,12 +348,13 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
   )
 }
 
-function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
+function TestEditor({ test, papers, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
+  const [copying, setCopying] = useState(false)
   const missing = SUBJECTS.filter(s => !papers.some(p => p.subject === s.label))
   const totalMax = papers.reduce((n, p) => n + maxMarks(p), 0)
   const addPaper = async label => {
     const s = subjectByLabel(label); const setter = (panel[label] || [])[0] || ''
-    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, questions: s.questions, marks_each: s.marks_each, duration_min: s.duration_min, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
+    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
     if (error) flash('Not added: ' + error.message, true); else load()
   }
   const delPaper = async p => {
@@ -365,12 +376,13 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 12 }}>
         <label>Title<BlurField label="Title" value={test.title} onSave={v => saveTest(test.id, { title: v })} /></label>
         <label>Date<input className="px-input" type="date" value={test.test_date} onChange={e => e.target.value && saveTest(test.id, { test_date: e.target.value })} style={{ padding: '7px 10px' }} /></label>
+        <label>Total time (minutes)<BlurField type="number" label="Total time in minutes" value={test.duration_min} onSave={v => saveTest(test.id, { duration_min: v })} /></label>
         <label>Status<select className="px-input" value={test.status} onChange={e => saveTest(test.id, { status: e.target.value })} style={{ padding: '7px 10px' }}>{TEST_FLOW.map(s => <option key={s}>{s}</option>)}</select></label>
         <div>Batches<div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>{BATCHES.map(b => <label key={b} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={(test.batches || []).includes(b)} onChange={() => toggleBatch(b)} />{b}</label>)}</div></div>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table" style={{ width: '100%', minWidth: 1180, background: '#fff' }}>
-          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th>Minutes</th><th>Setter</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
+          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th>Setter</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
           <tbody>
             {papers.map(p => (
               <tr key={p.id}>
@@ -379,7 +391,6 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
                 <td><BlurField type="number" width={64} label="Questions" value={p.questions} onSave={v => savePaper(p.id, { questions: v })} /></td>
                 <td><BlurField type="number" width={64} label="Marks each" value={p.marks_each} onSave={v => savePaper(p.id, { marks_each: v })} /></td>
                 <td style={{ fontWeight: 700 }}>{maxMarks(p) || '—'}</td>
-                <td><BlurField type="number" width={64} label="Minutes" value={p.duration_min} onSave={v => savePaper(p.id, { duration_min: v })} /></td>
                 <td><PersonSelect label="Setter" value={p.setter} options={peopleFor(p.subject)} onChange={v => savePaper(p.id, { setter: v, verifier: p.verifier && p.verifier !== v ? p.verifier : checkerFor(p.subject, v, panel) })} /></td>
                 <td><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => n !== p.setter)} onChange={v => savePaper(p.id, { verifier: v })} /></td>
                 <td><select className="px-input" aria-label="Paper status" value={p.status} onChange={e => savePaper(p.id, { status: e.target.value })} style={{ padding: '7px 10px', minWidth: 116 }}>{PAPER_FLOW.map(s => <option key={s}>{s}</option>)}</select></td>
@@ -391,15 +402,74 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
         </table>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b></span>
+        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b> · Time: <b>{test.duration_min || '—'} min</b> for all {papers.length} subjects in one sitting</span>
         {missing.length > 0 && <select className="px-input" aria-label="Add a subject" value="" onChange={e => e.target.value && addPaper(e.target.value)} style={{ width: 'auto', padding: '7px 10px' }}>
           <option value="">＋ Add a subject…</option>{missing.map(s => <option key={s.key} value={s.label}>{s.label}</option>)}
         </select>}
         <span style={{ flex: 1 }} />
+        {papers.length > 0 && tests.length > 1 && <Btn kind={copying ? 'ghost' : 'gold'} onClick={() => setCopying(v => !v)}>{copying ? 'Close copy' : '⧉ Copy this format to other tests'}</Btn>}
         {isAdmin && <Btn onClick={delTest} style={{ color: PX.bad }}>Delete this test</Btn>}
       </div>
+      {copying && <CopyFormat {...{ test, papers, tests, papersByTest, me, load, flash, onDone: () => setCopying(false) }} />}
       <div style={{ marginTop: 10 }}>
         <BlurField label="Notes" placeholder="Notes for teachers (room, timing, instructions)…" value={test.notes} onSave={v => saveTest(test.id, { notes: v })} />
+      </div>
+    </div>
+  )
+}
+
+// Copy one test's paper format (questions, marks, minutes; optionally teachers and chapters) to other tests.
+function CopyFormat({ test, papers, tests, papersByTest, me, load, flash, onDone }) {
+  const others = tests.filter(t => t.id !== test.id)
+  const [picked, setPicked] = useState(() => Object.fromEntries(others.map(t => [t.id, t.test_date >= test.test_date])))
+  const [opts, setOpts] = useState({ pattern: true, teachers: false, syllabus: false })
+  const [busy, setBusy] = useState(false)
+  const chosen = others.filter(t => picked[t.id])
+  const plan = copyFormatPlan(papers, chosen.map(t => ({ test_id: t.id, papers: papersByTest[t.id] || [] })), opts)
+  const run = async () => {
+    if (!chosen.length) return flash('Tick at least one test.', true)
+    if (!opts.pattern && !opts.teachers && !opts.syllabus) return flash('Choose what to copy.', true)
+    if (!window.confirm(`Copy ${test.title}'s format to ${chosen.length} test(s)? ${plan.updates.length} paper(s) will change${plan.inserts.length ? ` and ${plan.inserts.length} added` : ''}.`)) return
+    setBusy(true)
+    const stamp = { updated_by: me, updated_at: now() }
+    const timeTargets = opts.pattern && test.duration_min ? chosen.filter(t => t.duration_min !== test.duration_min) : []
+    const results = await Promise.all([
+      ...timeTargets.map(t => supabase.from(T_TESTS).update({ duration_min: test.duration_min, ...stamp }).eq('id', t.id)),
+      ...plan.updates.map(u => supabase.from(T_PAPERS).update({ ...u.patch, ...stamp }).eq('id', u.id)),
+      ...(plan.inserts.length ? [supabase.from(T_PAPERS).insert(plan.inserts.map(r => ({ ...r, ...stamp })))] : []),
+    ])
+    setBusy(false)
+    const bad = results.find(r => r.error)
+    if (bad) flash('Some papers were not copied: ' + bad.error.message, true)
+    else { flash(`Copied to ${chosen.length} test(s).${plan.skipped ? ` ${plan.skipped} approved paper(s) were left as they are.` : ''}`); onDone() }
+    load()
+  }
+  const all = v => setPicked(Object.fromEntries(others.map(t => [t.id, v])))
+  return (
+    <div style={{ marginTop: 12, padding: 16, borderRadius: 16, background: '#fff', border: `1.5px solid ${PX.goldLine}` }}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>Copy {test.title}'s format</div>
+      <div style={{ fontSize: 13.5, color: PX.sub, marginBottom: 10 }}>Every subject of the tests you tick gets the same setup as this test. Approved papers are not changed.</div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+        {[['pattern', 'Questions, marks and total time'], ['teachers', 'Setters and checkers'], ['syllabus', 'Syllabus chapters']].map(([k, l]) => (
+          <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600, minHeight: 40 }}><input type="checkbox" checked={opts[k]} onChange={e => setOpts({ ...opts, [k]: e.target.checked })} />{l}</label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <b style={{ fontSize: 13.5 }}>To these tests:</b>
+        <button type="button" className="px-btn ghost" onClick={() => all(true)}>All</button>
+        <button type="button" className="px-btn ghost" onClick={() => all(false)}>None</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {others.map(t => (
+          <label key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderRadius: 12, border: `1px solid ${picked[t.id] ? PX.gold : PX.line}`, background: picked[t.id] ? PX.goldBg : PX.tint, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!picked[t.id]} onChange={e => setPicked({ ...picked, [t.id]: e.target.checked })} />
+            <span><b>{t.title || 'Test ' + t.test_no}</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>{fmt(t.test_date)}</span></span>
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+        <Btn kind="gold" disabled={busy || !chosen.length} onClick={run}>{busy ? 'Copying…' : `Copy to ${chosen.length} test${chosen.length === 1 ? '' : 's'}`}</Btn>
+        <span style={{ fontSize: 13, color: PX.sub }}>{plan.updates.length} paper(s) will change{plan.inserts.length ? `, ${plan.inserts.length} added` : ''}{plan.skipped ? `, ${plan.skipped} approved left alone` : ''}.</span>
       </div>
     </div>
   )
@@ -425,7 +495,7 @@ function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today 
           <Pill tone={late ? 'bad' : PAPER_TONE[p.status]}>{late ? 'Due · ' + p.status : p.status}</Pill>
           <span style={{ color: PX.sub, fontSize: 13 }}>{setter ? 'You set this' : ''}{setter && checker ? ' · ' : ''}{checker ? `You check this (setter ${p.setter || '—'})` : ''}</span>
         </div>
-        <div style={{ fontSize: 13.5, color: PX.ink2 }}>Pattern: {p.questions || '?'} questions × {p.marks_each || '?'} marks = {maxMarks(p) || '?'} · {p.duration_min || '?'} min</div>
+        <div style={{ fontSize: 13.5, color: PX.ink2 }}>Pattern: {p.questions || '?'} questions × {p.marks_each || '?'} marks = {maxMarks(p) || '?'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>
           <label>Syllabus<BlurField label="Syllabus" placeholder="Chapters for this paper" value={p.syllabus} onSave={v => savePaper(p.id, { syllabus: v })} /></label>
           <label>Paper link (Google Drive etc.)<BlurField label="Paper link" placeholder="https://…" value={p.paper_link} onSave={v => savePaper(p.id, { paper_link: v ? safeUrl(v) : '' })} /></label>
@@ -518,12 +588,21 @@ const markKey = (sid, subj) => `${sid}|${subj}`
 
 function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSaved }) {
   const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
-  const [batch, setBatch] = useState(BATCHES[0])
+  const [batch, setBatch] = useState(BATCHES[0])     // a batch, or 'Both'
+  const [subjectPick, setSubjectPick] = useState(null)  // null = not chosen yet (default below), 'all', or a subject label
   const [entries, setEntries] = useState({})   // `${student_id}|${subject}` → { marks, absent }
-  const [dirty, setDirty] = useState(false)
+  const [changed, setChanged] = useState(() => new Set())   // keys typed since the last save
+  const dirty = changed.size > 0
   const [busy, setBusy] = useState(false)
-  const papers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
-  const list = (students || []).filter(s => s.batchName === batch)
+  const testPapers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
+  // A teacher who sets exactly one subject of this test opens on that subject; everyone else on the full sheet.
+  const mine = testPapers.filter(p => nameMatches(me, p.setter))
+  const subject = subjectPick ?? (mine.length === 1 ? mine[0].subject : 'all')
+  const single = subject !== 'all' && testPapers.some(p => p.subject === subject)
+  const papers = useMemo(() => (single ? testPapers.filter(p => p.subject === subject) : testPapers), [single, testPapers, subject])
+  const list = (students || []).filter(s => (batch === 'Both' ? BATCHES.includes(s.batchName) : s.batchName === batch))
+  const filled = single ? list.filter(s => { const e = entries[markKey(s.id, subject)]; return e && (e.absent || (e.marks !== '' && e.marks != null)) }).length : 0
+  const nextBox = (i) => { const el = document.querySelector(`[data-mark-row="${i + 1}"]`); if (el) { el.focus(); el.select?.() } }
 
   useEffect(() => {
     if (!testId) { setEntries({}); return }
@@ -532,42 +611,81 @@ function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSav
       if (!live) return
       if (error) flash('Could not load marks: ' + error.message, true)
       setEntries(Object.fromEntries((data || []).map(r => [markKey(r.student_id, r.subject), { marks: r.marks ?? '', absent: r.absent }])))
-      setDirty(false)
+      setChanged(new Set())
     })
     return () => { live = false }
   }, [testId, flash])
 
-  const errors = list.flatMap(s => papers.map(p => markError(entries[markKey(s.id, p.subject)]?.marks, maxMarks(p)))).filter(Boolean).length
+  // Saving covers every subject and both batches, so switching subject or batch never loses typed marks.
+  const everyone = (students || []).filter(s => BATCHES.includes(s.batchName))
+  const errors = everyone.flatMap(s => testPapers.map(p => markError(entries[markKey(s.id, p.subject)]?.marks, maxMarks(p)))).filter(Boolean).length
   const save = async () => {
     if (errors) return flash(`Fix ${errors} mark(s) first: each must be from 0 to the paper's full marks.`, true)
-    const rows = list.flatMap(s => papers.map(p => {
+    const rows = everyone.flatMap(s => testPapers.map(p => {
+      if (!changed.has(markKey(s.id, p.subject))) return null
       const e = entries[markKey(s.id, p.subject)]
       if (!e || (!e.absent && (e.marks === '' || e.marks === null))) return null
-      return { test_id: testId, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name, batch, subject: p.subject,
+      return { test_id: testId, student_id: String(s.id), gcc_no: s.gcc_no ? String(s.gcc_no) : null, student_name: s.name, batch: s.batchName, subject: p.subject,
         marks: e.absent ? null : Number(e.marks), absent: !!e.absent, entered_by: me, updated_at: now() }
     })).filter(Boolean)
     if (!rows.length) return flash('Nothing to save yet.', true)
     setBusy(true)
     const { error } = await supabase.from(T_MARKS).upsert(rows, { onConflict: 'test_id,student_id,subject' })
     setBusy(false)
-    if (error) flash('Not saved: ' + error.message, true); else { setDirty(false); flash(`Saved ${rows.length} marks for ${batch}.`); onSaved?.() }
+    if (error) flash('Not saved: ' + error.message, true); else { setChanged(new Set()); flash(`Saved ${rows.length} marks${single ? ' in ' + subject : ''} for ${batch === 'Both' ? 'Udaan and Pragati' : batch}.`); onSaved?.() }
   }
-  const set = (sid, subj, patch) => { setDirty(true); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
+  const set = (sid, subj, patch) => { setChanged(c => new Set(c).add(markKey(sid, subj))); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
   const absentAll = (sid, on) => papers.forEach(p => set(sid, p.subject, { absent: on }))
 
   if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   return (
-    <PremiumCard title="Enter marks" subtitle="All subjects of the test for one batch. Empty boxes are not saved. Tick AB for a student absent from the whole test." bodyStyle={{ padding: 0 }}
+    <PremiumCard title={single ? `Enter marks · ${subject}` : 'Enter marks'} subtitle={single ? 'One subject for every student. Type a mark and press Enter to go to the next student. Empty boxes are not saved.' : 'All subjects of the test for one batch. Empty boxes are not saved. Tick AB for a student absent from the whole test.'} bodyStyle={{ padding: 0 }}
       right={<Btn kind="gold" disabled={busy || !papers.length} onClick={save}>{busy ? 'Saving…' : dirty ? 'Save marks •' : 'Save marks'}</Btn>}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px' }}>
         <select className="px-input" aria-label="Test" value={testId} onChange={e => { if (!dirty || window.confirm('Leave without saving?')) setTestId(e.target.value) }} style={{ width: 'auto' }}>
           {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}
         </select>
-        <select className="px-input" aria-label="Batch" value={batch} onChange={e => setBatch(e.target.value)} style={{ width: 'auto' }}>{BATCHES.map(b => <option key={b}>{b}</option>)}</select>
+        <select className="px-input" aria-label="Batch" value={batch} onChange={e => setBatch(e.target.value)} style={{ width: 'auto' }}>{BATCHES.map(b => <option key={b}>{b}</option>)}<option value="Both">Both batches</option></select>
+        <div role="group" aria-label="Subject" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[{ key: 'all', label: 'All subjects' }, ...testPapers.map(p => ({ key: p.subject, label: subjectByLabel(p.subject)?.short || p.subject }))].map(o => (
+            <button key={o.key} type="button" className={'px-btn ' + (subject === o.key || (o.key === 'all' && !single) ? 'gold' : 'ghost')} aria-pressed={subject === o.key}
+              onClick={() => setSubjectPick(o.key)}>{o.label}</button>
+          ))}
+        </div>
+        {single && list.length > 0 && <span style={{ alignSelf: 'center', fontSize: 13, color: filled === list.length ? PX.ok : PX.sub, fontWeight: 700 }}>{filled} / {list.length} entered</span>}
       </div>
       {!papers.length ? <div style={{ padding: 20, color: PX.sub }}>This test has no papers.</div>
         : students === null ? <div style={{ padding: 20, color: PX.sub }}>Loading students…</div>
-        : !list.length ? <div style={{ padding: 20, color: PX.sub }}>No active students found in {batch}.</div> : (
+        : !list.length ? <div style={{ padding: 20, color: PX.sub }}>No active students found in {batch}.</div> : single ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="px-table" style={{ width: '100%' }}>
+              <thead><tr><th>#</th><th>Student</th>{batch === 'Both' && <th>Batch</th>}<th>{subject} /{maxMarks(papers[0]) || '?'}</th><th>Absent</th></tr></thead>
+              <tbody>
+                {list.map((s, i) => {
+                  const p = papers[0]
+                  const e = entries[markKey(s.id, p.subject)] || { marks: '', absent: false }
+                  const err = markError(e.marks, maxMarks(p))
+                  return (
+                    <tr key={s.id}>
+                      <td>{i + 1}</td>
+                      <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}<div style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500 }}>{s.gcc_no ? 'GCC ' + s.gcc_no : ''}</div></td>
+                      {batch === 'Both' && <td><Pill tone={s.batchName === 'Udaan' ? 'info' : 'gold'}>{s.batchName}</Pill></td>}
+                      <td>
+                        <input className="px-input" type="number" inputMode="decimal" min="0" max={maxMarks(p) || undefined} data-mark-row={i} aria-label={`${p.subject} marks for ${s.name}`} title={err || undefined}
+                          disabled={e.absent} placeholder={e.absent ? 'AB' : ''} value={e.absent ? '' : e.marks}
+                          onChange={ev => set(s.id, p.subject, { marks: ev.target.value })}
+                          onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); nextBox(i) } }}
+                          style={{ width: 90, padding: '7px 10px', fontSize: 15, borderColor: err ? PX.bad : undefined, background: err ? PX.badBg : undefined }} />
+                        {err && <div style={{ fontSize: 11.5, color: PX.bad }}>{err}</div>}
+                      </td>
+                      <td><input type="checkbox" aria-label={`${s.name} absent`} checked={!!e.absent} onChange={ev => set(s.id, p.subject, { absent: ev.target.checked })} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="px-table" style={{ width: '100%', minWidth: 760 }}>
               <thead><tr><th>#</th><th>Student</th>{papers.map(p => <th key={p.id}>{subjectByLabel(p.subject)?.short || p.subject} /{maxMarks(p) || '?'}</th>)}<th>AB</th></tr></thead>
@@ -628,10 +746,14 @@ function ResultsTab({ tests, papersByTest, flash, today }) {
     ...ranked.map(r => [r.rank ?? 'AB', r.student_name, r.gcc_no || '', r.batch, ...papers.map(p => r.subjects[p.subject] ?? ''), r.total, r.max, r.pct ?? '']),
   ])
 
+  const reportInput = () => ({ mission: MISSION_NAME, title: test?.title || 'Test ' + test?.test_no, date: fmt(test?.test_date), batch, papers, ranked,
+    rows: (rows || []).filter(r => batch === 'All' || r.batch === batch), short: l => subjectByLabel(l)?.short || l })
+  const openPrint = html => { const w = window.open('', '_blank'); if (!w) return flash('Allow pop-ups to print.', true); w.document.write(html); w.document.close() }
+
   if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   return (
     <PremiumCard title={`Results · ${test?.title || ''}`} subtitle={test ? `${fmt(test.test_date)} · ranked by percentage of the papers each student sat` : ''} bodyStyle={{ padding: 0 }}
-      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn onClick={() => window.print()} disabled={!ranked.length}>Print</Btn></div>}>
+      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn kind="gold" onClick={() => openPrint(testReportHtml(reportInput(), true))} disabled={!ranked.length}>🖨 Combined report</Btn><Btn onClick={() => openPrint(reportCardsHtml(reportInput(), true))} disabled={!ranked.length}>Report cards</Btn></div>}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px' }}>
         <select className="px-input" aria-label="Test" value={testId} onChange={e => setTestId(e.target.value)} style={{ width: 'auto' }}>
           {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}

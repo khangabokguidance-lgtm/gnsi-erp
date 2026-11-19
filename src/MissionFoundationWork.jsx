@@ -70,7 +70,7 @@ export function HomeDashboard({ tests, ctx, today, me, isAdmin, papers, testById
   }
   return (
     <>
-      <PremiumCard title={`${focus.title || 'Test ' + focus.test_no} · ${fmtLong(focus.test_date)}`} subtitle={`${when} · ${(focus.batches || BATCHES).join(' & ')}${focus.venue ? ' · ' + focus.venue : ''}${focus.start_time ? ' · ' + focus.start_time : ''}`}
+      <PremiumCard title={`${focus.title || 'Test ' + focus.test_no} · ${fmtLong(focus.test_date)}`} subtitle={`${when} · ${(focus.batches || BATCHES).join(' & ')}${focus.venue ? ' · ' + focus.venue : ''}${focus.start_time ? ' · ' + focus.start_time : ''}${focus.duration_min ? ' · ' + focus.duration_min + ' min, one sitting' : ''}`}
         right={<Pill tone={days < 0 ? 'mute' : days <= 2 ? 'gold' : 'info'}>{when}</Pill>}>
         <Stepper cycle={cycle} onOpen={setTab} />
         {next ? (
@@ -229,9 +229,9 @@ export function ConductTab({ tests, testId, setTestId, papersByTest, students, m
   const attendanceSheets = () => {
     const pages = batches.map(b => {
       const list = roster.filter(s => s.batchName === b)
-      return `<div class="pg">${head('Attendance sheet')}<div class="meta"><span>Batch: <b>${esc(b)}</b></span><span>${esc(fmtLong(test.test_date))}</span><span>${esc(test.venue || '')} ${esc(test.start_time || '')}</span></div>
-        <table><thead><tr><th class="c">#</th><th>Student</th><th>GCC</th>${papers.map(p => `<th class="c">${esc(subjectByLabel(p.subject)?.short || p.subject)}<br>sign</th>`).join('')}</tr></thead>
-        <tbody>${list.map((s, i) => `<tr><td class="c">${i + 1}</td><td>${esc(s.name)}</td><td>${esc(s.gcc_no || '')}</td>${papers.map(() => '<td></td>').join('')}</tr>`).join('')}</tbody></table>
+      return `<div class="pg">${head('Attendance sheet')}<div class="meta"><span>Batch: <b>${esc(b)}</b></span><span>${esc(fmtLong(test.test_date))}</span><span>${esc(test.venue || '')} ${esc(test.start_time || '')}${test.duration_min ? ' · ' + esc(test.duration_min) + ' min' : ''}</span></div>
+        <table><thead><tr><th class="c">#</th><th>Student</th><th>GCC</th><th class="c" style="width:22%">Student's signature</th><th class="c" style="width:12%">Present / Absent</th></tr></thead>
+        <tbody>${list.map((s, i) => `<tr><td class="c">${i + 1}</td><td>${esc(s.name)}</td><td>${esc(s.gcc_no || '')}</td><td></td><td></td></tr>`).join('')}</tbody></table>
         <div class="sig"><span>Present: ______ &nbsp; Absent: ______</span><span>Invigilator: ${esc(test.invigilators || '________________')}</span></div></div>`
     })
     if (!printHtml('Attendance sheets', pages.join(''))) flash('Allow pop-ups to print.', true)
@@ -247,9 +247,9 @@ export function ConductTab({ tests, testId, setTestId, papersByTest, students, m
     if (!printHtml('Marks sheets', pages.join(''))) flash('Allow pop-ups to print.', true)
   }
   const dutyChart = () => {
-    const body = `<div class="pg">${head('Test-day plan')}<div class="meta"><span>${esc(fmtLong(test.test_date))}</span><span>${esc(test.venue || '')}</span><span>${esc(test.start_time || '')}</span></div>
-      <table><thead><tr><th>Subject</th><th>Syllabus</th><th class="c">Questions</th><th class="c">Marks</th><th class="c">Minutes</th><th>Paper set by</th><th>Checked by</th></tr></thead>
-      <tbody>${papers.map(p => `<tr><td>${esc(p.subject)}</td><td>${esc(p.syllabus || '')}</td><td class="c">${esc(p.questions)}</td><td class="c">${maxMarks(p)}</td><td class="c">${esc(p.duration_min)}</td><td>${esc(p.setter || '')}</td><td>${esc(p.verifier || '')}</td></tr>`).join('')}</tbody></table>
+    const body = `<div class="pg">${head('Test-day plan')}<div class="meta"><span>${esc(fmtLong(test.test_date))}</span><span>${esc(test.venue || '')}</span><span>${esc(test.start_time || '')}${test.duration_min ? ' · ' + esc(test.duration_min) + ' min (all subjects, one sitting)' : ''}</span></div>
+      <table><thead><tr><th>Subject</th><th>Syllabus</th><th class="c">Questions</th><th class="c">Marks</th><th>Paper set by</th><th>Checked by</th></tr></thead>
+      <tbody>${papers.map(p => `<tr><td>${esc(p.subject)}</td><td>${esc(p.syllabus || '')}</td><td class="c">${esc(p.questions)}</td><td class="c">${maxMarks(p)}</td><td>${esc(p.setter || '')}</td><td>${esc(p.verifier || '')}</td></tr>`).join('')}</tbody></table>
       <p style="font-size:12px;margin-top:12px"><b>Invigilators:</b> ${esc(test.invigilators || '—')}<br><b>Students:</b> ${batches.map(b => `${esc(b)} ${roster.filter(s => s.batchName === b).length}`).join(' · ')}</p>
       ${test.notes ? `<p style="font-size:12px"><b>Notes:</b> ${esc(test.notes)}</p>` : ''}<div class="sig"><span>Exam in-charge</span><span>Principal</span></div></div>`
     if (!printHtml('Test-day plan', body)) flash('Allow pop-ups to print.', true)
@@ -258,7 +258,7 @@ export function ConductTab({ tests, testId, setTestId, papersByTest, students, m
   const doneN = CONDUCT_STEPS.filter(s => s.auto ? autoDone[s.key] : checklist[s.key]?.done).length
   return (
     <>
-      <PremiumCard title="Test day" subtitle={`${fmtLong(test.test_date)} · ${roster.length} students in ${batches.join(' & ')}`} right={<TestPicker tests={tests} value={testId} onChange={setTestId} />}>
+      <PremiumCard title="Test day" subtitle={`${fmtLong(test.test_date)} · ${roster.length} students in ${batches.join(' & ')}${test.duration_min ? ` · all ${papers.length} subjects in one sitting of ${test.duration_min} min` : ''}`} right={<TestPicker tests={tests} value={testId} onChange={setTestId} />}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
           {field('venue', 'Hall / room', 'e.g. Main hall')}
           {field('start_time', 'Start time', 'e.g. 9:00 AM')}

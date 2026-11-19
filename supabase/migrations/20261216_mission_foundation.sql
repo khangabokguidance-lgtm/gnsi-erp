@@ -10,6 +10,7 @@
 --   mission_foundation_messages   the teachers' group chat
 --   mission_foundation_teaching   chapters taught before each test
 --   mission_foundation_prizes     prizes decided and handed over
+--   mission_foundation_questions  questions of the combined paper (all subjects, one sitting)
 -- Staff only (same rule as Mission Sainik): needs public.qbank_is_staff() from 20260925_qbank_rls.sql.
 -- Run once in the Supabase SQL editor. Safe to run more than once.
 -- ============================================================================
@@ -102,6 +103,8 @@ alter table public.mission_foundation_tests add column if not exists venue      
 alter table public.mission_foundation_tests add column if not exists start_time   text;
 alter table public.mission_foundation_tests add column if not exists invigilators text;
 alter table public.mission_foundation_tests add column if not exists checklist    jsonb not null default '{}'::jsonb;
+-- All six subjects are written in one sitting: one total time per test.
+alter table public.mission_foundation_tests add column if not exists duration_min integer default 120;
 
 create table if not exists public.mission_foundation_teaching (
   id          uuid primary key default gen_random_uuid(),
@@ -130,11 +133,34 @@ create table if not exists public.mission_foundation_prizes (
   unique (scope, award_key, student_id)
 );
 
+-- Combined question paper: every subject's questions for a test, printed as one booklet.
+create table if not exists public.mission_foundation_questions (
+  id           uuid primary key default gen_random_uuid(),
+  test_id      uuid not null references public.mission_foundation_tests(id) on delete cascade,
+  subject      text not null,
+  position     integer not null default 0,
+  question     text not null,
+  option_a     text not null,
+  option_b     text not null,
+  option_c     text not null,
+  option_d     text not null,
+  answer       text not null check (answer in ('A', 'B', 'C', 'D')),
+  explanation  text,
+  topic        text,
+  difficulty   text,
+  passage      text,
+  image_data   text,
+  uploaded_by  text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists mission_foundation_questions_test on public.mission_foundation_questions (test_id, subject, position);
+
 do $$
 declare t text;
 begin
   foreach t in array array['mission_foundation_tests', 'mission_foundation_papers', 'mission_foundation_panel', 'mission_foundation_marks',
-                       'mission_foundation_materials', 'mission_foundation_messages', 'mission_foundation_teaching', 'mission_foundation_prizes']
+                       'mission_foundation_materials', 'mission_foundation_messages', 'mission_foundation_teaching', 'mission_foundation_prizes',
+                       'mission_foundation_questions']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_staff', t);

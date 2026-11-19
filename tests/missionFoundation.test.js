@@ -113,3 +113,39 @@ test('test cycle shows the next step', () => {
   assert.equal(c.steps[1].value, 1)
   assert.deepEqual(splitChapters('A; B\nC;'), ['A', 'B', 'C'])
 })
+
+import { copyFormatPlan } from '../src/missionFoundationData.js'
+
+test('copy format: updates matching papers, adds missing subjects, skips approved ones', () => {
+  const src = [
+    { subject: 'Mathematics I', questions: 20, marks_each: 1, setter: 'Kabiraj', verifier: 'Roshan', syllabus: 'Fractions' },
+    { subject: 'EVS', questions: 20, marks_each: 1, setter: 'Arjun', verifier: 'Roshan' },
+  ]
+  const targets = [
+    { test_id: 't2', papers: [{ id: 'p1', subject: 'Mathematics I', questions: 25, marks_each: 2, setter: 'Lenin', status: 'Pending' }] },
+    { test_id: 't3', papers: [
+      { id: 'p2', subject: 'Mathematics I', questions: 20, marks_each: 1, status: 'Pending' },
+      { id: 'p3', subject: 'EVS', questions: 25, marks_each: 2, status: 'Approved' },
+    ] },
+  ]
+  const plan = copyFormatPlan(src, targets, { pattern: true })
+  assert.deepEqual(plan.updates, [{ id: 'p1', patch: { questions: 20, marks_each: 1 } }])
+  assert.equal(plan.inserts.length, 1)
+  assert.deepEqual([plan.inserts[0].test_id, plan.inserts[0].subject, plan.inserts[0].questions, plan.inserts[0].setter], ['t2', 'EVS', 20, ''])
+  assert.equal(plan.skipped, 1)
+  const withTeachers = copyFormatPlan(src, targets.slice(0, 1), { pattern: true, teachers: true, syllabus: true })
+  assert.deepEqual(withTeachers.updates[0].patch, { questions: 20, marks_each: 1, setter: 'Kabiraj', verifier: 'Roshan', syllabus: 'Fractions' })
+})
+
+test('foundation roster takes every Udaan / Pragati student and flags Foundation students with no batch', async () => {
+  const { foundationRoster } = await import('../src/missionFoundationData.js')
+  const r = foundationRoster([
+    { id: 1, name: 'Zed', batch: 'UDAAN — ENG', course: '' },
+    { id: 2, name: 'Amy', batch: 'Elite', course: 'Foundation' },
+    { id: 3, name: 'Bo', batch: 'prime', course: '' },
+    { id: 4, name: 'Cy', batch: '', course: 'Foundation' },
+    { id: 5, name: 'Di', batch: 'Achiever', course: 'Sainik' },
+  ])
+  assert.deepEqual(r.placed.map(s => [s.name, s.batchName]), [['Amy', 'Udaan'], ['Bo', 'Pragati'], ['Zed', 'Udaan']])
+  assert.deepEqual(r.unplaced.map(s => s.name), ['Cy'])
+})
