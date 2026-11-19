@@ -2725,13 +2725,13 @@ function certHTML(t,s,idx,count){
   const isTop=rank<=3;const tier=isTop?TIER[rank]:TIER.r;const cls=tier.cls;const gid='tg'+(uid++);
   const disp=title(name);
   const posText=isTop?`${WORD[rank]} Position`:`Rank ${rank}`;
-  const ph=photoFor(t.course,name);
+  const ph=photoFor(s[4]||t.course,name);
   const date=$('inDate').value?new Date($('inDate').value+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}):'';
-  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(t.course)}/${String(idx+1).padStart(3,'0')}`;
+  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(s[4]||t.course)}/${String(idx+1).padStart(3,'0')}`;
   const logo=state.assets.logo?`<img class="logo" src="${state.assets.logo}" alt="">`:'';
   const sigImg=k=>state.assets[k]?`<img src="${state.assets[k]}" alt="">`:'';
   const nameSize=disp.length>22?32:disp.length>16?38:44;
-  return `<div class="cert ${cls}" data-course="${esc(t.course)}" data-name="${esc(name)}">
+  return `<div class="cert ${cls}" data-course="${esc(s[4]||t.course)}" data-name="${esc(name)}">
   <div class="bg" style='background-image:${guilloche(cls)}'></div>
   <div class="b-outer"></div><div class="b-metal"></div><div class="b-inner"></div>
   ${corner(cls).replace('class="corner"','class="corner tl"')}${corner(cls).replace('class="corner"','class="corner tr"')}${corner(cls).replace('class="corner"','class="corner bl"')}${corner(cls).replace('class="corner"','class="corner br"')}
@@ -2825,22 +2825,22 @@ function certPremium(t,s,idx,count){
   const [name,total,rank,subs]=s;
   const isTop=rank<=3;const tier=isTop?TIER[rank]:TIER.r;const cls=tier.cls;
   const posText=isTop?`${WORD[rank]} Position`:`Rank ${rank}`;
-  const ph=photoFor(t.course,name);
+  const ph=photoFor(s[4]||t.course,name);
   const dv=$('inDate').value;const date=dv?new Date(dv+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}):'';
-  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(t.course)}/${String(idx+1).padStart(3,'0')}`;
+  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(s[4]||t.course)}/${String(idx+1).padStart(3,'0')}`;
   const logo=(state.assets.logo?`<img class="logo" src="${state.assets.logo}" alt="">`:`<div class="logo-ph">GNSI</div>`)+(state.assets.logo2?`<img class="logo2" src="${state.assets.logo2}" alt="">`:'');
   const sig=(k,n,ti)=>`<div class="s2"><div class="img">${state.assets[k]?`<img src="${state.assets[k]}" alt="">`:''}</div><div class="ln"></div>${$(n).value?`<div class="nmx">${esc($(n).value)}</div>`:''}<div class="ttl">${esc($(ti).value)}</div></div>`;
   const qr=qrSVG(`GNSI CERTIFICATE ${certNo.replace(/&amp;/g,'&')}\n${name}\n${t.course}\n${ORD(t.no)} ${t.label||'Mega Mock Test'} ${t.year}\nTotal ${fmt(total)}/${t.full||100}\n${posText} of ${count}\nIssued ${date}`);
   const lead=isTop?'for outstanding performance and securing the':'for commendable performance and securing';
   const nameSz=name.length>24?28:name.length>18?33:39;
-  return `<div class="cert p ${cls}${INK?' ink':''}" data-course="${esc(t.course)}" data-name="${esc(name)}">${INK?pbgInk():PBG}
+  return `<div class="cert p ${cls}${INK?' ink':''}" data-course="${esc(s[4]||t.course)}" data-name="${esc(name)}">${INK?pbgInk():PBG}
   <div class="inner">
     <div class="top">${logo}<div class="org"><div class="n">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div><div class="p">${esc(($('inAddr').value||'').toUpperCase())}</div><div class="s">${ORD(t.no)} ${t.label||'Mega Mock Test'} Series ${t.year}</div></div><div></div></div>
     <div class="head"><div class="c">CERTIFICATE</div><div class="o"><span>${tier.w2.toUpperCase()}</span></div><div class="no">CERTIFICATE NO. &nbsp;<b>${certNo}</b></div></div>
     <div class="bodyrow">
       <div class="ph" title="Click to set this student's photo"><div class="in">${ph?`<img src="${ph}" alt="">`:`${phSvg(esc(initials(name)))}<div class="hint">+ Add photo</div>`}</div><div class="tag">${isTop?posText.toUpperCase():'RANK '+rank}</div></div>
       <div class="pmid"><div class="pre">This certificate is proudly presented to</div><div class="nm" style="font-size:${nameSz}pt">${esc(title(name))}</div><div class="rule"><i></i><b></b><i></i></div>
-        <div class="ach">${lead} <b class="pos">${posText}</b> among ${count} students of the <b>${esc(courseName(t.course))}</b> batch in the <b>${ORD(t.no)} ${t.label||'Navodaya Mega Mock Test'}</b>, with a total score of <b>${fmt(total)} out of ${t.full||100}</b>.</div></div>
+        <div class="ach">${lead} <b class="pos">${posText}</b> among ${count} students ${t.combined?'across all batches (<b>'+esc(courseName(s[4]||t.course))+'</b> batch)':'of the <b>'+esc(courseName(t.course))+'</b> batch'} in the <b>${ORD(t.no)} ${t.label||'Navodaya Mega Mock Test'}</b>, with a total score of <b>${fmt(total)} out of ${t.full||100}</b>.</div></div>
       ${seal2(isTop?cls:'tm',rank,isTop)}
     </div>
     <div class="marks" style="grid-template-columns:repeat(${subs.length},1fr) 1.2fr 1fr">${subs.map((x,i)=>`<div><span class="k">${(t.subj||SUBJ)[i]||''}</span><span class="v">${fmt(x[3])}<small> / ${(t.per||[])[i]||25}</small></span><i class="bar"><b style="width:${Math.min(100,Math.round(x[3]/((t.per||[])[i]||25)*100))}%"></b></i><em>Subject rank ${x[4]}</em></div>`).join('')}<div class="hl"><span class="k">Total Marks</span><span class="v">${fmt(total)}<small> / ${t.full||100}</small></span><em>${fmt(Math.round(total/(t.full||100)*10000)/100)}% scored</em></div><div class="hl"><span class="k">Test Rank</span><span class="v">${rank}<small> / ${count}</small></span><em>${isTop?posText:'Top '+Math.ceil(rank/count*100)+'%'}</em></div></div>
@@ -2892,15 +2892,15 @@ function certModern(t,s,idx,count){
   const [name,total,rank,subs]=s;
   const isTop=rank<=3;const tier=isTop?TIER[rank]:TIER.r;const cls=tier.cls;
   const posText=isTop?`${WORD[rank]} Position`:`Rank ${rank}`;
-  const ph=photoFor(t.course,name);
+  const ph=photoFor(s[4]||t.course,name);
   const dv=$('inDate').value;const date=dv?dv.split('-').reverse().join('-'):'';
-  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(t.course)}/${String(idx+1).padStart(3,'0')}`;
+  const certNo=`${esc($('inPrefix').value||'GNSI')}/${t.year}/MMT${String(t.no).padStart(2,'0')}/${courseCode(s[4]||t.course)}/${String(idx+1).padStart(3,'0')}`;
   const logo=state.assets.logo?`<img class="logo" src="${state.assets.logo}" alt="">`:`<div class="logo-ph">GNSI</div>`;
   const sig=(k,n,ti)=>`<div class="s"><div class="img">${state.assets[k]?`<img src="${state.assets[k]}" alt="">`:''}</div><div class="ln"></div>${$(n).value?`<div class="nmx">${esc($(n).value)}</div>`:''}<div class="ttl">${esc($(ti).value)}<br><span>Guidance Navodaya &amp; Sainik Institute</span></div></div>`;
   const qr=qrSVG(`GNSI CERTIFICATE ${certNo.replace(/&amp;/g,'&')}\n${name}\n${t.course}\n${ORD(t.no)} Mega Mock Test ${t.year}\nTotal ${fmt(total)}/${t.full||100}\n${posText} of ${count}\nIssued ${date}`);
   const verb=isTop?`secured the <b class="pos">${posText}</b>`:`secured <b class="pos">${posText}</b>`;
   const nameSz=name.length>24?24:name.length>18?28:33;
-  return `<div class="cert m ${cls}" data-course="${esc(t.course)}" data-name="${esc(name)}">${SHAPES}
+  return `<div class="cert m ${cls}" data-course="${esc(s[4]||t.course)}" data-name="${esc(name)}">${SHAPES}
   <div class="card">${FRAME}${ROSETTE}<div class="inner">
     <div class="top">${logo}<div class="org"><div class="n">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div><div class="p">KHANGABOK</div></div>${seal(isTop?cls:'tm',rank,isTop,count)}</div>
     <div class="head"><div class="c">CERTIFICATE</div><div class="band"><span>${tier.w2}</span></div>
@@ -2923,24 +2923,34 @@ function fillSelects(keep){
   st.innerHTML=ts.map(n=>`<option value="${n}">${ORD(n)} ${(RES.find(r=>r.no===n)||{}).label||'Mega Mock Test'}</option>`).join('');
   st.value=ts.includes(cur)?cur:ts[ts.length-1];
   const cs=[...new Set(RES.map(r=>r.course))].sort();const sc=$('selCourse');const cc=keep?sc.value:lsGet('course','ALL');
-  sc.innerHTML=`<option value="ALL">All batches</option>`+cs.map(c=>`<option value="${esc(c)}">${esc(courseName(c))}</option>`).join('');
+  sc.innerHTML=`<option value="ALL">All batches (ranked batch by batch)</option><option value="COMBINED">All batches combined (one overall ranking)</option>`+cs.map(c=>`<option value="${esc(c)}">${esc(courseName(c))}</option>`).join('');
   sc.value=[...sc.options].some(o=>o.value===cc)?cc:'ALL';
   const sr=$('selRankers');const rv=keep?sr.value:lsGet('rankers','3');
   sr.innerHTML=[3,5,10,15,20,25].map(n=>`<option value="${n}">${n===3?'Top 3 only':'Rank '+n}</option>`).join('');
   sr.value=[...sr.options].some(o=>o.value===rv)?rv:'10';
 }
 let current=[];
+function combineSets(sets){
+  const f=sets[0];const st=[];sets.forEach(t=>t.st.forEach(s=>st.push([s[0],s[1],0,s[3].map(x=>x.slice()),t.course])));
+  const dr=v=>{const u=[...new Set(v)].sort((a,b)=>b-a);return v.map(x=>u.indexOf(x)+1)};
+  dr(st.map(s=>s[1])).forEach((r,i)=>st[i][2]=r);
+  const n=Math.max(...st.map(s=>s[3].length));
+  for(let j=0;j<n;j++)dr(st.map(s=>(s[3][j]||[0,0,0,0])[3])).forEach((r,i)=>{if(st[i][3][j])st[i][3][j][4]=r});
+  st.sort((a,b)=>a[2]-b[2]||b[1]-a[1]);
+  return {no:f.no,year:f.year,course:'ALL BATCHES',full:f.full,subj:f.subj,per:f.per,label:f.label,combined:true,st};
+}
 function render(){
   const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
   lsSet('test',no);lsSet('course',course);lsSet('rankers',lim);
-  const sets=RES.filter(r=>r.no===no&&(course==='ALL'||r.course===course)).sort((a,b)=>a.course.localeCompare(b.course));
+  let sets=RES.filter(r=>r.no===no&&(course==='ALL'||course==='COMBINED'||r.course===course)).sort((a,b)=>a.course.localeCompare(b.course));
+  if(course==='COMBINED'&&sets.length)sets=[combineSets(sets)];
   current=[];let dropped=0;const counts={1:0,2:0,3:0,r:0};
   let html='';
   sets.forEach(t=>{const n=t.st.length;const mv=+$('inMinMarks').value||0,mm=$('selMarkMode').value;const ranked=t.st.filter(s=>s[2]<=lim);const pick=ranked.filter(s=>!mv||(mm==='lt'?s[1]<mv:s[1]>=mv)).sort((a,b)=>a[2]-b[2]);dropped+=ranked.length-pick.length;
     pick.forEach((s,i)=>{current.push({t,s});counts[s[2]<=3?s[2]:'r']++;
       html+=`<div class="sheet-wrap"><div class="meta"><span>${esc(courseName(t.course))} · ${esc(s[0])}</span><span>${s[2]<=3?WORD[s[2]]+' position':'Rank '+s[2]}</span></div><div class="sheet-scale">${design==='classic'?certHTML(t,s,i,n):design==='modern'?certModern(t,s,i,n):certPremium(t,s,i,n)}</div></div>`;})});
   $('stage').innerHTML=html||'<div class="empty">No results for this choice.</div>';
-  const withPh=current.filter(c=>photoFor(c.t.course,c.s[0])).length;
+  const withPh=current.filter(c=>photoFor(c.s[4]||c.t.course,c.s[0])).length;
   $('stat').innerHTML=`<span><b>${current.length}</b> certificates in this set${dropped?` (${dropped} hidden by the marks filter)`:''}</span><span>Gold ${counts[1]} · Silver ${counts[2]} · Bronze ${counts[3]} · Merit ${counts.r}</span><span>Photos added: <b>${withPh}</b> of ${current.length}</span><span class="note">Tied students share a position, so each gets the same certificate.</span>`;
   fit();
 }
