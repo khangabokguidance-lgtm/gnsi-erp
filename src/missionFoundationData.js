@@ -124,9 +124,31 @@ export function markError(value, max) {
 // Whole-word, case-insensitive match of a panel name ("Roshan") inside a login name ("Sir Roshan Singh").
 export function nameMatches(who, name) {
   if (!who || !name) return false
-  return String(who).toLowerCase().split(/[^a-z0-9]+/).includes(String(name).toLowerCase())
+  const words = String(who).toLowerCase().split(/[^a-z0-9]+/)
+  const want = cleanTeacherName(name).toLowerCase()
+  return !!want && (words.includes(want) || want.split(/[^a-z0-9]+/).filter(Boolean).every(w => words.includes(w)))
 }
-export const titled = n => (/^(Sandhya)$/i.test(n) ? 'Madam ' : 'Sir ') + n
+// Honorifics typed into a name ("Sir Umesh") are dropped when it is saved, and never doubled when shown.
+const HONORIFIC = /^(?:(?:sir|madam|mam|ma'am|mr|mrs|ms|miss|dr|prof)\.?\s+)+/i
+export const cleanTeacherName = raw => String(raw || '').replace(/\s+/g, ' ').trim().replace(HONORIFIC, '').trim()
+export const titled = n => {
+  const raw = String(n || '').trim()
+  if (HONORIFIC.test(raw + ' ')) return raw.replace(/\s+/g, ' ')
+  return (/^(Sandhya)$/i.test(raw) ? 'Madam ' : 'Sir ') + raw
+}
+
+// Share one subject's papers out between its teachers in turn, test by test (approved papers are left alone).
+// subjectPapers: that subject's papers in test order; teachers: the subject's teacher list. Returns [{ id, setter, verifier }].
+export function shareTests(subjectPapers, teachers, panel = {}) {
+  const list = (teachers || []).filter(Boolean)
+  if (!list.length) return []
+  let turn = 0
+  return subjectPapers.filter(p => p.status !== 'Approved').map(p => {
+    const setter = list[turn++ % list.length]
+    const verifier = list.length > 1 ? list[(list.indexOf(setter) + 1) % list.length] : (checkerFor(p.subject, setter, panel) || p.verifier || '')
+    return { id: p.id, setter, verifier }
+  })
+}
 
 // Only http(s) links may be stored or opened.
 export function safeUrl(u) {
