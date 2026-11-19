@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
+import CertificateMakerPortal from './CertificateMakerPortal'
 import TeachersDayFrame from './TeachersDayFrame'
 import BirthdayCard from './BirthdayCard'
 
 // Design Studio — a Canva/Photoshop-style workspace.
-//   left rail  : tools (Home, Banner Maker, Backdrop Maker, Invitation Maker, Invitation, Certificates, Teachers' Day, Birthday)
+//   left rail  : tools (Home, Banner Maker, Backdrop Maker, Invitation Maker, Invitation, Cert Maker, Certificates, Teachers' Day, Birthday)
 //   home       : start-a-design gallery (opens Banner Maker on the chosen template)
 //   focus mode : takes over the whole screen, like a real design app
 // The makers are self-contained editors served from /design-studio/*.html.
@@ -18,13 +19,14 @@ const TOOLS = [
   { id: 'backdrop',    label: 'Backdrop',    icon: '🧱', perm: 'designstudio' },
   { id: 'invmaker',   label: 'Invites',     icon: '💌', perm: 'designstudio' },
   { id: 'invitation',  label: 'Invitation',  icon: '✉️', perm: 'invitation' },
+  { id: 'certmaker',   label: 'Cert Maker',  icon: '🏅', perm: 'certificate' },
   { id: 'certificate', label: 'Certificates', icon: '📜', perm: 'certificate' },
   { id: 'teachersday', label: "Teachers' Day", icon: '🎓', perm: 'teachersday' },
   { id: 'birthday',    label: 'Birthday',    icon: '🎂', perm: 'designstudio' },
 ]
 
 // self-contained editor page behind each iframe tool (used by "Open in new tab")
-const MAKER_FILE = { banner: 'banner-maker.html', backdrop: 'backdrop-maker.html', invmaker: 'invitation-maker.html' }
+const MAKER_FILE = { banner: 'banner-maker.html', backdrop: 'backdrop-maker.html', invmaker: 'invitation-maker.html', certmaker: 'certificate-maker.html' }
 
 const TEMPLATES = [
   { id: 'gnsi',      name: 'GNSI Premium',        size: '7 × 21 ft · Landscape', cat: 'Banners' },
@@ -116,6 +118,7 @@ export default function DesignStudio({ currentUser, perms, canAccess }) {
     backdrop:    frame('backdrop-maker.html'),
     invmaker:    frame('invitation-maker.html'),
     invitation:  <div style={light}><InvitationGenerator currentUser={currentUser} /></div>,
+    certmaker:   <CertificateMakerPortal currentUser={currentUser} />,
     certificate: <div style={light}><CertificateGenerator currentUser={currentUser} perms={perms ? perms('certificate') : undefined} /></div>,
     teachersday: <div style={light}><TeachersDayFrame /></div>,
     birthday:    <div style={light}><BirthdayCard /></div>,
