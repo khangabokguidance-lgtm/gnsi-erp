@@ -16,8 +16,8 @@ import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoun
 import { QuestionMakerTab } from './MissionFoundationPaper'
 import { testReportHtml, reportCardsHtml } from './lib/missionFoundationReport'
 import {
-  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
-  subjectByLabel, maxMarks, buildSchedule, foundationRoster, cleanTeacherName, shareTests, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
+  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW,
+  subjectByLabel, maxMarks, buildSchedule, defaultSetup, setupFromTest, WEEKDAYS, foundationRoster, cleanTeacherName, shareTests, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -266,14 +266,25 @@ export default function MissionFoundation({ currentUser }) {
 
 // ─── Schedule & syllabus pattern ──────────────────────────────────────────────
 function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }) {
-  const [gen, setGen] = useState({ start: DEFAULT_PLAN.start, count: DEFAULT_PLAN.count })
+  const [su, setSu] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem('mf-setup') || 'null'); if (saved?.subjects) return { ...defaultSetup(), ...saved } } catch { /* storage unavailable */ }
+    return defaultSetup()
+  })
+  const up = patch => setSu(x => ({ ...x, ...patch }))
+  const upSubject = (i, patch) => setSu(x => ({ ...x, subjects: x.subjects.map((s, j) => (j === i ? { ...s, ...patch } : s)) }))
+  const [newSubject, setNewSubject] = useState('')
   const [busy, setBusy] = useState(false)
   const [showGen, setShowGen] = useState(false)
   const lastNo = tests.reduce((m, t) => Math.max(m, t.test_no), 0)
-  const fresh = useMemo(() => buildSchedule({ start: gen.start, count: gen.count, panel, startNo: lastNo + 1, skipDates: tests.map(t => t.test_date) }), [gen.start, gen.count, panel, lastNo, tests])
+  const fresh = useMemo(() => buildSchedule({ setup: su, panel, startNo: lastNo + 1, skipDates: tests.map(t => t.test_date) }), [su, panel, lastNo, tests])
+  const onSubjects = su.subjects.filter(x => x.on)
+  const fullMarks = onSubjects.reduce((n, x) => n + (Number(x.questions) || 0) * (Number(x.marks_each) || 0), 0)
+  const saveSetup = () => { try { localStorage.setItem('mf-setup', JSON.stringify({ ...su, start: undefined, dates: '' })); flash('Setup saved on this device. It opens like this next time.') } catch { flash('Could not save on this device.', true) } }
 
   const create = async () => {
-    if (!fresh.length) return flash('Every Monday in that range already has a test.', true)
+    if (!fresh.length) return flash('No new dates: pick dates that do not already have a test.', true)
+    if (!onSubjects.length) return flash('Tick at least one subject.', true)
+    if (!su.batches.length) return flash('Tick at least one batch.', true)
     if (!window.confirm(`Create ${fresh.length} tests (${fresh.reduce((n, r) => n + r.papers.length, 0)} papers)? You can change any of them afterwards.`)) return
     setBusy(true)
     const { data, error } = await supabase.from(T_TESTS).insert(fresh.map(r => ({ ...r.test, updated_by: me }))).select('id, test_no')
@@ -305,18 +316,95 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
   return (
     <>
       {isAdmin && (
-        <PremiumCard title="Create schedule" subtitle="One test every Monday, all 6 subjects"
-          right={<Btn kind={showGen ? 'ghost' : 'gold'} onClick={() => setShowGen(v => !v)}>{showGen ? 'Close' : tests.length ? 'Add more days' : 'Create schedule'}</Btn>}>
+        <PremiumCard title="Create tests" subtitle="Full setup: dates, subjects, questions and marks, time, batches, hall. Works for any test series."
+          right={<Btn kind={showGen ? 'ghost' : 'gold'} onClick={() => setShowGen(v => !v)}>{showGen ? 'Close' : tests.length ? '＋ Create more tests' : 'Create tests'}</Btn>}>
           {showGen ? (
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10 }}>
-                <label>First Monday<input className="px-input" type="date" value={gen.start} onChange={e => setGen({ ...gen, start: e.target.value })} /></label>
-                <label>Number of tests (one a week)<input className="px-input" type="number" min="1" max="52" value={gen.count} onChange={e => setGen({ ...gen, count: e.target.value })} /></label>
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <b style={{ fontSize: 13 }}>Start from:</b>
+                <Btn onClick={() => setSu(x => ({ ...defaultSetup(), mode: x.mode, start: x.start, count: x.count, weekday: x.weekday, every: x.every, dates: x.dates }))}>Default (6 subjects)</Btn>
+                {tests.length > 0 && (
+                  <select className="px-input" aria-label="Copy setup from a test" value="" onChange={e => { const t = tests.find(x => x.id === e.target.value); if (t) { setSu(x => setupFromTest(t, papersByTest[t.id], x)); flash(`Setup copied from ${t.title || 'Test ' + t.test_no}.`) } }} style={{ width: 'auto' }}>
+                    <option value="">Copy setup from a test…</option>{tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}
+                  </select>
+                )}
               </div>
-              <div style={{ color: PX.sub, fontSize: 13.5 }}>
-                {fresh.length ? <>Mondays: {fresh.map(r => fmt(r.test.test_date)).join(', ')}. Each test has all 6 subjects; setters take turns within each subject. All 6 subjects are one paper written in one sitting ({DEFAULT_TEST_MINUTES} minutes); each subject starts at {SUBJECTS[0].questions} questions × {SUBJECTS[0].marks_each} marks until you change it.</> : 'Every Monday in that range already has a test.'}
+
+              <fieldset style={{ border: `1px solid ${PX.line}`, borderRadius: 14, padding: 12 }}>
+                <legend style={{ fontWeight: 800, padding: '0 6px' }}>1. Dates</legend>
+                <div role="radiogroup" aria-label="How to pick dates" style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                  {[['repeat', 'Repeat on a day'], ['dates', 'Pick dates']].map(([k, l]) => <Btn key={k} kind={su.mode === k ? 'gold' : 'ghost'} aria-pressed={su.mode === k} onClick={() => up({ mode: k })}>{l}</Btn>)}
+                </div>
+                {su.mode === 'repeat' ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+                    <label>Day<select className="px-input" value={su.weekday} onChange={e => up({ weekday: Number(e.target.value) })}>{WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}</select></label>
+                    <label>Every<select className="px-input" value={su.every} onChange={e => up({ every: Number(e.target.value) })}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 1 ? 'week' : n + ' weeks'}</option>)}</select></label>
+                    <label>Starting from<input className="px-input" type="date" value={su.start} onChange={e => up({ start: e.target.value })} /></label>
+                    <label>Number of tests<input className="px-input" type="number" min="1" max="52" value={su.count} onChange={e => up({ count: e.target.value })} /></label>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <input className="px-input" type="date" aria-label="Add a date" onChange={e => { if (e.target.value) { up({ dates: (su.dates + ' ' + e.target.value).trim() }); e.target.value = '' } }} style={{ width: 'auto' }} />
+                      {su.dates && <Btn onClick={() => up({ dates: '' })}>Clear dates</Btn>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {(String(su.dates).match(/\d{4}-\d{2}-\d{2}/g) || []).filter((d, i, a) => a.indexOf(d) === i).sort().map(d => (
+                        <span key={d} className="px-chip" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', border: `1px solid ${PX.line}`, borderRadius: 99, padding: '3px 10px', fontSize: 13 }}>{fmt(d)}
+                          <button type="button" aria-label={`Remove ${d}`} onClick={() => up({ dates: su.dates.split(/[\s,]+/).filter(x => x && x !== d).join(' ') })} style={{ border: 'none', background: 'none', cursor: 'pointer', color: PX.bad }}>✕</button></span>
+                      ))}
+                      {!su.dates && <span style={{ color: PX.sub, fontSize: 13 }}>Add each test date with the date box.</span>}
+                    </div>
+                  </div>
+                )}
+              </fieldset>
+
+              <fieldset style={{ border: `1px solid ${PX.line}`, borderRadius: 14, padding: 12 }}>
+                <legend style={{ fontWeight: 800, padding: '0 6px' }}>2. Subjects and marks</legend>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="px-table" style={{ width: '100%' }}>
+                    <thead><tr><th>Use</th><th>Subject</th><th>Questions</th><th>Marks each</th><th>Full marks</th></tr></thead>
+                    <tbody>
+                      {su.subjects.map((x, i) => (
+                        <tr key={x.label} style={{ opacity: x.on ? 1 : 0.5 }}>
+                          <td><input type="checkbox" aria-label={`Use ${x.label}`} checked={x.on} onChange={e => upSubject(i, { on: e.target.checked })} /></td>
+                          <td style={{ fontWeight: 600 }}>{x.label}</td>
+                          <td><input className="px-input" type="number" min="1" max="200" aria-label={`${x.label} questions`} disabled={!x.on} value={x.questions} onChange={e => upSubject(i, { questions: e.target.value })} style={{ width: 80, padding: '5px 8px' }} /></td>
+                          <td><input className="px-input" type="number" min="0" max="20" step="0.5" aria-label={`${x.label} marks each`} disabled={!x.on} value={x.marks_each} onChange={e => upSubject(i, { marks_each: e.target.value })} style={{ width: 80, padding: '5px 8px' }} /></td>
+                          <td>{x.on ? (Number(x.questions) || 0) * (Number(x.marks_each) || 0) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot><tr><td /><td style={{ fontWeight: 800 }}>{onSubjects.length} subject(s)</td><td style={{ fontWeight: 800 }}>{onSubjects.reduce((n, x) => n + (Number(x.questions) || 0), 0)}</td><td /><td style={{ fontWeight: 800 }}>{fullMarks}</td></tr></tfoot>
+                  </table>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <input className="px-input" placeholder="Add another subject (e.g. G.K.)" aria-label="Add another subject" value={newSubject} onChange={e => setNewSubject(e.target.value)} style={{ maxWidth: 260, padding: '6px 10px' }} />
+                  <Btn onClick={() => { const l = newSubject.trim(); if (!l) return; if (su.subjects.some(x => x.label.toLowerCase() === l.toLowerCase())) return flash('That subject is already in the list.', true); setSu(x => ({ ...x, subjects: [...x.subjects, { label: l, on: true, questions: 25, marks_each: 2 }] })); setNewSubject('') }}>＋ Add subject</Btn>
+                </div>
+              </fieldset>
+
+              <fieldset style={{ border: `1px solid ${PX.line}`, borderRadius: 14, padding: 12 }}>
+                <legend style={{ fontWeight: 800, padding: '0 6px' }}>3. Test details</legend>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
+                  <label>Name<input className="px-input" value={su.prefix} placeholder="Test" onChange={e => up({ prefix: e.target.value })} /></label>
+                  <label>Total time (minutes)<input className="px-input" type="number" min="10" max="600" value={su.duration_min} onChange={e => up({ duration_min: e.target.value })} /></label>
+                  <label>Start time<input className="px-input" value={su.start_time} placeholder="e.g. 9:00 AM" onChange={e => up({ start_time: e.target.value })} /></label>
+                  <label>Hall / room<input className="px-input" value={su.venue} placeholder="e.g. Main hall" onChange={e => up({ venue: e.target.value })} /></label>
+                </div>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 10, fontSize: 14 }}>
+                  {BATCHES.map(b => <label key={b} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={su.batches.includes(b)} onChange={e => up({ batches: e.target.checked ? [...su.batches, b] : su.batches.filter(x => x !== b) })} />{b}</label>)}
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={su.assign !== false} onChange={e => up({ assign: e.target.checked })} />Share setters and checkers from the Teachers list</label>
+                </div>
+              </fieldset>
+
+              <div style={{ background: PX.tint, border: `1px solid ${PX.line}`, borderRadius: 14, padding: 12, fontSize: 13.5, color: PX.ink2 }}>
+                {fresh.length ? <><b>{fresh.length} test(s):</b> {fresh.map(r => `${r.test.title} (${fmt(r.test.test_date)})`).join(', ')}. Each has {onSubjects.length} subject(s), {onSubjects.reduce((n, x) => n + (Number(x.questions) || 0), 0)} questions, {fullMarks} marks, {su.duration_min} minutes in one sitting, for {su.batches.join(' & ') || 'no batch'}.</> : 'No new dates yet. Dates that already have a test are skipped.'}
               </div>
-              <div><Btn kind="gold" disabled={busy || !fresh.length} onClick={create}>{busy ? 'Creating…' : `Create ${fresh.length} tests`}</Btn></div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Btn kind="gold" disabled={busy || !fresh.length || !onSubjects.length} onClick={create}>{busy ? 'Creating…' : `Create ${fresh.length} test${fresh.length === 1 ? '' : 's'}`}</Btn>
+                <Btn onClick={saveSetup}>💾 Remember this setup</Btn>
+              </div>
             </div>
           ) : <div style={{ color: PX.sub }}>{tests.length ? `${tests.length} tests from ${fmt(tests[0].test_date)} to ${fmt(tests[tests.length - 1].test_date)}.` : 'No tests yet. Default: 8 Monday tests, 7 Dec 2026 – 25 Jan 2027.'}</div>}
         </PremiumCard>

@@ -171,3 +171,20 @@ test('a teacher saved as "Sir Umesh" still matches the login Umesh', async () =>
   assert.equal(nameMatches('Umesh Singh', 'Sir Umesh'), true)
   assert.equal(nameMatches('Roshan', 'Umesh'), false)
 })
+
+test('full setup: any weekday, every N weeks, picked dates, chosen subjects and marks', async () => {
+  const { buildSchedule, setupDates, defaultSetup, setupFromTest } = await import('../src/missionFoundationData.js')
+  assert.deepEqual(setupDates({ mode: 'repeat', start: '2026-12-01', count: 3, weekday: 6, every: 2 }), ['2026-12-05', '2026-12-19', '2027-01-02'])
+  assert.deepEqual(setupDates({ mode: 'dates', dates: '2027-02-10, 2027-02-03\n2027-02-10 junk' }), ['2027-02-03', '2027-02-10'])
+  const su = { ...defaultSetup(), mode: 'dates', dates: '2027-02-03 2027-02-10', prefix: 'Mock', duration_min: 90, batches: ['Udaan'], assign: false,
+    subjects: defaultSetup().subjects.map((s, i) => ({ ...s, on: i < 2, questions: 30, marks_each: 1 })) }
+  const rows = buildSchedule({ setup: su, startNo: 9 })
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].test.title, 'Mock 09')
+  assert.equal(rows[0].test.duration_min, 90)
+  assert.deepEqual(rows[0].test.batches, ['Udaan'])
+  assert.deepEqual(rows[0].papers.map(p => [p.subject, p.questions, p.marks_each, p.setter]), [['Mathematics I', 30, 1, ''], ['Mathematics II', 30, 1, '']])
+  const back = setupFromTest({ batches: ['Pragati'], duration_min: 150 }, [{ subject: 'EVS', questions: 20, marks_each: 2 }])
+  assert.deepEqual(back.subjects.filter(s => s.on).map(s => [s.label, s.questions]), [['EVS', 20]])
+  assert.equal(back.duration_min, 150)
+})
