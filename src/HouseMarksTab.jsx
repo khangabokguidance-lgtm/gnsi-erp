@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
+import { premiumDocument, printPremium } from './lib/printPremium'
+import { buildTestReport, buildProgressReport } from './lib/houseMarksReport'
 
 // ══════════════════════════════════════════════════════════════
 //  HOUSE MARKS TAB  (Hostel → 📝 Marks)
@@ -70,7 +72,7 @@ function textToMatrix(t) {
 }
 const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
 
-export default function HouseMarksTab({ students = [], lockHouse = '', currentUser }) {
+export default function HouseMarksTab({ students = [], lockHouse = '', currentUser, institute }) {
   const canDelete = isAdminRole(currentUser?.role)
   const [test, setTest] = useState(() => { const l = lastSetup(); return { id: null, name: '', group: '', date: todayStr(), preset: l?.preset || 'jnvst', subjects: clone(l?.subjects || PRESETS.jnvst.subjects) } })
   const [marks, setMarks] = useState({})          // { [student.id]: [mark per subject] }
@@ -91,6 +93,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
   const groupsKey = 'house_marks_groups_' + (lockHouse || 'all')
   const [groups, setGroups] = useState(() => { const g = lsGet('house_marks_groups_' + (lockHouse || 'all')); return Array.isArray(g) ? g : [] })   // [{ id, name, ids }] — manual groups / class names
   const [groupName, setGroupName] = useState('')
+  const [preview, setPreview] = useState(null)       // { title, body, docLabel } — professional preview before printing
   const [progId, setProgId] = useState('')           // student whose progress is shown
   const [progRows, setProgRows] = useState(null)     // null = not loaded, [] = none
   const [progErr, setProgErr] = useState('')
@@ -154,6 +157,23 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
       })
     return () => { live = false }
   }, [progId, saved])
+
+  // ── professional preview + premium print ──
+  const openTestPreview = () => {
+    const rows = [...roster].filter(s => calc[s.id] && (calc[s.id].n > 0 || calc[s.id].absent))
+      .sort((a, b) => (calc[a.id].rank || 9999) - (calc[b.id].rank || 9999) || String(a.name).localeCompare(String(b.name)))
+      .map(s => { const c = calc[s.id], m = marks[s.id] || []; return { rank: c.rank, gcc: s.gcc_no, name: s.name, cls: s.class_name, marks: test.subjects.map((_, i) => m[i] ?? null), total: c.tot, n: c.n, pct: c.pct, absent: c.absent, low: c.low, bad: c.bad } })
+    if (!rows.length) { flash('err', 'Enter some marks first, then preview the report.'); return }
+    if (stats.bad) flash('err', `${stats.bad} cell(s) still need fixing — they are flagged red in the report.`)
+    const name = test.name.trim() || 'House test'
+    setPreview({ title: `Test result — ${name}`, docLabel: `Test result · ${name}${lockHouse ? ' · ' + lockHouse : ''}`, body: buildTestReport({ test: { ...test, name }, house: lockHouse, subjects: test.subjects, maxTotal, rows, groupName: test.group }) })
+  }
+  const openProgressPreview = () => {
+    const st = pool.find(x => String(x.id) === String(progId))
+    if (!st || !progRows?.length) return
+    setPreview({ title: `Progress report — ${st.name}`, docLabel: `Student progress · ${st.name}`, body: buildProgressReport({ student: st, rows: progRows, house: lockHouse }) })
+  }
+  const doPrint = () => preview && printPremium(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel })
 
   const loadSaved = useCallback(async () => {
     let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at').order('test_date', { ascending: false }).limit(100)
@@ -513,6 +533,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
           <p style={{ ...h, margin: 0 }}>Mark sheet {dirty && <span style={{ color: '#b45309', textTransform: 'none', letterSpacing: 0 }}>· unsaved changes</span>}</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" style={btn(true)} onClick={save} disabled={busy}>{busy ? 'Saving…' : test.id ? 'Update test' : 'Save test'}</button>
+            <button type="button" style={btn(false)} onClick={openTestPreview}>👁 Preview report</button>
             <button type="button" style={btn(false)} onClick={exportCsv}>CSV</button>
             <button type="button" style={btn(false)} onClick={exportXlsx}>Excel</button>
             <button type="button" style={btn(false)} onClick={newTest}>New test</button>
@@ -600,6 +621,7 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
           const line = key => scored.map((r, i) => r[key] == null ? null : `${xs(i)},${ys(Number(r[key]))}`).filter(Boolean).join(' ')
           return (
             <div style={{ marginTop: 12 }}>
+              <div style={{ marginBottom: 10 }}><button type="button" style={btn(true)} onClick={openProgressPreview}>👁 Preview &amp; print progress report</button></div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                 {[['Tests', progRows.length], ['Average', avg == null ? '–' : avg.toFixed(1) + '%'], ['Latest', last ? Number(last.percent).toFixed(1) + '%' : '–'], ['Change', delta == null ? '–' : (delta >= 0 ? '▲ +' : '▼ ') + delta.toFixed(1)]].map(([l, v]) => (
                   <div key={l} style={{ background: '#f1f5f9', borderRadius: 10, padding: '8px 14px', minWidth: 90 }}>
@@ -661,9 +683,26 @@ export default function HouseMarksTab({ students = [], lockHouse = '', currentUs
         <div style={{ flex: '1 1 200px', fontSize: 13 }}>
           <b>{stats.entered}/{stats.students}</b> entered{stats.bad ? <span style={{ color: '#fca5a5' }}> · {stats.bad} need fixing</span> : null}{dirty ? <span style={{ color: '#fcd34d' }}> · ● unsaved</span> : <span style={{ color: '#86efac' }}> · saved</span>}
         </div>
+        <button type="button" onClick={openTestPreview} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>👁 Preview &amp; print</button>
         <button type="button" onClick={exportXlsx} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.35)' }}>⬇ Excel</button>
         <button type="button" onClick={save} disabled={busy} style={{ ...btn(false), background: 'linear-gradient(135deg,#E2C57E,#C9A24B)', color: '#0B1E3D', border: 'none', padding: '9px 22px' }}>{busy ? 'Saving…' : test.id ? '💾 Update test' : '💾 Save test'}</button>
       </div>
+
+      {preview && (
+        <div role="dialog" aria-modal="true" aria-label={preview.title} onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(8,16,34,.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 'min(960px,100%)', height: 'min(94vh,1100px)', background: '#e9edf3', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 30px 80px -20px rgba(0,0,0,.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'linear-gradient(90deg,#0b2147,#16386b)', color: '#fff', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>Preview · A4</div>
+                <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 17, fontWeight: 600 }}>{preview.title}</div>
+              </div>
+              <button type="button" onClick={doPrint} style={{ ...btn(false), background: 'linear-gradient(135deg,#E2C57E,#C9A24B)', color: '#0B1E3D', border: 'none', padding: '9px 20px' }}>🖨 Print / Save as PDF</button>
+              <button type="button" onClick={() => setPreview(null)} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.4)' }}>✕ Close</button>
+            </div>
+            <iframe title={preview.title} srcDoc={premiumDocument(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel })} style={{ flex: 1, border: 0, width: '100%', background: '#e9edf3' }} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -138,14 +138,12 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 // bodyHTML  : the content (it may use the classes above)
 // institute : { name, address, tagline, logoUrl }
 // docLabel  : short label for the footer, e.g. "Duty sheet · Meera Singh · Pre Mock Test 2026"
-export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '' } = {}) {
-  if (denyPrint()) return;
-  const w = window.open('', '_blank');
-  if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
+// The full premium A4 document as an HTML string (used for the print window and for an on-screen preview iframe).
+export function premiumDocument(bodyHTML, { title = 'Report', institute = {}, docLabel = '' } = {}) {
   const logo = esc(logoSrc(institute));
   const name = esc(institute.name || 'Guidance Navodaya & Sainik Institute');
   const stamp = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
+  return (`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
   <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span><small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
   <div class="wm"><img src="${logo}" alt=""></div>
   <div class="sheet"><table class="frame">
@@ -164,5 +162,12 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
     <span class="credit">${esc(DESIGN_CREDIT)}</span>
   </div>
   </body></html>`);
+}
+
+export function printPremium(bodyHTML, opts = {}) {
+  if (denyPrint()) return;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
+  w.document.write(premiumDocument(bodyHTML, opts));
   w.document.close();
 }
