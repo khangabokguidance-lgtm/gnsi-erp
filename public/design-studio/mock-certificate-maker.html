@@ -3333,13 +3333,13 @@ if(window.parent!==window){
       fillSelects(true);$('selTest').value=t.no;$('selCourse').value=course;
       $('ptMsg').textContent='Loaded '+st.length+' students. Fetching photos…';render();
       let n=0,k=0;const wanted=st.filter(s=>s[2]<=+$('selRankers').value);
-      const byName=new Map(m.students.map(x=>[norm(x.name),x]));
-      for(const s of wanted){const ph=(byName.get(norm(s[0]))||{}).photo;if(!ph)continue;k++;
+      const byName=new Map(m.students.map(x=>[norm(x.name),x]));const nophoto=[];
+      for(const s of wanted){const ph=(byName.get(norm(s[0]))||{}).photo;if(!ph){nophoto.push(s[0]+' ('+((byName.get(norm(s[0]))||{}).why||'no photo')+')');continue}k++;
         try{const r=await fetch(ph);if(r.ok){const b=await r.blob();state.photos[course+'|'+norm(s[0])]=await readPhoto(b,600);n++}}catch(err){}}
       render();
       if(queue.length){const nx=queue.shift();$('ptMsg').textContent='Loaded '+course+'. Loading next batch…';toP({type:'gnsi-cert:load-test',key:nx});return}
       if(RES.filter(r=>r.no===t.no).length>1){$('selCourse').value='COMBINED';render()}
-      $('ptMsg').textContent='Loaded '+st.length+' students · '+n+' photos for the shown certificates'+(k-n?' ('+(k-n)+' photos could not be fetched)':'')+'. Change "Rankers up to" to load more, then press Load again.';
+      $('ptMsg').textContent='Loaded '+st.length+' students · '+n+' photos for the shown certificates'+(k-n?' ('+(k-n)+' photos could not be fetched)':'')+(nophoto.length?'. Without a photo: '+nophoto.join('; '):'')+'. Change "Rankers up to" to load more, then press Load again.';
     }
   });
   let queue=[];

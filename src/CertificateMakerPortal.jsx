@@ -44,7 +44,8 @@ function makeMatcher(students) {
     const g = gccDigits(s.gcc_no); if (g && !byGcc.has(g)) byGcc.set(g, s)
     const n = normName(s.name); if (n) { if (!byName.has(n)) byName.set(n, []); byName.get(n).push(s) }
   })
-  return (name, gcc, batch) => {
+  const fn = (name, gcc, batch) => {
+    fn.why = ''
     const g = gccDigits(gcc)
     if (g && byGcc.has(g)) return byGcc.get(g)
     const exact = byName.get(normName(name)) || []
@@ -56,8 +57,10 @@ function makeMatcher(students) {
       const inBatch = pool.filter(s => normName(s.class_name || s.course || '').includes(b) || b.includes(normName(s.class_name || '')))
       if (inBatch.length === 1) return inBatch[0]
     }
+    fn.why = pool.length > 1 ? `${pool.length} students have a similar name` : 'no student with this name'
     return null
   }
+  return fn
 }
 
 const slim = s => s ? { gcc: s.gcc_no || '', photo: s.photo_url || '', phone: String(s.parent_phone || s.phone || '').trim() } : null
@@ -101,7 +104,7 @@ export default function CertificateMakerPortal({ currentUser, file = FILE, title
           let matched = 0
           const list = rows.map(r => {
             const st = match(r.student_name, r.gcc_no, r.batch); if (st) matched++
-            return { name: r.student_name, gcc: r.gcc_no || st?.gcc_no || '', rank: r.rank ?? '', total: Number(r.total) || 0, marks: r.marks || {}, ...(st ? { photo: st.photo_url || '', phone: slim(st).phone } : {}) }
+            return { name: r.student_name, why: st ? (st.photo_url ? '' : 'matched, but the student has no photo in the ERP') : match.why, gcc: r.gcc_no || st?.gcc_no || '', rank: r.rank ?? '', total: Number(r.total) || 0, marks: r.marks || {}, ...(st ? { photo: st.photo_url || '', phone: slim(st).phone } : {}) }
           })
           post({
             type: 'gnsi-cert:test',
