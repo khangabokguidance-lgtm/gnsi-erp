@@ -195,6 +195,10 @@ input[type=file]{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;p
 .cert.p .head .o span{display:block;padding:1.7mm 15mm 1.5mm 16.2mm;background:linear-gradient(90deg,var(--tA),var(--tC) 22%,var(--tB) 50%,var(--tC) 78%,var(--tA));clip-path:polygon(0 0,100% 0,95% 50%,100% 100%,0 100%,5% 50%);font:700 11.5pt "Cinzel",serif;letter-spacing:.5em;color:#0a1431;white-space:nowrap}
 .cert.p .head .no{font:600 7.6pt "Cinzel",serif;letter-spacing:.22em;color:#6b6a72;margin-top:2.2mm}
 .cert.p .head .no b{color:var(--navy);font-weight:700}
+.nop .cert .ph,.nop .cert .photo{display:none!important}
+.nop .cert.p .bodyrow{grid-template-columns:1fr 44mm}
+.nop .cert.m .bodyrow{grid-template-columns:1fr}
+.nop .cert .mid{grid-template-columns:1fr 42mm}
 .cert.p .bodyrow{display:grid;grid-template-columns:44mm 1fr 44mm;gap:6mm;align-items:center}
 .cert.p .ph{width:35mm;height:44mm;padding:1.5mm;border-radius:.8mm;background:linear-gradient(135deg,#8a6414,#f4e2a0 30%,#c39a3c 55%,#f4e2a0 78%,#8a6414);justify-self:center;position:relative;cursor:pointer;box-shadow:0 0 0 .7mm #fff,0 0 0 1.15mm #c39a3c,0 1.2mm 3mm rgba(10,20,49,.3)}
 .cert.p .ph .in{width:100%;height:100%;border-radius:0;overflow:hidden;background:#ece6d2;display:flex;align-items:center;justify-content:center;border:.55mm solid #fff;outline:.25mm solid #8a6414;outline-offset:-.9mm}
@@ -289,6 +293,7 @@ input[type=file]{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;p
         <label for="selRankers">Rankers up to<select id="selRankers"></select></label>
       </div>
       <label for="selCourse">Batch<select id="selCourse"></select></label>
+      <label for="selPhoto">Student photo<select id="selPhoto"><option value="show">Show photo frame</option><option value="hide">No photo (remove the frame)</option></select></label>
       <label for="selTies">Equal totals<select id="selTies"><option value="share">Share the position (ties get the same rank)</option><option value="break">Break ties: Mathematics, Mental Ability, EVS, Passage (exactly 1, 2, 3)</option></select></label>
       <div class="row2">
         <label for="selMarkMode">Marks filter<select id="selMarkMode"><option value="ge">At least</option><option value="lt">Below</option></select></label>
@@ -3155,7 +3160,7 @@ function combineSets(sets){
   return {no:f.no,year:f.year,course:'ALL BATCHES',full:f.full,subj:f.subj,per:f.per,label:f.label,combined:true,nb:sets.length,st};
 }
 function render(){
-  const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
+  const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';$('stage').classList.toggle('nop',$('selPhoto').value==='hide');const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
   lsSet('test',no);lsSet('course',course);lsSet('rankers',lim);
   let sets=RES.filter(r=>r.no===no&&(course==='ALL'||course==='COMBINED'||r.course===course)).sort((a,b)=>a.course.localeCompare(b.course));
   if(course==='COMBINED'&&sets.length)sets=[combineSets(sets)];
@@ -3263,7 +3268,7 @@ $('fileOne').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!
   $(f).onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;state.assets[k]=await readImg(file,500);put('asset:'+k,state.assets[k]);render();toast('Image saved.')};
 });
 ['inDate','inAddr','inPrefix','inSig1','inSig2','inSigName1','inSigName2'].forEach(id=>$(id).addEventListener('input',()=>{lsSet('f:'+id,$(id).value);render()}));
-['selDesign','selTest','selCourse','selRankers','selMarkMode','selTies'].forEach(id=>$(id).addEventListener('change',render));
+['selDesign','selTest','selCourse','selRankers','selMarkMode','selTies','selPhoto'].forEach(id=>$(id).addEventListener('change',render));
 $('inMinMarks').addEventListener('input',()=>{lsSet('minmarks',$('inMinMarks').value);render()});
 $('selMarkMode').addEventListener('change',()=>lsSet('markmode',$('selMarkMode').value));
 $('btnPrint').onclick=()=>window.print();
