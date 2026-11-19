@@ -61,6 +61,8 @@ const lsGet = k => { try { const v = localStorage.getItem(k); return v ? JSON.pa
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode / full */ } }
 const lsDel = k => { try { localStorage.removeItem(k) } catch { /* ignore */ } }
 const CLASS_ROW = '__my_class__'   // reserved list name that stores the extra students in My class
+// In the on-screen preview the print bar is hidden (the dialog has its own Print button) and the A4 sheet is zoomed to fit narrow screens.
+const PREVIEW_FIT = '<style>.bar{display:none}</style><script>(function(){function f(){var w=document.documentElement.clientWidth;document.body.style.zoom=Math.min(1,(w-12)/800)}addEventListener("resize",f);addEventListener("DOMContentLoaded",f)})()</script>'
 const SETUP_KEY = 'house_marks_last_setup'
 const lastSetup = () => { const l = lsGet(SETUP_KEY); return l && PRESETS[l.preset] && Array.isArray(l.subjects) && l.subjects.length ? l : null }
 
@@ -298,23 +300,6 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
     return () => { live = false }
   }, [progId, saved])
 
-  // ── professional preview + premium print ──
-  const openTestPreview = () => {
-    const rows = [...roster].filter(s => calc[s.id] && (calc[s.id].n > 0 || calc[s.id].absent))
-      .sort((a, b) => (calc[a.id].rank || 9999) - (calc[b.id].rank || 9999) || String(a.name).localeCompare(String(b.name)))
-      .map(s => { const c = calc[s.id], m = marks[s.id] || []; return { rank: c.rank, gcc: s.gcc_no, name: s.name, cls: s.class_name, marks: test.subjects.map((_, i) => m[i] ?? null), total: c.tot, n: c.n, pct: c.pct, absent: c.absent, low: c.low, bad: c.bad } })
-    if (!rows.length) { flash('err', 'Enter some marks first, then preview the report.'); return }
-    if (stats.bad) flash('err', `${stats.bad} cell(s) still need fixing — they are flagged red in the report.`)
-    const name = test.name.trim() || 'House test'
-    setPreview({ title: `Test result — ${name}`, docLabel: `Test result · ${name}${lockHouse ? ' · ' + lockHouse : ''}`, body: buildTestReport({ test: { ...test, name }, house: lockHouse, subjects: test.subjects, maxTotal, rows, groupName: test.group }) })
-  }
-  const openProgressPreview = () => {
-    const st = pool.find(x => String(x.id) === String(progId))
-    if (!st || !progRows?.length) return
-    setPreview({ title: `Progress report — ${st.name}`, docLabel: `Student progress · ${st.name}`, body: buildProgressReport({ student: st, rows: progRows, house: lockHouse }) })
-  }
-  const doPrint = () => preview && printPremium(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel })
-
   const loadSaved = useCallback(async () => {
     let q = supabase.from('house_test_marks').select('id,test_name,test_date,house,subjects,marks,updated_at,created_by').order('test_date', { ascending: false }).limit(100)
     const { data, error } = await q   // every teacher sees every test: one shared test, everyone enters their own students
@@ -344,6 +329,29 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
       high: tots.length ? Math.max(...tots) : null,
     }
   }, [calc, roster])
+
+  // ── professional preview + premium print ──
+  const openTestPreview = () => {
+    const rows = [...roster].filter(s => calc[s.id] && (calc[s.id].n > 0 || calc[s.id].absent))
+      .sort((a, b) => (calc[a.id].rank || 9999) - (calc[b.id].rank || 9999) || String(a.name).localeCompare(String(b.name)))
+      .map(s => { const c = calc[s.id], m = marks[s.id] || []; return { rank: c.rank, gcc: s.gcc_no, name: s.name, cls: s.class_name, marks: test.subjects.map((_, i) => m[i] ?? null), total: c.tot, n: c.n, pct: c.pct, absent: c.absent, low: c.low, bad: c.bad } })
+    if (!rows.length) { flash('err', 'Enter some marks first, then preview the report.'); return }
+    if (stats.bad) flash('err', `${stats.bad} cell(s) still need fixing — they are flagged red in the report.`)
+    const name = test.name.trim() || 'House test'
+    setPreview({ title: `Test result — ${name}`, docLabel: `Test result · ${name}${lockHouse ? ' · ' + lockHouse : ''}`, body: buildTestReport({ test: { ...test, name }, house: lockHouse, subjects: test.subjects, maxTotal, rows, groupName: test.group }) })
+  }
+  const openProgressPreview = () => {
+    const st = pool.find(x => String(x.id) === String(progId))
+    if (!st || !progRows?.length) return
+    setPreview({ title: `Progress report — ${st.name}`, docLabel: `Student progress · ${st.name}`, body: buildProgressReport({ student: st, rows: progRows, house: lockHouse }) })
+  }
+  useEffect(() => {
+    if (!preview) return
+    const onKey = e => { if (e.key === 'Escape') setPreview(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [preview])
+  const doPrint = () => preview && printPremium(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel })
 
   // ── Analyser: toppers and averages by saved list / class / house, plus subject-wise ──
   const [anOnce, setAnOnce] = useState(false)
@@ -1557,7 +1565,7 @@ function HouseMarksEntry({ students = [], allStudents = null, lockHouse = '', cu
               <button type="button" onClick={doPrint} style={{ ...btn(false), background: 'linear-gradient(135deg,#E2C57E,#C9A24B)', color: '#0B1E3D', border: 'none', padding: '9px 20px' }}>🖨 Print / Save as PDF</button>
               <button type="button" onClick={() => setPreview(null)} style={{ ...btn(false), background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.4)' }}>✕ Close</button>
             </div>
-            <iframe title={preview.title} srcDoc={premiumDocument(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel })} style={{ flex: 1, border: 0, width: '100%', background: '#e9edf3' }} />
+            <iframe title={preview.title} srcDoc={premiumDocument(preview.body, { title: preview.title, institute: institute || {}, docLabel: preview.docLabel }).replace('</head>', PREVIEW_FIT + '</head>')} style={{ flex: 1, border: 0, width: '100%', background: '#e9edf3' }} />
           </div>
         </div>
       )}
