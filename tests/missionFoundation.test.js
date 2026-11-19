@@ -136,3 +136,16 @@ test('copy format: updates matching papers, adds missing subjects, skips approve
   const withTeachers = copyFormatPlan(src, targets.slice(0, 1), { pattern: true, teachers: true, syllabus: true })
   assert.deepEqual(withTeachers.updates[0].patch, { questions: 20, marks_each: 1, setter: 'Kabiraj', verifier: 'Roshan', syllabus: 'Fractions' })
 })
+
+test('foundation roster takes every Udaan / Pragati student and flags Foundation students with no batch', async () => {
+  const { foundationRoster } = await import('../src/missionFoundationData.js')
+  const r = foundationRoster([
+    { id: 1, name: 'Zed', batch: 'UDAAN — ENG', course: '' },
+    { id: 2, name: 'Amy', batch: 'Elite', course: 'Foundation' },
+    { id: 3, name: 'Bo', batch: 'prime', course: '' },
+    { id: 4, name: 'Cy', batch: '', course: 'Foundation' },
+    { id: 5, name: 'Di', batch: 'Achiever', course: 'Sainik' },
+  ])
+  assert.deepEqual(r.placed.map(s => [s.name, s.batchName]), [['Amy', 'Udaan'], ['Bo', 'Pragati'], ['Zed', 'Udaan']])
+  assert.deepEqual(r.unplaced.map(s => s.name), ['Cy'])
+})

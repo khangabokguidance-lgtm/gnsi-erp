@@ -8,16 +8,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
-import { canonicalBatch } from './courseMap'
 import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
-import { AnalyserTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
+import { AnalyserTab, MaterialTab, ChatTab, StudentsTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import { QuestionMakerTab } from './MissionFoundationPaper'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
-  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
+  subjectByLabel, maxMarks, buildSchedule, foundationRoster, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -87,6 +86,9 @@ export default function MissionFoundation({ currentUser }) {
   const [prizes, setPrizes] = useState([])
   const [allMarks, setAllMarks] = useState(null)
   const [students, setStudents] = useState(null)
+  const [unplaced, setUnplaced] = useState([])
+  const [rosterTick, setRosterTick] = useState(0)
+  const reloadStudents = () => setRosterTick(n => n + 1)
   const today = todayISO()
 
   const flash = useCallback((text, bad) => { setMsg({ text, bad }); setTimeout(() => setMsg(null), bad ? 6000 : 3000) }, [])
@@ -126,11 +128,13 @@ export default function MissionFoundation({ currentUser }) {
   useEffect(() => { loadMarks() }, [loadMarks])
   useEffect(() => {
     let live = true
-    getActiveStudents('id,name,gcc_no,batch,course').then(rows => {
-      if (live) setStudents((rows || []).map(s => ({ ...s, batchName: canonicalBatch(s.batch) })).filter(s => BATCHES.includes(s.batchName)).sort((a, b) => String(a.name).localeCompare(String(b.name))))
+    getActiveStudents('id,name,gcc_no,admission_no,phone,course,batch,status').then(rows => {
+      if (!live) return
+      const r = foundationRoster(rows)
+      setStudents(r.placed); setUnplaced(r.unplaced)
     })
     return () => { live = false }
-  }, [])
+  }, [rosterTick])
   // The test the Teaching / Test day pages open on: the one picked elsewhere, else today's or the next one.
   const activeTest = (tests.some(t => t.id === workTest) && workTest) || focusTest(tests, today)?.id || ''
   const openWork = id => { setWorkTest(id); setOpenTest(id) }
@@ -185,6 +189,7 @@ export default function MissionFoundation({ currentUser }) {
     { label: 'Plan', color: '#185FA5', tabs: [
       { id: 'schedule', label: 'Schedule & syllabus', icon: PIcon.calendar, hint: '8 Monday tests, chapters and paper pattern' },
       { id: 'teachers', label: 'Teachers', icon: PIcon.users, hint: 'Who teaches and sets each subject' },
+      { id: 'students', label: 'Students', icon: PIcon.cap, hint: 'Every Udaan and Pragati student, live from Students', badge: unplaced.length },
     ] },
     { label: 'Teach', color: '#0f7a4c', tabs: [
       { id: 'teaching', label: 'Teaching', icon: PIcon.cap, hint: 'Tick chapters as they are taught' },
@@ -241,6 +246,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
+              {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }} />}

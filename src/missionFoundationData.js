@@ -1,5 +1,6 @@
 // missionFoundationData.js — defaults and pure helpers for "Mission Foundation 2026-27"
 // (8 weekly Monday tests for the Foundation batches Udaan and Pragati, December 2026 – January 2027).
+import { canonicalBatch, courseOf } from './courseMap.js'
 // The schedule, papers, panel and marks live in Supabase (migration 20261216_mission_foundation.sql);
 // this file only holds the starting values the admin can change on screen, and logic that is unit-tested.
 
@@ -337,4 +338,18 @@ export function copyFormatPlan(source, targets, opts = { pattern: true }) {
     }
   }
   return { updates, inserts, skipped }
+}
+
+// Every active Foundation student from the ERP students table.
+// placed: batch reads as Udaan or Pragati (old names Elite / Prime and section suffixes like "UDAAN — ENG" count);
+// unplaced: course is Foundation but the batch is blank or unknown, so they would miss marks entry until it is fixed.
+export function foundationRoster(rows) {
+  const placed = [], unplaced = []
+  ;(rows || []).forEach(s => {
+    const batchName = canonicalBatch(s.batch)
+    if (BATCHES.includes(batchName)) placed.push({ ...s, batchName })
+    else if (courseOf(s) === 'Foundation') unplaced.push({ ...s, batchName: '' })
+  })
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''))
+  return { placed: placed.sort(byName), unplaced: unplaced.sort(byName) }
 }
