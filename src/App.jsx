@@ -23,6 +23,7 @@ const Connect = React.lazy(() => import('./Connect'))
 const Reports = React.lazy(() => import('./Reports'))
 const Checklist = React.lazy(() => import('./Checklist'))
 const MissionSainik = React.lazy(() => import('./MissionSainik'))
+const MissionFoundation = React.lazy(() => import('./MissionFoundation'))
 const SystemSettings = React.lazy(() => import('./SystemSettingsPage'))
 const AdminPage = React.lazy(() => import('./AdminPage'))
 const StudentFeeLedger = React.lazy(() => import('./StudentFeeLedger'))
@@ -158,6 +159,7 @@ const ALL_GROUPS = [
       { id: 'reports',     label: 'Reports',      icon: '📊' },
       { id: 'checklist',   label: 'Checklist',    icon: '✅' },
       { id: 'missionsainik', label: 'Mission Sainik', icon: '🎖️' },
+      { id: 'missionfoundation', label: 'Mission Foundation', icon: '🚀' },
       { id: 'designstudio', label: 'Design Studio', icon: '🎨' },
       { id: 'adminhub',    label: 'Admin & System', icon: '🔐' },
     ],
@@ -1042,7 +1044,7 @@ function AppInner() {
 
   // FIX 1: use unified isAdminRole in canAccess
   const canAccess = (key) => {
-    if (key === 'dashboard' || key === 'help' || key === 'missionsainik') return true
+    if (key === 'dashboard' || key === 'help' || key === 'missionsainik' || key === 'missionfoundation') return true
     // Face Attendance check-in must be reachable by any staff member with a
     // linked profile, not gated by the permission matrix like admin tools —
     // the component itself only exposes enrollment management to admins.
@@ -1087,6 +1089,7 @@ function AppInner() {
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
     checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}         />,
     missionsainik:     <MissionSainik     currentUser={currentUser} perms={perms('missionsainik')}     />,
+    missionfoundation: <MissionFoundation currentUser={currentUser} />,
     system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}            />,
     studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} canSeeAccounts={canAccess('accounts')} />,
     // FIX: removed feeledger duplicate alias
