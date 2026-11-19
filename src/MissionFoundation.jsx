@@ -15,8 +15,8 @@ import { downloadCsv } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import {
-  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN,
-  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest,
+  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
+  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -304,7 +304,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
                 <label>Number of tests (one a week)<input className="px-input" type="number" min="1" max="52" value={gen.count} onChange={e => setGen({ ...gen, count: e.target.value })} /></label>
               </div>
               <div style={{ color: PX.sub, fontSize: 13.5 }}>
-                {fresh.length ? <>Mondays: {fresh.map(r => fmt(r.test.test_date)).join(', ')}. Each test has all 6 subjects; setters take turns within each subject. The pattern is {SUBJECTS[0].questions} questions × {SUBJECTS[0].marks_each} marks per subject until you change it.</> : 'Every Monday in that range already has a test.'}
+                {fresh.length ? <>Mondays: {fresh.map(r => fmt(r.test.test_date)).join(', ')}. Each test has all 6 subjects; setters take turns within each subject. All 6 subjects are one paper written in one sitting ({DEFAULT_TEST_MINUTES} minutes); each subject starts at {SUBJECTS[0].questions} questions × {SUBJECTS[0].marks_each} marks until you change it.</> : 'Every Monday in that range already has a test.'}
               </div>
               <div><Btn kind="gold" disabled={busy || !fresh.length} onClick={create}>{busy ? 'Creating…' : `Create ${fresh.length} tests`}</Btn></div>
             </div>
@@ -328,7 +328,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
                   <Pill tone={TEST_TONE[t.status]}>{t.status}</Pill>
                   <span aria-hidden="true">{open ? '▾' : '▸'}</span>
                 </button>
-                {open && <TestEditor {...{ test: t, papers: ps, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
+                {open && <TestEditor {...{ test: t, papers: ps, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
               </div>
             )
           })}
@@ -338,12 +338,13 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
   )
 }
 
-function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
+function TestEditor({ test, papers, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
+  const [copying, setCopying] = useState(false)
   const missing = SUBJECTS.filter(s => !papers.some(p => p.subject === s.label))
   const totalMax = papers.reduce((n, p) => n + maxMarks(p), 0)
   const addPaper = async label => {
     const s = subjectByLabel(label); const setter = (panel[label] || [])[0] || ''
-    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, questions: s.questions, marks_each: s.marks_each, duration_min: s.duration_min, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
+    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
     if (error) flash('Not added: ' + error.message, true); else load()
   }
   const delPaper = async p => {
@@ -365,12 +366,13 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 12 }}>
         <label>Title<BlurField label="Title" value={test.title} onSave={v => saveTest(test.id, { title: v })} /></label>
         <label>Date<input className="px-input" type="date" value={test.test_date} onChange={e => e.target.value && saveTest(test.id, { test_date: e.target.value })} style={{ padding: '7px 10px' }} /></label>
+        <label>Total time (minutes)<BlurField type="number" label="Total time in minutes" value={test.duration_min} onSave={v => saveTest(test.id, { duration_min: v })} /></label>
         <label>Status<select className="px-input" value={test.status} onChange={e => saveTest(test.id, { status: e.target.value })} style={{ padding: '7px 10px' }}>{TEST_FLOW.map(s => <option key={s}>{s}</option>)}</select></label>
         <div>Batches<div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>{BATCHES.map(b => <label key={b} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={(test.batches || []).includes(b)} onChange={() => toggleBatch(b)} />{b}</label>)}</div></div>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table" style={{ width: '100%', minWidth: 1180, background: '#fff' }}>
-          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th>Minutes</th><th>Setter</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
+          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th>Setter</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
           <tbody>
             {papers.map(p => (
               <tr key={p.id}>
@@ -379,7 +381,6 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
                 <td><BlurField type="number" width={64} label="Questions" value={p.questions} onSave={v => savePaper(p.id, { questions: v })} /></td>
                 <td><BlurField type="number" width={64} label="Marks each" value={p.marks_each} onSave={v => savePaper(p.id, { marks_each: v })} /></td>
                 <td style={{ fontWeight: 700 }}>{maxMarks(p) || '—'}</td>
-                <td><BlurField type="number" width={64} label="Minutes" value={p.duration_min} onSave={v => savePaper(p.id, { duration_min: v })} /></td>
                 <td><PersonSelect label="Setter" value={p.setter} options={peopleFor(p.subject)} onChange={v => savePaper(p.id, { setter: v, verifier: p.verifier && p.verifier !== v ? p.verifier : checkerFor(p.subject, v, panel) })} /></td>
                 <td><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => n !== p.setter)} onChange={v => savePaper(p.id, { verifier: v })} /></td>
                 <td><select className="px-input" aria-label="Paper status" value={p.status} onChange={e => savePaper(p.id, { status: e.target.value })} style={{ padding: '7px 10px', minWidth: 116 }}>{PAPER_FLOW.map(s => <option key={s}>{s}</option>)}</select></td>
@@ -391,15 +392,74 @@ function TestEditor({ test, papers, isAdmin, me, savePaper, saveTest, peopleFor,
         </table>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b></span>
+        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b> · Time: <b>{test.duration_min || '—'} min</b> for all {papers.length} subjects in one sitting</span>
         {missing.length > 0 && <select className="px-input" aria-label="Add a subject" value="" onChange={e => e.target.value && addPaper(e.target.value)} style={{ width: 'auto', padding: '7px 10px' }}>
           <option value="">＋ Add a subject…</option>{missing.map(s => <option key={s.key} value={s.label}>{s.label}</option>)}
         </select>}
         <span style={{ flex: 1 }} />
+        {papers.length > 0 && tests.length > 1 && <Btn kind={copying ? 'ghost' : 'gold'} onClick={() => setCopying(v => !v)}>{copying ? 'Close copy' : '⧉ Copy this format to other tests'}</Btn>}
         {isAdmin && <Btn onClick={delTest} style={{ color: PX.bad }}>Delete this test</Btn>}
       </div>
+      {copying && <CopyFormat {...{ test, papers, tests, papersByTest, me, load, flash, onDone: () => setCopying(false) }} />}
       <div style={{ marginTop: 10 }}>
         <BlurField label="Notes" placeholder="Notes for teachers (room, timing, instructions)…" value={test.notes} onSave={v => saveTest(test.id, { notes: v })} />
+      </div>
+    </div>
+  )
+}
+
+// Copy one test's paper format (questions, marks, minutes; optionally teachers and chapters) to other tests.
+function CopyFormat({ test, papers, tests, papersByTest, me, load, flash, onDone }) {
+  const others = tests.filter(t => t.id !== test.id)
+  const [picked, setPicked] = useState(() => Object.fromEntries(others.map(t => [t.id, t.test_date >= test.test_date])))
+  const [opts, setOpts] = useState({ pattern: true, teachers: false, syllabus: false })
+  const [busy, setBusy] = useState(false)
+  const chosen = others.filter(t => picked[t.id])
+  const plan = copyFormatPlan(papers, chosen.map(t => ({ test_id: t.id, papers: papersByTest[t.id] || [] })), opts)
+  const run = async () => {
+    if (!chosen.length) return flash('Tick at least one test.', true)
+    if (!opts.pattern && !opts.teachers && !opts.syllabus) return flash('Choose what to copy.', true)
+    if (!window.confirm(`Copy ${test.title}'s format to ${chosen.length} test(s)? ${plan.updates.length} paper(s) will change${plan.inserts.length ? ` and ${plan.inserts.length} added` : ''}.`)) return
+    setBusy(true)
+    const stamp = { updated_by: me, updated_at: now() }
+    const timeTargets = opts.pattern && test.duration_min ? chosen.filter(t => t.duration_min !== test.duration_min) : []
+    const results = await Promise.all([
+      ...timeTargets.map(t => supabase.from(T_TESTS).update({ duration_min: test.duration_min, ...stamp }).eq('id', t.id)),
+      ...plan.updates.map(u => supabase.from(T_PAPERS).update({ ...u.patch, ...stamp }).eq('id', u.id)),
+      ...(plan.inserts.length ? [supabase.from(T_PAPERS).insert(plan.inserts.map(r => ({ ...r, ...stamp })))] : []),
+    ])
+    setBusy(false)
+    const bad = results.find(r => r.error)
+    if (bad) flash('Some papers were not copied: ' + bad.error.message, true)
+    else { flash(`Copied to ${chosen.length} test(s).${plan.skipped ? ` ${plan.skipped} approved paper(s) were left as they are.` : ''}`); onDone() }
+    load()
+  }
+  const all = v => setPicked(Object.fromEntries(others.map(t => [t.id, v])))
+  return (
+    <div style={{ marginTop: 12, padding: 16, borderRadius: 16, background: '#fff', border: `1.5px solid ${PX.goldLine}` }}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>Copy {test.title}'s format</div>
+      <div style={{ fontSize: 13.5, color: PX.sub, marginBottom: 10 }}>Every subject of the tests you tick gets the same setup as this test. Approved papers are not changed.</div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+        {[['pattern', 'Questions, marks and total time'], ['teachers', 'Setters and checkers'], ['syllabus', 'Syllabus chapters']].map(([k, l]) => (
+          <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600, minHeight: 40 }}><input type="checkbox" checked={opts[k]} onChange={e => setOpts({ ...opts, [k]: e.target.checked })} />{l}</label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+        <b style={{ fontSize: 13.5 }}>To these tests:</b>
+        <button type="button" className="px-btn ghost" onClick={() => all(true)}>All</button>
+        <button type="button" className="px-btn ghost" onClick={() => all(false)}>None</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {others.map(t => (
+          <label key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderRadius: 12, border: `1px solid ${picked[t.id] ? PX.gold : PX.line}`, background: picked[t.id] ? PX.goldBg : PX.tint, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!picked[t.id]} onChange={e => setPicked({ ...picked, [t.id]: e.target.checked })} />
+            <span><b>{t.title || 'Test ' + t.test_no}</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>{fmt(t.test_date)}</span></span>
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+        <Btn kind="gold" disabled={busy || !chosen.length} onClick={run}>{busy ? 'Copying…' : `Copy to ${chosen.length} test${chosen.length === 1 ? '' : 's'}`}</Btn>
+        <span style={{ fontSize: 13, color: PX.sub }}>{plan.updates.length} paper(s) will change{plan.inserts.length ? `, ${plan.inserts.length} added` : ''}{plan.skipped ? `, ${plan.skipped} approved left alone` : ''}.</span>
       </div>
     </div>
   )
@@ -425,7 +485,7 @@ function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today 
           <Pill tone={late ? 'bad' : PAPER_TONE[p.status]}>{late ? 'Due · ' + p.status : p.status}</Pill>
           <span style={{ color: PX.sub, fontSize: 13 }}>{setter ? 'You set this' : ''}{setter && checker ? ' · ' : ''}{checker ? `You check this (setter ${p.setter || '—'})` : ''}</span>
         </div>
-        <div style={{ fontSize: 13.5, color: PX.ink2 }}>Pattern: {p.questions || '?'} questions × {p.marks_each || '?'} marks = {maxMarks(p) || '?'} · {p.duration_min || '?'} min</div>
+        <div style={{ fontSize: 13.5, color: PX.ink2 }}>Pattern: {p.questions || '?'} questions × {p.marks_each || '?'} marks = {maxMarks(p) || '?'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>
           <label>Syllabus<BlurField label="Syllabus" placeholder="Chapters for this paper" value={p.syllabus} onSave={v => savePaper(p.id, { syllabus: v })} /></label>
           <label>Paper link (Google Drive etc.)<BlurField label="Paper link" placeholder="https://…" value={p.paper_link} onSave={v => savePaper(p.id, { paper_link: v ? safeUrl(v) : '' })} /></label>

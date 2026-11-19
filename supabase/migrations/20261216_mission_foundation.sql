@@ -102,6 +102,8 @@ alter table public.mission_foundation_tests add column if not exists venue      
 alter table public.mission_foundation_tests add column if not exists start_time   text;
 alter table public.mission_foundation_tests add column if not exists invigilators text;
 alter table public.mission_foundation_tests add column if not exists checklist    jsonb not null default '{}'::jsonb;
+-- All six subjects are written in one sitting: one total time per test.
+alter table public.mission_foundation_tests add column if not exists duration_min integer default 120;
 
 create table if not exists public.mission_foundation_teaching (
   id          uuid primary key default gen_random_uuid(),

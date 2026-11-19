@@ -7,13 +7,15 @@ export const MISSION_NAME = 'Mission Foundation 2026-27'
 export const BATCHES = ['Udaan', 'Pragati']
 
 // The six Foundation subjects, from the Udaan / Pragati timetable. Pattern values are placeholders.
+// All six are written in one sitting; the time is set once per test (mission_foundation_tests.duration_min).
+export const DEFAULT_TEST_MINUTES = 120
 export const SUBJECTS = [
-  { key: 'maths1',    label: 'Mathematics I',   short: 'Maths I',   questions: 25, marks_each: 2, duration_min: 60 },
-  { key: 'maths2',    label: 'Mathematics II',  short: 'Maths II',  questions: 25, marks_each: 2, duration_min: 60 },
-  { key: 'reasoning', label: 'Reasoning',       short: 'Reasoning', questions: 25, marks_each: 2, duration_min: 45 },
-  { key: 'grammar',   label: 'English Grammar', short: 'Grammar',   questions: 25, marks_each: 2, duration_min: 45 },
-  { key: 'evs',       label: 'EVS',             short: 'EVS',       questions: 25, marks_each: 2, duration_min: 45 },
-  { key: 'passage',   label: 'Passage',         short: 'Passage',   questions: 25, marks_each: 2, duration_min: 45 },
+  { key: 'maths1',    label: 'Mathematics I',   short: 'Maths I',   questions: 25, marks_each: 2 },
+  { key: 'maths2',    label: 'Mathematics II',  short: 'Maths II',  questions: 25, marks_each: 2 },
+  { key: 'reasoning', label: 'Reasoning',       short: 'Reasoning', questions: 25, marks_each: 2 },
+  { key: 'grammar',   label: 'English Grammar', short: 'Grammar',   questions: 25, marks_each: 2 },
+  { key: 'evs',       label: 'EVS',             short: 'EVS',       questions: 25, marks_each: 2 },
+  { key: 'passage',   label: 'Passage',         short: 'Passage',   questions: 25, marks_each: 2 },
 ]
 export const subjectByLabel = label => SUBJECTS.find(s => s.label === label)
 export const maxMarks = p => (Number(p?.questions) || 0) * (Number(p?.marks_each) || 0)
@@ -79,7 +81,7 @@ export function buildSchedule({ start = DEFAULT_PLAN.start, count = DEFAULT_PLAN
       test: { test_no: no, test_date: date, title: `Test ${String(no).padStart(2, '0')}`, batches: [...BATCHES], status: 'Planned' },
       papers: SUBJECTS.map(s => {
         const setter = nextSetter(s.label)
-        return { subject: s.label, questions: s.questions, marks_each: s.marks_each, duration_min: s.duration_min, setter, verifier: setter ? checkerFor(s.label, setter, panel) : '', status: 'Pending' }
+        return { subject: s.label, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(s.label, setter, panel) : '', status: 'Pending' }
       }),
     }
   })
@@ -308,3 +310,31 @@ export function cycleFor(test, ctx) {
   })
 }
 
+
+// ── Copy a test's paper format to other tests ─────────────────────────────────
+// source: the papers of one test; targets: [{ test_id, papers }].
+// opts.pattern copies questions and marks each (the test's total time is copied by the screen, it belongs to the test); opts.teachers the setter and checker; opts.syllabus the chapters.
+// A subject the target test lacks is added (with what is copied). Approved papers are left alone and counted in `skipped`.
+export function copyFormatPlan(source, targets, opts = { pattern: true }) {
+  const updates = [], inserts = []
+  let skipped = 0
+  const pick = p => ({
+    ...(opts.pattern ? { questions: p.questions ?? null, marks_each: p.marks_each ?? null } : {}),
+    ...(opts.teachers ? { setter: p.setter || '', verifier: p.verifier || '' } : {}),
+    ...(opts.syllabus ? { syllabus: p.syllabus || '' } : {}),
+  })
+  for (const t of targets) {
+    for (const p of source) {
+      const patch = pick(p)
+      const hit = (t.papers || []).find(x => x.subject === p.subject)
+      if (hit) {
+        if (hit.status === 'Approved') { skipped++; continue }
+        if (Object.keys(patch).some(k => (hit[k] ?? null) !== (patch[k] ?? null))) updates.push({ id: hit.id, patch })
+      } else {
+        const d = subjectByLabel(p.subject) || {}
+        inserts.push({ test_id: t.test_id, subject: p.subject, questions: d.questions ?? null, marks_each: d.marks_each ?? null, setter: '', verifier: '', status: 'Pending', ...patch })
+      }
+    }
+  }
+  return { updates, inserts, skipped }
+}
