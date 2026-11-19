@@ -62,7 +62,7 @@ function makeMatcher(students) {
 
 const slim = s => s ? { gcc: s.gcc_no || '', photo: s.photo_url || '', phone: String(s.parent_phone || s.phone || '').trim() } : null
 
-export default function CertificateMakerPortal({ currentUser }) {
+export default function CertificateMakerPortal({ currentUser, file = FILE, title = 'Certificate Maker' }) {
   const ref = useRef(null)
   const cache = useRef({ rows: null, students: null })
 
@@ -124,7 +124,7 @@ export default function CertificateMakerPortal({ currentUser }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#fff' }}>
-      <iframe ref={ref} title="Certificate Maker" src={FILE} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
+      <iframe ref={ref} title={title} src={file} style={{ flex: 1, minHeight: 0, width: '100%', border: 0, background: '#fff' }} />
     </div>
   )
 }
