@@ -17,7 +17,7 @@ import { QuestionMakerTab } from './MissionFoundationPaper'
 import { testReportHtml, reportCardsHtml } from './lib/missionFoundationReport'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
-  subjectByLabel, maxMarks, buildSchedule, foundationRoster, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
+  subjectByLabel, maxMarks, buildSchedule, foundationRoster, cleanTeacherName, shareTests, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -250,7 +250,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
-              {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }} />}
+              {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
               {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
@@ -524,29 +524,82 @@ function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today 
 }
 
 // ─── Teachers (subject panel) ─────────────────────────────────────────────────
-function TeachersTab({ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }) {
+function TeachersTab({ panel, panelFromDb, staff, tests, papersByTest, savePaper, isAdmin, me, load, flash }) {
   const [add, setAdd] = useState({})
-  const counts = useMemo(() => {
-    const c = {}
-    papers.forEach(p => { if (p.setter) (c[p.setter] ||= { set: 0, check: 0 }).set++; if (p.verifier) (c[p.verifier] ||= { set: 0, check: 0 }).check++ })
-    return c
-  }, [papers])
+  const [open, setOpen] = useState(null)      // subject whose test-by-test plan is open
+  const [busy, setBusy] = useState('')
+  const short = t => String(t?.test_no ?? '').padStart(2, '0')
+  // Counted per subject, so a teacher in two subjects shows each subject's own share.
+  const bySubject = useMemo(() => {
+    const m = {}
+    tests.forEach(t => (papersByTest[t.id] || []).forEach(p => {
+      const row = (m[p.subject] ||= [])
+      row.push({ ...p, test: t })
+    }))
+    return m
+  }, [tests, papersByTest])
+  const share = (subject, teacher) => {
+    const rows = bySubject[subject] || []
+    const isMe = n => cleanTeacherName(n).toLowerCase() === cleanTeacherName(teacher).toLowerCase()
+    return { set: rows.filter(r => isMe(r.setter)), check: rows.filter(r => isMe(r.verifier)) }
+  }
   const saveDefaults = async () => {
     const rows = Object.entries(DEFAULT_PANEL).flatMap(([subject, list]) => list.map(teacher => ({ subject, teacher, created_by: me })))
     const { error } = await supabase.from(T_PANEL).upsert(rows, { onConflict: 'subject,teacher' })
     if (error) flash('Not saved: ' + error.message, true); else { flash('Teacher list saved.'); load() }
   }
   const addTeacher = async subject => {
-    const name = String(add[subject] || '').trim()
+    const name = cleanTeacherName(add[subject])
     if (!name) return
+    if ((panel[subject] || []).some(t => cleanTeacherName(t).toLowerCase() === name.toLowerCase())) return flash(`${titled(name)} is already in ${subject}.`, true)
     const base = panelFromDb ? [] : Object.entries(DEFAULT_PANEL).flatMap(([s, l]) => l.map(t => ({ subject: s, teacher: t, created_by: me })))
     const { error } = await supabase.from(T_PANEL).upsert([...base, { subject, teacher: name, created_by: me }], { onConflict: 'subject,teacher' })
-    if (error) flash('Not added: ' + error.message, true); else { setAdd({ ...add, [subject]: '' }); load() }
+    if (error) return flash('Not added: ' + error.message, true)
+    setAdd({ ...add, [subject]: '' }); setOpen(subject)
+    flash(`${titled(name)} added. Give them tests below, or press "Share tests evenly".`)
+    load()
   }
   const remove = async (subject, teacher) => {
     if (!panelFromDb) return flash('Press "Save this list" first.', true)
+    const { set, check } = share(subject, teacher)
+    if ((set.length || check.length) && !window.confirm(`${titled(teacher)} still sets ${set.length} and checks ${check.length} ${subject} paper(s). Remove from the list anyway? (Those papers keep the name until you change them.)`)) return
     const { error } = await supabase.from(T_PANEL).delete().eq('subject', subject).eq('teacher', teacher)
     if (error) flash('Not removed: ' + error.message, true); else load()
+  }
+  const shareEvenly = async subject => {
+    const plan = shareTests(bySubject[subject] || [], (panel[subject] || []).map(cleanTeacherName), panel)
+    if (!plan.length) return flash('No papers to share yet. Create the schedule first.', true)
+    if (!window.confirm(`Share ${plan.length} ${subject} paper(s) in turn between ${(panel[subject] || []).map(titled).join(', ')}? Approved papers stay as they are.`)) return
+    setBusy(subject)
+    for (const p of plan) await savePaper(p.id, { setter: p.setter, verifier: p.verifier })
+    setBusy('')
+    flash(`${subject}: tests shared between ${(panel[subject] || []).length} teacher(s).`)
+  }
+  // Give a teacher a number of tests to set: the next N papers (in test order) not yet approved and not already theirs.
+  const giveCount = async (subject, teacher, n) => {
+    const rows = (bySubject[subject] || []).filter(r => r.status !== 'Approved')
+    const isMe = x => cleanTeacherName(x).toLowerCase() === cleanTeacherName(teacher).toLowerCase()
+    const have = rows.filter(r => isMe(r.setter))
+    const want = Math.max(0, Math.min(rows.length, Number(n) || 0))
+    if (want === have.length) return
+    setBusy(subject)
+    if (want > have.length) {
+      // take tests from whoever sets the most, latest tests first, so earlier work already started is not moved
+      const others = rows.filter(r => !isMe(r.setter))
+      const load2 = {}; others.forEach(r => { load2[r.setter] = (load2[r.setter] || 0) + 1 })
+      const pick = [...others].sort((a, b) => (load2[b.setter] || 0) - (load2[a.setter] || 0) || String(b.test.test_date).localeCompare(String(a.test.test_date))).slice(0, want - have.length)
+      for (const r of pick) {
+        const verifier = isMe(r.verifier) ? r.setter : r.verifier
+        await savePaper(r.id, { setter: cleanTeacherName(teacher), verifier })
+      }
+    } else {
+      const team = (panel[subject] || []).map(cleanTeacherName).filter(t => !isMe(t))
+      if (!team.length) { setBusy(''); return flash('Add another teacher to this subject first.', true) }
+      const give = [...have].sort((a, b) => String(b.test.test_date).localeCompare(String(a.test.test_date))).slice(0, have.length - want)
+      for (const [i, r] of give.entries()) await savePaper(r.id, { setter: team[i % team.length] })
+    }
+    setBusy('')
+    flash(`${titled(teacher)} now sets ${want} ${subject} test(s).`)
   }
   return (
     <>
@@ -555,28 +608,68 @@ function TeachersTab({ panel, panelFromDb, staff, papers, isAdmin, me, load, fla
           right={isAdmin ? <Btn kind="gold" onClick={saveDefaults}>Save this list</Btn> : null} />
       )}
       <datalist id="mf-staff">{staff.map(n => <option key={n} value={n} />)}</datalist>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
-        {SUBJECTS.map(s => (
-          <PremiumCard key={s.key} title={s.label} subtitle={`${(panel[s.label] || []).length} teacher(s) · default ${s.questions} Qs × ${s.marks_each} marks`} style={{ marginBottom: 0 }}>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {(panel[s.label] || []).map(t => (
-                <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <PersonCell name={t} sub={`${counts[t]?.set || 0} to set · ${counts[t]?.check || 0} to check`}>{titled(t)}</PersonCell>
-                  <span style={{ flex: 1 }} />
-                  {isAdmin && <button type="button" className="px-btn ghost" aria-label={`Remove ${t} from ${s.label}`} onClick={() => remove(s.label, t)}>✕</button>}
-                </div>
-              ))}
-              {isAdmin && (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="px-input" list="mf-staff" aria-label={`Add teacher to ${s.label}`} placeholder="Add a teacher (first name)" value={add[s.label] || ''} onChange={e => setAdd({ ...add, [s.label]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addTeacher(s.label)} style={{ padding: '7px 10px' }} />
-                  <Btn kind="gold" onClick={() => addTeacher(s.label)}>Add</Btn>
-                </div>
-              )}
-            </div>
-          </PremiumCard>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+        {SUBJECTS.map(s => {
+          const team = panel[s.label] || []
+          const rows = bySubject[s.label] || []
+          return (
+            <PremiumCard key={s.key} title={s.label} subtitle={`${team.length} teacher(s) · ${rows.length} test(s) · default ${s.questions} Qs × ${s.marks_each} marks`} style={{ marginBottom: 0 }}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {team.map(t => {
+                  const sh = share(s.label, t)
+                  return (
+                    <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <PersonCell name={cleanTeacherName(t)} sub={`Sets ${sh.set.length}${sh.set.length ? ' (' + sh.set.map(r => short(r.test)).join(', ') + ')' : ''} · checks ${sh.check.length}`}>{titled(t)}</PersonCell>
+                      <span style={{ flex: 1 }} />
+                      {isAdmin && rows.length > 0 && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: PX.sub }}>Tests
+                          <select className="px-input" aria-label={`Number of ${s.label} tests ${titled(t)} sets`} value={sh.set.length} disabled={busy === s.label}
+                            onChange={e => giveCount(s.label, t, e.target.value)} style={{ width: 'auto', padding: '5px 8px' }}>
+                            {Array.from({ length: rows.length + 1 }, (_, i) => <option key={i} value={i}>{i}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {isAdmin && <button type="button" className="px-btn ghost" aria-label={`Remove ${t} from ${s.label}`} onClick={() => remove(s.label, t)}>✕</button>}
+                    </div>
+                  )
+                })}
+                {isAdmin && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input className="px-input" list="mf-staff" aria-label={`Add teacher to ${s.label}`} placeholder="Add a teacher (first name)" value={add[s.label] || ''} onChange={e => setAdd({ ...add, [s.label]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addTeacher(s.label)} style={{ padding: '7px 10px' }} />
+                    <Btn kind="gold" onClick={() => addTeacher(s.label)}>Add</Btn>
+                  </div>
+                )}
+                {isAdmin && rows.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <Btn onClick={() => setOpen(o => (o === s.label ? null : s.label))}>{open === s.label ? 'Hide tests' : '🗓 Test by test'}</Btn>
+                    {team.length > 1 && <Btn onClick={() => shareEvenly(s.label)} disabled={busy === s.label}>⇄ Share tests evenly</Btn>}
+                  </div>
+                )}
+                {open === s.label && (
+                  <div style={{ border: `1px solid ${PX.line}`, borderRadius: 12, overflow: 'hidden' }}>
+                    {rows.map(r => {
+                      const people = [...new Set([...team.map(cleanTeacherName), cleanTeacherName(r.setter), cleanTeacherName(r.verifier)].filter(Boolean))]
+                      const locked = r.status === 'Approved'
+                      return (
+                        <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '52px 1fr 1fr', gap: 6, alignItems: 'center', padding: '6px 8px', borderTop: `1px solid ${PX.line}`, fontSize: 13 }}>
+                          <b title={fmt(r.test.test_date)}>T{short(r.test)}</b>
+                          <select className="px-input" aria-label={`Setter of ${s.label} test ${short(r.test)}`} disabled={locked} value={cleanTeacherName(r.setter)} onChange={e => savePaper(r.id, { setter: e.target.value })} style={{ padding: '5px 6px' }}>
+                            <option value="">Setter…</option>{people.map(n => <option key={n} value={n}>Sets: {titled(n)}</option>)}
+                          </select>
+                          <select className="px-input" aria-label={`Checker of ${s.label} test ${short(r.test)}`} disabled={locked} value={cleanTeacherName(r.verifier)} onChange={e => savePaper(r.id, { verifier: e.target.value })} style={{ padding: '5px 6px' }}>
+                            <option value="">Checker…</option>{people.map(n => <option key={n} value={n}>Checks: {titled(n)}</option>)}
+                          </select>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </PremiumCard>
+          )
+        })}
       </div>
-      <p style={{ color: PX.sub, fontSize: 13, marginTop: 12 }}>Use the first name as it appears in the teacher's ERP login (for example "Roshan"), so their papers show up in <b>My papers</b>. Changing this list does not change papers already made; change those in Schedule & syllabus.</p>
+      <p style={{ color: PX.sub, fontSize: 13, marginTop: 12 }}>Type the first name as in the teacher's ERP login (for example "Roshan"), so their papers show up in <b>My papers</b>. Use <b>Tests</b> to choose how many tests a teacher sets, <b>Test by test</b> to pick exactly which, or <b>Share tests evenly</b> to split them in turn. Approved papers are never moved.</p>
     </>
   )
 }

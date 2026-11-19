@@ -149,3 +149,25 @@ test('foundation roster takes every Udaan / Pragati student and flags Foundation
   assert.deepEqual(r.placed.map(s => [s.name, s.batchName]), [['Amy', 'Udaan'], ['Bo', 'Pragati'], ['Zed', 'Udaan']])
   assert.deepEqual(r.unplaced.map(s => s.name), ['Cy'])
 })
+
+test('teacher names: honorifics dropped and never doubled', async () => {
+  const { cleanTeacherName, titled } = await import('../src/missionFoundationData.js')
+  assert.equal(cleanTeacherName('  Sir  Umesh '), 'Umesh')
+  assert.equal(cleanTeacherName('Mr. Umesh'), 'Umesh')
+  assert.equal(titled('Umesh'), 'Sir Umesh')
+  assert.equal(titled('Sir Umesh'), 'Sir Umesh')
+  assert.equal(titled('Sandhya'), 'Madam Sandhya')
+})
+
+test('share tests between a subject\'s teachers in turn', async () => {
+  const { shareTests } = await import('../src/missionFoundationData.js')
+  const ps = [1, 2, 3, 4, 5].map(n => ({ id: 'p' + n, subject: 'Reasoning', status: n === 3 ? 'Approved' : 'Pending' }))
+  const out = shareTests(ps, ['Roshan', 'Umesh'])
+  assert.deepEqual(out.map(o => [o.id, o.setter, o.verifier]), [['p1', 'Roshan', 'Umesh'], ['p2', 'Umesh', 'Roshan'], ['p4', 'Roshan', 'Umesh'], ['p5', 'Umesh', 'Roshan']])
+})
+
+test('a teacher saved as "Sir Umesh" still matches the login Umesh', async () => {
+  const { nameMatches } = await import('../src/missionFoundationData.js')
+  assert.equal(nameMatches('Umesh Singh', 'Sir Umesh'), true)
+  assert.equal(nameMatches('Roshan', 'Umesh'), false)
+})
