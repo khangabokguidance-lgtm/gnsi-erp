@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GNSI Certificate Maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800;900&family=Cinzel+Decorative:wght@700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Great+Vibes&family=Inter:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+/* ---------- App shell ---------- */
+:root{--p:#0f2147;--g:#b8902f;--gd:#8a6a10;--tint:#f7f0dc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.5 Inter,system-ui,sans-serif;background:#ffffff;color:#1b2233}
+.app{display:grid;grid-template-columns:380px 1fr;height:100vh}
+aside{background:#fff;border-right:1px solid #dde1e8;overflow-y:auto;padding:18px}
+main{overflow:auto;padding:20px;display:flex;flex-direction:column;align-items:center;gap:14px}
+h1{font:800 18px Cinzel,serif;color:var(--p);letter-spacing:.5px}
+.sub{color:#667;font-size:12.5px;margin-bottom:14px}
+h2{font-size:12px;font-weight:700;color:#445;text-transform:uppercase;letter-spacing:.8px;margin:18px 0 8px;padding-top:14px;border-top:1px solid #eceef2}
+label{display:block;font-size:12px;color:#556;margin:8px 0 3px;font-weight:500}
+input[type=text],input[type=number],input[type=date],select{width:100%;padding:8px 10px;border:1px solid #cfd5df;border-radius:7px;font:inherit;font-size:14px;background:#fff}
+input:focus,select:focus{outline:2px solid var(--g);outline-offset:0;border-color:var(--g)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.drop{border:2px dashed #c3cad6;border-radius:10px;padding:18px;text-align:center;cursor:pointer;background:#f8f9fb;transition:.15s}
+.drop:hover,.drop.on{border-color:var(--g);background:#fffaf0}
+.drop b{display:block;color:var(--p)}
+.drop small{color:#778}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:8px;border:1px solid #cfd5df;background:#fff;font:600 13px Inter,sans-serif;cursor:pointer;color:#223}
+.btn:hover{background:#f3f4f7}
+.btn.pri{background:var(--p);color:#fff;border-color:var(--p)}
+.btn.pri:hover{filter:brightness(1.15)}
+.btn.gold{background:var(--g);color:#fff;border-color:var(--g)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.msg{font-size:12.5px;margin-top:8px;padding:8px 10px;border-radius:7px;display:none}
+.msg.ok{display:block;background:#e8f6ee;color:#17603a}
+.msg.err{display:block;background:#fdecec;color:#9b1c1c}
+.check{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px}
+.imgs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.imgbox{border:1px solid #d6dbe3;border-radius:7px;padding:6px;text-align:center;font-size:11px;color:#667;cursor:pointer;min-height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;position:relative}
+.imgbox img{max-height:34px;max-width:100%}
+.imgbox .x{position:absolute;top:1px;right:4px;color:#a33;font-weight:700;display:none}
+.imgbox.has .x{display:block}
+.swatches{display:flex;gap:6px}
+.sw{width:34px;height:34px;border-radius:8px;cursor:pointer;border:3px solid transparent;position:relative;overflow:hidden}
+.sw.on{border-color:#1b2233}
+.sw i{position:absolute;right:0;bottom:0;width:45%;height:45%}
+table.list{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.list th{text-align:left;font-size:11px;color:#667;font-weight:600;padding:4px;border-bottom:1px solid #e3e6eb;position:sticky;top:0;background:#fff}
+.list td{padding:3px 4px;border-bottom:1px solid #f0f1f4}
+.list td input[type=text]{padding:4px 6px;font-size:12.5px;border-radius:5px}
+.list tr.cur{background:#fff7e3}
+.list .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.listwrap{max-height:340px;overflow:auto;border:1px solid #eceef2;border-radius:8px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;background:#fff;padding:8px 12px;border-radius:10px;border:1px solid #e6e8ee}
+.toolbar .info{font-size:13px;color:#445;min-width:140px;text-align:center}
+.stage{width:100%;max-width:1123px;aspect-ratio:297/210;position:relative;box-shadow:0 4px 24px rgba(15,33,71,.14);border:1px solid #e6e8ee}
+.stage .scale{position:absolute;top:0;left:0;transform-origin:0 0}
+.empty{max-width:560px;text-align:center;color:#556;padding:60px 20px}
+.empty h3{font:700 20px Cinzel,serif;color:var(--p);margin-bottom:8px}
+dialog{margin:auto;border:none;border-radius:12px;padding:20px;width:min(640px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(10,20,40,.45)}
+dialog h3{font:700 16px Cinzel,serif;color:var(--p);margin-bottom:10px}
+.subj{display:grid;grid-template-columns:1.6fr repeat(5,1fr);gap:5px;align-items:center;font-size:12px;margin-top:4px}
+.subj input{padding:6px!important;font-size:13px!important}
+.subj.h{color:#667;font-weight:600;font-size:11px}
+#printArea{display:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:7px 12px;border-radius:999px;border:1px solid #cfd5df;background:#fff;font:600 12.5px Inter,sans-serif;cursor:pointer;color:#334}
+.chip:hover{border-color:var(--g)}
+.chip.on{background:var(--p);border-color:var(--p);color:#fff}
+.designs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.dz{text-align:left;padding:9px 10px;border-radius:9px;border:1.5px solid #d6dbe3;background:#fff;cursor:pointer;font:12px Inter,sans-serif;color:#556}
+.dz b{display:block;font:700 13px Cinzel,serif;color:var(--p)}
+.dz.on{border-color:var(--g);background:#fffaf0;box-shadow:0 0 0 2px rgba(184,144,47,.25)}
+.list tr.off td{opacity:.45}
+.list tr.hide{display:none}
+.portal{border:1.5px solid var(--g);background:linear-gradient(180deg,#fffaf0,#fff);border-radius:10px;padding:12px;margin-bottom:12px}
+.portal .ph{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--p)}
+.portal .dot{width:9px;height:9px;border-radius:50%;background:#1f8f4e;box-shadow:0 0 0 3px rgba(31,143,78,.18)}
+.list .ph{width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px;border:1px solid var(--g)}
+.modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.modes button{padding:8px 6px;border-radius:9px;border:1.5px solid #d6dbe3;background:#fff;cursor:pointer;font:11px Inter,sans-serif;color:#667;text-align:center}
+.modes b{display:block;font:700 12px Inter,sans-serif;color:var(--p);margin-bottom:1px}
+.modes button.on{border-color:var(--p);background:var(--p);color:#e8ecf5}
+.modes button.on b{color:#fff}
+.btn.wa{background:#1f8f4e;color:#fff;border-color:#1f8f4e}
+.dphoto{width:84px;height:104px;border:1.5px dashed #c3cad6;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:#778;font-size:12px;background:#f8f9fb}
+.dphoto img{width:100%;height:100%;object-fit:cover;display:none}
+.dphoto.has img{display:block}.dphoto.has span{display:none}
+#sigPad{width:100%;height:auto;border:1.5px dashed #c3cad6;border-radius:10px;background:#fff;touch-action:none;cursor:crosshair;display:block}
+.walist{max-height:46vh;overflow:auto;border:1px solid #eceef2;border-radius:9px}
+.warow{display:grid;grid-template-columns:1fr 150px auto auto;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #f0f1f4}
+.warow b{font-size:13px;color:#223}
+.warow small{display:block;color:#778;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px}
+.warow input{padding:6px 8px;font-size:13px}
+.warow a{text-decoration:none}
+textarea{width:100%;padding:8px 10px;border:1px solid #cfd5df;border-radius:7px;font:inherit;font-size:13.5px;resize:vertical}
+textarea:focus{outline:2px solid var(--g);border-color:var(--g)}
+.hint{font-size:11.5px;color:#667;margin-top:5px;line-height:1.6}
+.hint code{background:#f1f2f5;padding:0 4px;border-radius:4px;font-size:11px}
+.hint a{color:var(--gd)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+.stats div{background:#f6f7f9;border-radius:7px;padding:6px 7px;text-align:center}
+.stats b{display:block;font-size:15px;color:var(--p);font-variant-numeric:tabular-nums}
+.stats span{font-size:10.5px;color:#667}
+.stats .sub{grid-column:1/-1;text-align:left;font-size:11.5px;color:#556;background:none;padding:0 2px}
+#exp{position:fixed;left:-40000px;top:0;width:297mm;background:#fff}
+.busy{opacity:.55;pointer-events:none}
+/* text overlays (kept as HTML so image export keeps the fonts) */
+.cpage .sealw{position:relative;width:31mm;margin-top:-1mm}
+.cpage .sealw .seal{width:100%;margin:0;display:block}
+.cpage .stxt{position:absolute;left:0;right:0;top:15.5mm;transform:translateY(-50%);text-align:center;color:#fff;font-family:Cinzel,serif;line-height:1}
+.cpage .stxt i{display:block;font-style:normal;font-weight:700;font-size:7pt;letter-spacing:1.2px;margin-bottom:.8mm}
+.cpage .stxt b{display:block;font-weight:900;font-size:25pt}
+.mp .bnr{position:relative;width:118mm;height:10.4mm;margin:2.4mm auto 0}
+.mp .bnr svg{position:absolute;inset:0;width:100%;height:100%}
+.mp .bnr span{position:absolute;left:0;right:0;top:0;height:9.8mm;display:flex;align-items:center;justify-content:center;font-family:Cinzel,serif;font-weight:700;font-size:11pt;letter-spacing:3.4px;color:#f3dd8f;text-transform:uppercase;padding-left:3.4px}
+.mp .medalw{position:relative;width:36mm}
+.mp .medalw .medal{width:100%;display:block}
+.mp .mtxt{position:absolute;left:0;right:0;top:17.4mm;transform:translateY(-50%);text-align:center;font-family:Cinzel,serif;line-height:1}
+.mp .mtxt i{display:block;font-style:normal;font-weight:700;font-size:5.6pt;letter-spacing:1.4px;margin-bottom:.6mm;padding-left:1.4px}
+.mp .mtxt b{display:block;font-weight:900;font-size:18pt}
+.cpage .mid.q{display:flex;align-items:center;gap:3mm;text-align:left}
+.cpage .qr{width:15mm;height:15mm;background:#fff;padding:.8mm;border:.4mm solid var(--g);flex:none}
+.cpage .qr svg{width:100%;height:100%;display:block}
+.cpage .scan{font-size:6pt;letter-spacing:1.2px;opacity:.85}
+/* merit list */
+.merit{width:297mm;padding:12mm 14mm;font-family:'Cormorant Garamond',serif;color:#1c2540;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.merit .mh{text-align:center;border-bottom:1.5px solid var(--g);padding-bottom:3mm;margin-bottom:4mm}
+.merit .mh b{display:block;font:800 18pt Cinzel,serif;color:var(--p);letter-spacing:2px}
+.merit .mh span{display:block;font:8pt Cinzel,serif;letter-spacing:3px;color:var(--gd);margin-top:1mm}
+.merit .mh h3{font:700 15pt 'Cinzel Decorative',serif;color:var(--p);margin-top:3mm}
+.merit .mh em{display:block;font-size:11.5pt;margin-top:1mm}
+.merit table{width:100%;border-collapse:collapse;font-size:11pt}
+.merit th{background:var(--p);color:#fff;font:700 7.5pt Cinzel,serif;letter-spacing:1px;padding:2mm 1.5mm;text-transform:uppercase}
+.merit td{padding:1.4mm 1.5mm;border-bottom:.5px solid #e2d4a6;text-align:center;font-weight:600;font-variant-numeric:lining-nums tabular-nums}
+.merit td.nm{text-align:left;font-family:Cinzel,serif;font-size:9.5pt;color:var(--p)}
+.merit tr.top td{background:var(--tint)}
+.merit thead{display:table-header-group}
+.merit tr{break-inside:avoid}
+.merit .mf{display:flex;justify-content:space-between;margin-top:6mm;font:8pt Cinzel,serif;letter-spacing:1.4px;color:var(--gd)}
+
+/* ---------- Certificate ---------- */
+.cpage{width:297mm;height:210mm;position:relative;overflow:hidden;background:#fff;font-family:'Cormorant Garamond',serif;color:#1c2540;font-variant-numeric:lining-nums tabular-nums;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cpage .b1{position:absolute;inset:7mm;border:5px solid var(--p)}
+.cpage .b2{position:absolute;inset:10mm;border:1.5px solid var(--g)}
+.cpage .b3{position:absolute;inset:11.6mm;border:.6px solid var(--g)}
+.cpage .corner{position:absolute;width:30mm;height:30mm;z-index:2}
+.cpage .c1{top:10mm;left:10mm}.cpage .c2{top:10mm;right:10mm;transform:scaleX(-1)}.cpage .c3{bottom:10mm;left:10mm;transform:scaleY(-1)}.cpage .c4{bottom:10mm;right:10mm;transform:scale(-1)}
+.cpage .wm{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);font-family:'Cinzel Decorative',serif;font-size:150pt;color:var(--p);opacity:.035;letter-spacing:8px;z-index:0;white-space:nowrap}
+.cpage .wmimg{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);width:95mm;opacity:.06;z-index:0}
+.cpage .in{position:absolute;inset:16mm 22mm 14mm;z-index:3;text-align:center}
+.cpage .head{display:flex;align-items:center;justify-content:center;gap:5mm}
+.cpage .logo{height:17mm;width:auto}
+.cpage .inst{font-family:Cinzel,serif;font-weight:800;font-size:19pt;letter-spacing:2.4px;color:var(--p);line-height:1.15}
+.cpage .addr{font-family:Cinzel,serif;font-size:8pt;letter-spacing:3.5px;color:var(--gd);margin-top:1mm}
+.cpage .title{font-family:'Cinzel Decorative',serif;font-size:31pt;color:var(--p);margin-top:5mm;line-height:1}
+.cpage .title span{display:block;font-family:Cinzel,serif;font-size:10.5pt;letter-spacing:7px;color:var(--g);margin-top:1.8mm}
+.cpage .rule{display:flex;align-items:center;justify-content:center;gap:3mm;margin:2.4mm auto 0;width:120mm}
+.cpage .rule i{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--g),transparent)}
+.cpage .rule b{width:2.4mm;height:2.4mm;background:var(--g);transform:rotate(45deg)}
+.cpage .cert{font-style:italic;font-size:13.5pt;margin-top:2.6mm;color:#3a4256}
+.cpage .name{font-family:'Great Vibes',cursive;font-size:46pt;color:var(--p);line-height:1.15;margin-top:1.5mm;white-space:nowrap}
+.cpage .nl{width:150mm;height:1px;margin:0 auto;background:linear-gradient(90deg,transparent,var(--p) 15%,var(--p) 85%,transparent)}
+.cpage .body{font-size:13.5pt;margin-top:3.5mm;line-height:1.35;color:#2a3248}
+.cpage .body b{font-family:Cinzel,serif;font-size:11pt;color:var(--p);letter-spacing:.6px}
+.cpage .row2{display:flex;align-items:flex-start;justify-content:center;gap:8mm;margin-top:6mm;padding-left:12mm}
+.cpage table{border-collapse:collapse;width:165mm;font-size:11.5pt;background:#fff}
+.cpage th{font-family:Cinzel,serif;font-size:8pt;letter-spacing:1.2px;color:#fff;background:var(--p);padding:1.7mm 2mm;font-weight:700}
+.cpage td{padding:1.6mm 2mm;border-bottom:.6px solid #d9c690;font-weight:600;text-align:center;font-family:Cinzel,serif;font-size:9.8pt}
+.cpage td:first-child,.cpage th:first-child{text-align:left}
+.cpage td:first-child{font-family:Cinzel,serif;font-size:9pt;letter-spacing:.6px;color:var(--p)}
+.cpage td small{color:#8a7a50;font-size:7.5pt}
+.cpage tr.tot td{background:var(--tint);border-top:1.4px solid var(--g);border-bottom:1.4px solid var(--g);font-family:Cinzel,serif;font-weight:800;font-size:10pt;color:var(--p)}
+.cpage .seal{width:31mm;margin-top:-1mm}
+.cpage .score{text-align:center}
+.cpage .big{font-family:Cinzel,serif;font-weight:900;font-size:24pt;color:var(--p);line-height:1;margin-top:1mm}
+.cpage .big small{font-size:11pt;color:var(--gd)}
+.cpage .grade{font-family:Cinzel,serif;font-size:7.5pt;letter-spacing:2px;color:#fff;background:var(--g);padding:1mm 2.5mm;margin-top:1.4mm;display:inline-block}
+.cpage .foot{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 32mm 16mm;z-index:3}
+.cpage .sig{width:58mm;text-align:center}
+.cpage .sig .s{height:13mm;display:flex;align-items:flex-end;justify-content:center}
+.cpage .sig .s img{max-height:13mm;max-width:50mm}
+.cpage .sig .l{border-top:1px solid var(--p);padding-top:1.2mm;font-family:Cinzel,serif;font-size:8.5pt;letter-spacing:1.5px;color:var(--p);font-weight:700}
+.cpage .sig .n{font-style:italic;font-size:10pt;color:#5a6276}
+.cpage .mid{font-family:Cinzel,serif;font-size:7.5pt;letter-spacing:1.6px;color:var(--gd);text-align:center;line-height:1.7}
+
+/* ---------- Masterpiece certificate ---------- */
+.mp .frame{position:absolute;inset:0;width:100%;height:100%;z-index:1}
+.mp .rosw{position:absolute;left:50%;top:50%;width:118mm;height:118mm;transform:translate(-50%,-47%);opacity:.16;z-index:0}
+.mp .rosw .ros{width:100%;height:100%}
+.mp .rosw span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Cinzel Decorative',serif;font-size:40pt;color:var(--g);letter-spacing:4px}
+.mp .cn{position:absolute;width:24mm;height:24mm;z-index:2}
+.mp .cn.c1{top:20.5mm;left:20.5mm}.mp .cn.c2{top:20.5mm;right:20.5mm;transform:scaleX(-1)}.mp .cn.c3{bottom:20.5mm;left:20.5mm;transform:scaleY(-1)}.mp .cn.c4{bottom:20.5mm;right:20.5mm;transform:scale(-1)}
+.mp .in{position:absolute;inset:20mm 26mm 18mm;z-index:3;text-align:center}
+.mp .head{display:flex;align-items:center;justify-content:center;gap:5mm}
+.mp .logo{height:16mm}
+.mp .inst{font-family:Cinzel,serif;font-weight:800;font-size:18.5pt;letter-spacing:2.6px;color:var(--p);line-height:1.15}
+.mp .addr{font-family:Cinzel,serif;font-size:7.5pt;letter-spacing:3.6px;color:var(--gd);margin-top:.8mm}
+.mp .title{font-family:'Cinzel Decorative',serif;font-weight:700;font-size:30pt;color:var(--p);margin-top:3.2mm;line-height:1;letter-spacing:.5px}
+.mp .banner{display:block;width:118mm;height:10.4mm;margin:2.4mm auto 0}
+.mp .test{font-family:Cinzel,serif;font-size:8.5pt;letter-spacing:2.6px;color:var(--gd);margin-top:1.8mm;text-transform:uppercase}
+.mp .cert{font-style:italic;font-size:13pt;margin-top:2mm;color:#3a4256}
+.mp .name{font-family:'Great Vibes',cursive;color:var(--p);line-height:1.08;white-space:nowrap}
+.mp .swashw{display:flex;justify-content:center;margin-top:-.6mm}
+.mp .swash{display:block;width:140mm;height:7.5mm;flex:none}
+.mp .body{font-size:13pt;margin-top:1.4mm;line-height:1.3;color:#2a3248}
+.mp .body b{font-family:Cinzel,serif;font-size:10.5pt;color:var(--p);letter-spacing:.5px}
+.mp .bot{display:flex;align-items:flex-start;justify-content:center;gap:7mm;margin-top:3.4mm;padding-left:10mm}
+.mp table{border-collapse:collapse;width:158mm;font-size:11pt;background:rgba(255,255,255,.85)}
+.mp th{font-family:Cinzel,serif;font-size:7.6pt;letter-spacing:1.2px;color:var(--p);background:var(--tint);padding:1.5mm 2mm;font-weight:700;border-top:1.2px solid var(--g);border-bottom:.8px solid var(--g);text-transform:uppercase}
+.mp td{padding:1.25mm 2mm;border-bottom:.5px solid #e4d6a8;font-weight:600;text-align:center;font-family:Cinzel,serif;font-size:9.6pt}
+.mp td:first-child,.mp th:first-child{text-align:left}
+.mp td:first-child{font-family:Cinzel,serif;font-size:8.6pt;letter-spacing:.5px;color:var(--p)}
+.mp td small{color:#8a7a50;font-size:7.5pt}
+.mp tr.tot td{background:var(--p);color:#f3dd8f;font-family:Cinzel,serif;font-weight:800;font-size:9.4pt;border:0}
+.mp .score{text-align:center;width:36mm;margin-top:-6mm}
+.mp .medal{width:36mm;display:block}
+.mp .big{font-family:Cinzel,serif;font-weight:900;font-size:21pt;color:var(--p);line-height:1;margin-top:.4mm}
+.mp .big small{font-size:10pt;color:var(--gd)}
+.mp .grade{font-family:Cinzel,serif;font-size:7.2pt;letter-spacing:2px;color:var(--p);background:none;border:1px solid var(--g);border-left:0;border-right:0;padding:.8mm 1mm;margin-top:1.2mm;display:inline-block}
+.mp .foot{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 40mm 22mm;z-index:3}
+.mp .sig{width:56mm;text-align:center}
+.mp .sig .s{height:11mm;display:flex;align-items:flex-end;justify-content:center}
+.mp .sig .s img{max-height:11mm;max-width:48mm}
+.mp .sig .l{border-top:1px solid var(--p);padding-top:1.1mm;font-family:Cinzel,serif;font-size:8.2pt;letter-spacing:1.6px;color:var(--p);font-weight:700;position:relative}
+.mp .sig .l:before,.mp .sig .l:after{content:"";position:absolute;top:-1.6mm;width:2.2mm;height:2.2mm;background:var(--g);transform:rotate(45deg)}
+.mp .sig .l:before{left:-1.1mm}.mp .sig .l:after{right:-1.1mm}
+.mp .sig .n{font-style:italic;font-size:10pt;color:#5a6276}
+.mp .mid{font-family:Cinzel,serif;font-size:7.2pt;letter-spacing:1.6px;color:var(--gd);text-align:center;line-height:1.7}
+
+/* photo, bars, highlight */
+.cpage .photo{position:absolute;z-index:4;width:23mm;height:28.5mm;padding:.9mm;background:linear-gradient(135deg,#8a6a10,#f3dd8f 30%,#b8902f 55%,#f3dd8f 80%,#8a6a10);border-radius:1.2mm;box-shadow:0 .6mm 1.6mm rgba(0,0,0,.18)}
+.cpage .photo img{width:100%;height:100%;object-fit:cover;border-radius:.7mm;display:block;border:.5mm solid #fff}
+.mp .photo{top:47mm;right:44mm}
+.cpage:not(.mp) .photo{top:44mm;right:30mm}
+.cpage .pbc{width:19mm;padding-left:1mm;padding-right:2.5mm}
+.cpage th,.cpage td{white-space:nowrap}
+.mp .bot.bars{padding-left:0;gap:5mm}
+.mp table.wb{width:176mm}
+.mp table.wb th,.mp table.wb td{padding-left:1.6mm;padding-right:1.6mm}
+.cpage .row2.bars{padding-left:0;gap:5mm}
+.cpage:not(.mp) table.wb{width:180mm}
+.mp table.nc{width:132mm}.mp table.nc.wb{width:150mm}
+.cpage:not(.mp) table.nc{width:140mm}.cpage:not(.mp) table.nc.wb{width:156mm}
+.cpage .pb{height:2.2mm;border-radius:1.1mm;background:rgba(184,144,47,.18);overflow:hidden}
+.cpage .pb i{display:block;height:100%;border-radius:1.1mm;background:linear-gradient(90deg,#b8902f,#e9cf7a)}
+.cpage tr.tot .pb{background:rgba(255,255,255,.25)}
+.cpage tr.hl td{background:rgba(184,144,47,.16)}
+.cpage tr.hl td:first-child{box-shadow:inset 1mm 0 0 var(--g)}
+/* Royal Night */
+.mp.night{background:radial-gradient(ellipse at 50% 42%,rgba(255,255,255,.09),rgba(255,255,255,0) 62%),var(--p)}
+.mp.night .rosw{opacity:.22}
+.mp.night .inst,.mp.night .title,.mp.night .name,.mp.night .big{color:#f3dd8f}
+.mp.night .addr,.mp.night .test,.mp.night .mid,.mp.night .big small{color:#d2b866}
+.mp.night .cert,.mp.night .body{color:#ece6d4}
+.mp.night .body b{color:#f3dd8f}
+.mp.night table{background:rgba(255,255,255,.05)}
+.mp.night th{background:rgba(243,221,143,.14);color:#f3dd8f;border-color:#d2b866}
+.mp.night td{color:#f5efe0;border-bottom-color:rgba(243,221,143,.25)}
+.mp.night td:first-child{color:#f3dd8f}
+.mp.night td small{color:#cdb879}
+.mp.night tr.tot td{background:linear-gradient(90deg,#b8902f,#f3dd8f,#b8902f);color:var(--p)}
+.mp.night tr.hl td{background:rgba(243,221,143,.18)}
+.mp.night .grade{color:#f3dd8f;border-color:#d2b866}
+.mp.night .sig .l{color:#f3dd8f;border-top-color:#d2b866}
+.mp.night .sig .n{color:#d9d2bf}
+.mp.night .sig .s img{filter:brightness(0) invert(1) sepia(1) saturate(2.5) hue-rotate(-12deg) brightness(.95)}
+.mp.night .bnr span{color:var(--p)}
+.mp.night .qr{border-color:#d2b866}
+.mp.night .pb{background:rgba(243,221,143,.2)}
+@page{size:297mm 210mm;margin:0}
+@media print{
+  body{background:#fff}
+  .app,dialog{display:none!important}
+  #printArea{display:block}
+  #printArea .cpage{page-break-after:always;break-after:page}
+}
+@media(max-width:900px){.app{grid-template-columns:1fr;height:auto}aside{border-right:0}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1>Certificate Maker</h1>
+  <div class="sub">Guidance Navodaya &amp; Sainik Institute</div>
+
+  <div class="portal" id="portal" hidden>
+    <div class="ph"><span class="dot"></span><b>GNSI Portal connected</b></div>
+    <label style="margin-top:6px">Mock test result</label>
+    <select id="ptTest"></select>
+    <div class="row" style="margin-top:8px">
+      <button class="btn sm pri" id="ptLoad">Load this test</button>
+      <button class="btn sm" id="ptMatch" title="Find each student in the portal and bring in their photo and parent phone">Get photos &amp; phones</button>
+    </div>
+    <div class="hint" id="ptMsg">Loads students, marks and ranks from Exams → Mock Analyzer, with photos and parent phone numbers from Students.</div>
+  </div>
+  <div class="drop" id="drop">
+    <b>Upload result: PDF, Excel or CSV</b>
+    <small>Drop the result file here or click to choose</small>
+    <input type="file" id="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="row" style="margin-top:8px">
+    <button class="btn sm" id="addBtn">+ Add student manually</button>
+    <button class="btn sm" id="clearBtn">Clear list</button>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn sm" id="xlsBtn">Download Excel template</button>
+    <button class="btn sm" id="rankBtn" title="Dense ranking by total marks, ties share a rank">Recalculate ranks</button>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn sm" id="saveProj">Save project</button>
+    <button class="btn sm" id="openProj">Open project</button>
+    <input type="file" id="projFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn sm" id="photoBtn">Upload student photos</button>
+    <input type="file" id="photoFile" accept="image/*" multiple hidden>
+  </div>
+  <div class="hint">Select many photos at once. Name each file after the student (e.g. <code>Loyumba L.jpg</code>) or their serial no. (<code>1.jpg</code>) and they match automatically.</div>
+
+  <h2>Students <span id="cnt" style="color:var(--g)"></span></h2>
+  <div class="stats" id="stats"></div>
+  <label style="margin-top:0">Certificate type</label>
+  <div class="modes" id="modes">
+    <button data-m="rank"><b>Rank / Merit</b><span>Position &amp; rank</span></button>
+    <button data-m="subject"><b>Subject Toppers</b><span>Highest in each subject</span></button>
+    <button data-m="part"><b>Participation</b><span>Score &amp; grade</span></button>
+  </div>
+  <div class="hint" id="modeHint"></div>
+  <label>Print certificates for</label>
+  <div class="chips" id="chips">
+    <button class="chip" data-n="3">Top 3 ranks</button>
+    <button class="chip" data-n="5">Top 5</button>
+    <button class="chip" data-n="10">Top 10</button>
+    <button class="chip" data-n="0">All students</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <span style="font-size:12px;color:#556">Custom: top</span><input type="number" id="topN" style="width:64px;padding:5px" min="1" placeholder="N">
+    <button class="btn sm" id="selTop">ranks</button>
+    <label class="check" style="margin:0 0 0 auto"><input type="checkbox" id="onlySel"> Show selected only</label>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <button class="btn sm" id="sortRank">Sort by rank</button>
+    <button class="btn sm" id="sortName">Sort A–Z</button>
+    <button class="btn sm" id="selAll">Select all</button>
+    <button class="btn sm" id="selNone">Select none</button>
+  </div>
+  <input type="text" id="search" placeholder="Search student…" style="margin-top:8px">
+  <div class="listwrap" style="margin-top:6px"><table class="list"><thead><tr><th></th><th>Name</th><th class="num">Total</th><th class="num">Rank</th><th></th></tr></thead><tbody id="list"></tbody></table></div>
+
+  <h2>Certificate text</h2>
+  <label>Institute name</label><input type="text" id="inst">
+  <label>Address line</label><input type="text" id="addr">
+  <label id="ctitleL">Certificate title</label><input type="text" id="ctitle">
+  <label>Test name (under title)</label><input type="text" id="test">
+  <label>Batch / course</label><input type="text" id="batch">
+  <div class="g2">
+    <div><label>Full marks</label><input type="number" id="full" min="1"></div>
+    <div><label>Marks per subject</label><input type="number" id="per" min="1" step="any"></div>
+  </div>
+  <div class="g2">
+    <div><label>Date</label><input type="date" id="date"></div>
+    <div><label>Cert. no. prefix</label><input type="text" id="prefix"></div>
+  </div>
+
+  <h2>Signatures</h2>
+  <div class="g2">
+    <div><label>Left title</label><input type="text" id="sigL"></div>
+    <div><label>Right title</label><input type="text" id="sigR"></div>
+    <div><label>Left name (optional)</label><input type="text" id="sigLn"></div>
+    <div><label>Right name (optional)</label><input type="text" id="sigRn"></div>
+  </div>
+
+  <h2>Images</h2>
+  <div class="imgs">
+    <div class="imgbox" data-k="logo"><span class="x">×</span><img alt=""><span>Logo</span></div>
+    <div class="imgbox" data-k="signL"><span class="x">×</span><img alt=""><span>Left signature</span></div>
+    <div class="imgbox" data-k="signR"><span class="x">×</span><img alt=""><span>Right signature</span></div>
+  </div>
+  <input type="file" id="imgFile" accept="image/*" hidden>
+  <div class="row" style="margin-top:6px"><button class="btn sm" id="drawSig">✍ Draw a signature</button></div>
+  <small style="color:#889;font-size:11px">Upload a PNG with transparent background, or draw with mouse / finger.</small>
+
+  <h2>Style</h2>
+  <label style="margin-top:0">Certificate design</label>
+  <div class="designs" id="designs">
+    <button class="dz" data-d="master"><b>Masterpiece</b><span>Guilloché frame, laurel medal, position ribbon</span></button>
+    <button class="dz" data-d="night"><b>Royal Night</b><span>Gold on deep colour, best for WhatsApp</span></button>
+    <button class="dz" data-d="classic"><b>Classic</b><span>Clean navy &amp; gold border</span></button>
+  </div>
+  <label>Colour theme</label>
+  <div class="swatches" id="swatches"></div>
+  <label class="check"><input type="checkbox" id="showGrade"> Show grade label (Outstanding, Excellent…)</label>
+  <label class="check"><input type="checkbox" id="showTable"> Show subject-wise marks table</label>
+  <label class="check"><input type="checkbox" id="showBars"> Show performance bars in the table</label>
+  <label class="check"><input type="checkbox" id="showPhoto"> Show student photo (when uploaded)</label>
+  <label class="check"><input type="checkbox" id="showWm"> Show watermark</label>
+  <label class="check"><input type="checkbox" id="showQR"> Show QR verification code</label>
+  <label class="check"><input type="checkbox" id="joint"> Write "Joint" for tied ranks (e.g. Joint First Position)</label>
+  <label>Watermark text</label><input type="text" id="wmText">
+
+  <h2>Wording</h2>
+  <div data-for="rank"><label style="margin-top:0">Sentence for ranks 1–3</label>
+  <textarea id="txtTop" rows="3"></textarea>
+  <label>Sentence for other ranks</label>
+  <textarea id="txtOther" rows="3"></textarea></div>
+  <div data-for="subject"><label style="margin-top:0">Sentence for subject toppers</label>
+  <textarea id="txtSub" rows="3"></textarea></div>
+  <div data-for="part"><label style="margin-top:0">Sentence for participation</label>
+  <textarea id="txtPart" rows="3"></textarea></div>
+  <div class="hint">Use <code>{name}</code> <code>{marks}</code> <code>{full}</code> <code>{percent}</code> <code>{rank}</code> <code>{position}</code> <code>{grade}</code> <code>{test}</code> <code>{batch}</code> <code>{subject}</code> <code>{submarks}</code> <code>{per}</code>. Wrap words in <code>**double stars**</code> for bold. <a href="#" id="resetTxt">Reset to default</a></div>
+
+  <h2>Subject names</h2>
+  <div id="subjNames"><small style="color:#889">Appear after uploading a result.</small></div>
+
+  <div style="height:30px"></div>
+</aside>
+
+<main>
+  <div class="toolbar">
+    <button class="btn" id="prev">‹ Prev</button>
+    <div class="info" id="info">No students yet</div>
+    <button class="btn" id="next">Next ›</button>
+    <button class="btn gold" id="printOne">Print this one</button>
+    <button class="btn pri" id="printAll">Print / Save PDF (selected)</button>
+  </div>
+  <div class="toolbar">
+    <span style="font-size:12.5px;color:#556">Separate files:</span>
+    <select id="expFmt" style="width:auto;padding:6px 8px"><option value="pdf">PDF</option><option value="jpg">JPG image</option></select>
+    <button class="btn" id="dlOne">Download this one</button>
+    <button class="btn pri" id="dlZip">Download selected (ZIP)</button>
+    <button class="btn" id="merit">Print merit list</button>
+    <button class="btn wa" id="waBtn">WhatsApp parents</button>
+  </div>
+  <div class="stage" id="stage"><div class="scale" id="scale"></div></div>
+  <div style="font-size:12px;color:#667;max-width:760px;text-align:center">In the print dialog choose <b>Save as PDF</b> or your printer, set Layout to <b>Landscape</b>, Margins to <b>None</b> and tick <b>Background graphics</b>.</div>
+</main>
+</div>
+
+<dialog id="dlg">
+  <h3 id="dlgT">Add student</h3>
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start">
+    <div class="dphoto" id="dPhoto" title="Click to add photo"><img alt=""><span>+ Photo</span></div>
+    <div><div class="g2"><div><label style="margin-top:0">Name</label><input type="text" id="dName"></div><div><label style="margin-top:0">Test rank</label><input type="number" id="dRank" min="1"></div></div>
+    <div class="g2"><div><label>Parent phone (WhatsApp)</label><input type="text" id="dPhone" placeholder="10-digit mobile"></div><div style="display:flex;align-items:flex-end"><button class="btn sm" id="dPhotoDel">Remove photo</button></div></div></div>
+  </div>
+  <input type="file" id="dPhotoFile" accept="image/*" hidden>
+  <div class="subj h" style="margin-top:12px"><span>Subject</span><span>Correct</span><span>Incorrect</span><span>Blank</span><span>Marks</span><span>Sub. rank</span></div>
+  <div id="dSubs"></div>
+  <div class="row" style="margin-top:6px"><button class="btn sm" id="dAddSub">+ Subject row</button></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="dCancel">Cancel</button><button class="btn pri" id="dSave">Save</button></div>
+</dialog>
+
+<dialog id="sigDlg">
+  <h3>Draw a signature</h3>
+  <canvas id="sigPad" width="900" height="300"></canvas>
+  <div class="row" style="margin-top:10px;justify-content:space-between">
+    <div class="row"><span style="font-size:12px;color:#556">Pen</span>
+      <select id="sigInk" style="width:auto;padding:5px"><option value="#0f2147">Navy</option><option value="#111111">Black</option><option value="#1d3fb0">Blue</option></select>
+      <button class="btn sm" id="sigClear">Clear</button></div>
+    <div class="row"><button class="btn" id="sigCancel">Cancel</button><button class="btn gold" id="sigToL">Use as left</button><button class="btn pri" id="sigToR">Use as right</button></div>
+  </div>
+</dialog>
+<dialog id="waDlg" style="width:min(820px,96vw)">
+  <h3>WhatsApp messages for parents</h3>
+  <label style="margin-top:0">Message</label>
+  <textarea id="waTpl" rows="7"></textarea>
+  <div class="hint">Placeholders: <code>{name}</code> <code>{marks}</code> <code>{full}</code> <code>{percent}</code> <code>{rank}</code> <code>{grade}</code> <code>{subjects}</code> <code>{test}</code> <code>{batch}</code> <code>{inst}</code>. <code>*text*</code> shows bold in WhatsApp. <a href="#" id="waReset">Reset</a></div>
+  <div class="row" style="margin:10px 0 6px;justify-content:space-between"><b id="waCount" style="font-size:13px"></b><button class="btn sm" id="waCopyAll">Copy all messages</button></div>
+  <div id="waList" class="walist"></div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri" id="waClose">Done</button></div>
+</dialog>
+
+<div id="printArea"></div>
+<div id="exp"></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const THEMES={
+  navy:{p:'#0f2147',g:'#b8902f',gd:'#8a6a10',tint:'#f7f0dc'},
+  maroon:{p:'#5e0f1f',g:'#b8902f',gd:'#8a6a10',tint:'#f8eedc'},
+  emerald:{p:'#0d3b2e',g:'#b8902f',gd:'#7f6512',tint:'#f3efdc'},
+  royal:{p:'#2a1458',g:'#b8902f',gd:'#8a6a10',tint:'#f4eedf'},
+  black:{p:'#1a1a1a',g:'#b8902f',gd:'#8a6a10',tint:'#f5efe0'}
+};
+const DEFAULT_NAMES={'MENTAL ABILITY':'Mental Ability','EVS':'Environmental Studies','MATHEMATICS':'Mathematics','MATHS':'Mathematics','PASSAGE':'Language (Passage)','ENGLISH':'English','GK':'General Knowledge','GENERAL KNOWLEDGE':'General Knowledge','INTELLIGENCE':'Intelligence','LANGUAGE':'Language','ARITHMETIC':'Arithmetic','SCIENCE':'Science','SOCIAL SCIENCE':'Social Science'};
+const S={ // settings
+  inst:'Guidance Navodaya & Sainik Institute',addr:'KHANGABOK · THOUBAL · MANIPUR · ESTD. 2016',
+  ctitle:'Certificate of Achievement',test:'Mock Test Series 2026',batch:'Navodaya Lakshya – B',
+  full:100,per:25,date:new Date().toISOString().slice(0,10),prefix:'GNSI/MT/',
+  sigL:'Co-ordinator',sigR:'Director, GNSI',sigLn:'',sigRn:'',
+  design:'master',filterN:0,mode:'rank',ctitleSub:'Certificate of Excellence',ctitlePart:'Certificate of Participation',txtSub:'',txtPart:'',showBars:true,showPhoto:true,waTpl:'',showQR:true,joint:true,txtTop:'',txtOther:'',expFmt:'pdf',theme:'navy',showGrade:true,showTable:true,showWm:true,wmText:'GNSI',
+  names:{},logo:'',signL:'',signR:''
+};
+let students=[],cur=0;
+try{Object.assign(S,JSON.parse(localStorage.getItem('gnsiCertSettings')||'{}'))}catch(e){}
+const save=()=>{autosave();try{localStorage.setItem('gnsiCertSettings',JSON.stringify(S))}catch(e){try{const t={...S,logo:'',signL:'',signR:''};localStorage.setItem('gnsiCertSettings',JSON.stringify(t))}catch(_){}}};
+
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=x=>{const n=+x;return Number.isFinite(n)?String(Math.round(n*100)/100):''};
+const ord=n=>{n=+n;if(!n)return '—';const v=n%100;return n+((v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'))};
+const title=s=>s.toLowerCase().replace(/(^|[\s.\-'])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
+const grade=(t,full)=>{const p=t/full*100;return p>=90?'Outstanding':p>=80?'Excellent':p>=70?'Very Good':p>=60?'Good':'Keep Striving'};
+const subName=k=>S.names[k]||DEFAULT_NAMES[k]||title(k);
+const niceDate=d=>{if(!d)return '';const x=new Date(d+'T00:00');return x.getDate()+' '+x.toLocaleString('en-GB',{month:'long'}).toUpperCase()+' '+x.getFullYear()};
+
+const DEF_TOP='in recognition of outstanding performance, having secured **{marks} of {full} marks** and the **{position}**.';
+const DEF_OTHER='in recognition of dedicated effort and commendable performance, having secured **{marks} of {full} marks** and **Test Rank {rank}**.';
+const DEF_SUB='for securing the highest marks in **{subject}**, **{submarks} of {per}**, in the {test} ({batch}).';
+const DEF_PART='for participating in the **{test}** ({batch}) and securing **{marks} of {full} marks** with the grade **{grade}**.';
+const DEF_WA='Dear Parent,\nGreetings from *{inst}*.\n\n*{name}* has scored *{marks}/{full}* ({percent}%) and secured *Rank {rank}* in the {test} ({batch}).\n\nSubject-wise: {subjects}\nGrade: *{grade}*\n\nThank you for your support.\n– {inst}';
+const POS={1:'First Position',2:'Second Position',3:'Third Position'};
+const TKEY={rank:'ctitle',subject:'ctitleSub',part:'ctitlePart'};
+const titleFor=k=>S[TKEY[k]]||'';
+const subjKeys=()=>[...new Set(students.flatMap(s=>s.subs.map(x=>x.s)))];
+const abbr=k=>{const w=k.split(/\s+/).filter(Boolean);return w.length>1?w.map(x=>x[0]).join(''):k.slice(0,3)};
+function bannerText(s,x){if(x.kind==='subject')return 'Topper in '+subName(x.subj);if(x.kind==='part')return grade(totalOf(s),S.full)+' Performance';return posOf(s)}
+function medalArgs(s,x,classic){
+  if(x.kind==='subject')return [1,'TOPPER','1st'];
+  if(x.kind==='part')return ['N','SCORE',fmt(totalOf(s)/S.full*100)+'%'];
+  const r=+s.rank;return [r,classic?'TEST RANK':'RANK',(!classic&&MEDAL[r])?ord(r):s.rank];
+}
+const hasCIB=s=>s.subs.some(y=>[y.c,y.i,y.b].some(v=>v!==''&&v!=null));
+function photoBlock(s){return S.showPhoto&&s.photo?`<div class="photo"><img src="${s.photo}" alt=""></div>`:''}
+function tableRows(s,x,master){
+  const cib=hasCIB(s),bars=S.showBars,pct=v=>Math.max(0,Math.min(100,(+v||0)/S.per*100)).toFixed(1);
+  return s.subs.map(y=>`<tr class="${x.kind==='subject'&&y.s===x.subj?'hl':''}"><td>${esc(subName(y.s))}</td>${cib?`<td>${y.c??''}</td><td>${y.i??''}</td><td>${y.b??''}</td>`:''}<td>${master?`<b>${fmt(y.t)}</b><small> / ${fmt(S.per)}</small>`:`${fmt(y.t)} <small>/ ${fmt(S.per)}</small>`}</td><td>${ord(y.r)}</td>${bars?`<td class="pbc"><div class="pb"><i style="width:${pct(y.t)}%"></i></div></td>`:''}</tr>`).join('');
+}
+const totalOf=s=>(s.total!=null&&s.total!=='')?+s.total:s.subs.reduce((a,x)=>a+(+x.t||0),0);
+function posOf(s){const r=+s.rank;if(!(r>=1&&r<=3))return 'Test Rank '+s.rank;const tie=S.joint&&students.filter(x=>+x.rank===r).length>1;return (tie?'Joint ':'')+POS[r]}
+function fillMap(s,x){const total=totalOf(s),sub=x&&x.subj?s.subs.find(y=>y.s===x.subj):null;
+  return {name:title(s.name),marks:fmt(total),full:fmt(S.full),rank:s.rank,position:posOf(s),test:S.test,batch:S.batch,grade:grade(total,S.full),percent:fmt(total/S.full*100),
+    subject:x&&x.subj?subName(x.subj):'',submarks:sub?fmt(sub.t):'',per:fmt(S.per),inst:S.inst,
+    subjects:s.subs.map(y=>`${subName(y.s)} ${fmt(y.t)}/${fmt(S.per)}`).join(', ')}}
+function sentence(s,x){
+  x=x||{kind:'rank'};const r=+s.rank,top=r>=1&&r<=3;
+  const tpl=x.kind==='subject'?(S.txtSub||DEF_SUB):x.kind==='part'?(S.txtPart||DEF_PART):((top?S.txtTop:S.txtOther)||(top?DEF_TOP:DEF_OTHER));
+  const map=fillMap(s,x);
+  return esc(tpl).replace(/\{(\w+)\}/g,(m,k)=>k in map?esc(map[k]):m).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+}
+const certNo=(s,idx,x)=>S.prefix+(x&&x.kind==='subject'?'T'+abbr(x.subj)+'-':x&&x.kind==='part'?'P-':'')+String(s.sn||idx+1).padStart(3,'0');
+/* lazy script loader */
+const LIBS={qr:'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js',xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  h2c:'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',jspdf:'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',zip:'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'};
+const LOADED={};
+function lib(k){return LOADED[k]||(LOADED[k]=new Promise((ok,no)=>{const sc=document.createElement('script');sc.src=LIBS[k];sc.onload=ok;
+  sc.onerror=()=>{delete LOADED[k];no(new Error('Could not load a helper library. Check your internet connection.'))};document.head.appendChild(sc)}))}
+function qrBlock(s,idx,x){
+  if(!S.showQR)return '';
+  if(!window.qrcode){lib('qr').then(()=>preview()).catch(()=>{});return ''}
+  const text=`GNSI CERTIFICATE\nNo: ${certNo(s,idx,x)}\nType: ${x?bannerText(s,x):''}\nName: ${title(s.name)}${s.gcc?`\nGCC No: ${s.gcc}`:''}\nTest: ${S.test}\nBatch: ${S.batch}\nMarks: ${fmt(totalOf(s))}/${fmt(S.full)}\nRank: ${s.rank}\nDate: ${niceDate(S.date)}\nIssued by: ${S.inst}`;
+  try{qrcode.stringToBytes=qrcode.stringToBytesFuncs['UTF-8'];const q=qrcode(0,'M');q.addData(text);q.make();
+    return `<div class="qr">${q.createSvgTag({cellSize:2,margin:0,scalable:true})}</div>`}catch(e){return ''}
+}
+function midBlock(s,idx,x){const q=qrBlock(s,idx,x);
+  return `<div class="mid${q?' q':''}">${q}<div>CERTIFICATE NO. ${esc(certNo(s,idx,x))}<br>DATE: ${niceDate(S.date)}${q?'<br><span class="scan">SCAN TO VERIFY</span>':''}</div></div>`}
+const CORNER=`<svg viewBox="0 0 100 100"><g stroke="var(--g)" fill="none"><path d="M4 4 H70 M4 4 V70 M12 12 H55 M12 12 V55" stroke-width="2.2"/>
+<path d="M12 12 C30 12 34 30 22 34 C14 37 10 28 18 24 C26 20 34 28 30 40" stroke-width="1.9"/>
+<path d="M12 12 C12 30 30 34 34 22 C37 14 28 10 24 18 C20 26 28 34 40 30" stroke-width="1.9"/></g>
+<g fill="var(--g)"><circle cx="12" cy="12" r="3.2"/><circle cx="70" cy="4" r="2"/><circle cx="4" cy="70" r="2"/></g></svg>`;
+function seal(r,iT,bT){
+  iT=iT||'TEST RANK';bT=bT??r;
+  const m={1:['#d4a72c','#8a6a10'],2:['#c9ccd3','#6b7280'],3:['#d08a52','#7c4a22']}[r]||[THEMES[S.theme].p,'#000'];
+  const [a,b]=m;let pts=[];
+  for(let k=0;k<48;k++){const an=k*Math.PI/24,rad=k%2?45:50;pts.push((55+rad*Math.cos(an)).toFixed(1)+','+(55+rad*Math.sin(an)).toFixed(1))}
+  return `<div class="sealw"><svg viewBox="0 0 110 140" class="seal"><path d="M32 90 L20 138 L36 128 L46 140 L52 96Z" fill="${b}"/><path d="M78 90 L90 138 L74 128 L64 140 L58 96Z" fill="${b}"/>
+<polygon points="${pts.join(' ')}" fill="${a}"/><circle cx="55" cy="55" r="40" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.2"/>
+<circle cx="55" cy="55" r="36" fill="${b}" fill-opacity=".18"/></svg><div class="stxt"><i>${esc(iT)}</i><b style="font-size:${String(bT).length>3?15:String(bT).length>2?19:25}pt">${esc(bT)}</b></div></div>`;
+}
+function cert(s,idx,x){
+  x=x||{kind:'rank'};
+  const t=THEMES[S.theme];
+  const vars=`--p:${t.p};--g:${t.g};--gd:${t.gd};--tint:${t.tint}`;
+  const tot=s.subs.reduce((a,x)=>a+(+x.t||0),0);
+  const total=s.total!=null&&s.total!==''?+s.total:tot;
+  const sum=k=>s.subs.reduce((a,x)=>a+(+x[k]||0),0);
+  const rows=tableRows(s,x,false);
+  const nameSize=s.name.length>22?36:s.name.length>17?41:46;
+  const cs=[1,2,3,4].map(k=>`<div class="corner c${k}">${CORNER}</div>`).join('');
+  const no=S.prefix+String(idx+1).padStart(3,'0');
+  const wm=!S.showWm?'':(S.wmText?`<div class="wm">${esc(S.wmText)}</div>`:(S.logo?`<img class="wmimg" src="${S.logo}">`:''));
+  return `<div class="cpage" style="${vars}"><div class="b1"></div><div class="b2"></div><div class="b3"></div>${cs}${wm}${photoBlock(s)}
+<div class="in">
+<div class="head">${S.logo?`<img class="logo" src="${S.logo}">`:''}<div><div class="inst">${esc(S.inst)}</div><div class="addr">${esc(S.addr)}</div></div></div>
+<div class="title">${esc(titleFor(x.kind))}<span>${esc((x.kind==='rank'?S.test:bannerText(s,x)).toUpperCase())}</span></div>
+<div class="rule"><i></i><b></b><i></i></div>
+<div class="cert">This certificate is proudly presented to</div>
+<div class="name" style="font-size:${nameSize}pt">${esc(title(s.name))}</div><div class="nl"></div>
+<div class="body">${sentence(s,x)}</div>
+<div class="row2${S.showBars&&S.showTable?' bars':''}" style="${S.showTable?'':'padding-left:0'}">
+${S.showTable?`<table class="${S.showBars?'wb':''}${hasCIB(s)?'':' nc'}"><tr><th>SUBJECT</th>${hasCIB(s)?'<th>CORRECT</th><th>INCORRECT</th><th>BLANK</th>':''}<th>MARKS</th><th>SUB. RANK</th>${S.showBars?'<th>SCORE</th>':''}</tr>${rows}
+<tr class="tot"><td>Grand Total</td>${hasCIB(s)?`<td>${sum('c')}</td><td>${sum('i')}</td><td>${sum('b')}</td>`:''}<td>${fmt(total)} / ${fmt(S.full)}</td><td>—</td>${S.showBars?`<td class="pbc"><div class="pb"><i style="width:${Math.min(100,total/S.full*100).toFixed(1)}%"></i></div></td>`:''}</tr></table>`:''}
+<div class="score">${seal(...medalArgs(s,x,true))}<div class="big">${fmt(total)}<small>/${fmt(S.full)}</small></div>${S.showGrade?`<div class="grade">${grade(total,S.full).toUpperCase()}</div>`:''}</div>
+</div></div>
+<div class="foot">
+<div class="sig"><div class="s">${S.signL?`<img src="${S.signL}">`:''}</div><div class="l">${esc(S.sigL.toUpperCase())}</div>${S.sigLn?`<div class="n">${esc(S.sigLn)}</div>`:''}</div>
+${midBlock(s,idx,x)}
+<div class="sig"><div class="s">${S.signR?`<img src="${S.signR}">`:''}</div><div class="l">${esc(S.sigR.toUpperCase())}</div>${S.sigRn?`<div class="n">${esc(S.sigRn)}</div>`:''}</div>
+</div></div>`;
+}
+
+/* ---------- MASTERPIECE design ---------- */
+const GOLDDEF=x=>`<linearGradient id="mpGold${x}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a6a10"/><stop offset=".25" stop-color="#e9cf7a"/><stop offset=".5" stop-color="#b8902f"/><stop offset=".75" stop-color="#f3dd8f"/><stop offset="1" stop-color="#8a6a10"/></linearGradient>`;
+const MEDAL={1:['#fff3b0','#e2b93b','#9a7412','#6b500a'],2:['#ffffff','#d5d9e0','#8f96a3','#5d6470'],3:['#ffe2c4','#d5925a','#94582a','#64391a']};
+function rosette(){
+  let d='';const C=60;
+  const curve=(R,r,dd,rot,sc)=>{let p='';const N=700;for(let k=0;k<=N;k++){const t=k/N*2*Math.PI*r;const x=(R-r)*Math.cos(t)+dd*Math.cos((R-r)/r*t),y=(R-r)*Math.sin(t)-dd*Math.sin((R-r)/r*t);
+    const X=x*Math.cos(rot)-y*Math.sin(rot),Y=x*Math.sin(rot)+y*Math.cos(rot);p+=(k?'L':'M')+(C+X*sc).toFixed(1)+' '+(C+Y*sc).toFixed(1)}return `<path d="${p}"/>`};
+  d+=curve(18,1,6,0,2.3)+curve(18,1,6,Math.PI/18,2.3)+curve(24,1,3,0,2.25)+curve(30,1,9,0,1.25)+curve(30,1,9,Math.PI/30,1.25);
+  const g=THEMES[S.theme].g;
+  return `<svg class="ros" viewBox="0 0 120 120"><g fill="none" stroke="${g}" stroke-width=".22">${d}</g><circle cx="60" cy="60" r="57" fill="none" stroke="${g}" stroke-width=".3"/><circle cx="60" cy="60" r="58.5" fill="none" stroke="${g}" stroke-width=".15"/></svg>`;
+}
+let ROS=null,ROSK='';
+let BANDS=null;
+function bandPaths(o,band,W,H){
+  if(BANDS)return BANDS;
+  const run=(x0,x1,yc,a,vert)=>{let d='';for(const sg of [1,-1])for(const amp of [a,a*.57]){let p='';let x=x0;
+      const P=(u,v)=>vert?`${v.toFixed(2)} ${u.toFixed(2)}`:`${u.toFixed(2)} ${v.toFixed(2)}`;
+      p='M'+P(x,yc);let k=0;while(x<x1-0.01){const nx=Math.min(x+2.5,x1);const dir=(k%2?-1:1)*sg;p+=` Q${P((x+nx)/2,yc-dir*amp)} ${P(nx,yc)}`;x=nx;k++}
+      d+=p}return d};
+  const c=o+band/2,dots=(x0,x1,yc,vert)=>{let d='';for(let x=x0+2.5;x<x1;x+=5)d+=vert?`M${yc} ${x}h0`:`M${x} ${yc}h0`;return d};
+  const top=run(o,W-o,c,3,false)+run(o,W-o,H-c,3,false)+run(o,H-o,c,3,true)+run(o,H-o,W-c,3,true);
+  const dt=dots(o,W-o,c,false)+dots(o,W-o,H-c,false)+dots(o,H-o,c,true)+dots(o,H-o,W-c,true);
+  BANDS=`<path d="${top}"/><path d="${dt}" stroke-width=".7" stroke-linecap="round"/>`;
+  return BANDS;
+}
+function frame(n){
+  const P=n?'#d2b866':'var(--p)',F=n?'rgba(0,0,0,.35)':'var(--p)',band=7,o=8,W=297,H=210;
+  const wave=(a)=>`M0 3.5 Q1.25 ${3.5-a} 2.5 3.5 Q3.75 ${3.5+a} 5 3.5 M0 3.5 Q1.25 ${3.5+a} 2.5 3.5 Q3.75 ${3.5-a} 5 3.5`;
+  const waveV=(a)=>`M3.5 0 Q${3.5-a} 1.25 3.5 2.5 Q${3.5+a} 3.75 3.5 5 M3.5 0 Q${3.5+a} 1.25 3.5 2.5 Q${3.5-a} 3.75 3.5 5`;
+  const corner=(x,y)=>`<rect x="${x}" y="${y}" width="${band}" height="${band}" fill="${F}"/><circle cx="${x+3.5}" cy="${y+3.5}" r="2.4" fill="none" stroke="url(#mpGold)" stroke-width=".5"/><circle cx="${x+3.5}" cy="${y+3.5}" r="1.1" fill="url(#mpGold)"/>`;
+  const crest=(cx,cy)=>`<g transform="translate(${cx} ${cy})"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="${n?THEMES[S.theme].p:P}" stroke="url(#mpGold)" stroke-width=".7"/><rect x="-3.6" y="-3.6" width="7.2" height="7.2" transform="rotate(45)" fill="none" stroke="url(#mpGold)" stroke-width=".35"/><path d="M0 -3.4 L0.9 -0.9 L3.4 0 L0.9 0.9 L0 3.4 L-0.9 0.9 L-3.4 0 L-0.9 -0.9Z" fill="url(#mpGold)"/></g>`;
+  return `<svg class="frame" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs>
+<linearGradient id="mpGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8a6a10"/><stop offset=".25" stop-color="#e9cf7a"/><stop offset=".5" stop-color="#b8902f"/><stop offset=".75" stop-color="#f3dd8f"/><stop offset="1" stop-color="#8a6a10"/></linearGradient>
+</defs>
+<rect x="4.5" y="4.5" width="${W-9}" height="${H-9}" fill="none" stroke="url(#mpGold)" stroke-width="1.6"/>
+<rect x="6.6" y="6.6" width="${W-13.2}" height="${H-13.2}" fill="none" stroke="${P}" stroke-width=".5"/>
+<g fill="none" stroke="var(--g)" stroke-width=".22">${bandPaths(o,band,W,H)}</g>
+<rect x="${o}" y="${o}" width="${W-2*o}" height="${H-2*o}" fill="none" stroke="${P}" stroke-width=".6"/>
+<rect x="${o+band}" y="${o+band}" width="${W-2*(o+band)}" height="${H-2*(o+band)}" fill="none" stroke="${P}" stroke-width=".6"/>
+<rect x="${o+band+2}" y="${o+band+2}" width="${W-2*(o+band+2)}" height="${H-2*(o+band+2)}" fill="none" stroke="url(#mpGold)" stroke-width=".45"/>
+<rect x="${o+band+3}" y="${o+band+3}" width="${W-2*(o+band+3)}" height="${H-2*(o+band+3)}" fill="none" stroke="var(--g)" stroke-width=".15"/>
+${corner(o,o)}${corner(W-o-band,o)}${corner(o,H-o-band)}${corner(W-o-band,H-o-band)}
+${crest(W/2,o+band/2)}${crest(W/2,H-o-band/2)}${crest(o+band/2,H/2)}${crest(W-o-band/2,H/2)}
+</svg>`;
+}
+function flourish(){return `<div class="swashw"><svg class="swash" viewBox="0 0 300 16"><defs>${GOLDDEF('F')}</defs><g fill="none" stroke="url(#mpGoldF)" stroke-linecap="round">
+<path d="M150 8 C120 -2 90 18 40 8 C25 5 12 7 2 8" stroke-width="1.1"/><path d="M150 8 C180 -2 210 18 260 8 C275 5 288 7 298 8" stroke-width="1.1"/>
+<path d="M150 8 C135 14 118 13 105 8" stroke-width=".6"/><path d="M150 8 C165 14 182 13 195 8" stroke-width=".6"/></g>
+<rect x="146" y="4" width="8" height="8" transform="rotate(45 150 8)" fill="url(#mpGoldF)"/></svg></div>`}
+function banner(text,n){const B=n?'#d9bd6a':'var(--p)',E=n?'#b8902f':'var(--p)';return `<div class="bnr"><svg viewBox="0 0 160 14" preserveAspectRatio="none"><defs>${GOLDDEF('B')}</defs><g>
+<path d="M2 3 H22 V13 H2 L7 8Z" fill="${E}" opacity=".75"/><path d="M158 3 H138 V13 H158 L153 8Z" fill="${E}" opacity=".75"/>
+<path d="M16 13 L22 15.5 V13Z" fill="#000" opacity=".45"/><path d="M144 13 L138 15.5 V13Z" fill="#000" opacity=".45"/>
+<rect x="16" y="0.5" width="128" height="12.5" fill="${B}"/><rect x="17.2" y="1.7" width="125.6" height="10.1" fill="none" stroke="${n?'var(--p)':'url(#mpGoldB)'}" stroke-width=".45"/>
+</g></svg><span style="${text.length>22?'font-size:9.4pt;letter-spacing:2.4px':''}">${esc(text)}</span></div>`}
+function laurelMedal(r,iT,bT,n){
+  const top=MEDAL[r],id='mpM'+(top?r:'N'),[c1,c2,c3,c4]=top||(n?['#2c3f6b','#14244a','#0b1733','#000']:['#3b4f7d','var(--p)','var(--p)','#000']);const RB=n?'#9a7412':'var(--p)';
+  let leaves='';const cx=60,cy=58,R=43;
+  for(const side of [-1,1]){
+    let stem='';for(let k=0;k<=13;k++){const a=(90+side*(18+k*10))*Math.PI/180;const x=cx+R*Math.cos(a),y=cy+R*Math.sin(a);
+      stem+=(k?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);
+      if(k%1===0&&k<13){const tan=Math.atan2(Math.cos(a)*side*-1,Math.sin(a)*side)*180/Math.PI;
+        for(const io of [-1,1]){const lx=x+io*5*Math.cos(a),ly=y+io*5*Math.sin(a);
+          leaves+=`<ellipse cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" rx="5.4" ry="2" transform="rotate(${(tan+io*side*28+90).toFixed(0)} ${lx.toFixed(1)} ${ly.toFixed(1)})"/>`}}}
+    leaves+=`<path d="${stem}" fill="none" stroke="url(#mpGoldL)" stroke-width="1"/>`;
+  }
+  const label=bT??(top?ord(r):r);
+  const txt=`<div class="mtxt" style="color:${top?c4:'#fff'}"><i style="color:${top?c4:'#f3dd8f'}">${esc(iT||'RANK')}</i><b style="${String(label).length>3?'font-size:15pt':''}">${esc(label)}</b></div>`;
+  return `<div class="medalw">`+`<svg class="medal" viewBox="0 0 120 150"><defs>${GOLDDEF('L')}<radialGradient id="${id}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="${c1}"/><stop offset=".45" stop-color="${c2}"/><stop offset=".85" stop-color="${c3}"/><stop offset="1" stop-color="${c4}"/></radialGradient></defs>
+<path d="M44 82 L30 146 L44 137 L54 148 L60 92Z" fill="${RB}"/><path d="M76 82 L90 146 L76 137 L66 148 L60 92Z" fill="${RB}"/>
+<path d="M44 82 L30 146 M76 82 L90 146" stroke="url(#mpGoldL)" stroke-width="1"/>
+<g fill="url(#mpGoldL)">${leaves}</g>
+<circle cx="60" cy="58" r="30" fill="url(#${id})" stroke="url(#mpGoldL)" stroke-width="1.6"/>
+<circle cx="60" cy="58" r="25.5" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width=".7" stroke-dasharray="1.4 1.4"/>
+<circle cx="60" cy="58" r="22" fill="none" stroke="${top?c4:'url(#mpGoldL)'}" stroke-opacity=".5" stroke-width=".5"/>
+<path d="M51 78 h18" stroke="${top?c4:'#f3dd8f'}" stroke-width=".6"/></svg>`+txt+`</div>`;
+}
+function certMaster(s,idx,x,night){
+  x=x||{kind:'rank'};
+  const t=THEMES[S.theme];if(ROSK!==S.theme){ROS=rosette();ROSK=S.theme}
+  const vars=`--p:${t.p};--g:${t.g};--gd:${t.gd};--tint:${t.tint}`;
+  const tot=s.subs.reduce((a,x)=>a+(+x.t||0),0);
+  const total=s.total!=null&&s.total!==''?+s.total:tot;
+  const sum=k=>s.subs.reduce((a,x)=>a+(+x[k]||0),0);
+  const r=+s.rank;const pos=bannerText(s,x);
+  const rows=tableRows(s,x,true);
+  const nameSize=s.name.length>22?38:s.name.length>17?44:50;
+  const no=S.prefix+String(idx+1).padStart(3,'0');
+  const u='u'+(++UID)+'_';
+  return (`<div class="cpage mp${night?' night':''}" style="${vars}">${frame(night)}${photoBlock(s)}
+${S.showWm?`<div class="rosw">${ROS}${S.wmText?`<span>${esc(S.wmText)}</span>`:''}</div>`:''}
+<div class="cn c1">${CORNER}</div><div class="cn c2">${CORNER}</div><div class="cn c3">${CORNER}</div><div class="cn c4">${CORNER}</div>
+<div class="in">
+<div class="head">${S.logo?`<img class="logo" src="${S.logo}">`:''}<div><div class="inst">${esc(S.inst)}</div><div class="addr">${esc(S.addr)}</div></div>${S.logo?`<div style="width:17mm"></div>`:''}</div>
+<div class="title">${esc(titleFor(x.kind))}</div>
+${banner(pos,night)}
+<div class="test">${esc(S.test)} &nbsp;·&nbsp; ${esc(S.batch)}</div>
+<div class="cert">This certificate is proudly presented to</div>
+<div class="name" style="font-size:${nameSize}pt">${esc(title(s.name))}</div>
+${flourish()}
+<div class="body">${sentence(s,x)}</div>
+<div class="bot${S.showBars&&S.showTable?' bars':''}">
+${S.showTable?`<table class="${S.showBars?'wb':''}${hasCIB(s)?'':' nc'}"><tr><th>Subject</th>${hasCIB(s)?'<th>Correct</th><th>Incorrect</th><th>Blank</th>':''}<th>Marks</th><th>Sub. Rank</th>${S.showBars?'<th>Score</th>':''}</tr>${rows}
+<tr class="tot"><td>Grand Total</td>${hasCIB(s)?`<td>${sum('c')}</td><td>${sum('i')}</td><td>${sum('b')}</td>`:''}<td>${fmt(total)} / ${fmt(S.full)}</td><td>—</td>${S.showBars?`<td class="pbc"><div class="pb"><i style="width:${Math.min(100,total/S.full*100).toFixed(1)}%"></i></div></td>`:''}</tr></table>`:''}
+<div class="score">${laurelMedal(...medalArgs(s,x,false),night)}<div class="big">${fmt(total)}<small> / ${fmt(S.full)}</small></div>${S.showGrade?`<div class="grade">${grade(total,S.full).toUpperCase()}</div>`:''}</div>
+</div></div>
+<div class="foot">
+<div class="sig"><div class="s">${S.signL?`<img src="${S.signL}">`:''}</div><div class="l">${esc(S.sigL.toUpperCase())}</div>${S.sigLn?`<div class="n">${esc(S.sigLn)}</div>`:''}</div>
+${midBlock(s,idx,x)}
+<div class="sig"><div class="s">${S.signR?`<img src="${S.signR}">`:''}</div><div class="l">${esc(S.sigR.toUpperCase())}</div>${S.sigRn?`<div class="n">${esc(S.sigRn)}</div>`:''}</div>
+</div></div>`).replace(/mp(Gold[FBL]?|H2|V2|H|V|M[123N])\b/g,(m)=>u+m);
+}
+let UID=0;
+const render=x=>{const t=THEMES[S.theme];return (S.design==='classic'?cert(x.s,x.i,x):certMaster(x.s,x.i,x,S.design==='night')).replace(/var\(--p\)/g,t.p).replace(/var\(--g\)/g,t.g)};
+
+/* ---------- preview ---------- */
+const stage=$('stage'),scale=$('scale');
+function fit(){const w=stage.clientWidth,pw=297*96/25.4;scale.style.transform=`scale(${w/pw})`}
+const ro=new ResizeObserver(fit);ro.observe(stage);
+function preview(){
+  if(!students.length){scale.innerHTML=`<div class="cpage" style="display:flex;align-items:center;justify-content:center"><div class="empty"><h3>Upload a result PDF</h3>Drop the GNSI mock test result PDF on the left. Every student gets a certificate with their subject-wise marks, rank and grade. You can also add students by hand.</div></div>`;$('info').textContent='No students yet';fit();return}
+  const vis=viewItems();
+  if(!vis.length){scale.innerHTML=`<div class="cpage" style="display:flex;align-items:center;justify-content:center"><div class="empty"><h3>No students selected</h3>Pick Top 3, Top 5 or All students on the left.</div></div>`;$('info').textContent='0 selected';updPrint();fit();return}
+  let k=curPos(vis);if(k<0)k=0;const it=vis[k];cur=it.i;curSubj=it.subj;
+  scale.innerHTML=render(it);
+  $('info').textContent=`${k+1} of ${vis.length} · ${title(it.s.name)}${it.subj?' · '+subName(it.subj):''}`;updPrint();
+  document.querySelectorAll('#list tr').forEach((r,i)=>r.classList.toggle('cur',i===cur));
+  fit();
+}
+function renderList(){
+  $('cnt').textContent=students.length?`(${students.filter(s=>s.on).length}/${students.length} selected)`:'';
+  $('list').innerHTML=students.map((s,i)=>`<tr data-i="${i}" class="${s.on?'':'off'}"><td><input type="checkbox" data-a="on" ${s.on?'checked':''}></td><td style="white-space:nowrap">${s.photo?`<img class="ph" src="${s.photo}" alt="">`:''}<input type="text" data-a="name" value="${esc(s.name)}" style="width:${s.photo?'calc(100% - 28px)':'100%'}"></td><td class="num">${fmt(s.total??s.subs.reduce((a,x)=>a+(+x.t||0),0))}</td><td class="num">${esc(s.rank)}</td><td style="white-space:nowrap"><button class="btn sm" data-a="edit" title="Edit">✎</button> <button class="btn sm" data-a="del" title="Delete">×</button></td></tr>`).join('');
+  renderSubjNames();renderStats();preview();autosave();
+  if($('search').value)$('search').dispatchEvent(new Event('input'));
+}
+function renderSubjNames(){
+  const keys=[...new Set(students.flatMap(s=>s.subs.map(x=>x.s)))];
+  if(!keys.length){$('subjNames').innerHTML='<small style="color:#889">Appear after uploading a result.</small>';return}
+  $('subjNames').innerHTML=keys.map(k=>`<label>${esc(k)}</label><input type="text" data-k="${esc(k)}" value="${esc(subName(k))}">`).join('');
+}
+$('subjNames').addEventListener('input',e=>{const k=e.target.dataset.k;if(k!=null){S.names[k]=e.target.value;save();preview()}});
+$('list').addEventListener('click',e=>{
+  const tr=e.target.closest('tr');if(!tr)return;const i=+tr.dataset.i,a=e.target.dataset.a;
+  if(a==='del'){students.splice(i,1);if(cur>=students.length)cur=students.length-1;renderList();return}
+  if(a==='edit'){openDlg(i);return}
+  if(a!=='on'&&a!=='name'){cur=i;preview()}
+});
+$('list').addEventListener('change',e=>{const tr=e.target.closest('tr');if(!tr)return;const i=+tr.dataset.i;
+  if(e.target.dataset.a==='on'){students[i].on=e.target.checked;renderList()}});
+$('list').addEventListener('input',e=>{const tr=e.target.closest('tr');if(!tr)return;const i=+tr.dataset.i;
+  if(e.target.dataset.a==='name'){students[i].name=e.target.value;cur=i;preview()}});
+$('list').addEventListener('focusin',e=>{const tr=e.target.closest('tr');if(tr&&cur!==+tr.dataset.i){cur=+tr.dataset.i;preview()}});
+let curSubj=null;
+function allItems(){
+  if(S.mode==='subject'){const out=[];for(const k of subjKeys()){const v=students.map(s=>s.subs.find(y=>y.s===k)).filter(Boolean).map(y=>+y.t||0);if(!v.length)continue;const mx=Math.max(...v);
+    students.forEach((s,i)=>{const y=s.subs.find(z=>z.s===k);if(y&&(+y.t||0)===mx)out.push({s,i,kind:'subject',subj:k})})}return out}
+  return students.map((s,i)=>({s,i,kind:S.mode}));
+}
+const printItems=()=>S.mode==='subject'?allItems():allItems().filter(x=>x.s.on);
+const viewItems=()=>S.mode==='subject'?allItems():allItems().filter(x=>!$('onlySel').checked||x.s.on);
+function curPos(v){let k=v.findIndex(x=>x.i===cur&&(S.mode!=='subject'||x.subj===curSubj));if(k<0)k=v.findIndex(x=>x.i===cur);return k}
+function curItem(){const v=viewItems();const k=curPos(v);return v[k<0?0:k]}
+function updPrint(){const n=printItems().length;$('printAll').textContent=`Print / Save PDF (${n})`;$('dlZip').textContent=`Download (${n}) as ZIP`}
+function step(d){const v=viewItems(),k=curPos(v);if(k<0)return;const j=k+d;if(j>=0&&j<v.length){cur=v[j].i;curSubj=v[j].subj;preview()}}
+const MODEHINT={rank:'One certificate per selected student, with position (1st/2nd/3rd) or test rank.',subject:'Automatic: one certificate for the highest scorer in each subject (ties included). Selection is ignored.',part:'One certificate per selected student showing score and grade, no rank.'};
+function markModes(){document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('on',b.dataset.m===S.mode));$('modeHint').textContent=MODEHINT[S.mode];
+  $('ctitle').value=titleFor(S.mode);$('ctitleL').textContent='Certificate title ('+({rank:'rank',subject:'subject toppers',part:'participation'})[S.mode]+')';
+  document.querySelectorAll('[data-for]').forEach(d=>d.style.display=d.dataset.for===S.mode?'':'none')}
+$('modes').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.mode=b.dataset.m;save();markModes();preview()});
+$('ctitle').addEventListener('input',()=>{S[TKEY[S.mode]]=$('ctitle').value;save();preview()});
+$('search').addEventListener('input',()=>{const q=$('search').value.trim().toLowerCase();document.querySelectorAll('#list tr').forEach(r=>{const s=students[+r.dataset.i];r.classList.toggle('hide',!!q&&!s.name.toLowerCase().includes(q))})});
+$('prev').onclick=()=>step(-1);
+$('next').onclick=()=>step(1);
+function markChips(){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',+c.dataset.n===S.filterN))}
+function applyFilter(n){S.filterN=n;save();students.forEach(s=>s.on=n?(+s.rank>0&&+s.rank<=n):true);$('onlySel').checked=!!n;markChips();cur=students.findIndex(s=>s.on);if(cur<0)cur=0;renderList()}
+$('chips').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c)applyFilter(+c.dataset.n)});
+$('onlySel').addEventListener('change',preview);
+$('sortRank').onclick=()=>{const c=students[cur];students.sort((a,b)=>((+a.rank||1e9)-(+b.rank||1e9))||((+b.total||0)-(+a.total||0)));cur=students.indexOf(c);renderList()};
+$('sortName').onclick=()=>{const c=students[cur];students.sort((a,b)=>a.name.localeCompare(b.name));cur=students.indexOf(c);renderList()};
+function markDesign(){document.querySelectorAll('.dz').forEach(d=>d.classList.toggle('on',d.dataset.d===S.design))}
+$('designs').addEventListener('click',e=>{const d=e.target.closest('.dz');if(d){S.design=d.dataset.d;save();markDesign();preview()}});
+document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea'))return;if(e.key==='ArrowLeft')$('prev').click();if(e.key==='ArrowRight')$('next').click()});
+$('selAll').onclick=()=>applyFilter(0);
+$('selNone').onclick=()=>{S.filterN=-1;markChips();students.forEach(s=>s.on=false);renderList()};
+$('selTop').onclick=()=>{const n=+$('topN').value;if(n)applyFilter(n)};
+$('clearBtn').onclick=()=>{if(students.length&&!confirmClear())return;students=[];cur=0;renderList()};
+let clearArm=0;function confirmClear(){if(Date.now()-clearArm<4000)return true;clearArm=Date.now();say('Click “Clear list” again to remove all students.',false);return false}
+
+/* ---------- settings binding ---------- */
+const FIELDS=['inst','addr','test','batch','full','per','date','prefix','sigL','sigR','sigLn','sigRn','wmText','txtTop','txtOther','txtSub','txtPart','expFmt'];
+const CHECKS=['showGrade','showTable','showBars','showPhoto','showWm','showQR','joint'];
+function loadFields(){FIELDS.forEach(f=>$(f).value=S[f]||({txtTop:DEF_TOP,txtOther:DEF_OTHER,txtSub:DEF_SUB,txtPart:DEF_PART}[f]??S[f]??''));CHECKS.forEach(f=>$(f).checked=!!S[f]);renderImgs();renderSw();markDesign();markChips();markModes()}
+FIELDS.forEach(f=>$(f).addEventListener(f==='expFmt'?'change':'input',()=>{S[f]=$(f).type==='number'?+$(f).value:$(f).value;save();preview()}));
+CHECKS.forEach(f=>$(f).addEventListener('change',()=>{S[f]=$(f).checked;save();preview()}));
+function renderSw(){$('swatches').innerHTML=Object.entries(THEMES).map(([k,t])=>`<div class="sw ${S.theme===k?'on':''}" data-k="${k}" title="${k}" style="background:${t.p}"><i style="background:${t.g}"></i></div>`).join('')}
+$('swatches').addEventListener('click',e=>{const k=e.target.closest('.sw')?.dataset.k;if(k){S.theme=k;save();renderSw();preview()}});
+
+/* ---------- images ---------- */
+let imgKey=null;
+function renderImgs(){document.querySelectorAll('.imgbox').forEach(b=>{const k=b.dataset.k;b.classList.toggle('has',!!S[k]);const im=b.querySelector('img');if(S[k]){im.src=S[k];im.style.display=''}else{im.removeAttribute('src');im.style.display='none'}})}
+document.querySelectorAll('.imgbox').forEach(b=>b.addEventListener('click',e=>{
+  if(e.target.classList.contains('x')){S[b.dataset.k]='';save();renderImgs();preview();return}
+  imgKey=b.dataset.k;$('imgFile').value='';$('imgFile').click()}));
+$('imgFile').addEventListener('change',()=>{const f=$('imgFile').files[0];if(!f||!imgKey)return;const r=new FileReader();
+  r.onload=()=>{S[imgKey]=r.result;save();renderImgs();preview()};r.readAsDataURL(f)});
+
+/* ---------- PDF parsing ---------- */
+const drop=$('drop');
+drop.onclick=()=>$('file').click();
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('on')});
+drop.addEventListener('dragleave',()=>drop.classList.remove('on'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('on');const f=e.dataTransfer.files[0];if(f)handle(f)});
+$('file').addEventListener('change',()=>{const f=$('file').files[0];if(f)handle(f);$('file').value=''});
+function say(t,ok){const m=$('msg');m.textContent=t;m.className='msg '+(ok?'ok':'err')}
+
+async function pdfLines(buf){
+  const lib=window.pdfjsLib;
+  if(!lib)throw new Error('PDF reader could not load. Check your internet connection and reload the page.');
+  lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc=await lib.getDocument({data:buf}).promise;const pages=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const tc=await (await doc.getPage(p)).getTextContent();
+    const items=tc.items.filter(it=>it.str&&it.str.trim()).map(it=>({s:it.str.trim(),x:it.transform[4],y:it.transform[5],w:it.width}));
+    items.sort((a,b)=>b.y-a.y||a.x-b.x);
+    const lines=[];
+    for(const it of items){const L=lines.find(l=>Math.abs(l.y-it.y)<3);if(L)L.items.push(it);else lines.push({y:it.y,items:[it]})}
+    lines.sort((a,b)=>b.y-a.y);
+    lines.forEach(l=>{
+      l.items.sort((a,b)=>a.x-b.x);
+      // merge fragments that touch (pdf.js splits words at kerning points)
+      const words=[];
+      for(const it of l.items){const w=words[words.length-1];
+        if(w&&it.x-(w.x+w.w)<1.5){w.s+=it.s;w.w=it.x+it.w-w.x}else words.push({...it})}
+      l.items=words;l.text=words.map(i=>i.s).join(' ').replace(/\s+/g,' ');
+    });
+    pages.push(lines);
+  }
+  return pages;
+}
+const NUMS=/^(.+?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?[\d.]+)\s+(\d+)$/;
+const KNOWN=/^(.*?)\s*\b(MENTAL ABILITY|GENERAL KNOWLEDGE|SOCIAL SCIENCE|EVS|MATHEMATICS|MATHS|PASSAGE|ENGLISH|GK|INTELLIGENCE|LANGUAGE|ARITHMETIC|SCIENCE|REASONING|HINDI)$/i;
+function parse(pages){
+  const out=[];let meta={};let curS=null;
+  for(const lines of pages){
+    let boundary=null;
+    for(const l of lines){
+      const t=l.text;
+      if(!meta.inst&&/INSTITUTE|ACADEMY|SCHOOL/i.test(t))meta.inst=t;
+      if(!meta.test&&/TEST|SERIES|EXAM/i.test(t)&&!/INSTITUTE/i.test(t)&&!/Total Marks/i.test(t))meta.test=t;
+      const fm=t.match(/FULL\s*MARKS?\s*:?\s*(\d+)/i);if(fm)meta.full=+fm[1];
+      if(/Name of the Student/i.test(t)){
+        const n=l.items.find(i=>/Name/i.test(i.s)),sb=l.items.find(i=>/^Subject/i.test(i.s));
+        if(n&&sb){const nEnd=/Student/i.test(n.s)?n.x+n.w:(l.items.find(i=>/Student/i.test(i.s))||n).x+((l.items.find(i=>/Student/i.test(i.s))||n).w);boundary=(nEnd+sb.x)/2}
+        continue;
+      }
+      const tm=t.match(/Total\s*Marks?\s*:?\s*(-?[\d.]+).*?Rank\s*:?\s*(\d+)/i);
+      if(tm){if(curS){curS.total=+tm[1];curS.rank=+tm[2]}continue}
+      let name='',rest=t;
+      if(boundary!=null){
+        name=l.items.filter(i=>i.x+i.w/2<boundary).map(i=>i.s).join(' ').trim();
+        rest=l.items.filter(i=>i.x+i.w/2>=boundary).map(i=>i.s).join(' ');
+      }
+      const m=rest.match(NUMS);if(!m)continue;
+      let subj=m[1].trim();
+      if(boundary==null){const k=subj.match(KNOWN);if(k){name=k[1].trim();subj=k[2].toUpperCase()}}
+      if(name&&!/^\d/.test(name)){curS={name,subs:[],on:true};out.push(curS)}
+      if(!curS)continue;
+      curS.subs.push({s:subj.toUpperCase(),c:+m[2],i:+m[3],b:+m[4],t:+m[5],r:+m[6]});
+    }
+  }
+  return {students:out.filter(s=>s.subs.length),meta};
+}
+async function handle(f){
+  if(/\.(xlsx|xls|csv)$/i.test(f.name))return handleSheet(f);
+  say('Reading '+f.name+'…',true);
+  try{
+    const pages=await pdfLines(await f.arrayBuffer());
+    const {students:st,meta}=parse(pages);
+    if(!st.length){say('No student results found in this PDF. It should be a GNSI result sheet with Subject / CorrectQ / IncorrectQ / BlankQ / Total / Rank columns.',false);return}
+    st.forEach(s=>{if(s.total==null)s.total=s.subs.reduce((a,x)=>a+x.t,0);if(s.rank==null)s.rank=''});
+    st.forEach((s,i)=>s.sn=i+1);students=st;cur=0;
+    if(meta.full){S.full=meta.full;const n=Math.max(...st.map(s=>s.subs.length));S.per=Math.round(meta.full/n*100)/100}
+    if(meta.test){
+      let t=meta.test.replace(/FULL\s*MARKS?.*$/i,'').trim();
+      const fm=t.match(/^(.*?)\s+FOR\s+(.+)$/i);
+      if(fm){S.test=title(fm[1]).replace(/\b(\d+)(Th|St|Nd|Rd)\b/,(a,b,c)=>b+c.toLowerCase());S.batch=title(fm[2]).replace(/ - /,' – ')}else S.test=title(t);
+      const code=(t.match(/(\d+)(?:ST|ND|RD|TH)/i)||[])[1];
+      S.prefix='GNSI/MMT'+(code||'')+'/'+(fm?fm[2].replace(/NAVODAYA\s*/i,'N').replace(/LAKSHYA/i,'L').replace(/[^A-Z0-9]+/gi,'').slice(0,6):'')+'/';
+    }
+    const bad=st.filter(s=>Math.abs(s.subs.reduce((a,x)=>a+x.t,0)-s.total)>0.01);
+    save();loadFields();applyFilter(S.filterN>0?S.filterN:0);
+    say(`Loaded ${st.length} students.`+(bad.length?` Check ${bad.length}: subject marks don't add up to total (${bad.map(s=>s.name).slice(0,3).join(', ')}).`:' All totals verified.'),!bad.length);
+  }catch(err){say(err.message||String(err),false)}
+}
+
+/* ---------- add / edit dialog ---------- */
+let editIdx=-1;
+function subRow(x={}){return `<div class="subj"><input type="text" value="${esc(x.s||'')}" placeholder="SUBJECT"><input type="number" value="${x.c??''}"><input type="number" value="${x.i??''}"><input type="number" value="${x.b??''}"><input type="number" step="any" value="${x.t??''}"><input type="number" value="${x.r??''}"></div>`}
+function openDlg(i){
+  editIdx=i;const s=i>=0?students[i]:{name:'',rank:'',subs:(students[0]?.subs||[{s:'MENTAL ABILITY'},{s:'EVS'},{s:'MATHEMATICS'},{s:'PASSAGE'}]).map(x=>({s:x.s}))};
+  $('dlgT').textContent=i>=0?'Edit student':'Add student';$('dName').value=s.name;$('dRank').value=s.rank;$('dPhone').value=s.phone||'';dPhoto=s.photo||'';showDPhoto();
+  $('dSubs').innerHTML=s.subs.map(subRow).join('');$('dlg').showModal();
+}
+$('addBtn').onclick=()=>openDlg(-1);
+$('dAddSub').onclick=()=>$('dSubs').insertAdjacentHTML('beforeend',subRow());
+$('dCancel').onclick=()=>$('dlg').close();
+$('dSave').onclick=()=>{
+  const name=$('dName').value.trim();if(!name){$('dName').focus();return}
+  const subs=[...$('dSubs').children].map(r=>{const v=[...r.querySelectorAll('input')].map(x=>x.value);return{s:v[0].trim().toUpperCase(),c:v[1]===''?'':+v[1],i:v[2]===''?'':+v[2],b:v[3]===''?'':+v[3],t:+v[4]||0,r:v[5]===''?'':+v[5]}}).filter(x=>x.s);
+  const total=subs.reduce((a,x)=>a+x.t,0);
+  const rec={name,rank:$('dRank').value,subs,total,on:true,phone:$('dPhone').value.trim(),photo:dPhoto};
+  if(editIdx>=0){rec.on=students[editIdx].on;rec.sn=students[editIdx].sn;students[editIdx]=rec;cur=editIdx}else{rec.sn=Math.max(0,...students.map(x=>x.sn||0))+1;students.push(rec);cur=students.length-1}
+  $('dlg').close();renderList();
+};
+
+/* ---------- print ---------- */
+function doPrint(list){
+  if(!list.length){say('No students selected to print.',false);return}
+  $('printArea').innerHTML=list.map(render).join('');
+  const go=()=>setTimeout(()=>window.print(),150);
+  document.fonts&&document.fonts.ready?document.fonts.ready.then(go):go();
+}
+$('printAll').onclick=()=>doPrint(printItems());
+$('printOne').onclick=()=>{const it=curItem();if(it)doPrint([it])};
+window.addEventListener('afterprint',()=>{$('printArea').innerHTML=''});
+
+/* ---------- statistics ---------- */
+function renderStats(){
+  if(!students.length){$('stats').innerHTML='';return}
+  const T=students.map(totalOf),n=T.length,avg=T.reduce((a,b)=>a+b,0)/n;
+  const keys=[...new Set(students.flatMap(s=>s.subs.map(x=>x.s)))];
+  const sa=keys.map(k=>{const v=students.map(s=>s.subs.find(x=>x.s===k)).filter(Boolean).map(x=>+x.t||0);return `${esc(subName(k))} <b style="display:inline;font-size:11.5px">${fmt(v.reduce((a,b)=>a+b,0)/v.length)}</b>`}).join(' · ');
+  $('stats').innerHTML=`<div><b>${n}</b><span>Students</span></div><div><b>${fmt(Math.max(...T))}</b><span>Highest</span></div><div><b>${fmt(avg)}</b><span>Average</span></div><div><b>${fmt(Math.min(...T))}</b><span>Lowest</span></div>${keys.length?`<div class="sub">Subject averages: ${sa}</div>`:''}`;
+}
+
+/* ---------- ranks ---------- */
+function recalcRanks(){
+  const tot=[...new Set(students.map(totalOf))].sort((a,b)=>b-a);
+  students.forEach(s=>{s.total=totalOf(s);s.rank=tot.indexOf(s.total)+1});
+  const keys=[...new Set(students.flatMap(s=>s.subs.map(x=>x.s)))];
+  for(const k of keys){const v=[...new Set(students.map(s=>s.subs.find(x=>x.s===k)).filter(Boolean).map(x=>+x.t||0))].sort((a,b)=>b-a);
+    students.forEach(s=>{const x=s.subs.find(y=>y.s===k);if(x)x.r=v.indexOf(+x.t||0)+1})}
+}
+$('rankBtn').onclick=()=>{if(!students.length)return;recalcRanks();applyFilter(S.filterN>0?S.filterN:0);say('Ranks recalculated from total marks (equal marks share a rank).',true)};
+
+/* ---------- downloads ---------- */
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},3000)}
+const slug=t=>String(t||'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'')||'GNSI';
+
+/* ---------- Excel / CSV ---------- */
+const FLD={correct:'c',incorrect:'i',wrong:'i',blank:'b',unattempted:'b',mark:'t',marks:'t',score:'t',rank:'r'};
+function csvCell(v){v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+$('xlsBtn').onclick=()=>{
+  const keys=students.length?[...new Set(students.flatMap(s=>s.subs.map(x=>x.s)))]:['MENTAL ABILITY','EVS','MATHEMATICS','PASSAGE'];
+  const head=['Name','Phone','Cert No','Rank','Total',...keys.flatMap(k=>['Correct','Incorrect','Blank','Marks','Rank'].map(f=>k+' '+f))];
+  const rows=students.length?students.map((s,i)=>[s.name,s.phone||'',certNo(s,i),s.rank,fmt(totalOf(s)),...keys.flatMap(k=>{const x=s.subs.find(y=>y.s===k)||{};return [x.c,x.i,x.b,x.t,x.r]})])
+    :[['EXAMPLE STUDENT','9876543210','',1,93.75,20,0,0,25,1,17,3,0,21.25,4,18,2,0,22.5,1,20,0,0,25,1]];
+  const csv='\ufeff'+[head,...rows].map(r=>r.map(csvCell).join(',')).join('\r\n');
+  dl(new Blob([csv],{type:'text/csv'}),students.length?`${slug(S.test)}_results.csv`:'GNSI_result_template.csv');
+};
+async function handleSheet(f){
+  say('Reading '+f.name+'…',true);
+  try{
+    await lib('xlsx');
+    const wb=XLSX.read(await f.arrayBuffer());const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
+    const h=rows.findIndex(r=>r.some(c=>/^\s*(student'?s?\s*)?name/i.test(String(c))));
+    if(h<0)throw new Error('No "Name" column found. Download the Excel template to see the expected layout.');
+    const hd=rows[h].map(c=>String(c).trim());
+    let nameC=-1,rankC=-1,totC=-1,phC=-1;const cols=[];
+    hd.forEach((c,j)=>{
+      if(!c)return;
+      if(nameC<0&&/name/i.test(c)){nameC=j;return}
+      if(/^(test\s*)?(rank|position)$/i.test(c)){rankC=j;return}
+      if(/^(total|total marks|grand total|marks obtained|total score)$/i.test(c)){totC=j;return}
+      if(/phone|mobile|contact|whats\s*app/i.test(c)){phC=j;return}
+      if(/^(sl|s\.?\s*no|sr|roll|class|section|batch|id|percent|%|grade|cert)/i.test(c))return;
+      const m=c.match(/^(.+?)[\s_\-]*\b(correct|incorrect|wrong|blank|unattempted|marks?|score|rank)$/i);
+      if(m)cols.push({j,s:m[1].trim().toUpperCase(),f:FLD[m[2].toLowerCase()]});
+      else cols.push({j,s:c.toUpperCase(),f:'t'});
+    });
+    const st=[];
+    for(const r of rows.slice(h+1)){
+      const name=String(r[nameC]??'').trim();if(!name)continue;
+      const subs=[];
+      for(const c of cols){const v=r[c.j];if(v===''||v==null)continue;let x=subs.find(y=>y.s===c.s);if(!x){x={s:c.s,c:'',i:'',b:'',t:0,r:''};subs.push(x)}x[c.f]=+v}
+      const s={name,subs,on:true,sn:st.length+1,phone:phC>=0?String(r[phC]).trim():'',rank:rankC>=0?r[rankC]:'',total:totC>=0&&r[totC]!==''?+r[totC]:null};
+      if(s.total==null)s.total=subs.reduce((a,x)=>a+(+x.t||0),0);
+      st.push(s);
+    }
+    if(!st.length)throw new Error('The sheet has a Name column but no student rows.');
+    students=st;cur=0;
+    const noRank=st.some(s=>s.rank===''||s.rank==null);
+    if(noRank||st.every(s=>s.subs.every(x=>x.r===''))){const keep=st.map(s=>s.rank);recalcRanks();if(!noRank)st.forEach((s,i)=>s.rank=keep[i])}
+    const n=Math.max(0,...st.map(s=>s.subs.length));if(n)S.per=Math.round(S.full/n*100)/100;
+    save();loadFields();applyFilter(S.filterN>0?S.filterN:0);
+    say(`Loaded ${st.length} students from ${f.name}.`+(noRank?' Ranks were calculated from total marks.':''),true);
+  }catch(err){say(err.message||String(err),false)}
+}
+
+/* ---------- project save / open ---------- */
+$('saveProj').onclick=()=>dl(new Blob([JSON.stringify({app:'gnsi-cert',v:2,settings:S,students},null,1)],{type:'application/json'}),`GNSI_Certificates_${slug(S.test)}.json`);
+$('openProj').onclick=()=>{$('projFile').value='';$('projFile').click()};
+$('projFile').addEventListener('change',async()=>{const f=$('projFile').files[0];if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.students))throw 0;Object.assign(S,d.settings||{});students=d.students;cur=0;ROSK='';BANDS=null;save();loadFields();renderList();say(`Opened project: ${students.length} students.`,true)}
+  catch(e){say('That file is not a saved certificate project.',false)}});
+
+/* ---------- wording ---------- */
+$('resetTxt').onclick=e=>{e.preventDefault();S.txtTop='';S.txtOther='';save();loadFields();preview()};
+
+/* ---------- export separate files ---------- */
+async function exportFiles(list){
+  if(!list.length){say('No students selected.',false);return}
+  const btns=[$('dlZip'),$('dlOne')];btns.forEach(b=>b.classList.add('busy'));
+  try{
+    say('Loading export tools…',true);
+    await Promise.all([lib('h2c'),S.expFmt==='pdf'?lib('jspdf'):0,list.length>1?lib('zip'):0,S.showQR?lib('qr'):0]);
+    if(document.fonts)await document.fonts.ready;
+    const box=$('exp'),zip=list.length>1?new JSZip():null,ext=S.expFmt==='pdf'?'pdf':'jpg';const used={};
+    for(let k=0;k<list.length;k++){
+      const it=list[k],s=it.s;say(`Creating ${k+1} of ${list.length}: ${title(s.name)}…`,true);
+      box.innerHTML=render(it);
+      await Promise.all([...box.querySelectorAll('img')].map(im=>im.decode?im.decode().catch(()=>{}):0));
+      const cv=await html2canvas(box.firstElementChild,{scale:2.4,backgroundColor:'#ffffff',logging:false,useCORS:true});
+      let blob;
+      if(ext==='pdf'){const pdf=new jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4',compress:true});pdf.addImage(cv.toDataURL('image/jpeg',.92),'JPEG',0,0,297,210);blob=pdf.output('blob')}
+      else blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.92));
+      let fn=it.kind==='subject'?`Topper_${slug(subName(it.subj))}_${slug(title(s.name))}`:it.kind==='part'?`${slug(title(s.name))}_Participation`:`Rank${String(s.rank).padStart(2,'0')}_${slug(title(s.name))}`;if(used[fn])fn+='_'+(++used[fn]);else used[fn]=1;
+      if(zip)zip.file(fn+'.'+ext,blob);else dl(blob,fn+'.'+ext);
+    }
+    box.innerHTML='';
+    if(zip){say('Packing ZIP…',true);dl(await zip.generateAsync({type:'blob'}),`${slug(S.test)}_${slug(S.batch)}_${list.length}_certificates.zip`)}
+    say(`Done: ${list.length} ${ext.toUpperCase()} file${list.length>1?'s':''} downloaded.`,true);
+  }catch(err){say(err.message||String(err),false)}
+  finally{btns.forEach(b=>b.classList.remove('busy'))}
+}
+$('dlZip').onclick=()=>exportFiles(printItems());
+$('dlOne').onclick=()=>{const it=curItem();if(it)exportFiles([it])};
+
+/* ---------- merit list ---------- */
+$('merit').onclick=()=>{
+  const list=students.filter(s=>s.on).slice().sort((a,b)=>((+a.rank||1e9)-(+b.rank||1e9))||(totalOf(b)-totalOf(a)));
+  if(!list.length){say('No students selected.',false);return}
+  const t=THEMES[S.theme],keys=[...new Set(list.flatMap(s=>s.subs.map(x=>x.s)))];
+  const rows=list.map(s=>{const tt=totalOf(s);return `<tr class="${+s.rank<=3?'top':''}"><td><b>${esc(s.rank)}</b></td><td class="nm">${esc(title(s.name))}</td>${keys.map(k=>{const x=s.subs.find(y=>y.s===k);return `<td>${x?fmt(x.t):'—'}</td>`}).join('')}<td><b>${fmt(tt)}</b></td><td>${fmt(tt/S.full*100)}%</td><td>${grade(tt,S.full)}</td></tr>`}).join('');
+  $('printArea').innerHTML=`<div class="merit" style="--p:${t.p};--g:${t.g};--gd:${t.gd};--tint:${t.tint}"><div class="mh"><b>${esc(S.inst)}</b><span>${esc(S.addr)}</span><h3>Merit List</h3><em>${esc(S.test)} · ${esc(S.batch)} · Full marks ${fmt(S.full)}</em></div>
+<table><thead><tr><th>Rank</th><th style="text-align:left">Name of the student</th>${keys.map(k=>`<th>${esc(subName(k))}<br>/ ${fmt(S.per)}</th>`).join('')}<th>Total<br>/ ${fmt(S.full)}</th><th>%</th><th>Grade</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="mf"><span>DATE: ${niceDate(S.date)}</span><span>${list.length} STUDENT${list.length>1?'S':''}</span><span>${esc(S.sigR.toUpperCase())}</span></div></div>`;
+  const go=()=>setTimeout(()=>window.print(),150);document.fonts&&document.fonts.ready?document.fonts.ready.then(go):go();
+};
+
+/* ---------- photos ---------- */
+function shrink(file,max=420){return new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height));
+  const c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.86))};im.onerror=no;im.src=fr.result};fr.onerror=no;fr.readAsDataURL(file)})}
+const norm=t=>String(t).toUpperCase().replace(/\.[A-Z0-9]+$/,'').replace(/[^A-Z0-9]+/g,'');
+$('photoBtn').onclick=()=>{if(!students.length){say('Load the students first, then upload photos.',false);return}$('photoFile').value='';$('photoFile').click()};
+$('photoFile').addEventListener('change',async()=>{
+  const files=[...$('photoFile').files];let ok=0;const miss=[];
+  for(const f of files){
+    const n=norm(f.name);let s=null;
+    if(/^\d+$/.test(n))s=students.find(x=>String(x.sn)===String(+n));
+    if(!s)s=students.find(x=>norm(x.name)===n)||students.find(x=>{const a=norm(x.name);return a.length>3&&(n.includes(a)||a.includes(n))});
+    if(!s){miss.push(f.name);continue}
+    try{s.photo=await shrink(f);ok++}catch(e){miss.push(f.name)}
+  }
+  S.showPhoto=true;$('showPhoto').checked=true;save();renderList();
+  say(`Matched ${ok} photo${ok===1?'':'s'}.`+(miss.length?` Not matched: ${miss.slice(0,4).join(', ')}${miss.length>4?'…':''}. Add those from the ✎ edit button.`:''),!miss.length);
+});
+let dPhoto='';
+function showDPhoto(){const b=$('dPhoto');b.classList.toggle('has',!!dPhoto);b.querySelector('img').src=dPhoto||''}
+$('dPhoto').onclick=()=>{$('dPhotoFile').value='';$('dPhotoFile').click()};
+$('dPhotoFile').addEventListener('change',async()=>{const f=$('dPhotoFile').files[0];if(f){dPhoto=await shrink(f);showDPhoto()}});
+$('dPhotoDel').onclick=()=>{dPhoto='';showDPhoto()};
+
+/* ---------- signature pad ---------- */
+{
+  const c=$('sigPad'),g=c.getContext('2d');let down=false,last=null,drawn=false;
+  const pos=e=>{const r=c.getBoundingClientRect();return [(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]};
+  const clear=()=>{g.clearRect(0,0,c.width,c.height);drawn=false};
+  c.addEventListener('pointerdown',e=>{down=true;last=pos(e);c.setPointerCapture(e.pointerId)});
+  c.addEventListener('pointermove',e=>{if(!down)return;const p=pos(e);const sp=Math.hypot(p[0]-last[0],p[1]-last[1]);
+    g.strokeStyle=$('sigInk').value;g.lineCap='round';g.lineJoin='round';g.lineWidth=Math.max(2.2,5.5-sp*.12);g.beginPath();g.moveTo(...last);g.lineTo(...p);g.stroke();last=p;drawn=true});
+  ['pointerup','pointerleave','pointercancel'].forEach(t=>c.addEventListener(t,()=>down=false));
+  const trimmed=()=>{const d=g.getImageData(0,0,c.width,c.height).data;let x0=c.width,y0=c.height,x1=0,y1=0;
+    for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(d[(y*c.width+x)*4+3]>8){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+    if(x1<=x0)return '';const pad=8,o=document.createElement('canvas');o.width=x1-x0+pad*2;o.height=y1-y0+pad*2;o.getContext('2d').drawImage(c,x0-pad,y0-pad,o.width,o.height,0,0,o.width,o.height);return o.toDataURL('image/png')};
+  const use=k=>{if(!drawn){$('sigDlg').close();return}S[k]=trimmed();save();renderImgs();preview();$('sigDlg').close()};
+  $('drawSig').onclick=()=>{clear();$('sigDlg').showModal()};
+  $('sigClear').onclick=clear;$('sigCancel').onclick=()=>$('sigDlg').close();
+  $('sigToL').onclick=()=>use('signL');$('sigToR').onclick=()=>use('signR');
+}
+
+/* ---------- WhatsApp parents ---------- */
+function waText(s){const m=fillMap(s,{kind:'rank'});return (S.waTpl||DEF_WA).replace(/\{(\w+)\}/g,(a,k)=>k in m?m[k]:a)}
+const waNum=p=>{let d=String(p||'').replace(/\D/g,'');if(d.length===10)d='91'+d;return d};
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();return ok}}
+function renderWA(){
+  const list=students.filter(s=>s.on).slice().sort((a,b)=>((+a.rank||1e9)-(+b.rank||1e9)));
+  $('waCount').textContent=`${list.length} selected student${list.length===1?'':'s'} · ${list.filter(s=>waNum(s.phone)).length} with phone numbers`;
+  $('waList').innerHTML=list.map(s=>{const i=students.indexOf(s),t=waText(s);return `<div class="warow" data-i="${i}"><div><b>${esc(title(s.name))}</b> <span style="color:var(--gd);font-size:12px">Rank ${esc(s.rank)} · ${fmt(totalOf(s))}</span><small>${esc(t.replace(/\n+/g,' '))}</small></div>
+<input type="text" data-a="ph" value="${esc(s.phone||'')}" placeholder="Phone"><button class="btn sm" data-a="cp">Copy</button><a class="btn sm wa" data-a="go" target="_blank" rel="noopener" href="https://wa.me/${waNum(s.phone)}?text=${encodeURIComponent(t)}">Send ↗</a></div>`}).join('')||'<div style="padding:16px;color:#667">No students selected.</div>';
+}
+$('waBtn').onclick=()=>{if(!students.length){say('Load students first.',false);return}$('waTpl').value=S.waTpl||DEF_WA;renderWA();$('waDlg').showModal()};
+$('waTpl').addEventListener('input',()=>{S.waTpl=$('waTpl').value;save();renderWA()});
+$('waReset').onclick=e=>{e.preventDefault();S.waTpl='';save();$('waTpl').value=DEF_WA;renderWA()};
+$('waList').addEventListener('input',e=>{if(e.target.dataset.a!=='ph')return;const row=e.target.closest('.warow'),s=students[+row.dataset.i];s.phone=e.target.value;
+  row.querySelector('[data-a=go]').href=`https://wa.me/${waNum(s.phone)}?text=${encodeURIComponent(waText(s))}`;autosave();
+  const sel=students.filter(x=>x.on);$('waCount').textContent=`${sel.length} selected student${sel.length===1?'':'s'} · ${sel.filter(x=>waNum(x.phone)).length} with phone numbers`});
+$('waList').addEventListener('click',async e=>{if(e.target.dataset.a!=='cp')return;const s=students[+e.target.closest('.warow').dataset.i];e.target.textContent=(await copyText(waText(s)))?'Copied ✓':'Copy failed';setTimeout(()=>e.target.textContent='Copy',1500)});
+$('waCopyAll').onclick=async e=>{const t=students.filter(s=>s.on).map(s=>`— ${title(s.name)}${s.phone?' ('+s.phone+')':''}\n${waText(s)}`).join('\n\n');e.target.textContent=(await copyText(t))?'Copied ✓':'Copy failed';setTimeout(()=>e.target.textContent='Copy all messages',1500)};
+$('waClose').onclick=()=>$('waDlg').close();
+
+/* ---------- autosave (IndexedDB) ---------- */
+const IDB={db:null,open(){return this.db||(this.db=new Promise((ok,no)=>{try{const r=indexedDB.open('gnsiCertMaker',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}catch(e){no(e)}}))},
+  async get(k){const db=await this.open();return new Promise(ok=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(null)})},
+  async set(k,v){const db=await this.open();return new Promise(ok=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=ok;t.onerror=ok})}};
+var saveT=null,restored=false;
+function autosave(){if(!restored)return;clearTimeout(saveT);saveT=setTimeout(()=>{IDB.set('session',{settings:S,students}).catch(()=>{})},400)}
+async function restore(){
+  try{const d=await IDB.get('session');if(!d)return;
+    if(d.settings)Object.assign(S,d.settings);
+    if(Array.isArray(d.students)&&d.students.length){students=d.students;cur=0;$('onlySel').checked=S.filterN>0;loadFields();renderList();say(`Restored your last session: ${students.length} students.`,true)}
+    else{loadFields();preview()}
+  }catch(e){}
+  finally{restored=true}
+}
+
+/* ---------- GNSI Portal bridge (only when opened inside the portal) ---------- */
+const inPortal=window.parent&&window.parent!==window;
+const toPortal=m=>{try{window.parent.postMessage(m,location.origin)}catch(e){}};
+async function urlToPhoto(u){try{const r=await fetch(u);if(!r.ok)return '';return await shrink(await r.blob())}catch(e){return ''}}
+async function attachPhotos(pairs,label){
+  let n=0,k=0;for(const [s,u] of pairs){k++;if(k%5===0)say(`${label} photos ${k}/${pairs.length}…`,true);const d=await urlToPhoto(u);if(d){s.photo=d;n++}}
+  return n;
+}
+const ptName=t=>`${t.test_name||t.series+' · Test '+t.test_no} · ${t.batch}${t.test_date?' · '+t.test_date:''} (${t.count})`;
+if(inPortal){
+  window.addEventListener('message',async e=>{
+    if(e.origin!==location.origin||e.source!==window.parent)return;
+    const m=e.data||{};
+    if(m.type==='gnsi-cert:portal'){
+      $('portal').hidden=false;
+      $('ptTest').innerHTML=m.tests.length?m.tests.map(t=>`<option value="${esc(t.key)}">${esc(ptName(t))}</option>`).join(''):'<option value="">No mock tests stored yet</option>';
+      $('ptMsg').textContent=m.tests.length?`${m.tests.length} mock tests found in the portal.`:'Upload result sheets in Exams → Mock Analyzer first.';
+    }
+    if(m.type==='gnsi-cert:test'){
+      const M=m.meta,keys=Object.keys(M.max_marks||{}).length?Object.keys(M.max_marks):[...new Set(m.students.flatMap(x=>Object.keys(x.marks||{})))];
+      const st=m.students.map(x=>({name:x.name,gcc:x.gcc||'',phone:x.phone||'',rank:x.rank??'',total:+x.total||0,on:true,
+        subs:keys.filter(k=>x.marks&&x.marks[k]!=null&&x.marks[k]!=='').map(k=>({s:k.toUpperCase(),c:'',i:'',b:'',t:+x.marks[k]||0,r:''})),_photo:x.photo||''}));
+      st.sort((a,b)=>((+a.rank||1e9)-(+b.rank||1e9))||(b.total-a.total));st.forEach((s,i)=>s.sn=i+1);
+      students=st;cur=0;
+      const noRank=st.some(s=>s.rank===''||s.rank==null),keep=st.map(s=>s.rank);recalcRanks();if(!noRank)st.forEach((s,i)=>s.rank=keep[i]);
+      const per=Math.max(0,...Object.values(M.max_marks||{}).map(Number).filter(Boolean));
+      S.full=M.max_total||S.full;if(per)S.per=per;else if(keys.length)S.per=Math.round(S.full/keys.length*100)/100;
+      S.test=M.test_name||`${M.series} · Test ${M.test_no}`;S.batch=M.batch;if(M.test_date)S.date=String(M.test_date).slice(0,10);
+      S.prefix=`GNSI/${slug(M.series).split('_').filter(w=>!/^\d+$/.test(w)).map(w=>w[0]).join('').toUpperCase()}${M.test_no}/${slug(M.batch).replace(/_/g,'').slice(0,6).toUpperCase()}/`;
+      save();loadFields();applyFilter(S.filterN>0?S.filterN:0);
+      const pairs=st.filter(s=>s._photo).map(s=>[s,s._photo]);st.forEach(s=>delete s._photo);
+      say(`Loaded ${st.length} students from the portal (${m.matched} matched to student records). Fetching photos…`,true);
+      const n=await attachPhotos(pairs,'Loading');
+      S.showPhoto=true;$('showPhoto').checked=true;save();renderList();
+      say(`Loaded ${st.length} students · ${n} photos · ${st.filter(s=>s.phone).length} parent phone numbers.`+(m.matched<st.length?` ${st.length-m.matched} could not be matched to a student record (no photo/phone).`:''),true);
+    }
+    if(m.type==='gnsi-cert:matched'){
+      let ph=0,g=0;const pairs=[];
+      m.list.forEach(r=>{const s=students[r.i];if(!s)return;if(r.phone&&!s.phone){s.phone=r.phone;ph++}if(r.gcc&&!s.gcc){s.gcc=r.gcc;g++}if(r.photo)pairs.push([s,r.photo])});
+      const n=await attachPhotos(pairs,'Loading');
+      S.showPhoto=true;$('showPhoto').checked=true;save();renderList();
+      const miss=m.list.filter(r=>!r.gcc&&!r.photo&&!r.phone).length;
+      say(`From the portal: ${n} photos, ${ph} phone numbers, ${g} GCC numbers.`+(miss?` ${miss} students not found in the portal.`:''),!miss);
+    }
+    if(m.type==='gnsi-cert:error')say(m.message||'The portal could not load that data.',false);
+  });
+  $('ptLoad').onclick=()=>{const k=$('ptTest').value;if(!k)return;say('Loading test from the portal…',true);toPortal({type:'gnsi-cert:load-test',key:k})};
+  $('ptMatch').onclick=()=>{if(!students.length){say('Load a test or upload a result first.',false);return}say('Matching students in the portal…',true);
+    toPortal({type:'gnsi-cert:match',names:students.map((s,i)=>({i,name:s.name,gcc:s.gcc||'',batch:S.batch}))})};
+  toPortal({type:'gnsi-cert:hello'});
+}
+
+if(S.showQR)lib('qr').then(()=>preview()).catch(()=>{});
+loadFields();renderList();restore();
+}
+</script>
+</body>
+</html>
