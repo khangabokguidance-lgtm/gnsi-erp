@@ -1011,6 +1011,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
 
 // ─── Upload & data ────────────────────────────────────────────────────────────
 const SEED_SUBJECTS = ['Mental Ability', 'EVS', 'Mathematics', 'Passage'];
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 
 function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
   const [files, setFiles] = useState([]);
@@ -1076,14 +1077,16 @@ function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSe
   };
 
   const loadSeed = async () => {
-    const seed = (await import('./data/preMockTest2026.json')).default;
+    const seed = (scope === 'mega' ? await import('./data/megaMockTest2026.json') : await import('./data/preMockTest2026.json')).default;
+    const seedSeries = scope === 'mega' ? MEGA_SERIES : DEFAULT_SERIES, seedLabel = scope === 'mega' ? 'Mega Mock Test 2026' : 'Pre Mock Test 2026';
+    const names = {}; if (scope === 'mega') seed.forEach((r) => { names[r[0]] = `${ordinal(r[0])} Mega Mock Test`; });
     const sheets = new Set(seed.map((r) => `${r[0]}|${r[1]}`)).size, tests = new Set(seed.map((r) => r[0])).size, batches = new Set(seed.map((r) => r[1])).size;
-    if (!window.confirm(`Load the built-in Pre Mock Test 2026 data (${sheets} sheets, ${seed.length.toLocaleString('en-IN')} results — ${tests} tests · ${batches} batches)? Sheets already saved for the same test and batch will be replaced.`)) return;
+    if (!window.confirm(`Load the built-in ${seedLabel} data (${sheets} sheets, ${seed.length.toLocaleString('en-IN')} results — ${tests} tests · ${batches} batches)? Sheets already saved for the same test and batch will be replaced.`)) return;
     setBusy('Loading built-in data…'); setMsg('');
     try {
-      const rows = rowsFromSeed(seed, DEFAULT_SERIES, SEED_SUBJECTS, 25);
+      const rows = rowsFromSeed(seed, seedSeries, SEED_SUBJECTS, 25, names);
       await saveRows(rows, mode, who || 'seed');
-      setSeries(DEFAULT_SERIES);
+      setSeries(seedSeries);
       setMsg(`✅ Loaded ${rows.length} results (${tests} tests · ${batches} batches).`);
       await reload();
     } catch (e) { setMsg(`❌ ${e.message || e}`); }
@@ -1190,6 +1193,14 @@ function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSe
           {files.length ? <div style={{ marginTop: 12 }}><button style={ui.btn} disabled={!!busy || !files.some(valid)} onClick={saveAll}>💾 Save {files.filter(valid).length} sheet(s) to records</button></div> : null}
         </div>
       ) : <div style={{ ...ui.card, fontSize: 13, color: '#5d6b82' }}>You do not have permission to upload results.</div>}
+
+      {canUpload && scope === 'mega' ? (
+        <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Mega Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>60 result sheets · tests 1 to 12 · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics and Passage (25 each). Sheets already saved for the same test and batch are replaced.</div></div>
+          <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Mega Mock Test 2026 data</button>
+          <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
+        </div>
+      ) : null}
 
       {canUpload && scope !== 'mega' ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
