@@ -57,6 +57,7 @@ const ALL_MODULES = [
   { key: 'reports',          label: 'Reports',            icon: '📊'  },
   { key: 'checklist',        label: 'Checklist',          icon: '✅'  },
   { key: 'missionsainik',    label: 'Mission Sainik',     icon: '🎖️' },
+  { key: 'missionfoundation', label: 'Mission Foundation', icon: '🚀' },
   { key: 'designstudio',     label: 'Design Studio',      icon: '🎨'  },
   { key: 'invitation',       label: 'Invitation',         icon: '✉️' },
   { key: 'certificate',      label: 'Certificates',       icon: '📜'  },
