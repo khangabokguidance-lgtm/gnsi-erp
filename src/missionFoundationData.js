@@ -203,3 +203,108 @@ export function topPerBatch(ranked, n = 3) {
   })
 }
 export const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th')
+
+// ── Teaching, test day and prizes ─────────────────────────────────────────────
+// A paper's syllabus is stored as "A; B; C".
+export const splitChapters = v => String(v || '').split(/;|\n/).map(s => s.trim()).filter(Boolean)
+
+// Test-day checklist. `auto` steps are worked out from the data; the others are ticked by staff.
+export const CONDUCT_STEPS = [
+  { key: 'papers',    label: 'All question papers approved', auto: true },
+  { key: 'printed',   label: 'Question papers printed and counted' },
+  { key: 'hall',      label: 'Hall, seating and roll numbers ready' },
+  { key: 'staff',     label: 'Invigilators told their duty' },
+  { key: 'conducted', label: 'Test conducted' },
+  { key: 'collected', label: 'Answer sheets collected and counted' },
+  { key: 'checked',   label: 'Answer sheets checked by teachers' },
+  { key: 'marks',     label: 'Marks entered for every student', auto: true },
+  { key: 'published', label: 'Results published to students' },
+]
+
+// Where a test is in the cycle Teach → Papers → Conduct → Marks → Results → Prizes, with each step's progress (0–1).
+// info: { papers: [...], teaching: [{ subject, chapter, done }], checklist: {key:{done}}, marksRows: n, students: n, prizesGiven: n, prizes: n }
+export function testCycle(info) {
+  const papers = info.papers || []
+  const chapters = papers.flatMap(p => splitChapters(p.syllabus).map(c => `${p.subject}|${c}`))
+  const taught = new Set((info.teaching || []).filter(t => t.done).map(t => `${t.subject}|${t.chapter}`))
+  const done = k => !!info.checklist?.[k]?.done
+  const manual = CONDUCT_STEPS.filter(s => !s.auto && s.key !== 'published')
+  const expectedMarks = (info.students || 0) * papers.length
+  const steps = [
+    { key: 'teach',   label: 'Teach',   value: chapters.length ? chapters.filter(c => taught.has(c)).length / chapters.length : 0, note: chapters.length ? `${chapters.filter(c => taught.has(c)).length}/${chapters.length} chapters` : 'add syllabus' },
+    { key: 'papers',  label: 'Papers',  value: papers.length ? papers.filter(p => p.status === 'Approved').length / papers.length : 0, note: `${papers.filter(p => p.status === 'Approved').length}/${papers.length} approved` },
+    { key: 'conduct', label: 'Test day', value: manual.filter(s => done(s.key)).length / manual.length, note: `${manual.filter(s => done(s.key)).length}/${manual.length} ticked` },
+    { key: 'marks',   label: 'Marks',   value: expectedMarks ? Math.min(1, (info.marksRows || 0) / expectedMarks) : 0, note: `${info.marksRows || 0}${expectedMarks ? '/' + expectedMarks : ''} entered` },
+    { key: 'results', label: 'Results', value: done('published') ? 1 : 0, note: done('published') ? 'published' : 'not yet' },
+    { key: 'prizes',  label: 'Prizes',  value: info.prizes ? (info.prizesGiven || 0) / info.prizes : 0, note: info.prizes ? `${info.prizesGiven || 0}/${info.prizes} given` : 'after results' },
+  ]
+  const current = steps.findIndex(s => s.value < 1)
+  return { steps, current: current < 0 ? steps.length : current }
+}
+
+// Average % per student per subject. rows: mark rows (with test_id); papersByTest gives each paper's full marks.
+function subjectPercents(rows, papersByTest) {
+  const acc = new Map()
+  rows.forEach(r => {
+    if (!sat(r)) return
+    const p = (papersByTest[r.test_id] || []).find(x => x.subject === r.subject)
+    const max = maxMarks(p)
+    if (!max) return
+    const key = r.student_id + '|' + r.subject
+    const a = acc.get(key) || { student_id: r.student_id, student_name: r.student_name, gcc_no: r.gcc_no, batch: r.batch, subject: r.subject, sum: 0, n: 0 }
+    a.sum += (Number(r.marks) / max) * 100; a.n++
+    acc.set(key, a)
+  })
+  return [...acc.values()].map(a => ({ ...a, pct: round1(a.sum / a.n) }))
+}
+
+// Prize list for one test (scopeTests = [that test]) or the whole series (all tests).
+// Awards: top `topN` of each batch; topper of each subject (both batches together);
+// for the series also the most improved student of each batch and full attendance (sat every test that has marks).
+export function prizeList({ marks, tests, papersByTest, series = false, topN = 3 }) {
+  const ids = new Set(tests.map(t => t.id))
+  const rows = marks.filter(m => ids.has(m.test_id))
+  const ranked = series ? seriesRanking(rows, tests, papersByTest) : rankResults(rows, papersByTest[tests[0]?.id] || [])
+  const out = []
+  topPerBatch(ranked, topN).forEach(w => out.push({ award_key: `rank-${w.batchRank}-${w.batch}`, group: 'Toppers', award: `${ordinal(w.batchRank)} Position · ${w.batch}`,
+    student_id: w.student_id, student_name: w.student_name, gcc_no: w.gcc_no, batch: w.batch, pct: w.pct, detail: `${w.pct}% overall` }))
+  const subj = subjectPercents(rows, papersByTest)
+  SUBJECTS.forEach(s => {
+    const l = subj.filter(x => x.subject === s.label)
+    if (!l.length) return
+    const best = Math.max(...l.map(x => x.pct))
+    l.filter(x => x.pct === best).forEach(x => out.push({ award_key: `subject-${s.key}`, group: 'Subject toppers', award: `Subject Topper · ${s.label}`,
+      student_id: x.student_id, student_name: x.student_name, gcc_no: x.gcc_no, batch: x.batch, pct: x.pct, detail: `${x.pct}% in ${s.label}` }))
+  })
+  if (series) {
+    BATCHES.forEach(b => {
+      const l = ranked.filter(r => r.batch === b && r.change != null && r.change > 0)
+      if (!l.length) return
+      const best = Math.max(...l.map(r => r.change))
+      l.filter(r => r.change === best).forEach(r => out.push({ award_key: `improved-${b}`, group: 'Most improved', award: `Most Improved · ${b}`,
+        student_id: r.student_id, student_name: r.student_name, gcc_no: r.gcc_no, batch: r.batch, pct: r.pct, detail: `up ${r.change} points from the first test` }))
+    })
+    const held = tests.filter(t => rows.some(m => m.test_id === t.id))
+    if (held.length > 1) ranked.filter(r => r.tests === held.length).forEach(r => out.push({ award_key: 'attendance', group: 'Full attendance', award: 'Full Attendance · All Tests',
+      student_id: r.student_id, student_name: r.student_name, gcc_no: r.gcc_no, batch: r.batch, pct: r.pct, detail: `sat all ${held.length} tests` }))
+  }
+  return out
+}
+
+// The test to focus on: today's, else the next one, else the latest one not finished.
+export function focusTest(tests, today) {
+  return tests.find(t => t.test_date === today) || tests.find(t => t.test_date > today) || [...tests].reverse()[0]
+}
+
+// ctx: { papersByTest, students, teaching, prizes, marksCount, allMarks }
+export function cycleFor(test, ctx) {
+  const papers = ctx.papersByTest[test.id] || []
+  const students = ctx.students ? ctx.students.filter(s => (test.batches || BATCHES).includes(s.batchName)).length : 0
+  const given = ctx.prizes.filter(p => p.scope === test.id && p.given).length
+  const winners = ctx.allMarks ? prizeList({ marks: ctx.allMarks, tests: [test], papersByTest: ctx.papersByTest }).length : 0
+  return testCycle({
+    papers, teaching: ctx.teaching.filter(t => t.test_id === test.id), checklist: test.checklist || {},
+    marksRows: ctx.marksCount[test.id] || 0, students, prizes: winners, prizesGiven: Math.min(given, winners),
+  })
+}
+

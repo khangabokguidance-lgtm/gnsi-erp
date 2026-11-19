@@ -8,6 +8,8 @@
 --   mission_foundation_marks   one row per student × subject × test
 --   mission_foundation_materials  study material (file in the private teacher-materials bucket, or a link)
 --   mission_foundation_messages   the teachers' group chat
+--   mission_foundation_teaching   chapters taught before each test
+--   mission_foundation_prizes     prizes decided and handed over
 -- Staff only (same rule as Mission Sainik): needs public.qbank_is_staff() from 20260925_qbank_rls.sql.
 -- Run once in the Supabase SQL editor. Safe to run more than once.
 -- ============================================================================
@@ -95,11 +97,44 @@ create table if not exists public.mission_foundation_messages (
 );
 create index if not exists mission_foundation_messages_at_idx on public.mission_foundation_messages (created_at desc);
 
+-- Test day: venue, time, invigilators and the checklist ({"printed": {"done": true, "by": "...", "at": "..."}, ...})
+alter table public.mission_foundation_tests add column if not exists venue        text;
+alter table public.mission_foundation_tests add column if not exists start_time   text;
+alter table public.mission_foundation_tests add column if not exists invigilators text;
+alter table public.mission_foundation_tests add column if not exists checklist    jsonb not null default '{}'::jsonb;
+
+create table if not exists public.mission_foundation_teaching (
+  id          uuid primary key default gen_random_uuid(),
+  test_id     uuid not null references public.mission_foundation_tests (id) on delete cascade,
+  subject     text not null,
+  chapter     text not null,
+  done        boolean not null default false,
+  taught_by   text,
+  taught_on   date,
+  updated_at  timestamptz not null default now(),
+  unique (test_id, subject, chapter)
+);
+
+create table if not exists public.mission_foundation_prizes (
+  id            uuid primary key default gen_random_uuid(),
+  scope         text not null,                        -- a test id, or 'series'
+  award_key     text not null,
+  award         text,
+  student_id    text not null,
+  student_name  text,
+  batch         text,
+  given         boolean not null default false,
+  given_on      date,
+  given_by      text,
+  updated_at    timestamptz not null default now(),
+  unique (scope, award_key, student_id)
+);
+
 do $$
 declare t text;
 begin
   foreach t in array array['mission_foundation_tests', 'mission_foundation_papers', 'mission_foundation_panel', 'mission_foundation_marks',
-                       'mission_foundation_materials', 'mission_foundation_messages']
+                       'mission_foundation_materials', 'mission_foundation_messages', 'mission_foundation_teaching', 'mission_foundation_prizes']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_staff', t);

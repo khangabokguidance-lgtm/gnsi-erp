@@ -9,13 +9,14 @@ import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
 import { canonicalBatch } from './courseMap'
-import { PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PX } from './premiumUI'
+import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
-import { AnalyserTab, CertificatesTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
+import { AnalyserTab, MaterialTab, ChatTab } from './MissionFoundationExtras'
+import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN,
-  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl,
+  subjectByLabel, maxMarks, buildSchedule, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest,
 } from './missionFoundationData'
 
 const T_TESTS = 'mission_foundation_tests'
@@ -80,19 +81,27 @@ export default function MissionFoundation({ currentUser }) {
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [msg, setMsg] = useState(null)
   const [openTest, setOpenTest] = useState(null)
+  const [workTest, setWorkTest] = useState('')
+  const [teaching, setTeaching] = useState([])
+  const [prizes, setPrizes] = useState([])
+  const [allMarks, setAllMarks] = useState(null)
+  const [students, setStudents] = useState(null)
   const today = todayISO()
 
   const flash = useCallback((text, bad) => { setMsg({ text, bad }); setTimeout(() => setMsg(null), bad ? 6000 : 3000) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [t, p, pn, st] = await Promise.all([
+    const [t, p, pn, st, tc, pz] = await Promise.all([
       supabase.from(T_TESTS).select('*').order('test_date').order('test_no'),
       supabase.from(T_PAPERS).select('*'),
       supabase.from(T_PANEL).select('*').order('teacher'),
       supabase.from('staff_profiles').select('name, department, designation').order('name'),
+      supabase.from('mission_foundation_teaching').select('*'),
+      supabase.from('mission_foundation_prizes').select('*'),
     ])
-    const err = t.error || p.error || pn.error
+    const err = t.error || p.error || pn.error || tc.error || pz.error
+    setTeaching(tc.data || []); setPrizes(pz.data || [])
     if (err) {
       if (missingTable(err)) setSetupNeeded(true)
       else flash('Could not load: ' + err.message, true)
@@ -102,6 +111,33 @@ export default function MissionFoundation({ currentUser }) {
     setLoading(false)
   }, [flash])
   useEffect(() => { load() }, [load])
+
+  const loadMarks = useCallback(async () => {
+    const out = []
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from(T_MARKS).select('test_id, student_id, student_name, gcc_no, batch, subject, marks, absent').range(from, from + 999)
+      if (error) break
+      out.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
+    setAllMarks(out)
+  }, [])
+  useEffect(() => { loadMarks() }, [loadMarks])
+  useEffect(() => {
+    let live = true
+    getActiveStudents('id,name,gcc_no,batch,course').then(rows => {
+      if (live) setStudents((rows || []).map(s => ({ ...s, batchName: canonicalBatch(s.batch) })).filter(s => BATCHES.includes(s.batchName)).sort((a, b) => String(a.name).localeCompare(String(b.name))))
+    })
+    return () => { live = false }
+  }, [])
+  // The test the Teaching / Test day pages open on: the one picked elsewhere, else today's or the next one.
+  const activeTest = (tests.some(t => t.id === workTest) && workTest) || focusTest(tests, today)?.id || ''
+  const openWork = id => { setWorkTest(id); setOpenTest(id) }
+  const marksCount = useMemo(() => {
+    const c = {}
+    ;(allMarks || []).forEach(m => { c[m.test_id] = (c[m.test_id] || 0) + 1 })
+    return c
+  }, [allMarks])
 
   // Panel: saved rows, or the timetable defaults until someone saves one.
   const panelFromDb = panelRows.length > 0
@@ -144,17 +180,28 @@ export default function MissionFoundation({ currentUser }) {
     return { done, late, next, mine }
   }, [papers, tests, testById, today, me])
 
-  const tabs = [
-    { id: 'home', label: 'Home' },
-    { id: 'schedule', label: 'Schedule & syllabus' },
-    { id: 'mine', label: 'My papers', badge: stats.mine },
-    { id: 'teachers', label: 'Teachers' },
-    { id: 'marks', label: 'Marks' },
-    { id: 'results', label: 'Results' },
-    { id: 'analyser', label: 'Analyser' },
-    { id: 'certificates', label: 'Certificates' },
-    { id: 'material', label: 'Study material' },
-    { id: 'chat', label: 'Group chat' },
+  const groups = [
+    { label: 'Plan', color: '#185FA5', tabs: [
+      { id: 'schedule', label: 'Schedule & syllabus', icon: PIcon.calendar, hint: '8 Monday tests, chapters and paper pattern' },
+      { id: 'teachers', label: 'Teachers', icon: PIcon.users, hint: 'Who teaches and sets each subject' },
+    ] },
+    { label: 'Teach', color: '#0f7a4c', tabs: [
+      { id: 'teaching', label: 'Teaching', icon: PIcon.cap, hint: 'Tick chapters as they are taught' },
+      { id: 'material', label: 'Study material', icon: PIcon.folder, hint: 'Notes, worksheets and links' },
+      { id: 'mine', label: 'My papers', icon: PIcon.pen, hint: 'Set and check question papers', badge: stats.mine },
+    ] },
+    { label: 'Test day', color: '#a7771f', tabs: [
+      { id: 'conduct', label: 'Test day', icon: PIcon.shield, hint: 'Checklist, attendance and marks sheets' },
+      { id: 'marks', label: 'Marks entry', icon: PIcon.list, hint: 'All subjects, one batch at a time' },
+    ] },
+    { label: 'Results & prizes', color: '#7c3aed', tabs: [
+      { id: 'results', label: 'Results', icon: PIcon.report, hint: 'Rank list, Excel, print' },
+      { id: 'analyser', label: 'Analyser', icon: PIcon.chart, hint: 'Subjects, batches, weak areas, progress' },
+      { id: 'prizes', label: 'Prizes', icon: PIcon.cap, hint: 'Winners, certificates, ceremony list' },
+    ] },
+    { label: 'Team', color: '#0e7490', tabs: [
+      { id: 'chat', label: 'Group chat', icon: PIcon.whatsapp, hint: 'Messages and files for all teachers' },
+    ] },
   ]
 
   return (
@@ -163,7 +210,7 @@ export default function MissionFoundation({ currentUser }) {
       <div className="px-wrap" style={{ maxWidth: 1240 }}>
         <PremiumHero isMobile={isMobile} icon={<span style={{ fontSize: isMobile ? 22 : 26 }}>🚀</span>}
           eyebrow="GNSI · Foundation · Udaan & Pragati" title={MISSION_NAME}
-          subtitle="8 Monday tests, December – January · syllabus, papers, marks, analysis, certificates, material and group chat"
+          subtitle="8 Monday tests · 7 Dec 2026 – 25 Jan 2027 · teach, set papers, conduct, mark, analyse, award"
           actions={<button className="px-hbtn" onClick={load}>↻ Refresh</button>}
           stats={[
             { label: 'Tests', value: tests.length, sub: `${tests.filter(t => t.test_date < today).length} done` },
@@ -172,7 +219,7 @@ export default function MissionFoundation({ currentUser }) {
             { label: 'Need attention', value: stats.late, sub: 'test day reached, not approved', tone: stats.late ? '#fca5a5' : null },
           ]} />
 
-        {msg && <div role="status" style={{ margin: '12px 0', padding: '10px 14px', borderRadius: 12, fontWeight: 600, color: '#fff', background: msg.bad ? PX.bad : PX.ok }}>{msg.text}</div>}
+        {msg && <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 90, maxWidth: 'calc(100vw - 32px)', padding: '12px 18px', borderRadius: 14, fontWeight: 700, color: '#fff', background: msg.bad ? PX.bad : PX.ok, boxShadow: '0 12px 30px -10px rgba(0,0,0,.45)' }}>{msg.text}</div>}
 
         {setupNeeded ? (
           <PremiumCard title="One-time database setup needed" subtitle="The Mission Foundation tables are not in the database yet.">
@@ -180,16 +227,23 @@ export default function MissionFoundation({ currentUser }) {
           </PremiumCard>
         ) : (
           <>
-            <PremiumTabs tabs={tabs} active={tab} onChange={setTab} style={{ margin: '14px 0' }} />
+            <div style={{ margin: '14px 0' }}>
+              {tab !== 'home' && <IconTabs groups={groups} active={tab} open onOpen={setTab} onHome={() => setTab('home')} homeLabel="Home" sticky ariaLabel="Mission Foundation sections" />}
+            </div>
             {loading ? <PremiumCard><div style={{ color: PX.sub }}>Loading…</div></PremiumCard> : <>
-              {tab === 'home' && <HomeTab {...{ tests, papersByTest, today, stats, isAdmin, setTab, setOpenTest }} />}
+              {tab === 'home' && <>
+                <HomeDashboard {...{ tests, ctx: { papersByTest, students, teaching, prizes, marksCount, allMarks }, today, me, isAdmin, papers, testById, setTab, setOpenTest: openWork }} />
+                <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>
+              </>}
+              {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel }} />}
+              {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }} />}
+              {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, papers, isAdmin, me, load, flash }} />}
-              {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, today }} />}
+              {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ tests, papersByTest, flash, today }} />}
-              {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, flash, today }} />}
-              {tab === 'certificates' && <CertificatesTab {...{ tests, papersByTest, flash, today }} />}
+              {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
               {tab === 'material' && <MaterialTab {...{ tests, me, isAdmin, flash }} />}
               {tab === 'chat' && <ChatTab {...{ me, isAdmin, flash }} />}
             </>}
@@ -197,50 +251,6 @@ export default function MissionFoundation({ currentUser }) {
         )}
       </div>
     </div>
-  )
-}
-
-// ─── Home ─────────────────────────────────────────────────────────────────────
-function HomeTab({ tests, papersByTest, today, stats, isAdmin, setTab, setOpenTest }) {
-  const upcoming = tests.filter(t => t.test_date >= today).slice(0, 7)
-  if (!tests.length) return (
-    <PremiumCard title="Start here" subtitle="No tests yet">
-      <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
-        <li><b>Teachers:</b> check who teaches each subject (the timetable teachers are filled in already).</li>
-        <li><b>Schedule & syllabus:</b> {isAdmin ? 'press "Create schedule" to make the December – January test days.' : 'an admin creates the December – January test days.'}</li>
-        <li>Each teacher opens <b>My papers</b>, fills the syllabus, sets the paper and submits it; another teacher checks it.</li>
-        <li>After each Monday test, enter <b>Marks</b> for all subjects; <b>Results</b> and <b>Analyser</b> rank and compare Udaan and Pragati.</li>
-        <li><b>Certificates</b> prints merit certificates for the toppers; <b>Study material</b> and <b>Group chat</b> keep everyone together.</li>
-      </ol>
-      <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Btn kind="gold" onClick={() => setTab('schedule')}>Open Schedule</Btn>
-        <Btn onClick={() => setTab('teachers')}>Open Teachers</Btn>
-      </div>
-    </PremiumCard>
-  )
-  return (
-    <>
-      {stats.mine > 0 && (
-        <PremiumCard title={`You have ${stats.mine} paper${stats.mine === 1 ? '' : 's'} to work on`} subtitle="Papers to set, or papers waiting for your check" right={<Btn kind="gold" onClick={() => setTab('mine')}>Open My papers</Btn>} />
-      )}
-      <PremiumCard title="Coming up" subtitle="The next test days and how ready each paper is" bodyStyle={{ padding: 0 }}>
-        {!upcoming.length ? <div style={{ padding: 20, color: PX.sub }}>No more tests scheduled.</div> : (
-          <table className="px-table" style={{ width: '100%' }}>
-            <thead><tr><th>Test</th><th>Date</th><th>Papers</th><th>Status</th></tr></thead>
-            <tbody>
-              {upcoming.map(t => (
-                <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => { setOpenTest(t.id); setTab('schedule') }}>
-                  <td style={{ fontWeight: 700 }}>{t.title || `Test ${t.test_no}`}</td>
-                  <td>{t.test_date === today ? <Pill tone="gold">Today</Pill> : fmt(t.test_date)}</td>
-                  <td><div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(papersByTest[t.id] || []).map(p => <Pill key={p.id} tone={PAPER_TONE[p.status]}>{subjectByLabel(p.subject)?.short || p.subject} · {p.status}</Pill>)}</div></td>
-                  <td><Pill tone={TEST_TONE[t.status]}>{t.status}</Pill></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </PremiumCard>
-    </>
   )
 }
 
@@ -502,26 +512,12 @@ function TeachersTab({ panel, panelFromDb, staff, papers, isAdmin, me, load, fla
 }
 
 // ─── Marks entry ──────────────────────────────────────────────────────────────
-function useFoundationStudents() {
-  const [students, setStudents] = useState(null)
-  useEffect(() => {
-    let live = true
-    getActiveStudents('id,name,gcc_no,batch,course').then(rows => {
-      if (!live) return
-      setStudents((rows || []).map(s => ({ ...s, batchName: canonicalBatch(s.batch) })).filter(s => BATCHES.includes(s.batchName)).sort((a, b) => String(a.name).localeCompare(String(b.name))))
-    })
-    return () => { live = false }
-  }, [])
-  return students
-}
-
 const pickDefaultTest = (tests, today) => [...tests].reverse().find(t => t.test_date <= today) || tests[0]
 
 const markKey = (sid, subj) => `${sid}|${subj}`
 
-function MarksTab({ tests, papersByTest, me, flash, today }) {
-  const students = useFoundationStudents()
-  const [testId, setTestId] = useState(() => pickDefaultTest(tests, today)?.id || '')
+function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSaved }) {
+  const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
   const [batch, setBatch] = useState(BATCHES[0])
   const [entries, setEntries] = useState({})   // `${student_id}|${subject}` → { marks, absent }
   const [dirty, setDirty] = useState(false)
@@ -554,7 +550,7 @@ function MarksTab({ tests, papersByTest, me, flash, today }) {
     setBusy(true)
     const { error } = await supabase.from(T_MARKS).upsert(rows, { onConflict: 'test_id,student_id,subject' })
     setBusy(false)
-    if (error) flash('Not saved: ' + error.message, true); else { setDirty(false); flash(`Saved ${rows.length} marks for ${batch}.`) }
+    if (error) flash('Not saved: ' + error.message, true); else { setDirty(false); flash(`Saved ${rows.length} marks for ${batch}.`); onSaved?.() }
   }
   const set = (sid, subj, patch) => { setDirty(true); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
   const absentAll = (sid, on) => papers.forEach(p => set(sid, p.subject, { absent: on }))

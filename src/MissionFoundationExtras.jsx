@@ -1,18 +1,15 @@
 /* eslint-disable react-hooks/set-state-in-effect -- data loaders set state after fetching, as elsewhere in the portal */
-// MissionFoundationExtras.jsx — the Analyser, Certificates, Study material and Group chat tabs of Mission Foundation.
+// MissionFoundationExtras.jsx — the Analyser, Study material and Group chat tabs of Mission Foundation.
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import jsPDF from 'jspdf'
 import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, Avatar } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
-import { drawPremiumCertificate } from './premiumCertificate'
 import {
-  MISSION_NAME, BATCHES, SUBJECTS, rankResults, subjectStats, scoreBands, batchAverages,
-  seriesRanking, topPerBatch, ordinal, nameMatches, safeUrl,
+  BATCHES, SUBJECTS, rankResults, subjectStats, scoreBands, batchAverages,
+  seriesRanking, ordinal, nameMatches, safeUrl,
 } from './missionFoundationData'
 
-const T_MARKS = 'mission_foundation_marks'
 const T_MAT = 'mission_foundation_materials'
 const T_MSG = 'mission_foundation_messages'
 const BUCKET = 'teacher-materials'
@@ -21,26 +18,6 @@ const fmt = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB',
 const Btn = ({ kind = 'ghost', children, ...p }) => <button type="button" className={'px-btn ' + kind} {...p}>{children}</button>
 const pctTone = p => p == null ? 'mute' : p >= 75 ? 'ok' : p >= 50 ? 'gold' : 'bad'
 const pickTest = (tests, today) => [...tests].reverse().find(t => t.test_date <= today) || tests[0]
-
-// All marks of the series, loaded once per tab visit.
-function useAllMarks(flash) {
-  const [rows, setRows] = useState(null)
-  useEffect(() => {
-    let live = true
-    ;(async () => {
-      const out = []
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await supabase.from(T_MARKS).select('test_id, student_id, student_name, gcc_no, batch, subject, marks, absent').range(from, from + 999)
-        if (error) { flash('Could not load marks: ' + error.message, true); break }
-        out.push(...(data || []))
-        if (!data || data.length < 1000) break
-      }
-      if (live) setRows(out)
-    })()
-    return () => { live = false }
-  }, [flash])
-  return rows
-}
 
 function Bar({ pct, tone = 'gold' }) {
   const c = { ok: PX.ok, gold: PX.gold, bad: PX.bad, mute: PX.faint }[tone]
@@ -52,8 +29,7 @@ function Bar({ pct, tone = 'gold' }) {
 }
 
 // ─── Analyser ─────────────────────────────────────────────────────────────────
-export function AnalyserTab({ tests, papersByTest, flash, today }) {
-  const marks = useAllMarks(flash)
+export function AnalyserTab({ tests, papersByTest, allMarks: marks, today }) {
   const [view, setView] = useState(() => pickTest(tests, today)?.id || 'series')
   const [batch, setBatch] = useState('All')
   const inBatch = r => batch === 'All' || r.batch === batch
@@ -191,82 +167,6 @@ export function AnalyserTab({ tests, papersByTest, flash, today }) {
         </div>
       </>}
     </>
-  )
-}
-
-// ─── Certificates ─────────────────────────────────────────────────────────────
-export function CertificatesTab({ tests, papersByTest, flash, today }) {
-  const marks = useAllMarks(flash)
-  const [view, setView] = useState(() => pickTest(tests, today)?.id || 'series')
-  const [topN, setTopN] = useState(3)
-  const [picked, setPicked] = useState({})
-  const [busy, setBusy] = useState('')
-  const test = tests.find(t => t.id === view)
-  const ranked = useMemo(() => {
-    if (!marks) return []
-    return view === 'series' ? seriesRanking(marks, tests, papersByTest) : rankResults(marks.filter(r => r.test_id === view), papersByTest[view] || [])
-  }, [marks, view, tests, papersByTest])
-  const winners = useMemo(() => topPerBatch(ranked, Number(topN) || 3), [ranked, topN])
-  useEffect(() => { setPicked(Object.fromEntries(winners.map(w => [w.student_id, true]))) }, [winners])
-  const chosen = winners.filter(w => picked[w.student_id])
-  const what = view === 'series' ? `${MISSION_NAME} (all tests)` : `${test?.title || 'Test'} of ${MISSION_NAME}`
-
-  const make = async () => {
-    if (!chosen.length) return flash('Tick at least one student.', true)
-    try {
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      for (let i = 0; i < chosen.length; i++) {
-        const w = chosen[i]
-        setBusy(`Making ${i + 1} of ${chosen.length}…`)
-        const canvas = await drawPremiumCertificate({
-          kind: 'Merit',
-          subtitle: `${ordinal(w.batchRank)} Position · ${w.batch} Batch`,
-          name: w.student_name,
-          detail: [w.gcc_no ? `GCC No. ${w.gcc_no}` : '', 'Foundation', w.batch].filter(Boolean).join(' · '),
-          body: [`for securing the ${ordinal(w.batchRank)} position in the ${w.batch} batch`, `in the ${what}${view === 'series' ? '' : ` held on ${fmt(test?.test_date)}`}, scoring ${w.pct}%.`],
-          seal: { value: `${w.pct}%`, label: 'SCORE' },
-          signatures: [{ title: 'Class Teacher' }, { title: 'Principal' }],
-          certNo: `GNSI/MF/${view === 'series' ? 'SERIES' : 'T' + (test?.test_no || '')}/${w.gcc_no || w.student_id}`.slice(0, 60),
-        })
-        if (i) doc.addPage('a4', 'landscape')
-        doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 297, 210)
-      }
-      doc.save(`Mission_Foundation_${view === 'series' ? 'Series' : (test?.title || 'Test').replace(/\W+/g, '_')}_certificates.pdf`)
-      flash(`${chosen.length} certificate(s) downloaded.`)
-    } catch (e) {
-      flash('Could not make certificates: ' + (e?.message || e), true)
-    }
-    setBusy('')
-  }
-
-  if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
-  return (
-    <PremiumCard title="Merit certificates" subtitle="Top students of each batch, one A4 page each, in one PDF ready to print" bodyStyle={{ padding: 0 }}
-      right={<Btn kind="gold" disabled={!!busy || !chosen.length} onClick={make}>{busy || `Download ${chosen.length} certificate${chosen.length === 1 ? '' : 's'}`}</Btn>}>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px', alignItems: 'center' }}>
-        <select className="px-input" aria-label="Test" value={view} onChange={e => setView(e.target.value)} style={{ width: 'auto' }}>
-          <option value="series">Whole series (average of all tests)</option>
-          {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}
-        </select>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>Top
-          <select className="px-input" aria-label="How many per batch" value={topN} onChange={e => setTopN(e.target.value)} style={{ width: 'auto' }}>{[1, 2, 3, 5, 10].map(n => <option key={n}>{n}</option>)}</select>
-          per batch</label>
-      </div>
-      {marks === null ? <div style={{ padding: 20, color: PX.sub }}>Loading marks…</div> : !winners.length ? <div style={{ padding: 20, color: PX.sub }}>No marks entered yet.</div> : (
-        <table className="px-table" style={{ width: '100%' }}>
-          <thead><tr><th /><th>Position</th><th>Student</th><th>Batch</th><th>Score</th></tr></thead>
-          <tbody>
-            {winners.map(w => (
-              <tr key={w.student_id}>
-                <td><input type="checkbox" aria-label={`Certificate for ${w.student_name}`} checked={!!picked[w.student_id]} onChange={e => setPicked({ ...picked, [w.student_id]: e.target.checked })} /></td>
-                <td style={{ fontWeight: 800 }}>{ordinal(w.batchRank)}</td><td style={{ fontWeight: 600 }}>{w.student_name}</td><td>{w.batch}</td>
-                <td><Pill tone={pctTone(w.pct)}>{w.pct}%</Pill></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </PremiumCard>
   )
 }
 

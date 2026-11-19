@@ -84,3 +84,32 @@ test('helpers', () => {
   assert.ok(nameMatches('Sir Roshan Singh', 'Roshan')); assert.ok(!nameMatches('Roshani', 'Roshan'))
   assert.equal(safeUrl('javascript:alert(1)'), ''); assert.equal(safeUrl('https://x.org/a'), 'https://x.org/a')
 })
+
+import { prizeList, testCycle, splitChapters } from '../src/missionFoundationData.js'
+
+test('prize list: toppers, subject toppers, most improved and full attendance', () => {
+  const tests = [{ id: 't1' }, { id: 't2' }]
+  const p = { t1: papers, t2: papers }
+  const marks = [
+    ...rows.map(r => ({ ...r, test_id: 't1' })),
+    { test_id: 't2', student_id: 'b', student_name: 'Bina', batch: 'Pragati', subject: 'Mathematics I', marks: 50 },
+    { test_id: 't2', student_id: 'b', student_name: 'Bina', batch: 'Pragati', subject: 'EVS', marks: 20 },
+  ]
+  const one = prizeList({ marks, tests: [tests[0]], papersByTest: p, topN: 1 })
+  assert.deepEqual(one.filter(x => x.group === 'Toppers').map(x => x.student_name), ['Asha', 'Bina', 'Dina'])
+  assert.deepEqual(one.filter(x => x.group === 'Subject toppers').map(x => [x.award, x.student_name]), [['Subject Topper · Mathematics I', 'Asha'], ['Subject Topper · EVS', 'Asha']])
+  const all = prizeList({ marks, tests, papersByTest: p, series: true, topN: 1 })
+  assert.deepEqual(all.filter(x => x.group === 'Most improved').map(x => x.student_name), ['Bina'])
+  assert.deepEqual(all.filter(x => x.group === 'Full attendance').map(x => x.student_name), ['Bina'])
+  // Maths I: Asha 80% (one test), Bina (60 + 100) / 2 = 80% → a tie, both get the prize
+  assert.deepEqual(all.filter(x => x.award_key === 'subject-maths1').map(x => x.student_name).sort(), ['Asha', 'Bina'])
+})
+
+test('test cycle shows the next step', () => {
+  const papers2 = [{ subject: 'EVS', syllabus: 'Plants; Water', status: 'Approved' }]
+  const c = testCycle({ papers: papers2, teaching: [{ subject: 'EVS', chapter: 'Plants', done: true }], checklist: {}, marksRows: 0, students: 10 })
+  assert.equal(c.current, 0)
+  assert.equal(c.steps[0].value, 0.5)
+  assert.equal(c.steps[1].value, 1)
+  assert.deepEqual(splitChapters('A; B\nC;'), ['A', 'B', 'C'])
+})
