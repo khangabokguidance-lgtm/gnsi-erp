@@ -773,6 +773,50 @@ function downloadCSV(rows, filename) {
   const csv=[h.join(','),...rows.map(r=>h.map(k=>`"${(r[k]??'').toString().replace(/"/g,'""')}"`).join(','))].join('\n')
   Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:filename}).click()
 }
+// Photos ZIP — one image per student, named after the student, so the photos can be
+// dropped straight into the certificate maker (it matches files to students by name).
+// Uses the photo links already loaded on screen (attachPhotoUrls fills private-storage
+// ones with temporary links), so nothing new is read from the database. Students with
+// no photo, or whose photo cannot be fetched, are skipped and listed in missing.csv.
+async function downloadPhotosZip(rows, onProgress) {
+  const withPhoto = rows.filter(s => s.photo_url)
+  if (!withPhoto.length) throw new Error('None of the listed students have a photo.')
+  const { default: JSZip } = await import('jszip')
+  const zip = new JSZip()
+  const extOf = type => ({ 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[type] || 'jpg')
+  const clean = name => String(name || 'student').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const used = new Map()
+  const index = [], failed = []
+  let done = 0, next = 0
+  const worker = async () => {
+    while (next < withPhoto.length) {
+      const s = withPhoto[next++]
+      try {
+        const res = await fetch(s.photo_url)
+        if (!res.ok) throw new Error('HTTP ' + res.status)
+        const blob = await res.blob()
+        let base = clean(s.name)
+        const n = (used.get(base.toUpperCase()) || 0) + 1
+        used.set(base.toUpperCase(), n)
+        if (n > 1) base += ' ' + (s.gcc_no ? 'GCC-' + s.gcc_no : n)
+        const file = `${base}.${extOf(blob.type)}`
+        zip.file(file, blob)
+        index.push({ File: file, Name: s.name || '', GCC: s.gcc_no || '', Batch: s.batch || '', Course: s.course || '' })
+      } catch { failed.push(s) }
+      onProgress?.(++done, withPhoto.length)
+    }
+  }
+  await Promise.all(Array.from({ length: 6 }, worker))
+  if (!index.length) throw new Error('Could not download any photo.')
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const head = 'File,Name,GCC,Batch,Course'
+  zip.file('photos_index.csv', [head, ...index.map(r => [r.File, r.Name, r.GCC, r.Batch, r.Course].map(q).join(','))].join('\n'))
+  const noPhoto = rows.filter(s => !s.photo_url).concat(failed)
+  if (noPhoto.length) zip.file('missing.csv', ['Name,GCC,Batch,Course', ...noPhoto.map(s => [s.name, s.gcc_no, s.batch, s.course].map(q).join(','))].join('\n'))
+  const blob = await zip.generateAsync({ type: 'blob' })
+  Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `student_photos_${new Date().toISOString().slice(0, 10)}.zip` }).click()
+  return { saved: index.length, missing: noPhoto.length }
+}
 function exportToPDF(title, headers, rows) {
   const w=window.open('','_blank')
   const th=headers.map(h=>`<th>${h.label}</th>`).join('')
@@ -5637,6 +5681,13 @@ const effectiveCols = visibleCols.filter(col => {
   filterBatch!=='All'?filterBatch:filterCourse!=='All'?filterCourse:'',
   can.viewPII  // ← pass permission
 )},
+  {label:'Photos ZIP (for certificates)', fn:async()=>{
+    try{
+      showToast(`Preparing photos for ${filtered.filter(s=>s.photo_url).length} students…`,T.navy2)
+      const r=await downloadPhotosZip(filtered,(d,n)=>{if(d===n)showToast('Building ZIP…',T.navy2)})
+      showToast(`Saved ${r.saved} photos${r.missing?` · ${r.missing} without a photo (see missing.csv)`:''}`,T.green)
+    }catch(err){showToast(err.message||'Photo export failed',T.red)}
+  }},
   {label:'Fee Dues (CSV)',   fn:()=>downloadCSV(filtered.filter(s=>feeData[s.id]?.dues>0).map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Dues:feeData[s.id]?.dues||0,...(can.viewPII?{Phone:s.phone||''}:{})})),`fee_dues_${new Date().toISOString().slice(0,10)}.csv`)},
   {label:'Attendance (CSV)', fn:()=>downloadCSV(filtered.map(s=>({GCC:s.gcc_no||'',Name:s.name||'',Batch:s.batch||'',Att:attData[s.id]!=null?`${attData[s.id].toFixed(1)}%`:'—'})),`attendance_${new Date().toISOString().slice(0,10)}.csv`)},
   // Parent contacts — admin/manager only
