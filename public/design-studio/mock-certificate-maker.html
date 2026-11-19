@@ -195,6 +195,10 @@ input[type=file]{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;p
 .cert.p .head .o span{display:block;padding:1.7mm 15mm 1.5mm 16.2mm;background:linear-gradient(90deg,var(--tA),var(--tC) 22%,var(--tB) 50%,var(--tC) 78%,var(--tA));clip-path:polygon(0 0,100% 0,95% 50%,100% 100%,0 100%,5% 50%);font:700 11.5pt "Cinzel",serif;letter-spacing:.5em;color:#0a1431;white-space:nowrap}
 .cert.p .head .no{font:600 7.6pt "Cinzel",serif;letter-spacing:.22em;color:#6b6a72;margin-top:2.2mm}
 .cert.p .head .no b{color:var(--navy);font-weight:700}
+.nop .cert .ph,.nop .cert .photo{display:none!important}
+.nop .cert.p .bodyrow{grid-template-columns:1fr 44mm}
+.nop .cert.m .bodyrow{grid-template-columns:1fr}
+.nop .cert .mid{grid-template-columns:1fr 42mm}
 .cert.p .bodyrow{display:grid;grid-template-columns:44mm 1fr 44mm;gap:6mm;align-items:center}
 .cert.p .ph{width:35mm;height:44mm;padding:1.5mm;border-radius:.8mm;background:linear-gradient(135deg,#8a6414,#f4e2a0 30%,#c39a3c 55%,#f4e2a0 78%,#8a6414);justify-self:center;position:relative;cursor:pointer;box-shadow:0 0 0 .7mm #fff,0 0 0 1.15mm #c39a3c,0 1.2mm 3mm rgba(10,20,49,.3)}
 .cert.p .ph .in{width:100%;height:100%;border-radius:0;overflow:hidden;background:#ece6d2;display:flex;align-items:center;justify-content:center;border:.55mm solid #fff;outline:.25mm solid #8a6414;outline-offset:-.9mm}
@@ -289,6 +293,8 @@ input[type=file]{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;p
         <label for="selRankers">Rankers up to<select id="selRankers"></select></label>
       </div>
       <label for="selCourse">Batch<select id="selCourse"></select></label>
+      <label for="selPhoto">Student photo<select id="selPhoto"><option value="show">Show photo frame</option><option value="hide">No photo (remove the frame)</option></select></label>
+      <label for="selTies">Equal totals<select id="selTies"><option value="share">Share the position (ties get the same rank)</option><option value="break">Break ties: Mathematics, Mental Ability, EVS, Passage (exactly 1, 2, 3)</option></select></label>
       <div class="row2">
         <label for="selMarkMode">Marks filter<select id="selMarkMode"><option value="ge">At least</option><option value="lt">Below</option></select></label>
         <label for="inMinMarks">Total marks<input type="number" id="inMinMarks" min="0" step="0.25" value="0" placeholder="0 = off"></label>
@@ -3133,6 +3139,17 @@ function fillSelects(keep){
   sr.value=[...sr.options].some(o=>o.value===rv)?rv:'10';
 }
 let current=[];
+function breakTies(t){
+  const order=[2,0,1,3];
+  const st=t.st.map(s=>s.slice()).sort((a,b)=>{
+    if(b[1]!==a[1])return b[1]-a[1];
+    const ks=a[3].length===4?order:a[3].map((_,i)=>i);
+    for(const k of ks){const d=((b[3][k]||[0,0,0,0])[3])-((a[3][k]||[0,0,0,0])[3]);if(d)return d}
+    return String(a[0]).localeCompare(String(b[0]));
+  });
+  st.forEach((s,i)=>s[2]=i+1);
+  return Object.assign({},t,{st});
+}
 function combineSets(sets){
   const f=sets[0];const st=[];sets.forEach(t=>t.st.forEach(s=>st.push([s[0],s[1],0,s[3].map(x=>x.slice()),t.course])));
   const dr=v=>{const u=[...new Set(v)].sort((a,b)=>b-a);return v.map(x=>u.indexOf(x)+1)};
@@ -3143,10 +3160,11 @@ function combineSets(sets){
   return {no:f.no,year:f.year,course:'ALL BATCHES',full:f.full,subj:f.subj,per:f.per,label:f.label,combined:true,nb:sets.length,st};
 }
 function render(){
-  const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
+  const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';$('stage').classList.toggle('nop',$('selPhoto').value==='hide');const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
   lsSet('test',no);lsSet('course',course);lsSet('rankers',lim);
   let sets=RES.filter(r=>r.no===no&&(course==='ALL'||course==='COMBINED'||r.course===course)).sort((a,b)=>a.course.localeCompare(b.course));
   if(course==='COMBINED'&&sets.length)sets=[combineSets(sets)];
+  if($('selTies').value==='break')sets=sets.map(breakTies);
   current=[];let dropped=0;const counts={1:0,2:0,3:0,r:0};
   let html='';
   sets.forEach(t=>{const n=t.st.length;const mv=+$('inMinMarks').value||0,mm=$('selMarkMode').value;const ranked=t.st.filter(s=>s[2]<=lim);const pick=ranked.filter(s=>!mv||(mm==='lt'?s[1]<mv:s[1]>=mv)).sort((a,b)=>a[2]-b[2]);dropped+=ranked.length-pick.length;
@@ -3250,7 +3268,7 @@ $('fileOne').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!
   $(f).onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;state.assets[k]=await readImg(file,500);put('asset:'+k,state.assets[k]);render();toast('Image saved.')};
 });
 ['inDate','inAddr','inPrefix','inSig1','inSig2','inSigName1','inSigName2'].forEach(id=>$(id).addEventListener('input',()=>{lsSet('f:'+id,$(id).value);render()}));
-['selDesign','selTest','selCourse','selRankers','selMarkMode'].forEach(id=>$(id).addEventListener('change',render));
+['selDesign','selTest','selCourse','selRankers','selMarkMode','selTies','selPhoto'].forEach(id=>$(id).addEventListener('change',render));
 $('inMinMarks').addEventListener('input',()=>{lsSet('minmarks',$('inMinMarks').value);render()});
 $('selMarkMode').addEventListener('change',()=>lsSet('markmode',$('selMarkMode').value));
 $('btnPrint').onclick=()=>window.print();
@@ -3260,19 +3278,21 @@ $('btnLogo2x').onclick=()=>{delete state.assets.logo2;put('asset:logo2',null);re
 const RX_ROW=/^(.*?)\s*(MENTAL ABILITY|EVS|MATHEMATICS|PASSAGE)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s*$/;
 const RX_TOT=/Total Marks\s*:\s*([\d.]+)\s+Test Rank\s*:\s*(\d+)/;
 const RX_HEAD=/(\d+)\s*(?:ST|ND|RD|TH)\s+MEGA MOCK TEST SERIES\s+(\d{4})\s+FOR\s+(.+?)\s*$/;
+const RX_HEAD2=/(\d+)\s*(?:ST|ND|RD|TH)?\s+((?:[A-Z]+\s+){0,3}?MOCK\s+TEST)(?:\s+SERIES)?(?:\s+(\d{4}))?\s+(?:RESULT\s+)?FOR\s+(.+?)\s*$/;
 const RX_FULL=/FULL MARK\s*:\s*(\d+)/;
 function parseLines(lines){
   let t=null,full=100,cur=null;const st=[];
   for(const raw of lines){const line=raw.replace(/\s+/g,' ').trim();if(!line)continue;
     let m=line.match(RX_HEAD);if(m){t={no:+m[1],year:+m[2],course:m[3].replace(/NAVODYA/,'NAVODAYA').replace(/\s+OK$/,'').trim()};continue}
+    m=!t&&line.match(RX_HEAD2);if(m){const lb=m[2].replace(/NAVODAYA|NAVODYA/,'').trim();t={no:+m[1],year:+m[3]||new Date().getFullYear(),course:m[4].replace(/NAVODYA/,'NAVODAYA').replace(/\s+OK$/,'').trim()};if(!/MEGA/.test(lb))t.label=title(lb);continue}
     m=line.match(RX_FULL);if(m){full=+m[1];continue}
     m=line.match(RX_ROW);if(m){const sub=[+m[3],+m[4],+m[5],+m[6],+m[7]];const nm=m[1].trim();
       if(nm&&!/Name of the Student/i.test(nm)){cur=[nm,0,0,[sub]];st.push(cur)}else if(cur&&!nm)cur[3].push(sub);continue}
     m=line.match(RX_TOT);if(m&&cur){cur[1]=+m[1];cur[2]=+m[2];cur=null}
   }
-  if(!t)throw new Error('This PDF does not have the usual "Mega Mock Test Series" heading.');
+  if(!t)throw new Error('The test heading was not recognised (expected something like "12TH MEGA MOCK TEST SERIES 2026 FOR COMBINED ENGLISH"). First lines read: '+lines.filter(x=>x.trim()).slice(0,4).join(' | ').slice(0,160));
   const good=st.filter(s=>s[3].length===4&&s[2]>0);
-  if(!good.length)throw new Error('No student rows were found in this PDF.');
+  if(!good.length)throw new Error('No student rows were found. This reader expects rows of Mental Ability, EVS, Mathematics and Passage with a "Total Marks / Test Rank" line. First lines read: '+lines.filter(x=>x.trim()).slice(0,6).join(' | ').slice(0,200));
   return Object.assign(t,{full,st:good});
 }
 async function pdfLines(file){
