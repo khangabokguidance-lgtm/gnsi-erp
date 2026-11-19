@@ -288,6 +288,10 @@ input[type=file]{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;p
         <label for="selRankers">Rankers up to<select id="selRankers"></select></label>
       </div>
       <label for="selCourse">Batch<select id="selCourse"></select></label>
+      <div class="row2">
+        <label for="selMarkMode">Marks filter<select id="selMarkMode"><option value="ge">At least</option><option value="lt">Below</option></select></label>
+        <label for="inMinMarks">Total marks<input type="number" id="inMinMarks" min="0" step="0.25" value="0" placeholder="0 = off"></label>
+      </div>
     </fieldset>
 
     <div class="stat" id="stat"></div>
@@ -2930,14 +2934,14 @@ function render(){
   const design=$('selDesign').value;lsSet('design',design);INK=design==='ink';const no=+$('selTest').value,course=$('selCourse').value,lim=+$('selRankers').value;
   lsSet('test',no);lsSet('course',course);lsSet('rankers',lim);
   const sets=RES.filter(r=>r.no===no&&(course==='ALL'||r.course===course)).sort((a,b)=>a.course.localeCompare(b.course));
-  current=[];const counts={1:0,2:0,3:0,r:0};
+  current=[];let dropped=0;const counts={1:0,2:0,3:0,r:0};
   let html='';
-  sets.forEach(t=>{const n=t.st.length;const pick=t.st.filter(s=>s[2]<=lim).sort((a,b)=>a[2]-b[2]);
+  sets.forEach(t=>{const n=t.st.length;const mv=+$('inMinMarks').value||0,mm=$('selMarkMode').value;const ranked=t.st.filter(s=>s[2]<=lim);const pick=ranked.filter(s=>!mv||(mm==='lt'?s[1]<mv:s[1]>=mv)).sort((a,b)=>a[2]-b[2]);dropped+=ranked.length-pick.length;
     pick.forEach((s,i)=>{current.push({t,s});counts[s[2]<=3?s[2]:'r']++;
       html+=`<div class="sheet-wrap"><div class="meta"><span>${esc(courseName(t.course))} · ${esc(s[0])}</span><span>${s[2]<=3?WORD[s[2]]+' position':'Rank '+s[2]}</span></div><div class="sheet-scale">${design==='classic'?certHTML(t,s,i,n):design==='modern'?certModern(t,s,i,n):certPremium(t,s,i,n)}</div></div>`;})});
   $('stage').innerHTML=html||'<div class="empty">No results for this choice.</div>';
   const withPh=current.filter(c=>photoFor(c.t.course,c.s[0])).length;
-  $('stat').innerHTML=`<span><b>${current.length}</b> certificates in this set</span><span>Gold ${counts[1]} · Silver ${counts[2]} · Bronze ${counts[3]} · Merit ${counts.r}</span><span>Photos added: <b>${withPh}</b> of ${current.length}</span><span class="note">Tied students share a position, so each gets the same certificate.</span>`;
+  $('stat').innerHTML=`<span><b>${current.length}</b> certificates in this set${dropped?` (${dropped} hidden by the marks filter)`:''}</span><span>Gold ${counts[1]} · Silver ${counts[2]} · Bronze ${counts[3]} · Merit ${counts.r}</span><span>Photos added: <b>${withPh}</b> of ${current.length}</span><span class="note">Tied students share a position, so each gets the same certificate.</span>`;
   fit();
 }
 function fit(){document.querySelectorAll('.sheet-scale').forEach(w=>{const c=w.firstElementChild;const k=w.clientWidth/c.offsetWidth;c.style.transform=`scale(${k})`;w.style.height=(c.offsetHeight*k)+'px'})}
@@ -3004,7 +3008,9 @@ $('fileOne').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!
   $(f).onchange=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;state.assets[k]=await readImg(file,500);put('asset:'+k,state.assets[k]);render();toast('Image saved.')};
 });
 ['inDate','inAddr','inPrefix','inSig1','inSig2','inSigName1','inSigName2'].forEach(id=>$(id).addEventListener('input',()=>{lsSet('f:'+id,$(id).value);render()}));
-['selDesign','selTest','selCourse','selRankers'].forEach(id=>$(id).addEventListener('change',render));
+['selDesign','selTest','selCourse','selRankers','selMarkMode'].forEach(id=>$(id).addEventListener('change',render));
+$('inMinMarks').addEventListener('input',()=>{lsSet('minmarks',$('inMinMarks').value);render()});
+$('selMarkMode').addEventListener('change',()=>lsSet('markmode',$('selMarkMode').value));
 $('btnPrint').onclick=()=>window.print();
 $('btnLogo2x').onclick=()=>{delete state.assets.logo2;put('asset:logo2',null);render();toast('Right-side logo removed.')};
 
@@ -3050,6 +3056,7 @@ window.__parseLines=parseLines;window.__pdfLines=pdfLines;
   ['inAddr','inPrefix','inSig1','inSig2','inSigName1','inSigName2'].forEach(id=>{const v=lsGet('f:'+id,null);if(v!=null)$(id).value=v});
   await openDB();const all=await getAll();
   for(const[k,v]of Object.entries(all)){if(k.startsWith('photo:'))state.photos[k.slice(6)]=v;else if(k.startsWith('asset:'))state.assets[k.slice(6)]=v;else if(k.startsWith('res:')){RES=RES.filter(r=>!(r.no===v.no&&r.course===v.course));RES.push(v)}}
+  $('inMinMarks').value=lsGet('minmarks','0');$('selMarkMode').value=lsGet('markmode','ge');
   fillSelects(false);render();
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
   window.__ready=true;
