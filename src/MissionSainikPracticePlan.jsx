@@ -12,7 +12,7 @@ const TABLE = 'mission_sainik_tasks'
 const STATUS_TONE = { Pending: 'warn', Submitted: 'info', Verified: 'gold', Approved: 'ok' }
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
-export default function MissionSainikPracticePlan({ photoOf = x => x, practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames, peopleAll, staffDir = [], reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
+export default function MissionSainikPracticePlan({ photoOf = x => x, practiceSetters = () => [], practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames, peopleAll, staffDir = [], reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
   const [key, setKey] = useState(SUBJECTS[0].key)
   const [busy, setBusy] = useState(false)
   const sub = SUBJECTS.find(x => x.key === key) || SUBJECTS[0]
@@ -40,13 +40,24 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practice, 
     if (!window.confirm(`Remove ${fullName(r.setter)} from ${sub.label} Set ${set.no}? Questions they uploaded stay in the bank.`)) return
     run(() => supabase.from(TABLE).delete().eq('id', r.id), `${fullName(r.setter)} removed from Set ${set.no}`, `set${set.no}-${r.setter}`)
   }
+  // Each practice teacher sets their OWN full set of questions for the same practice test, so students get different versions.
+  const missingFor = set => practiceSetters(sub.key).filter(n => !set.rows.some(r => r.setter === n))
+  const rowFor = (set, name) => ({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: 25, status: 'Pending', ...stamp() })
+  const addEveryone = set => { const miss = missingFor(set); if (miss.length) run(() => supabase.from(TABLE).insert(miss.map(n => rowFor(set, n))), `${miss.length} teacher${miss.length === 1 ? '' : 's'} added to Set ${set.no}`, `set${set.no}+all`) }
+  const addEveryoneEverywhere = () => {
+    const rowsNew = groups.flatMap(g => missingFor(g).map(n => rowFor(g, n)))
+    if (!rowsNew.length) return setMsg('Every practice teacher already sets every set.')
+    if (!window.confirm(`Give every practice teacher of ${sub.label} their own set of questions in all ${groups.length} sets? ${rowsNew.length} task${rowsNew.length === 1 ? '' : 's'} will be added.`)) return
+    run(() => supabase.from(TABLE).insert(rowsNew), `${rowsNew.length} practice task${rowsNew.length === 1 ? '' : 's'} added`, 'all-sets')
+  }
   const setVerifier = (set, verifier) => set.rows.length && run(() => supabase.from(TABLE).update({ verifier: verifier || null, ...stamp() }).in('id', set.rows.map(r => r.id)), `Verifier for Set ${set.no} saved`, `set${set.no}:verifier`)
 
   const pill = on => ({ padding: '7px 14px', borderRadius: 99, border: `1.5px solid ${on ? PX.navy : PX.line}`, background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
   const totalTeachers = new Set(rows.map(r => r.setter)).size
 
   return (
-    <PremiumCard title="Practice sets" subtitle={isAdmin ? 'Choose the teachers who set each practice set (several can set the same set) and who verifies it.' : 'Who sets each practice set. Only an admin can change this.'}>
+    <PremiumCard title="Practice sets" subtitle={isAdmin ? 'For each practice test (Set), every teacher sets their own full set of questions, so students get different versions. Add the teachers and choose who verifies it.' : 'Who sets each practice set. Only an admin can change this.'}
+      right={isAdmin ? <button type="button" className="px-hbtn" disabled={busy} onClick={addEveryoneEverywhere} title="Give every practice teacher of this subject their own set in every Set">👥 Every teacher sets every set</button> : null}>
       <div role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
         {SUBJECTS.map(x => <button key={x.key} type="button" role="tab" aria-selected={x.key === sub.key} style={pill(x.key === sub.key)} onClick={() => setKey(x.key)}>{x.short}</button>)}
       </div>
@@ -78,6 +89,7 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practice, 
                     <option value="">＋ Add a teacher…</option>
                     {add.map(n => <option key={n} value={n}>{fullName(n)}</option>)}
                   </select>
+                  {missingFor(g).length > 0 && <button type="button" className="px-hbtn" disabled={busy} onClick={() => addEveryone(g)} style={{ width: '100%', justifyContent: 'center' }}>👥 Add all practice teachers ({missingFor(g).length} not yet in this set)</button>}
                   {g.rows.length > 0 && (
                     <label style={{ fontSize: 11.5, fontWeight: 700, color: PX.sub }}>Verifier
                       <select className="px-input" value={verifiers.length === 1 ? verifiers[0] : ''} disabled={busy} onChange={e => setVerifier(g, e.target.value)} style={{ width: '100%', marginTop: 3 }}>

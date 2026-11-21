@@ -882,7 +882,7 @@ function MissionSainikInner({ currentUser }) {
     return (
       <>
       <MissionSainikSetterPlan {...{ photoOf, tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
-      <MissionSainikPracticePlan {...{ photoOf, practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikPracticePlan {...{ photoOf, practiceSetters: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'assistant').map(r => r.name) : (PRACTICE_PANEL[key]?.assistants || [])), practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1146,6 +1146,22 @@ function MissionSainikInner({ currentUser }) {
   const PRACTICE_ROLES = ['assistant', 'verifier']
   const inView = (r, view) => (view === 'pre' ? r.role === 'setter' : PRACTICE_ROLES.includes(r.role))
   const roleOpts = role => (role === 'setter' ? [['setter', 'Question setter (Pre Mock)']] : [['assistant', 'Practice setter'], ['verifier', 'Practice verifier']])
+  // + / − on a practice setter's row: one more / one fewer practice set (Set 1, 2, 3 …) of their own for this subject.
+  const bumpPracticeSets = async (m, delta) => {
+    const d = { subject_key: m.subject_key, role: 'assistant' }
+    const work = workFor(d), mine = work.filter(r => settersOfRow(r).includes(m.name) && r.setter === m.name)
+    if (delta > 0) {
+      const res = await applyTestCount(d, m.name, mine.length + 1, work)
+      if (!res.ok) return setMsg('❌ ' + res.error)
+      setMsg(`✅ ${fullName(m.name)} now sets ${mine.length + 1} practice set${mine.length + 1 === 1 ? '' : 's'}`); load(); return
+    }
+    const last = [...mine].sort((a, b) => setNoFor(b) - setNoFor(a)).find(r => r.status === 'Pending')
+    if (!last) return setMsg(mine.length ? `❌ ${fullName(m.name)} has already handed in their practice set(s); they cannot be removed.` : `${fullName(m.name)} has no practice set to remove.`)
+    if (!window.confirm(`Remove Set ${setNoFor(last)} from ${fullName(m.name)}? Questions they uploaded stay in the bank.`)) return
+    const { error } = await supabase.from(TABLE).delete().eq('id', last.id)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('practice_set_remove', m.subject_key, { name: m.name, set: setNoFor(last) }); setMsg(`✅ Set ${setNoFor(last)} removed from ${fullName(m.name)}`); load()
+  }
   const roleLabel = role => (role === 'assistant' ? 'practice setter' : role === 'verifier' ? 'practice verifier' : 'setter')
   const Panel = () => (
     <>
@@ -1206,9 +1222,15 @@ function MissionSainikInner({ currentUser }) {
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
                       style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
-                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, (m.role === 'assistant' || prac.length) ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {isRealAdmin && m.role === 'assistant' && !m.builtin && (
+                        <span role="group" aria-label={`Practice sets for ${m.name}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <button type="button" className="px-hbtn" aria-label={`One fewer practice set for ${m.name}`} onClick={() => bumpPracticeSets(m, -1)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>−</button>
+                          <b aria-live="polite" title="practice sets" style={{ minWidth: 22, textAlign: 'center', color: PX.navy }}>{prac.length}</b>
+                          <button type="button" className="px-hbtn" aria-label={`One more practice set for ${m.name}`} onClick={() => bumpPracticeSets(m, 1)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>
+                        </span>)}
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
                       {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
