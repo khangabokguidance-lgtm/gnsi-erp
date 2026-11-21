@@ -23,6 +23,7 @@ import TeacherPicker from './TeacherPicker'
 import { staffOptions, staffNameFor } from './lib/teacherPick'
 import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikPracticePlan from './MissionSainikPracticePlan'
+import MissionSainikStudents from './MissionSainikStudents'
 import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
@@ -1560,7 +1561,7 @@ function MissionSainikInner({ currentUser }) {
     </>
   )
   const materialTab = (
-    <MissionSainikMaterial mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
+    <MissionSainikMaterial syllabus={syl} mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
       onSave={saveMaterial} onCancelEdit={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}
       onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
       institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} staff={staffDir} userName={currentUser?.name || ''} />
@@ -1626,7 +1627,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              practiceQ={practiceQMap} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
+              practiceQ={practiceQMap} syllabus={syl} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
@@ -1648,6 +1649,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'marks' && marksTab}
             {tab === 'material' && materialTab}
             {tab === 'panel' && Panel()}
+            {tab === 'students' && <MissionSainikStudents institute={institute} isMobile={isMobile} setMsg={setMsg} />}
             {tab === 'admin' && isRealAdmin && AdminPanel()}
             <FlowNav tab={tab} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} progress={flowProgress} />
           </>

@@ -51,7 +51,7 @@ const CFG = {
   },
 }
 
-export default function MissionSainikBuilder({ practiceQ = null, series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
+export default function MissionSainikBuilder({ syllabus = null, practiceQ = null, series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
   // Practice bank: the admin sets how many questions each teacher sets per practice set, per subject (Panel → Practice panel).
   const cfg0 = CFG[series]
   const cfg = useMemo(() => (series === 'practice' && practiceQ ? { ...cfg0, sections: cfg0.sections.map(x => ({ ...x, q: Number(practiceQ[x.key]) || x.q })) } : cfg0), [series, practiceQ]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -117,6 +117,9 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
     const m = {}; qs.forEach(q => { (m[q.test_no + '|' + q.section] = m[q.test_no + '|' + q.section] || []).push(q) }); return m
   }, [qs])
   const get = (t, s) => bySec[t + '|' + s] || []
+  // The syllabus plan (Mission Sainik → Syllabus): the chapter(s) planned for this test and section. Pre Mock and Daily tests follow it.
+  const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
+  const [chapterPick, setChapterPick] = useState('')
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
   const section = (live(testNo).find(s => s.label === sectionSel) || live(testNo)[0]).label   // falls back when a set lacks this subject
@@ -192,7 +195,8 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
     if (dupes.length) return setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”. Remove them and upload again.`)
     if (have + parsed.questions.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + parsed.questions.length}. Upload anyway?`)) return
     setBusy(true)
-    const rows = parsed.questions.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
+    const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
+    const rows = parsed.questions.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
     if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : ''))
@@ -530,6 +534,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
   const multiTeachers = contribs.length > 1
   const myName = currentUser?.name || ''
+  const chapters = chaptersOf(testNo, sec.label)
+  const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
+  const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
   const flav = flavours(secList, sec.q)
   const myCount = isPractice ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
@@ -743,6 +751,17 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     : 'The admin chooses which questions go into the paper.'}
                 </div>}
               </div>)}
+            {chapters.length > 0 && (
+              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
+                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
+                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
+                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
+                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
+                </div>
+                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
+              </div>)}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
@@ -758,7 +777,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             </div>
             {addMode === 'cards' ? (
               <>
-                <MultiQuestionAdder key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
+                <MultiQuestionAdder chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
                   <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
                   <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
@@ -853,7 +872,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 2fr 1fr', gap: 8 }}>
                         <label style={lab}>Answer<select className="px-input" value={editQ.answer} onChange={e => set({ answer: e.target.value })}>{['A', 'B', 'C', 'D'].map(k => <option key={k}>{k}</option>)}</select></label>
                         <label style={lab}>Level<select className="px-input" value={editQ.difficulty || ''} onChange={e => set({ difficulty: e.target.value })}><option value="">—</option><option>Easy</option><option>Medium</option><option>Hard</option></select></label>
-                        <label style={lab}>Topic<input className="px-input" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
+                        <label style={lab}>Topic<input className="px-input" list="msb-chapters" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
                       </div>
                       <label style={lab}>Explanation<input className="px-input" value={editQ.explanation || ''} onChange={e => set({ explanation: e.target.value })} /></label>
                       {('passage' in editQ || 'image_data' in editQ) ? (

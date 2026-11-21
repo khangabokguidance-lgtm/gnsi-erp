@@ -94,7 +94,7 @@ export function PaperPreview({ cards, startNo, title, showAns }) {
 }
 
 export const ADDER_CSS = ''
-export default function MultiQuestionAdder({ cards, setCards, remaining, startNo = 1, title = 'Section', existing = [], draftKey, isMobile }) {
+export default function MultiQuestionAdder({ cards, setCards, remaining, startNo = 1, title = 'Section', existing = [], draftKey, isMobile, chapters = [] }) {
   const refs = useRef({})
   const [view, setView] = useState(isMobile ? 'edit' : 'split')   // edit | split | preview
   const [showAns, setShowAns] = useState(true)
@@ -303,11 +303,16 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
           <div style={{ fontSize: 11, color: PX.sub, margin: '4px 2px 0' }}>Click a box, then a symbol. <b>a⁄b</b> makes a stacked fraction: type the top and bottom inside the braces, e.g. <code>\frac{'{3}{4}'}</code>. Powers: <code>x^2</code> · roots: <code>\sqrt{'{16}'}</code>. The preview shows exactly how it prints.</div>
         </div>
       )}
+      <datalist id="mqa-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
       {showEdit && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', marginBottom: 10, borderRadius: 12, background: '#faf8f3', border: `1px solid ${PX.line}` }}>
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Apply to all</span>
           {['Easy', 'Medium', 'Hard'].map(l => <button key={l} type="button" aria-pressed={bulk.level === l} onClick={() => setBulk(b => ({ ...b, level: b.level === l ? '' : l }))} style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${bulk.level === l ? PX.gold : PX.line}`, background: bulk.level === l ? PX.goldBg : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
-          <input style={{ ...field, width: 150, padding: '6px 10px', fontSize: 13 }} placeholder="Topic for all…" aria-label="Topic for all" value={bulk.topic} onChange={e => setBulk(b => ({ ...b, topic: e.target.value }))} />
+          {chapters.length > 0 && <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Chapter</span>
+            {chapters.map(ch => <button key={ch} type="button" title="Tag every question below with this syllabus chapter" onClick={() => setCards(cs => cs.map(c => (isEmptyCard(c) ? c : { ...c, topic: ch })))} style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${PX.line}`, background: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: PX.navy }}>{ch}</button>)}
+          </span>}
+          <input style={{ ...field, width: 150, padding: '6px 10px', fontSize: 13 }} list="mqa-chapters" placeholder="Topic for all…" aria-label="Topic for all" value={bulk.topic} onChange={e => setBulk(b => ({ ...b, topic: e.target.value }))} />
           <button type="button" className="px-btn ghost" style={gbtn} disabled={!bulk.level && !bulk.topic.trim()} onClick={applyBulk}>Apply</button>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button type="button" className="px-btn ghost" style={gbtn} onClick={() => setCards(cs => cs.map(c => ({ ...c, collapsed: true })))}>Collapse all</button>
@@ -428,7 +433,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                         </div>
                         {c.showMore && (
                           <div style={{ display: 'grid', gap: 8 }}>
-                            <input style={field} placeholder="Topic (e.g. Fractions)" aria-label="Topic" value={c.topic} onChange={e => upd(c.id, { topic: e.target.value })} />
+                            <input style={field} list="mqa-chapters" placeholder="Topic (e.g. Fractions)" aria-label="Topic" value={c.topic} onChange={e => upd(c.id, { topic: e.target.value })} />
                             <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} onFocus={track(c.id, 'exp')} />
                           </div>
                         )}
