@@ -15,6 +15,9 @@ export const hasPicture = text => { IMG_RE.lastIndex = 0; const r = IMG_RE.test(
 export const pictureOf = text => { IMG_RE.lastIndex = 0; const m = IMG_RE.exec(String(text || '')); IMG_RE.lastIndex = 0; return m ? m[1] : '' }
 export const withPicture = (text, dataUrl) => (dataUrl ? `[[img:${dataUrl}]]` : '') + String(text || '').replace(IMG_RE, '').trim()
 export const withoutPicture = text => String(text || '').replace(IMG_RE, '').trim()
+// For a box someone is typing into: the same, but spaces are kept (a trimmed box swallows the space after every word).
+export const withPictureRaw = (text, dataUrl) => (dataUrl ? `[[img:${dataUrl}]]` : '') + String(text || '').replace(IMG_RE, '')
+export const withoutPictureRaw = text => String(text || '').replace(IMG_RE, '')
 
 // Approximate printed length (used to choose 4-up / 2-up / stacked options): markup and pictures count as short.
 export function mathPlain(text) {

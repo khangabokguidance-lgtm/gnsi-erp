@@ -11,7 +11,7 @@ import StripSplit, { splitFileAuto } from './StripSplit'
 import ChartMaker from './ChartMaker'
 import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
 import { csvToQuestionText } from './lib/missionSainikPaper'
-import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture } from './lib/mathText'
+import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture, withPictureRaw, withoutPictureRaw } from './lib/mathText'
 
 export const blankCard = () => ({ id: Math.random().toString(36).slice(2), question: '', a: '', b: '', c: '', d: '', ans: '', exp: '', topic: '', level: '', passage: '', type: 'normal', image: '', showMore: false, collapsed: false })
 const clean = s => String(s || '').replace(/\s*\n\s*/g, ' ').trim()
@@ -442,9 +442,9 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                                 <button type="button" aria-pressed={on} aria-label={`Mark ${k} as the correct answer`} title="Tap to mark correct" onClick={() => upd(c.id, { ans: on ? '' : k })}
                                   style={{ width: 34, height: 34, borderRadius: 9, border: 'none', background: on ? TONES[k] : '#f1ede3', color: on ? '#fff' : PX.ink2, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>{on ? '✓' : k}</button>
                                 {hasPicture(c[k.toLowerCase()]) && <img src={pictureOf(c[k.toLowerCase()])} alt={`Option ${k} picture`} style={{ height: 34, maxWidth: 70, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff', flexShrink: 0 }} />}
-                                <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', background: 'transparent', padding: '6px 2px' }} placeholder={hasPicture(c[k.toLowerCase()]) ? 'Optional caption' : `Option ${k}`} aria-label={`Question ${i + 1} option ${k}`} value={withoutPicture(c[k.toLowerCase()])}
+                                <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', background: 'transparent', padding: '6px 2px' }} placeholder={hasPicture(c[k.toLowerCase()]) ? 'Optional caption' : `Option ${k}`} aria-label={`Question ${i + 1} option ${k}`} value={withoutPictureRaw(c[k.toLowerCase()])}
                                   onFocus={track(c.id, k.toLowerCase())}
-                                  onChange={e => upd(c.id, { [k.toLowerCase()]: withPicture(e.target.value, pictureOf(c[k.toLowerCase()])) })}
+                                  onChange={e => upd(c.id, { [k.toLowerCase()]: withPictureRaw(e.target.value, pictureOf(c[k.toLowerCase()])) })}
                                   onKeyDown={e => { if (k === 'D' && e.key === 'Enter') { e.preventDefault(); addAfter(c.id, 1, c) } }} />
                                 {c.type === 'venn' && <button type="button" title="Pick a Venn relationship diagram" aria-label={`Pick a Venn diagram for option ${k}`} onClick={() => setPresetFor({ id: c.id, k: k.toLowerCase() })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>🔵</button>}
                                 <button type="button" title="Scan a picture for this option" aria-label={`Scan a picture for option ${k}`} onClick={() => setScan({ id: c.id, k: k.toLowerCase() })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, padding: '0 2px', flexShrink: 0, opacity: .6 }}>📷</button>
