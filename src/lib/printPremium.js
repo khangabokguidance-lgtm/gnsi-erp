@@ -73,22 +73,21 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .ld{flex:0 0 auto;text-align:right;font-size:8.8px;color:var(--mut);line-height:1.5}
 .ld b{display:block;font-size:10.5px;color:var(--navy);letter-spacing:1.4px;text-transform:uppercase}
 
-/* official (office / government style) letterhead: opt-in with { official: true } */
-.off .oh{margin-bottom:12px}
-.off .oh-row{display:flex;align-items:center;gap:14px}
-.off .oh-logo{flex:0 0 auto;width:60px;height:74px;border-radius:6px;background:linear-gradient(160deg,#0a1d42,#173a6d);display:flex;align-items:center;justify-content:center;border:1px solid #9a7a2e}
-.off .oh-logo img{width:46px;height:auto;max-height:64px;object-fit:contain}
+/* official (office / government style) letterhead: opt-in with { official: true } — kept compact */
+.off .frame>thead>tr>td{height:8mm}
+.off .oh{margin-bottom:6px}
+.off .oh-row{display:flex;align-items:center;gap:10px}
+.off .oh-logo{flex:0 0 auto;width:38px;height:46px;border-radius:5px;background:linear-gradient(160deg,#0a1d42,#173a6d);display:flex;align-items:center;justify-content:center;border:1px solid #9a7a2e}
+.off .oh-logo img{width:30px;height:auto;max-height:40px;object-fit:contain}
 .off .oh-logo.sp{visibility:hidden}
 .off .oh-mid{flex:1;text-align:center;min-width:0}
-.off .oh-n{font-family:${SERIF_STACK};font-size:21px;font-weight:700;color:#0b1f45;letter-spacing:.9px;text-transform:uppercase;line-height:1.18}
-.off .oh-g{font-size:10px;font-style:italic;color:#6b5320;margin-top:2px;letter-spacing:.3px}
-.off .oh-a{font-size:9.6px;color:#222;margin-top:3px;font-weight:500}
-.off .oh-c{font-size:9px;color:#444;margin-top:1px}
-.off .oh-rule{height:0;border-top:3px solid #0b1f45;border-bottom:1px solid #0b1f45;padding-top:2px;margin:8px 0 6px}
-.off .oh-meta{display:flex;justify-content:space-between;gap:12px;font-size:10px;color:#111;font-weight:600}
-.off .oh-meta u{display:inline-block;min-width:34mm;border-bottom:1px solid #111;text-decoration:none;font-weight:400}
-.off .body .title{background:none;color:#0b1f45;border-radius:0;border-top:1.5px solid #0b1f45;border-bottom:1.5px solid #0b1f45;padding:6px 4px;letter-spacing:2px;font-size:11.5px}
-.off .body .sub{margin:7px 0 10px;color:#333}
+.off .oh-n{font-family:${SERIF_STACK};font-size:16px;font-weight:700;color:#0b1f45;letter-spacing:.7px;text-transform:uppercase;line-height:1.15}
+.off .oh-a{font-size:8.6px;color:#333;margin-top:2px;font-weight:500;line-height:1.3}
+.off .oh-rule{height:0;border-top:2.5px solid #0b1f45;border-bottom:.8px solid #0b1f45;padding-top:1.5px;margin:5px 0 3px}
+.off .oh-meta{display:flex;justify-content:space-between;gap:12px;font-size:9px;color:#111;font-weight:600}
+.off .oh-meta u{display:inline-block;min-width:30mm;border-bottom:1px solid #111;text-decoration:none;font-weight:400}
+.off .body .title{background:none;color:#0b1f45;border-radius:0;border-top:1.2px solid #0b1f45;border-bottom:1.2px solid #0b1f45;padding:4px 4px;letter-spacing:2px;font-size:10.5px;margin-top:4px}
+.off .body .sub{margin:4px 0 6px;color:#333;font-size:9.5px}
 
 /* title + body elements */
 .body .title{background:linear-gradient(90deg,#0f2d5e,#1e3a6e);color:#fff;text-align:center;padding:8px;border-radius:7px;font-weight:800;letter-spacing:2.6px;font-size:12px;text-transform:uppercase;border-bottom:2.5px solid var(--gold)}
@@ -181,7 +180,7 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
       ${official ? `<div class="oh">
         <div class="oh-row">
           <div class="oh-logo"><img src="${logo}" alt="Logo"></div>
-          <div class="oh-mid"><div class="oh-n">${name}</div>${institute.tagline ? `<div class="oh-g">${esc(institute.tagline)}</div>` : ''}${institute.address ? `<div class="oh-a">${esc(institute.address)}</div>` : ''}${[institute.phone && 'Phone: ' + institute.phone, institute.email && 'Email: ' + institute.email].filter(Boolean).length ? `<div class="oh-c">${esc([institute.phone && 'Phone: ' + institute.phone, institute.email && 'Email: ' + institute.email].filter(Boolean).join('  ·  '))}</div>` : ''}</div>
+          <div class="oh-mid"><div class="oh-n">${name}</div>${(() => { const l = [institute.tagline, institute.address, institute.phone && 'Phone: ' + institute.phone, institute.email && 'Email: ' + institute.email].filter(Boolean); return l.length ? `<div class="oh-a">${esc(l.join('  ·  '))}</div>` : '' })()}</div>
           <div class="oh-logo sp"></div>
         </div>
         <div class="oh-rule"></div>

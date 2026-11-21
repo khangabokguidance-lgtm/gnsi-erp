@@ -11,16 +11,14 @@ async function lib() { return import('docx') }
 function frame(d, institute, label, width = 10300) {
   const { Paragraph, TextRun, AlignmentType, BorderStyle, Footer, PageNumber, TabStopType } = d
   const name = institute?.name || 'Guidance Navodaya & Sainik Institute'
-  const contact = [institute?.phone && 'Phone: ' + institute.phone, institute?.email && 'Email: ' + institute.email].filter(Boolean).join('   ·   ')
+  const info = [institute?.tagline, institute?.address, institute?.phone && 'Phone: ' + institute.phone, institute?.email && 'Email: ' + institute.email].filter(Boolean).join('  ·  ')
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-  // Office / government style: name in capitals, address and contact, a thick-over-thin rule, then Ref. No. and Date on one line.
+  // Compact office / government style: name in capitals, one info line, a thick-over-thin rule, Ref. No. and Date on one line.
   const head = [
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 20 }, children: [new TextRun({ text: name.toUpperCase(), bold: true, size: 32, color: NAVY, font: 'Georgia', characterSpacing: 20 })] }),
-    ...(institute?.tagline ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: institute.tagline, italics: true, size: 18, color: GOLD })] })] : []),
-    ...(institute?.address ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 20 }, children: [new TextRun({ text: institute.address, size: 18, color: '222222' })] })] : []),
-    ...(contact ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: contact, size: 17, color: '444444' })] })] : []),
-    new Paragraph({ spacing: { before: 60, after: 60 }, border: { top: { style: BorderStyle.THICK, size: 18, color: NAVY, space: 4 }, bottom: { style: BorderStyle.SINGLE, size: 6, color: NAVY, space: 2 } }, children: [] }),
-    new Paragraph({ spacing: { after: 140 }, tabStops: [{ type: TabStopType.RIGHT, position: width }], children: [new TextRun({ text: 'Ref. No.: ______________________', size: 19, bold: true }), new TextRun({ text: `\tDate: ${today}`, size: 19, bold: true })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: name.toUpperCase(), bold: true, size: 28, color: NAVY, font: 'Georgia', characterSpacing: 10 })] }),
+    ...(info ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: info, size: 16, color: '333333' })] })] : []),
+    new Paragraph({ spacing: { before: 20, after: 20 }, border: { top: { style: BorderStyle.THICK, size: 14, color: NAVY, space: 1 }, bottom: { style: BorderStyle.SINGLE, size: 4, color: NAVY, space: 1 } }, children: [] }),
+    new Paragraph({ spacing: { after: 80 }, tabStops: [{ type: TabStopType.RIGHT, position: width }], children: [new TextRun({ text: 'Ref. No.: ____________________', size: 17, bold: true }), new TextRun({ text: `\tDate: ${today}`, size: 17, bold: true })] }),
   ]
   const footer = new Footer({ children: [new Paragraph({
     tabStops: [{ type: TabStopType.RIGHT, position: width }], border: { top: { style: BorderStyle.SINGLE, size: 4, color: LINE, space: 4 } },
