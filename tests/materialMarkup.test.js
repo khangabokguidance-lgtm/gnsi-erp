@@ -245,3 +245,11 @@ test('premium look: gold rule header, logo tile, navy badges; plain when ink sav
   assert.ok(!materialDocHtml(m, { institute: 'Acme', logo: 'javascript:alert(1)' }).includes('@top-left-corner'))
   assert.ok(!materialDocHtml(m, { institute: 'Acme', logo: 'https://x.com/a").evil{' }).includes('").evil{'))
 })
+
+test('the software credit is printed: in the footer with page headers, at the end otherwise', () => {
+  const m = { title: 'T', body: 'x' }
+  const withHf = materialDocHtml(m, {})
+  assert.ok(withHf.includes('@bottom-right{content:"GNSI Software · created by Moirangthem Himan Singh"') && !withHf.includes('class="cr"'))
+  const plain = materialDocHtml(m, { hf: false })
+  assert.ok(plain.includes('<div class="cr">GNSI Software · created by Moirangthem Himan Singh</div>'))
+})

@@ -2,6 +2,7 @@
 // Pure functions (unit-tested): the section model with continuous numbering, and the printable HTML.
 import { mathToHtml, mathPlain, MATH_CSS } from './mathText.js'
 import { makeVersion } from './missionSainikPaper.js'
+import { SOFTWARE_CREDIT } from './credit.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const LETTERS = 'ABCDEFGHIJ'
@@ -57,13 +58,13 @@ body{font-family:Georgia,'Times New Roman',serif;color:#111;font-size:${size}px;
 .op{margin:2px 0 0 30px;display:grid;gap:2px 12px}.op.o4{grid-template-columns:repeat(4,auto);justify-content:start}.op.o2{grid-template-columns:1fr 1fr}.op.o1{grid-template-columns:1fr}
 .ps{break-inside:avoid;border-left:3px solid #132a4f;padding:2px 8px;margin:4px 0 6px;font-size:${size - 0.5}px}
 img.oi{max-width:100%;max-height:160px;display:block;margin:4px 0}
-.end{text-align:center;font-family:Arial,sans-serif;margin-top:10px;font-weight:700}
+.end{text-align:center;font-family:Arial,sans-serif;margin-top:10px;font-weight:700}.cr{text-align:center;font:italic 9px Georgia,serif;color:#8a6118;margin-top:4px}
 ${MATH_CSS}</style></head><body>
 <div class="hd"><h1>${esc(o.institute || 'Guidance Navodaya & Sainik Institute')}</h1><h2>${esc(o.title || '')}${o.set && o.set !== 'A' ? ` · Set ${esc(o.set)}` : ''}</h2>${o.subtitle ? `<div>${esc(o.subtitle)}</div>` : ''}</div>
 <div class="mt"><span>Date: ${esc(o.date || '')}</span><span>Time: ${esc(o.minutes || '—')} minutes</span><span>Questions: ${model.total}</span><span>Full marks: ${model.marks}</span></div>
 <div class="st"><div>Name:</div><div>Batch:</div><div>GCC / Roll no.:</div></div>
 ${instructions.length ? `<div class="in"><b>Instructions</b><ol>${instructions.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
-<div class="cols">${body}</div><div class="end">— End of paper —</div>
+<div class="cols">${body}</div><div class="end">— End of paper —</div><div class="cr">${esc(SOFTWARE_CREDIT)}</div>
 ${o.autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),300)<' + '/script>' : ''}</body></html>`
 }
 

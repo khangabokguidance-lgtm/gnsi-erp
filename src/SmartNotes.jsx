@@ -8,6 +8,7 @@ import { smartFormat, figureQuestions, insertFigureAfterQuestion, paragraphsToNo
 import { figureLine } from './lib/materialMarkup'
 import { figFromFile } from './lib/figImage'
 import { bmeiToUnicode } from './mayekSegments'
+import { detectQuestions } from './lib/detectQuestions'
 
 const tb = { padding: '6px 11px', borderRadius: 8, border: `1px solid ${PX.line}`, background: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }
 
@@ -49,6 +50,7 @@ export function useSmartNotes({ body, setBody, flash }) {
   const fileRef = useRef(null)
   const figs = useMemo(() => figureQuestions(body), [body])
   const missing = figs.filter(f => !f.hasFigure)
+  const det = useMemo(() => detectQuestions(body), [body])   // does the text hold questions? shown live under the buttons
 
   const apply = (text, label) => {
     const r = smartFormat(text)
@@ -113,6 +115,7 @@ export function useSmartNotes({ body, setBody, flash }) {
         {undo != null && <button type="button" style={tb} onClick={() => { setBody(undo); setUndo(null); setReport(null) }}>↶ Undo</button>}
         <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', fontSize: 12.5, fontWeight: 600, marginLeft: 'auto' }}><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> Smart paste</label>
       </div>
+      {det.kind !== 'empty' && <div role="status" aria-label="Question detection" style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.5, color: det.questions ? '#0f7a4c' : '#92400e' }}><b>🔎 Detected:</b> {det.text}</div>}
       {report && <div role="status" style={{ marginTop: 8, fontSize: 12.5, color: PX.ink, lineHeight: 1.5 }}><b>{report.label}:</b> {chips.length ? chips.join(' · ') : 'nothing needed changing'}</div>}
       {figs.length > 0 && (
         <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>

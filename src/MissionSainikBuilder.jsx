@@ -14,6 +14,7 @@ import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
+import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
@@ -292,7 +293,14 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const loadFile = e => {
     const f = e.target.files?.[0]; if (!f) return
     const isCsv = /\.csv$/i.test(f.name)
-    const r = new FileReader(); r.onload = () => setText(isCsv ? csvToQuestionText(String(r.result || '')) : String(r.result || '')); r.readAsText(f); e.target.value = ''
+    const r = new FileReader()
+    r.onload = () => {
+      const t = isCsv ? csvToQuestionText(String(r.result || '')) : String(r.result || '')
+      setText(t)
+      const det = detectQuestions(t)   // tell the teacher straight away whether the file really holds questions
+      setMsg(det.questions ? '✅ ' + det.text : '⚠ ' + (det.kind === 'empty' ? 'The file is empty.' : det.text + ' Nothing to upload from this file.'))
+    }
+    r.readAsText(f); e.target.value = ''
   }
 
   // ── automatic assembly → printable paper / key ─────────────────────────
@@ -820,7 +828,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
               <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
               <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
-                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`) : ''}
+                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : parsed.questions.length ? `${parsed.questions.length} question(s) ready to upload` : '⚠ ' + detectQuestions(text).text) : ''}
               </span>
               <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
             </div>
