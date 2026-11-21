@@ -73,6 +73,22 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .ld{flex:0 0 auto;text-align:right;font-size:8.8px;color:var(--mut);line-height:1.5}
 .ld b{display:block;font-size:10.5px;color:var(--navy);letter-spacing:1.4px;text-transform:uppercase}
 
+/* official (office / government style) letterhead: opt-in with { official: true } — kept compact */
+.off .frame>thead>tr>td{height:8mm}
+.off .oh{margin-bottom:6px}
+.off .oh-row{display:flex;align-items:center;gap:10px}
+.off .oh-logo{flex:0 0 auto;width:38px;height:46px;border-radius:5px;background:linear-gradient(160deg,#0a1d42,#173a6d);display:flex;align-items:center;justify-content:center;border:1px solid #9a7a2e}
+.off .oh-logo img{width:30px;height:auto;max-height:40px;object-fit:contain}
+.off .oh-logo.sp{visibility:hidden}
+.off .oh-mid{flex:1;text-align:center;min-width:0}
+.off .oh-n{font-family:${SERIF_STACK};font-size:16px;font-weight:700;color:#0b1f45;letter-spacing:.7px;text-transform:uppercase;line-height:1.15}
+.off .oh-a{font-size:8.6px;color:#333;margin-top:2px;font-weight:500;line-height:1.3}
+.off .oh-rule{height:0;border-top:2.5px solid #0b1f45;border-bottom:.8px solid #0b1f45;padding-top:1.5px;margin:5px 0 3px}
+.off .oh-meta{display:flex;justify-content:space-between;gap:12px;font-size:9px;color:#111;font-weight:600}
+.off .oh-meta u{display:inline-block;min-width:30mm;border-bottom:1px solid #111;text-decoration:none;font-weight:400}
+.off .body .title{background:none;color:#0b1f45;border-radius:0;border-top:1.2px solid #0b1f45;border-bottom:1.2px solid #0b1f45;padding:4px 4px;letter-spacing:2px;font-size:10.5px;margin-top:4px}
+.off .body .sub{margin:4px 0 6px;color:#333;font-size:9.5px}
+
 /* title + body elements */
 .body .title{background:linear-gradient(90deg,#0f2d5e,#1e3a6e);color:#fff;text-align:center;padding:8px;border-radius:7px;font-weight:800;letter-spacing:2.6px;font-size:12px;text-transform:uppercase;border-bottom:2.5px solid var(--gold)}
 .body .sub{text-align:center;color:var(--mut);margin:6px 0 11px;font-size:10.5px}
@@ -147,7 +163,7 @@ const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.
 // bodyHTML  : the content (it may use the classes above)
 // institute : { name, address, tagline, logoUrl }
 // docLabel  : short label for the footer, e.g. "Duty sheet · Meera Singh · Pre Mock Test 2026"
-export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '' } = {}) {
+export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '', official = false, refNo = '' } = {}) {
   if (denyPrint()) return;
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
@@ -157,15 +173,23 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
   <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span>${PAGE_PICKER}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
   <div class="wm"><img src="${logo}" alt=""></div>
-  <div class="sheet"><table class="frame">
+  <div class="sheet${official ? ' off' : ''}"><table class="frame">
     <thead><tr><td></td></tr></thead>
     <tfoot><tr><td><div class="fsp"></div></td></tr></tfoot>
     <tbody><tr><td class="body">
-      <div class="lh2">
+      ${official ? `<div class="oh">
+        <div class="oh-row">
+          <div class="oh-logo"><img src="${logo}" alt="Logo"></div>
+          <div class="oh-mid"><div class="oh-n">${name}</div>${(() => { const l = [institute.tagline, institute.address, institute.phone && 'Phone: ' + institute.phone, institute.email && 'Email: ' + institute.email].filter(Boolean); return l.length ? `<div class="oh-a">${esc(l.join('  ·  '))}</div>` : '' })()}</div>
+          <div class="oh-logo sp"></div>
+        </div>
+        <div class="oh-rule"></div>
+        <div class="oh-meta"><span>Ref. No.: <u>${esc(refNo)}</u></span><span>Date: ${stamp}</span></div>
+      </div>` : `<div class="lh2">
         <div class="lg"><img src="${logo}" alt="Logo"></div>
         <div class="lt"><div class="n">${name}</div>${institute.tagline ? `<div class="g">${esc(institute.tagline)}</div>` : ''}${institute.address ? `<div class="a">${esc(institute.address)}</div>` : ''}</div>
         <div class="ld"><b>Issued</b>${stamp}</div>
-      </div>
+      </div>`}
       ${bodyHTML}
     </td></tr></tbody></table></div>
   <div class="pgfoot">

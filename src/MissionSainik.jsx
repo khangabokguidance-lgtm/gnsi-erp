@@ -32,6 +32,7 @@ import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import { printPremium } from './lib/printPremium'
 import { buildPlanBody } from './lib/missionSainikPlanPrint'
+import { buildPlanDocx, downloadDocx } from './lib/missionSainikDocx'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -1204,7 +1205,11 @@ function MissionSainikInner({ currentUser }) {
   const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
   // Print the whole syllabus plan on the premium A4 frame (letterhead, logo, footer). It opens as a preview with a Print / Save as PDF button.
   const printSyllabusPlan = () => printPremium(buildPlanBody({ tests: TESTS, subjects: SUBJECTS, syl, fmtDate: fmtShort }),
-    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan' })
+    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan', official: true })
+  const planDocx = async () => {
+    try { downloadDocx('Mission_Sainik_syllabus_plan', await buildPlanDocx({ tests: TESTS, subjects: SUBJECTS, syl, institute, fmtDate: fmtShort })); setMsg('✅ Word file downloaded') }
+    catch (e) { setMsg('❌ Could not make the Word file: ' + (e.message || e)) }
+  }
   const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
   const runSylImport = async () => {
     const { rows: list, errors } = parseSyllabusText(sylImport, SUBJECTS)
@@ -1236,7 +1241,7 @@ function MissionSainikInner({ currentUser }) {
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button><button className="px-hbtn" onClick={planDocx}>📝 Word</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
             <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
