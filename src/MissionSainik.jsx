@@ -1343,7 +1343,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
     const d = matDraft
     if (!d.title.trim()) return setMsg('❌ Give the material a title.')
     if (d.link_url.trim() && !safeUrl(d.link_url)) return setMsg('❌ The link must start with http:// or https://')
-    if (!d.file && !d.link_url.trim() && !d.body.trim()) return setMsg('❌ Type the material, choose a file or paste a link.')
+    if (!d.file && !d.link_url.trim() && !d.body.trim()) return setMsg('❌ Type the study material first.')
     if (d.file && d.file.size > 50 * 1024 * 1024) return setMsg('❌ File is over 50 MB.')
     setBusy(true)
     try {

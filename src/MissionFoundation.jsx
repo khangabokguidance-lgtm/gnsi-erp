@@ -511,7 +511,7 @@ function TestEditor({ photoOf = x => x, test, papers, allPapers = papers, classN
         </div>)}
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table" style={{ width: '100%', minWidth: 1180, background: '#fff' }}>
-          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th style={{ minWidth: 150 }}>Setters (1 or 2)</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
+          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th style={{ minWidth: 150 }}>Setters (1 or 2)</th><th>Checker</th><th>Status</th><th /></tr></thead>
           <tbody>
             {shown.map(p => (
               <tr key={p.id}>
@@ -528,7 +528,6 @@ function TestEditor({ photoOf = x => x, test, papers, allPapers = papers, classN
                 </td>
                 <td><WithFace name={p.verifier} photoOf={photoOf}><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => !settersOf(p).includes(n))} onChange={v => savePaper(p.id, { verifier: v })} /></WithFace></td>
                 <td><select className="px-input" aria-label="Paper status" value={p.status} onChange={e => savePaper(p.id, { status: e.target.value })} style={{ padding: '7px 10px', minWidth: 116 }}>{PAPER_FLOW.map(s => <option key={s}>{s}</option>)}</select></td>
-                <td><BlurField label="Paper link" width={170} placeholder="https://…" value={p.paper_link} onSave={v => { const u = v ? safeUrl(v) : ''; if (v && !u) return flash('Use a full https:// link.', true); savePaper(p.id, { paper_link: u }) }} /></td>
                 <td>{isAdmin && <button type="button" aria-label={`Remove ${p.subject}`} className="px-btn ghost" onClick={() => delPaper(p)}>✕</button>}</td>
               </tr>
             ))}
@@ -662,7 +661,6 @@ function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers,
           <label>Remarks<BlurField label="Remarks" value={p.remarks} onSave={v => savePaper(p.id, { remarks: v })} /></label>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {p.paper_link && <a className="px-btn ghost" href={safeUrl(p.paper_link)} target="_blank" rel="noreferrer">Open paper</a>}
           {setter && p.status === 'Pending' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Submitted', ...((made[p.test_id + '|' + p.subject]?.topics || []).length ? { syllabus: made[p.test_id + '|' + p.subject].topics.join('; ') } : {}) })}>Submit for checking</Btn>}
           {checker && p.status === 'Submitted' && <><Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Checked' })}>Mark checked</Btn><Btn onClick={() => savePaper(p.id, { status: 'Pending' })}>Send back to setter</Btn></>}
           {isAdmin && p.status === 'Checked' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Approved' })}>Approve</Btn>}

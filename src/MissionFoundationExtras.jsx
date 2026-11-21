@@ -174,7 +174,6 @@ export function AnalyserTab({ tests, papersByTest, allMarks: marks, today }) {
 }
 
 // ─── Study material ───────────────────────────────────────────────────────────
-const blank = { title: '', subject: '', test_id: '', link_url: '', note: '', file: null }
 async function uploadFile(file, me, folder) {
   const safe = file.name.replace(/[^\w.-]+/g, '_')
   const who = (me || 'staff').toLowerCase().replace(/[^a-z0-9]+/g, '-')
@@ -192,11 +191,7 @@ async function openFile(path, flash) {
 
 export function MaterialTab({ tests, me, isAdmin, flash }) {
   const [items, setItems] = useState(null)
-  const [d, setD] = useState(blank)
-  const [fileKey, setFileKey] = useState(0)
-  const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState('')
-  const [mode, setMode] = useState('write')      // write (the builder) | file (attach a file or link)
   const [editing, setEditing] = useState(null)
   const [openId, setOpenId] = useState(null)
   const load = useCallback(async () => {
@@ -206,21 +201,6 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
   }, [flash])
   useEffect(() => { load() }, [load])
 
-  const add = async () => {
-    if (!d.title.trim()) return flash('Give the material a title.', true)
-    const link = d.link_url.trim() ? safeUrl(d.link_url) : ''
-    if (d.link_url.trim() && !link) return flash('Use a full https:// link.', true)
-    if (!d.file && !link) return flash('Choose a file or paste a link.', true)
-    if (d.file && d.file.size > 25 * 1024 * 1024) return flash('The file is larger than 25 MB.', true)
-    setBusy(true)
-    try {
-      const file_path = d.file ? await uploadFile(d.file, me, 'material') : null
-      const { error } = await supabase.from(T_MAT).insert({ title: d.title.trim(), subject: d.subject || null, test_id: d.test_id || null, link_url: link || null, file_path, file_name: d.file?.name || null, note: d.note.trim() || null, uploaded_by: me })
-      if (error) throw error
-      setD(blank); setFileKey(k => k + 1); flash('Material added.'); load()
-    } catch (e) { flash('Not added: ' + (e?.message || e), true) }
-    setBusy(false)
-  }
   const remove = async m => {
     if (!window.confirm(`Delete "${m.title}"?`)) return
     const { error } = await supabase.from(T_MAT).delete().eq('id', m.id)
@@ -232,25 +212,10 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
   const shown = (items || []).filter(m => !filter || m.subject === filter)
 
   const chip = on => ({ padding: '8px 14px', borderRadius: 99, border: `1.5px solid ${on ? PX.navy : PX.line}`, background: on ? '#e4ebf6' : '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' })
-  const startEdit = m => { setEditing(m); setMode('write'); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }
+  const startEdit = m => { setEditing(m); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }
   return (
     <>
-      <div role="tablist" aria-label="Add study material" data-ti-skip style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        <button type="button" role="tab" aria-selected={mode === 'write'} style={chip(mode === 'write')} onClick={() => { setMode('write') }}>✍ Write notes</button>
-        <button type="button" role="tab" aria-selected={mode === 'file'} style={chip(mode === 'file')} onClick={() => { setMode('file'); setEditing(null) }}>📎 Attach a file or link</button>
-      </div>
-      {mode === 'write' && <NotesStudio key={editing?.id || 'new'} {...{ tests, me, flash, editing }} onSaved={cancelled => { setEditing(null); if (!cancelled) load() }} />}
-      {mode === 'file' && <PremiumCard title="Attach a file or link" subtitle="Notes, worksheets, answer keys: a file (PDF, Word, photo, up to 25 MB) or a link. Only staff can open them.">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
-          <label>Title<input className="px-input" value={d.title} onChange={e => setD({ ...d, title: e.target.value })} placeholder="e.g. Fractions worksheet 1" /></label>
-          <label>Subject<select className="px-input" value={d.subject} onChange={e => setD({ ...d, subject: e.target.value })}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select></label>
-          <label>For test<select className="px-input" value={d.test_id} onChange={e => setD({ ...d, test_id: e.target.value })}><option value="">Any test</option>{tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}</select></label>
-          <label>File<input key={fileKey} className="px-input" type="file" onChange={e => setD({ ...d, file: e.target.files?.[0] || null })} /></label>
-          <label>or Link<input className="px-input" value={d.link_url} onChange={e => setD({ ...d, link_url: e.target.value })} placeholder="https://drive.google.com/…" /></label>
-          <label>Note<input className="px-input" value={d.note} onChange={e => setD({ ...d, note: e.target.value })} placeholder="Optional" /></label>
-        </div>
-        <div style={{ marginTop: 12 }}><Btn kind="gold" disabled={busy} onClick={add}>{busy ? 'Uploading…' : 'Add material'}</Btn></div>
-      </PremiumCard>}
+      <NotesStudio key={editing?.id || 'new'} {...{ tests, me, flash, editing }} onSaved={cancelled => { setEditing(null); if (!cancelled) load() }} />
       <PremiumCard title={`Material · ${shown.length}`} bodyStyle={{ padding: 0 }}
         right={<select className="px-input" aria-label="Filter by subject" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 'auto' }}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select>}>
         {items === null ? <div style={{ padding: 20, color: PX.sub }}>Loading…</div> : !shown.length ? <div style={{ padding: 20, color: PX.sub }}>Nothing here yet — write the first notes above.</div> : shown.map(m => (
