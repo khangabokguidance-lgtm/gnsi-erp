@@ -340,6 +340,10 @@ function MissionSainikInner({ currentUser }) {
   }, [])
 
   const isMe = name => nameMatches(currentUser?.name, name)
+  // Where the logged-in teacher sits on the Panel: [{ subject, role }]. Home and Study material use it, so the panel setup carries through the other tabs.
+  const myPanel = (panelRows.length ? panelRows.map(r => ({ key: r.subject_key, name: r.name, role: r.role }))
+    : SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ key: x.key, name, role: 'setter' })), { key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ key: x.key, name, role: 'assistant' }))]))
+    .filter(m => isMe(m.name)).map(m => ({ subject: SUBJECTS.find(x => x.key === m.key)?.label || m.key, role: m.role === 'assistant' ? 'practice setter' : m.role === 'verifier' ? 'practice verifier' : 'setter' }))
   const setsIt = r => settersOfRow(r).some(isMe)   // the main setter or a co-setter
   // Tasks tab: if nothing is waiting on me when the data first loads, open on my tasks (or everyone's) instead of an empty list.
   const taskViewAuto = useRef(false)
@@ -1587,10 +1591,6 @@ function MissionSainikInner({ currentUser }) {
     nextTest: nextTest ? nextTest.id.replace('PMT-', '') : 'Done', inLabel: `${submitted}/${total || seedCount}`, approved, overdue,
   }
   // Progress for the mission-flow tracker (Home) and the Back / Next bar.
-  // Where the logged-in teacher sits on the Panel: [{ subject, role }]. Home and Study material use it, so the panel setup carries through the other tabs.
-  const myPanel = (panelRows.length ? panelRows.map(r => ({ key: r.subject_key, name: r.name, role: r.role }))
-    : SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ key: x.key, name, role: 'setter' })), { key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ key: x.key, name, role: 'assistant' }))]))
-    .filter(m => isMe(m.name)).map(m => ({ subject: SUBJECTS.find(x => x.key === m.key)?.label || m.key, role: m.role === 'assistant' ? 'practice setter' : m.role === 'verifier' ? 'practice verifier' : 'setter' }))
   const flowProgress = {
     panel: { done: panelRows.length ? SUBJECTS.filter(x => panelSetters(x.key).length).length : 0, total: SUBJECTS.length },
     plan: { done: TESTS.reduce((n, t) => n + SUBJECTS.filter(x => syl[t.no + '|' + x.label]).length, 0), total: TESTS.length * SUBJECTS.length },
