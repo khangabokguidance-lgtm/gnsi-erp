@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, PersonCell } from './MissionSainikUI'
 import { fetchAll } from './lib/missionSainikQuestions'
+import { isAdminRole } from './roles'
 import { TESTS, MOCK_TESTS, fullName } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
@@ -60,6 +61,7 @@ export default function MissionSainikAdmin({ rows, settings, putSetting, delSett
 
   // ── backup ───────────────────────────────────────────────────────────────────
   const backup = async () => {
+    if (!isAdminRole(currentUser?.role)) return setMsg('🔒 Only an admin can download the backup.')
     setMsg('Preparing backup…')
     const names = ['mission_sainik_tasks', 'mission_sainik_materials', 'mission_sainik_syllabus', 'mission_sainik_marks', 'mission_sainik_panel', 'mission_sainik_settings', 'mission_sainik_signoffs', 'mission_sainik_questions', 'mission_sainik_paper_cfg']
     const tables = {}, missing = []
