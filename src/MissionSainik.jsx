@@ -20,6 +20,7 @@ import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
+import { staffOptions, staffNameFor } from './lib/teacherPick'
 import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikPracticePlan from './MissionSainikPracticePlan'
 import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
@@ -311,6 +312,8 @@ function MissionSainikInner({ currentUser }) {
   const [printSet, setPrintSet] = useState(null)   // { subject, setNo } — print a Practice bank set
   const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
   useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
+  const staffOpts = useMemo(() => staffOptions(staffDir), [staffDir])
+  const photoOf = tok => staffNameFor(tok, staffOpts)   // full staff name for a stored one-word name, to find the right photo
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
   const [marks, setMarks] = useState([])
   const [markDraft, setMarkDraft] = useState({ test_no: 1, batch: '', maths: '', reasoning: '', grammar: '', gk: '' })
@@ -878,8 +881,8 @@ function MissionSainikInner({ currentUser }) {
     const exportAllot = () => downloadCsv('Mission_Sainik_allotment.csv', [['Test', 'Date', ...SUBJECTS.map(x => x.label + ' (setter)'), ...SUBJECTS.map(x => x.label + ' (status)')]].concat(TESTS.map(t => [t.id, t.date, ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.setter || ''), ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.status || '')])))
     return (
       <>
-      <MissionSainikSetterPlan {...{ tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
-      <MissionSainikPracticePlan {...{ practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikSetterPlan {...{ photoOf, tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikPracticePlan {...{ photoOf, practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1203,7 +1206,7 @@ function MissionSainikInner({ currentUser }) {
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
                       style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
-                      <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
@@ -1505,7 +1508,7 @@ function MissionSainikInner({ currentUser }) {
               const tot = MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)
               return (
                 <tr key={r.id}>
-                  <td>T{r.test_no}</td><td>{r.batch ? <PersonCell name={r.batch} size={28}>{r.batch}</PersonCell> : '—'}</td>
+                  <td>T{r.test_no}</td><td>{r.batch ? <PersonCell name={r.batch} size={28} staff={false}>{r.batch}</PersonCell> : '—'}</td>
                   {MARK_COLS.map(([k, , m]) => <td key={k}><ScorePill v={r[k]} max={m} /></td>)}
                   <td><ScorePill v={tot} max={120} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}><button className="px-hbtn" onClick={() => editMarks(r)} aria-label="Edit">✎</button> <button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>

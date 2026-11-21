@@ -51,3 +51,12 @@ export function filterStaff(options, query, taken = []) {
     .filter(o => !q || [o.name, o.designation, o.department].join(' ').toLowerCase().includes(q))
     .map(o => ({ ...o, taken: t.has(o.pick.toLowerCase()) }))
 }
+
+// The full staff name behind a stored one-word name ("Sunder" → "Khundrakpam Sunder Singh"), used to find the right photo.
+// Only when exactly one staff member matches; otherwise the stored name is returned unchanged.
+export function staffNameFor(token, options) {
+  const t = String(token || '').trim().toLowerCase()
+  if (!t) return String(token || '')
+  const hits = (options || []).filter(o => o.pick.toLowerCase() === t)
+  return hits.length === 1 ? hits[0].name : String(token)
+}

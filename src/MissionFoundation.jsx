@@ -18,6 +18,7 @@ import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundatio
 import { printPremium } from './lib/printPremium'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
+import { staffOptions, staffNameFor } from './lib/teacherPick'
 import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
 import { getInstitute } from './systemSettings'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
@@ -565,6 +566,7 @@ function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today 
 // ─── Teachers (subject panel) ─────────────────────────────────────────────────
 function TeachersTab({ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }) {
   const [picking, setPicking] = useState(null)   // subject whose teacher picker is open
+  const staffOpts = useMemo(() => staffOptions(staffDir), [staffDir])
   const [open, setOpen] = useState(null)      // subject whose test-by-test plan is open
   const [busy, setBusy] = useState('')
   const short = t => String(t?.test_no ?? '').padStart(2, '0')
@@ -658,7 +660,7 @@ function TeachersTab({ panel, panelFromDb, staffDir, tests, papersByTest, savePa
                   const sh = share(s.label, t)
                   return (
                     <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <PersonCell name={cleanTeacherName(t)} sub={`Sets ${sh.set.length}${sh.set.length ? ' (' + sh.set.map(r => short(r.test)).join(', ') + ')' : ''} · checks ${sh.check.length}`}>{titled(t)}</PersonCell>
+                      <PersonCell name={cleanTeacherName(t)} photoName={staffNameFor(cleanTeacherName(t), staffOpts)} sub={`Sets ${sh.set.length}${sh.set.length ? ' (' + sh.set.map(r => short(r.test)).join(', ') + ')' : ''} · checks ${sh.check.length}`}>{titled(t)}</PersonCell>
                       <span style={{ flex: 1 }} />
                       {isAdmin && rows.length > 0 && (
                         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: PX.sub }}>Tests

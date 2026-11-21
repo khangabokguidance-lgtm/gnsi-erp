@@ -395,7 +395,7 @@ export function StudentsTab({ students, unplaced, allMarks, tests, isAdmin, flas
               {list.map((s, i) => (
                 <tr key={s.id} style={{ borderTop: `1px solid ${PX.line}` }}>
                   <td style={{ padding: 6, color: PX.faint }}>{i + 1}</td>
-                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={s.name} size={26} /><b>{s.name}</b></div></td>
+                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={s.name} size={26} staff={false} /><b>{s.name}</b></div></td>
                   <td>{s.gcc_no || '—'}</td>
                   <td><Pill tone={s.batchName === 'Udaan' ? 'info' : 'gold'}>{s.batchName}</Pill></td>
                   <td>{s.phone || '—'}</td>
@@ -412,7 +412,7 @@ export function StudentsTab({ students, unplaced, allMarks, tests, isAdmin, flas
           <div style={{ display: 'grid', gap: 8 }}>
             {unplaced.map(s => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: `1px solid ${PX.line}`, borderRadius: 12, padding: '8px 12px' }}>
-                <Avatar name={s.name} size={26} />
+                <Avatar name={s.name} size={26} staff={false} />
                 <b style={{ flex: 1, minWidth: 140 }}>{s.name}</b>
                 <span style={{ fontSize: 12.5, color: PX.sub }}>GCC {s.gcc_no || '—'} · batch “{s.batch || 'blank'}”</span>
                 {isAdmin ? BATCHES.map(b => <Btn key={b} disabled={busy === s.id} onClick={() => place(s, b)}>Put in {b}</Btn>) : <span style={{ fontSize: 12, color: PX.faint }}>An admin can fix this in Students.</span>}

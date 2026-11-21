@@ -50,3 +50,13 @@ test('family-name-first staff are saved by their given name, and each person sta
   assert.equal(new Set(staffOptions(staff).map(o => o.name)).size, 7)                       // yet all seven are distinct people
   assert.equal(givenName('Sir Sunder Singh'), 'Sunder'); assert.equal(givenName(''), '')
 })
+
+import { staffNameFor } from '../src/lib/teacherPick.js'
+
+test('staffNameFor finds the full staff name for a stored one-word name, only when it is unambiguous', () => {
+  const o = staffOptions([{ name: 'Khundrakpam Sunder Singh' }, { name: 'Khundrakpam Bronson Singh' }, { name: 'Laishram Bronson Singh' }, { name: 'Sir Kabiraj Singh' }])
+  assert.equal(staffNameFor('Sunder', o), 'Khundrakpam Sunder Singh')
+  assert.equal(staffNameFor('kabiraj', o), 'Sir Kabiraj Singh')
+  assert.equal(staffNameFor('Bronson', o), 'Bronson')        // two people: not guessed
+  assert.equal(staffNameFor('Nobody', o), 'Nobody'); assert.equal(staffNameFor('', o), '')
+})
