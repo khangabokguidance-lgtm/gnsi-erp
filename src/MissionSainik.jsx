@@ -1536,7 +1536,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                           {SUBJECTS.map((x, i) => (
                             <label key={x.key} style={{ display: 'block', borderLeft: `4px solid ${tone(i)}`, borderRadius: 8, background: val(t, x) ? tone(i) + '12' : '#fafafa', padding: isMobile ? '8px 12px 9px' : '5px 8px 6px' }}>
                               <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: tone(i) }}>{x.short}</span>
-                              <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Add chapter…" fontSize={isMobile ? 16 : 13} minHeight={isMobile ? 30 : undefined} tint={tone(i) + '22'} />
+                              <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Add chapter…" fontSize={isMobile ? 16 : 13} minHeight={isMobile ? 40 : undefined} tint={tone(i) + '22'} />
                             </label>
                           ))}
                         </div>}

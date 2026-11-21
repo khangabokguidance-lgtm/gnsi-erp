@@ -153,10 +153,11 @@ html{scroll-behavior:smooth}
   .msx-main .px-card-h{flex-wrap:wrap}
   .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
   .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
-  .msx-top{gap:2px}.msx-top .msx-ic{width:38px;height:38px;font-size:18px}.msx-top h1{font-size:18px}
+  .msx-top{gap:0}.msx-top .msx-ic{width:44px;height:44px;font-size:18px}.msx-top h1{font-size:18px}
   /* comfortable thumb targets; 16px inputs stop iOS zooming the page on focus */
   .msx-main .px-hbtn,.msx-main .px-btn{min-height:42px}
-  .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px}
+  .msx-main button:not(.msm-fav):not([role=checkbox]){min-height:40px}   /* chips, pills, number buttons: 40px minimum */
+  .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px!important}
   /* clear the slimmer bottom bar */
   .msx-fab{bottom:calc(66px + env(safe-area-inset-bottom))}.msx-snack{bottom:calc(62px + env(safe-area-inset-bottom))}
   .msx-allot .msx-acell{flex-direction:row;align-items:center;gap:8px;padding:6px 10px}

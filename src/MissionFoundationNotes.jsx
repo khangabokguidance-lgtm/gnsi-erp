@@ -125,7 +125,7 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         <label>For test<select className="px-input" style={field} value={d.test_id} onChange={e => set({ test_id: e.target.value })}><option value="">Any test</option>{tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no}</option>)}</select></label>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }} role="toolbar" aria-label="Formatting">
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }} className="mfn-tools" role="toolbar" aria-label="Formatting">
         {Object.keys(TEMPLATES).map(n => <button key={n} type="button" style={{ ...tb, background: '#fffaf0', borderColor: '#e8d9aa' }} onClick={() => useTemplate(n)}>{n}</button>)}
         <span style={{ width: 1, height: 22, background: PX.line }} aria-hidden="true" />
         <button type="button" style={tb} onClick={() => insertBlock('## Heading')}>H</button>
@@ -136,13 +136,13 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         <label style={{ ...tb, display: 'inline-flex', alignItems: 'center' }}>🖼 Picture<input type="file" accept="image/*" aria-label="Add a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) addFigure(f) }} /></label>
         <button type="button" style={tb} onClick={() => setScan(true)}>📷 Scan</button>
       </div>
-      <div style={{ display: 'flex', gap: 4, overflowX: 'auto', marginBottom: 8 }} role="toolbar" aria-label="Maths symbols">
+      <div style={{ display: 'flex', gap: 4, overflowX: 'auto', marginBottom: 8 }} className="mfn-tools" role="toolbar" aria-label="Maths symbols">
         {MATH_TOOLS.map(([l, t, c, title]) => <button key={title} type="button" title={title} aria-label={title} onMouseDown={e => e.preventDefault()} onClick={() => insertAt(t, c)} style={{ ...tb, minWidth: 34, flexShrink: 0, fontFamily: 'Georgia,serif', fontSize: 15 }}>{l}</button>)}
       </div>
 
       {smart.bar}
-      <style>{`.mfn-panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}.mfn-seg{display:none}@media (max-width:760px){.mfn-panes{grid-template-columns:minmax(0,1fr)}.mfn-seg{display:flex}.mfn-panes[data-view="write"] .mfn-page{display:none}.mfn-panes[data-view="page"] .mfn-write{display:none}}${MATH_CSS}${MATERIAL_CSS}`}</style>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }} role="toolbar" aria-label="Page layout" data-ti-skip>
+      <style>{`@media (max-width:760px){.mfn-tools button,.mfn-tools label{min-height:42px}.mfn-tools select{min-height:42px!important;font-size:16px!important}.mfn-seg button{min-height:42px!important}}.mfn-panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}.mfn-seg{display:none}@media (max-width:760px){.mfn-panes{grid-template-columns:minmax(0,1fr)}.mfn-seg{display:flex}.mfn-panes[data-view="write"] .mfn-page{display:none}.mfn-panes[data-view="page"] .mfn-write{display:none}}${MATH_CSS}${MATERIAL_CSS}`}</style>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }} className="mfn-tools" role="toolbar" aria-label="Page layout" data-ti-skip>
         <b style={{ fontSize: 12.5 }}>A4 page</b>
         <select aria-label="Columns" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
         <select aria-label="Font" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.font} onChange={e => setLayout(l => ({ ...l, font: e.target.value }))}><option value="serif">Georgia</option><option value="times">Times</option><option value="sans">Arial</option><option value="narrow">Arial Narrow</option></select>

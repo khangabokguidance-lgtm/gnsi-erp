@@ -105,7 +105,8 @@ export function useSmartNotes({ body, setBody, flash }) {
   ].filter(Boolean) : []
 
   const bar = (
-    <div style={{ marginBottom: 8, padding: '10px 12px', borderRadius: 12, background: '#f4f8ff', border: '1px solid #cfe0f7' }}>
+    <div className="msn-bar" style={{ marginBottom: 8, padding: '10px 12px', borderRadius: 12, background: '#f4f8ff', border: '1px solid #cfe0f7' }}>
+      <style>{'@media (max-width:760px){.msn-bar button,.msn-bar label{min-height:42px}}'}</style>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <b style={{ fontSize: 13 }}>✨ Smart maker</b>
         <button type="button" style={{ ...tb, background: '#e4ebf6', borderColor: PX.navy }} onClick={format} title="Put each option on its own line, find fractions, Meitei text and figure questions">Smart format</button>
