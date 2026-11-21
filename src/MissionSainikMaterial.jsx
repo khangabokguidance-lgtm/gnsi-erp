@@ -6,7 +6,7 @@ import ScanFigure from './ScanFigure'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
-import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline } from './lib/materialMarkup'
+import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
 import { fetchAll } from './lib/missionSainikQuestions'
@@ -84,7 +84,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [restored, setRestored] = useState(false)
   const [scan, setScan] = useState(false), [focus, setFocus] = useState(false), [picker, setPicker] = useState(false)
   const [figErr, setFigErr] = useState('')
-  const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, ...load('msm-layout', {}) }))
+  const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, font: 'serif', ...load('msm-layout', {}) }))
   useEffect(() => { save('msm-layout', layout) }, [layout])
   const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
   const [viewer, setViewer] = useState(null)
@@ -226,7 +226,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   // ── printing ──
   const asDoc = m => ({ ...m, uploaded_by: m.uploaded_by || userName })
   const printOptsFor = (m, o) => ({ ...o, institute: instName, author: creatorOf(staff, m.uploaded_by || userName) })
-  const openPrint = m => { setPopts(p => ({ ...p, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
+  const openPrint = m => { setPopts(p => ({ ...p, font: layout.font || p.font, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
@@ -595,7 +595,7 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
 }
 
 // Page layout for the preview: 1 or 2 columns, and a space saver (tighter spacing, smaller text) like the print layouts.
-const bodyStyle = l => ({ fontSize: l.saver ? Math.min(l.size, 12) : l.size, columnCount: l.columns, columnGap: l.columns > 1 ? 26 : undefined, columnRule: l.columns > 1 ? '1px solid #dde1ea' : undefined })
+const bodyStyle = l => ({ fontFamily: FONTS[l.font] || FONTS.serif, fontSize: l.saver ? Math.min(l.size, 12) : l.size, columnCount: l.columns, columnGap: l.columns > 1 ? 26 : undefined, columnRule: l.columns > 1 ? '1px solid #dde1ea' : undefined })
 function LayoutControls({ layout, setLayout, inp }) {
   const on = layout.columns === 2 && layout.saver
   const pill = a => ({ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${a ? '#b8923a' : '#e8e3d8'}`, background: a ? '#f6efdc' : '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
@@ -604,6 +604,8 @@ function LayoutControls({ layout, setLayout, inp }) {
       <select aria-label="Columns" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
       <button type="button" aria-pressed={layout.saver} style={pill(layout.saver)} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver }))}>{layout.saver ? '✓ ' : ''}Space saver</button>
       <button type="button" aria-pressed={on} style={pill(on)} title="2 columns + space saver" onClick={() => setLayout(l => (on ? { ...l, columns: 1, saver: false } : { ...l, columns: 2, saver: true }))}>⚡ 2-col saver</button>
+      <select aria-label="Font" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.font || 'serif'} onChange={e => setLayout(l => ({ ...l, font: e.target.value }))}><option value="serif">Georgia</option><option value="times">Times</option><option value="sans">Arial</option><option value="narrow">Arial Narrow</option></select>
+      <button type="button" aria-pressed={layout.font === 'sans' && layout.columns === 2} style={pill(layout.font === 'sans' && layout.columns === 2)} title="Arial text in 2 columns" onClick={() => setLayout(l => (l.font === 'sans' && l.columns === 2 ? { ...l, font: 'serif', columns: 1 } : { ...l, font: 'sans', columns: 2 }))}>🅰 Arial · 2 col</button>
       <select aria-label="Text size" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.size} onChange={e => setLayout(l => ({ ...l, size: Number(e.target.value) }))}>{[[11, 'Tiny'], [12, 'Small'], [13, 'Medium'], [15, 'Large']].map(([v, l]) => <option key={v} value={v}>{l} text</option>)}</select>
     </span>
   )
