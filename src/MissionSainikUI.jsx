@@ -20,7 +20,7 @@ export function PersonCell({ name, sub, size = 34, children }) {
       <Avatar name={name} size={size} />
       <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
         <span style={{ fontWeight: 700, color: PX.ink }}>{children || name}</span>
-        {sub ? <span style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500 }}>{sub}</span> : null}
+        {sub ? <span style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500, overflowWrap: 'anywhere' }}>{sub}</span> : null}
       </span>
     </span>
   )

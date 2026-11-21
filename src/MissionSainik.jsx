@@ -20,6 +20,7 @@ import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
+import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -872,6 +873,8 @@ function MissionSainikInner({ currentUser }) {
     const dim = r => (allotTeacher && r.setter !== allotTeacher) || (allotStatus && (allotStatus === 'Overdue' ? !isOverdue(r, today) : r.status !== allotStatus))
     const exportAllot = () => downloadCsv('Mission_Sainik_allotment.csv', [['Test', 'Date', ...SUBJECTS.map(x => x.label + ' (setter)'), ...SUBJECTS.map(x => x.label + ' (status)')]].concat(TESTS.map(t => [t.id, t.date, ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.setter || ''), ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.status || '')])))
     return (
+      <>
+      <MissionSainikSetterPlan {...{ tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -907,6 +910,7 @@ function MissionSainikInner({ currentUser }) {
         </div>
         {!rows.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No allotment yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : 'Ask the Principal to create it.'}</div>}
       </PremiumCard>
+      </>
     )
   }
 
@@ -1134,7 +1138,7 @@ function MissionSainikInner({ currentUser }) {
                     <span role={m.role === 'setter' ? 'button' : undefined} tabIndex={m.role === 'setter' ? 0 : undefined} title={m.role === 'setter' ? `See ${fullName(m.name)}'s tasks` : undefined}
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
-                      style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
+                      style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
                       <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
