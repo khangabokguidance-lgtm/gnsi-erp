@@ -41,7 +41,8 @@ const CSS = `
 *{box-sizing:border-box}
 html,body{margin:0}
 body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink);background:#e9edf3;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-variant-numeric:tabular-nums}
-.bar{position:sticky;top:0;z-index:20;background:linear-gradient(90deg,#0b2147,#16386b);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font-size:12.5px}
+.tools{position:sticky;top:0;z-index:20}
+.bar{position:relative;z-index:20;flex-wrap:wrap;background:linear-gradient(90deg,#0b2147,#16386b);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font-size:12.5px}
 .bar button{padding:8px 20px;border:0;border-radius:8px;background:#fff;color:var(--navy);font-weight:800;cursor:pointer;font-size:13px;font-family:inherit}
 .bar small{opacity:.8}
 .bar label{display:flex;align-items:center;gap:6px;font-weight:600}
@@ -142,6 +143,17 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .inst div{margin:1px 0}
 .inst .ic{color:var(--navy)}
 
+/* Edit mode: a toolbar above the report; the content becomes editable on screen only */
+.etb{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;padding:8px 12px;background:#fff7e0;border-bottom:1px solid #e3d49c;font-size:12.5px;color:#1b2437}
+.etb[hidden]{display:none}
+.etb button{min-width:32px;height:32px;padding:0 9px;border:1px solid #d8c88d;border-radius:8px;background:#fff;color:#0f2d5e;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px}
+.etb button:hover{background:#fdf2cf}
+.etb select,.etb input[type=color]{height:32px;border:1px solid #d8c88d;border-radius:8px;background:#fff;font-family:inherit;font-size:12.5px;padding:0 6px}
+.etb input[type=color]{width:34px;padding:2px;cursor:pointer}
+.etb .sep{width:1px;height:22px;background:#e3d49c;margin:0 4px}
+.etb label{display:flex;align-items:center;gap:4px;font-weight:700}
+.editing .fsz{outline:2px dashed #b8923a;outline-offset:8px;cursor:text}
+.editing .fsz td,.editing .fsz th{outline:1px dotted rgba(184,146,58,.5)}
 /* Text size picker: scales only the report content, not the letterhead */
 .fsz{zoom:var(--fs,1)}
 @media screen{.sheet{min-height:var(--ph,297mm)}.pgfoot{position:static;margin-top:0;width:var(--pw,210mm);margin:0 auto;background:#fff}}
@@ -149,7 +161,8 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 @media print{
   @page{size:A4;margin:0}
   body{background:#fff}
-  .bar{display:none}
+  .bar,.tools,.etb{display:none!important}
+  .fsz{outline:0!important}
   .sheet{margin:0;box-shadow:none;width:auto;background:transparent}
   .person+.person{break-before:page;page-break-before:always}
 }
@@ -161,6 +174,41 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 const PAPERS = { A4: [210, 297], A3: [297, 420], A5: [148, 210], Letter: [216, 279], Legal: [216, 356] };
 // Text size of the report content (1 = normal). Remembered per report on this browser.
 const FONT_SIZES = [[0.7, 'Very small 70%'], [0.8, 'Small 80%'], [0.9, '90%'], [1, 'Normal 100%'], [1.1, '110%'], [1.2, 'Large 120%'], [1.35, 'Larger 135%'], [1.5, 'Very large 150%']]
+const EDIT_FONTS = [['', 'Font'], ["'Inter',Arial,sans-serif", 'Inter'], ['Arial,Helvetica,sans-serif', 'Arial'], ["Georgia,'Times New Roman',serif", 'Georgia'], ["'Times New Roman',Times,serif", 'Times New Roman'], ["'Courier New',monospace", 'Courier'], ["'Noto Sans Meetei Mayek',sans-serif", 'Meetei Mayek']]
+const EDIT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32]
+const EDIT_BAR = `<div class="etb" id="etb" hidden role="toolbar" aria-label="Edit the report">
+  <button type="button" data-c="undo" title="Undo (Ctrl+Z)">↶</button><button type="button" data-c="redo" title="Redo (Ctrl+Y)">↷</button><span class="sep"></span>
+  <select id="efont" aria-label="Font">${EDIT_FONTS.map(([v, l]) => `<option value="${v.replace(/"/g, '&quot;')}">${l}</option>`).join('')}</select>
+  <select id="esize" aria-label="Font size of the selected text"><option value="">Size</option>${EDIT_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')}</select><span class="sep"></span>
+  <button type="button" data-c="bold" title="Bold (Ctrl+B)"><b>B</b></button><button type="button" data-c="italic" title="Italic (Ctrl+I)"><i>I</i></button><button type="button" data-c="underline" title="Underline (Ctrl+U)"><u>U</u></button><button type="button" data-c="strikeThrough" title="Strikethrough"><s>S</s></button>
+  <label title="Text colour">A<input type="color" id="ecolor" value="#0f2d5e" aria-label="Text colour"></label><label title="Highlight">🖍<input type="color" id="ehi" value="#fff2a8" aria-label="Highlight colour"></label><span class="sep"></span>
+  <button type="button" data-c="justifyLeft" title="Align left">⇤</button><button type="button" data-c="justifyCenter" title="Centre">↔</button><button type="button" data-c="justifyRight" title="Align right">⇥</button><button type="button" data-c="insertUnorderedList" title="Bullets">• ≡</button><button type="button" data-c="insertOrderedList" title="Numbers">1.≡</button><span class="sep"></span>
+  <button type="button" data-t="rowAfter" title="Add a row below the cell you clicked">＋ Row</button><button type="button" data-t="rowDel" title="Delete the row of the cell you clicked">− Row</button><button type="button" data-t="colAfter" title="Add a column to the right">＋ Col</button><button type="button" data-t="colDel" title="Delete the column">− Col</button><span class="sep"></span>
+  <button type="button" data-c="removeFormat" title="Clear formatting of the selection">Tx</button><button type="button" id="ereset" title="Undo ALL edits and go back to the original">↺ Reset</button>
+</div>`
+const EDIT_SCRIPT = `<script>(function(){
+var root=document.querySelector('.fsz'),etb=document.getElementById('etb'),btn=document.getElementById('editbtn'),orig=root.innerHTML,on=false,saved=null,cell=null;
+function setEdit(v){on=v;root.contentEditable=v?'true':'false';document.body.classList.toggle('editing',v);etb.hidden=!v;btn.textContent=v?'✓ Done editing':'✏️ Edit text';if(v)root.focus()}
+btn.onclick=function(){setEdit(!on)};
+function keep(){var s=getSelection();if(on&&s.rangeCount&&root.contains(s.anchorNode))saved=s.getRangeAt(0).cloneRange()}
+document.addEventListener('selectionchange',keep);root.addEventListener('mouseup',keep);root.addEventListener('keyup',keep);
+root.addEventListener('click',function(e){cell=e.target.closest&&e.target.closest('td,th')});
+root.addEventListener('keyup',function(){var s=getSelection();if(s.anchorNode&&s.anchorNode.parentElement)cell=s.anchorNode.parentElement.closest('td,th')});
+function restore(){var s=getSelection();if(s.rangeCount&&root.contains(s.anchorNode)&&!s.isCollapsed)keep();if(!saved||!saved.commonAncestorContainer.isConnected||!root.contains(saved.commonAncestorContainer))return;root.focus();s.removeAllRanges();s.addRange(saved)}
+function ex(c,v){restore();document.execCommand('styleWithCSS',false,true);document.execCommand(c,false,v==null?null:v)}
+etb.addEventListener('mousedown',function(e){var t=e.target.tagName;if(t!=='SELECT'&&t!=='INPUT'&&t!=='OPTION')e.preventDefault()});
+etb.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.dataset.c)ex(b.dataset.c);else if(b.dataset.t)tbl(b.dataset.t);else if(b.id==='ereset'&&confirm('Undo all edits and go back to the original?')){root.innerHTML=orig;saved=null;cell=null}});
+document.getElementById('efont').onchange=function(){if(this.value)ex('fontName',this.value);this.selectedIndex=0};
+document.getElementById('esize').onchange=function(){var px=this.value;this.selectedIndex=0;if(!px)return;restore();document.execCommand('styleWithCSS',false,false);document.execCommand('fontSize',false,'7');root.querySelectorAll('font[size="7"]').forEach(function(f){var sp=document.createElement('span');sp.style.fontSize=px+'px';sp.innerHTML=f.innerHTML;f.replaceWith(sp)})};
+document.getElementById('ecolor').oninput=function(){ex('foreColor',this.value)};
+document.getElementById('ehi').oninput=function(){ex('hiliteColor',this.value)};
+function tbl(a){if(!cell||!root.contains(cell)){alert('Click inside a table cell first.');return}var tr=cell.parentElement,idx=cell.cellIndex,t=cell.closest('table');
+ if(a==='rowAfter'){var nr=tr.cloneNode(true);nr.querySelectorAll('td,th').forEach(function(c){c.innerHTML='&nbsp;'});tr.after(nr)}
+ else if(a==='rowDel'){if(t.rows.length>1){var nx=tr.nextElementSibling||tr.previousElementSibling;tr.remove();cell=nx?nx.cells[Math.min(idx,nx.cells.length-1)]:null}}
+ else if(a==='colAfter'){Array.prototype.forEach.call(t.rows,function(r){var src=r.cells[Math.min(idx,r.cells.length-1)],n=src.cloneNode(false);n.innerHTML='&nbsp;';src.after(n)});fit(t)}
+ else if(a==='colDel'){if(tr.cells.length>1)Array.prototype.forEach.call(t.rows,function(r){if(r.cells[idx])r.cells[idx].remove()});cell=null;fit(t)}}
+function fit(t){var cg=t.querySelector('colgroup');if(!cg)return;var n=t.rows[0].cells.length;while(cg.children.length<n)cg.appendChild(document.createElement('col'));while(cg.children.length>n)cg.lastChild.remove();var first=parseFloat(cg.children[0].style.width)||12,rest=(100-first)/(n-1||1);Array.prototype.forEach.call(cg.children,function(c,i){c.style.width=(i?rest:first)+'%'})}
+})()</script>`
 const pagePicker = (layout = 'p') => `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p"${layout === 'p' ? ' selected' : ''}>Portrait</option><option value="l"${layout === 'l' ? ' selected' : ''}>Landscape</option></select></label><label>Text size <select id="fsz">${FONT_SIZES.map(([v, l]) => `<option value="${v}"${v === 1 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
 const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.stringify(PAPERS)};var sz=document.getElementById('pgsz'),or=document.getElementById('pgor');function set(){var d=P[sz.value],l=or.value==='l',w=l?d[1]:d[0],h=l?d[0]:d[1],r=document.documentElement.style;r.setProperty('--pw',w+'mm');r.setProperty('--ph',h+'mm');document.getElementById('pgcss').textContent='@page{size:'+w+'mm '+h+'mm;margin:0}';window.dispatchEvent(new CustomEvent('pagechange',{detail:h}))}sz.onchange=or.onchange=set;set();var fs=document.getElementById('fsz'),key='pp-fs:'+document.title;try{var sv=parseFloat(localStorage.getItem(key));if(sv&&Array.prototype.some.call(fs.options,function(o){return parseFloat(o.value)===sv}))fs.value=String(sv)}catch(e){}function fz(){var v=parseFloat(fs.value)||1;document.documentElement.style.setProperty('--fs',v);try{localStorage.setItem(key,String(v))}catch(e){}window.dispatchEvent(new CustomEvent('fontchange',{detail:v}))}fs.onchange=fz;fz()})()</script>`;
 
@@ -175,7 +223,8 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
   const name = esc(institute.name || 'Guidance Navodaya & Sainik Institute');
   const stamp = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
-  <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span>${pagePicker(landscape ? 'l' : 'p')}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
+  <div class="tools"><div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><button id="editbtn" type="button" style="background:#e9d9b0">✏️ Edit text</button><span>${esc(title)}</span>${pagePicker(landscape ? 'l' : 'p')}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
+${EDIT_BAR}</div>
   <div class="wm"><img src="${logo}" alt=""></div>
   <div class="sheet${official ? ' off' : ''}"><table class="frame">
     <thead><tr><td></td></tr></thead>
@@ -200,6 +249,6 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
     <span class="l"><span class="mini"><img src="${logo}" alt=""></span><span><b>${name}</b>${docLabel ? ` · ${esc(docLabel)}` : ''}</span></span>
     <span class="credit">${esc(DESIGN_CREDIT)}</span>
   </div>
-  ${PAGE_SCRIPT}</body></html>`);
+  ${PAGE_SCRIPT}${EDIT_SCRIPT}</body></html>`);
   w.document.close();
 }
