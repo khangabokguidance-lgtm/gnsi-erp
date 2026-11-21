@@ -171,3 +171,36 @@ test('a teacher saved as "Sir Umesh" still matches the login Umesh', async () =>
   assert.equal(nameMatches('Umesh Singh', 'Sir Umesh'), true)
   assert.equal(nameMatches('Roshan', 'Umesh'), false)
 })
+
+import { BATCHES as B2, DEFAULT_CLASSES, applyClasses, settersOf, isSetter, papersForClass, copyForClass } from '../src/missionFoundationData.js'
+
+test('applyClasses replaces the shared class list in place and falls back to Udaan / Pragati', () => {
+  const ref = B2
+  assert.deepEqual(applyClasses(['Class 5', ' Class 6 ', 'Class 5', '']), ['Class 5', 'Class 6'])
+  assert.equal(ref, B2); assert.deepEqual([...B2], ['Class 5', 'Class 6'])          // same array object, new contents
+  assert.deepEqual(applyClasses([]), DEFAULT_CLASSES); assert.deepEqual([...B2], DEFAULT_CLASSES)
+})
+
+test('two setters: both count, the second is optional', () => {
+  assert.deepEqual(settersOf({ setter: 'Kabiraj', setter2: 'Lenin' }), ['Kabiraj', 'Lenin'])
+  assert.deepEqual(settersOf({ setter: 'Kabiraj', setter2: 'Kabiraj' }), ['Kabiraj'])
+  assert.deepEqual(settersOf({ setter: '', setter2: null }), [])
+  assert.equal(isSetter('Sir Lenin Singh', { setter: 'Kabiraj', setter2: 'Lenin' }), true)
+  assert.equal(isSetter('Sir Roshan', { setter: 'Kabiraj', setter2: 'Lenin' }), false)
+})
+
+test('papersForClass: a class paper replaces the shared one for that subject only', () => {
+  const rows = [
+    { id: 1, subject: 'Mathematics I', class_name: '', questions: 25 }, { id: 2, subject: 'Reasoning', class_name: '', questions: 25 },
+    { id: 3, subject: 'Mathematics I', class_name: 'Pragati', questions: 40 },
+  ]
+  assert.deepEqual(papersForClass(rows, '').map(p => p.id), [1, 2])
+  assert.deepEqual(papersForClass(rows, 'Udaan').map(p => p.id), [1, 2])               // no own paper: shared ones
+  assert.deepEqual(papersForClass(rows, 'Pragati').map(p => p.id), [3, 2])             // own Maths I + shared Reasoning
+})
+
+test('copyForClass copies the shared papers for a class, skipping subjects it already has', () => {
+  const shared = [{ test_id: 't', subject: 'Mathematics I', class_name: '', questions: 25, marks_each: 2, setter: 'A', verifier: 'B', syllabus: 'Fractions' }, { test_id: 't', subject: 'EVS', class_name: '', questions: 25, marks_each: 2 }]
+  const out = copyForClass(shared, 'Udaan', [{ subject: 'EVS', class_name: 'Udaan' }])
+  assert.equal(out.length, 1); assert.deepEqual([out[0].subject, out[0].class_name, out[0].setter, out[0].status], ['Mathematics I', 'Udaan', 'A', 'Pending'])
+})

@@ -375,3 +375,38 @@ export function foundationRoster(rows) {
   const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''))
   return { placed: placed.sort(byName), unplaced: unplaced.sort(byName) }
 }
+
+// ── Classes, second setter, separate paper per class ─────────────────────────────────────────────────
+// BATCHES is the list of classes that sit the Foundation tests. It is a shared array that is replaced IN PLACE when the admin changes
+// the class list, so every screen that reads it sees the new classes. Until the admin sets classes up it stays Udaan and Pragati.
+export const DEFAULT_CLASSES = ['Udaan', 'Pragati']
+export function applyClasses(names) {
+  const list = [...new Set((names || []).map(n => String(n || '').trim()).filter(Boolean))]
+  BATCHES.splice(0, BATCHES.length, ...(list.length ? list : DEFAULT_CLASSES))
+  return [...BATCHES]
+}
+
+// A paper's setters: the main setter plus an optional second setter.
+export const settersOf = p => [...new Set([p?.setter, p?.setter2].map(x => String(x || '').trim()).filter(Boolean))]
+export const isSetter = (who, p) => settersOf(p).some(n => nameMatches(who, n))
+
+// The papers a class sits for one test: its own paper for a subject when the admin made one, otherwise the shared paper.
+// `all` = every paper row of the test (shared ones have class_name '').
+export function papersForClass(all, className) {
+  const rows = all || []
+  const shared = rows.filter(p => !p.class_name)
+  if (!className) return shared
+  const own = new Map(rows.filter(p => p.class_name === className).map(p => [p.subject, p]))
+  const subjects = [...new Set([...shared.map(p => p.subject), ...own.keys()])]
+  const order = s => SUBJECTS.findIndex(x => x.label === s)
+  return subjects.map(s => own.get(s) || shared.find(p => p.subject === s)).sort((a, b) => order(a.subject) - order(b.subject))
+}
+
+// Rows for a class's own copy of the shared paper (all subjects, or just the missing ones), ready to insert.
+export function copyForClass(sharedPapers, className, existing = []) {
+  const have = new Set((existing || []).filter(p => p.class_name === className).map(p => p.subject))
+  return (sharedPapers || []).filter(p => !p.class_name && !have.has(p.subject)).map(p => ({
+    test_id: p.test_id, subject: p.subject, class_name: className, syllabus: p.syllabus || null, questions: p.questions, marks_each: p.marks_each,
+    duration_min: p.duration_min ?? null, setter: p.setter || null, setter2: p.setter2 || null, verifier: p.verifier || null, status: 'Pending',
+  }))
+}

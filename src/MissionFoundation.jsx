@@ -23,7 +23,7 @@ import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
 import { getInstitute } from './systemSettings'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
 import {
-  MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
+  MISSION_NAME, BATCHES, applyClasses, settersOf, isSetter, papersForClass, copyForClass, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
   subjectByLabel, maxMarks, buildSchedule, foundationRoster, cleanTeacherName, shareTests, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
 } from './missionFoundationData'
 
@@ -66,11 +66,11 @@ function BlurField({ value, onSave, type = 'text', placeholder, width, label, di
   )
 }
 
-function PersonSelect({ value, options, onChange, label }) {
+function PersonSelect({ value, options, onChange, label, emptyLabel = '—' }) {
   const list = [...new Set([...(options || []), ...(value ? [value] : [])])]
   return (
     <select className="px-input" aria-label={label} value={value || ''} onChange={e => onChange(e.target.value)} style={{ padding: '7px 10px', fontSize: 13.5, minWidth: 110 }}>
-      <option value="">—</option>
+      <option value="">{emptyLabel}</option>
       {list.map(n => <option key={n} value={n}>{n}</option>)}
     </select>
   )
@@ -98,6 +98,8 @@ export default function MissionFoundation({ currentUser }) {
   const [students, setStudents] = useState(null)
   const [unplaced, setUnplaced] = useState([])
   const [rosterTick, setRosterTick] = useState(0)
+  const [classNames, setClassNames] = useState(() => [...BATCHES])   // the classes that sit the tests (admin-defined; Udaan and Pragati until set up)
+  const [classRows, setClassRows] = useState([])
   const reloadStudents = () => setRosterTick(n => n + 1)
   const today = todayISO()
 
@@ -105,16 +107,20 @@ export default function MissionFoundation({ currentUser }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [t, p, pn, st, tc, pz] = await Promise.all([
+    const [t, p, pn, st, tc, pz, cl] = await Promise.all([
       supabase.from(T_TESTS).select('*').order('test_date').order('test_no'),
       supabase.from(T_PAPERS).select('*'),
       supabase.from(T_PANEL).select('*').order('teacher'),
       supabase.from('staff_profiles').select('name, department, designation').order('name'),
       supabase.from('mission_foundation_teaching').select('*'),
       supabase.from('mission_foundation_prizes').select('*'),
+      supabase.from('mission_foundation_classes').select('*').order('sort_no').order('name'),
     ])
     const err = t.error || p.error || pn.error || tc.error || pz.error
     setTeaching(tc.data || []); setPrizes(pz.data || [])
+    // classes: the admin's list when it exists (table missing or empty → Udaan and Pragati); BATCHES is updated in place for every screen
+    const cls = cl && !cl.error ? cl.data || [] : []
+    setClassRows(cls); setClassNames(applyClasses(cls.map(c => c.name)))
     if (err) {
       if (missingTable(err)) setSetupNeeded(true)
       else flash('Could not load: ' + err.message, true)
@@ -144,7 +150,7 @@ export default function MissionFoundation({ currentUser }) {
       setStudents(r.placed); setUnplaced(r.unplaced)
     })
     return () => { live = false }
-  }, [rosterTick])
+  }, [rosterTick, classNames.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
   // The test the Teaching / Test day pages open on: the one picked elsewhere, else today's or the next one.
   const activeTest = (tests.some(t => t.id === workTest) && workTest) || focusTest(tests, today)?.id || ''
   const openWork = id => { setWorkTest(id); setOpenTest(id) }
@@ -165,10 +171,17 @@ export default function MissionFoundation({ currentUser }) {
   const allTeachers = useMemo(() => [...new Set(Object.values(panel).flat())].sort(), [panel])
   const peopleFor = subject => [...new Set([...(panel[subject] || []), ...allTeachers])]
 
+  // papersByTest = the shared paper of each test (what every class sits unless the admin made a paper for one class);
+  // allPapersByTest = every paper row of the test, including the separate class papers.
   const papersByTest = useMemo(() => {
     const m = {}
-    papers.forEach(p => { (m[p.test_id] ||= []).push(p) })
+    papers.filter(p => !p.class_name).forEach(p => { (m[p.test_id] ||= []).push(p) })
     Object.values(m).forEach(l => l.sort((a, b) => SUBJECTS.findIndex(s => s.label === a.subject) - SUBJECTS.findIndex(s => s.label === b.subject)))
+    return m
+  }, [papers])
+  const allPapersByTest = useMemo(() => {
+    const m = {}
+    papers.forEach(p => { (m[p.test_id] ||= []).push(p) })
     return m
   }, [papers])
   const testById = useMemo(() => Object.fromEntries(tests.map(t => [t.id, t])), [tests])
@@ -199,7 +212,7 @@ export default function MissionFoundation({ currentUser }) {
     const done = papers.filter(p => p.status === 'Approved').length
     const late = papers.filter(p => p.status !== 'Approved' && testById[p.test_id]?.test_date <= today).length
     const next = tests.find(t => t.test_date >= today)
-    const mine = papers.filter(p => (nameMatches(me, p.setter) && p.status === 'Pending') || (nameMatches(me, p.verifier) && p.status === 'Submitted')).length
+    const mine = papers.filter(p => (isSetter(me, p) && p.status === 'Pending') || (nameMatches(me, p.verifier) && p.status === 'Submitted')).length
     return { done, late, next, mine }
   }, [papers, tests, testById, today, me])
 
@@ -273,13 +286,13 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel }} />}
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, lockTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
-              {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
+              {tab === 'schedule' && <ScheduleTab {...{ allPapersByTest, classNames, classRows, batchOptions: [...new Set([...(students || []), ...unplaced].map(x => x.batchName).filter(Boolean))], reloadStudents, tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
               {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
-              {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
-              {tab === 'results' && <ResultsTab {...{ tests, papersByTest, flash, today }} />}
+              {tab === 'marks' && <MarksTab {...{ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
+              {tab === 'results' && <ResultsTab {...{ allPapersByTest, tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
               {tab === 'material' && <MaterialTab {...{ tests, me, isAdmin, flash }} />}
               {tab === 'chat' && <ChatTab {...{ me, isAdmin, flash }} />}
@@ -294,7 +307,7 @@ export default function MissionFoundation({ currentUser }) {
 }
 
 // ─── Schedule & syllabus pattern ──────────────────────────────────────────────
-function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }) {
+function ScheduleTab({ allPapersByTest, classNames, classRows, batchOptions, reloadStudents, tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }) {
   const [gen, setGen] = useState({ start: DEFAULT_PLAN.start, count: DEFAULT_PLAN.count })
   const [busy, setBusy] = useState(false)
   const [showGen, setShowGen] = useState(false)
@@ -339,6 +352,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
 
   return (
     <>
+      {isAdmin && <ClassesCard {...{ classNames, classRows, batchOptions, me, load, flash }} />}
       {isAdmin && (
         <PremiumCard title="Create schedule" subtitle="One test every Monday, all 6 subjects"
           right={<Btn kind={showGen ? 'ghost' : 'gold'} onClick={() => setShowGen(v => !v)}>{showGen ? 'Close' : tests.length ? 'Add more days' : 'Create schedule'}</Btn>}>
@@ -378,7 +392,7 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
                   <Pill tone={TEST_TONE[t.status]}>{t.status}</Pill>
                   <span aria-hidden="true">{open ? '▾' : '▸'}</span>
                 </button>
-                {open && <TestEditor {...{ test: t, papers: ps, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
+                {open && <TestEditor {...{ test: t, papers: ps, allPapers: allPapersByTest[t.id] || ps, classNames, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }} />}
               </div>
             )
           })}
@@ -388,13 +402,62 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
   )
 }
 
-function TestEditor({ test, papers, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
+// Admin: which classes (batches) sit the Foundation tests. The name must match the batch name in Students so the live roster finds the students.
+function ClassesCard({ classNames, classRows, batchOptions, me, load, flash }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const saved = classRows.length > 0
+  const writeList = async names => {
+    setBusy(true)
+    const rows = names.map((name, i) => ({ name, sort_no: i + 1, created_by: me }))
+    let { error } = rows.length ? await supabase.from('mission_foundation_classes').upsert(rows, { onConflict: 'name' }) : { error: null }
+    if (!error) {
+      const gone = classRows.map(c => c.name).filter(n => !names.includes(n))
+      if (gone.length) ({ error } = await supabase.from('mission_foundation_classes').delete().in('name', gone))
+    }
+    setBusy(false)
+    if (error) return flash('Not saved: ' + error.message + ' (run supabase/migrations/20261220_mission_foundation_classes.sql)', true)
+    flash('Classes saved.'); load()
+  }
+  const add = name => { const n = String(name || '').trim(); if (!n) return; if (classNames.some(c => c.toLowerCase() === n.toLowerCase())) return flash(`${n} is already a class.`, true); setText(''); writeList([...classNames, n]) }
+  const remove = name => { if (classNames.length <= 1) return flash('Keep at least one class.', true); if (window.confirm(`Remove ${name} from the Foundation classes? Tests keep their marks; the class just stops being offered.`)) writeList(classNames.filter(c => c !== name)) }
+  const options = (batchOptions || []).filter(b => !classNames.includes(b)).sort()
+  return (
+    <PremiumCard title="Classes" subtitle={saved ? 'The classes that sit the Foundation tests. Each can sit the shared paper or its own.' : 'Udaan and Pragati are the built-in classes. Add or change them here; the name must match the batch name in Students.'}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {classNames.map(c => (
+          <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 6px 6px 14px', borderRadius: 99, background: '#fff', border: `1.5px solid ${PX.line}`, fontWeight: 800, color: PX.navy }}>
+            {c}<button type="button" aria-label={`Remove class ${c}`} disabled={busy} onClick={() => remove(c)} style={{ border: 0, width: 26, height: 26, borderRadius: '50%', background: '#f1f3f7', cursor: 'pointer', color: PX.sub }}>✕</button>
+          </span>))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+        {options.length > 0 && <select className="px-input" aria-label="Add a class from Students" value="" disabled={busy} onChange={e => e.target.value && add(e.target.value)} style={{ width: 'auto', minWidth: 190 }}>
+          <option value="">＋ Add a batch from Students…</option>{options.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>}
+        <input className="px-input" aria-label="New class name" placeholder="or type a class name" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add(text)} style={{ width: 200 }} />
+        <Btn kind="gold" disabled={busy || !text.trim()} onClick={() => add(text)}>Add class</Btn>
+      </div>
+    </PremiumCard>
+  )
+}
+
+function TestEditor({ test, papers, allPapers = papers, classNames = BATCHES, tests, papersByTest, isAdmin, me, savePaper, saveTest, peopleFor, panel, load, flash, setOpenTest }) {
   const [copying, setCopying] = useState(false)
-  const missing = SUBJECTS.filter(s => !papers.some(p => p.subject === s.label))
-  const totalMax = papers.reduce((n, p) => n + maxMarks(p), 0)
+  const [cls, setCls] = useState('')      // '' = the shared paper every class sits; otherwise the class whose own paper is being edited
+  const shown = cls ? allPapers.filter(p => p.class_name === cls).sort((a, b) => SUBJECTS.findIndex(x => x.label === a.subject) - SUBJECTS.findIndex(x => x.label === b.subject)) : papers
+  const missing = SUBJECTS.filter(s => !shown.some(p => p.subject === s.label))
+  const totalMax = shown.reduce((n, p) => n + maxMarks(p), 0)
+  const classHas = c => allPapers.some(p => p.class_name === c)
+  // A separate paper for one class: starts as a copy of the shared paper, then each subject can be edited on its own.
+  const makeClassPaper = async () => {
+    const rows = copyForClass(papers, cls, allPapers).map(r => ({ ...r, updated_by: me }))
+    if (!rows.length) return flash(`${cls} already has every subject.`, true)
+    const { error } = await supabase.from(T_PAPERS).insert(rows)
+    if (error) flash('Not created: ' + error.message + ' (run supabase/migrations/20261220_mission_foundation_classes.sql)', true); else { flash(`${rows.length} paper${rows.length === 1 ? '' : 's'} created for ${cls}.`); load() }
+  }
   const addPaper = async label => {
     const s = subjectByLabel(label); const setter = (panel[label] || [])[0] || ''
-    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
+    const { error } = await supabase.from(T_PAPERS).insert({ test_id: test.id, subject: label, class_name: cls, questions: s.questions, marks_each: s.marks_each, setter, verifier: setter ? checkerFor(label, setter, panel) : '', updated_by: me })
     if (error) flash('Not added: ' + error.message, true); else load()
   }
   const delPaper = async p => {
@@ -420,19 +483,35 @@ function TestEditor({ test, papers, tests, papersByTest, isAdmin, me, savePaper,
         <label>Status<select className="px-input" value={test.status} onChange={e => saveTest(test.id, { status: e.target.value })} style={{ padding: '7px 10px' }}>{TEST_FLOW.map(s => <option key={s}>{s}</option>)}</select></label>
         <div>Batches<div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>{BATCHES.map(b => <label key={b} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={(test.batches || []).includes(b)} onChange={() => toggleBatch(b)} />{b}</label>)}</div></div>
       </div>
+      <div role="tablist" aria-label="Paper for" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 10px' }}>
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub, marginRight: 4 }}>Paper for</span>
+        {[['', 'All classes (same paper)'], ...(test.batches || classNames).filter(b => classNames.includes(b)).map(b => [b, b + (classHas(b) ? ' · own paper' : '')])].map(([k, l]) => (
+          <button key={k || 'all'} type="button" role="tab" aria-selected={cls === k} onClick={() => setCls(k)}
+            style={{ padding: '7px 14px', borderRadius: 99, border: `1.5px solid ${cls === k ? PX.navy : PX.line}`, background: cls === k ? PX.navy : '#fff', color: cls === k ? '#fff' : PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>))}
+      </div>
+      {cls && (
+        <div role="note" style={{ margin: '0 0 10px', padding: '9px 12px', borderRadius: 12, background: '#f3f8ff', border: '1px solid #c9dcf7', fontSize: 13, color: PX.ink, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 260px' }}>{classHas(cls) ? <>This is <b>{cls}</b>'s own paper: its own chapters, questions, marks, setters and checker. Subjects without their own paper use the shared one.</> : <><b>{cls}</b> sits the shared paper. Make a separate paper if this class needs different chapters, marks or setters.</>}</span>
+          {isAdmin && <Btn kind="gold" onClick={makeClassPaper}>{classHas(cls) ? 'Copy missing subjects' : `Make a separate paper for ${cls}`}</Btn>}
+        </div>)}
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table" style={{ width: '100%', minWidth: 1180, background: '#fff' }}>
-          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th>Setter</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
+          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th style={{ minWidth: 150 }}>Setters (1 or 2)</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
           <tbody>
-            {papers.map(p => (
+            {shown.map(p => (
               <tr key={p.id}>
-                <td style={{ fontWeight: 700 }}>{p.subject}</td>
+                <td style={{ fontWeight: 700 }}>{p.subject}{p.class_name ? <div style={{ fontSize: 11, color: PX.sub, fontWeight: 600 }}>{p.class_name}</div> : null}</td>
                 <td><BlurField label={`${p.subject} syllabus`} placeholder="e.g. Fractions; Decimals" value={p.syllabus} onSave={v => savePaper(p.id, { syllabus: v })} /></td>
                 <td><BlurField type="number" width={64} label="Questions" value={p.questions} onSave={v => savePaper(p.id, { questions: v })} /></td>
                 <td><BlurField type="number" width={64} label="Marks each" value={p.marks_each} onSave={v => savePaper(p.id, { marks_each: v })} /></td>
                 <td style={{ fontWeight: 700 }}>{maxMarks(p) || '—'}</td>
-                <td><PersonSelect label="Setter" value={p.setter} options={peopleFor(p.subject)} onChange={v => savePaper(p.id, { setter: v, verifier: p.verifier && p.verifier !== v ? p.verifier : checkerFor(p.subject, v, panel) })} /></td>
-                <td><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => n !== p.setter)} onChange={v => savePaper(p.id, { verifier: v })} /></td>
+                <td>
+                  <div style={{ display: 'grid', gap: 5 }}>
+                    <PersonSelect label="Setter" value={p.setter} options={peopleFor(p.subject)} onChange={v => savePaper(p.id, { setter: v, ...(p.setter2 === v ? { setter2: null } : {}), verifier: p.verifier && p.verifier !== v ? p.verifier : checkerFor(p.subject, v, panel) })} />
+                    <PersonSelect label="Second setter" value={p.setter2} emptyLabel="＋ 2nd setter" options={peopleFor(p.subject).filter(n => n !== p.setter)} onChange={v => savePaper(p.id, { setter2: v || null })} />
+                  </div>
+                </td>
+                <td><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => !settersOf(p).includes(n))} onChange={v => savePaper(p.id, { verifier: v })} /></td>
                 <td><select className="px-input" aria-label="Paper status" value={p.status} onChange={e => savePaper(p.id, { status: e.target.value })} style={{ padding: '7px 10px', minWidth: 116 }}>{PAPER_FLOW.map(s => <option key={s}>{s}</option>)}</select></td>
                 <td><BlurField label="Paper link" width={170} placeholder="https://…" value={p.paper_link} onSave={v => { const u = v ? safeUrl(v) : ''; if (v && !u) return flash('Use a full https:// link.', true); savePaper(p.id, { paper_link: u }) }} /></td>
                 <td>{isAdmin && <button type="button" aria-label={`Remove ${p.subject}`} className="px-btn ghost" onClick={() => delPaper(p)}>✕</button>}</td>
@@ -442,7 +521,7 @@ function TestEditor({ test, papers, tests, papersByTest, isAdmin, me, savePaper,
         </table>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b> · Time: <b>{test.duration_min || '—'} min</b> for all {papers.length} subjects in one sitting</span>
+        <span style={{ color: PX.sub, fontSize: 13.5 }}>Full marks: <b>{totalMax}</b> · Time: <b>{test.duration_min || '—'} min</b> for all {shown.length} subjects in one sitting</span>
         {missing.length > 0 && <select className="px-input" aria-label="Add a subject" value="" onChange={e => e.target.value && addPaper(e.target.value)} style={{ width: 'auto', padding: '7px 10px' }}>
           <option value="">＋ Add a subject…</option>{missing.map(s => <option key={s.key} value={s.label}>{s.label}</option>)}
         </select>}
@@ -519,13 +598,13 @@ function CopyFormat({ test, papers, tests, papersByTest, me, load, flash, onDone
 function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today }) {
   const [who, setWho] = useState('')
   const person = who || me
-  const mine = papers.filter(p => nameMatches(person, p.setter) || nameMatches(person, p.verifier) || (who && (p.setter === who || p.verifier === who)))
+  const mine = papers.filter(p => isSetter(person, p) || nameMatches(person, p.verifier) || (who && (settersOf(p).includes(who) || p.verifier === who)))
     .map(p => ({ ...p, test: testById[p.test_id] })).filter(p => p.test)
     .sort((a, b) => a.test.test_date.localeCompare(b.test.test_date))
   const open = mine.filter(p => p.status !== 'Approved')
   const done = mine.filter(p => p.status === 'Approved')
   const row = p => {
-    const setter = nameMatches(person, p.setter) || p.setter === who
+    const setter = isSetter(person, p) || settersOf(p).includes(who)
     const checker = nameMatches(person, p.verifier) || p.verifier === who
     const late = p.status !== 'Approved' && p.test.test_date <= today
     return (
@@ -720,7 +799,7 @@ const pickDefaultTest = (tests, today) => [...tests].reverse().find(t => t.test_
 
 const markKey = (sid, subj) => `${sid}|${subj}`
 
-function MarksTab({ tests, papersByTest, me, flash, students, isAdmin, audit, initialTest, onSaved }) {
+function MarksTab({ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest, onSaved }) {
   const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
   const [batch, setBatch] = useState(BATCHES[0])     // a batch, or 'Both'
   const [subjectPick, setSubjectPick] = useState(null)  // null = not chosen yet (default below), 'all', or a subject label
@@ -728,9 +807,10 @@ function MarksTab({ tests, papersByTest, me, flash, students, isAdmin, audit, in
   const [changed, setChanged] = useState(() => new Set())   // keys typed since the last save
   const dirty = changed.size > 0
   const [busy, setBusy] = useState(false)
-  const testPapers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
+  // A class that has its own paper for a subject is marked out of that paper; every other class sits the shared paper.
+  const testPapers = useMemo(() => (batch !== 'Both' && allPapersByTest ? papersForClass(allPapersByTest[testId] || [], batch) : papersByTest[testId] || []), [papersByTest, allPapersByTest, testId, batch])
   // A teacher who sets exactly one subject of this test opens on that subject; everyone else on the full sheet.
-  const mine = testPapers.filter(p => nameMatches(me, p.setter))
+  const mine = testPapers.filter(p => isSetter(me, p))
   const subject = subjectPick ?? (mine.length === 1 ? mine[0].subject : 'all')
   const single = subject !== 'all' && testPapers.some(p => p.subject === subject)
   const papers = useMemo(() => (single ? testPapers.filter(p => p.subject === subject) : testPapers), [single, testPapers, subject])
@@ -856,12 +936,13 @@ function MarksTab({ tests, papersByTest, me, flash, students, isAdmin, audit, in
 }
 
 // ─── Results ──────────────────────────────────────────────────────────────────
-function ResultsTab({ tests, papersByTest, flash, today }) {
+function ResultsTab({ allPapersByTest, tests, papersByTest, flash, today }) {
   const [testId, setTestId] = useState(() => pickDefaultTest(tests, today)?.id || '')
   const [batch, setBatch] = useState('All')
   const [rows, setRows] = useState(null)
   const test = tests.find(t => t.id === testId)
-  const papers = useMemo(() => papersByTest[testId] || [], [papersByTest, testId])
+  // One class: out of that class's own paper where it has one. All classes together: the shared paper.
+  const papers = useMemo(() => (batch !== 'All' && allPapersByTest ? papersForClass(allPapersByTest[testId] || [], batch) : papersByTest[testId] || []), [papersByTest, allPapersByTest, testId, batch])
 
   useEffect(() => {
     if (!testId) { setRows([]); return }
