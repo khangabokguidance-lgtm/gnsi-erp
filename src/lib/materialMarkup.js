@@ -56,14 +56,19 @@ export function renderMaterial(src, opts = {}) {
     html += `<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${head.map((_, i) => `<td>${inline(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>`; table = null
   }
   const flushAll = () => { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable() }
-  for (const raw of lines) {
+  const isOpt = x => /^\(?([A-Da-d])[.)]\s+\S/.test(x)
+  const nextIsOpt = from => { for (let k = from; k < lines.length; k++) { const x = lines[k].trim(); if (!x) return false; if (parseFigureLine(x)) continue; return isOpt(x) } return false }
+  for (let li = 0; li < lines.length; li++) {
+    const raw = lines[li]
     const ln = raw.trimEnd(), t = ln.trim()
     let m
     if (!t) { flushAll(); continue }
+    // A numbered question that is followed by (a)(b)(c)(d) options: keep its number, stem and options together.
+    if ((m = t.match(/^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})[.)]\s+(.+)$/i)) && nextIsOpt(li + 1)) { flushAll(); html += `<p class="q"><b class="qn">${m[1]}.</b> ${inline(m[2])}</p>`; continue }
     // Multiple-choice questions typed as plain text: "A) …" lines become an options grid, "Answer: …" a highlighted answer.
     if ((m = t.match(/^\(?([A-Da-d])[.)]\s+(.*)$/))) {
       flushPara(); flushList(); flushQuote(); flushTable()
-      if (!choices) { choices = []; if (html.endsWith('</p>')) { const i = html.lastIndexOf('<p>'); if (i >= 0) html = html.slice(0, i) + '<p class="q">' + html.slice(i + 3) } }
+      if (!choices) { choices = []; if (html.endsWith('</p>')) { const i = html.lastIndexOf('<p'); if (i >= 0 && html.startsWith('<p>', i)) html = html.slice(0, i) + '<p class="q">' + html.slice(i + 3) } }
       choices.push([m[1].toUpperCase(), m[2]]); continue
     }
     if ((m = t.match(/^(?:answer|ans)\s*[:\-–]\s*(.+)$/i))) { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable(); html += `<div class="ans"><b>Answer</b> ${inline(m[1])}</div>`; continue }

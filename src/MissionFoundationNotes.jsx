@@ -14,6 +14,7 @@ import { printPremium } from './lib/printPremium'
 import { getInstitute } from './systemSettings'
 import { MISSION_NAME, SUBJECTS } from './missionFoundationData'
 import ScanFigure from './ScanFigure'
+import { useSmartNotes } from './SmartNotes'
 
 const T_MAT = 'mission_foundation_materials'
 const DRAFT = 'mfm-draft:v1'
@@ -53,6 +54,7 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
   }, [d, editing])
 
   const html = useMemo(() => renderMaterial(d.body || ''), [d.body])
+  const smart = useSmartNotes({ body: d.body, setBody: t => set({ body: t }), flash })
 
   const edit = fn => {
     const el = ta.current, v = d.body, a = el?.selectionStart ?? v.length, b = el?.selectionEnd ?? a
@@ -107,14 +109,14 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         {MATH_TOOLS.map(([l, t, c, title]) => <button key={title} type="button" title={title} aria-label={title} onMouseDown={e => e.preventDefault()} onClick={() => insertAt(t, c)} style={{ ...tb, minWidth: 34, flexShrink: 0, fontFamily: 'Georgia,serif', fontSize: 15 }}>{l}</button>)}
       </div>
 
-      <div className="mfn-tabs" style={{ display: 'none' }} />
+      {smart.bar}
       <style>{`.mfn-panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}.mfn-seg{display:none}@media (max-width:760px){.mfn-panes{grid-template-columns:minmax(0,1fr)}.mfn-seg{display:flex}.mfn-panes[data-view="write"] .mfn-page{display:none}.mfn-panes[data-view="page"] .mfn-write{display:none}}${MATH_CSS}${MATERIAL_CSS}`}</style>
       <div className="mfn-seg" role="tablist" aria-label="Notes view" data-ti-skip style={{ gap: 6, marginBottom: 8 }}>
         {[['write', '✍ Write'], ['page', '📄 Printed page']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} style={{ ...tb, flex: 1, background: view === k ? '#e4ebf6' : '#fff', borderColor: view === k ? PX.navy : PX.line }}>{l}</button>)}
       </div>
       <div className="mfn-panes" data-view={view}>
         <div className="mfn-write">
-          <textarea ref={ta} value={d.body} onChange={e => set({ body: e.target.value })} aria-label="Notes" placeholder={'# Title\n\n## Heading\n- a point\n\n> Formula: area = \\frac{1}{2} \\times b \\times h'} spellCheck
+          <textarea ref={ta} value={d.body} onChange={e => set({ body: e.target.value })} onPaste={smart.onPaste} aria-label="Notes" placeholder={'# Title\n\n## Heading\n- a point\n\n> Formula: area = \\frac{1}{2} \\times b \\times h'} spellCheck
             style={{ ...field, minHeight: 360, border: `1.5px solid ${PX.line}`, borderRadius: 12, padding: 12, fontSize: 15, lineHeight: 1.55, fontFamily: "'IBM Plex Mono',ui-monospace,Menlo,monospace", resize: 'vertical' }} />
           <div style={{ fontSize: 12, color: PX.sub, marginTop: 4 }}>{wordCount(d.body)} words · # heading · - list · | table | · &gt; note · **bold** · \frac{'{1}{2}'} fraction</div>
         </div>
