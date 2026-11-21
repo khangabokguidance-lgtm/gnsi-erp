@@ -8,6 +8,7 @@ import { figFromFile, svgToJpeg } from './lib/figImage'
 import { vennSvg, vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
 import ScanFigure from './ScanFigure'
 import StripSplit, { splitFileAuto } from './StripSplit'
+import ChartMaker from './ChartMaker'
 import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
 import { csvToQuestionText } from './lib/missionSainikPaper'
 import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture } from './lib/mathText'
@@ -224,6 +225,11 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     setCards(cs => [...cs.filter(c => !isEmptyCard(c)), ...made])
     setBulkMsg(`${made.length} figure question${made.length === 1 ? '' : 's'} added. Type each question, tap its correct letter${guessed ? ` · ${guessed} picture${guessed === 1 ? '' : 's'} could not be split exactly — open ✂ Strip on those to adjust` : ''}.`)
   }
+  const [chartFor, setChartFor] = useState(null)   // { id, spec } — drawing a bar / line / pie chart for a Maths figure question
+  const onCharted = r => {
+    const t = chartFor; setChartFor(null); if (!t) return
+    setCards(cs => cs.map(c => (c.id === t.id ? { ...c, image: r.image, chart: r.spec, type: c.type === 'normal' ? 'figure' : c.type } : c)))
+  }
   const [vennFor, setVennFor] = useState(null)
   const [vennDraft, setVennDraft] = useState({ sets: 2, labels: ['', '', ''], v: {}, universe: true })
   const [presetFor, setPresetFor] = useState(null)   // { id, k } — picking a relationship diagram for an option
@@ -339,6 +345,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       )}
       {undo && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px', padding: '9px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}><span style={{ flex: 1 }}>Question removed.</span><button type="button" onClick={doUndo} style={{ border: 'none', background: '#e9d9b0', color: '#132a4f', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>Undo</button><button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16 }}>×</button></div>}
+      {chartFor && <ChartMaker initial={chartFor.spec} onDone={onCharted} onClose={() => setChartFor(null)} />}
       {strip && <StripSplit file={strip.file} onDone={onStripped} onClose={() => setStrip(null)} />}
       {scan && <ScanFigure title={scan.k ? `Scan a picture for option ${scan.k.toUpperCase()}` : 'Scan a figure'} onDone={onScanned} onClose={() => setScan(null)} {...(scan.k ? { maxW: 260, quality: 0.72, cap: 60000, label: 'Option picture' } : {})} />}
       {presetFor && (
@@ -390,6 +397,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                             {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'passage' ? '📖' : c.type === 'venn' ? '🔵' : c.type === 'nonverbal' ? '🔷' : '🖼️'}</span>}
                             <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'venn' ? 'Draw the Venn diagram below, or upload one' : c.type === 'nonverbal' ? 'Add the question figure (or give all four options as pictures)' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
                             <button type="button" className="px-btn ghost" style={gbtn} onClick={() => setScan({ id: c.id })}>📷 Scan</button>
+                            {c.type === 'figure' && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => setChartFor({ id: c.id, spec: c.chart || null })} title="Draw a bar graph, line graph or pie chart from numbers — labels can be in Meetei Mayek">{c.chart ? '📊 Edit chart' : '📊 Chart'}</button>}
                             {(c.type === 'figure' || c.type === 'nonverbal') && <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }} title="One picture with the question figure, a divider and four option figures">✂ Strip → 4 options<input type="file" accept="image/*" aria-label="Upload a strip picture to split into question and four options" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setStrip({ id: c.id, file: f }) }} /></label>}
                             <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '⬆ Upload'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
                             {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
