@@ -7,6 +7,7 @@ import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
 import { fitToPages } from './lib/materialFit'
+import { logoSrc } from './lib/printPremium'
 import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
@@ -228,7 +229,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 
   // ── printing ──
   const asDoc = m => ({ ...m, uploaded_by: m.uploaded_by || userName })
-  const printOptsFor = (m, o) => ({ ...o, institute: instName, author: creatorOf(staff, m.uploaded_by || userName) })
+  const printOptsFor = (m, o) => ({ ...o, institute: instName, logo: logoSrc(institute), author: creatorOf(staff, m.uploaded_by || userName) })
   const openPrint = m => { setPopts(p => ({ ...p, font: layout.font || p.font, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {

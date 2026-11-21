@@ -10,7 +10,7 @@ import { figFromFile } from './lib/figImage'
 import { figureLine } from './lib/materialMarkup'
 import { renderMaterial, MATERIAL_CSS, wordCount, materialDocHtml, FONTS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
-import { printPremium } from './lib/printPremium'
+import { printPremium, logoSrc } from './lib/printPremium'
 import { fitToPages } from './lib/materialFit'
 import { getInstitute } from './systemSettings'
 import { MISSION_NAME, SUBJECTS } from './missionFoundationData'
@@ -49,7 +49,7 @@ export const printNote = (n, tests, by, layout = loadLayout()) => {
   const test = (tests || []).find(t => t.id === n.test_id)
   const w = window.open('', '_blank'); if (!w) return alert('Allow pop-ups to print.')
   const doc = materialDocHtml({ title: n.title || 'Study material', body: n.body || '', subject: n.subject || '', test_no: test?.test_no || 0, uploaded_by: by || '' },
-    { institute: getInstitute()?.name, tagline: `${MISSION_NAME} · Study material`, paper: 'a4', columns: layout.columns, compact: layout.saver, size: layout.size || (layout.saver ? 11 : 13), margin: layout.margin || (layout.saver ? 'narrow' : 'normal'), header: layout.header || (layout.saver ? 'compact' : 'full'), smallFigs: !!layout.smallFigs, font: layout.font, auto: true }, MATH_CSS + MATERIAL_CSS)
+    { institute: getInstitute()?.name, logo: logoSrc(getInstitute()), tagline: `${MISSION_NAME} · Study material`, paper: 'a4', columns: layout.columns, compact: layout.saver, size: layout.size || (layout.saver ? 11 : 13), margin: layout.margin || (layout.saver ? 'narrow' : 'normal'), header: layout.header || (layout.saver ? 'compact' : 'full'), smallFigs: !!layout.smallFigs, font: layout.font, auto: true }, MATH_CSS + MATERIAL_CSS)
   w.document.write(doc); w.document.close()
 }
 

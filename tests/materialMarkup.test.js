@@ -236,3 +236,12 @@ test('header and footer can be turned off (letterhead stays on the first page) a
   assert.ok(materialDocHtml(m, { hf: false }).includes('class="ti"'))
   assert.ok(!materialDocHtml(m, { header: 'none' }).includes('@top-center'))
 })
+
+test('premium look: gold rule header, logo tile, navy badges; plain when ink saver is on; logo must be https or an image data URL', () => {
+  const m = { title: 'T', body: '1. Q?\nA) a\nB) b', subject: 'GK', uploaded_by: 'Sir X' }
+  const d = materialDocHtml(m, { institute: 'Acme', logo: 'https://example.com/logo.webp' })
+  assert.ok(d.includes('@top-left-corner{content:"";background:#0f2d5e url("https://example.com/logo.webp")') && d.includes('border-bottom:1.3pt solid #b8923a') && d.includes('.md .qn{display:inline-block'))
+  assert.ok(!materialDocHtml(m, { institute: 'Acme', logo: 'https://example.com/logo.webp', inkSaver: true }).includes('@top-left-corner'))
+  assert.ok(!materialDocHtml(m, { institute: 'Acme', logo: 'javascript:alert(1)' }).includes('@top-left-corner'))
+  assert.ok(!materialDocHtml(m, { institute: 'Acme', logo: 'https://x.com/a").evil{' }).includes('").evil{'))
+})
