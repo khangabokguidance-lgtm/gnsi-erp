@@ -44,9 +44,11 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .bar{position:sticky;top:0;z-index:20;background:linear-gradient(90deg,#0b2147,#16386b);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font-size:12.5px}
 .bar button{padding:8px 20px;border:0;border-radius:8px;background:#fff;color:var(--navy);font-weight:800;cursor:pointer;font-size:13px;font-family:inherit}
 .bar small{opacity:.8}
+.bar label{display:flex;align-items:center;gap:6px;font-weight:600}
+.bar select{padding:6px 8px;border-radius:7px;border:0;font:inherit;font-weight:700;color:var(--navy);background:#fff}
 .wm{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0}
 .wm img{width:96mm;height:auto;opacity:.07;filter:saturate(1.1)}
-.sheet{position:relative;z-index:1;width:210mm;margin:14px auto;background:rgba(255,255,255,.93);box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.sheet{position:relative;z-index:1;width:var(--pw,210mm);margin:14px auto;background:rgba(255,255,255,.93);box-shadow:0 2px 14px rgba(0,0,0,.18)}
 .frame{width:100%;border-collapse:collapse}
 .frame>thead>tr>td{height:13mm;padding:0}
 .frame>tfoot>tr>td{padding:0}
@@ -124,16 +126,23 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .inst div{margin:1px 0}
 .inst .ic{color:var(--navy)}
 
-@media screen{.sheet{min-height:297mm}.pgfoot{position:static;margin-top:0;width:210mm;margin:0 auto;background:#fff}}
+@media screen{.sheet{min-height:var(--ph,297mm)}.pgfoot{position:static;margin-top:0;width:var(--pw,210mm);margin:0 auto;background:#fff}}
 .body .foot{margin-top:10px;font-size:9px;color:var(--mut);text-align:center;border-top:1px dashed var(--line);padding-top:5px}
 @media print{
-  @page{size:A4;margin:0}
+  @page{margin:0}
   body{background:#fff}
   .bar{display:none}
   .sheet{margin:0;box-shadow:none;width:auto;background:transparent}
   .person+.person{break-before:page;page-break-before:always}
 }
 `;
+
+
+// Paper size + orientation picker in the preview bar. Sets --pw/--ph (the preview sheet) and the print @page size, then tells the
+// content to re-fit itself (a "pagechange" event; detail = page height in mm).
+const PAPERS = { A4: [210, 297], A3: [297, 420], A5: [148, 210], Letter: [216, 279], Legal: [216, 356] };
+const PAGE_PICKER = `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p">Portrait</option><option value="l">Landscape</option></select></label>`;
+const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.stringify(PAPERS)};var sz=document.getElementById('pgsz'),or=document.getElementById('pgor');function set(){var d=P[sz.value],l=or.value==='l',w=l?d[1]:d[0],h=l?d[0]:d[1],r=document.documentElement.style;r.setProperty('--pw',w+'mm');r.setProperty('--ph',h+'mm');document.getElementById('pgcss').textContent='@page{size:'+w+'mm '+h+'mm;margin:0}';window.dispatchEvent(new CustomEvent('pagechange',{detail:h}))}sz.onchange=or.onchange=set;set()})()</script>`;
 
 // bodyHTML  : the content (it may use the classes above)
 // institute : { name, address, tagline, logoUrl }
@@ -146,7 +155,7 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
   const name = esc(institute.name || 'Guidance Navodaya & Sainik Institute');
   const stamp = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
-  <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span><small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
+  <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span>${PAGE_PICKER}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
   <div class="wm"><img src="${logo}" alt=""></div>
   <div class="sheet"><table class="frame">
     <thead><tr><td></td></tr></thead>
@@ -163,6 +172,6 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
     <span class="l"><span class="mini"><img src="${logo}" alt=""></span><span><b>${name}</b>${docLabel ? ` · ${esc(docLabel)}` : ''}</span></span>
     <span class="credit">${esc(DESIGN_CREDIT)}</span>
   </div>
-  </body></html>`);
+  ${PAGE_SCRIPT}</body></html>`);
   w.document.close();
 }
