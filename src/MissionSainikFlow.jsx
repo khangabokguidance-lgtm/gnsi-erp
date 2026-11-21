@@ -26,14 +26,14 @@ const CSS = `
 `
 
 // Home: the whole flow at a glance. progress = { plan:{done,total}, assign:{…}, set:{…}, marks:{…} }
-export function FlowTracker({ progress, onGo }) {
-  const steps = flowStatus(progress)
+export function FlowTracker({ progress, onGo, flow = FLOW, heading = 'MISSION FLOW · ONE STEP AT A TIME' }) {
+  const steps = flowStatus(progress, flow)
   const now = steps.find(s => s.status === 'now')
   return (
     <div style={{ background: '#fff', borderRadius: 24, padding: 16, boxShadow: '0 2px 14px rgba(19,42,79,.08)', marginBottom: 12, animation: 'msx-in .35s ease both' }}>
       <style>{CSS}</style>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub }}>MISSION FLOW · ONE STEP AT A TIME</div>
+        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub }}>{heading}</div>
         {now && <button type="button" className="msx-tap" onClick={() => onGo(now.tab)} style={{ fontSize: 13, fontWeight: 800, color: PX.navy, background: '#fff6dc', borderRadius: 99, padding: '6px 14px' }}>You are here: {now.label} ›</button>}
       </div>
       <div className="msf-track" role="list">
@@ -50,21 +50,21 @@ export function FlowTracker({ progress, onGo }) {
 }
 
 // Bottom of every screen in the flow: where you are, where you came from, where to go next.
-export function FlowNav({ tab, onGo, progress }) {
-  const [prev, cur, next] = flowNeighbors(tab)
+export function FlowNav({ tab, onGo, progress, flow = FLOW, home = 'overview' }) {
+  const [prev, cur, next] = flowNeighbors(tab, flow)
   if (!cur) return null
-  const status = flowStatus(progress)
+  const status = flowStatus(progress, flow)
   return (
     <>
       <style>{CSS}</style>
       <div className="msf-nav" aria-label="Mission flow">
-        {prev ? <button type="button" onClick={() => onGo(prev.tab)}><span className="ar">‹</span><span><small>Before · step {FLOW.indexOf(prev) + 1}</small><b>{prev.icon} {prev.label}</b></span></button> : <span style={{ flex: '1 1 200px' }} />}
-        {next ? <button type="button" className="go" onClick={() => onGo(next.tab)}><span><small>Next · step {FLOW.indexOf(next) + 1} of {FLOW.length}</small><b>{next.icon} {next.label}</b></span><span className="ar">›</span></button>
-          : <button type="button" className="go" onClick={() => onGo('overview')}><span><small>All steps done</small><b>🏠 Back to Home</b></span><span className="ar">›</span></button>}
+        {prev ? <button type="button" onClick={() => onGo(prev.tab)}><span className="ar">‹</span><span><small>Before · step {flow.indexOf(prev) + 1}</small><b>{prev.icon} {prev.label}</b></span></button> : <span style={{ flex: '1 1 200px' }} />}
+        {next ? <button type="button" className="go" onClick={() => onGo(next.tab)}><span><small>Next · step {flow.indexOf(next) + 1} of {flow.length}</small><b>{next.icon} {next.label}</b></span><span className="ar">›</span></button>
+          : <button type="button" className="go" onClick={() => onGo(home)}><span><small>All steps done</small><b>🏠 Back to Home</b></span><span className="ar">›</span></button>}
       </div>
       <div className="msf-where" style={{ justifyContent: 'center' }}>
-        <span className="dots" aria-hidden="true">{status.map((s, i) => <i key={s.id} className={i === FLOW.indexOf(cur) ? 'on' : s.status === 'done' ? 'dn' : ''} />)}</span>
-        Step {FLOW.indexOf(cur) + 1} of {FLOW.length} · {cur.label}
+        <span className="dots" aria-hidden="true">{status.map((s, i) => <i key={s.id} className={i === flow.indexOf(cur) ? 'on' : s.status === 'done' ? 'dn' : ''} />)}</span>
+        Step {flow.indexOf(cur) + 1} of {flow.length} · {cur.label}
       </div>
     </>
   )

@@ -16,6 +16,8 @@ import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoun
 import { QuestionMakerTab } from './MissionFoundationPaper'
 import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundationReport'
 import { printPremium } from './lib/printPremium'
+import { FlowTracker, FlowNav } from './MissionSainikFlow'
+import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
 import { getInstitute } from './systemSettings'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
 import {
@@ -215,6 +217,14 @@ export default function MissionFoundation({ currentUser }) {
     ] },
   ]
 
+  // Progress for the flow tracker (Home) and the Back / Next bar.
+  const flowProgress = {
+    schedule: { done: Math.min(tests.length, DEFAULT_PLAN.count), total: DEFAULT_PLAN.count },
+    teachers: { done: SUBJECTS.filter(sb => (panel[sb.label] || []).length).length, total: SUBJECTS.length },
+    students: { done: (students || []).length, total: (students || []).length + unplaced.length },
+    papers: { done: stats.done, total: papers.length },
+    marks: { done: tests.filter(t => (marksCount[t.id] || 0) > 0).length, total: tests.length },
+  }
   return (
     <div className="px-root">
       <PremiumStyles />
@@ -243,6 +253,7 @@ export default function MissionFoundation({ currentUser }) {
             </div>
             {loading ? <PremiumCard><div style={{ color: PX.sub }}>Loading…</div></PremiumCard> : <>
               {tab === 'home' && <>
+                <FlowTracker flow={FOUNDATION_FLOW} heading="MISSION FLOW · ONE STEP AT A TIME" progress={flowProgress} onGo={setTab} />
                 <HomeDashboard {...{ tests, ctx: { papersByTest, students, teaching, prizes, marksCount, allMarks }, today, me, isAdmin, papers, testById, setTab, setOpenTest: openWork }} />
                 <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>
               </>}
@@ -259,6 +270,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
               {tab === 'material' && <MaterialTab {...{ tests, me, isAdmin, flash }} />}
               {tab === 'chat' && <ChatTab {...{ me, isAdmin, flash }} />}
+              <FlowNav flow={FOUNDATION_FLOW} home="home" tab={tab} progress={flowProgress} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} />
             </>}
           </>
         )}
