@@ -60,6 +60,29 @@ const writeDraft = (key, cards) => {
   catch { try { localStorage.setItem(key, JSON.stringify(cards.map(c => ({ ...c, image: '' })))) } catch { /* storage unavailable */ } }   // pictures are large: keep the text if they do not fit
 }
 
+// Questions read from pasted text → the card shape the paper preview draws.
+export const questionsToCards = qs => (qs || []).map(q => ({ ...blankCard(), question: q.question || '', a: q.option_a || '', b: q.option_b || '', c: q.option_c || '', d: q.option_d || '', ans: q.answer || '', exp: q.explanation || '', topic: q.topic || '', level: q.difficulty || '', type: q.passage ? 'passage' : (q.image_data ? 'figure' : 'normal'), passage: q.passage || '', image: q.image_data || '' }))
+
+// What pasted text will look like once uploaded: the printed paper layout, numbered where the questions will land,
+// with the same warnings the cards give (missing option / answer / duplicate answer letter).
+export function PastePreview({ questions, startNo = 1, title = 'Section', errors = [] }) {
+  const [showAns, setShowAns] = useState(true)
+  const cards = useMemo(() => questionsToCards(questions), [questions])
+  const flagged = useMemo(() => cards.map((c, i) => ({ n: startNo + i, why: missingOf(c) })).filter(x => x.why && x.why.length), [cards, startNo])
+  if (!cards.length && !errors.length) return null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+        <b style={{ fontSize: 13 }}>Preview</b><span style={{ fontSize: 12, color: PX.sub }}>as it will print · Q{startNo}{cards.length > 1 ? `–Q${startNo + cards.length - 1}` : ''}</span>
+        <label style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, fontWeight: 700 }}><input type="checkbox" checked={showAns} onChange={e => setShowAns(e.target.checked)} /> Show answers</label>
+      </div>
+      {flagged.length > 0 && <div role="status" style={{ padding: '8px 12px', borderRadius: 10, background: '#fff7e6', border: '1px solid #f1d9a8', fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>Check before uploading: {flagged.slice(0, 6).map(x => `Q${x.n} — ${x.why.join(', ')} missing`).join(' · ')}{flagged.length > 6 ? ` · and ${flagged.length - 6} more` : ''}</div>}
+      {errors.length > 0 && <div role="alert" style={{ padding: '8px 12px', borderRadius: 10, background: '#fdecea', fontSize: 12.5, fontWeight: 700, color: PX.bad, marginBottom: 8 }}>Not in the preview until fixed: {errors.slice(0, 4).join(' · ')}{errors.length > 4 ? ` · and ${errors.length - 4} more` : ''}</div>}
+      {cards.length > 0 && <div style={{ maxHeight: 520, overflow: 'auto', borderRadius: 8 }}><PaperPreview cards={cards} startNo={startNo} title={title} showAns={showAns} /></div>}
+    </div>
+  )
+}
+
 // Paper-style rendering of the cards (same option layout rule as the printed paper).
 export function PaperPreview({ cards, startNo, title, showAns }) {
   const list = cards.filter(c => !isEmptyCard(c))
@@ -312,6 +335,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                 <button type="button" className="px-btn ghost" style={{ ...gbtn, marginLeft: 'auto' }} onClick={() => { setBulkText(''); setBulkOpen(false) }}>Cancel</button>
                 <button type="button" className="px-btn gold" style={gbtn} disabled={!bulk2.questions.length} onClick={addBulk}>Add {bulk2.questions.length || ''} to cards</button>
               </div>
+              <PastePreview questions={bulk2.questions} errors={bulk2.errors} startNo={startNo + filled.length} title={title} />
             </div>
           )}
         </div>

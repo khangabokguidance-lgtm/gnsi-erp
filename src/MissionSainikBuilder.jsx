@@ -7,7 +7,7 @@ import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
 import MissionSainikQuickAdd from './MissionSainikQuickAdd'
-import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
+import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems, PastePreview } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
 import QuestionEditor from './QuestionEditor'
@@ -824,6 +824,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               </span>
               <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
             </div>
+            <PastePreview questions={parsed.questions} errors={parsed.errors} startNo={startOf(section) + get(testNo, section).length} title={`Section: ${sec.title || section}`} />
               </>
             )}
           </>
