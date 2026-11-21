@@ -142,6 +142,8 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .inst div{margin:1px 0}
 .inst .ic{color:var(--navy)}
 
+/* Text size picker: scales only the report content, not the letterhead */
+.fsz{zoom:var(--fs,1)}
 @media screen{.sheet{min-height:var(--ph,297mm)}.pgfoot{position:static;margin-top:0;width:var(--pw,210mm);margin:0 auto;background:#fff}}
 .body .foot{margin-top:10px;font-size:9px;color:var(--mut);text-align:center;border-top:1px dashed var(--line);padding-top:5px}
 @media print{
@@ -157,8 +159,10 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 // Paper size + orientation picker in the preview bar. Sets --pw/--ph (the preview sheet) and the print @page size, then tells the
 // content to re-fit itself (a "pagechange" event; detail = page height in mm).
 const PAPERS = { A4: [210, 297], A3: [297, 420], A5: [148, 210], Letter: [216, 279], Legal: [216, 356] };
-const pagePicker = (layout = 'p') => `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p"${layout === 'p' ? ' selected' : ''}>Portrait</option><option value="l"${layout === 'l' ? ' selected' : ''}>Landscape</option></select></label>`;
-const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.stringify(PAPERS)};var sz=document.getElementById('pgsz'),or=document.getElementById('pgor');function set(){var d=P[sz.value],l=or.value==='l',w=l?d[1]:d[0],h=l?d[0]:d[1],r=document.documentElement.style;r.setProperty('--pw',w+'mm');r.setProperty('--ph',h+'mm');document.getElementById('pgcss').textContent='@page{size:'+w+'mm '+h+'mm;margin:0}';window.dispatchEvent(new CustomEvent('pagechange',{detail:h}))}sz.onchange=or.onchange=set;set()})()</script>`;
+// Text size of the report content (1 = normal). Remembered per report on this browser.
+const FONT_SIZES = [[0.7, 'Very small 70%'], [0.8, 'Small 80%'], [0.9, '90%'], [1, 'Normal 100%'], [1.1, '110%'], [1.2, 'Large 120%'], [1.35, 'Larger 135%'], [1.5, 'Very large 150%']]
+const pagePicker = (layout = 'p') => `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p"${layout === 'p' ? ' selected' : ''}>Portrait</option><option value="l"${layout === 'l' ? ' selected' : ''}>Landscape</option></select></label><label>Text size <select id="fsz">${FONT_SIZES.map(([v, l]) => `<option value="${v}"${v === 1 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.stringify(PAPERS)};var sz=document.getElementById('pgsz'),or=document.getElementById('pgor');function set(){var d=P[sz.value],l=or.value==='l',w=l?d[1]:d[0],h=l?d[0]:d[1],r=document.documentElement.style;r.setProperty('--pw',w+'mm');r.setProperty('--ph',h+'mm');document.getElementById('pgcss').textContent='@page{size:'+w+'mm '+h+'mm;margin:0}';window.dispatchEvent(new CustomEvent('pagechange',{detail:h}))}sz.onchange=or.onchange=set;set();var fs=document.getElementById('fsz'),key='pp-fs:'+document.title;try{var sv=parseFloat(localStorage.getItem(key));if(sv&&Array.prototype.some.call(fs.options,function(o){return parseFloat(o.value)===sv}))fs.value=String(sv)}catch(e){}function fz(){var v=parseFloat(fs.value)||1;document.documentElement.style.setProperty('--fs',v);try{localStorage.setItem(key,String(v))}catch(e){}window.dispatchEvent(new CustomEvent('fontchange',{detail:v}))}fs.onchange=fz;fz()})()</script>`;
 
 // bodyHTML  : the content (it may use the classes above)
 // institute : { name, address, tagline, logoUrl }
@@ -190,7 +194,7 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
         <div class="lt"><div class="n">${name}</div>${institute.tagline ? `<div class="g">${esc(institute.tagline)}</div>` : ''}${institute.address ? `<div class="a">${esc(institute.address)}</div>` : ''}</div>
         <div class="ld"><b>Issued</b>${stamp}</div>
       </div>`}
-      ${bodyHTML}
+      <div class="fsz">${bodyHTML}</div>
     </td></tr></tbody></table></div>
   <div class="pgfoot">
     <span class="l"><span class="mini"><img src="${logo}" alt=""></span><span><b>${name}</b>${docLabel ? ` · ${esc(docLabel)}` : ''}</span></span>
