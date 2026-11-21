@@ -13,6 +13,7 @@ import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
+import { usedQuestions, pickSummary, contributors } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
@@ -289,7 +290,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const range = s => `Q${startOf(s.label)}–Q${startOf(s.label) + s.q - 1}`
   const SET_LETTERS = ['A', 'B', 'C', 'D']
   const assemble = (t, setIdx = 0) => printLive(t).map(sc => {
-    let items = get(t, sc.label).slice(0, sc.q)
+    let items = usedQuestions(get(t, sc.label), sc.q)   // the admin's chosen questions (or the first q when none are chosen)
     if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
@@ -502,11 +503,24 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     if (!window.confirm(`Delete ${ids.length} selected question(s)?${soft ? ' They go to the recycle bin.' : ''}`)) return
     await removeRows(x => x.in('id', ids), `${series}:${testNo}:${section}`, ids.length); setPicked([])
   }
+  // Admin: choose the best questions when several teachers have set the same paper / set.
+  const savePicks = async (ids, on, label) => {
+    if (!isAdmin || !ids.length) return
+    const { error } = await supabase.from(TABLE).update({ in_paper: on, in_paper_by: on ? (currentUser?.name || '') : null }).in('id', ids)
+    if (error) return setMsg('❌ ' + error.message + ' (run supabase/migrations/20261219_mission_sainik_question_pick.sql)')
+    audit('question_pick', `${series}:${testNo}:${section}`, { ids: ids.length, on, how: label }); await load()
+  }
+  const toggleInPaper = q => savePicks([q.id], !q.in_paper, 'toggle')
+  const pickFirst = () => { const list = get(testNo, section), keep = new Set(list.slice(0, sec.q).map(x => x.id)); const clear = list.filter(x => x.in_paper && !keep.has(x.id)).map(x => x.id); return savePicks(list.filter(x => keep.has(x.id) && !x.in_paper).map(x => x.id), true, 'first').then(() => clear.length && savePicks(clear, false, 'first-clear')) }
+  const clearPicks = () => savePicks(get(testNo, section).filter(x => x.in_paper).map(x => x.id), false, 'clear')
   const secStatus = (t, s) => { const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
+  const pickInfo = pickSummary(secList, sec.q), contribs = contributors(secList, sec.q)
+  const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
+  const multiTeachers = contribs.length > 1
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
@@ -689,7 +703,27 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         right={<span style={{ display: 'flex', gap: 8 }}>{secList.length >= sec.q && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
-            {secList.length > sec.q && <div style={{ fontSize: 12.5, color: PX.warn, marginBottom: 8 }}>⚠ {secList.length - sec.q} extra question(s): only the first {sec.q} are used in the paper. Delete the extras you don't want.</div>}
+            {(secList.length > sec.q || multiTeachers) && secList.length > 0 && (
+              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#fffaf0', border: '1px solid #ecdcae' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <b style={{ fontSize: 13, color: PX.navy }}>{multiTeachers ? `${contribs.length} teachers set this ${cfg.noun === 'Set' ? 'set' : 'paper'}` : 'More questions than needed'}</b>
+                  <span style={{ fontSize: 12.5, color: PX.sub }}>{secList.length} uploaded · the paper uses {Math.min(sec.q, secList.length)}{pickInfo.chosen ? ` · ${pickInfo.chosen} chosen by the admin` : ''}</span>
+                  {isAdmin && secList.length > sec.q && <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                    <button type="button" className="px-hbtn" onClick={pickFirst} title={`Mark the first ${sec.q} questions as In paper`}>★ Pick first {sec.q}</button>
+                    {pickInfo.chosen > 0 && <button type="button" className="px-hbtn" onClick={clearPicks}>Clear choices</button>}
+                  </span>}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                  {contribs.map(c => <span key={c.name} style={{ padding: '3px 10px', borderRadius: 99, background: '#fff', border: `1px solid ${line}`, fontSize: 12, fontWeight: 700, color: PX.ink }}>{fullName(c.name)} · {c.n}{pickInfo.chosen || secList.length > sec.q ? <span style={{ color: PX.ok }}> · {c.used} in paper</span> : null}</span>)}
+                </div>
+                {secList.length > sec.q && <div style={{ fontSize: 12, color: pickInfo.over ? PX.bad : PX.sub, marginTop: 8 }}>
+                  {isAdmin
+                    ? (pickInfo.over ? `⚠ ${pickInfo.chosen} chosen but the paper needs ${sec.q}: only the first ${sec.q} chosen are used. Un-star the extras.`
+                      : pickInfo.short ? `★ ${pickInfo.chosen} chosen; the other ${pickInfo.filled} places are filled with the earliest unchosen questions until you choose more.`
+                        : `Star ★ the best ${sec.q} questions below. Until you do, the first ${sec.q} uploaded are used.`)
+                    : 'The admin chooses which questions go into the paper.'}
+                </div>}
+              </div>)}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
@@ -779,6 +813,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <div style={{ display: 'flex', gap: 8, alignItems: isMobile ? 'center' : 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
+              {secList.length > sec.q || multiTeachers ? <span title={q.uploaded_by ? `Set by ${fullName(q.uploaded_by)}` : ''} style={{ fontSize: 11, color: PX.sub, whiteSpace: 'nowrap' }}>{q.uploaded_by ? fullName(q.uploaded_by) : ''}</span> : null}
+              {(secList.length > sec.q || pickInfo.chosen > 0) && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: usedIds.has(q.id) ? '#e6f5ec' : '#f1f3f7', color: usedIds.has(q.id) ? '#0f7a4c' : '#7b8799' }}>{usedIds.has(q.id) ? `In paper · Q${startOf(section) + usedList.findIndex(x => x.id === q.id)}` : 'Not used'}</span>}
+              {isAdmin && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
