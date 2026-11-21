@@ -20,6 +20,7 @@ import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
+import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -872,6 +873,8 @@ function MissionSainikInner({ currentUser }) {
     const dim = r => (allotTeacher && r.setter !== allotTeacher) || (allotStatus && (allotStatus === 'Overdue' ? !isOverdue(r, today) : r.status !== allotStatus))
     const exportAllot = () => downloadCsv('Mission_Sainik_allotment.csv', [['Test', 'Date', ...SUBJECTS.map(x => x.label + ' (setter)'), ...SUBJECTS.map(x => x.label + ' (status)')]].concat(TESTS.map(t => [t.id, t.date, ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.setter || ''), ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.status || '')])))
     return (
+      <>
+      <MissionSainikSetterPlan {...{ tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -907,6 +910,7 @@ function MissionSainikInner({ currentUser }) {
         </div>
         {!rows.length && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No allotment yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : 'Ask the Principal to create it.'}</div>}
       </PremiumCard>
+      </>
     )
   }
 
