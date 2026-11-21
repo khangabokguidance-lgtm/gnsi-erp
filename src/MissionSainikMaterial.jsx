@@ -6,7 +6,7 @@ import ScanFigure from './ScanFigure'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
-import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline } from './lib/materialMarkup'
+import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
 import { fetchAll } from './lib/missionSainikQuestions'
@@ -84,7 +84,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [restored, setRestored] = useState(false)
   const [scan, setScan] = useState(false), [focus, setFocus] = useState(false), [picker, setPicker] = useState(false)
   const [figErr, setFigErr] = useState('')
-  const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, ...load('msm-layout', {}) }))
+  const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, font: 'serif', ...load('msm-layout', {}) }))
   useEffect(() => { save('msm-layout', layout) }, [layout])
   const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
   const [viewer, setViewer] = useState(null)
@@ -93,6 +93,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [popts, setPopts] = useState(() => ({ ...PRINT_DEFAULTS, ...load('msm-print', {}) }))
   const ta = useRef(null)
   const set = patch => setDraft(d => ({ ...d, ...patch }))
+  const [blocksOn, setBlocksOn] = useState(false)   // preview shows each block with edit / delete controls
   const smart = useSmartNotes({ body: draft.body, setBody: t => set({ body: t }), flash: (m, bad) => setMsg(bad ? '❌ ' + m : m) })
   useEffect(() => { if (mySubjects.length === 1 && !editMat && !draft.subject && !draft.title && !draft.body) setDraft(d => ({ ...d, subject: mySubjects[0] })) }, [mySubjects.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
   const instName = institute?.name || 'Guidance Navodaya & Sainik Institute'
@@ -226,7 +227,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   // ── printing ──
   const asDoc = m => ({ ...m, uploaded_by: m.uploaded_by || userName })
   const printOptsFor = (m, o) => ({ ...o, institute: instName, author: creatorOf(staff, m.uploaded_by || userName) })
-  const openPrint = m => { setPopts(p => ({ ...p, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
+  const openPrint = m => { setPopts(p => ({ ...p, font: layout.font || p.font, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
@@ -411,11 +412,12 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
               {view !== 'edit' && <div style={view === 'split' ? { position: 'sticky', top: 8, maxHeight: '86vh', overflow: 'auto' } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13 }}>Live preview</b><span style={{ fontSize: 12, color: PX.sub }}>as it will print</span>
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" aria-pressed={blocksOn} className="px-hbtn" title="Edit, delete, move or add each question or paragraph" onClick={() => setBlocksOn(v => !v)}>{blocksOn ? '✓ ' : ''}🧩 Edit blocks</button>
                     <LayoutControls layout={layout} setLayout={setLayout} inp={inp} />
                   </span>
                 </div>
-                {livePreview}
+                {blocksOn ? <BlockEditor body={draft.body} onChange={body => set({ body })} layout={layout} inp={inp} /> : livePreview}
               </div>}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap', position: 'sticky', bottom: isMobile && !focus ? 'calc(72px + env(safe-area-inset-bottom))' : 0, background: '#fff', padding: '10px 0', borderTop: `1px solid ${PX.line}`, zIndex: 4 }}>
@@ -595,7 +597,7 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
 }
 
 // Page layout for the preview: 1 or 2 columns, and a space saver (tighter spacing, smaller text) like the print layouts.
-const bodyStyle = l => ({ fontSize: l.saver ? Math.min(l.size, 12) : l.size, columnCount: l.columns, columnGap: l.columns > 1 ? 26 : undefined, columnRule: l.columns > 1 ? '1px solid #dde1ea' : undefined })
+const bodyStyle = l => ({ fontFamily: FONTS[l.font] || FONTS.serif, fontSize: l.saver ? Math.min(l.size, 12) : l.size, columnCount: l.columns, columnGap: l.columns > 1 ? 26 : undefined, columnRule: l.columns > 1 ? '1px solid #dde1ea' : undefined })
 function LayoutControls({ layout, setLayout, inp }) {
   const on = layout.columns === 2 && layout.saver
   const pill = a => ({ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${a ? '#b8923a' : '#e8e3d8'}`, background: a ? '#f6efdc' : '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
@@ -604,6 +606,8 @@ function LayoutControls({ layout, setLayout, inp }) {
       <select aria-label="Columns" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
       <button type="button" aria-pressed={layout.saver} style={pill(layout.saver)} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver }))}>{layout.saver ? '✓ ' : ''}Space saver</button>
       <button type="button" aria-pressed={on} style={pill(on)} title="2 columns + space saver" onClick={() => setLayout(l => (on ? { ...l, columns: 1, saver: false } : { ...l, columns: 2, saver: true }))}>⚡ 2-col saver</button>
+      <select aria-label="Font" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.font || 'serif'} onChange={e => setLayout(l => ({ ...l, font: e.target.value }))}><option value="serif">Georgia</option><option value="times">Times</option><option value="sans">Arial</option><option value="narrow">Arial Narrow</option></select>
+      <button type="button" aria-pressed={layout.font === 'sans' && layout.columns === 2} style={pill(layout.font === 'sans' && layout.columns === 2)} title="Arial text in 2 columns" onClick={() => setLayout(l => (l.font === 'sans' && l.columns === 2 ? { ...l, font: 'serif', columns: 1 } : { ...l, font: 'sans', columns: 2 }))}>🅰 Arial · 2 col</button>
       <select aria-label="Text size" className="msm-in" style={{ ...inp, width: 'auto', padding: '4px 8px', fontSize: 12.5 }} value={layout.size} onChange={e => setLayout(l => ({ ...l, size: Number(e.target.value) }))}>{[[11, 'Tiny'], [12, 'Small'], [13, 'Medium'], [15, 'Large']].map(([v, l]) => <option key={v} value={v}>{l} text</option>)}</select>
     </span>
   )
@@ -727,6 +731,49 @@ function QuestionPicker({ subjects, onInsert, onClose, isMobile }) {
           <button type="button" className="px-btn gold" style={{ minHeight: 44 }} disabled={!chosen.length} onClick={() => onInsert(questionsToNotes(chosen, { answers, explain }))}>Insert {chosen.length || ''} question{chosen.length === 1 ? '' : 's'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ── Edit blocks: every question / paragraph of the draft as a card with Edit, Delete, move and add-below ──
+const NEW_BLOCK = '1. Type the question here\nA) \nB) \nC) \nD) \nAnswer: A'
+const splitBlocks = body => String(body || '').replace(/\r/g, '').split(/\n[ \t]*\n/).map(x => x.replace(/^\n+|\s+$/g, '')).filter(x => x.trim())
+function BlockEditor({ body, onChange, layout, inp }) {
+  const blocks = useMemo(() => splitBlocks(body), [body])
+  const [edit, setEdit] = useState(null)   // { i, text, isNew }
+  const commit = list => onChange(list.join('\n\n'))
+  const del = i => { if (window.confirm('Delete this block?')) { commit(blocks.filter((_, k) => k !== i)); setEdit(null) } }
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= blocks.length) return; const b = [...blocks];[b[i], b[j]] = [b[j], b[i]]; commit(b) }
+  const addBelow = i => { const b = [...blocks]; b.splice(i + 1, 0, NEW_BLOCK); commit(b); setEdit({ i: i + 1, text: NEW_BLOCK, isNew: true }) }
+  const save = () => { const t = edit.text.trim(); commit(t ? blocks.map((x, k) => (k === edit.i ? t : x)) : blocks.filter((_, k) => k !== edit.i)); setEdit(null) }
+  const cancel = () => { if (edit.isNew) commit(blocks.filter((_, k) => k !== edit.i)); setEdit(null) }
+  const bt = { padding: '4px 9px', borderRadius: 8, border: '1px solid #d9d2c2', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }
+  if (!blocks.length) return <div style={{ color: '#9aa5b8', padding: 12 }}>Nothing to edit yet. Type or paste the material first.<div style={{ marginTop: 8 }}><button type="button" style={bt} onClick={() => { commit([NEW_BLOCK]); setEdit({ i: 0, text: NEW_BLOCK, isNew: true }) }}>＋ Add a question</button></div></div>
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12, color: '#5d6b82' }}>{blocks.length} blocks. Changes here update the text on the left, and are kept until you press Save.</div>
+      {blocks.map((b, i) => (
+        <div key={i + ':' + b.slice(0, 20)} style={{ border: '1px solid #e1dac8', borderRadius: 12, padding: 10, background: edit?.i === i ? '#fffbee' : '#fff' }}>
+          {edit?.i === i ? (
+            <>
+              <textarea className="msm-in" autoFocus aria-label={`Edit block ${i + 1}`} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} style={{ ...inp, minHeight: 130, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', lineHeight: 1.5 }} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}><button type="button" className="px-btn gold" onClick={save}>✔ Done</button><button type="button" className="px-btn ghost" onClick={cancel}>Cancel</button></div>
+            </>
+          ) : (
+            <>
+              <div className={'md' + (layout.saver ? ' compact' : '')} style={{ fontFamily: FONTS[layout.font] || FONTS.serif, fontSize: layout.saver ? Math.min(layout.size, 12) : layout.size }} dangerouslySetInnerHTML={{ __html: renderMaterial(b) }} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                <button type="button" style={bt} onClick={() => setEdit({ i, text: b })}>✎ Edit</button>
+                <button type="button" style={{ ...bt, color: '#b42318' }} onClick={() => del(i)}>🗑 Delete</button>
+                <button type="button" style={bt} disabled={i === 0} aria-label="Move up" onClick={() => move(i, -1)}>↑</button>
+                <button type="button" style={bt} disabled={i === blocks.length - 1} aria-label="Move down" onClick={() => move(i, 1)}>↓</button>
+                <button type="button" style={bt} onClick={() => addBelow(i)}>＋ Add below</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
