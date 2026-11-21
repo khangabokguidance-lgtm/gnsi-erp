@@ -289,7 +289,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 14, position: 'relative' }}>
-          <div role="tablist" aria-label="Study material" style={{ display: 'inline-flex', padding: 3, background: 'rgba(255,255,255,.14)', borderRadius: 14, gap: 2 }}>
+          <div data-ti-skip role="tablist" aria-label="Study material" style={{ display: 'inline-flex', padding: 3, background: 'rgba(255,255,255,.14)', borderRadius: 14, gap: 2 }}>
             {[['library', `📚 Library (${mats.length})`], ['create', editMat ? '✎ Editing' : '✍️ Create']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} style={{ padding: '9px 16px', borderRadius: 11, border: 'none', background: tab === k ? '#fff' : 'transparent', color: tab === k ? '#132a4f' : '#fff', fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
           </div>
           <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,.75)' }}>✍️ You: <b style={{ color: '#fff' }}>{userName || 'Staff'}</b>{me.designation ? <span style={{ color: '#e9d9b0' }}> · {me.designation}</span> : null}</span>
@@ -301,7 +301,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
           <div style={{ padding: '14px 18px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 220px' }}><div style={{ fontFamily: PX.serif, fontSize: 18, fontWeight: 600 }}>{editMat ? 'Edit study material' : 'Create study material'}</div>
               <div style={{ fontSize: 12.5, color: PX.sub }}>{words} words · ~{mins} min read{!editMat && (draft.title || draft.body) ? ' · draft auto-saved' : ''}</div></div>
-            <div role="tablist" aria-label="View" style={{ display: 'inline-flex', padding: 3, background: '#f1ede3', borderRadius: 12, gap: 2 }}>
+            <div data-ti-skip role="tablist" aria-label="View" style={{ display: 'inline-flex', padding: 3, background: '#f1ede3', borderRadius: 12, gap: 2 }}>
               <button type="button" role="tab" aria-selected={view === 'edit'} style={seg(view === 'edit')} onClick={() => setView('edit')}>✏️ Edit</button>
               {!isMobile && <button type="button" role="tab" aria-selected={view === 'split'} style={seg(view === 'split')} onClick={() => setView('split')}>◫ Side by side</button>}
               <button type="button" role="tab" aria-selected={view === 'preview'} style={seg(view === 'preview')} onClick={() => setView('preview')}>👁 Preview</button>
@@ -433,7 +433,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
               <input className="msm-in" style={{ ...inp, flex: '1 1 180px', width: 'auto', borderRadius: 99 }} type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search title, note, creator or text…" aria-label="Search material" />
               <select className="msm-in" style={{ ...inp, width: 'auto', flex: '0 1 150px' }} value={testF} onChange={e => setTestF(e.target.value)} aria-label="Filter by test"><option value="">All tests</option>{tests.map(t => <option key={t.id} value={t.no ?? t.id}>{t.id}</option>)}</select>
               <select className="msm-in" style={{ ...inp, width: 'auto', flex: '0 1 140px' }} value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort material"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="title">Title A–Z</option></select>
-              <span role="tablist" aria-label="Layout" style={{ display: 'inline-flex', padding: 3, background: '#f1ede3', borderRadius: 11, gap: 2 }}>{[[false, '☰ List'], [true, '▦ Grid']].map(([g, l]) => <button key={l} type="button" role="tab" aria-selected={grid === g} style={{ ...seg(grid === g), padding: '6px 11px' }} onClick={() => setGrid(g)}>{l}</button>)}</span>
+              <span data-ti-skip role="tablist" aria-label="Layout" style={{ display: 'inline-flex', padding: 3, background: '#f1ede3', borderRadius: 11, gap: 2 }}>{[[false, '☰ List'], [true, '▦ Grid']].map(([g, l]) => <button key={l} type="button" role="tab" aria-selected={grid === g} style={{ ...seg(grid === g), padding: '6px 11px' }} onClick={() => setGrid(g)}>{l}</button>)}</span>
             </div>
             <div className="msm-strip" style={{ marginTop: 10 }}>
               <button type="button" style={chip(!subj)} onClick={() => setSubj('')}>All subjects</button>

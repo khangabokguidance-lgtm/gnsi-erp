@@ -58,7 +58,7 @@ export function OfficialSyllabus({ isMobile, institute }) {
               <div style={{ fontSize: 13, fontWeight: 700, color: PX.navy, marginTop: 2 }}>{v}</div>
             </div>))}
         </div>
-        <div role="tablist" aria-label="Class" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div data-ti-skip role="tablist" aria-label="Class" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {classes.map(c => <button key={c} type="button" role="tab" aria-selected={c === cls} style={pill(c === cls)} onClick={() => setCls(c)}>Class {c}</button>)}
         </div>
         {pattern && (

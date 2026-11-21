@@ -119,7 +119,7 @@ export default function MissionSainikSetterPlan({ photoOf = x => x, tests, TESTS
   return (
     <PremiumCard title="Pre Mock setters" subtitle={isAdmin ? `Choose who sets and who verifies each paper; add co-setters when several teachers set it together. The verifier is suggested by the panel rule but can be any of the same teachers, even the setter.${unassigned ? ` ${unassigned} paper${unassigned === 1 ? ' has' : 's have'} no setter yet.` : ' Every paper has a setter.'}` : 'Who sets each Pre Mock paper. Only an admin can assign or change a setter.'}
       right={isAdmin && no > 1 ? <button type="button" className="px-hbtn" disabled={busy} onClick={copyPrev}>↧ Copy from PMT-{String(no - 1).padStart(2, '0')}</button> : null}>
-      <div role="tablist" aria-label="Pre Mock test" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0 8px', marginBottom: 6 }}>
+      <div data-ti-skip role="tablist" aria-label="Pre Mock test" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0 8px', marginBottom: 6 }}>
         {TESTS.map(t => <button key={t.no} type="button" role="tab" aria-selected={t.no === no} style={chip(t, t.no === no)} title={`${t.id} · ${fmtShort(t.date)}`} onClick={() => setNo(t.no)}>{String(t.no).padStart(2, '0')}</button>)}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 14px', borderRadius: 16, background: 'linear-gradient(135deg,#132a4f,#1e3a6e)', color: '#fff', marginBottom: 12 }}>
@@ -188,7 +188,7 @@ export default function MissionSainikSetterPlan({ photoOf = x => x, tests, TESTS
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <div><b style={{ color: PX.navy, fontSize: 15 }}>Number of tests per teacher</b><div style={{ fontSize: 12.5, color: PX.sub }}>{isAdmin ? 'Raise or lower how many of the 20 tests each teacher sets. The others adjust automatically; press Apply to save.' : 'How many tests each teacher sets. Only an admin can change these.'}</div></div>
         </div>
-        <div role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div data-ti-skip role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
           {SUBJECTS.map(x => <button key={x.key} type="button" role="tab" aria-selected={x.label === cSubject.label} onClick={() => setCSub(x.label)} style={{ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${x.label === cSubject.label ? PX.navy : PX.line}`, background: x.label === cSubject.label ? PX.navy : '#fff', color: x.label === cSubject.label ? '#fff' : PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{x.short}</button>)}
         </div>
         <div style={{ display: 'grid', gap: 6 }}>

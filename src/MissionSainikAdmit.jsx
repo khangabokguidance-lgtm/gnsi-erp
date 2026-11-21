@@ -43,7 +43,7 @@ export default function MissionSainikAdmit({ institute, setMsg, isMobile, today 
   return (
     <>
       <PremiumCard title="Admit cards" subtitle="Print admit cards for a Pre Mock or Mega Mock test, in the institute's standard admit card design.">
-        <div role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div data-ti-skip role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {Object.entries(EXAM_KINDS).map(([k, v]) => <button key={k} type="button" role="tab" aria-selected={kind === k} style={chip(kind === k)} onClick={() => switchKind(k)}>{v.label}</button>)}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1.4fr 1fr 1fr 1fr', gap: 10 }}>

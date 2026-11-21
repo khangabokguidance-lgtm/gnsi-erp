@@ -58,7 +58,7 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, pho
   return (
     <PremiumCard title="Practice sets" subtitle={isAdmin ? 'For each practice test (Set), every teacher sets their own full set of questions, so students get different versions. Add the teachers and choose who verifies it.' : 'Who sets each practice set. Only an admin can change this.'}
       right={isAdmin ? <button type="button" className="px-hbtn" disabled={busy} onClick={addEveryoneEverywhere} title="Give every practice teacher of this subject their own set in every Set">👥 Every teacher sets every set</button> : null}>
-      <div role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
+      <div data-ti-skip role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
         {SUBJECTS.map(x => <button key={x.key} type="button" role="tab" aria-selected={x.key === sub.key} style={pill(x.key === sub.key)} onClick={() => setKey(x.key)}>{x.short}</button>)}
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>

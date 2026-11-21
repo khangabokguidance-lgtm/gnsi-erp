@@ -45,7 +45,7 @@ export default function MissionSainikStudents({ institute, isMobile, setMsg }) {
   return (
     <PremiumCard title="Students" subtitle="Every Sainik student and the Combined course students, live from the Students module."
       right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="px-hbtn" onClick={print}>🖨 Print</button><button className="px-hbtn" onClick={word}>📝 Word</button><button className="px-hbtn" onClick={csv}>⬇ CSV</button></span>}>
-      <div role="tablist" aria-label="Student list" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+      <div data-ti-skip role="tablist" aria-label="Student list" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         {SAINIK_VIEWS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k} style={chip(view === k)} onClick={() => { setView(k); setBatchKey('') }}>{l} · {counts[k] ?? 0}</button>)}
       </div>
       {counts.batches.length > 1 && (
