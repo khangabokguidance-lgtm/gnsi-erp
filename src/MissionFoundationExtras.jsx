@@ -5,6 +5,9 @@ import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, Avatar } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
+import NotesStudio, { printNote } from './MissionFoundationNotes'
+import { MATERIAL_CSS, renderMaterial } from './lib/materialMarkup'
+import { MATH_CSS } from './lib/mathText'
 import {
   BATCHES, SUBJECTS, rankResults, subjectStats, scoreBands, batchAverages,
   seriesRanking, ordinal, nameMatches, safeUrl,
@@ -193,6 +196,9 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
   const [fileKey, setFileKey] = useState(0)
   const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState('')
+  const [mode, setMode] = useState('write')      // write (the builder) | file (attach a file or link)
+  const [editing, setEditing] = useState(null)
+  const [openId, setOpenId] = useState(null)
   const load = useCallback(async () => {
     const { data, error } = await supabase.from(T_MAT).select('*').order('created_at', { ascending: false })
     if (error) flash('Could not load material: ' + error.message, true)
@@ -225,9 +231,16 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
   const testName = id => { const t = tests.find(x => x.id === id); return t ? (t.title || 'Test ' + t.test_no) : '' }
   const shown = (items || []).filter(m => !filter || m.subject === filter)
 
+  const chip = on => ({ padding: '8px 14px', borderRadius: 99, border: `1.5px solid ${on ? PX.navy : PX.line}`, background: on ? '#e4ebf6' : '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' })
+  const startEdit = m => { setEditing(m); setMode('write'); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }
   return (
     <>
-      <PremiumCard title="Upload study material" subtitle="Notes, worksheets, answer keys: a file (PDF, Word, photo, up to 25 MB) or a link. Only staff can open them.">
+      <div role="tablist" aria-label="Add study material" data-ti-skip style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button type="button" role="tab" aria-selected={mode === 'write'} style={chip(mode === 'write')} onClick={() => { setMode('write') }}>✍ Write notes</button>
+        <button type="button" role="tab" aria-selected={mode === 'file'} style={chip(mode === 'file')} onClick={() => { setMode('file'); setEditing(null) }}>📎 Attach a file or link</button>
+      </div>
+      {mode === 'write' && <NotesStudio key={editing?.id || 'new'} {...{ tests, me, flash, editing }} onSaved={cancelled => { setEditing(null); if (!cancelled) load() }} />}
+      {mode === 'file' && <PremiumCard title="Attach a file or link" subtitle="Notes, worksheets, answer keys: a file (PDF, Word, photo, up to 25 MB) or a link. Only staff can open them.">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
           <label>Title<input className="px-input" value={d.title} onChange={e => setD({ ...d, title: e.target.value })} placeholder="e.g. Fractions worksheet 1" /></label>
           <label>Subject<select className="px-input" value={d.subject} onChange={e => setD({ ...d, subject: e.target.value })}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select></label>
@@ -237,19 +250,28 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
           <label>Note<input className="px-input" value={d.note} onChange={e => setD({ ...d, note: e.target.value })} placeholder="Optional" /></label>
         </div>
         <div style={{ marginTop: 12 }}><Btn kind="gold" disabled={busy} onClick={add}>{busy ? 'Uploading…' : 'Add material'}</Btn></div>
-      </PremiumCard>
+      </PremiumCard>}
       <PremiumCard title={`Material · ${shown.length}`} bodyStyle={{ padding: 0 }}
         right={<select className="px-input" aria-label="Filter by subject" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 'auto' }}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select>}>
-        {items === null ? <div style={{ padding: 20, color: PX.sub }}>Loading…</div> : !shown.length ? <div style={{ padding: 20, color: PX.sub }}>Nothing uploaded yet.</div> : shown.map(m => (
+        {items === null ? <div style={{ padding: 20, color: PX.sub }}>Loading…</div> : !shown.length ? <div style={{ padding: 20, color: PX.sub }}>Nothing here yet — write the first notes above.</div> : shown.map(m => (
           <div key={m.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '12px 18px', borderTop: `1px solid ${PX.line}` }}>
-            <span style={{ fontSize: 24 }} aria-hidden="true">{m.file_path ? '📄' : '🔗'}</span>
+            <span style={{ fontSize: 24 }} aria-hidden="true">{m.body ? '📝' : m.file_path ? '📄' : '🔗'}</span>
             <div style={{ flex: 1, minWidth: 200 }}>
               <div style={{ fontWeight: 700 }}>{m.title}</div>
               <div style={{ fontSize: 12.5, color: PX.sub }}>{[m.subject || 'All subjects', testName(m.test_id), m.uploaded_by, new Date(m.created_at).toLocaleDateString('en-GB')].filter(Boolean).join(' · ')}{m.note ? ` · ${m.note}` : ''}</div>
             </div>
+            {m.body && <Btn onClick={() => setOpenId(openId === m.id ? null : m.id)}>{openId === m.id ? 'Hide' : 'Read'}</Btn>}
+            {m.body && <Btn onClick={() => printNote(m, tests, m.uploaded_by)}>🖨 Print</Btn>}
+            {m.body && (isAdmin || nameMatches(me, m.uploaded_by) || m.uploaded_by === me) && <Btn onClick={() => startEdit(m)}>✎ Edit</Btn>}
             {m.file_path && <Btn onClick={() => openFile(m.file_path, flash)}>Open file</Btn>}
             {m.link_url && <a className="px-btn ghost" href={safeUrl(m.link_url)} target="_blank" rel="noreferrer">Open link</a>}
             {(isAdmin || nameMatches(me, m.uploaded_by) || m.uploaded_by === me) && <Btn onClick={() => remove(m)} aria-label={`Delete ${m.title}`}>✕</Btn>}
+            {openId === m.id && m.body && (
+              <div style={{ flexBasis: '100%', border: `1px solid ${PX.line}`, borderRadius: 12, background: '#fff', padding: 16, maxHeight: 480, overflow: 'auto' }}>
+                <style>{MATH_CSS + MATERIAL_CSS}</style>
+                <div className="md" dangerouslySetInnerHTML={{ __html: renderMaterial(m.body) }} />
+              </div>
+            )}
           </div>
         ))}
       </PremiumCard>
