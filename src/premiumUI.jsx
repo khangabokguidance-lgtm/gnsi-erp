@@ -159,6 +159,7 @@ const IXT_CSS = `
   .ixt-chip{flex-direction:column;justify-content:center;gap:4px;height:54px;min-width:64px;padding:0 8px;font-size:10.5px;scroll-snap-align:center}
   .ixt-chip-l{display:block;max-width:76px;overflow:hidden;text-overflow:ellipsis}
   .ixt-chip.on{min-width:72px}
+  .ixt-chip.on .ixt-chip-l{max-width:none;overflow:visible}
   .ixt-chip .ixt-badge{position:absolute;top:3px;right:6px}
   .ixt-back{height:54px;flex-direction:column;justify-content:center;gap:2px;padding:0 10px}
   .ixt-back-l{display:none}
