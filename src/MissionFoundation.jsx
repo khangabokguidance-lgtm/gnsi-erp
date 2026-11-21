@@ -82,7 +82,6 @@ const Btn = ({ kind = 'ghost', children, ...p }) => <button type="button" classN
 export default function MissionFoundation({ currentUser }) {
   const isMobile = useIsMobile()
   const isAdmin = isAdminRole(currentUser?.role)
-  const me = currentUser?.name || ''
   const [tab, setTab] = useState('home')
   const [tests, setTests] = useState([])
   const [papers, setPapers] = useState([])
@@ -102,6 +101,16 @@ export default function MissionFoundation({ currentUser }) {
   const [classNames, setClassNames] = useState(() => [...BATCHES])   // the classes that sit the tests (admin-defined; Udaan and Pragati until set up)
   const [classRows, setClassRows] = useState([])
   const staffOptsAll = useMemo(() => staffOptions(staffDir), [staffDir])
+  // Who is logged in = their Staff record (linked by login id, then email / username, then exact name). The staff name is what
+  // setter / checker / panel names are matched against, so "Sandhyarani" logs in as her staff entry "Sandhya …".
+  const me = useMemo(() => {
+    const low = x => String(x || '').trim().toLowerCase()
+    const u = currentUser || {}
+    const hit = (staffDir || []).find(s => u.id != null && s.user_id != null && String(s.user_id) === String(u.id))
+      || (staffDir || []).find(s => [u.email, u.username].some(k => low(k) && low(k) === low(s.email)))
+      || (staffDir || []).find(s => low(s.name) && low(s.name) === low(u.name))
+    return hit?.name || u.name || ''
+  }, [staffDir, currentUser])
   const photoOf = tok => staffNameFor(cleanTeacherName(tok), staffOptsAll)   // full staff name for a stored first name, to find the right photo
   const reloadStudents = () => setRosterTick(n => n + 1)
   const today = todayISO()
@@ -114,7 +123,7 @@ export default function MissionFoundation({ currentUser }) {
       supabase.from(T_TESTS).select('*').order('test_date').order('test_no'),
       supabase.from(T_PAPERS).select('*'),
       supabase.from(T_PANEL).select('*').order('teacher'),
-      supabase.from('staff_profiles').select('name, department, designation').order('name'),
+      supabase.from('staff_profiles').select('name, department, designation, user_id, email').order('name'),
       supabase.from('mission_foundation_teaching').select('*'),
       supabase.from('mission_foundation_prizes').select('*'),
       supabase.from('mission_foundation_classes').select('*').order('sort_no').order('name'),
