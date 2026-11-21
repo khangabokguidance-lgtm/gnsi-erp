@@ -11,7 +11,7 @@ import { omrHtml, wordWrap } from './lib/missionSainikPaper'
 import { mathToHtml } from './lib/mathText'
 import { paperModel, paperHtml, answerKeyHtml, nextPosition, PAPER_INSTRUCTIONS } from './lib/missionFoundationPaper'
 import { TestPicker } from './MissionFoundationWork'
-import { MISSION_NAME, DEFAULT_TEST_MINUTES, nameMatches } from './missionFoundationData'
+import { MISSION_NAME, DEFAULT_TEST_MINUTES, isSetter, settersOf } from './missionFoundationData'
 
 const T_QUESTIONS = 'mission_foundation_questions'
 const INSTITUTE = 'Guidance Navodaya & Sainik Institute'
@@ -61,7 +61,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
 
   const model = useMemo(() => paperModel(papers, rows), [papers, rows])
   const printModel = useMemo(() => (opt.set === 'A' ? model : paperModel(papers, rows, { set: opt.set, seed: testId })), [model, papers, rows, opt.set, testId])
-  const canEdit = p => isAdmin || nameMatches(me, p.setter)
+  const canEdit = p => isAdmin || isSetter(me, p)
   const pct = model.wanted ? Math.min(100, Math.round((model.total / model.wanted) * 100)) : 0
   const title = test ? (test.title || 'Test ' + String(test.test_no).padStart(2, '0')) : ''
   const minutes = test?.duration_min || DEFAULT_TEST_MINUTES
@@ -184,7 +184,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
                 {edit && done && p?.status === 'Pending' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Submitted', questions: s.wanted })}>Send for checking</Btn>}
                 {p && p.status !== 'Pending' && <Pill tone={p.status === 'Approved' ? 'ok' : 'info'}>{p.status}</Pill>}
               </div>
-              {!edit && <div style={{ fontSize: 12, color: PX.faint, marginTop: 6 }}>Only {p?.setter || 'the setter'} or an admin can add here.</div>}
+              {!edit && <div style={{ fontSize: 12, color: PX.faint, marginTop: 6 }}>Only {p ? (settersOf(p).join(' or ') || 'the setter') : 'the setter'} or an admin can add here.</div>}
             </div>
           )
         })}

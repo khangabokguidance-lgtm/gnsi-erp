@@ -9,7 +9,7 @@ import { printPremium } from './lib/printPremium'
 import { getInstitute } from './systemSettings'
 import { downloadCertificates } from './lib/missionFoundationCerts'
 import {
-  MISSION_NAME, BATCHES, CONDUCT_STEPS, splitChapters, prizeList, focusTest, cycleFor, maxMarks, subjectByLabel, nameMatches, titled,
+  MISSION_NAME, BATCHES, CONDUCT_STEPS, splitChapters, prizeList, focusTest, cycleFor, maxMarks, subjectByLabel, nameMatches, isSetter, titled,
 } from './missionFoundationData'
 
 const fmt = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '—'
@@ -63,7 +63,7 @@ export function HomeDashboard({ tests, ctx, today, me, isAdmin, papers, testById
   const next = cycle.steps[cycle.current]
   const days = Math.round((new Date(focus.test_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)
   const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days > 1 ? `In ${days} days` : `${-days} days ago`
-  const myTodo = papers.filter(p => (nameMatches(me, p.setter) && p.status === 'Pending') || (nameMatches(me, p.verifier) && p.status === 'Submitted'))
+  const myTodo = papers.filter(p => (isSetter(me, p) && p.status === 'Pending') || (nameMatches(me, p.verifier) && p.status === 'Submitted'))
     .map(p => ({ ...p, test: testById[p.test_id] })).filter(p => p.test).sort((a, b) => a.test.test_date.localeCompare(b.test.test_date)).slice(0, 5)
   const NEXT_TEXT = {
     teach: 'Teachers tick the chapters they have taught for this test.', papers: 'Setters finish their papers; checkers check them; an admin approves.',
@@ -90,7 +90,7 @@ export function HomeDashboard({ tests, ctx, today, me, isAdmin, papers, testById
           {!myTodo.length ? <div style={{ padding: 18, color: PX.sub }}>Nothing waiting for you. ✅</div> : myTodo.map(p => (
             <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${PX.line}` }}>
               <span style={{ flex: 1 }}><b>{p.subject}</b> <span style={{ color: PX.sub }}>· {p.test.title} · {fmt(p.test.test_date)}</span></span>
-              <Pill tone={p.status === 'Pending' ? 'warn' : 'info'}>{nameMatches(me, p.setter) && p.status === 'Pending' ? 'Set paper' : 'Check paper'}</Pill>
+              <Pill tone={p.status === 'Pending' ? 'warn' : 'info'}>{isSetter(me, p) && p.status === 'Pending' ? 'Set paper' : 'Check paper'}</Pill>
             </div>
           ))}
         </PremiumCard>
