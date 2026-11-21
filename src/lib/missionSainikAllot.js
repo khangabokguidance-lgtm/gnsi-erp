@@ -125,3 +125,17 @@ export function practiceGive(rows, name, want) {
   if (w - mine > free.length) return { error: `Only ${free.length} more practice set(s) can be given (the rest are already submitted).` }
   return { changes: free.slice(0, w - mine).map(r => ({ id: r.id, setter: name })) }
 }
+
+// ── Several setters on one paper ──────────────────────────────────────────────────────────────────────
+// `setter` is the main setter; `co_setters` holds the others, separated by ";". Everyone listed sets the paper and sees it in their tasks.
+export const coSettersOf = row => String(row?.co_setters || '').split(';').map(s => s.trim()).filter(Boolean)
+export const settersOfRow = row => [...new Set([row?.setter, ...coSettersOf(row)].filter(Boolean))]
+export const joinCoSetters = list => [...new Set((list || []).map(s => String(s).trim()).filter(Boolean))].join('; ')
+// Add or remove one co-setter. The main setter is never listed as a co-setter. Returns the new co_setters string ('' when none).
+export function toggleCoSetter(row, name, on) {
+  const cur = coSettersOf(row).filter(n => n !== name)
+  if (on && name && name !== row?.setter) cur.push(name)
+  return joinCoSetters(cur)
+}
+// "Sir A, Sir B" label from a naming function.
+export const settersLabel = (row, nameFn = x => x) => settersOfRow(row).map(nameFn).join(' + ')

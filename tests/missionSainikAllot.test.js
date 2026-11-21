@@ -98,3 +98,17 @@ test('practiceGive hands over Pending sets that are not already theirs, lowest i
   assert.match(practiceGive([row(1, 0, 'Z'), row(2, 0, 'Z')], 'Z', 1).error, /already has 2/)
   assert.deepEqual(practiceGive(rows, 'A', 1).changes, [])
 })
+
+import { coSettersOf, settersOfRow, joinCoSetters, toggleCoSetter, settersLabel } from '../src/lib/missionSainikAllot.js'
+
+test('co-setters: parsing, listing, adding and removing', () => {
+  const r = { setter: 'A', co_setters: 'B; C ;; B' }
+  assert.deepEqual(coSettersOf(r), ['B', 'C', 'B'])
+  assert.deepEqual(settersOfRow(r), ['A', 'B', 'C'])
+  assert.deepEqual(settersOfRow({ setter: 'A' }), ['A']); assert.deepEqual(settersOfRow({}), [])
+  assert.equal(joinCoSetters(['B', ' C ', 'B', '']), 'B; C')
+  assert.equal(toggleCoSetter({ setter: 'A', co_setters: 'B' }, 'C', true), 'B; C')
+  assert.equal(toggleCoSetter({ setter: 'A', co_setters: 'B; C' }, 'B', false), 'C')
+  assert.equal(toggleCoSetter({ setter: 'A', co_setters: '' }, 'A', true), '')          // the main setter is not a co-setter
+  assert.equal(settersLabel({ setter: 'A', co_setters: 'B' }, n => 'Sir ' + n), 'Sir A + Sir B')
+})
