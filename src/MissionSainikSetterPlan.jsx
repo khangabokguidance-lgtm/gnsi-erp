@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
-import { Pill, PersonCell } from './MissionSainikUI'
+import { Pill, PersonCell, Avatar } from './MissionSainikUI'
 import { fullName } from './missionSainikData'
 import { pickVerifier, setterLoad, shareEvenly, copyPrevious } from './lib/missionSainikAllot'
 import { staffOptions } from './lib/teacherPick'
@@ -21,19 +21,29 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
   const unassigned = tests.filter(r => !r.setter).length
   const stamp = () => ({ updated_by: currentUser?.name || '', updated_at: new Date().toISOString() })
 
+  // The verifier follows the panel rule unless an admin picked one by hand; a hand-picked verifier is kept when the setter changes.
+  const verifierAfter = (r, s, setter) => {
+    const auto = pickVerifier(s.key, setter, panelSetters(s.key))
+    const wasAuto = !r.verifier || r.verifier === pickVerifier(s.key, r.setter, panelSetters(s.key))
+    return wasAuto ? (auto || r.verifier || null) : r.verifier
+  }
   const choose = async (r, s, setter) => {
     if (!setter || setter === r.setter) return
     if (r.status !== 'Pending' && !window.confirm(`${s.label} for ${test.id} is already ${r.status}. Change the setter anyway?`)) return
-    const verifier = pickVerifier(s.key, setter, panelSetters(s.key)) || r.verifier || null
-    await saveTask(r, { setter, verifier })
+    await saveTask(r, { setter, verifier: verifierAfter(r, s, setter) })
+  }
+  const chooseVerifier = async (r, verifier) => {
+    if ((verifier || null) === (r.verifier || null)) return
+    await saveTask(r, { verifier: verifier || null })
   }
   const bulk = async (changes, what) => {
     if (!changes.length) return setMsg('Nothing to change: it is already set that way.')
     setBusy(true)
     let failed = ''
     for (const c of changes) {
-      const s = SUBJECTS.find(x => x.label === c.subject) || SUBJECTS.find(x => (bySubject[x.label] || []).some(r => r.id === c.id))
-      const verifier = s ? pickVerifier(s.key, c.setter, panelSetters(s.key)) : ''
+      const row = tests.find(r => r.id === c.id)
+      const s = row && SUBJECTS.find(x => x.label === row.subject)
+      const verifier = row && s ? verifierAfter(row, s, c.setter) : null
       const { error } = await supabase.from(TABLE).update({ setter: c.setter, ...(verifier ? { verifier } : {}), ...stamp() }).eq('id', c.id)
       if (error) { failed = error.message; break }
     }
@@ -53,47 +63,81 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
 
   const loadBy = setterLoad(tests)
   const staffTokens = useMemo(() => staffOptions(staffDir).map(o => o.pick), [staffDir])
-  const pill = on => ({ padding: '7px 12px', borderRadius: 99, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', color: PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
+  const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
+  const rowsNow = SUBJECTS.map(cell).filter(Boolean)
+  const assigned = rowsNow.filter(r => r.setter).length
+  const maxLoad = Math.max(1, ...Object.values(loadBy))
+  const chip = (t, on) => {
+    const rs = tests.filter(r => r.test_no === t.no)
+    const full = rs.length > 0 && rs.every(r => r.setter), gap = rs.some(r => !r.setter)
+    return { padding: '7px 0', minWidth: 46, textAlign: 'center', borderRadius: 12, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', flex: 'none', position: 'relative',
+      border: `1.5px solid ${on ? PX.navy : full ? '#bfe3cc' : gap ? '#f1c9c4' : PX.line}`, background: on ? PX.navy : full ? '#f3fbf6' : gap ? '#fff7f6' : '#fff', color: on ? '#fff' : full ? '#0f7a4c' : gap ? '#b42318' : PX.navy }
+  }
+  const head = { fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub }
+  const cols = isMobile ? '1fr' : '170px minmax(240px,1.4fr) minmax(150px,1fr) 110px'
 
   return (
-    <PremiumCard title="Who sets the Pre Mock questions?" subtitle={isAdmin ? `Pick a test, then choose the teacher for each subject. The verifier follows the panel rule.${unassigned ? ` ${unassigned} paper(s) have no setter yet.` : ''}` : 'Who sets each Pre Mock paper. Only an admin can assign or change a setter.'}
-      right={isAdmin && no > 1 ? <button type="button" className="px-hbtn" disabled={busy} onClick={copyPrev}>↧ Copy setters from PMT-{String(no - 1).padStart(2, '0')}</button> : null}>
-      <div role="tablist" aria-label="Pre Mock test" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, marginBottom: 10 }}>
-        {TESTS.map(t => {
-          const rs = tests.filter(r => r.test_no === t.no)
-          const gap = rs.some(r => !r.setter)
-          return <button key={t.no} type="button" role="tab" aria-selected={t.no === no} style={pill(t.no === no)} onClick={() => setNo(t.no)}>{t.id.replace('PMT-', '')}{gap ? ' ●' : ''}</button>
-        })}
+    <PremiumCard title="Pre Mock setters" subtitle={isAdmin ? `Choose who sets and who verifies each paper. The verifier is suggested by the panel rule but can be any of the same teachers, even the setter.${unassigned ? ` ${unassigned} paper${unassigned === 1 ? ' has' : 's have'} no setter yet.` : ' Every paper has a setter.'}` : 'Who sets each Pre Mock paper. Only an admin can assign or change a setter.'}
+      right={isAdmin && no > 1 ? <button type="button" className="px-hbtn" disabled={busy} onClick={copyPrev}>↧ Copy from PMT-{String(no - 1).padStart(2, '0')}</button> : null}>
+      <div role="tablist" aria-label="Pre Mock test" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0 8px', marginBottom: 6 }}>
+        {TESTS.map(t => <button key={t.no} type="button" role="tab" aria-selected={t.no === no} style={chip(t, t.no === no)} title={`${t.id} · ${fmtShort(t.date)}`} onClick={() => setNo(t.no)}>{String(t.no).padStart(2, '0')}</button>)}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-        <b style={{ fontFamily: PX.serif, fontSize: 18, color: PX.navy }}>{test.id}</b><span style={{ color: PX.sub, fontSize: 13 }}>{fmtShort(test.date)} · drafts due {fmtShort(test.drafts)}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 14px', borderRadius: 16, background: 'linear-gradient(135deg,#132a4f,#1e3a6e)', color: '#fff', marginBottom: 12 }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 700, letterSpacing: '.01em' }}>{test.id}</div>
+          <div style={{ fontSize: 12.5, color: '#e9d9b0', fontWeight: 600 }}>{fmtShort(test.date)} · drafts due {fmtShort(test.drafts)} · final {fmtShort(test.print)}</div>
+        </div>
+        <div style={{ flex: '1 1 180px', minWidth: 150 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 5 }}><span>Setters assigned</span><span>{assigned} / {rowsNow.length || SUBJECTS.length}</span></div>
+          <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,.18)', overflow: 'hidden' }}><div style={{ width: `${rowsNow.length ? (assigned / rowsNow.length) * 100 : 0}%`, height: '100%', borderRadius: 4, background: 'linear-gradient(90deg,#e9d9b0,#86efac)', transition: 'width .3s' }} /></div>
+        </div>
       </div>
+      {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 10, padding: '0 12px 6px' }}><span style={head}>Subject</span><span style={head}>Setter</span><span style={head}>Verifier</span><span style={head}>Status</span></div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        {SUBJECTS.map(s => {
+        {SUBJECTS.map((s, si) => {
           const r = cell(s)
-          if (!r) return <div key={s.key} style={{ color: PX.faint, fontSize: 13 }}>{s.label}: no task yet</div>
+          if (!r) return <div key={s.key} style={{ color: PX.faint, fontSize: 13, padding: '6px 12px' }}>{s.label}: no task yet</div>
           const panel = panelSetters(s.key)
           const others = [...new Set([...peopleAll, ...staffTokens])].filter(n => n && !panel.includes(n)).sort()
           const opt = n => <option key={n} value={n}>{fullName(n)} · {loadBy[n] || 0} test{(loadBy[n] || 0) === 1 ? '' : 's'}</option>
           return (
-            <div key={s.key} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '150px minmax(220px,1fr) auto auto', gap: 8, alignItems: 'center', padding: '8px 10px', border: `1px solid ${PX.line}`, borderRadius: 14, background: r.setter ? '#fff' : '#fffaf0' }}>
-              <b style={{ color: PX.navy }}>{s.label}</b>
-              <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)}>
-                {!r.setter && <option value="">— Choose a teacher —</option>}
-                {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
-                {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(opt)}</optgroup>}
-                {others.length > 0 && <optgroup label="Other staff">{others.map(opt)}</optgroup>}
-              </select>
-              <span style={{ fontSize: 12.5, color: PX.sub }}>{r.verifier ? <>Verifier: <b style={{ color: PX.ink }}>{fullName(r.verifier)}</b></> : 'No verifier'}</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div key={s.key} style={{ display: 'grid', gridTemplateColumns: cols, gap: isMobile ? 8 : 10, alignItems: 'center', padding: '10px 12px', border: `1px solid ${r.setter ? PX.line : '#f1c9c4'}`, borderLeft: `4px solid ${TONES[si % TONES.length]}`, borderRadius: 14, background: r.setter ? '#fff' : '#fff9f8', boxShadow: '0 1px 2px rgba(19,42,79,.04)' }}>
+              <div><b style={{ color: PX.navy, fontSize: 14.5 }}>{s.label}</b><div style={{ fontSize: 11.5, color: PX.sub }}>{panel.length} on the panel</div></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                {r.setter ? <Avatar name={r.setter} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
+                <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+                  {!r.setter && <option value="">Choose a teacher…</option>}
+                  {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
+                  {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(opt)}</optgroup>}
+                  {others.length > 0 && <optgroup label="Other staff">{others.map(opt)}</optgroup>}
+                </select>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                {isMobile && <span style={{ ...head, display: 'block', marginBottom: 2 }}>Verifier</span>}
+                <select className="px-input" aria-label={`Verifier for ${test.id} ${s.label}`} value={r.verifier || ''} disabled={busy || !isAdmin} onChange={e => chooseVerifier(r, e.target.value)} style={{ width: '100%' }}>
+                  <option value="">No verifier</option>
+                  {r.verifier && !panel.includes(r.verifier) && !others.includes(r.verifier) && opt(r.verifier)}
+                  {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (also the setter)' : ''}</option>)}</optgroup>}
+                  {others.length > 0 && <optgroup label="Other staff">{others.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (also the setter)' : ''}</option>)}</optgroup>}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Pill tone={STATUS_TONE[r.status] || 'mute'}>{r.status}</Pill>
-                {isAdmin && <button type="button" className="px-hbtn" disabled={busy} onClick={() => share(s)} title={`Share all ${s.label} tests evenly between its panel setters`}>⚖ Share evenly</button>}
-              </span>
+                {isAdmin && <button type="button" className="px-hbtn" disabled={busy} onClick={() => share(s)} aria-label={`Share all ${s.label} tests evenly`} title={`Share all ${s.label} tests evenly between its panel setters`} style={{ height: 32, padding: '0 10px' }}>⚖</button>}
+              </div>
             </div>)
         })}
       </div>
-      <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: PX.sub }}>
-        {Object.entries(loadBy).sort((a, b) => b[1] - a[1]).map(([n, c]) => <span key={n} style={{ display: 'inline-flex' }}><PersonCell name={n} size={20} sub={`${c} test${c === 1 ? '' : 's'}`}>{n}</PersonCell></span>)}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ ...head, marginBottom: 8 }}>Workload · tests each teacher sets</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: '6px 18px' }}>
+          {Object.entries(loadBy).sort((a, b) => b[1] - a[1]).map(([n, c]) => (
+            <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+              <span style={{ width: 78, fontWeight: 700, color: PX.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n}</span>
+              <span style={{ flex: 1, height: 7, borderRadius: 4, background: '#eef1f6', overflow: 'hidden' }}><span style={{ display: 'block', width: `${(c / maxLoad) * 100}%`, height: '100%', background: 'linear-gradient(90deg,#b8923a,#e0b95a)' }} /></span>
+              <b style={{ width: 22, textAlign: 'right', color: PX.navy }}>{c}</b>
+            </div>))}
+        </div>
       </div>
     </PremiumCard>
   )
