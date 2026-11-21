@@ -33,3 +33,15 @@ test('with no data the first step is "now"; steps without a total never count as
   const all = flowStatus({ plan: { done: 1, total: 1 }, assign: { done: 1, total: 1 }, set: { done: 1, total: 1 }, marks: { done: 1, total: 1 } })
   assert.equal(all.find(s => s.id === 'build').status, 'now')
 })
+
+test('Foundation flow: every tab exists and the Back / Next helpers work on a custom flow', async () => {
+  const { FOUNDATION_FLOW } = await import('../src/lib/missionFoundationFlow.js')
+  const all = FOUNDATION_FLOW.flatMap(s => s.tabs)
+  assert.equal(new Set(all).size, all.length)
+  const [p, c, n] = flowNeighbors('maker', FOUNDATION_FLOW)
+  assert.equal(c.id, 'papers'); assert.equal(p.id, 'teach'); assert.equal(n.id, 'conduct')
+  assert.equal(flowNeighbors('prizes', FOUNDATION_FLOW)[2], null)
+  assert.deepEqual(flowNeighbors('chat', FOUNDATION_FLOW), [null, null, null])
+  const st = flowStatus({ schedule: { done: 8, total: 8 } }, FOUNDATION_FLOW)
+  assert.equal(st[0].status, 'done'); assert.equal(st[1].status, 'now')
+})

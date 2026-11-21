@@ -424,3 +424,32 @@ export function StudentsTab({ students, unplaced, allMarks, tests, isAdmin, flas
     </div>
   )
 }
+
+// ─── Audit log (admin) ────────────────────────────────────────────────────────────────────────────
+export function AuditTab({ flash }) {
+  const [rows, setRows] = useState(null)
+  const [q, setQ] = useState('')
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from('mission_foundation_audit').select('*').order('at', { ascending: false }).limit(300)
+    if (error) { flash('Could not load the audit log: ' + error.message + ' (run supabase/migrations/20261217_mission_foundation_audit.sql)', true); setRows([]) } else setRows(data || [])
+  }, [flash])
+  useEffect(() => { load() }, [load])
+  const needle = q.trim().toLowerCase()
+  const shown = (rows || []).filter(r => !needle || [r.actor, r.action, r.ref, JSON.stringify(r.detail || '')].join(' ').toLowerCase().includes(needle))
+  const when = iso => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return (
+    <PremiumCard title="Audit log" subtitle="Every paper change, mark entry and lock, newest first. Entries cannot be edited or deleted." bodyStyle={{ padding: 0 }}
+      right={<span style={{ display: 'flex', gap: 6 }}><input className="px-input" type="search" aria-label="Find in the log" placeholder="Find…" value={q} onChange={e => setQ(e.target.value)} style={{ width: 160 }} />
+        <button type="button" className="px-btn ghost" onClick={load}>↻ Refresh</button></span>}>
+      {rows === null ? <div style={{ padding: 20, color: PX.sub }}>Loading…</div> : !shown.length ? <div style={{ padding: 20, color: PX.sub }}>Nothing logged yet.</div> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="px-table" style={{ width: '100%' }}>
+            <thead><tr><th>When</th><th>Who</th><th>Action</th><th>What</th><th>Details</th></tr></thead>
+            <tbody>{shown.map(r => (
+              <tr key={r.id}><td>{when(r.at)}</td><td>{r.actor || '—'}</td><td><Pill tone={/lock/.test(r.action) ? 'gold' : 'info'}>{r.action}</Pill></td><td>{r.ref || '—'}</td>
+                <td style={{ whiteSpace: 'normal', fontSize: 12.5 }}>{r.detail ? JSON.stringify(r.detail) : ''}</td></tr>))}</tbody>
+          </table>
+        </div>)}
+    </PremiumCard>
+  )
+}

@@ -101,6 +101,27 @@ export async function buildOfficialDocx({ cls, pattern, subjects, institute }) {
   return pack(d, { children, institute, label: `AISSEE 2027 · Class ${cls} syllabus`, landscape: false })
 }
 
+// Generic table report: a title, a sub line, a header row and body rows (strings / numbers). Used by the Foundation results and merit lists.
+//   columns: [{ h: 'Rank', w: 1 (relative width), left: false }]   rows: [[...cells]]   foot: optional rows shown shaded under the table
+export async function buildTableDocx({ title, sub = '', columns, rows, foot = [], institute, label, landscape = true, signatures = ['Class teacher', 'Exam in-charge', 'Principal'] }) {
+  const d = await lib()
+  const W = (landscape ? 15840 : 11906) - 1600, sum = columns.reduce((n, c) => n + (c.w || 1), 0)
+  const widths = columns.map(c => Math.floor((W * (c.w || 1)) / sum))
+  const mk = (r, o = {}) => new d.TableRow({ cantSplit: true, children: r.map((v, i) => new d.TableCell({
+    width: { size: widths[i], type: d.WidthType.DXA }, margins: { top: 40, bottom: 40, left: 70, right: 70 },
+    shading: o.fill ? { type: d.ShadingType.CLEAR, fill: o.fill, color: 'auto' } : undefined,
+    borders: ['top', 'bottom', 'left', 'right'].reduce((b, k) => ({ ...b, [k]: { style: d.BorderStyle.SINGLE, size: 4, color: LINE } }), {}),
+    children: [new d.Paragraph({ alignment: columns[i].left ? d.AlignmentType.LEFT : d.AlignmentType.CENTER, children: [new d.TextRun({ text: String(v ?? '—'), size: o.size || 17, bold: o.bold, color: o.color })] })],
+  })) })
+  const table = new d.Table({ width: { size: W, type: d.WidthType.DXA }, columnWidths: widths, rows: [
+    new d.TableRow({ tableHeader: true, children: columns.map((c, i) => new d.TableCell({ width: { size: widths[i], type: d.WidthType.DXA }, margins: { top: 50, bottom: 50, left: 70, right: 70 }, shading: { type: d.ShadingType.CLEAR, fill: NAVY, color: 'auto' }, children: [new d.Paragraph({ alignment: c.left ? d.AlignmentType.LEFT : d.AlignmentType.CENTER, children: [new d.TextRun({ text: String(c.h), bold: true, size: 16, color: 'FFFFFF' })] })] })) }),
+    ...rows.map((r, i) => mk(r, { fill: i % 2 ? 'F7F9FC' : undefined })),
+    ...foot.map(r => mk(r, { fill: SOFT, bold: true })),
+  ] })
+  const sig = signatures.length ? [new d.Paragraph({ spacing: { before: 500 }, tabStops: signatures.length === 3 ? [{ type: d.TabStopType.CENTER, position: Math.floor(W / 2) }, { type: d.TabStopType.RIGHT, position: W }] : [], children: [new d.TextRun({ text: signatures.join('\t'), size: 17, color: MUT })] })] : []
+  return pack(d, { children: [titleBar(d, title), ...(sub ? [subLine(d, sub)] : []), table, ...sig], institute, label: label || title, landscape })
+}
+
 export function downloadDocx(name, blob) {
   const url = URL.createObjectURL(blob); const a = document.createElement('a')
   a.href = url; a.download = safeName(name).replace(/(\.docx)?$/, '.docx'); a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000)

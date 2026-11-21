@@ -10,19 +10,19 @@ export const FLOW = [
   { id: 'improve', icon: '💡', label: 'Improve',         tab: 'insights',   tabs: ['insights'],                                               hint: 'Weak chapters to revisit, trends and tips' },
 ]
 
-export const stepOfTab = tab => FLOW.findIndex(s => s.tabs.includes(tab))
+export const stepOfTab = (tab, flow = FLOW) => flow.findIndex(s => s.tabs.includes(tab))
 
 // Back / Next neighbours of a screen: [previous step | null, current step | null, next step | null]
-export function flowNeighbors(tab) {
-  const i = stepOfTab(tab)
-  return i < 0 ? [null, null, null] : [FLOW[i - 1] || null, FLOW[i], FLOW[i + 1] || null]
+export function flowNeighbors(tab, flow = FLOW) {
+  const i = stepOfTab(tab, flow)
+  return i < 0 ? [null, null, null] : [flow[i - 1] || null, flow[i], flow[i + 1] || null]
 }
 
 // progress: { plan, assign, set, marks } each { done, total } (steps without a measurable total are omitted).
 // Returns the steps with a status: 'done' | 'now' (the first unfinished step) | 'next', plus a short progress label.
-export function flowStatus(progress = {}) {
+export function flowStatus(progress = {}, flow = FLOW) {
   let nowSet = false
-  return FLOW.map((s, i) => {
+  return flow.map((s, i) => {
     const p = progress[s.id]
     const measurable = !!(p && p.total > 0)
     const done = measurable && p.done >= p.total
