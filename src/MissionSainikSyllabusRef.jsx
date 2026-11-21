@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react'
 import { PremiumCard, PX } from './premiumUI'
 import { printPremium } from './lib/printPremium'
+import { buildOfficialDocx, downloadDocx } from './lib/missionSainikDocx'
 import { EXAM_PATTERNS, classesOf, officialSubjects, patternTotals } from './officialSyllabus'
 
 const NTA_URL = 'https://exams.nta.nic.in/sainik-school-society/'
@@ -43,6 +44,7 @@ export function OfficialSyllabus({ isMobile, institute }) {
       <PremiumCard title="Official syllabus · AISSEE 2027" subtitle="Sainik School entrance exam (NTA): pattern, marks and every chapter by subject."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="px-hbtn" onClick={() => pattern && printSyllabus(cls, pattern, subjects, institute || undefined)}>🖨 Print Class {cls} syllabus</button>
+          <button type="button" className="px-hbtn" onClick={async () => { if (!pattern) return; try { downloadDocx(`AISSEE-2027_Class_${cls}_syllabus`, await buildOfficialDocx({ cls, pattern, subjects, institute: institute || undefined })) } catch (e) { alert('Could not make the Word file: ' + (e.message || e)) } }}>📝 Word (.docx)</button>
           <a className="px-hbtn" href="/syllabus/AISSEE-2027-Information-Bulletin.pdf" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📄 Information Bulletin (PDF)</a>
           <a className="px-hbtn" href={NTA_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>↗ NTA website</a>
         </span>}>
