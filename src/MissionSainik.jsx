@@ -239,6 +239,7 @@ function MissionSainikInner({ currentUser }) {
   const [setForm, setSetForm] = useState(null)
   const [boom, setBoom] = useState(false)
   const [panelRows, setPanelRows] = useState([])
+  const [panelView, setPanelView] = useState('pre')         // 'pre' = Question Setting Panel (Pre Mock) · 'practice' = Practice Setting Panel
   const [panelDraft, setPanelDraft] = useState(null)       // { id?, subject_key, name, role }
   const [addTask, setAddTask] = useState(null)             // null | form for the Add task dialog
   const [editMarksId, setEditMarksId] = useState(null)
@@ -1138,18 +1139,30 @@ function MissionSainikInner({ currentUser }) {
     audit('panel_load_notice', null, { rows: rows.length }); loadPanel()
   }
   const ROLE_TONE = { setter: 'info', verifier: 'ok', assistant: 'gold' }
+  // Two separate panels: Pre Mock setters ('setter'), and the Practice panel (practice setters 'assistant' + practice verifiers 'verifier').
+  const PRACTICE_ROLES = ['assistant', 'verifier']
+  const inView = (r, view) => (view === 'pre' ? r.role === 'setter' : PRACTICE_ROLES.includes(r.role))
+  const roleOpts = role => (role === 'setter' ? [['setter', 'Question setter (Pre Mock)']] : [['assistant', 'Practice setter'], ['verifier', 'Practice verifier']])
+  const roleLabel = role => (role === 'assistant' ? 'practice setter' : role === 'verifier' ? 'practice verifier' : 'setter')
   const Panel = () => (
     <>
-      <PremiumCard title="Question Setting Panel" subtitle="Add, edit or remove panel members. Until you add members here, the panel from the notice is used."
+      <PremiumCard title={panelView === 'pre' ? 'Question Setting Panel · Pre Mock' : 'Practice Setting Panel'} subtitle={panelView === 'pre' ? 'Teachers who set the Pre Mock tests. Until you add members here, the panel from the notice is used.' : 'Teachers who set the Practice question bank, and who verify it. This panel is separate from the Pre Mock panel.'}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: 'setter' })}>＋ Add member</button>
+          <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
+        <div role="tablist" aria-label="Panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: panelDraft ? 12 : 8 }}>
+          {[['pre', '🧱 Pre Mock panel'], ['practice', '🗂️ Practice panel']].map(([k, l]) => {
+            const n = panelRows.length ? panelRows.filter(r => inView(r, k)).length : SUBJECTS.reduce((a, x) => a + (k === 'pre' ? PANEL[x.key].length : 1 + PRACTICE_PANEL[x.key].assistants.length), 0)
+            return <button key={k} type="button" role="tab" aria-selected={panelView === k} onClick={() => { setPanelView(k); setPanelDraft(null) }}
+              style={{ padding: '8px 16px', borderRadius: 99, border: `1.5px solid ${panelView === k ? PX.navy : PX.line}`, background: panelView === k ? PX.navy : '#fff', color: panelView === k ? '#fff' : PX.navy, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l} · {n}</button>
+          })}
+        </div>
         {panelDraft && !panelDraft.id && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.2fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 10 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>1 · Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
-              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter (Pre Mock)</option><option value="assistant">Practice setter</option><option value="verifier">Verifier</option></select></label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}>{roleOpts(panelDraft.role).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
               {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" placeholder={panelDraft.role === 'assistant' ? 'e.g. 1' : 'e.g. 5'} value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions each (optional)<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
               <button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button>
@@ -1161,16 +1174,16 @@ function MissionSainikInner({ currentUser }) {
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1.3fr 1.1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>
-            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter (Pre Mock)</option><option value="assistant">Practice setter</option><option value="verifier">Verifier</option></select></label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}>{roleOpts(panelDraft.role).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
             {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions to upload<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
             <span style={{ display: 'flex', gap: 8 }}><button className="px-btn gold" onClick={savePanelMember}>{panelDraft.id ? 'Update' : 'Add'}</button><button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button></span>
           </div>)}
-        {!panelDraft && <div style={{ fontSize: 13, color: PX.sub }}>{panelRows.length ? `${panelRows.length} members on the editable panel.` : 'Showing the panel from the notice. Press “Load from notice” to start editing it.'}</div>}
+        {!panelDraft && <div style={{ fontSize: 13, color: PX.sub }}>{panelRows.length ? `${panelRows.filter(r => inView(r, panelView)).length} members on the ${panelView === 'pre' ? 'Pre Mock' : 'Practice'} panel.` : 'Showing the panel from the notice. Press “Load from notice” to start editing it.'}</div>}
       </PremiumCard>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))', gap: 14 }}>
         {SUBJECTS.map(sub => {
-          const members = panelRows.length ? panelRows.filter(r => r.subject_key === sub.key) : PANEL[sub.key].map(name => ({ name, role: 'setter', subject_key: sub.key, builtin: true }))
+          const members = panelRows.length ? panelRows.filter(r => r.subject_key === sub.key && inView(r, panelView)) : (panelView === 'pre' ? PANEL[sub.key].map(name => ({ name, role: 'setter', subject_key: sub.key, builtin: true })) : [{ name: PRACTICE_PANEL[sub.key].verifier, role: 'verifier', subject_key: sub.key, builtin: true }, ...PRACTICE_PANEL[sub.key].assistants.map(name => ({ name, role: 'assistant', subject_key: sub.key, builtin: true }))])
           return (
             <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}>
               {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
@@ -1193,12 +1206,12 @@ function MissionSainikInner({ currentUser }) {
                       <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role === 'assistant' ? 'practice setter' : m.role}</Pill>
+                      <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
                       {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
-                    {taskChips('Pre Mock', pre, 'mine', m.name)}
-                    {taskChips('Practice', prac, 'practice', m.name)}
+                    {panelView === 'pre' && taskChips('Pre Mock', pre, 'mine', m.name)}
+                    {panelView === 'practice' && taskChips('Practice', prac, 'practice', m.name)}
                   </div>)
               })}
             </PremiumCard>)
