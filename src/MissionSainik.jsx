@@ -17,6 +17,8 @@ import { buildNoticeHtml } from './lib/missionSainikNotice'
 import { PremiumStyles, PremiumCard, PX } from './premiumUI'
 import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
+import { hiddenFrom, applyMenu, visibleTabIds, visibleFlow, MENU_PRESETS, hiddenForPreset, hiddenToValue, ALWAYS_ON } from './lib/missionSainikMenu'
+import { FLOW } from './lib/missionSainikFlow'
 import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
@@ -297,6 +299,19 @@ function MissionSainikInner({ currentUser }) {
     const m = {}; (data || []).forEach(r => { m[r.key] = r.value }); setSettings(m)
   }, [])
   useEffect(() => { loadSettings() }, [loadSettings])
+  // The admin's settings reach every open screen: re-read them every minute and whenever the window is focused again.
+  useEffect(() => {
+    const t = setInterval(() => loadSettings(), 60000), f = () => loadSettings()
+    window.addEventListener('focus', f)
+    return () => { clearInterval(t); window.removeEventListener('focus', f) }
+  }, [loadSettings])
+  // Menu: the admin chooses which screens staff see (Admin → Menu); the same setting drives the menu, the flow and the redirect below.
+  const menuHidden = useMemo(() => hiddenFrom(settings.menu_hidden), [settings.menu_hidden])
+  const navGroups = useMemo(() => applyMenu(NAV_GROUPS, menuHidden, isRealAdmin), [menuHidden, isRealAdmin])
+  const visibleTabs = useMemo(() => visibleTabIds(navGroups), [navGroups])
+  const flowSteps = useMemo(() => visibleFlow(FLOW, visibleTabs), [visibleTabs])
+  const [menuDraft, setMenuDraft] = useState(null)       // the admin's unsaved menu choice (a Set of hidden screens)
+  useEffect(() => { if (!isRealAdmin && !visibleTabs.has(tab)) setTab('overview') }, [tab, visibleTabs, isRealAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const putSetting = async (key, value) => {
     const { error } = await supabase.from('mission_sainik_settings').upsert({ key, value: String(value), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'key' })
     if (error) { setMsg('❌ ' + error.message + ' (admins only; migration 20261209 must be run)'); return false }
@@ -556,6 +571,45 @@ function MissionSainikInner({ currentUser }) {
     const lab = { fontSize: 12, fontWeight: 700, color: PX.sub, display: 'block' }
     return (
       <>
+        {(() => {
+          // ── Menu: which screens staff see, for everyone at once ──
+          const allIds = NAV_GROUPS.flatMap(g => g.items.map(i => i[0]))
+          const now = menuDraft || menuHidden
+          const dirty = !!menuDraft && hiddenToValue(menuDraft) !== hiddenToValue(menuHidden)
+          const flip = id => { const n = new Set(now); n.has(id) ? n.delete(id) : n.add(id); setMenuDraft(n) }
+          const save = async () => {
+            const v = hiddenToValue(now)
+            const ok = v ? await putSetting('menu_hidden', v) : await delSetting('menu_hidden')
+            if (ok) { setMenuDraft(null); setMsg('✅ Menu saved for everyone') }
+          }
+          const chipS = { padding: '8px 14px', minHeight: 40, borderRadius: 99, border: `1.5px solid ${PX.line}`, background: '#fff', color: PX.navy, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }
+          return (
+            <PremiumCard title="Menu · which screens staff see" subtitle="Switch screens on or off for every teacher at once. You always see everything. Teachers get the change within a minute, or when they refresh."
+              right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{dirty && <button className="px-btn ghost" onClick={() => setMenuDraft(null)}>Undo</button>}<button className="px-btn gold" disabled={!dirty} onClick={save}>Save for everyone</button></span>}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub }}>Quick set</span>
+                {MENU_PRESETS.map(p => <button key={p.key} type="button" style={chipS} onClick={() => setMenuDraft(hiddenForPreset(p, allIds))}>{p.label}</button>)}
+              </div>
+              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(230px,1fr))' }}>
+                {NAV_GROUPS.map(g => {
+                  const items = g.items.filter(i => i[0] !== 'admin')
+                  if (!items.length) return null
+                  return (
+                    <div key={g.title}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: PX.sub, marginBottom: 6 }}>{g.title}</div>
+                      {items.map(([id, ic, label]) => {
+                        const locked = ALWAYS_ON.includes(id), on = locked || !now.has(id)
+                        return (
+                          <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', minHeight: 44, cursor: locked ? 'default' : 'pointer', opacity: locked ? .7 : 1 }}>
+                            <input type="checkbox" checked={on} disabled={locked} onChange={() => flip(id)} style={{ width: 20, height: 20 }} />
+                            <span aria-hidden="true">{ic}</span><span style={{ fontWeight: 700, color: PX.ink, fontSize: 14 }}>{label}</span>{locked && <small style={{ color: PX.sub }}>always on</small>}
+                          </label>)
+                      })}
+                    </div>)
+                })}
+              </div>
+            </PremiumCard>)
+        })()}
         <PremiumCard title="Launch settings" subtitle="Admin only. These replace the dates written in the code; the printed notice and countdowns follow them.">
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)', gap: 10 }}>
             <label style={lab}>Submission deadline<input className="px-input" type="date" value={f.deadline} onChange={e => setSetForm({ ...f, deadline: e.target.value })} /></label>
@@ -1625,14 +1679,14 @@ function MissionSainikInner({ currentUser }) {
   return (
     <div className="px-root" style={{ background: 'transparent', minHeight: 0 }}>
       <PremiumStyles />
-      <MissionSainikShell active={tab} onChange={setTab} title={tab === 'overview' ? 'Mission Sainik' : tabLabel(tab)} subtitle={tab === 'overview' ? 'GNSI · 2027' : 'Mission Sainik'}
+      <MissionSainikShell navGroups={navGroups} active={tab} onChange={setTab} title={tab === 'overview' ? 'Mission Sainik' : tabLabel(tab)} subtitle={tab === 'overview' ? 'GNSI · 2027' : 'Mission Sainik'}
         onBack={tab !== 'overview' ? () => setTab('overview') : undefined} badges={badges} isAdmin={isRealAdmin} msg={msg} confetti={boom}
         actions={[{ label: 'Print notice', icon: '🖨', onClick: printNotice }, { label: 'Refresh', icon: '🔄', onClick: load }]}
         fab={tab === 'overview' || tab === 'mine' ? { icon: '⬆', label: 'Upload questions', onClick: () => setTab('prebuilder') } : null}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
-            {tab === 'overview' && <><MissionSainikHome myPanel={myPanel} upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
+            {tab === 'overview' && <><MissionSainikHome myPanel={myPanel} upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker flow={flowSteps} progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
               practiceQ={practiceQMap} syllabus={syl} onSetting={async (key, on) => { if (on) await putSetting(key, 'on'); else await delSetting(key) }} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
@@ -1662,7 +1716,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'mockmarks' && <MissionSainikMockMarks currentUser={currentUser} isMobile={isMobile} setMsg={setMsg} today={today} />}
             {tab === 'certs' && <MissionSainikCertificates institute={institute} isMobile={isMobile} setMsg={setMsg} />}
             {tab === 'admin' && isRealAdmin && AdminPanel()}
-            <FlowNav tab={tab} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} progress={flowProgress} />
+            <FlowNav flow={flowSteps} tab={tab} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} progress={flowProgress} />
           </>
         )}
       </MissionSainikShell>
