@@ -1134,7 +1134,7 @@ function MissionSainikInner({ currentUser }) {
                     <span role={m.role === 'setter' ? 'button' : undefined} tabIndex={m.role === 'setter' ? 0 : undefined} title={m.role === 'setter' ? `See ${fullName(m.name)}'s tasks` : undefined}
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
-                      style={{ flex: '1 1 0', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
+                      style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
                       <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
