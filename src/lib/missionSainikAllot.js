@@ -147,3 +147,19 @@ export function toggleCoSetter(row, name, on) {
 }
 // "Sir A, Sir B" label from a naming function.
 export const settersLabel = (row, nameFn = x => x) => settersOfRow(row).map(nameFn).join(' + ')
+
+// ── Practice sets planner ─────────────────────────────────────────────────────────────────────────────
+// Groups a subject's practice rows by the set they stand for: [{ no: 1, rows: [...] }, { no: 2, rows: [] }, ...] for no = 1..sets.
+// setNoOf(row) gives the set of a row (rows added from the Panel carry it in test_no; older rows count by order).
+export function groupBySet(rows, sets, setNoOf) {
+  const n = Math.max(1, Number(sets) || 1)
+  const out = Array.from({ length: n }, (_, i) => ({ no: i + 1, rows: [] }))
+  ;(rows || []).forEach(r => { const k = Math.min(Math.max(setNoOf(r) || 1, 1), n); out[k - 1].rows.push(r) })
+  return out
+}
+
+// Teachers who may still be added to a set: panel members and staff who are not already setting it.
+export function addableTeachers(candidates, rowsInSet) {
+  const have = new Set((rowsInSet || []).map(r => r.setter))
+  return [...new Set((candidates || []).filter(Boolean))].filter(n => !have.has(n)).sort((a, b) => a.localeCompare(b))
+}
