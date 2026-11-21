@@ -128,6 +128,8 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
   const isDone = (subject, chapter) => rows.some(r => r.subject === subject && r.chapter === chapter && r.done)
   const rowOf = (subject, chapter) => rows.find(r => r.subject === subject && r.chapter === chapter)
   const [draft, setDraft] = useState({})
+  const curTest = tests.find(t => t.id === testId)
+  const testName = curTest ? `${curTest.title || 'Test ' + curTest.test_no}${curTest.test_date ? ' · ' + fmt(curTest.test_date) : ''}` : 'this test'
   const [editing, setEditing] = useState(null)   // { pid, old, value } — a chapter being renamed
   // The admin, and the people who set or check that subject's paper, may change its chapter list.
   const mayEdit = p => isAdmin || isSetter(me, p) || nameMatches(me, p.verifier)
@@ -178,6 +180,9 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
           <b>{doneCount}/{all.length} chapters taught</b>
         </div>
       </PremiumCard>
+      <div style={{ background: PX.tint, border: `1px solid ${PX.line}`, borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13.5, color: PX.navy }}>
+        📌 You are adding the syllabus for <b>{testName}</b>. Check this is the right test before adding chapters.
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         {papers.map(p => {
           const chapters = splitChapters(p.syllabus)
@@ -216,10 +221,11 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
                     </div>
                   )
                 })}
-                {mayEdit(p) && <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="px-input" aria-label={`Add a chapter to ${p.subject}`} placeholder="Add a chapter" value={draft[p.id] || ''} onChange={e => setDraft({ ...draft, [p.id]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addChapter(p)} style={{ padding: '7px 10px' }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="px-input" aria-label={`Add a chapter to ${p.subject} for ${testName}`} placeholder="Add a chapter" value={draft[p.id] || ''} onChange={e => setDraft({ ...draft, [p.id]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addChapter(p)} style={{ padding: '7px 10px' }} />
                   <Btn onClick={() => addChapter(p)}>Add</Btn>
-                </div>}
+                </div>
+                <div style={{ fontSize: 11.5, color: PX.sub }}>Adds to the syllabus of <b>{testName}</b></div>
               </div>
             </PremiumCard>
           )
