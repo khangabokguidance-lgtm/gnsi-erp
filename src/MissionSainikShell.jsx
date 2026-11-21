@@ -168,6 +168,12 @@ html{scroll-behavior:smooth}
 @keyframes msx-pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
 @media (min-width:900px){.msx-rail{display:block}.msx-bottom{display:none}.msx-fab{bottom:24px}.msx-snack{bottom:24px}.msx-main{padding:22px 24px 60px}.msx-overlay{align-items:center!important}.msx-dialog{border-radius:22px!important}}
 @media (prefers-reduced-motion:reduce){.msx *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.msx-slot{display:none;z-index:45;position:sticky;top:60px;height:calc(100vh - 60px);width:68px;flex:none}
+@media (min-width:900px){.msx-slot{display:block}}
+.msx-slot .msx-rail{position:absolute;left:0;top:0;height:100%;z-index:45;background:var(--bg)}
+.msx-slot .msx-rail:not(.slim){box-shadow:8px 0 28px rgba(15,30,60,.2);border-radius:0 18px 18px 0}
+.msx.wide .msx-body{max-width:none}
+.msx:fullscreen{overflow:auto;height:100%;background:var(--bg)}
 `
 
 export function Confetti({ show }) {
@@ -184,8 +190,13 @@ export function Confetti({ show }) {
 
 export default function MissionSainikShell({ navGroups, active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
-  const [slim, setSlim] = useState(() => store.get('msx-rail-slim', true))
+  const [slim, setSlim] = useState(() => true)
   const slimRef = useRef(slim); slimRef.current = slim
+  const rootRef = useRef(null)
+  const [wide, setWide] = useState(() => store.get('msx-wide', false))
+  const [full, setFull] = useState(false)
+  useEffect(() => { const f = () => setFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
+  const toggleFull = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else if (rootRef.current?.requestFullscreen) { rootRef.current.requestFullscreen(); setWide(true) } else setWide(w => { store.set('msx-wide', !w); return !w }) } catch { /* not allowed */ } }
   const toggleSlim = () => setSlim(v => { store.set('msx-rail-slim', !v); return !v })
   const [q, setQ] = useState('')
   const [disp, setDisp] = useState(false)
@@ -224,7 +235,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   })
   const go = id => {
     try { navigator.vibrate?.(8) } catch { /* not supported */ }
-    setSheet(false); setQ(''); onChange(id); window.scrollTo?.({ top: 0 })
+    setSheet(false); setQ(''); if (window.matchMedia('(min-width:900px)').matches) setSlim(true); onChange(id); window.scrollTo?.({ top: 0 })
     setRecent(r => { const n = [id, ...r.filter(x => x !== id)].slice(0, 5); store.set('msx-recent', n); return n })
   }
   const groups = (navGroups || NAV_GROUPS).map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
@@ -259,16 +270,18 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   )
   const bad = msg && msg.startsWith('❌')
   return (
-    <div className="msx" data-size={prefs.size} data-comfort={prefs.comfort}>
+    <div className={'msx' + (wide || full ? ' wide' : '')} ref={rootRef} data-size={prefs.size} data-comfort={prefs.comfort}>
       <style>{CSS}</style>
       <header className="msx-top">
         {onBack ? <button className="msx-tap msx-ic" aria-label="Back to Home" onClick={onBack}>←</button> : <span className="msx-ic" aria-hidden="true">🎖️</span>}
         <h1><small>{subtitle}</small>{title}</h1>
         <button className="msx-tap msx-ic" aria-label="Display comfort: text size and theme" title="Display comfort" aria-expanded={disp} onClick={() => setDisp(v => !v)} style={{ fontSize: 15, fontWeight: 800 }}>Aa</button>
         <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
+        <button className="msx-tap msx-ic" aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen — hide the browser and ERP header'} onClick={toggleFull} style={{ fontSize: 17 }}>{full ? '🗗' : '⛶'}</button>
         {actions.map(a => <button key={a.label} className="msx-tap msx-ic" aria-label={a.label} title={a.label} onClick={a.onClick}>{a.icon}</button>)}
       </header>
       <div className="msx-body">
+        <div className="msx-slot">
         <nav className={'msx-rail' + (slim ? ' slim' : '')} aria-label="Mission Sainik sections">
           <button type="button" className="msx-tap msx-rail-tg" onClick={toggleSlim} aria-label={slim ? 'Expand menu' : 'Collapse menu'} title={slim ? 'Expand menu' : 'Collapse menu'}>{slim ? '»' : '«'}</button>
           {finder(railFind, 'Find a section…')}
@@ -291,6 +304,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
             </>
           )}
         </nav>
+        </div>
         <main className={'msx-main' + (fab ? ' has-fab' : '')} key={active}>{children}</main>
       </div>
       <nav className="msx-bottom" aria-label="Primary">
