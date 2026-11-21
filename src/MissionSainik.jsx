@@ -19,6 +19,7 @@ import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
+import TeacherPicker from './TeacherPicker'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -1055,6 +1056,21 @@ function MissionSainikInner({ currentUser }) {
     if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That person is already on the panel for this subject and role.' : error.message + ' (run migrations 20261210 and 20261215)'))
     audit(d.id ? 'panel_edit' : 'panel_add', d.subject_key, row); setPanelDraft(null); setMsg('✅ Panel saved'); loadPanel()
   }
+  // Pick-from-staff: add several teachers to one subject / role in one go. Skips anyone already there.
+  const addPanelMembers = async tokens => {
+    const d = panelDraft; if (!d || !tokens.length) return
+    const quota = d.question_quota === '' || d.question_quota == null ? null : Math.max(0, Math.floor(Number(d.question_quota)) || 0)
+    let added = 0, skipped = 0, failed = ''
+    for (const name of tokens) {
+      const row = { subject_key: d.subject_key, name, role: d.role, created_by: currentUser?.name || '', ...(quota !== null ? { question_quota: quota } : {}) }
+      const { error } = await supabase.from('mission_sainik_panel').insert(row)
+      if (!error) { added++; audit('panel_add', d.subject_key, row) }
+      else if (/duplicate|unique/i.test(error.message)) skipped++
+      else { failed = error.message + ' (run migrations 20261210 and 20261215)'; break }
+    }
+    if (failed) setMsg('❌ ' + failed)
+    else { setMsg(`✅ ${added} added${skipped ? ` · ${skipped} already on the panel` : ''}`); if (added) { setPanelDraft(null); loadPanel() } }
+  }
   const deletePanelMember = async m => {
     if (!window.confirm(`Remove ${fullName(m.name)} from the ${SUBJECTS.find(x => x.key === m.subject_key)?.label} panel? Their existing tasks stay.`)) return
     const { error } = await supabase.from('mission_sainik_panel').delete().eq('id', m.id)
@@ -1076,7 +1092,18 @@ function MissionSainikInner({ currentUser }) {
           <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: 'setter' })}>＋ Add member</button>
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
-        {panelDraft && (
+        {panelDraft && !panelDraft.id && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 10 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>1 · Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter</option><option value="verifier">Verifier</option><option value="assistant">Assistant</option></select></label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions each (optional)<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
+              <button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub, marginBottom: 6 }}>3 · Pick the teachers</div>
+            <TeacherPicker staff={staffDir} taken={panelRows.filter(r => r.subject_key === panelDraft.subject_key && r.role === panelDraft.role).map(r => r.name)} onAdd={addPanelMembers} addLabel="Add to panel" />
+          </div>)}
+        {panelDraft?.id && (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.4fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>

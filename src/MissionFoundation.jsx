@@ -17,6 +17,7 @@ import { QuestionMakerTab } from './MissionFoundationPaper'
 import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundationReport'
 import { printPremium } from './lib/printPremium'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
+import TeacherPicker from './TeacherPicker'
 import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
 import { getInstitute } from './systemSettings'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
@@ -84,7 +85,7 @@ export default function MissionFoundation({ currentUser }) {
   const [tests, setTests] = useState([])
   const [papers, setPapers] = useState([])
   const [panelRows, setPanelRows] = useState([])
-  const [staff, setStaff] = useState([])
+  const [staffDir, setStaffDir] = useState([])   // { name, designation, department } for the teacher picker
   const [loading, setLoading] = useState(true)
   const [setupNeeded, setSetupNeeded] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -118,7 +119,7 @@ export default function MissionFoundation({ currentUser }) {
       else flash('Could not load: ' + err.message, true)
     } else setSetupNeeded(false)
     setTests(t.data || []); setPapers(p.data || []); setPanelRows(pn.data || [])
-    setStaff([...new Set((st.data || []).map(s => String(s.name || '').trim()).filter(Boolean))])
+    setStaffDir(st.data || [])
     setLoading(false)
   }, [flash])
   useEffect(() => { load() }, [load])
@@ -275,7 +276,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
-              {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
+              {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
               {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
@@ -562,8 +563,8 @@ function MineTab({ papers, testById, me, isAdmin, allTeachers, savePaper, today 
 }
 
 // ─── Teachers (subject panel) ─────────────────────────────────────────────────
-function TeachersTab({ panel, panelFromDb, staff, tests, papersByTest, savePaper, isAdmin, me, load, flash }) {
-  const [add, setAdd] = useState({})
+function TeachersTab({ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }) {
+  const [picking, setPicking] = useState(null)   // subject whose teacher picker is open
   const [open, setOpen] = useState(null)      // subject whose test-by-test plan is open
   const [busy, setBusy] = useState('')
   const short = t => String(t?.test_no ?? '').padStart(2, '0')
@@ -586,15 +587,16 @@ function TeachersTab({ panel, panelFromDb, staff, tests, papersByTest, savePaper
     const { error } = await supabase.from(T_PANEL).upsert(rows, { onConflict: 'subject,teacher' })
     if (error) flash('Not saved: ' + error.message, true); else { flash('Teacher list saved.'); load() }
   }
-  const addTeacher = async subject => {
-    const name = cleanTeacherName(add[subject])
-    if (!name) return
-    if ((panel[subject] || []).some(t => cleanTeacherName(t).toLowerCase() === name.toLowerCase())) return flash(`${titled(name)} is already in ${subject}.`, true)
-    const base = panelFromDb ? [] : Object.entries(DEFAULT_PANEL).flatMap(([s, l]) => l.map(t => ({ subject: s, teacher: t, created_by: me })))
-    const { error } = await supabase.from(T_PANEL).upsert([...base, { subject, teacher: name, created_by: me }], { onConflict: 'subject,teacher' })
+  // Pick-from-staff: add several teachers to one subject at once (skips anyone already there).
+  const addTeachers = async (subject, tokens) => {
+    const have = new Set((panel[subject] || []).map(t => cleanTeacherName(t).toLowerCase()))
+    const fresh = [...new Set(tokens.map(cleanTeacherName).filter(Boolean))].filter(n => !have.has(n.toLowerCase()))
+    if (!fresh.length) return flash('They are already in ' + subject + '.', true)
+    const base = panelFromDb ? [] : Object.entries(DEFAULT_PANEL).flatMap(([sub, l]) => l.map(t => ({ subject: sub, teacher: t, created_by: me })))
+    const { error } = await supabase.from(T_PANEL).upsert([...base, ...fresh.map(teacher => ({ subject, teacher, created_by: me }))], { onConflict: 'subject,teacher' })
     if (error) return flash('Not added: ' + error.message, true)
-    setAdd({ ...add, [subject]: '' }); setOpen(subject)
-    flash(`${titled(name)} added. Give them tests below, or press "Share tests evenly".`)
+    setPicking(null); setOpen(subject)
+    flash(`${fresh.map(titled).join(', ')} added to ${subject}. Give them tests below, or press "Share tests evenly".`)
     load()
   }
   const remove = async (subject, teacher) => {
@@ -645,7 +647,6 @@ function TeachersTab({ panel, panelFromDb, staff, tests, papersByTest, savePaper
         <PremiumCard title="Teachers from the timetable" subtitle="These are the Udaan and Pragati teachers on the current timetable. Save the list to start editing it."
           right={isAdmin ? <Btn kind="gold" onClick={saveDefaults}>Save this list</Btn> : null} />
       )}
-      <datalist id="mf-staff">{staff.map(n => <option key={n} value={n} />)}</datalist>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
         {SUBJECTS.map(s => {
           const team = panel[s.label] || []
@@ -671,12 +672,12 @@ function TeachersTab({ panel, panelFromDb, staff, tests, papersByTest, savePaper
                     </div>
                   )
                 })}
-                {isAdmin && (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input className="px-input" list="mf-staff" aria-label={`Add teacher to ${s.label}`} placeholder="Add a teacher (first name)" value={add[s.label] || ''} onChange={e => setAdd({ ...add, [s.label]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addTeacher(s.label)} style={{ padding: '7px 10px' }} />
-                    <Btn kind="gold" onClick={() => addTeacher(s.label)}>Add</Btn>
-                  </div>
-                )}
+                {isAdmin && (picking === s.label
+                  ? <div style={{ display: 'grid', gap: 6 }}>
+                      <TeacherPicker staff={staffDir} taken={(panel[s.label] || []).map(cleanTeacherName)} onAdd={t => addTeachers(s.label, t)} addLabel="Add to panel" autoFocus />
+                      <Btn onClick={() => setPicking(null)}>Cancel</Btn>
+                    </div>
+                  : <Btn kind="gold" onClick={() => setPicking(s.label)}>＋ Pick teachers</Btn>)}
                 {isAdmin && rows.length > 0 && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <Btn onClick={() => setOpen(o => (o === s.label ? null : s.label))}>{open === s.label ? 'Hide tests' : '🗓 Test by test'}</Btn>
