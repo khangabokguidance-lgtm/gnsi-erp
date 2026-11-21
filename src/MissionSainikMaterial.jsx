@@ -12,6 +12,7 @@ import { supabase } from './supabase'
 import { fetchAll } from './lib/missionSainikQuestions'
 import { mathPlain } from './lib/mathText'
 import { questionsToNotes } from './lib/questionNotes'
+import { useSmartNotes } from './SmartNotes'
 
 const DRAFT_KEY = 'msm-draft:v1'
 const blank = { title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }
@@ -92,6 +93,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [popts, setPopts] = useState(() => ({ ...PRINT_DEFAULTS, ...load('msm-print', {}) }))
   const ta = useRef(null)
   const set = patch => setDraft(d => ({ ...d, ...patch }))
+  const smart = useSmartNotes({ body: draft.body, setBody: t => set({ body: t }), flash: (m, bad) => setMsg(bad ? '❌ ' + m : m) })
   useEffect(() => { if (mySubjects.length === 1 && !editMat && !draft.subject && !draft.title && !draft.body) setDraft(d => ({ ...d, subject: mySubjects[0] })) }, [mySubjects.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
   const instName = institute?.name || 'Guidance Navodaya & Sainik Institute'
   const me = useMemo(() => creatorOf(staff, userName), [staff, userName])
@@ -398,7 +400,8 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                     {Object.keys(TEMPLATES).map(n => <button key={n} type="button" style={chip(false)} onClick={() => useTemplate(n)}>{n}</button>)}
                     {heads.length > 1 && <select aria-label="Jump to heading" className="msm-in" style={{ ...inp, width: 'auto', padding: '5px 10px', fontSize: 12.5, marginLeft: 'auto', flexShrink: 0 }} value="" onChange={e => { if (e.target.value !== '') jumpTo(Number(e.target.value)) }}><option value="">↳ Jump to heading</option>{heads.map((h, i) => <option key={h.id} value={i}>{'\u00A0\u00A0'.repeat(h.level - 1)}{h.text}</option>)}</select>}
                   </div>
-                  <textarea ref={ta} className="msm-in" onKeyDown={onEditorKey} style={{ ...inp, minHeight: focus ? '62vh' : isMobile ? 280 : 400, resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: isMobile ? 16 : 13.5 }} aria-label="Study material text"
+                  {smart.bar}
+                  <textarea ref={ta} className="msm-in" onPaste={smart.onPaste} onKeyDown={onEditorKey} style={{ ...inp, minHeight: focus ? '62vh' : isMobile ? 280 : 400, resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: isMobile ? 16 : 13.5 }} aria-label="Study material text"
                     placeholder={'Type or paste the study material here.\n\n# Heading   ## Subheading   **bold**   - bullets   1. numbers\n> Formula: \\frac{3}{4} + \\frac{1}{4} = 1\n> Teacher: this line is left out of the student copy\n\nUse the buttons above for tables, boxes, maths and figures.'} value={draft.body} onChange={e => set({ body: e.target.value })} />
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginTop: 10 }}>
                     <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Attach a file (PDF, image, Word…)<input key={fileKey} className="msm-in" style={{ ...inp, marginTop: 4 }} type="file" aria-label="Choose a file" onChange={e => set({ file: e.target.files?.[0] || null })} /></label>
