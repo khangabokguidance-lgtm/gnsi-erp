@@ -29,6 +29,7 @@ import { officialSubjects, subjectFamily } from './officialSyllabus'
 import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
+import { printPremium } from './lib/printPremium'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -1199,14 +1200,18 @@ function MissionSainikInner({ currentUser }) {
   const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
   const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
   const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
-  // Print the whole syllabus plan: one row per test, one column per subject (landscape A4).
+  // Print the whole syllabus plan on the premium A4 frame (letterhead, logo, footer). It opens as a preview with a Print / Save as PDF button.
   const printSyllabusPlan = () => {
-    const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     const total = TESTS.length * SUBJECTS.length
     const filled = TESTS.reduce((n, t) => n + SUBJECTS.filter(x => syl[t.no + '|' + x.label]).length, 0)
-    const rows = TESTS.map(t => `<tr><td class="t"><b>${esc(t.id)}</b><br><small>${esc(fmtShort(t.date))}</small></td>${SUBJECTS.map(x => { const cs = splitChapters(syl[t.no + '|' + x.label]); return `<td>${cs.length ? cs.map(esc).join('<br>') : '<span class="e">—</span>'}</td>` }).join('')}</tr>`).join('')
-    w.document.write(`<!doctype html><title>Mission Sainik syllabus plan</title><style>@page{size:A4 landscape;margin:10mm}body{font:11px/1.35 Arial,sans-serif;color:#111;margin:0}h1{font-size:17px;margin:0}h2{font-size:11.5px;font-weight:400;color:#444;margin:2px 0 10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 6px;vertical-align:top;text-align:left}th{background:#eee;font-size:10.5px;text-transform:uppercase}tr{break-inside:avoid}td.t{white-space:nowrap;width:62px}small{color:#555}.e{color:#aaa}</style><h1>${esc(institute.name || 'GNSI')} · Mission Sainik syllabus plan</h1><h2>${filled} of ${total} chapters planned · printed ${esc(new Date().toLocaleDateString('en-GB'))}</h2><table><thead><tr><th>Test</th>${SUBJECTS.map(x => `<th>${esc(x.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>window.print()</script>`)
-    w.document.close()
+    const pct = total ? Math.round((filled / total) * 100) : 0
+    const rows = TESTS.map(t => `<tr><td class="l"><b>${esc(t.id)}</b><br><small>${esc(fmtShort(t.date))}</small></td>${SUBJECTS.map(x => { const cs = splitChapters(syl[t.no + '|' + x.label]); return `<td class="l">${cs.length ? cs.map(esc).join('<br>') : '<span style="color:#b42318">—</span>'}</td>` }).join('')}</tr>`).join('')
+    const perSubject = SUBJECTS.map(x => `<div class="kpi"><small>${esc(x.short)}</small><b>${TESTS.filter(t => syl[t.no + '|' + x.label]).length}/${TESTS.length}</b></div>`).join('')
+    printPremium(`<div class="title">Mission Sainik 2027 · Syllabus Plan</div><div class="sub">Chapter for each section of each Pre Mock Test · ${filled} of ${total} chapters planned (${pct}%)</div>
+      <div class="kpis" style="grid-template-columns:repeat(${SUBJECTS.length},1fr)">${perSubject}</div>
+      <table class="t" style="font-size:9px"><colgroup><col style="width:11%">${SUBJECTS.map(() => `<col style="width:${(89 / SUBJECTS.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th class="l">Test</th>${SUBJECTS.map(x => `<th class="l">${esc(x.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+      <div class="sig"><span>Prepared by</span><span>Academic Head</span><span>Principal</span></div>`,
+    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan' })
   }
   const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
   const runSylImport = async () => {
@@ -1476,7 +1481,7 @@ function MissionSainikInner({ currentUser }) {
                       style={{ padding: '9px 16px', borderRadius: 99, border: `1.5px solid ${sylPage === k ? PX.gold : PX.line}`, background: sylPage === k ? PX.goldBg : '#fff', color: sylPage === k ? PX.navy : PX.sub, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>))}
                 </div>
                 {sylPage === 'plan' && syllabusTab}
-                {sylPage === 'official' && <OfficialSyllabus isMobile={isMobile} />}
+                {sylPage === 'official' && <OfficialSyllabus isMobile={isMobile} institute={institute} />}
                 {sylPage === 'manual' && <SyllabusManual />}
               </>)}
             {tab === 'marks' && marksTab}
