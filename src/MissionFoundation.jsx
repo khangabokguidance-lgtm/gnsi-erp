@@ -5,6 +5,7 @@
 // who sets and who checks it, its progress (Pending → Submitted → Checked → Approved), marks and ranked results.
 // Tables: migration 20261216_mission_foundation.sql. Defaults and pure logic: missionFoundationData.js.
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNoPullToRefresh } from './lib/useNoPullToRefresh'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
@@ -82,6 +83,7 @@ const Btn = ({ kind = 'ghost', children, ...p }) => <button type="button" classN
 
 export default function MissionFoundation({ currentUser }) {
   const isMobile = useIsMobile()
+  useNoPullToRefresh()   // dragging down on a phone no longer reloads the page and loses unsaved work
   const isAdmin = isAdminRole(currentUser?.role)
   const [tab, setTab] = useState('home')
   const [tests, setTests] = useState([])

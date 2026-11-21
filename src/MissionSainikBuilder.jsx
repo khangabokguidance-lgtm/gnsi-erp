@@ -67,6 +67,18 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [testNo, setTestNo] = useState(startTest || 1)
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
+  // The pasted text is kept on this device per test and section, so a reload (pull-down on a phone, a dropped connection) loses nothing
+  const textKey = `msb-text:${series}:${testNo}:${sectionSel}`
+  useEffect(() => { try { setText(localStorage.getItem(textKey) || '') } catch { setText('') } }, [textKey])
+  useEffect(() => {
+    const t = setTimeout(() => { try { text ? localStorage.setItem(textKey, text) : localStorage.removeItem(textKey) } catch { /* storage unavailable */ } }, 500)
+    return () => clearTimeout(t)
+  }, [text, textKey])
+  useEffect(() => {   // warn before leaving with pasted questions that are not uploaded yet
+    if (!text.trim()) return undefined
+    const warn = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn)
+  }, [text])
   const [addMode, setAddMode] = useState(isMobile ? 'one' : 'cards')   // one (a question at a time, saved as you go) | cards | paste
   const [editorInView, setEditorInView] = useState(false)   // the floating "Add questions" button is hidden while the editor itself is on screen
   const [cards, setCards] = useState(() => [blankCard()])

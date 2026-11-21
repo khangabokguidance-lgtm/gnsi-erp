@@ -1,6 +1,7 @@
 // MissionSainikShell.jsx — Android-style app shell for the Mission Sainik module:
 // top app bar, bottom navigation (phones) / navigation rail (desktop), an "All tabs" bottom sheet, snackbar, FAB and confetti.
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNoPullToRefresh } from './lib/useNoPullToRefresh'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 
 const BOTTOM = [['overview', '🏠', 'Home'], ['mine', '✅', 'Tasks'], ['prebuilder', '🧱', 'Build'], ['insights', '💡', 'Insights']]
@@ -204,6 +205,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   const [disp, setDisp] = useState(false)
   const [prefs, setPrefs] = useState(() => ({ size: 'md', theme: 'light', comfort: 'normal', ...store.get('msx-prefs', {}) }))
   const setPref = patch => setPrefs(p => { const n = { ...p, ...patch }; store.set('msx-prefs', n); return n })
+  useNoPullToRefresh()   // dragging down on a phone no longer reloads the page and loses unsaved work
   // Eye-comfort themes tint the whole page (so dialogs and previews follow); removed again when leaving the module.
   useEffect(() => {
     const el = document.documentElement
