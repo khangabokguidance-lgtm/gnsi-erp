@@ -204,3 +204,9 @@ test('in narrow columns (3 columns or 2-up) 4-across options become 2 x 2', () =
   assert.ok(materialDocHtml({ title: 'T', body: mcq(['1', '2', '3', '4']) }, { nup: 2 }).includes('class="opts two"'))
   assert.ok(materialDocHtml({ title: 'T', body: mcq(['1', '2', '3', '4']) }, { columns: 2 }).includes('class="opts four"'))
 })
+
+test('questions all typed as "1." are numbered on, and bulleted options stay options', () => {
+  const html = renderMaterial('1. First?\n• A) 6\n• B) 7\n\n1. Second?\n- A) 1\n- B) 2\n\n1. Third?\nA) x\nB) y')
+  assert.deepEqual([...html.matchAll(/<b class="qn">(\d+)\./g)].map(m => m[1]), ['1', '2', '3'])
+  assert.ok(!/<ul>/.test(html))
+})

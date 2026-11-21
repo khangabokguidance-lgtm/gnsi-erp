@@ -36,7 +36,7 @@ export function renderMaterial(src, opts = {}) {
   const showTeacher = opts.teacher !== false
   let hc = 0
   const lines = String(src ?? '').replace(/\r/g, '').split('\n')
-  let html = '', para = [], list = null, quote = null, table = null, choices = null
+  let html = '', para = [], list = null, quote = null, table = null, choices = null, lastQ = null   // lastQ: number of the previous question under this heading
   const flushPara = () => { if (para.length) { html += `<p>${para.map(inline).join('<br>')}</p>`; para = [] } }
   const optCls = list => { const st = opts.optStyle || 'auto'; if (st !== 'auto') return st; const len = Math.max(...list.map(([, t]) => mathPlain(t).length)); return len <= 12 ? (opts.narrow ? 'two' : 'four') : len <= 32 ? 'two' : 'one' }
   const flushOpts = () => { if (choices) { html += `<div class="opts ${optCls(choices)}">${choices.map(([k, t]) => `<div class="op"><span class="ol">${k}</span><span>${inline(t)}</span></div>`).join('')}</div>`; choices = null } }
@@ -56,7 +56,7 @@ export function renderMaterial(src, opts = {}) {
     html += `<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${head.map((_, i) => `<td>${inline(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>`; table = null
   }
   const flushAll = () => { flushPara(); flushOpts(); flushList(); flushQuote(); flushTable() }
-  const isOpt = x => /^\(?([A-Da-d])[.)]\s+\S/.test(x)
+  const isOpt = x => /^(?:[-*•]\s*)?\(?([A-Da-d])[.)]\s+\S/.test(x)   // a bullet in front of an option ("• A) 6") still counts as an option
   const nextIsOpt = from => { for (let k = from; k < lines.length; k++) { const x = lines[k].trim(); if (!x) return false; if (parseFigureLine(x)) continue; return isOpt(x) } return false }
   for (let li = 0; li < lines.length; li++) {
     const raw = lines[li]
@@ -64,9 +64,10 @@ export function renderMaterial(src, opts = {}) {
     let m
     if (!t) { flushAll(); continue }
     // A numbered question that is followed by (a)(b)(c)(d) options: keep its number, stem and options together.
-    if ((m = t.match(/^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})[.)]\s+(.+)$/i)) && nextIsOpt(li + 1)) { flushAll(); html += `<p class="q"><b class="qn">${m[1]}.</b> ${inline(m[2])}</p>`; continue }
+    if ((m = t.match(/^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})[.)]\s+(.+)$/i)) && nextIsOpt(li + 1)) { flushAll(); let qn = Number(m[1]); if (lastQ !== null && qn <= lastQ) qn = lastQ + 1; lastQ = qn   // pasted lists often number every question "1.": count on instead
+      html += `<p class="q"><b class="qn">${qn}.</b> ${inline(m[2])}</p>`; continue }
     // Multiple-choice questions typed as plain text: "A) …" lines become an options grid, "Answer: …" a highlighted answer.
-    if ((m = t.match(/^\(?([A-Da-d])[.)]\s+(.*)$/))) {
+    if ((m = t.match(/^(?:[-*•]\s*)?\(?([A-Da-d])[.)]\s+(.*)$/))) {
       flushPara(); flushList(); flushQuote(); flushTable()
       if (!choices) { choices = []; if (html.endsWith('</p>')) { const i = html.lastIndexOf('<p'); if (i >= 0 && html.startsWith('<p>', i)) html = html.slice(0, i) + '<p class="q">' + html.slice(i + 3) } }
       choices.push([m[1].toUpperCase(), m[2]]); continue
@@ -75,7 +76,7 @@ export function renderMaterial(src, opts = {}) {
     if (choices) flushOpts()
     if ((m = parseFigureLine(t))) { flushAll(); html += `<figure><img src="${m.url}" alt=""${m.width ? ` style="max-width:${m.width}%"` : ''}>${m.caption ? `<figcaption>${escHtml(m.caption)}</figcaption>` : ''}</figure>`; continue }
     if (/^-{3,}$|^_{3,}$|^\*{3,}$/.test(t)) { flushAll(); html += '<hr>'; continue }
-    if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); html += `<h${m[1].length} id="h${++hc}">${inline(m[2])}</h${m[1].length}>`; continue }
+    if ((m = t.match(/^(#{1,3})\s+(.*)$/))) { flushAll(); lastQ = null; html += `<h${m[1].length} id="h${++hc}">${inline(m[2])}</h${m[1].length}>`; continue }
     if (t.startsWith('>')) { flushPara(); flushList(); flushTable(); (quote ||= []).push(t.replace(/^>\s?/, '')); continue }
     if (t.startsWith('|') && t.endsWith('|') && t.length > 2) { flushPara(); flushList(); flushQuote(); (table ||= []).push(t.slice(1, -1).split('|').map(c => c.trim())); continue }
     if ((m = t.match(/^(?:[-*•])\s+(.*)$/))) { flushPara(); flushQuote(); flushTable(); if (list?.t !== 'ul') { flushList(); list = { t: 'ul', items: [] } } list.items.push(m[1]); continue }
