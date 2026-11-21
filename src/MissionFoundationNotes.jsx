@@ -8,7 +8,7 @@ import { PremiumCard, PX } from './premiumUI'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { figureLine } from './lib/materialMarkup'
-import { renderMaterial, MATERIAL_CSS, wordCount } from './lib/materialMarkup'
+import { renderMaterial, MATERIAL_CSS, wordCount, materialDocHtml, FONTS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import { printPremium } from './lib/printPremium'
 import { getInstitute } from './systemSettings'
@@ -36,13 +36,29 @@ export function noteHtml(n, tests, by) {
   const meta = [n.subject || 'All subjects', test ? (test.title || 'Test ' + test.test_no) : '', by].filter(Boolean).join(' · ')
   return `<style>${MATH_CSS}${MATERIAL_CSS}</style><div class="title">${esc(n.title || 'Study material')}</div><div class="sub">${esc(meta)}</div><div class="md">${renderMaterial(n.body || '')}</div>`
 }
-export const printNote = (n, tests, by) => printPremium(noteHtml(n, tests, by), { title: n.title || 'Study material', institute: getInstitute(), docLabel: `${MISSION_NAME} · Study material`, official: true })
+// Page layout the teacher chose (kept on this device): columns, space saver and font. The default keeps the usual letterhead print.
+const LAYOUT = 'mfn-layout:v1'
+const DEFAULT_LAYOUT = { columns: 1, saver: false, font: 'serif' }
+export const loadLayout = () => { try { return { ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem(LAYOUT)) } } catch { return DEFAULT_LAYOUT } }
+const saveLayout = l => { try { localStorage.setItem(LAYOUT, JSON.stringify(l)) } catch { /* private mode */ } }
+const isDefaultLayout = l => l.columns === 1 && !l.saver && l.font === 'serif'
+export const printNote = (n, tests, by, layout = loadLayout()) => {
+  if (isDefaultLayout(layout)) return printPremium(noteHtml(n, tests, by), { title: n.title || 'Study material', institute: getInstitute(), docLabel: `${MISSION_NAME} · Study material`, official: true })
+  // 2 columns / space saver / another font: an A4 sheet with narrow margins, built like the Sainik study-material print
+  const test = (tests || []).find(t => t.id === n.test_id)
+  const w = window.open('', '_blank'); if (!w) return alert('Allow pop-ups to print.')
+  const doc = materialDocHtml({ title: n.title || 'Study material', body: n.body || '', subject: n.subject || '', test_no: test?.test_no || 0, uploaded_by: by || '' },
+    { institute: getInstitute()?.name, tagline: `${MISSION_NAME} · Study material`, paper: 'a4', columns: layout.columns, compact: layout.saver, size: layout.saver ? 11 : 13, margin: layout.saver ? 'narrow' : 'normal', header: layout.saver ? 'compact' : 'full', font: layout.font, auto: true }, MATH_CSS + MATERIAL_CSS)
+  w.document.write(doc); w.document.close()
+}
 
 export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
   const [d, setD] = useState(() => editing ? { ...blankNote, ...editing } : (load() || blankNote))
   const [busy, setBusy] = useState(false)
   const [scan, setScan] = useState(false)
   const [view, setView] = useState('write')   // phones show one pane at a time: write | page
+  const [layout, setLayoutState] = useState(loadLayout)
+  const setLayout = f => setLayoutState(l => { const n = typeof f === 'function' ? f(l) : f; saveLayout(n); return n })
   const ta = useRef(null)
   const set = patch => setD(x => ({ ...x, ...patch }))
 
@@ -86,7 +102,7 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
     <PremiumCard title={d.id ? 'Edit notes' : 'Write study material'} subtitle="Type the notes here — headings, lists, tables, formulas and pictures — and see the printed page beside them. Nothing to upload."
       right={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {d.id && <button type="button" className="px-btn ghost" onClick={() => { setD(blankNote); onSaved?.(true) }}>Cancel</button>}
-        <button type="button" className="px-btn ghost" disabled={!d.body.trim()} onClick={() => printNote(d, tests, me)}>🖨 Print</button>
+        <button type="button" className="px-btn ghost" disabled={!d.body.trim()} onClick={() => printNote(d, tests, me, layout)}>🖨 Print</button>
       </div>}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 12 }}>
         <label>Title<input className="px-input" style={field} value={d.title} onChange={e => set({ title: e.target.value })} placeholder="e.g. Fractions — chapter notes" /></label>
@@ -111,6 +127,13 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
 
       {smart.bar}
       <style>{`.mfn-panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}.mfn-seg{display:none}@media (max-width:760px){.mfn-panes{grid-template-columns:minmax(0,1fr)}.mfn-seg{display:flex}.mfn-panes[data-view="write"] .mfn-page{display:none}.mfn-panes[data-view="page"] .mfn-write{display:none}}${MATH_CSS}${MATERIAL_CSS}`}</style>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }} role="toolbar" aria-label="Page layout" data-ti-skip>
+        <b style={{ fontSize: 12.5 }}>A4 page</b>
+        <select aria-label="Columns" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
+        <select aria-label="Font" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.font} onChange={e => setLayout(l => ({ ...l, font: e.target.value }))}><option value="serif">Georgia</option><option value="times">Times</option><option value="sans">Arial</option><option value="narrow">Arial Narrow</option></select>
+        <button type="button" aria-pressed={layout.saver} style={{ ...tb, background: layout.saver ? '#f6efdc' : '#fff', borderColor: layout.saver ? '#b8923a' : PX.line }} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver }))}>{layout.saver ? '✓ ' : ''}Save space</button>
+        <button type="button" style={{ ...tb, background: '#fffaf0', borderColor: '#e8d9aa' }} title="A4, 2 columns, Arial, save space" onClick={() => setLayout({ columns: 2, saver: true, font: 'sans' })}>⚡ 2 columns · save space</button>
+      </div>
       <div className="mfn-seg" role="tablist" aria-label="Notes view" data-ti-skip style={{ gap: 6, marginBottom: 8 }}>
         {[['write', '✍ Write'], ['page', '📄 Printed page']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} style={{ ...tb, flex: 1, background: view === k ? '#e4ebf6' : '#fff', borderColor: view === k ? PX.navy : PX.line }}>{l}</button>)}
       </div>
@@ -123,7 +146,7 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         <div className="mfn-page" style={{ border: `1px solid ${PX.line}`, borderRadius: 12, background: '#fff', padding: 16, minHeight: 200, maxHeight: 520, overflow: 'auto' }}>
           {d.title && <div style={{ fontFamily: 'Georgia,serif', fontWeight: 700, fontSize: 18, color: '#132a4f', marginBottom: 2 }}>{d.title}</div>}
           <div style={{ fontSize: 12, color: PX.sub, marginBottom: 10 }}>{[d.subject || 'All subjects', MISSION_NAME].join(' · ')}</div>
-          {d.body.trim() ? <div className="md" dangerouslySetInnerHTML={{ __html: html }} /> : <div style={{ color: PX.sub, fontSize: 13.5 }}>The page appears here as you type.</div>}
+          {d.body.trim() ? <div className={'md' + (layout.saver ? ' compact' : '')} style={{ fontFamily: FONTS[layout.font] || FONTS.serif, fontSize: layout.saver ? 12 : undefined, columnCount: layout.columns, columnGap: layout.columns > 1 ? 22 : undefined, columnRule: layout.columns > 1 ? '1px solid #dde1ea' : undefined }} dangerouslySetInnerHTML={{ __html: html }} /> : <div style={{ color: PX.sub, fontSize: 13.5 }}>The page appears here as you type.</div>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
