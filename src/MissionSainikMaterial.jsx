@@ -6,6 +6,7 @@ import ScanFigure from './ScanFigure'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
+import { fitToPages } from './lib/materialFit'
 import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
@@ -530,6 +531,13 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
     if (best) upd(best.c)
     setFitting(false)
   }
+  const fitN = async n => {
+    setFitting(true); setNote('')
+    const r = await fitToPages(m, { ...o, nup: 1, landscape: false, paper: 'a4' }, n, CSS_ALL)
+    if (r) { upd({ ...r.step, nup: 1, landscape: false, paper: 'a4' }); setNote(r.fits ? `✅ Fits in ${r.pages} page${r.pages === 1 ? '' : 's'}.` : `⚠ Even the tightest layout needs ${r.pages} pages. Shorten the text or remove pictures to reach ${n}.`) }
+    else setNote('Could not measure the pages. Try again.')
+    setFitting(false)
+  }
   const chip = on => ({ padding: isMobile ? '9px 14px' : '6px 13px', borderRadius: 99, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: PX.ink2 })
   const Row = ({ label, children }) => <div style={{ margin: '12px 0 0' }}><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub, marginBottom: 6 }}>{label}</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{children}</div></div>
   const Opt = ({ k, v, l }) => <button type="button" aria-pressed={opts[k] === v} style={chip(opts[k] === v)} onClick={() => upd({ [k]: v })}>{l}</button>
@@ -558,6 +566,7 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'narrow', columns: 2, size: 12, compact: true, header: 'compact' })}>⚡ Save paper</button>
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'minimal', columns: 3, size: 10.5, compact: true, header: 'compact', inkSaver: true })}>📚 Ultra compact</button>
             <button type="button" style={{ ...chip(false), background: '#eef6ff', borderColor: '#9ec3f2' }} disabled={fitting} onClick={fit}>{fitting ? 'Fitting…' : '✨ Fit to fewest pages'}</button>
+            {[2, 3].map(n => <button key={n} type="button" style={{ ...chip(false), background: '#fff6dc', borderColor: '#e7d194' }} disabled={fitting} onClick={() => fitN(n)}>{fitting ? 'Fitting…' : `🎯 Fit in ${n} pages`}</button>)}
             <button type="button" style={{ ...chip(false), background: '#eaf7ef', borderColor: '#9bd3b0' }} disabled={fitting} onClick={classSet}>👥 Class set (student lines + answer sheet)</button>
             {note && <div role="status" style={{ flexBasis: '100%', fontSize: 12, color: '#8a5a00', background: '#fff7e6', border: '1px solid #f1d9a8', borderRadius: 10, padding: '6px 10px' }}>{note}</div>}
           </Row>

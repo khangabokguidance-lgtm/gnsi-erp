@@ -210,3 +210,8 @@ test('questions all typed as "1." are numbered on, and bulleted options stay opt
   assert.deepEqual([...html.matchAll(/<b class="qn">(\d+)\./g)].map(m => m[1]), ['1', '2', '3'])
   assert.ok(!/<ul>/.test(html))
 })
+
+test('print size and font are not overridden by the shared stylesheet', () => {
+  const html = materialDocHtml({ title: 'T', body: 'x' }, { size: 10, font: 'sans' }, '.md{font-size:14px;font-family:Georgia}')
+  assert.ok(html.lastIndexOf('.md{font-size:10px;font-family:Arial') > html.lastIndexOf('.md{font-size:14px'))
+})

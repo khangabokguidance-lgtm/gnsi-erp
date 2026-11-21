@@ -11,6 +11,7 @@ import { figureLine } from './lib/materialMarkup'
 import { renderMaterial, MATERIAL_CSS, wordCount, materialDocHtml, FONTS } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import { printPremium } from './lib/printPremium'
+import { fitToPages } from './lib/materialFit'
 import { getInstitute } from './systemSettings'
 import { MISSION_NAME, SUBJECTS } from './missionFoundationData'
 import ScanFigure from './ScanFigure'
@@ -41,14 +42,14 @@ const LAYOUT = 'mfn-layout:v1'
 const DEFAULT_LAYOUT = { columns: 1, saver: false, font: 'serif' }
 export const loadLayout = () => { try { return { ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem(LAYOUT)) } } catch { return DEFAULT_LAYOUT } }
 const saveLayout = l => { try { localStorage.setItem(LAYOUT, JSON.stringify(l)) } catch { /* private mode */ } }
-const isDefaultLayout = l => l.columns === 1 && !l.saver && l.font === 'serif'
+const isDefaultLayout = l => l.columns === 1 && !l.saver && l.font === 'serif' && !l.size
 export const printNote = (n, tests, by, layout = loadLayout()) => {
   if (isDefaultLayout(layout)) return printPremium(noteHtml(n, tests, by), { title: n.title || 'Study material', institute: getInstitute(), docLabel: `${MISSION_NAME} · Study material`, official: true })
   // 2 columns / space saver / another font: an A4 sheet with narrow margins, built like the Sainik study-material print
   const test = (tests || []).find(t => t.id === n.test_id)
   const w = window.open('', '_blank'); if (!w) return alert('Allow pop-ups to print.')
   const doc = materialDocHtml({ title: n.title || 'Study material', body: n.body || '', subject: n.subject || '', test_no: test?.test_no || 0, uploaded_by: by || '' },
-    { institute: getInstitute()?.name, tagline: `${MISSION_NAME} · Study material`, paper: 'a4', columns: layout.columns, compact: layout.saver, size: layout.saver ? 11 : 13, margin: layout.saver ? 'narrow' : 'normal', header: layout.saver ? 'compact' : 'full', font: layout.font, auto: true }, MATH_CSS + MATERIAL_CSS)
+    { institute: getInstitute()?.name, tagline: `${MISSION_NAME} · Study material`, paper: 'a4', columns: layout.columns, compact: layout.saver, size: layout.size || (layout.saver ? 11 : 13), margin: layout.margin || (layout.saver ? 'narrow' : 'normal'), header: layout.header || (layout.saver ? 'compact' : 'full'), smallFigs: !!layout.smallFigs, font: layout.font, auto: true }, MATH_CSS + MATERIAL_CSS)
   w.document.write(doc); w.document.close()
 }
 
@@ -69,6 +70,20 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
     return () => clearTimeout(t)
   }, [d, editing])
 
+  // "Fit in N pages": try layouts from the roomiest to the tightest (A4) until the printed notes take at most N pages
+  const [fitting, setFitting] = useState(false)
+  const fitIn = async n => {
+    if (!d.body.trim()) return flash('Write something first.', true)
+    setFitting(true)
+    const test = (tests || []).find(t => t.id === d.test_id)
+    const m = { title: d.title || 'Study material', body: d.body, subject: d.subject || '', test_no: test?.test_no || 0, uploaded_by: me || '' }
+    const r = await fitToPages(m, { institute: getInstitute()?.name, tagline: `${MISSION_NAME} · Study material`, paper: 'a4', font: layout.font }, n, MATH_CSS + MATERIAL_CSS)
+    setFitting(false)
+    if (!r) return flash('Could not measure the pages. Try again.', true)
+    setLayout(l => ({ ...l, columns: r.step.columns, saver: r.step.compact, size: r.step.size, margin: r.step.margin, header: r.step.header, smallFigs: !!r.step.smallFigs }))
+    if (r.fits) flash(`Fits in ${r.pages} page${r.pages === 1 ? '' : 's'}.`)
+    else flash(`Even the tightest layout needs ${r.pages} pages. Shorten the text or remove pictures to reach ${n}.`, true)
+  }
   const html = useMemo(() => renderMaterial(d.body || ''), [d.body])
   const smart = useSmartNotes({ body: d.body, setBody: t => set({ body: t }), flash })
 
@@ -131,8 +146,9 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         <b style={{ fontSize: 12.5 }}>A4 page</b>
         <select aria-label="Columns" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.columns} onChange={e => setLayout(l => ({ ...l, columns: Number(e.target.value) }))}><option value={1}>1 column</option><option value={2}>2 columns</option></select>
         <select aria-label="Font" className="px-input" style={{ width: 'auto', padding: '5px 8px', fontSize: 12.5 }} value={layout.font} onChange={e => setLayout(l => ({ ...l, font: e.target.value }))}><option value="serif">Georgia</option><option value="times">Times</option><option value="sans">Arial</option><option value="narrow">Arial Narrow</option></select>
-        <button type="button" aria-pressed={layout.saver} style={{ ...tb, background: layout.saver ? '#f6efdc' : '#fff', borderColor: layout.saver ? '#b8923a' : PX.line }} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver }))}>{layout.saver ? '✓ ' : ''}Save space</button>
+        <button type="button" aria-pressed={layout.saver} style={{ ...tb, background: layout.saver ? '#f6efdc' : '#fff', borderColor: layout.saver ? '#b8923a' : PX.line }} title="Tighter spacing and smaller text so more fits on a page" onClick={() => setLayout(l => ({ ...l, saver: !l.saver, size: undefined, margin: undefined, header: undefined, smallFigs: undefined }))}>{layout.saver ? '✓ ' : ''}Save space</button>
         <button type="button" style={{ ...tb, background: '#fffaf0', borderColor: '#e8d9aa' }} title="A4, 2 columns, Arial, save space" onClick={() => setLayout({ columns: 2, saver: true, font: 'sans' })}>⚡ 2 columns · save space</button>
+        {[2, 3].map(n => <button key={n} type="button" disabled={fitting} style={{ ...tb, background: '#fff6dc', borderColor: '#e7d194' }} title={`Pick the roomiest A4 layout that prints in ${n} pages`} onClick={() => fitIn(n)}>{fitting ? 'Fitting…' : `🎯 Fit in ${n} pages`}</button>)}
       </div>
       <div className="mfn-seg" role="tablist" aria-label="Notes view" data-ti-skip style={{ gap: 6, marginBottom: 8 }}>
         {[['write', '✍ Write'], ['page', '📄 Printed page']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => setView(k)} style={{ ...tb, flex: 1, background: view === k ? '#e4ebf6' : '#fff', borderColor: view === k ? PX.navy : PX.line }}>{l}</button>)}
@@ -146,7 +162,7 @@ export default function NotesStudio({ tests, me, editing, onSaved, flash }) {
         <div className="mfn-page" style={{ border: `1px solid ${PX.line}`, borderRadius: 12, background: '#fff', padding: 16, minHeight: 200, maxHeight: 520, overflow: 'auto' }}>
           {d.title && <div style={{ fontFamily: 'Georgia,serif', fontWeight: 700, fontSize: 18, color: '#132a4f', marginBottom: 2 }}>{d.title}</div>}
           <div style={{ fontSize: 12, color: PX.sub, marginBottom: 10 }}>{[d.subject || 'All subjects', MISSION_NAME].join(' · ')}</div>
-          {d.body.trim() ? <div className={'md' + (layout.saver ? ' compact' : '')} style={{ fontFamily: FONTS[layout.font] || FONTS.serif, fontSize: layout.saver ? 12 : undefined, columnCount: layout.columns, columnGap: layout.columns > 1 ? 22 : undefined, columnRule: layout.columns > 1 ? '1px solid #dde1ea' : undefined }} dangerouslySetInnerHTML={{ __html: html }} /> : <div style={{ color: PX.sub, fontSize: 13.5 }}>The page appears here as you type.</div>}
+          {d.body.trim() ? <div className={'md' + (layout.saver ? ' compact' : '')} style={{ fontFamily: FONTS[layout.font] || FONTS.serif, fontSize: layout.size || (layout.saver ? 12 : undefined), columnCount: layout.columns, columnGap: layout.columns > 1 ? 22 : undefined, columnRule: layout.columns > 1 ? '1px solid #dde1ea' : undefined }} dangerouslySetInnerHTML={{ __html: html }} /> : <div style={{ color: PX.sub, fontSize: 13.5 }}>The page appears here as you type.</div>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
