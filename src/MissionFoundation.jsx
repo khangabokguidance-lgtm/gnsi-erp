@@ -662,6 +662,8 @@ function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers,
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {setter && p.status === 'Pending' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Submitted', ...((made[p.test_id + '|' + p.subject]?.topics || []).length ? { syllabus: made[p.test_id + '|' + p.subject].topics.join('; ') } : {}) })}>Submit for checking</Btn>}
+          {setter && p.status === 'Submitted' && <Btn onClick={() => savePaper(p.id, { status: 'Pending' })}>Take back to Pending</Btn>}
+          {checker && p.status === 'Checked' && <Btn onClick={() => savePaper(p.id, { status: 'Submitted' })}>Undo check</Btn>}
           {checker && p.status === 'Submitted' && <><Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Checked' })}>Mark checked</Btn><Btn onClick={() => savePaper(p.id, { status: 'Pending' })}>Send back to setter</Btn></>}
           {isAdmin && p.status === 'Checked' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Approved' })}>Approve</Btn>}
         </div>
