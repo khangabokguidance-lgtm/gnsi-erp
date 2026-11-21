@@ -193,7 +193,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
       {adding && section && (
         <PremiumCard title={`Section ${section.letter} · ${adding}`} subtitle={`Numbering continues from Q${section.start + section.items.length}. ${Math.max(0, section.wanted - section.items.length)} more needed.`}
           right={<Btn onClick={() => setAdding(null)}>Close</Btn>}>
-          <MultiQuestionAdder key={`${testId}:${adding}`} draftKey={`mf-draft:${testId}:${adding}`} cards={cards} setCards={setCards}
+          <MultiQuestionAdder noExplanation key={`${testId}:${adding}`} draftKey={`mf-draft:${testId}:${adding}`} cards={cards} setCards={setCards}
             remaining={Math.max(0, section.wanted - section.items.length)} startNo={section.start + section.items.length}
             title={`Section ${section.letter}: ${adding}`} existing={section.items.map(q => q.question)} isMobile={isMobile} />
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
@@ -246,7 +246,6 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
               <option value={1}>1</option><option value={2}>2</option></select></label>
             <label>Text size <select className="px-input" style={{ width: 'auto' }} value={opt.size} onChange={e => setOpt({ ...opt, size: Number(e.target.value) })}>
               {[11, 12, 13, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
-            <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={opt.explanations} onChange={e => setOpt({ ...opt, explanations: e.target.checked })} /> Explanations in answer key</label>
           </div>
           <details style={{ marginBottom: 10 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Instructions on the paper</summary>

@@ -58,11 +58,10 @@ export default function MissionSainikQuickAdd({ chapters = [], count = 0, need =
           {chapters.map(ch => <button key={ch} type="button" aria-pressed={topic === ch} style={{ ...chip(topic === ch), background: topic === ch ? '#7c3aed' : '#fff', borderColor: topic === ch ? '#7c3aed' : '#d9ccf5', color: topic === ch ? '#fff' : '#4c1d95' }} onClick={() => setTopic(topic === ch ? '' : ch)}>{ch}</button>)}
         </div>)}
 
-      <button type="button" onClick={() => setMore(m => !m)} style={{ alignSelf: 'start', border: 0, background: 'transparent', color: PX.navy, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit' }}>{more ? '▾ Hide' : '▸ Add'} explanation and topic</button>
+      <button type="button" onClick={() => setMore(m => !m)} style={{ alignSelf: 'start', border: 0, background: 'transparent', color: PX.navy, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit' }}>{more ? '▾ Hide' : '▸ Add'} topic</button>
       {more && (
         <div style={{ display: 'grid', gap: 8 }}>
           <input aria-label="Topic" list="msb-chapters" placeholder="Topic (e.g. Fractions)" value={topic} onChange={e => setTopic(e.target.value)} style={box} />
-          <textarea rows={2} aria-label="Explanation" placeholder="Explanation (shown in the answer key)" value={f.exp} onChange={e => set({ exp: e.target.value })} style={{ ...box, resize: 'vertical' }} />
         </div>)}
 
       {err && <div role="alert" style={{ padding: '9px 12px', borderRadius: 12, background: '#fdecea', color: PX.bad, fontWeight: 700, fontSize: 13.5 }}>{err}</div>}
