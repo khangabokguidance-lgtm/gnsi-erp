@@ -91,12 +91,22 @@ test('nextVerifier keeps a hand-picked verifier and follows the rule otherwise',
   assert.equal(nextVerifier({ setter: 'A', verifier: '' }, 'gk', 'A', settersList), 'Arunkumar')
 })
 
-test('practiceGive hands over Pending sets that are not already theirs, lowest id first', () => {
-  const rows = [row(1, 0, 'A'), row(2, 0, 'B'), row(3, 0, 'B', 'Submitted'), row(4, 0, 'C')]
-  assert.deepEqual(practiceGive(rows, 'Z', 2).changes, [{ id: 1, setter: 'Z' }, { id: 2, setter: 'Z' }])
-  assert.match(practiceGive(rows, 'Z', 4).error, /Only 3 more/)
-  assert.match(practiceGive([row(1, 0, 'Z'), row(2, 0, 'Z')], 'Z', 1).error, /already has 2/)
-  assert.deepEqual(practiceGive(rows, 'A', 1).changes, [])
+test('practiceGive creates the missing practice sets for a teacher, spreading over sets nobody covers yet', () => {
+  const rows = [{ id: 1, setter: 'A', test_no: 0 }, { id: 2, setter: 'B', test_no: 0 }]            // legacy rows: both stand for set 1 (via setNoOf)
+  const opts = { sets: 3, setNoOf: () => 1 }
+  assert.deepEqual(practiceGive(rows, 'Z', 2, opts).create, [{ test_no: 2 }, { test_no: 3 }])        // sets 2 and 3 are uncovered, set 1 has two teachers
+  assert.deepEqual(practiceGive(rows, 'Z', 0, opts).create, [])
+  assert.deepEqual(practiceGive(rows, 'Z', 3, opts).create.map(c => c.test_no), [2, 3, 1])
+  assert.match(practiceGive(rows, 'Z', 4, opts).error, /only 3 practice sets/)
+  assert.match(practiceGive(rows, 'Z', -1, opts).error, /0 or a whole/)
+})
+
+test('practiceGive counts the sets a teacher already has and refuses to reduce', () => {
+  const rows = [{ id: 1, setter: 'Z', test_no: 2 }, { id: 2, setter: 'A', test_no: 1 }]
+  const opts = { sets: 3, setNoOf: r => r.test_no }
+  assert.deepEqual(practiceGive(rows, 'Z', 2, opts).create, [{ test_no: 3 }])                       // has set 2; adds the uncovered set 3, not set 1 (A has it)
+  assert.deepEqual(practiceGive(rows, 'Z', 1, opts).create, [])
+  assert.match(practiceGive([{ id: 1, setter: 'Z', test_no: 1 }, { id: 2, setter: 'Z', test_no: 2 }], 'Z', 1, opts).error, /already has 2/)
 })
 
 import { coSettersOf, settersOfRow, joinCoSetters, toggleCoSetter, settersLabel } from '../src/lib/missionSainikAllot.js'

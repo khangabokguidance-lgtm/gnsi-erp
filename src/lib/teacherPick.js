@@ -5,15 +5,37 @@ const HONORIFIC = /^(sir|madam|miss|mr|mrs|ms|dr|smt|shri)\.?\s+/i
 // "Sir Sumanta Singh" → "Sumanta"
 export const firstName = full => String(full || '').replace(/\s+/g, ' ').trim().replace(HONORIFIC, '').split(' ')[0] || ''
 
+// Words that follow a given name and are not a name themselves ("Sunder Singh", "Ibemhal Devi").
+const NAME_SUFFIX = new Set(['singh', 'devi', 'kumar', 'kumari', 'sharma', 'das', 'chanu', 'begum', 'khan', 'meitei'])
+const words = full => String(full || '').replace(/\s+/g, ' ').trim().replace(HONORIFIC, '').split(' ').filter(Boolean)
+
+// The one-word name the Missions store for a person. Many staff write the FAMILY name first ("Khundrakpam Sunder Singh", "Laishram Bronson Singh"),
+// so the first word is not who they are called. Rules:
+//   1. "<family> <given> Singh/Devi/…"  → the word just before the Singh / Devi / Kumar … ending (Sunder, Bronson);
+//   2. otherwise, if the first word starts several staff names it is a family name → the second word;
+//   3. otherwise the first word (Kabiraj, Sandhya).
+// firstCounts: lower-case first word → how many staff start with it.
+export function givenName(full, firstCounts = {}) {
+  const w = words(full)
+  if (!w.length) return ''
+  const core = w.filter(x => !NAME_SUFFIX.has(x.toLowerCase().replace(/\./g, '')))
+  if (core.length <= 1) return core[0] || w[0]
+  if (w.length > core.length) return core[core.length - 1]                       // rule 1
+  return (firstCounts[core[0].toLowerCase()] || 0) > 1 ? core[1] : core[0]       // rules 2 and 3
+}
+
 // staff: [{ name, designation, department }] → unique people, sorted, each with the token the Mission would store.
 export function staffOptions(staff) {
-  const seen = new Set(), out = []
+  const seen = new Set(), list = []
   ;(staff || []).forEach(s => {
     const name = String(s?.name || '').replace(/\s+/g, ' ').trim()
     if (!name || seen.has(name.toLowerCase())) return
     seen.add(name.toLowerCase())
-    out.push({ name, pick: firstName(name), designation: s.designation || '', department: s.department || '' })
+    list.push({ name, designation: s.designation || '', department: s.department || '' })
   })
+  const firstCounts = {}
+  list.forEach(o => { const f = (words(o.name)[0] || '').toLowerCase(); if (f) firstCounts[f] = (firstCounts[f] || 0) + 1 })
+  const out = list.map(o => ({ ...o, pick: givenName(o.name, firstCounts) }))
   out.sort((a, b) => a.pick.localeCompare(b.pick) || a.name.localeCompare(b.name))   // by first name, ignoring "Sir" / "Madam"
   // Two people with the same first name cannot be told apart by the stored token: flag them so the screen can warn.
   const count = {}
