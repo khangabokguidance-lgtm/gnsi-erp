@@ -94,7 +94,7 @@ export function PaperPreview({ cards, startNo, title, showAns }) {
 }
 
 export const ADDER_CSS = ''
-export default function MultiQuestionAdder({ cards, setCards, remaining, startNo = 1, title = 'Section', existing = [], draftKey, isMobile, chapters = [] }) {
+export default function MultiQuestionAdder({ cards, setCards, remaining, startNo = 1, title = 'Section', existing = [], draftKey, isMobile, chapters = [], noExplanation = false }) {
   const refs = useRef({})
   const [view, setView] = useState(isMobile ? 'edit' : 'split')   // edit | split | preview
   const [showAns, setShowAns] = useState(true)
@@ -360,7 +360,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                       <button type="button" aria-label="Remove question" title="Remove" onClick={() => remove(c.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15 }}>🗑</button>
                     </div>
                     {!c.collapsed && (
-                      <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                      <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 10 }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="Question type">
                           {TYPES.map(([k, l]) => <button key={k} type="button" aria-pressed={c.type === k} onClick={() => upd(c.id, { type: k, ...(k === 'normal' ? { image: '' } : {}), ...(k === 'venn' && !c.topic ? { topic: 'Venn Diagram' } : {}) })}
                             style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${c.type === k ? PX.navy : PX.line}`, background: c.type === k ? '#e4ebf6' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
@@ -405,6 +405,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                           </div>
                         )}
                         <textarea ref={el => { refs.current[c.id] = el }} rows={2} style={{ ...field, resize: 'vertical', fontSize: isMobile ? 16 : 15 }} placeholder="Type the question — or paste a whole question with its options (A–D) and I'll split it" aria-label={`Question ${i + 1}`} value={c.question} onChange={e => upd(c.id, { question: e.target.value })} onPaste={e => onQuestionPaste(e, c.id)} onFocus={track(c.id, 'question')} />
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: c.ans ? PX.ok : '#b45309' }}>{c.ans ? `✓ Correct answer: ${c.ans}` : '👇 Tap the letter of the correct answer'}</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,230px),1fr))', gap: 8 }}>
                           {['A', 'B', 'C', 'D'].map(k => {
                             const on = c.ans === k
@@ -429,12 +430,12 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub }}>Level</span>
                           {['Easy', 'Medium', 'Hard'].map(l => <button key={l} type="button" aria-pressed={c.level === l} onClick={() => upd(c.id, { level: c.level === l ? '' : l })}
                             style={{ padding: '5px 11px', borderRadius: 99, border: `1.5px solid ${c.level === l ? PX.gold : PX.line}`, background: c.level === l ? PX.goldBg : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>)}
-                          <button type="button" onClick={() => upd(c.id, { showMore: !c.showMore })} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: PX.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{c.showMore ? '− Less' : '＋ Explanation, topic'}</button>
+                          <button type="button" onClick={() => upd(c.id, { showMore: !c.showMore })} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: PX.navy, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{c.showMore ? '− Less' : noExplanation ? '＋ Topic' : '＋ Explanation, topic'}</button>
                         </div>
                         {c.showMore && (
                           <div style={{ display: 'grid', gap: 8 }}>
                             <input style={field} list="mqa-chapters" placeholder="Topic (e.g. Fractions)" aria-label="Topic" value={c.topic} onChange={e => upd(c.id, { topic: e.target.value })} />
-                            <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} onFocus={track(c.id, 'exp')} />
+                            {!noExplanation && <textarea rows={2} style={{ ...field, resize: 'vertical' }} placeholder="Explanation (shown in the answer key)" aria-label="Explanation" value={c.exp} onChange={e => upd(c.id, { exp: e.target.value })} onFocus={track(c.id, 'exp')} />}
                           </div>
                         )}
                       </div>

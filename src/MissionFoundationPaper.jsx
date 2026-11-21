@@ -193,7 +193,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
       {adding && section && (
         <PremiumCard title={`Section ${section.letter} · ${adding}`} subtitle={`Numbering continues from Q${section.start + section.items.length}. ${Math.max(0, section.wanted - section.items.length)} more needed.`}
           right={<Btn onClick={() => setAdding(null)}>Close</Btn>}>
-          <MultiQuestionAdder key={`${testId}:${adding}`} draftKey={`mf-draft:${testId}:${adding}`} cards={cards} setCards={setCards}
+          <MultiQuestionAdder noExplanation key={`${testId}:${adding}`} draftKey={`mf-draft:${testId}:${adding}`} cards={cards} setCards={setCards}
             remaining={Math.max(0, section.wanted - section.items.length)} startNo={section.start + section.items.length}
             title={`Section ${section.letter}: ${adding}`} existing={section.items.map(q => q.question)} isMobile={isMobile} />
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
