@@ -5,7 +5,7 @@ import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, PersonCell, Avatar } from './MissionSainikUI'
 import { fullName } from './missionSainikData'
-import { pickVerifier, setterLoad, shareEvenly, copyPrevious } from './lib/missionSainikAllot'
+import { pickVerifier, setterLoad, shareEvenly, copyPrevious, currentCounts, assignByCounts } from './lib/missionSainikAllot'
 import { staffOptions } from './lib/teacherPick'
 
 const TABLE = 'mission_sainik_tasks'
@@ -15,6 +15,8 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
   const firstUpcoming = (TESTS.find(t => t.date >= today) || TESTS[0])?.no || 1
   const [no, setNo] = useState(firstUpcoming)
   const [busy, setBusy] = useState(false)
+  const [cSub, setCSub] = useState(SUBJECTS[0].label)   // subject shown in "Number of tests per teacher"
+  const [edits, setEdits] = useState({})              // { subjectLabel: { name: count } } typed but not applied yet
   const test = TESTS.find(t => t.no === no) || TESTS[0]
   const bySubject = useMemo(() => Object.fromEntries(SUBJECTS.map(s => [s.label, tests.filter(r => r.subject === s.label)])), [tests, SUBJECTS])
   const cell = s => tests.find(r => r.test_no === no && r.subject === s.label)
@@ -60,6 +62,40 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
     bulk(changes, s.label)
   }
   const copyPrev = () => bulk(copyPrevious(tests, no), `${test.id} from previous`)
+
+  // ── Number of tests per teacher ──
+  const cSubject = SUBJECTS.find(x => x.label === cSub) || SUBJECTS[0]
+  const cRows = bySubject[cSubject.label] || []
+  const cBase = currentCounts(cRows, panelSetters(cSubject.key))
+  const cTargets = { ...cBase, ...(edits[cSubject.label] || {}) }
+  const cTotal = Object.values(cTargets).reduce((n, v) => n + (Number(v) || 0), 0)
+  const cDirty = Object.keys(cTargets).some(n => (cTargets[n] || 0) !== (cBase[n] || 0))
+  const handedIn = n => cRows.filter(r => r.setter === n && r.status !== 'Pending').length
+  const setTarget = t => setEdits(e => ({ ...e, [cSubject.label]: t }))
+  // + / − keep the total fixed: raising one teacher takes a test from whoever has the most (never below what they handed in);
+  // lowering one gives a test to whoever has the fewest.
+  const bump = (name, delta) => {
+    const t = { ...cTargets }, names = Object.keys(t)
+    if (delta > 0) {
+      const donors = names.filter(n => n !== name && t[n] > handedIn(n)).sort((a, b) => t[b] - t[a])
+      if (!donors.length) return setMsg('❌ No one else has a test to give up.')
+      t[donors[0]]--; t[name]++
+    } else {
+      if (t[name] <= handedIn(name)) return setMsg(`❌ ${fullName(name)} has already handed in ${handedIn(name)} test(s).`)
+      const takers = names.filter(n => n !== name).sort((a, b) => t[a] - t[b])
+      if (!takers.length) return setMsg('❌ Add another teacher to give the test to.')
+      t[name]--; t[takers[0]]++
+    }
+    setTarget(t)
+  }
+  const addToCounts = name => { if (name) setTarget({ ...cTargets, [name]: cTargets[name] || 0 }) }
+  const applyCounts = () => {
+    const r = assignByCounts(cRows, cTargets)
+    if (r.error) return setMsg('❌ ' + r.error)
+    if (!r.changes.length) return setMsg('Nothing to change.')
+    if (!window.confirm(`Change ${r.changes.length} ${cSubject.label} paper${r.changes.length === 1 ? '' : 's'} to match these numbers? Tests already submitted keep their setter.`)) return
+    bulk(r.changes, `${cSubject.label} counts`).then(() => setEdits(e => ({ ...e, [cSubject.label]: undefined })))
+  }
 
   const loadBy = setterLoad(tests)
   const staffTokens = useMemo(() => staffOptions(staffDir).map(o => o.pick), [staffDir])
@@ -117,8 +153,8 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
                 <select className="px-input" aria-label={`Verifier for ${test.id} ${s.label}`} value={r.verifier || ''} disabled={busy || !isAdmin} onChange={e => chooseVerifier(r, e.target.value)} style={{ width: '100%' }}>
                   <option value="">No verifier</option>
                   {r.verifier && !panel.includes(r.verifier) && !others.includes(r.verifier) && opt(r.verifier)}
-                  {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (also the setter)' : ''}</option>)}</optgroup>}
-                  {others.length > 0 && <optgroup label="Other staff">{others.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (also the setter)' : ''}</option>)}</optgroup>}
+                  {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (setter)' : ''}</option>)}</optgroup>}
+                  {others.length > 0 && <optgroup label="Other staff">{others.map(n => <option key={n} value={n}>{fullName(n)}{n === r.setter ? ' (setter)' : ''}</option>)}</optgroup>}
                 </select>
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -127,6 +163,40 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
               </div>
             </div>)
         })}
+      </div>
+      <div style={{ marginTop: 18, padding: 14, borderRadius: 16, border: `1px solid ${PX.line}`, background: '#fcfbf7' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div><b style={{ color: PX.navy, fontSize: 15 }}>Number of tests per teacher</b><div style={{ fontSize: 12.5, color: PX.sub }}>{isAdmin ? 'Raise or lower how many of the 20 tests each teacher sets. The others adjust automatically; press Apply to save.' : 'How many tests each teacher sets. Only an admin can change these.'}</div></div>
+        </div>
+        <div role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {SUBJECTS.map(x => <button key={x.key} type="button" role="tab" aria-selected={x.label === cSubject.label} onClick={() => setCSub(x.label)} style={{ padding: '6px 12px', borderRadius: 99, border: `1.5px solid ${x.label === cSubject.label ? PX.navy : PX.line}`, background: x.label === cSubject.label ? PX.navy : '#fff', color: x.label === cSubject.label ? '#fff' : PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{x.short}</button>)}
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {Object.keys(cTargets).sort((a, b) => cTargets[b] - cTargets[a] || a.localeCompare(b)).map(n => {
+            const v = cTargets[n] || 0, was = cBase[n] || 0
+            return (
+              <div key={n} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : 'minmax(160px,1fr) 150px minmax(100px,1.2fr) 150px', gap: 10, alignItems: 'center', padding: '6px 10px', borderRadius: 12, background: '#fff', border: `1px solid ${v !== was ? PX.gold : '#eef1f6'}` }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><Avatar name={n} size={26} /><b style={{ color: PX.ink, fontSize: 13.5 }}>{fullName(n)}</b></span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifySelf: isMobile ? 'end' : 'start' }}>
+                  <button type="button" className="px-hbtn" aria-label={`One fewer test for ${n}`} disabled={!isAdmin || busy} onClick={() => bump(n, -1)} style={{ width: 34, height: 34, padding: 0, fontSize: 18 }}>−</button>
+                  <b aria-live="polite" style={{ minWidth: 32, textAlign: 'center', fontSize: 17, color: PX.navy }}>{v}</b>
+                  <button type="button" className="px-hbtn" aria-label={`One more test for ${n}`} disabled={!isAdmin || busy} onClick={() => bump(n, 1)} style={{ width: 34, height: 34, padding: 0, fontSize: 18 }}>＋</button>
+                </span>
+                {!isMobile && <span style={{ height: 7, borderRadius: 4, background: '#eef1f6', overflow: 'hidden' }}><span style={{ display: 'block', width: `${cRows.length ? (v / cRows.length) * 100 : 0}%`, height: '100%', background: v !== was ? 'linear-gradient(90deg,#b8923a,#e0b95a)' : '#9fb3d6' }} /></span>}
+                {!isMobile && <span style={{ fontSize: 12, color: PX.sub }}>{v !== was ? <b style={{ color: '#8a6118' }}>was {was}</b> : handedIn(n) ? `${handedIn(n)} handed in` : ''}</span>}
+              </div>)
+          })}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+          <Pill tone={cTotal === cRows.length ? 'ok' : 'warn'}>{cTotal} of {cRows.length} tests</Pill>
+          {isAdmin && (() => {
+            const extra = [...new Set([...peopleAll, ...staffTokens])].filter(n => n && !(n in cTargets)).sort()
+            return extra.length > 0 && <select className="px-input" aria-label="Add another teacher" value="" onChange={e => addToCounts(e.target.value)} style={{ width: 'auto', maxWidth: 220 }}><option value="">＋ Add another teacher…</option>{extra.map(n => <option key={n} value={n}>{fullName(n)}</option>)}</select>
+          })()}
+          <span style={{ flex: 1 }} />
+          {isAdmin && cDirty && <button type="button" className="px-btn ghost" disabled={busy} onClick={() => setEdits(e => ({ ...e, [cSubject.label]: undefined }))}>Reset</button>}
+          {isAdmin && <button type="button" className="px-btn gold" disabled={busy || !cDirty || cTotal !== cRows.length} onClick={applyCounts}>{busy ? 'Saving…' : 'Apply'}</button>}
+        </div>
       </div>
       <div style={{ marginTop: 16 }}>
         <div style={{ ...head, marginBottom: 8 }}>Workload · tests each teacher sets</div>
