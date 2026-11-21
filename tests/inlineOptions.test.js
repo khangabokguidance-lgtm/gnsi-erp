@@ -15,3 +15,11 @@ test('one option per line still works', () => {
   const { questions } = parseQuestions('Q1. Pick\nA) one\nB) two\nC) three\nD) four\nAns: B')
   assert.equal(questions[0].option_d, 'four')
 })
+
+import { applyAnswerKey } from '../src/lib/questionPaste.js'
+test('a separate answer key fills in Ans lines by question number', () => {
+  const body = '1. A?\n(a) x (b) y\n(c) z (d) w\n2. B?\nA) 1\nB) 2\nC) 3\nD) 4'
+  const { questions, errors } = parseQuestions(applyAnswerKey(body + '\nAnswer key: 1-C 2-B'))
+  assert.deepEqual(errors, [])
+  assert.deepEqual(questions.map(q => q.answer), ['C', 'B'])
+})
