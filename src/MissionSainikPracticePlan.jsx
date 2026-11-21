@@ -26,17 +26,18 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, pho
   const head = { fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub }
   const tone = TONES[SUBJECTS.findIndex(x => x.key === sub.key) % TONES.length]
 
-  const run = async (fn, okMsg, what, mustChange = false) => {
+  const run = async (fn, okMsg, what, mustChange = false, added = false) => {
     setBusy(true)
     const { error, data } = await fn()
     setBusy(false)
     // A delete that matched no row is not a success (the database may have refused it quietly), so say so instead of "removed".
     if (!error && mustChange && Array.isArray(data) && !data.length) { reload(); return setMsg('❌ Could not remove: the database did not delete it (no permission, or it is already gone). Refreshed the list.') }
-    if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That teacher already has this set.' : error.message))
+    if (error) { reload(); return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That teacher already has this set. The list was refreshed.' : error.message)) }
+    if (added && Array.isArray(data) && !data.length) { reload(); return setMsg('That teacher already has this set. The list was refreshed.') }
     audit('practice_plan', `${sub.key}:${what}`, null); setMsg('✅ ' + okMsg); reload()
   }
-  const addTeacher = (set, name) => name && run(() => supabase.from(TABLE).insert({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: questionsPer(sub.key), status: 'Pending', ...stamp() }),
-    `${fullName(name)} added to Set ${set.no}`, `set${set.no}+${name}`)
+  const addTeacher = (set, name) => name && run(() => supabase.from(TABLE).upsert(rowFor(set, name), { onConflict: 'kind,test_no,subject,setter', ignoreDuplicates: true }).select('id'),
+    `${fullName(name)} added to Set ${set.no}`, `set${set.no}+${name}`, false, true)
   const removeTeacher = (set, r) => {
     if (r.status !== 'Pending') return setMsg(`❌ ${fullName(r.setter)} has already handed in Set ${set.no}; it cannot be removed.`)
     if (!window.confirm(`Remove ${fullName(r.setter)} from ${sub.label} Set ${set.no}? Questions they uploaded stay in the bank.`)) return
@@ -45,12 +46,12 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, pho
   // Each practice teacher sets their OWN full set of questions for the same practice test, so students get different versions.
   const missingFor = set => practiceSetters(sub.key).filter(n => !set.rows.some(r => r.setter === n))
   const rowFor = (set, name) => ({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: questionsPer(sub.key), status: 'Pending', ...stamp() })
-  const addEveryone = set => { const miss = missingFor(set); if (miss.length) run(() => supabase.from(TABLE).insert(miss.map(n => rowFor(set, n))), `${miss.length} teacher${miss.length === 1 ? '' : 's'} added to Set ${set.no}`, `set${set.no}+all`) }
+  const addEveryone = set => { const miss = missingFor(set); if (miss.length) run(() => supabase.from(TABLE).upsert(miss.map(n => rowFor(set, n)), { onConflict: 'kind,test_no,subject,setter', ignoreDuplicates: true }).select('id'), `${miss.length} teacher${miss.length === 1 ? '' : 's'} added to Set ${set.no}`, `set${set.no}+all`, false, true) }
   const addEveryoneEverywhere = () => {
     const rowsNew = groups.flatMap(g => missingFor(g).map(n => rowFor(g, n)))
     if (!rowsNew.length) return setMsg('Every practice teacher already sets every set.')
     if (!window.confirm(`Give every practice teacher of ${sub.label} their own set of questions in all ${groups.length} sets? ${rowsNew.length} task${rowsNew.length === 1 ? '' : 's'} will be added.`)) return
-    run(() => supabase.from(TABLE).insert(rowsNew), `${rowsNew.length} practice task${rowsNew.length === 1 ? '' : 's'} added`, 'all-sets')
+    run(() => supabase.from(TABLE).upsert(rowsNew, { onConflict: 'kind,test_no,subject,setter', ignoreDuplicates: true }).select('id'), `${rowsNew.length} practice task${rowsNew.length === 1 ? '' : 's'} added`, 'all-sets', false, true)
   }
   const setVerifier = (set, verifier) => set.rows.length && run(() => supabase.from(TABLE).update({ verifier: verifier || null, ...stamp() }).in('id', set.rows.map(r => r.id)), `Verifier for Set ${set.no} saved`, `set${set.no}:verifier`)
 
