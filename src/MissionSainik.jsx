@@ -1244,7 +1244,7 @@ function MissionSainikInner({ currentUser }) {
     <>
       <PremiumCard title={panelView === 'pre' ? 'Question Setting Panel · Pre Mock' : 'Practice Setting Panel'} subtitle={panelView === 'pre' ? 'Teachers who set the Pre Mock tests. Until you add members here, the panel from the notice is used.' : 'Teachers who set the Practice question bank, and who verify it. This panel is separate from the Pre Mock panel.'}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>
+          {isRealAdmin && <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>}
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
         <div role="tablist" aria-label="Panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: panelDraft ? 12 : 8 }}>
