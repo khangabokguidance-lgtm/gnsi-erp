@@ -151,8 +151,13 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 .etb select,.etb input[type=color]{height:32px;border:1px solid #d8c88d;border-radius:8px;background:#fff;font-family:inherit;font-size:12.5px;padding:0 6px}
 .etb input[type=color]{width:34px;padding:2px;cursor:pointer}
 .etb .sep{width:1px;height:22px;background:#e3d49c;margin:0 4px}
+.etb .ehint{flex-basis:100%;font:600 12px Inter,Arial,sans-serif;color:#6b5a2a;padding:0 2px 2px}
+.etb .danger{color:#b42318;border-color:#f0b8b2}
+#emore{display:contents}#emore[hidden]{display:none}
 .etb label{display:flex;align-items:center;gap:4px;font-weight:700}
 .editing .fsz{outline:2px dashed #b8923a;outline-offset:8px;cursor:text}
+.pbk{break-after:page;page-break-after:always;border-top:2px dashed #b8923a;margin:10px 0;height:0}
+@media print{.pbk{border:0}}
 .editing .fsz td,.editing .fsz th{outline:1px dotted rgba(184,146,58,.5)}
 /* Text size picker: scales only the report content, not the letterhead */
 .fsz{zoom:var(--fs,1)}
@@ -177,19 +182,32 @@ const FONT_SIZES = [[0.7, 'Very small 70%'], [0.8, 'Small 80%'], [0.9, '90%'], [
 const EDIT_FONTS = [['', 'Font'], ["'Inter',Arial,sans-serif", 'Inter'], ['Arial,Helvetica,sans-serif', 'Arial'], ["Georgia,'Times New Roman',serif", 'Georgia'], ["'Times New Roman',Times,serif", 'Times New Roman'], ["'Courier New',monospace", 'Courier'], ["'Noto Sans Meetei Mayek',sans-serif", 'Meetei Mayek']]
 const EDIT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32]
 const EDIT_BAR = `<div class="etb" id="etb" hidden role="toolbar" aria-label="Edit the report">
-  <button type="button" data-c="undo" title="Undo (Ctrl+Z)">↶</button><button type="button" data-c="redo" title="Redo (Ctrl+Y)">↷</button><span class="sep"></span>
+  <div class="ehint">Click on any text to change it. Use the buttons to move or delete a whole question. “Undo change” takes back a delete or move.</div>
+  <button type="button" data-c="undo" title="Undo typing (Ctrl+Z)">↶ Undo</button><button type="button" data-c="redo" title="Redo (Ctrl+Y)">↷ Redo</button><span class="sep"></span>
   <select id="efont" aria-label="Font">${EDIT_FONTS.map(([v, l]) => `<option value="${v.replace(/"/g, '&quot;')}">${l}</option>`).join('')}</select>
   <select id="esize" aria-label="Font size of the selected text"><option value="">Size</option>${EDIT_SIZES.map(n => `<option value="${n}">${n}</option>`).join('')}</select><span class="sep"></span>
-  <button type="button" data-c="bold" title="Bold (Ctrl+B)"><b>B</b></button><button type="button" data-c="italic" title="Italic (Ctrl+I)"><i>I</i></button><button type="button" data-c="underline" title="Underline (Ctrl+U)"><u>U</u></button><button type="button" data-c="strikeThrough" title="Strikethrough"><s>S</s></button>
+  <button type="button" data-c="bold" title="Bold (Ctrl+B)"><b>B</b></button><button type="button" data-c="italic" title="Italic (Ctrl+I)"><i>I</i></button><button type="button" data-c="underline" title="Underline (Ctrl+U)"><u>U</u></button>
   <label title="Text colour">A<input type="color" id="ecolor" value="#0f2d5e" aria-label="Text colour"></label><label title="Highlight">🖍<input type="color" id="ehi" value="#fff2a8" aria-label="Highlight colour"></label><span class="sep"></span>
   <button type="button" data-c="justifyLeft" title="Align left">⇤</button><button type="button" data-c="justifyCenter" title="Centre">↔</button><button type="button" data-c="justifyRight" title="Align right">⇥</button><button type="button" data-c="insertUnorderedList" title="Bullets">• ≡</button><button type="button" data-c="insertOrderedList" title="Numbers">1.≡</button><span class="sep"></span>
-  <button type="button" data-t="rowAfter" title="Add a row below the cell you clicked">＋ Row</button><button type="button" data-t="rowDel" title="Delete the row of the cell you clicked">− Row</button><button type="button" data-t="colAfter" title="Add a column to the right">＋ Col</button><button type="button" data-t="colDel" title="Delete the column">− Col</button><span class="sep"></span>
-  <button type="button" data-c="removeFormat" title="Clear formatting of the selection">Tx</button><button type="button" id="ereset" title="Undo ALL edits and go back to the original">↺ Reset</button>
+  <button type="button" data-b="up" title="Move this question or paragraph up">⬆ Move up</button><button type="button" data-b="down" title="Move this question or paragraph down">⬇ Move down</button><button type="button" data-b="del" class="danger" title="Delete this whole question (with its options) or paragraph">🗑 Delete</button><button type="button" id="eundo" title="Take back the last delete, move or insert">↩ Undo change</button><span class="sep"></span>
+  <button type="button" id="emoreb" aria-expanded="false" title="Show more tools">More tools ▾</button><button type="button" id="ereset" title="Undo ALL edits and go back to the original">↺ Reset</button>
+  <span id="emore" hidden>
+    <span class="sep"></span>
+    <select id="ehead" aria-label="Paragraph style"><option value="">Style</option><option value="P">Normal</option><option value="H1">Heading 1</option><option value="H2">Heading 2</option><option value="H3">Heading 3</option></select>
+    <select id="eline" aria-label="Line spacing of this block"><option value="">Spacing</option><option value="1.1">Tight</option><option value="1.4">Normal</option><option value="1.8">Roomy</option><option value="2.2">Double</option></select>
+    <button type="button" data-c="strikeThrough" title="Strikethrough"><s>S</s></button><button type="button" data-c="superscript" title="Superscript (x²)">x<sup>2</sup></button><button type="button" data-c="subscript" title="Subscript (H₂O)">x<sub>2</sub></button>
+    <button type="button" data-c="justifyFull" title="Justify">☰</button><button type="button" data-c="outdent" title="Decrease indent">⇤¶</button><button type="button" data-c="indent" title="Increase indent">¶⇥</button><button type="button" data-c="removeFormat" title="Clear formatting of the selection">Tx</button><span class="sep"></span>
+    <button type="button" data-b="dup" title="Copy this question or paragraph below itself">⧉ Copy</button><button type="button" id="efind" title="Find and replace">🔎 Replace</button><span class="sep"></span>
+    <button type="button" data-i="table" title="Insert a table">▦ Table</button><button type="button" data-i="image" title="Insert a picture from your computer">🖼 Picture</button><button type="button" data-i="link" title="Link the selected text">🔗 Link</button><button type="button" data-i="hr" title="Horizontal line">― Line</button><button type="button" data-i="pagebreak" title="Start a new page here">⤓ Page break</button><span class="sep"></span>
+    <button type="button" data-t="rowAfter" title="Add a row below the cell you clicked">＋ Row</button><button type="button" data-t="rowDel" title="Delete the row of the cell you clicked">− Row</button><button type="button" data-t="colAfter" title="Add a column to the right">＋ Col</button><button type="button" data-t="colDel" title="Delete the column">− Col</button><button type="button" data-t="tblDel" title="Delete the whole table you clicked in">🗑 Table</button>
+  </span>
 </div>`
 const EDIT_SCRIPT = `<script>(function(){
 var root=document.querySelector('.fsz'),etb=document.getElementById('etb'),btn=document.getElementById('editbtn'),orig=root.innerHTML,on=false,saved=null,cell=null;
 function setEdit(v){on=v;root.contentEditable=v?'true':'false';document.body.classList.toggle('editing',v);etb.hidden=!v;btn.textContent=v?'✓ Done editing':'✏️ Edit text';if(v)root.focus()}
 btn.onclick=function(){setEdit(!on)};
+var snaps=[];function snap(){snaps.push(root.innerHTML);if(snaps.length>30)snaps.shift()}
+function unsnap(){if(!snaps.length){alert('Nothing to take back.');return}root.innerHTML=snaps.pop();saved=null;cell=null}
 function keep(){var s=getSelection();if(on&&s.rangeCount&&root.contains(s.anchorNode))saved=s.getRangeAt(0).cloneRange()}
 document.addEventListener('selectionchange',keep);root.addEventListener('mouseup',keep);root.addEventListener('keyup',keep);
 root.addEventListener('click',function(e){cell=e.target.closest&&e.target.closest('td,th')});
@@ -197,12 +215,31 @@ root.addEventListener('keyup',function(){var s=getSelection();if(s.anchorNode&&s
 function restore(){var s=getSelection();if(s.rangeCount&&root.contains(s.anchorNode)&&!s.isCollapsed)keep();if(!saved||!saved.commonAncestorContainer.isConnected||!root.contains(saved.commonAncestorContainer))return;root.focus();s.removeAllRanges();s.addRange(saved)}
 function ex(c,v){restore();document.execCommand('styleWithCSS',false,true);document.execCommand(c,false,v==null?null:v)}
 etb.addEventListener('mousedown',function(e){var t=e.target.tagName;if(t!=='SELECT'&&t!=='INPUT'&&t!=='OPTION')e.preventDefault()});
-etb.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.dataset.c)ex(b.dataset.c);else if(b.dataset.t)tbl(b.dataset.t);else if(b.id==='ereset'&&confirm('Undo all edits and go back to the original?')){root.innerHTML=orig;saved=null;cell=null}});
+etb.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;if(b.dataset.c)ex(b.dataset.c);else if(b.dataset.t)tbl(b.dataset.t);else if(b.dataset.i)ins(b.dataset.i);else if(b.dataset.b)blk(b.dataset.b);else if(b.id==='efind')finder();else if(b.id==='eundo')unsnap();else if(b.id==='emoreb'){var mo=document.getElementById('emore');mo.hidden=!mo.hidden;b.textContent=mo.hidden?'More tools ▾':'Fewer tools ▴';b.setAttribute('aria-expanded',String(!mo.hidden))}else if(b.id==='ereset'&&confirm('Undo all edits and go back to the original?')){root.innerHTML=orig;saved=null;cell=null}});
 document.getElementById('efont').onchange=function(){if(this.value)ex('fontName',this.value);this.selectedIndex=0};
 document.getElementById('esize').onchange=function(){var px=this.value;this.selectedIndex=0;if(!px)return;restore();document.execCommand('styleWithCSS',false,false);document.execCommand('fontSize',false,'7');root.querySelectorAll('font[size="7"]').forEach(function(f){var sp=document.createElement('span');sp.style.fontSize=px+'px';sp.innerHTML=f.innerHTML;f.replaceWith(sp)})};
 document.getElementById('ecolor').oninput=function(){ex('foreColor',this.value)};
 document.getElementById('ehi').oninput=function(){ex('hiliteColor',this.value)};
+
+document.getElementById('ehead').onchange=function(){var v=this.value;this.selectedIndex=0;if(v)ex('formatBlock',v)};
+document.getElementById('eline').onchange=function(){var v=this.value;this.selectedIndex=0;var it=items();if(!it){alert('Click inside the text first.');return}it.forEach(function(x){x.style.lineHeight=v})};
+function grp(c){if(!c)return null;if(c.matches('.opts,.ans')){var p=c.previousElementSibling;while(p&&p.matches('.opts,.ans'))p=p.previousElementSibling;if(p&&p.matches('p.q'))c=p}var a=[c];if(c.matches('p.q')){var x=c.nextElementSibling;while(x&&x.matches('.opts,.ans')){a.push(x);x=x.nextElementSibling}}return a}
+function items(){var n=null,s=getSelection();if(s.anchorNode&&root.contains(s.anchorNode))n=s.anchorNode;else if(saved&&root.contains(saved.commonAncestorContainer))n=saved.commonAncestorContainer;if(n&&n.nodeType!==1)n=n.parentElement;if(!n||n===root||!root.contains(n))return null;var c=n.closest('.q,p,.opts,.ans,li,h1,h2,h3,h4,table,figure,.box,.ps,.sh');if(!c||c===root||!root.contains(c))return null;return grp(c)}
+function blk(a){var it=items();if(!it){alert('Click inside a question or paragraph first.');return}if(a!=='del')snap();var first=it[0],last=it[it.length-1],ref,i;
+ if(a==='del'){if(confirm(it[0].tagName==='TABLE'?'Delete this whole table?':'Delete this question or paragraph? You can take it back with Undo change.')){snap();it.forEach(function(x){x.remove()})}}
+ else if(a==='dup'){ref=last;for(i=0;i<it.length;i++){var cl=it[i].cloneNode(true);ref.after(cl);ref=cl}}
+ else if(a==='up'){var pv=first.previousElementSibling;if(!pv)return;var pg=grp(pv);pg[0].before.apply(pg[0],it)}
+ else if(a==='down'){var nx=last.nextElementSibling;if(!nx)return;var ng=grp(nx);ref=ng[ng.length-1];for(i=it.length-1;i>=0;i--)ref.after(it[i])}}
+function ins(k){restore();snap();
+ if(k==='table'){var v=prompt('Rows x columns (for example 3x4)','3x3');if(!v)return;var m=v.toLowerCase().split('x'),r=parseInt(m[0],10),c=parseInt(m[1],10);if(!(r>0&&c>0&&r<=40&&c<=12)){alert('Use numbers like 3x4.');return}var h='<table style="border-collapse:collapse;width:100%;margin:6px 0">',i,j;for(i=0;i<r;i++){h+='<tr>';for(j=0;j<c;j++)h+='<'+(i?'td':'th')+' style="border:1px solid #888;padding:5px 8px">&nbsp;</'+(i?'td':'th')+'>';h+='</tr>'}h+='</table><p></p>';document.execCommand('insertHTML',false,h)}
+ else if(k==='image'){var f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=function(){var fl=f.files&&f.files[0];if(!fl)return;if(fl.size>4*1024*1024){alert('Choose a picture under 4 MB.');return}var rd=new FileReader();rd.onload=function(){restore();document.execCommand('insertHTML',false,'<img src="'+rd.result+'" style="max-width:100%;height:auto;margin:4px 0" alt="">')};rd.readAsDataURL(fl)};f.click()}
+ else if(k==='link'){var u=prompt('Link address (https://…)','https://');if(u&&/^https?:/i.test(u))ex('createLink',u);else if(u)alert('The link must start with http:// or https://')}
+ else if(k==='hr')ex('insertHorizontalRule')
+ else if(k==='pagebreak')document.execCommand('insertHTML',false,'<div class="pbk" contenteditable="false"></div><p></p>')}
+function finder(){var a=prompt('Find this text:');if(!a)return;var b=prompt('Replace with (leave empty to delete it):','');if(b===null)return;snap();var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),n,cnt=0,list=[];while((n=w.nextNode()))list.push(n);list.forEach(function(t){if(t.nodeValue.indexOf(a)>=0){cnt+=t.nodeValue.split(a).length-1;t.nodeValue=t.nodeValue.split(a).join(b)}});alert(cnt?cnt+' replaced.':'Not found.')}
 function tbl(a){if(!cell||!root.contains(cell)){alert('Click inside a table cell first.');return}var tr=cell.parentElement,idx=cell.cellIndex,t=cell.closest('table');
+ if(a==='tblDel'){if(confirm('Delete this whole table?')){snap();t.remove();cell=null}return}
+ if(a!=='tblDel')snap();
  if(a==='rowAfter'){var nr=tr.cloneNode(true);nr.querySelectorAll('td,th').forEach(function(c){c.innerHTML='&nbsp;'});tr.after(nr)}
  else if(a==='rowDel'){if(t.rows.length>1){var nx=tr.nextElementSibling||tr.previousElementSibling;tr.remove();cell=nx?nx.cells[Math.min(idx,nx.cells.length-1)]:null}}
  else if(a==='colAfter'){Array.prototype.forEach.call(t.rows,function(r){var src=r.cells[Math.min(idx,r.cells.length-1)],n=src.cloneNode(false);n.innerHTML='&nbsp;';src.after(n)});fit(t)}
