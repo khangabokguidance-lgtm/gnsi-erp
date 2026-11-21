@@ -44,8 +44,8 @@ export function Avatar({ name, size = 34, staff = true, photoName }) {
   const [open, setOpen] = useState(false)
   const url = staff && !broken ? findStaffPhoto(photoName || name) : null
   const [a, b] = hue(name)
+  const px = phone ? Math.min(Math.round(size * 1.45), 76) : size      // photos AND initials grow on a phone, so rows stay aligned
   if (url) {
-    const px = phone ? Math.min(Math.round(size * 1.45), 76) : size
     const big = size >= 24                                   // tiny chips are not tappable
     return (
       <>
@@ -58,7 +58,7 @@ export function Avatar({ name, size = 34, staff = true, photoName }) {
     )
   }
   return (
-    <span aria-hidden="true" style={{ width: size, height: size, borderRadius: '50%', flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: size * 0.38, letterSpacing: '.02em',
+    <span aria-hidden="true" style={{ width: px, height: px, borderRadius: '50%', flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: px * 0.38, letterSpacing: '.02em',
       background: `linear-gradient(135deg, ${a}, ${b})`, boxShadow: '0 2px 6px rgba(19,42,79,.22), inset 0 0 0 2px rgba(255,255,255,.35)' }}>{initials(name)}</span>
   )
 }

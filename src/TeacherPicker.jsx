@@ -51,7 +51,7 @@ export default function TeacherPicker({ staff, taken = [], onAdd, busy = false, 
             <button key={o.name} type="button" role="option" aria-selected={on} disabled={o.taken || (!on && sel.length >= max)} onClick={() => toggle(o)}
               style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '8px 10px', borderRadius: 10, border: 0, fontFamily: 'inherit', cursor: o.taken ? 'default' : 'pointer', background: on ? (PX.goldBg || '#fff6dc') : 'transparent', opacity: o.taken ? 0.5 : 1 }}>
               <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 6, border: `1.5px solid ${on ? PX.gold : '#c9c2ae'}`, background: on ? PX.gold : '#fff', color: '#fff', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>{on ? '✓' : ''}</span>
-              <Avatar name={o.name} size={34} />
+              <Avatar name={o.name} size={48} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <b style={{ display: 'block', fontSize: 14, color: PX.ink }}>{o.name}</b>
                 <small style={{ color: PX.sub, fontSize: 12 }}>{[o.designation, o.department].filter(Boolean).join(' · ') || 'Staff'}{o.taken ? ' · already added' : ` · saved as “${o.pick}”`}{o.shared && !o.taken ? ' (another person has this name too)' : ''}</small>
