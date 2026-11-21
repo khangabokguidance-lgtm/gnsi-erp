@@ -16,7 +16,7 @@ function Ring({ pct, size = 112, stroke = 12, children }) {
   )
 }
 
-export default function MissionSainikHome({ upcoming = [], announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile }) {
+export default function MissionSainikHome({ upcoming = [], announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile, flow }) {
   const hour = new Date().getHours()
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = String(name || '').replace(/^(sir|miss|mr|mrs)\s+/i, '').split(' ')[0] || 'Teacher'
@@ -65,6 +65,8 @@ export default function MissionSainikHome({ upcoming = [], announcement, name, s
           <div style={{ padding: '10px 4px 2px', fontSize: 14, color: PX.ink, fontWeight: 600 }}>🎉 You're all caught up. Check Insights or help a colleague verify.</div>
         )}
       </div>
+
+      {flow}
 
       {upcoming.length > 0 && (
         <div style={card}>

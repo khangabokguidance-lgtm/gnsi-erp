@@ -18,6 +18,7 @@ import { PremiumStyles, PremiumCard, PX } from './premiumUI'
 import MissionSainikShell from './MissionSainikShell'
 import { NAV_GROUPS } from './lib/missionSainikNav'
 import MissionSainikHome from './MissionSainikHome'
+import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -1419,6 +1420,13 @@ function MissionSainikInner({ currentUser }) {
     examLabel: daysToExam > 0 ? daysToExam + 'd' : daysToExam === 0 ? 'today' : 'held',
     nextTest: nextTest ? nextTest.id.replace('PMT-', '') : 'Done', inLabel: `${submitted}/${total || seedCount}`, approved, overdue,
   }
+  // Progress for the mission-flow tracker (Home) and the Back / Next bar.
+  const flowProgress = {
+    plan: { done: TESTS.reduce((n, t) => n + SUBJECTS.filter(x => syl[t.no + '|' + x.label]).length, 0), total: TESTS.length * SUBJECTS.length },
+    assign: { done: rows.filter(r => r.setter).length, total: rows.length },
+    set: { done: approved, total },
+    marks: { done: new Set(marks.map(r => r.test_no)).size, total: TESTS.length },
+  }
   const upcoming = TESTS.filter(t => t.date >= today).slice(0, 3).map(t => {
     const r = tests.filter(x => x.test_no === t.no); const done = r.filter(x => x.status !== 'Pending').length
     return { id: t.id, date: fmtShort(t.date), day: dayName(t.date), days: dayDiff(today, t.date), done, total: r.length || 6, drafts: fmtShort(t.drafts) }
@@ -1453,7 +1461,7 @@ function MissionSainikInner({ currentUser }) {
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
-            {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} />{Overview()}</>}
+            {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
               currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
@@ -1479,6 +1487,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'material' && materialTab}
             {tab === 'panel' && Panel()}
             {tab === 'admin' && isRealAdmin && AdminPanel()}
+            <FlowNav tab={tab} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} progress={flowProgress} />
           </>
         )}
       </MissionSainikShell>
