@@ -31,3 +31,30 @@ test('contributors counts uploads, choices and what is used per teacher', () => 
   assert.deepEqual(c.map(x => [x.name, x.n, x.chosen]), [['A', 3, 2], ['B', 3, 0]])
   assert.equal(c.reduce((n, x) => n + x.used, 0), 4)
 })
+
+import { flavours, flavourItems, flavourStatus } from '../src/lib/missionSainikPick.js'
+
+const mk = (by, n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i, uploaded_by: by }))
+
+test('practice flavours: one entry per teacher in upload order, with a version letter and completeness', () => {
+  const list = [...mk('A', 3, 1), ...mk('B', 2, 10), ...mk('A', 1, 20)]       // A's questions are not contiguous
+  const f = flavours(list, 3)
+  assert.deepEqual(f.map(x => [x.by, x.count, x.complete, x.letter]), [['A', 4, true, 'A'], ['B', 2, false, 'B']])
+  assert.deepEqual(flavours([], 3), [])
+})
+
+test('flavourItems: version A is the first teacher, B the second; wraps; prefers complete sets; one teacher = first q', () => {
+  const list = [...mk('A', 4, 1), ...mk('B', 4, 10), ...mk('C', 1, 20)]
+  assert.deepEqual(flavourItems(list, 3, 0).map(x => x.id), [1, 2, 3])
+  assert.deepEqual(flavourItems(list, 3, 1).map(x => x.id), [10, 11, 12])
+  assert.deepEqual(flavourItems(list, 3, 2).map(x => x.id), [1, 2, 3])          // C is incomplete, so only A and B are versions: wraps back to A
+  assert.deepEqual(flavourItems(mk('A', 5, 1), 3, 1).map(x => x.id), [1, 2, 3])  // single teacher
+  assert.deepEqual(flavourItems(mk('A', 2, 1), 3, 0).map(x => x.id), [1, 2])     // nobody complete: show what exists
+  assert.deepEqual(flavourItems([], 3, 0), [])
+})
+
+test('flavourStatus: ok only when every teacher has a full set', () => {
+  assert.equal(flavourStatus([], 3), 'none')
+  assert.equal(flavourStatus([...mk('A', 3, 1), ...mk('B', 3, 10)], 3), 'ok')
+  assert.equal(flavourStatus([...mk('A', 3, 1), ...mk('B', 1, 10)], 3), 'part')
+})
