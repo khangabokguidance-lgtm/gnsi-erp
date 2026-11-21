@@ -21,6 +21,7 @@ import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
 import MissionSainikSetterPlan from './MissionSainikSetterPlan'
+import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -149,7 +150,7 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
             {sel.kind === 'test' ? `PMT-${String(sel.test_no).padStart(2, '0')} · ` : 'Practice · '}{sel.subject}
           </div>
           <div style={{ fontSize: 13, color: PX.sub, margin: '4px 0 12px' }}>
-            Setter {fullName(sel.setter)}{sel.verifier ? ` · verifier ${fullName(sel.verifier)}` : ''} · due {fmt(dueFor(sel))}
+            {settersOfRow(sel).length > 1 ? 'Setters' : 'Setter'} {settersLabel(sel, fullName)}{sel.verifier ? ` · verifier ${fullName(sel.verifier)}` : ''} · due {fmt(dueFor(sel))}
             {sel.kind === 'test' && ` · test on ${fmtShort(TESTS[sel.test_no - 1].date)}`}
           </div>
           {chapter && <div style={{ fontSize: 13, fontWeight: 700, color: PX.navy, marginBottom: 10 }}>📘 Chapter: {chapter}</div>}
@@ -319,14 +320,15 @@ function MissionSainikInner({ currentUser }) {
   }, [])
 
   const isMe = name => nameMatches(currentUser?.name, name)
+  const setsIt = r => settersOfRow(r).some(isMe)   // the main setter or a co-setter
   // Tasks tab: if nothing is waiting on me when the data first loads, open on my tasks (or everyone's) instead of an empty list.
   const taskViewAuto = useRef(false)
   useEffect(() => {
     if (taskViewAuto.current || !rows.length) return
     taskViewAuto.current = true
-    const needs = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length
+    const needs = rows.filter(r => (setsIt(r) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')).length
     if (needs) return
-    setTaskView(rows.some(r => isMe(r.setter) || isMe(r.verifier)) ? 'mine' : 'all')
+    setTaskView(rows.some(r => setsIt(r) || isMe(r.verifier)) ? 'mine' : 'all')
   }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadedAt = useRef(Date.now())
@@ -413,7 +415,7 @@ function MissionSainikInner({ currentUser }) {
     if (isAdmin) return STATUS_FLOW.filter(x => x !== s)
     if (!canEdit) return []
     const out = []
-    if (isMe(task.setter)) { if (s === 'Pending') out.push('Submitted'); if (s === 'Submitted') out.push('Pending') }
+    if (setsIt(task)) { if (s === 'Pending') out.push('Submitted'); if (s === 'Submitted') out.push('Pending') }
     if (task.verifier && isMe(task.verifier)) { if (s === 'Submitted') out.push('Verified'); if (s === 'Verified') out.push('Submitted') }
     return out
   }
@@ -472,7 +474,7 @@ function MissionSainikInner({ currentUser }) {
   const exportCsv = () => {
     const head = ['Kind', 'Test', 'Subject', 'Setter', 'Verifier', 'Questions', 'Due', 'Status', 'Submitted on', 'Verified on', 'Approved on', 'Remarks']
     const lines = [head.join(',')].concat(rows.map(r => [
-      r.kind, r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice', r.subject, fullName(r.setter), r.verifier ? fullName(r.verifier) : '',
+      r.kind, r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice', r.subject, settersLabel(r, fullName), r.verifier ? fullName(r.verifier) : '',
       r.question_count ?? '', dueFor(r), r.status, r.submitted_on || '', r.verified_on || '', r.approved_on || '', r.remarks || '',
     ].map(v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }).join(',')))
     const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
@@ -822,7 +824,7 @@ function MissionSainikInner({ currentUser }) {
     const has = nameMatches
     const daysAgo = iso => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null)
     const stats = peopleAll.map(n => {
-      const mine = rows.filter(r => r.setter === n)
+      const mine = rows.filter(r => settersOfRow(r).includes(n))
       const ver = rows.filter(r => r.verifier === n)
       const ups = mats.filter(m => has(m.uploaded_by, n))
       const touches = [...rows.filter(r => has(r.updated_by, n)).map(r => r.updated_at), ...ups.map(m => m.created_at)].filter(Boolean).sort()
@@ -931,7 +933,7 @@ function MissionSainikInner({ currentUser }) {
         <div style={{ flex: 1, minWidth: 190 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{r.kind === 'test' ? `PMT-${String(r.test_no).padStart(2, '0')} · ` : 'Practice · '}{r.subject}</div>
           <div style={{ fontSize: 12, color: PX.sub, marginTop: 2 }}>
-            Setter {fullName(r.setter)}{r.verifier ? ` · verifier ${fullName(r.verifier)}` : ''} · {r.question_count ?? '—'} questions · due {fmtShort(dueFor(r))}
+            {settersOfRow(r).length > 1 ? 'Setters' : 'Setter'} {settersLabel(r, fullName)}{r.verifier ? ` · verifier ${fullName(r.verifier)}` : ''} · {r.question_count ?? '—'} questions · due {fmtShort(dueFor(r))}
           </div>
         </div>
         <Chip status={r.status} overdue={late} />
@@ -944,9 +946,9 @@ function MissionSainikInner({ currentUser }) {
 
   const Mine = () => {
     const names = Array.from(new Set(rows.flatMap(r => [r.setter, r.verifier]).filter(Boolean))).sort()
-    const needsMe = r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')
-    const isMine = r => isMe(r.setter) || isMe(r.verifier)
-    const base = taskView === 'needs' ? rows.filter(needsMe) : taskView === 'mine' ? rows.filter(isMine) : rows.filter(r => !person || r.setter === person || r.verifier === person)
+    const needsMe = r => (setsIt(r) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted')
+    const isMine = r => setsIt(r) || isMe(r.verifier)
+    const base = taskView === 'needs' ? rows.filter(needsMe) : taskView === 'mine' ? rows.filter(isMine) : rows.filter(r => !person || settersOfRow(r).includes(person) || r.verifier === person)
     const qq = taskQ.trim().toLowerCase()
     const matches = r => (!subjF || r.subject === subjF) && (!qq || [r.subject, r.setter, r.verifier, r.kind === 'test' ? 'pmt-' + String(r.test_no).padStart(2, '0') : 'practice'].join(' ').toLowerCase().includes(qq))
     const scoped = base.filter(matches)
@@ -1058,22 +1060,57 @@ function MissionSainikInner({ currentUser }) {
     const q = d.id ? supabase.from('mission_sainik_panel').update(row).eq('id', d.id) : supabase.from('mission_sainik_panel').insert(row)
     const { error } = await q
     if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That person is already on the panel for this subject and role.' : error.message + ' (run migrations 20261210 and 20261215)'))
-    audit(d.id ? 'panel_edit' : 'panel_add', d.subject_key, row); setPanelDraft(null); setMsg('✅ Panel saved'); loadPanel()
+    audit(d.id ? 'panel_edit' : 'panel_add', d.subject_key, row)
+    let note = ''
+    if (d.test_count !== undefined && d.test_count !== '' && String(d.test_count) !== String(d.test_count_was ?? '')) {
+      const res = await applyTestCount({ ...d, role: d.role }, row.name, d.test_count, workFor(d))
+      note = res.ok ? (res.changed ? ` · ${res.changed} paper${res.changed === 1 ? '' : 's'} reassigned` : '') : ` · tests not changed: ${res.error}`
+      if (res.ok && res.changed) load()
+    }
+    setPanelDraft(null); setMsg('✅ Panel saved' + note); loadPanel()
   }
-  // Pick-from-staff: add several teachers to one subject / role in one go. Skips anyone already there.
-  const addPanelMembers = async tokens => {
+  // "How many tests will they set": give one teacher exactly N Pre Mock tests (role setter) or N practice sets (role assistant) of a subject.
+  // `work` is the caller's working copy of that subject's tasks, so several teachers can be added in a row. Returns { ok, changed, work, error }.
+  const applyTestCount = async (d, name, count, work) => {
+    if (d.role === 'verifier' || count === '' || count == null) return { ok: true, changed: 0, work }
+    const sub = SUBJECTS.find(x => x.key === d.subject_key)
+    const rule = [...new Set([...panelSetters(d.subject_key), name])]
+    const r = d.role === 'setter' ? retarget(work, name, count, rule) : practiceGive(work, name, count)
+    if (r.error) return { ok: false, error: r.error, work }
+    for (const c of r.changes) {
+      const row = work.find(x => x.id === c.id)
+      const verifier = d.role === 'setter' ? nextVerifier(row, sub.key, c.setter, rule) : row.verifier
+      const { error } = await supabase.from(TABLE).update({ setter: c.setter, ...(verifier ? { verifier } : {}), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }).eq('id', c.id)
+      if (error) return { ok: false, error: error.message, work }
+    }
+    if (r.changes.length) audit('panel_tests', d.subject_key, { name, role: d.role, tests: Number(count), moved: r.changes.length })
+    return { ok: true, changed: r.changes.length, work: work.map(x => { const c = r.changes.find(y => y.id === x.id); return c ? { ...x, setter: c.setter } : x }) }
+  }
+  const workFor = d => (d.role === 'assistant' ? practice.filter(x => subjectOfPractice(x).key === d.subject_key) : tests.filter(x => x.subject === SUBJECTS.find(y => y.key === d.subject_key)?.label))
+  // Pick-from-staff: add several teachers to one subject / role in one go. Skips anyone already there; each gets the chosen number of tests.
+  const addPanelMembers = async (tokens, perPerson = {}) => {
     const d = panelDraft; if (!d || !tokens.length) return
     const quota = d.question_quota === '' || d.question_quota == null ? null : Math.max(0, Math.floor(Number(d.question_quota)) || 0)
-    let added = 0, skipped = 0, failed = ''
+    let added = 0, skipped = 0, failed = '', moved = 0, countNote = ''
+    let work = workFor(d)
     for (const name of tokens) {
       const row = { subject_key: d.subject_key, name, role: d.role, created_by: currentUser?.name || '', ...(quota !== null ? { question_quota: quota } : {}) }
       const { error } = await supabase.from('mission_sainik_panel').insert(row)
       if (!error) { added++; audit('panel_add', d.subject_key, row) }
       else if (/duplicate|unique/i.test(error.message)) skipped++
       else { failed = error.message + ' (run migrations 20261210 and 20261215)'; break }
+      if (!error) {
+        const own = perPerson[name]
+        const res = await applyTestCount(d, name, own !== undefined && own !== '' ? own : d.test_count, work)
+        work = res.work; moved += res.changed
+        if (!res.ok) countNote = ` · tests not assigned to ${name}: ${res.error}`
+      }
     }
     if (failed) setMsg('❌ ' + failed)
-    else { setMsg(`✅ ${added} added${skipped ? ` · ${skipped} already on the panel` : ''}`); if (added) { setPanelDraft(null); loadPanel() } }
+    else {
+      setMsg(`✅ ${added} added${skipped ? ` · ${skipped} already on the panel` : ''}${moved ? ` · ${moved} paper${moved === 1 ? '' : 's'} assigned` : ''}${countNote}`)
+      if (added) { setPanelDraft(null); loadPanel(); if (moved) load() }
+    }
   }
   const deletePanelMember = async m => {
     if (!window.confirm(`Remove ${fullName(m.name)} from the ${SUBJECTS.find(x => x.key === m.subject_key)?.label} panel? Their existing tasks stay.`)) return
@@ -1098,20 +1135,22 @@ function MissionSainikInner({ currentUser }) {
         </span>}>
         {panelDraft && !panelDraft.id && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.2fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 10 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>1 · Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
-              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter</option><option value="verifier">Verifier</option><option value="assistant">Assistant</option></select></label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter (Pre Mock)</option><option value="assistant">Practice setter</option><option value="verifier">Verifier</option></select></label>
+              {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" placeholder={panelDraft.role === 'assistant' ? 'e.g. 1' : 'e.g. 5'} value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions each (optional)<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
               <button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button>
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub, marginBottom: 6 }}>3 · Pick the teachers</div>
-            <TeacherPicker staff={staffDir} taken={panelRows.filter(r => r.subject_key === panelDraft.subject_key && r.role === panelDraft.role).map(r => r.name)} onAdd={addPanelMembers} addLabel="Add to panel" />
+            <TeacherPicker staff={staffDir} taken={panelRows.filter(r => r.subject_key === panelDraft.subject_key && r.role === panelDraft.role).map(r => r.name)} onAdd={addPanelMembers} addLabel="Add to panel" countLabel={panelDraft.role === 'verifier' ? '' : panelDraft.role === 'assistant' ? 'practice sets' : 'tests'} defaultCount={panelDraft.test_count ?? ''} />
           </div>)}
         {panelDraft?.id && (
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.4fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1.3fr 1.1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>
-            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter</option><option value="verifier">Verifier</option><option value="assistant">Assistant</option></select></label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}><option value="setter">Question setter (Pre Mock)</option><option value="assistant">Practice setter</option><option value="verifier">Verifier</option></select></label>
+            {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions to upload<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
             <span style={{ display: 'flex', gap: 8 }}><button className="px-btn gold" onClick={savePanelMember}>{panelDraft.id ? 'Update' : 'Add'}</button><button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button></span>
           </div>)}
@@ -1124,8 +1163,8 @@ function MissionSainikInner({ currentUser }) {
             <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}>
               {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
               {members.map((m, i) => {
-                const pre = tests.filter(r => r.subject === sub.label && r.setter === m.name).sort((a, b) => a.test_no - b.test_no)
-                const prac = practice.filter(r => subjectOfPractice(r).key === sub.key && r.setter === m.name)
+                const pre = tests.filter(r => r.subject === sub.label && settersOfRow(r).includes(m.name)).sort((a, b) => a.test_no - b.test_no)
+                const prac = practice.filter(r => subjectOfPractice(r).key === sub.key && settersOfRow(r).includes(m.name))
                 const mine = [...pre, ...prac]
                 const chipTone = r => r.status === 'Pending' ? { bg: '#f1ede3', fg: '#8a6118' } : { bg: '#dcfce7', fg: '#15803d' }
                 const taskChips = (label, list, tabKey, name) => list.length > 0 && (
@@ -1142,8 +1181,8 @@ function MissionSainikInner({ currentUser }) {
                       <PersonCell name={m.name} size={30} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, prac.length ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role}</Pill>
-                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '' })} aria-label={`Edit ${m.name}`}>✎</button>
+                      <Pill tone={ROLE_TONE[m.role]} dot={false}>{m.role === 'assistant' ? 'practice setter' : m.role}</Pill>
+                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
                     {taskChips('Pre Mock', pre, 'mine', m.name)}
@@ -1459,7 +1498,7 @@ function MissionSainikInner({ currentUser }) {
       institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} staff={staffDir} userName={currentUser?.name || ''} />
   )
 
-  const myOpen = rows.filter(r => (isMe(r.setter) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted'))
+  const myOpen = rows.filter(r => (setsIt(r) && r.status === 'Pending') || (isMe(r.verifier) && r.status === 'Submitted'))
   const badges = { mine: myOpen.length || 0 }
   const tabLabel = id => NAV_GROUPS.flatMap(g => g.items).find(i => i[0] === id)?.[2] || 'Mission Sainik'
   const game = computeGame({ rows: rows.map(r => ({ ...r, due: dueFor(r) })), mats, userName: currentUser?.name || '', isMe, today })
@@ -1467,7 +1506,7 @@ function MissionSainikInner({ currentUser }) {
   const nextTask = nextTaskRow ? {
     row: nextTaskRow, late: isOverdue(nextTaskRow, today),
     title: `${nextTaskRow.kind === 'test' ? 'PMT-' + String(nextTaskRow.test_no).padStart(2, '0') + ' · ' : 'Practice · '}${nextTaskRow.subject}`,
-    sub: `${isMe(nextTaskRow.setter) ? 'Set and submit' : 'Verify'} · due ${fmtShort(dueFor(nextTaskRow))}${isOverdue(nextTaskRow, today) ? ' · overdue' : (() => { const n = dayDiff(today, dueFor(nextTaskRow)); return n === 0 ? ' · today' : n > 0 ? ` · ${n}d left` : '' })()}`,
+    sub: `${setsIt(nextTaskRow) ? 'Set and submit' : 'Verify'} · due ${fmtShort(dueFor(nextTaskRow))}${isOverdue(nextTaskRow, today) ? ' · overdue' : (() => { const n = dayDiff(today, dueFor(nextTaskRow)); return n === 0 ? ' · today' : n > 0 ? ` · ${n}d left` : '' })()}`,
   } : null
   const homeStats = {
     pct: total ? Math.round((approved / total) * 100) : 0,

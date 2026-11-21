@@ -5,7 +5,7 @@ import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, PersonCell, Avatar } from './MissionSainikUI'
 import { fullName } from './missionSainikData'
-import { pickVerifier, setterLoad, shareEvenly, copyPrevious, currentCounts, assignByCounts } from './lib/missionSainikAllot'
+import { pickVerifier, setterLoad, shareEvenly, copyPrevious, currentCounts, assignByCounts, coSettersOf, toggleCoSetter } from './lib/missionSainikAllot'
 import { staffOptions } from './lib/teacherPick'
 
 const TABLE = 'mission_sainik_tasks'
@@ -32,8 +32,12 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
   const choose = async (r, s, setter) => {
     if (!setter || setter === r.setter) return
     if (r.status !== 'Pending' && !window.confirm(`${s.label} for ${test.id} is already ${r.status}. Change the setter anyway?`)) return
-    await saveTask(r, { setter, verifier: verifierAfter(r, s, setter) })
+    const patch = { setter, verifier: verifierAfter(r, s, setter) }
+    if (coSettersOf(r).includes(setter)) patch.co_setters = toggleCoSetter({ ...r, setter }, setter, false) || null
+    await saveTask(r, patch)
   }
+  // Several setters on one paper: the main setter above, plus co-setters who set it together.
+  const setCo = async (r, name, on) => { if (name) await saveTask(r, { co_setters: toggleCoSetter(r, name, on) || null }) }
   const chooseVerifier = async (r, verifier) => {
     if ((verifier || null) === (r.verifier || null)) return
     await saveTask(r, { verifier: verifier || null })
@@ -113,7 +117,7 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
   const cols = isMobile ? '1fr' : '170px minmax(240px,1.4fr) minmax(150px,1fr) 110px'
 
   return (
-    <PremiumCard title="Pre Mock setters" subtitle={isAdmin ? `Choose who sets and who verifies each paper. The verifier is suggested by the panel rule but can be any of the same teachers, even the setter.${unassigned ? ` ${unassigned} paper${unassigned === 1 ? ' has' : 's have'} no setter yet.` : ' Every paper has a setter.'}` : 'Who sets each Pre Mock paper. Only an admin can assign or change a setter.'}
+    <PremiumCard title="Pre Mock setters" subtitle={isAdmin ? `Choose who sets and who verifies each paper; add co-setters when several teachers set it together. The verifier is suggested by the panel rule but can be any of the same teachers, even the setter.${unassigned ? ` ${unassigned} paper${unassigned === 1 ? ' has' : 's have'} no setter yet.` : ' Every paper has a setter.'}` : 'Who sets each Pre Mock paper. Only an admin can assign or change a setter.'}
       right={isAdmin && no > 1 ? <button type="button" className="px-hbtn" disabled={busy} onClick={copyPrev}>↧ Copy from PMT-{String(no - 1).padStart(2, '0')}</button> : null}>
       <div role="tablist" aria-label="Pre Mock test" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0 8px', marginBottom: 6 }}>
         {TESTS.map(t => <button key={t.no} type="button" role="tab" aria-selected={t.no === no} style={chip(t, t.no === no)} title={`${t.id} · ${fmtShort(t.date)}`} onClick={() => setNo(t.no)}>{String(t.no).padStart(2, '0')}</button>)}
@@ -139,14 +143,30 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
           return (
             <div key={s.key} style={{ display: 'grid', gridTemplateColumns: cols, gap: isMobile ? 8 : 10, alignItems: 'center', padding: '10px 12px', border: `1px solid ${r.setter ? PX.line : '#f1c9c4'}`, borderLeft: `4px solid ${TONES[si % TONES.length]}`, borderRadius: 14, background: r.setter ? '#fff' : '#fff9f8', boxShadow: '0 1px 2px rgba(19,42,79,.04)' }}>
               <div><b style={{ color: PX.navy, fontSize: 14.5 }}>{s.label}</b><div style={{ fontSize: 11.5, color: PX.sub }}>{panel.length} on the panel</div></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                {r.setter ? <Avatar name={r.setter} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
-                <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
-                  {!r.setter && <option value="">Choose a teacher…</option>}
-                  {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
-                  {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(opt)}</optgroup>}
-                  {others.length > 0 && <optgroup label="Other staff">{others.map(opt)}</optgroup>}
-                </select>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  {r.setter ? <Avatar name={r.setter} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
+                  <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+                    {!r.setter && <option value="">Choose a teacher…</option>}
+                    {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
+                    {panel.length > 0 && <optgroup label={`${s.label} panel`}>{panel.map(opt)}</optgroup>}
+                    {others.length > 0 && <optgroup label="Other staff">{others.map(opt)}</optgroup>}
+                  </select>
+                </div>
+                {(coSettersOf(r).length > 0 || isAdmin) && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, margin: '6px 0 0 40px' }}>
+                    {coSettersOf(r).length > 0 && <span style={{ ...head }}>Also sets</span>}
+                    {coSettersOf(r).map(n => (
+                      <button key={n} type="button" disabled={!isAdmin || busy} onClick={() => setCo(r, n, false)} title={isAdmin ? 'Click to remove' : ''} aria-label={`Remove co-setter ${n}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px 2px 3px', borderRadius: 99, border: `1px solid ${PX.line}`, background: '#fff', cursor: isAdmin ? 'pointer' : 'default', fontSize: 12, fontWeight: 700, color: PX.navy, fontFamily: 'inherit' }}>
+                        <Avatar name={n} size={18} />{fullName(n)}{isAdmin && <span aria-hidden="true" style={{ color: PX.sub }}>✕</span>}
+                      </button>))}
+                    {isAdmin && (
+                      <select className="px-input" aria-label={`Add a co-setter for ${test.id} ${s.label}`} value="" disabled={busy} onChange={e => setCo(r, e.target.value, true)} style={{ width: 'auto', maxWidth: 190, height: 30, minHeight: 0, padding: '0 8px', fontSize: 12.5 }}>
+                        <option value="">＋ Add co-setter…</option>
+                        {[...panel, ...others].filter(n => n !== r.setter && !coSettersOf(r).includes(n)).map(n => <option key={n} value={n}>{fullName(n)}</option>)}
+                      </select>)}
+                  </div>)}
               </div>
               <div style={{ minWidth: 0 }}>
                 {isMobile && <span style={{ ...head, display: 'block', marginBottom: 2 }}>Verifier</span>}

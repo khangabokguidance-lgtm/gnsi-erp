@@ -125,7 +125,7 @@ export default function MissionSainikBuilder({ series, tasks, saveTask, currentU
   const settersOf = (t, s) => cfg.panel === 'practice'
     ? (() => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practice?.[key]?.length) return panel.practice[key]; const p = PRACTICE_PANEL[key]; return p ? [p.verifier, ...p.assistants] : [] })()
     : series === 'pre'
-    ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.setter)
+    ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).flatMap(r => [r.setter, ...String(r.co_setters || '').split(';').map(x => x.trim())].filter(Boolean))
     : (MEGA_PANEL[s] || []).flatMap(k => (panel?.setters?.[k] ?? PANEL[k]) || [])
   const isLocked = t => locks?.[`lock:${series}:${t}`] === 'on'
   const canEdit = (t, s) => isAdmin || (!isLocked(t) && settersOf(t, s).some(isMe))

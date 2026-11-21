@@ -81,3 +81,61 @@ export function assignByCounts(rows, targets) {
   })
   return { changes }
 }
+
+// Give one teacher exactly `want` of a subject's Pre Mock tests (adding them to the subject if they are new), taking from, or giving to, the
+// others so the total stays the same. Same rules as assignByCounts: submitted tests stay put, nobody drops below what they handed in.
+// setters = the panel for this subject (so they appear in the counts even at 0). Returns { changes } or { error }.
+export function retarget(rows, name, want, setters = []) {
+  const t = currentCounts(rows, [...(setters || []), name])
+  const floor = n => (rows || []).filter(r => r.setter === n && r.status !== 'Pending').length
+  const w = Number(want)
+  if (!Number.isInteger(w) || w < 0) return { error: 'Enter 0 or a whole number of tests.' }
+  if (w < floor(name)) return { error: `${name} has already handed in ${floor(name)} test(s), so cannot be set below that.` }
+  if (w > (rows || []).length) return { error: `There are only ${rows.length} tests.` }
+  let need = w - t[name]
+  const others = () => Object.keys(t).filter(n => n !== name)
+  while (need > 0) {                                  // take from whoever has the most above what they handed in
+    const donor = others().filter(n => t[n] > floor(n)).sort((a, b) => t[b] - t[a])[0]
+    if (!donor) return { error: 'The other teachers have no test left to give up (they have handed them in).' }
+    t[donor]--; t[name]++; need--
+  }
+  while (need < 0) {                                  // give back to whoever has the fewest
+    const taker = others().sort((a, b) => t[a] - t[b])[0]
+    if (!taker) return { error: 'Add another teacher to take the tests you are removing.' }
+    t[taker]++; t[name]--; need++
+  }
+  return assignByCounts(rows, t)
+}
+
+// Verifier after a setter change: keep a hand-picked verifier; follow the panel rule when the old one was automatic (or empty).
+export function nextVerifier(row, subjectKey, newSetter, setters) {
+  const auto = pickVerifier(subjectKey, newSetter, setters)
+  const wasAuto = !row.verifier || row.verifier === pickVerifier(subjectKey, row.setter, setters)
+  return wasAuto ? (auto || row.verifier || null) : row.verifier
+}
+
+// Practice sets: give `want` of a subject's practice sets to one teacher by taking Pending sets that are not already theirs (lowest id first).
+// Returns { changes: [{ id, setter }] } or { error }. Lowering is done by giving the set to someone else in the Allotment, so it is refused here.
+export function practiceGive(rows, name, want) {
+  const w = Number(want)
+  if (!Number.isInteger(w) || w < 0) return { error: 'Enter 0 or a whole number of practice sets.' }
+  const mine = (rows || []).filter(r => r.setter === name).length
+  if (w < mine) return { error: `${name} already has ${mine} practice set(s). To give one away, change its setter on the Practice tab.` }
+  const free = (rows || []).filter(r => r.status === 'Pending' && r.setter !== name).sort((a, b) => a.id - b.id)
+  if (w - mine > free.length) return { error: `Only ${free.length} more practice set(s) can be given (the rest are already submitted).` }
+  return { changes: free.slice(0, w - mine).map(r => ({ id: r.id, setter: name })) }
+}
+
+// ── Several setters on one paper ──────────────────────────────────────────────────────────────────────
+// `setter` is the main setter; `co_setters` holds the others, separated by ";". Everyone listed sets the paper and sees it in their tasks.
+export const coSettersOf = row => String(row?.co_setters || '').split(';').map(s => s.trim()).filter(Boolean)
+export const settersOfRow = row => [...new Set([row?.setter, ...coSettersOf(row)].filter(Boolean))]
+export const joinCoSetters = list => [...new Set((list || []).map(s => String(s).trim()).filter(Boolean))].join('; ')
+// Add or remove one co-setter. The main setter is never listed as a co-setter. Returns the new co_setters string ('' when none).
+export function toggleCoSetter(row, name, on) {
+  const cur = coSettersOf(row).filter(n => n !== name)
+  if (on && name && name !== row?.setter) cur.push(name)
+  return joinCoSetters(cur)
+}
+// "Sir A, Sir B" label from a naming function.
+export const settersLabel = (row, nameFn = x => x) => settersOfRow(row).map(nameFn).join(' + ')

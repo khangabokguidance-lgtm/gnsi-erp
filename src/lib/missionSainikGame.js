@@ -7,7 +7,7 @@ const iso = d => new Date(d).toLocaleDateString('en-CA')
 
 // rows: task rows, mats: study-material rows. isMe(name) tells whether a setter / verifier name is the current user.
 export function computeGame({ rows = [], mats = [], userName = '', isMe = () => false, today }) {
-  const mine = rows.filter(r => isMe(r.setter))
+  const mine = rows.filter(r => [r.setter, ...String(r.co_setters || '').split(';')].some(n => n && isMe(String(n).trim())))
   const submitted = mine.filter(r => r.status !== 'Pending').length
   const approved = mine.filter(r => r.status === 'Approved').length
   const verified = rows.filter(r => isMe(r.verifier) && (r.status === 'Verified' || r.status === 'Approved')).length
