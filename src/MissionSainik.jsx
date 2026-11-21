@@ -921,6 +921,7 @@ function MissionSainikInner({ currentUser }) {
   const goAddQuestions = (subjectLabel, setNo) => { setBStart(b => ({ test: setNo || 1, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }
   const setNoFor = r => {
     const sub = subjectOfPractice(r)
+    if (r.test_no > 0) return Math.min(r.test_no, PRACTICE_PANEL[sub.key]?.sets || 1)   // sets added from the Panel carry their number
     const same = practice.filter(x => subjectOfPractice(x).key === sub.key).sort((a, b) => a.id - b.id)
     return Math.min(Math.max(same.findIndex(x => x.id === r.id) + 1, 1), PRACTICE_PANEL[sub.key]?.sets || 1)
   }
@@ -1064,7 +1065,7 @@ function MissionSainikInner({ currentUser }) {
     let note = ''
     if (d.test_count !== undefined && d.test_count !== '' && String(d.test_count) !== String(d.test_count_was ?? '')) {
       const res = await applyTestCount({ ...d, role: d.role }, row.name, d.test_count, workFor(d))
-      note = res.ok ? (res.changed ? ` · ${res.changed} paper${res.changed === 1 ? '' : 's'} reassigned` : '') : ` · tests not changed: ${res.error}`
+      note = res.ok ? (res.changed ? ` · ${res.changed} ${d.role === 'assistant' ? 'practice set' : 'paper'}${res.changed === 1 ? '' : 's'} ${d.role === 'assistant' ? 'added' : 'reassigned'}` : '') : ` · number not applied: ${res.error}`
       if (res.ok && res.changed) load()
     }
     setPanelDraft(null); setMsg('✅ Panel saved' + note); loadPanel()
@@ -1075,11 +1076,20 @@ function MissionSainikInner({ currentUser }) {
     if (d.role === 'verifier' || count === '' || count == null) return { ok: true, changed: 0, work }
     const sub = SUBJECTS.find(x => x.key === d.subject_key)
     const rule = [...new Set([...panelSetters(d.subject_key), name])]
-    const r = d.role === 'setter' ? retarget(work, name, count, rule) : practiceGive(work, name, count)
+    const practiceOpts = { sets: PRACTICE_PANEL[d.subject_key]?.sets || 1, setNoOf: setNoFor }
+    const r = d.role === 'setter' ? retarget(work, name, count, rule) : practiceGive(work, name, count, practiceOpts)
     if (r.error) return { ok: false, error: r.error, work }
+    if (r.create) {                       // practice: add the missing sets for this teacher (Set 1, Set 2 …)
+      if (!r.create.length) return { ok: true, changed: 0, work }
+      const newRows = r.create.map(c => ({ kind: 'practice', test_no: c.test_no, subject: sub.label, setter: name, verifier: PRACTICE_PANEL[d.subject_key]?.verifier || null, question_count: 25, status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }))
+      const { data, error } = await supabase.from(TABLE).insert(newRows).select()
+      if (error) return { ok: false, error: error.message, work }
+      audit('panel_tests', d.subject_key, { name, role: d.role, practice_sets: Number(count), added: newRows.length })
+      return { ok: true, changed: newRows.length, work: [...work, ...(data || [])] }
+    }
     for (const c of r.changes) {
       const row = work.find(x => x.id === c.id)
-      const verifier = d.role === 'setter' ? nextVerifier(row, sub.key, c.setter, rule) : row.verifier
+      const verifier = nextVerifier(row, sub.key, c.setter, rule)
       const { error } = await supabase.from(TABLE).update({ setter: c.setter, ...(verifier ? { verifier } : {}), updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }).eq('id', c.id)
       if (error) return { ok: false, error: error.message, work }
     }
@@ -1103,12 +1113,12 @@ function MissionSainikInner({ currentUser }) {
         const own = perPerson[name]
         const res = await applyTestCount(d, name, own !== undefined && own !== '' ? own : d.test_count, work)
         work = res.work; moved += res.changed
-        if (!res.ok) countNote = ` · tests not assigned to ${name}: ${res.error}`
+        if (!res.ok) countNote = ` · number not applied for ${name}: ${res.error}`
       }
     }
     if (failed) setMsg('❌ ' + failed)
     else {
-      setMsg(`✅ ${added} added${skipped ? ` · ${skipped} already on the panel` : ''}${moved ? ` · ${moved} paper${moved === 1 ? '' : 's'} assigned` : ''}${countNote}`)
+      setMsg(`✅ ${added} added${skipped ? ` · ${skipped} already on the panel` : ''}${moved ? ` · ${moved} ${d.role === 'assistant' ? 'practice set' : 'paper'}${moved === 1 ? '' : 's'} ${d.role === 'assistant' ? 'added' : 'assigned'}` : ''}${countNote}`)
       if (added) { setPanelDraft(null); loadPanel(); if (moved) load() }
     }
   }

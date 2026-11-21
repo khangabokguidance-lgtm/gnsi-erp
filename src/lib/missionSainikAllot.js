@@ -114,16 +114,24 @@ export function nextVerifier(row, subjectKey, newSetter, setters) {
   return wasAuto ? (auto || row.verifier || null) : row.verifier
 }
 
-// Practice sets: give `want` of a subject's practice sets to one teacher by taking Pending sets that are not already theirs (lowest id first).
-// Returns { changes: [{ id, setter }] } or { error }. Lowering is done by giving the set to someone else in the Allotment, so it is refused here.
-export function practiceGive(rows, name, want) {
+// Practice sets: make a teacher set exactly `want` practice sets of one subject (Set 1, Set 2 … up to the subject's number of sets).
+// A practice task is one row per teacher per set, so this CREATES the missing sets for the teacher instead of taking them from others
+// (the database allows one row per teacher, test_no and subject; the set number is stored in test_no, 0 = a legacy row whose set is its order).
+// rows: the subject's practice rows. opts.sets = how many sets the subject has; opts.setNoOf(row) = the set a row stands for.
+// Sets nobody else covers yet are chosen first. Returns { create: [{ test_no }] } or { error }.
+export function practiceGive(rows, name, want, opts = {}) {
   const w = Number(want)
   if (!Number.isInteger(w) || w < 0) return { error: 'Enter 0 or a whole number of practice sets.' }
-  const mine = (rows || []).filter(r => r.setter === name).length
-  if (w < mine) return { error: `${name} already has ${mine} practice set(s). To give one away, change its setter on the Practice tab.` }
-  const free = (rows || []).filter(r => r.status === 'Pending' && r.setter !== name).sort((a, b) => a.id - b.id)
-  if (w - mine > free.length) return { error: `Only ${free.length} more practice set(s) can be given (the rest are already submitted).` }
-  return { changes: free.slice(0, w - mine).map(r => ({ id: r.id, setter: name })) }
+  const sets = Number(opts.sets) > 0 ? Number(opts.sets) : 1
+  const setNoOf = opts.setNoOf || (r => (r.test_no > 0 ? r.test_no : 1))
+  const mine = (rows || []).filter(r => r.setter === name)
+  if (w < mine.length) return { error: `${name} already has ${mine.length} practice set(s). To give one away, change its setter on the Practice tab.` }
+  if (w > sets) return { error: `This subject has only ${sets} practice set${sets === 1 ? '' : 's'}, so a teacher can set at most ${sets}.` }
+  const have = new Set(mine.map(setNoOf))
+  const cover = {}
+  ;(rows || []).filter(r => r.setter !== name).forEach(r => { const k = setNoOf(r); cover[k] = (cover[k] || 0) + 1 })
+  const free = Array.from({ length: sets }, (_, i) => i + 1).filter(k => !have.has(k)).sort((a, b) => (cover[a] || 0) - (cover[b] || 0) || a - b)
+  return { create: free.slice(0, w - mine.length).map(test_no => ({ test_no })) }
 }
 
 // ── Several setters on one paper ──────────────────────────────────────────────────────────────────────
