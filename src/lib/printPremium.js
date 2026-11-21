@@ -11,7 +11,8 @@
 //             footer, and the browser's own header / footer (date, "about:blank", page count) is not printed.
 //   • LAYOUT  fixed column widths so every table looks the same; crisp inline icons instead of emoji.
 import { denyPrint } from './printGuard.js';
-export const DESIGN_CREDIT = 'Design by Moirangthem Himan Singh';
+import { SOFTWARE_CREDIT } from './credit.js';
+export const DESIGN_CREDIT = SOFTWARE_CREDIT;
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export const FONT_LINKS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

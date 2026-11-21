@@ -6,6 +6,8 @@ import ScanFigure from './ScanFigure'
 import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
+import { fitToPages } from './lib/materialFit'
+import { logoSrc } from './lib/printPremium'
 import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
 import { supabase } from './supabase'
@@ -53,7 +55,8 @@ const TitleBlock = ({ title, subject, test, by, designation }) => (
 const MM = 3.7795
 const MARGIN_MM = { normal: [16, 14, 18], narrow: [10, 10, 12], minimal: [6, 7, 8] }
 function pageBox(o) {
-  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg0 = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const mg = o.nup !== 2 && o.hf !== false && o.header !== 'none' ? [Math.max(13, mg0[0]), mg0[1], Math.max(13, mg0[2])] : mg0   // header / footer on every page need room in the margins
   return { cw: Math.round((W - 2 * mg[1]) * MM), ch: Math.round((H - mg[0] - mg[2]) * MM) }
 }
 export const CSS_ALL = MATH_CSS + MATERIAL_CSS
@@ -226,12 +229,12 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
 
   // ── printing ──
   const asDoc = m => ({ ...m, uploaded_by: m.uploaded_by || userName })
-  const printOptsFor = (m, o) => ({ ...o, institute: instName, author: creatorOf(staff, m.uploaded_by || userName) })
+  const printOptsFor = (m, o) => ({ ...o, institute: instName, logo: logoSrc(institute), author: creatorOf(staff, m.uploaded_by || userName) })
   const openPrint = m => { setPopts(p => ({ ...p, font: layout.font || p.font, columns: layout.saver ? Math.max(2, layout.columns) : layout.columns, compact: layout.saver, size: layout.saver ? Math.min(layout.size, 12) : layout.size, margin: layout.saver ? 'narrow' : p.margin, header: layout.saver ? 'compact' : p.header })); setPrintFor(m) }
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
-    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1, nup: 1 }, CSS_ALL) } finally { setMathStacked(true) }
+    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1, nup: 1, hf: false }, CSS_ALL) } finally { setMathStacked(true) }
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = String(m.title || 'notes').replace(/[^\w-]+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
   }
@@ -530,6 +533,13 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
     if (best) upd(best.c)
     setFitting(false)
   }
+  const fitN = async n => {
+    setFitting(true); setNote('')
+    const r = await fitToPages(m, { ...o, nup: 1, landscape: false, paper: 'a4' }, n, CSS_ALL)
+    if (r) { upd({ ...r.step, nup: 1, landscape: false, paper: 'a4' }); setNote(r.fits ? `✅ Fits in ${r.pages} page${r.pages === 1 ? '' : 's'}.` : `⚠ Even the tightest layout needs ${r.pages} pages. Shorten the text or remove pictures to reach ${n}.`) }
+    else setNote('Could not measure the pages. Try again.')
+    setFitting(false)
+  }
   const chip = on => ({ padding: isMobile ? '9px 14px' : '6px 13px', borderRadius: 99, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: PX.ink2 })
   const Row = ({ label, children }) => <div style={{ margin: '12px 0 0' }}><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub, marginBottom: 6 }}>{label}</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{children}</div></div>
   const Opt = ({ k, v, l }) => <button type="button" aria-pressed={opts[k] === v} style={chip(opts[k] === v)} onClick={() => upd({ [k]: v })}>{l}</button>
@@ -558,6 +568,7 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'narrow', columns: 2, size: 12, compact: true, header: 'compact' })}>⚡ Save paper</button>
             <button type="button" style={chip(false)} onClick={() => upd({ margin: 'minimal', columns: 3, size: 10.5, compact: true, header: 'compact', inkSaver: true })}>📚 Ultra compact</button>
             <button type="button" style={{ ...chip(false), background: '#eef6ff', borderColor: '#9ec3f2' }} disabled={fitting} onClick={fit}>{fitting ? 'Fitting…' : '✨ Fit to fewest pages'}</button>
+            {[2, 3].map(n => <button key={n} type="button" style={{ ...chip(false), background: '#fff6dc', borderColor: '#e7d194' }} disabled={fitting} onClick={() => fitN(n)}>{fitting ? 'Fitting…' : `🎯 Fit in ${n} pages`}</button>)}
             <button type="button" style={{ ...chip(false), background: '#eaf7ef', borderColor: '#9bd3b0' }} disabled={fitting} onClick={classSet}>👥 Class set (student lines + answer sheet)</button>
             {note && <div role="status" style={{ flexBasis: '100%', fontSize: 12, color: '#8a5a00', background: '#fff7e6', border: '1px solid #f1d9a8', borderRadius: 10, padding: '6px 10px' }}>{note}</div>}
           </Row>
@@ -574,7 +585,13 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
           <Row label="Margins"><Opt k="margin" v="normal" l="Normal" /><Opt k="margin" v="narrow" l="Narrow" /><Opt k="margin" v="minimal" l="Minimal" /></Row>
           <Row label="Columns"><Opt k="columns" v={1} l="1" /><Opt k="columns" v={2} l="2" /><Opt k="columns" v={3} l="3" /></Row>
           <Row label="Text size">{[[10.5, 'XS'], [11, 'S'], [12, 'M−'], [13, 'M'], [14, 'L'], [16, 'XL']].map(([v, l]) => <Opt key={v} k="size" v={v} l={l} />)}</Row>
-          <Row label="Header"><Opt k="header" v="full" l="Full" /><Opt k="header" v="compact" l="One line" /><Opt k="header" v="none" l="None" /></Row>
+          <Row label="Header &amp; footer">{(() => { const onHf = opts.hf !== false && opts.header !== 'none', none = opts.header === 'none', keep = none ? 'compact' : opts.header
+            return <>
+              <button type="button" aria-pressed={onHf} style={chip(onHf)} onClick={() => upd({ hf: true, header: keep })}>On every page</button>
+              <button type="button" aria-pressed={!onHf && !none} style={chip(!onHf && !none)} onClick={() => upd({ hf: false, header: keep })}>Top of page 1 only</button>
+              <button type="button" aria-pressed={none} style={chip(none)} onClick={() => upd({ header: 'none' })}>None</button>
+            </> })()}</Row>
+          {opts.hf !== false && opts.header !== 'none' && <div style={{ fontSize: 12, color: PX.sub, margin: '4px 0 0' }}>The title, institute, subject, test and “prepared by” go in the page header and footer on every page, with page numbers, so the page is all questions. Use Print → Save as PDF in Chrome or Edge.</div>}
           <Row label="Save space &amp; ink"><Tog k="compact" l="Compact spacing" /><Tog k="inkSaver" l="Ink saver (no colour fills)" /><Tog k="toc" l="Contents list" /></Row>
           <Row label="Copy for"><Opt k="teacher" v={true} l="🎓 Teacher copy (all)" /><Opt k="teacher" v={false} l="🧑‍🎓 Student copy (no teacher boxes)" /></Row>
           <Row label="Credit"><Tog k="byline" l="Show creator & designation" /></Row>

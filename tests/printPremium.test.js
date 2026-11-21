@@ -22,7 +22,7 @@ test('the premium print window: letterhead with logo, watermark, a footer on eve
   globalThis.window = { open: () => ({ document: { write: (h) => { html = h }, close: () => {} } }) }
   printPremium('<div class="title">Test</div>', { title: 'T', institute: { name: 'Guidance Navodaya & Sainik Institute', logoUrl: 'https://example.com/l.png', tagline: 'Tag', address: 'Addr' }, docLabel: 'Duty sheet · Meera' })
   delete globalThis.window
-  assert.ok(html.includes(DESIGN_CREDIT) && DESIGN_CREDIT === 'Design by Moirangthem Himan Singh')
+  assert.ok(html.includes(DESIGN_CREDIT) && DESIGN_CREDIT === 'GNSI Software · created by Moirangthem Himan Singh')
   assert.ok(html.includes('class="pgfoot"') && html.includes('Duty sheet · Meera'))
   assert.ok(html.includes('class="wm"') && html.includes('class="lg"'))                    // watermark + letterhead logo
   assert.equal(html.split('https://example.com/l.png').length - 1, 3)                       // watermark, letterhead and footer each use the logo
