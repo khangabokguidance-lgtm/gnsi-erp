@@ -6,7 +6,7 @@ import { PX } from './premiumUI'
 import ScanFigure from './ScanFigure'
 import { MATH_TOOLS, PaperPreview, blankCard } from './MultiQuestionAdder'
 import { figFromFile, svgToJpeg } from './lib/figImage'
-import { hasPicture, pictureOf, withPicture, withoutPicture, mathPlain } from './lib/mathText'
+import { hasPicture, pictureOf, withPicture, withoutPicture, withPictureRaw, withoutPictureRaw, mathPlain } from './lib/mathText'
 import { vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
 
 const TONES = { A: '#2563eb', B: '#7c3aed', C: '#d97706', D: '#db2777' }
@@ -181,8 +181,8 @@ export default function QuestionEditor({ list, startIndex = 0, startNo = 1, titl
                       <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, border: `1.5px solid ${on ? TONES[k] : PX.line}`, background: on ? TONES[k] + '14' : '#fff', borderRadius: 14, padding: '5px 8px 5px 5px' }}>
                         <button type="button" aria-pressed={on} aria-label={`Mark ${k} as correct`} onClick={() => upd({ ans: k })} style={{ width: 36, height: 36, borderRadius: 11, border: 'none', background: on ? TONES[k] : '#f1ede3', color: on ? '#fff' : PX.ink2, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>{on ? '✓' : k}</button>
                         {pic && <img src={pictureOf(card[key])} alt={`Option ${k}`} style={{ height: 36, maxWidth: 70, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff', flexShrink: 0 }} />}
-                        <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14.5, background: 'transparent', fontFamily: 'inherit', padding: '6px 2px' }} aria-label={`Option ${k}`} placeholder={pic ? 'Optional caption' : `Option ${k}`} value={withoutPicture(card[key])} onFocus={track(key)}
-                          onChange={e => upd({ [key]: withPicture(e.target.value, pictureOf(card[key])) })} />
+                        <input style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14.5, background: 'transparent', fontFamily: 'inherit', padding: '6px 2px' }} aria-label={`Option ${k}`} placeholder={pic ? 'Optional caption' : `Option ${k}`} value={withoutPictureRaw(card[key])} onFocus={track(key)}
+                          onChange={e => upd({ [key]: withPictureRaw(e.target.value, pictureOf(card[key])) })} />
                         {card.type === 'venn' && <button type="button" title="Pick a Venn relationship diagram" aria-label={`Venn diagram for option ${k}`} onClick={() => setPresetFor(key)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 16, flexShrink: 0 }}>🔵</button>}
                         <button type="button" title="Scan a picture" aria-label={`Scan a picture for option ${k}`} onClick={() => setScan({ opt: key })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, opacity: .6, flexShrink: 0 }}>📷</button>
                         <label title="Upload a picture" style={{ cursor: 'pointer', fontSize: 16, opacity: pic ? 1 : .55, flexShrink: 0 }}>🖼<input type="file" accept="image/*" aria-label={`Picture for option ${k}`} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) pickImg(f, key) }} /></label>
