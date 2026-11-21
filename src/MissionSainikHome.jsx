@@ -16,7 +16,7 @@ function Ring({ pct, size = 112, stroke = 12, children }) {
   )
 }
 
-export default function MissionSainikHome({ upcoming = [], announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile, flow }) {
+export default function MissionSainikHome({ upcoming = [], announcement, name, stats, game, nextTask, onGo, onOpenTask, quick, isMobile, flow, myPanel = [] }) {
   const hour = new Date().getHours()
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const first = String(name || '').replace(/^(sir|miss|mr|mrs)\s+/i, '').split(' ')[0] || 'Teacher'
@@ -67,6 +67,19 @@ export default function MissionSainikHome({ upcoming = [], announcement, name, s
       </div>
 
       {flow}
+
+      {myPanel.length > 0 && (
+        <div style={card}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub, marginBottom: 8 }}>YOUR PLACE ON THE PANEL</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {myPanel.map((m, i) => (
+              <button key={m.subject + m.role + i} type="button" className="msx-tap" onClick={() => onGo(m.role === 'setter' ? 'mine' : m.role === 'practice setter' ? 'practice' : 'practice')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 99, border: '1.5px solid #e1dac8', background: '#fff', fontWeight: 800, fontSize: 13.5, color: PX.navy, minHeight: 44 }}>
+                <span>{m.role === 'setter' ? '🧱' : '🗂️'}</span>{m.subject}<span style={{ fontWeight: 600, color: PX.sub }}>· {m.role}</span>
+              </button>))}
+          </div>
+          <div style={{ fontSize: 12.5, color: PX.sub, marginTop: 8 }}>Questions and study material for these subjects are yours to set. Tap one to open your work.</div>
+        </div>)}
 
       {upcoming.length > 0 && (
         <div style={card}>

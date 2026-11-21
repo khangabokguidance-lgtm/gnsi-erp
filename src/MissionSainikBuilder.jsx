@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
+import MissionSainikQuickAdd from './MissionSainikQuickAdd'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
@@ -51,11 +52,13 @@ const CFG = {
   },
 }
 
-export default function MissionSainikBuilder({ practiceQ = null, series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
+export default function MissionSainikBuilder({ syllabus = null, practiceQ = null, onSetting = null, series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
   // Practice bank: the admin sets how many questions each teacher sets per practice set, per subject (Panel → Practice panel).
   const cfg0 = CFG[series]
   const cfg = useMemo(() => (series === 'practice' && practiceQ ? { ...cfg0, sections: cfg0.sections.map(x => ({ ...x, q: Number(practiceQ[x.key]) || x.q })) } : cfg0), [series, practiceQ]) // eslint-disable-line react-hooks/exhaustive-deps
   const isPractice = series === 'practice'   // practice bank: every teacher sets their OWN set of questions for the same practice test; students get the different versions
+  // Several sets on the same syllabus: every teacher writes their OWN full set; students get Version A, B, C. Always on for the practice bank; an admin switch for the Pre Mock series.
+  const byVersion = isPractice || (series === 'pre' && locks?.pre_versions === 'on')
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
   const [qs, setQs] = useState([])
@@ -63,7 +66,8 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
   const [testNo, setTestNo] = useState(startTest || 1)
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
-  const [addMode, setAddMode] = useState('cards')   // cards | paste
+  const [addMode, setAddMode] = useState(isMobile ? 'one' : 'cards')   // one (a question at a time, saved as you go) | cards | paste
+  const [editorInView, setEditorInView] = useState(false)   // the floating "Add questions" button is hidden while the editor itself is on screen
   const [cards, setCards] = useState(() => [blankCard()])
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
@@ -117,10 +121,13 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
     const m = {}; qs.forEach(q => { (m[q.test_no + '|' + q.section] = m[q.test_no + '|' + q.section] || []).push(q) }); return m
   }, [qs])
   const get = (t, s) => bySec[t + '|' + s] || []
+  // The syllabus plan (Mission Sainik → Syllabus): the chapter(s) planned for this test and section. Pre Mock and Daily tests follow it.
+  const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
+  const [chapterPick, setChapterPick] = useState('')
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
   const section = (live(testNo).find(s => s.label === sectionSel) || live(testNo)[0]).label   // falls back when a set lacks this subject
-  const testReady = t => live(t).every(s => (isPractice ? flavourStatus(get(t, s.label), s.q) === 'ok' : get(t, s.label).length >= s.q))
+  const testReady = t => live(t).every(s => (byVersion ? flavourStatus(get(t, s.label), s.q) === 'ok' : get(t, s.label).length >= s.q))
   const testCount = t => live(t).reduce((a, s) => a + Math.min(get(t, s.label).length, s.q), 0)
   const totalQ = t => live(t).reduce((a, s) => a + s.q, 0)
 
@@ -179,32 +186,40 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
     const problems = cardsProblems(cards)
     return { ...parsedBase, errors: problems && !parsedBase.errors.length ? [`${problems} question card(s) incomplete — see the red notes`] : parsedBase.errors, questions: parsedBase.questions.map((q, i) => (filled[i]?.image && filled[i].type !== 'normal' ? { ...q, image_data: filled[i].image } : q)) }
   }, [parsedBase, cards, addMode])
-  const upload = async () => {
-    if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
-    if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
-    if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
-    const ownOf = list => (isPractice ? list.filter(x => x.uploaded_by === (currentUser?.name || '')) : list)   // practice: each teacher's own set
+  // Saves questions that are already parsed (from the paste box, the cards, or one question at a time): duplicates, count warning, insert, sign-off reset, auto-submit.
+  const insertQuestions = async (list, { clear = false } = {}) => {
+    if (!canEdit(testNo, section)) { setMsg('❌ Only the section setter or an admin can upload here.'); return false }
+    const ownOf = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l)   // several sets: each teacher's own set
     const have = ownOf(get(testNo, section)).length
-    if (parsed.questions.length > 200) return setMsg('❌ Upload at most 200 questions at a time.')
+    if (list.length > 200) { setMsg('❌ Upload at most 200 questions at a time.'); return false }
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     const seen = new Set(ownOf(get(testNo, section)).map(q => norm(q.question)))
-    const dupes = parsed.questions.filter((q, i) => seen.has(norm(q.question)) || parsed.questions.findIndex(z => norm(z.question) === norm(q.question)) !== i)
-    if (dupes.length) return setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”. Remove them and upload again.`)
-    if (have + parsed.questions.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + parsed.questions.length}. Upload anyway?`)) return
+    const dupes = list.filter((q, i) => seen.has(norm(q.question)) || list.findIndex(z => norm(z.question) === norm(q.question)) !== i)
+    if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
+    if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
     setBusy(true)
-    const rows = parsed.questions.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
+    const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
+    const rows = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
-    if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : ''))
-    setText(''); setCards([blankCard()]); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
+    if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
+    if (clear) { setText(''); setCards([blankCard()]) }
+    setMsg(`✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}`)
     audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
     await clearSignoff(testNo, section)
     await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
-    if (series === 'pre' && have + rows.length >= sec.q) {
+    if (series === 'pre' && (byVersion ? flavourStatus([...get(testNo, section), ...rows], sec.q) === 'ok' : have + rows.length >= sec.q)) {
       const task = (tasks || []).find(r => r.kind === 'test' && r.test_no === testNo && r.subject === section)
       if (task && task.status === 'Pending' && saveTask) await saveTask(task, { status: 'Submitted', question_count: have + rows.length })
     }
+    return true
+  }
+  const upload = async () => {
+    if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
+    if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
+    if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
+    await insertQuestions(parsed.questions, { clear: true })
   }
   const removeRows = async (match, label, ids) => {
     if (soft) {
@@ -295,7 +310,7 @@ export default function MissionSainikBuilder({ practiceQ = null, series, tasks, 
   const SET_LETTERS = ['A', 'B', 'C', 'D']
   const assemble = (t, setIdx = 0) => printLive(t).map(sc => {
     // Practice bank: Version A is the first teacher's own set, B the second's … Other series: the admin's chosen questions (or the first q).
-    let items = isPractice ? flavourItems(get(t, sc.label), sc.q, setIdx) : usedQuestions(get(t, sc.label), sc.q)
+    let items = byVersion ? flavourItems(get(t, sc.label), sc.q, setIdx) : usedQuestions(get(t, sc.label), sc.q)
     if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
@@ -519,9 +534,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const pickFirst = () => { const list = get(testNo, section), keep = new Set(list.slice(0, sec.q).map(x => x.id)); const clear = list.filter(x => x.in_paper && !keep.has(x.id)).map(x => x.id); return savePicks(list.filter(x => keep.has(x.id) && !x.in_paper).map(x => x.id), true, 'first').then(() => clear.length && savePicks(clear, false, 'first-clear')) }
   const clearPicks = () => savePicks(get(testNo, section).filter(x => x.in_paper).map(x => x.id), false, 'clear')
   // Practice bank: print one version per teacher's set (up to 4) so students get different flavours; the admin can still change it in Paper tools.
-  const flavourCount = isPractice ? Math.max(1, ...live(testNo).map(x => flavours(get(testNo, x.label), x.q).filter(f => f.complete).length)) : 1
-  useEffect(() => { if (isPractice && flavourCount > 1) setVer(v => (v.sets < Math.min(4, flavourCount) ? { ...v, sets: Math.min(4, flavourCount) } : v)) }, [isPractice, flavourCount, testNo]) // eslint-disable-line react-hooks/exhaustive-deps
-  const secStatus = (t, s) => { if (isPractice) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
+  const flavourCount = byVersion ? Math.max(1, ...live(testNo).map(x => flavours(get(testNo, x.label), x.q).filter(f => f.complete).length)) : 1
+  useEffect(() => { if (byVersion && flavourCount > 1) setVer(v => (v.sets < Math.min(4, flavourCount) ? { ...v, sets: Math.min(4, flavourCount) } : v)) }, [byVersion, flavourCount, testNo]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isMobile || typeof IntersectionObserver === 'undefined') return undefined
+    const el = document.getElementById('msb-editor'); if (!el) return undefined
+    const io = new IntersectionObserver(([e]) => setEditorInView(e.isIntersecting), { rootMargin: '-30% 0px -15% 0px', threshold: 0 })   // "on screen" = reaches the middle of the screen
+    io.observe(el)
+    return () => io.disconnect()
+  }, [isMobile, testNo, section, addMode])
+  const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
@@ -530,8 +552,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
   const multiTeachers = contribs.length > 1
   const myName = currentUser?.name || ''
+  const chapters = chaptersOf(testNo, sec.label)
+  const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
+  const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
   const flav = flavours(secList, sec.q)
-  const myCount = isPractice ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
+  const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
@@ -598,10 +624,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             return (
               <button key={s.label} onClick={() => setSection(s.label)} style={{ all: 'unset', cursor: 'pointer', padding: 10, borderRadius: 12, background: s.label === section ? '#fff' : PX.tint, border: `2px solid ${s.label === section ? PX.gold : 'transparent'}`, boxSizing: 'border-box' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{s.short} <span style={{ fontWeight: 400 }}>· {range(s)}</span></div>
-                <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{isPractice ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`}</div>
+                <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`}</div>
                 <div style={{ fontSize: 11, color: PX.sub }}>{ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'}</div>
                 {openNotes(testNo, s.label) > 0 && <div style={{ fontSize: 11, color: PX.warn, fontWeight: 700 }}>💬 {openNotes(testNo, s.label)} open note{openNotes(testNo, s.label) > 1 ? 's' : ''}</div>}
-                {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : (isPractice ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q) ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
+                {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : (byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q) ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
               </button>
             )
           })}
@@ -710,11 +736,11 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>}
 
       <div id="msb-editor" style={{ scrollMarginTop: 70 }}>
-      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${isPractice && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : `${secList.length}/${sec.q} questions`} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
-        right={<span style={{ display: 'flex', gap: 8 }}>{(isPractice ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
+      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : `${secList.length}/${sec.q} questions`} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
+        right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
-            {isPractice && flav.length > 0 && (
+            {byVersion && flav.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f3f8ff', border: '1px solid #c9dcf7' }}>
                 <b style={{ fontSize: 13, color: PX.navy }}>{flav.length > 1 ? `${flav.length} teachers each set their own ${sec.q} questions` : 'Each teacher sets their own set'}</b>
                 <div style={{ fontSize: 12.5, color: PX.sub, marginTop: 2 }}>Every teacher writes a full set of {sec.q} questions for this practice test, so students receive different versions. Version A is the first teacher's set, B the second's, and so on.</div>
@@ -722,7 +748,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                   {flav.map(f => <span key={f.by} style={{ padding: '3px 10px', borderRadius: 99, background: '#fff', border: `1px solid ${f.complete ? '#bfe3cc' : '#f1c9c4'}`, fontSize: 12, fontWeight: 700, color: f.complete ? PX.ok : PX.bad }}>Version {f.letter} · {fullName(f.by)} · {Math.min(f.count, sec.q)}/{sec.q}{f.complete ? ' ✓' : ''}</span>)}
                 </div>
               </div>)}
-            {!isPractice && (secList.length > sec.q || multiTeachers) && secList.length > 0 && (
+            {!byVersion && (secList.length > sec.q || multiTeachers) && secList.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#fffaf0', border: '1px solid #ecdcae' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13, color: PX.navy }}>{multiTeachers ? `${contribs.length} teachers set this ${cfg.noun === 'Set' ? 'set' : 'paper'}` : 'More questions than needed'}</b>
@@ -743,6 +769,22 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     : 'The admin chooses which questions go into the paper.'}
                 </div>}
               </div>)}
+            {series === 'pre' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '0 0 12px', padding: '9px 12px', borderRadius: 14, background: byVersion ? '#f3f8ff' : '#fff', border: `1px solid ${byVersion ? '#c9dcf7' : line}`, cursor: isAdmin && onSetting ? 'pointer' : 'default' }}>
+                <input type="checkbox" checked={byVersion} disabled={!isAdmin || !onSetting} onChange={e => onSetting?.('pre_versions', e.target.checked)} />
+                <span style={{ flex: '1 1 260px' }}><b style={{ fontSize: 13, color: PX.navy }}>Multiple sets on the same syllabus</b><span style={{ display: 'block', fontSize: 12.5, color: PX.sub }}>{byVersion ? 'Each teacher writes their own full set of questions for the same chapter. The paper prints as Version A, B, C so students get different versions.' : (isAdmin ? 'Off: teachers share one set (the admin picks the best questions). Turn on to let each teacher write a full set.' : 'Off: teachers share one set.')}</span></span>
+              </label>)}
+            {chapters.length > 0 && (
+              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
+                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
+                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
+                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
+                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
+                </div>
+                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
+              </div>)}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
@@ -752,13 +794,15 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <span style={{ fontSize: 11.5, color: PX.sub }}>{isAdmin ? 'Back up, move to another series, or share with another institute. Duplicates are skipped.' : 'You can export or import your own section. Duplicates are skipped.'}</span>
             </div>
             <div role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
-              {[['cards', '🗂️ Question cards'], ['paste', '📋 Paste / file']].map(([k, l]) => (
+              {[['one', '☝️ One by one'], ['cards', '🗂️ Many at once'], ['paste', '📋 Paste / file']].map(([k, l]) => (
                 <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
               ))}
             </div>
-            {addMode === 'cards' ? (
+            {addMode === 'one' ? (
+              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+            ) : addMode === 'cards' ? (
               <>
-                <MultiQuestionAdder key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
+                <MultiQuestionAdder chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
                   <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
                   <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
@@ -833,9 +877,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
               {secList.length > sec.q || multiTeachers ? <span title={q.uploaded_by ? `Set by ${fullName(q.uploaded_by)}` : ''} style={{ fontSize: 11, color: PX.sub, whiteSpace: 'nowrap' }}>{q.uploaded_by ? fullName(q.uploaded_by) : ''}</span> : null}
-              {isPractice && flav.length > 0 && (() => { const f = flav.find(x => x.by === (String(q.uploaded_by || '').trim() || '(unknown)')); const idx = f ? f.items.findIndex(x => x.id === q.id) : -1; return f && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: idx < sec.q ? '#e8f0fe' : '#f1f3f7', color: idx < sec.q ? '#1d4ed8' : '#7b8799' }}>{idx < sec.q ? `Version ${f.letter} · Q${idx + 1}` : 'Extra'}</span> })()}
-              {!isPractice && (secList.length > sec.q || pickInfo.chosen > 0) && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: usedIds.has(q.id) ? '#e6f5ec' : '#f1f3f7', color: usedIds.has(q.id) ? '#0f7a4c' : '#7b8799' }}>{usedIds.has(q.id) ? `In paper · Q${startOf(section) + usedList.findIndex(x => x.id === q.id)}` : 'Not used'}</span>}
-              {isAdmin && !isPractice && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
+              {byVersion && flav.length > 0 && (() => { const f = flav.find(x => x.by === (String(q.uploaded_by || '').trim() || '(unknown)')); const idx = f ? f.items.findIndex(x => x.id === q.id) : -1; return f && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: idx < sec.q ? '#e8f0fe' : '#f1f3f7', color: idx < sec.q ? '#1d4ed8' : '#7b8799' }}>{idx < sec.q ? `Version ${f.letter} · Q${idx + 1}` : 'Extra'}</span> })()}
+              {!byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: usedIds.has(q.id) ? '#e6f5ec' : '#f1f3f7', color: usedIds.has(q.id) ? '#0f7a4c' : '#7b8799' }}>{usedIds.has(q.id) ? `In paper · Q${startOf(section) + usedList.findIndex(x => x.id === q.id)}` : 'Not used'}</span>}
+              {isAdmin && !byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
@@ -853,7 +897,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 2fr 1fr', gap: 8 }}>
                         <label style={lab}>Answer<select className="px-input" value={editQ.answer} onChange={e => set({ answer: e.target.value })}>{['A', 'B', 'C', 'D'].map(k => <option key={k}>{k}</option>)}</select></label>
                         <label style={lab}>Level<select className="px-input" value={editQ.difficulty || ''} onChange={e => set({ difficulty: e.target.value })}><option value="">—</option><option>Easy</option><option>Medium</option><option>Hard</option></select></label>
-                        <label style={lab}>Topic<input className="px-input" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
+                        <label style={lab}>Topic<input className="px-input" list="msb-chapters" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
                       </div>
                       <label style={lab}>Explanation<input className="px-input" value={editQ.explanation || ''} onChange={e => set({ explanation: e.target.value })} /></label>
                       {('passage' in editQ || 'image_data' in editQ) ? (
@@ -909,7 +953,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
-      {isMobile && mayEdit && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
+      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
     </div>
   )
 }

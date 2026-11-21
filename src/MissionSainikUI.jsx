@@ -37,12 +37,12 @@ function PhotoViewer({ url, name, onClose }) {
 // Initials circle, or the person's real photo when one exists in the staff photo system (Staff profile photo, or Website Manager → Faculty).
 // On a phone the photo is drawn larger, and tapping it opens it full size. staff={false} for people who are not staff (students, batches):
 // they keep the initials and are never matched to a staff photo.
-export function Avatar({ name, size = 34, staff = true, photoName }) {
+export function Avatar({ name, size = 34, staff = true, photoName, photoUrl }) {
   useStaffPhotos()
   const phone = usePhone()
   const [broken, setBroken] = useState(false)
   const [open, setOpen] = useState(false)
-  const url = staff && !broken ? findStaffPhoto(photoName || name) : null
+  const url = broken ? null : (photoUrl || (staff ? findStaffPhoto(photoName || name) : null))
   const [a, b] = hue(name)
   const px = phone ? Math.min(Math.round(size * 1.45), 76) : size      // photos AND initials grow on a phone, so rows stay aligned
   if (url) {
@@ -63,10 +63,10 @@ export function Avatar({ name, size = 34, staff = true, photoName }) {
   )
 }
 
-export function PersonCell({ name, sub, size = 34, children, staff = true, photoName }) {
+export function PersonCell({ name, sub, size = 34, children, staff = true, photoName, photoUrl }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-      <Avatar name={name} size={size} staff={staff} photoName={photoName} />
+      <Avatar name={name} size={size} staff={staff} photoName={photoName} photoUrl={photoUrl} />
       <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
         <span style={{ fontWeight: 700, color: PX.ink }}>{children || name}</span>
         {sub ? <span style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500, overflowWrap: 'anywhere' }}>{sub}</span> : null}

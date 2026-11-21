@@ -5,11 +5,12 @@ import { useState, useMemo } from 'react'
 import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill } from './MissionSainikUI'
+import { Faces } from './MissionFoundationFaces'
 import { printPremium } from './lib/printPremium'
 import { getInstitute } from './systemSettings'
 import { downloadCertificates } from './lib/missionFoundationCerts'
 import {
-  MISSION_NAME, BATCHES, CONDUCT_STEPS, splitChapters, prizeList, focusTest, cycleFor, maxMarks, subjectByLabel, nameMatches, isSetter, titled,
+  MISSION_NAME, BATCHES, CONDUCT_STEPS, splitChapters, prizeList, focusTest, cycleFor, maxMarks, subjectByLabel, nameMatches, isSetter, settersOf, titled,
 } from './missionFoundationData'
 
 const fmt = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '—'
@@ -44,7 +45,7 @@ function Stepper({ cycle, onOpen, compact }) {
 }
 
 // ─── Home ─────────────────────────────────────────────────────────────────────
-export function HomeDashboard({ tests, ctx, today, me, isAdmin, papers, testById, setTab, setOpenTest }) {
+export function HomeDashboard({ photoOf = x => x, tests, ctx, today, me, isAdmin, papers, testById, setTab, setOpenTest }) {
   if (!tests.length) return (
     <PremiumCard title="Welcome to Mission Foundation" subtitle="Three steps to get started">
       <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 2 }}>
@@ -90,6 +91,7 @@ export function HomeDashboard({ tests, ctx, today, me, isAdmin, papers, testById
           {!myTodo.length ? <div style={{ padding: 18, color: PX.sub }}>Nothing waiting for you. ✅</div> : myTodo.map(p => (
             <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '11px 18px', borderTop: `1px solid ${PX.line}` }}>
               <span style={{ flex: 1 }}><b>{p.subject}</b> <span style={{ color: PX.sub }}>· {p.test.title} · {fmt(p.test.test_date)}</span></span>
+              <Faces names={[...settersOf(p), p.verifier]} photoOf={photoOf} size={34} />
               <Pill tone={p.status === 'Pending' ? 'warn' : 'info'}>{isSetter(me, p) && p.status === 'Pending' ? 'Set paper' : 'Check paper'}</Pill>
             </div>
           ))}
