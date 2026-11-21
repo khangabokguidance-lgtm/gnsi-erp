@@ -295,6 +295,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   // Backup: the whole bank of this series as CSV (answers included), formula-injection safe.
   const exportCsv = () => {
+    if (!isAdmin) return setMsg('🔒 Only an admin can export the whole question bank. Use “This section” for your own subject.')
     const cell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
     const head = ['Series', 'Test', 'Section', 'Q no', 'Question', 'A', 'B', 'C', 'D', 'Answer', 'Explanation', 'Topic', 'Level', 'Uploaded by', 'Verified by']
     const lines = [head.map(cell).join(',')]
@@ -660,7 +661,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
         {isMobile && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
