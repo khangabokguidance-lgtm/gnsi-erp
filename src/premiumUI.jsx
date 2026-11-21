@@ -49,6 +49,7 @@ export function PremiumStyles() {
       .px-tab.on .px-badge{background:${PX.gold};color:#1a1406}
       .px-card{background:#fff;border:1px solid ${PX.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 12px 32px -22px rgba(19,42,79,.35);overflow:hidden}
       .px-card-h{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid ${PX.line};background:linear-gradient(180deg,#fff,#fcfbf7)}
+      @media (max-width:640px){.px-card-h{flex-wrap:wrap;row-gap:10px}.px-card-h>div:nth-child(2){flex:1 1 calc(100% - 30px)}.px-card-h>:nth-child(3){flex:1 1 100%;max-width:100%;overflow-x:auto;display:flex;gap:8px;padding-bottom:2px}}
       .px-card-h .bar{width:4px;align-self:stretch;min-height:24px;border-radius:4px;background:linear-gradient(180deg,${PX.gold},${PX.goldLt});flex-shrink:0}
       .px-card-t{font-family:${PX.serif};font-size:16.5px;font-weight:600;color:${PX.ink};line-height:1.25}
       .px-card-s{font-size:12px;color:${PX.sub};margin-top:2px}
@@ -153,9 +154,16 @@ const IXT_CSS = `
   .ixt-grid{grid-template-columns:repeat(auto-fill,minmax(86px,1fr))}
   .ixt-hint{display:none}
   .ixt-ico{width:50px;height:50px;border-radius:15px}
-  .ixt-chip .ixt-chip-l,.ixt-back-l{display:none}
-  .ixt-back-s{display:inline}
-  .ixt-chip.on .ixt-chip-l{display:inline}
+  .ixt-bar{flex-wrap:nowrap;overflow-x:auto;gap:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;scroll-snap-type:x proximity}
+  .ixt-bar::-webkit-scrollbar{display:none}
+  .ixt-chip{flex-direction:column;justify-content:center;gap:4px;height:54px;min-width:64px;padding:0 8px;font-size:10.5px;scroll-snap-align:center}
+  .ixt-chip-l{display:block;max-width:76px;overflow:hidden;text-overflow:ellipsis}
+  .ixt-chip.on{min-width:72px}
+  .ixt-chip.on .ixt-chip-l{max-width:none;overflow:visible}
+  .ixt-chip .ixt-badge{position:absolute;top:3px;right:6px}
+  .ixt-back{height:54px;flex-direction:column;justify-content:center;gap:2px;padding:0 10px}
+  .ixt-back-l{display:none}
+  .ixt-back-s{display:inline;font-size:10.5px}
 }
 `
 export function IconTabs({ groups, active, open, onOpen, onHome, homeLabel = 'All sections', sticky = false, ariaLabel }) {
