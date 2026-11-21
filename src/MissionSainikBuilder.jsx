@@ -853,7 +853,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </PremiumCard>
 
-      <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see options, answer and explanation' : ''}
+      <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
         {secList.length > 5 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -899,7 +899,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                         <label style={lab}>Level<select className="px-input" value={editQ.difficulty || ''} onChange={e => set({ difficulty: e.target.value })}><option value="">—</option><option>Easy</option><option>Medium</option><option>Hard</option></select></label>
                         <label style={lab}>Topic<input className="px-input" list="msb-chapters" value={editQ.topic || ''} onChange={e => set({ topic: e.target.value })} /></label>
                       </div>
-                      <label style={lab}>Explanation<input className="px-input" value={editQ.explanation || ''} onChange={e => set({ explanation: e.target.value })} /></label>
                       {('passage' in editQ || 'image_data' in editQ) ? (
                         <>
                           <label style={lab}>Reading passage (printed once above a run of questions that share it)<textarea className="px-input" rows={3} value={editQ.passage || ''} onChange={e => set({ passage: e.target.value })} /></label>

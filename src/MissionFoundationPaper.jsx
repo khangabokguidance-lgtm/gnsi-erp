@@ -246,7 +246,6 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
               <option value={1}>1</option><option value={2}>2</option></select></label>
             <label>Text size <select className="px-input" style={{ width: 'auto' }} value={opt.size} onChange={e => setOpt({ ...opt, size: Number(e.target.value) })}>
               {[11, 12, 13, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
-            <label style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={opt.explanations} onChange={e => setOpt({ ...opt, explanations: e.target.checked })} /> Explanations in answer key</label>
           </div>
           <details style={{ marginBottom: 10 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Instructions on the paper</summary>
