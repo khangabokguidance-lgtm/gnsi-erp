@@ -12,7 +12,7 @@ const TABLE = 'mission_sainik_tasks'
 const STATUS_TONE = { Pending: 'warn', Submitted: 'info', Verified: 'gold', Approved: 'ok' }
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
-export default function MissionSainikPracticePlan({ photoOf = x => x, practiceSetters = () => [], practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames, peopleAll, staffDir = [], reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
+export default function MissionSainikPracticePlan({ questionsPer = () => 25, photoOf = x => x, practiceSetters = () => [], practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames, peopleAll, staffDir = [], reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
   const [key, setKey] = useState(SUBJECTS[0].key)
   const [busy, setBusy] = useState(false)
   const sub = SUBJECTS.find(x => x.key === key) || SUBJECTS[0]
@@ -33,7 +33,7 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practiceSe
     if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That teacher already has this set.' : error.message))
     audit('practice_plan', `${sub.key}:${what}`, null); setMsg('✅ ' + okMsg); reload()
   }
-  const addTeacher = (set, name) => name && run(() => supabase.from(TABLE).insert({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: 25, status: 'Pending', ...stamp() }),
+  const addTeacher = (set, name) => name && run(() => supabase.from(TABLE).insert({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: questionsPer(sub.key), status: 'Pending', ...stamp() }),
     `${fullName(name)} added to Set ${set.no}`, `set${set.no}+${name}`)
   const removeTeacher = (set, r) => {
     if (r.status !== 'Pending') return setMsg(`❌ ${fullName(r.setter)} has already handed in Set ${set.no}; it cannot be removed.`)
@@ -42,7 +42,7 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practiceSe
   }
   // Each practice teacher sets their OWN full set of questions for the same practice test, so students get different versions.
   const missingFor = set => practiceSetters(sub.key).filter(n => !set.rows.some(r => r.setter === n))
-  const rowFor = (set, name) => ({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: 25, status: 'Pending', ...stamp() })
+  const rowFor = (set, name) => ({ kind: 'practice', test_no: set.no, subject: sub.label, setter: name, verifier: set.rows[0]?.verifier || defaultVerifier, question_count: questionsPer(sub.key), status: 'Pending', ...stamp() })
   const addEveryone = set => { const miss = missingFor(set); if (miss.length) run(() => supabase.from(TABLE).insert(miss.map(n => rowFor(set, n))), `${miss.length} teacher${miss.length === 1 ? '' : 's'} added to Set ${set.no}`, `set${set.no}+all`) }
   const addEveryoneEverywhere = () => {
     const rowsNew = groups.flatMap(g => missingFor(g).map(n => rowFor(g, n)))
@@ -63,7 +63,7 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practiceSe
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <b style={{ fontFamily: PX.serif, fontSize: 18, color: PX.navy }}>{sub.label}</b>
-        <span style={{ color: PX.sub, fontSize: 13 }}>{sets} practice set{sets === 1 ? '' : 's'} · {totalTeachers} teacher{totalTeachers === 1 ? '' : 's'}</span>
+        <span style={{ color: PX.sub, fontSize: 13 }}>{sets} practice set{sets === 1 ? '' : 's'} · {questionsPer(sub.key)} questions each · {totalTeachers} teacher{totalTeachers === 1 ? '' : 's'}</span>
       </div>
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit,minmax(280px,1fr))' }}>
         {groups.map(g => {

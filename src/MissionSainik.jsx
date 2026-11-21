@@ -303,6 +303,17 @@ function MissionSainikInner({ currentUser }) {
     if (error) { setMsg('❌ ' + error.message); return false }
     audit('setting_clear_' + key.split(':')[0], key, null); await loadSettings(); return true
   }
+  // Number of questions each teacher must set per practice set, per subject (admin setting; default 25).
+  const practiceQOf = key => Math.min(200, Math.max(5, Number(settings['practice_q:' + key]) || 25))
+  const practiceQMap = useMemo(() => Object.fromEntries(SUBJECTS.map(x => [x.key, Math.min(200, Math.max(5, Number(settings['practice_q:' + x.key]) || 25))])), [settings])
+  const setPracticeQ = async (sub, n) => {
+    const q = Math.min(200, Math.max(5, Math.round(n)))
+    if (q === practiceQOf(sub.key)) return
+    if (!(await putSetting('practice_q:' + sub.key, q))) return
+    // tasks that are still Pending follow the new number; submitted ones keep what was handed in
+    await supabase.from(TABLE).update({ question_count: q, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }).eq('kind', 'practice').eq('subject', sub.label).eq('status', 'Pending')
+    setMsg(`✅ ${sub.label}: ${q} questions per practice set`); load()
+  }
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
   const [matDraft, setMatDraft] = useState({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null })
@@ -882,7 +893,7 @@ function MissionSainikInner({ currentUser }) {
     return (
       <>
       <MissionSainikSetterPlan {...{ photoOf, tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
-      <MissionSainikPracticePlan {...{ photoOf, practiceSetters: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'assistant').map(r => r.name) : (PRACTICE_PANEL[key]?.assistants || [])), practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikPracticePlan {...{ questionsPer: practiceQOf, photoOf, practiceSetters: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'assistant').map(r => r.name) : (PRACTICE_PANEL[key]?.assistants || [])), practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1087,7 +1098,7 @@ function MissionSainikInner({ currentUser }) {
     if (r.error) return { ok: false, error: r.error, work }
     if (r.create) {                       // practice: add the missing sets for this teacher (Set 1, Set 2 …)
       if (!r.create.length) return { ok: true, changed: 0, work }
-      const newRows = r.create.map(c => ({ kind: 'practice', test_no: c.test_no, subject: sub.label, setter: name, verifier: PRACTICE_PANEL[d.subject_key]?.verifier || null, question_count: 25, status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }))
+      const newRows = r.create.map(c => ({ kind: 'practice', test_no: c.test_no, subject: sub.label, setter: name, verifier: PRACTICE_PANEL[d.subject_key]?.verifier || null, question_count: practiceQOf(d.subject_key), status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }))
       const { data, error } = await supabase.from(TABLE).insert(newRows).select()
       if (error) return { ok: false, error: error.message, work }
       audit('panel_tests', d.subject_key, { name, role: d.role, practice_sets: Number(count), added: newRows.length })
@@ -1204,7 +1215,14 @@ function MissionSainikInner({ currentUser }) {
         {SUBJECTS.map(sub => {
           const members = panelRows.length ? panelRows.filter(r => r.subject_key === sub.key && inView(r, panelView)) : (panelView === 'pre' ? PANEL[sub.key].map(name => ({ name, role: 'setter', subject_key: sub.key, builtin: true })) : [{ name: PRACTICE_PANEL[sub.key].verifier, role: 'verifier', subject_key: sub.key, builtin: true }, ...PRACTICE_PANEL[sub.key].assistants.map(name => ({ name, role: 'assistant', subject_key: sub.key, builtin: true }))])
           return (
-            <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}>
+            <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}
+              right={panelView === 'practice' ? (
+                <span role="group" aria-label={`Questions per practice set, ${sub.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub }}>Questions / set</span>
+                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five fewer questions per set" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) - 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>−</button>}
+                  <b aria-live="polite" style={{ minWidth: 30, textAlign: 'center', fontSize: 16, color: PX.navy }}>{practiceQOf(sub.key)}</b>
+                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five more questions per set" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) + 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>}
+                </span>) : null}>
               {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
               {members.map((m, i) => {
                 const pre = tests.filter(r => r.subject === sub.label && settersOfRow(r).includes(m.name)).sort((a, b) => a.test_no - b.test_no)
@@ -1222,7 +1240,7 @@ function MissionSainikInner({ currentUser }) {
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
                       style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
-                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, (m.role === 'assistant' || prac.length) ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, (m.role === 'assistant' || prac.length) ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}${m.role === 'assistant' ? ` · ${prac.length * practiceQOf(sub.key)} questions to set (${practiceQOf(sub.key)} per set)` : ''}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       {isRealAdmin && m.role === 'assistant' && !m.builtin && (
@@ -1608,7 +1626,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
+              practiceQ={practiceQMap} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}

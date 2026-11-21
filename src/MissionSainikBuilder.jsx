@@ -51,8 +51,10 @@ const CFG = {
   },
 }
 
-export default function MissionSainikBuilder({ series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
-  const cfg = CFG[series]
+export default function MissionSainikBuilder({ practiceQ = null, series, tasks, saveTask, currentUser, setMsg, isMobile, institute, embargo = false, audit = () => {}, today = '', panel = null, startTest, startSection, locks = {}, onLock }) {
+  // Practice bank: the admin sets how many questions each teacher sets per practice set, per subject (Panel → Practice panel).
+  const cfg0 = CFG[series]
+  const cfg = useMemo(() => (series === 'practice' && practiceQ ? { ...cfg0, sections: cfg0.sections.map(x => ({ ...x, q: Number(practiceQ[x.key]) || x.q })) } : cfg0), [series, practiceQ]) // eslint-disable-line react-hooks/exhaustive-deps
   const isPractice = series === 'practice'   // practice bank: every teacher sets their OWN set of questions for the same practice test; students get the different versions
   const isAdmin = isAdminRole(currentUser?.role)
   const isMe = n => nameMatches(currentUser?.name, n)
@@ -555,7 +557,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               return (
                 <button key={t.no} type="button" role="tab" aria-selected={t.no === testNo} className={'msb-chip' + (t.no === testNo ? ' on' : '')} onClick={() => setTestNo(t.no)} ref={el => { if (el && t.no === testNo) el.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }}>
                   <div style={{ fontWeight: 800, color: PX.navy, fontSize: 14 }}>{tid(t.no)}</div>
-                  <div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : cfg.noun === 'Set' ? '25 per subject' : ' '}</div>
+                  <div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : cfg.noun === 'Set' ? 'one set per subject' : ' '}</div>
                   <div style={{ height: 5, borderRadius: 99, background: '#f1ede3', margin: '6px 0 3px', overflow: 'hidden' }}><div style={{ width: Math.min(100, tot ? (n / tot) * 100 : 0) + '%', height: '100%', background: done ? PX.ok : PX.gold }} /></div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: done ? PX.ok : PX.sub }}>{done ? '✓ Ready' : `${n}/${tot}`}</div>
                 </button>
