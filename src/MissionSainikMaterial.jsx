@@ -93,6 +93,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [popts, setPopts] = useState(() => ({ ...PRINT_DEFAULTS, ...load('msm-print', {}) }))
   const ta = useRef(null)
   const set = patch => setDraft(d => ({ ...d, ...patch }))
+  const [blocksOn, setBlocksOn] = useState(false)   // preview shows each block with edit / delete controls
   const smart = useSmartNotes({ body: draft.body, setBody: t => set({ body: t }), flash: (m, bad) => setMsg(bad ? '❌ ' + m : m) })
   useEffect(() => { if (mySubjects.length === 1 && !editMat && !draft.subject && !draft.title && !draft.body) setDraft(d => ({ ...d, subject: mySubjects[0] })) }, [mySubjects.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
   const instName = institute?.name || 'Guidance Navodaya & Sainik Institute'
@@ -411,11 +412,12 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
               {view !== 'edit' && <div style={view === 'split' ? { position: 'sticky', top: 8, maxHeight: '86vh', overflow: 'auto' } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13 }}>Live preview</b><span style={{ fontSize: 12, color: PX.sub }}>as it will print</span>
-                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button type="button" aria-pressed={blocksOn} className="px-hbtn" title="Edit, delete, move or add each question or paragraph" onClick={() => setBlocksOn(v => !v)}>{blocksOn ? '✓ ' : ''}🧩 Edit blocks</button>
                     <LayoutControls layout={layout} setLayout={setLayout} inp={inp} />
                   </span>
                 </div>
-                {livePreview}
+                {blocksOn ? <BlockEditor body={draft.body} onChange={body => set({ body })} layout={layout} inp={inp} /> : livePreview}
               </div>}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap', position: 'sticky', bottom: isMobile && !focus ? 'calc(72px + env(safe-area-inset-bottom))' : 0, background: '#fff', padding: '10px 0', borderTop: `1px solid ${PX.line}`, zIndex: 4 }}>
@@ -729,6 +731,49 @@ function QuestionPicker({ subjects, onInsert, onClose, isMobile }) {
           <button type="button" className="px-btn gold" style={{ minHeight: 44 }} disabled={!chosen.length} onClick={() => onInsert(questionsToNotes(chosen, { answers, explain }))}>Insert {chosen.length || ''} question{chosen.length === 1 ? '' : 's'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ── Edit blocks: every question / paragraph of the draft as a card with Edit, Delete, move and add-below ──
+const NEW_BLOCK = '1. Type the question here\nA) \nB) \nC) \nD) \nAnswer: A'
+const splitBlocks = body => String(body || '').replace(/\r/g, '').split(/\n[ \t]*\n/).map(x => x.replace(/^\n+|\s+$/g, '')).filter(x => x.trim())
+function BlockEditor({ body, onChange, layout, inp }) {
+  const blocks = useMemo(() => splitBlocks(body), [body])
+  const [edit, setEdit] = useState(null)   // { i, text, isNew }
+  const commit = list => onChange(list.join('\n\n'))
+  const del = i => { if (window.confirm('Delete this block?')) { commit(blocks.filter((_, k) => k !== i)); setEdit(null) } }
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= blocks.length) return; const b = [...blocks];[b[i], b[j]] = [b[j], b[i]]; commit(b) }
+  const addBelow = i => { const b = [...blocks]; b.splice(i + 1, 0, NEW_BLOCK); commit(b); setEdit({ i: i + 1, text: NEW_BLOCK, isNew: true }) }
+  const save = () => { const t = edit.text.trim(); commit(t ? blocks.map((x, k) => (k === edit.i ? t : x)) : blocks.filter((_, k) => k !== edit.i)); setEdit(null) }
+  const cancel = () => { if (edit.isNew) commit(blocks.filter((_, k) => k !== edit.i)); setEdit(null) }
+  const bt = { padding: '4px 9px', borderRadius: 8, border: '1px solid #d9d2c2', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }
+  if (!blocks.length) return <div style={{ color: '#9aa5b8', padding: 12 }}>Nothing to edit yet. Type or paste the material first.<div style={{ marginTop: 8 }}><button type="button" style={bt} onClick={() => { commit([NEW_BLOCK]); setEdit({ i: 0, text: NEW_BLOCK, isNew: true }) }}>＋ Add a question</button></div></div>
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12, color: '#5d6b82' }}>{blocks.length} blocks. Changes here update the text on the left, and are kept until you press Save.</div>
+      {blocks.map((b, i) => (
+        <div key={i + ':' + b.slice(0, 20)} style={{ border: '1px solid #e1dac8', borderRadius: 12, padding: 10, background: edit?.i === i ? '#fffbee' : '#fff' }}>
+          {edit?.i === i ? (
+            <>
+              <textarea className="msm-in" autoFocus aria-label={`Edit block ${i + 1}`} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} style={{ ...inp, minHeight: 130, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', lineHeight: 1.5 }} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}><button type="button" className="px-btn gold" onClick={save}>✔ Done</button><button type="button" className="px-btn ghost" onClick={cancel}>Cancel</button></div>
+            </>
+          ) : (
+            <>
+              <div className={'md' + (layout.saver ? ' compact' : '')} style={{ fontFamily: FONTS[layout.font] || FONTS.serif, fontSize: layout.saver ? Math.min(layout.size, 12) : layout.size }} dangerouslySetInnerHTML={{ __html: renderMaterial(b) }} />
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                <button type="button" style={bt} onClick={() => setEdit({ i, text: b })}>✎ Edit</button>
+                <button type="button" style={{ ...bt, color: '#b42318' }} onClick={() => del(i)}>🗑 Delete</button>
+                <button type="button" style={bt} disabled={i === 0} aria-label="Move up" onClick={() => move(i, -1)}>↑</button>
+                <button type="button" style={bt} disabled={i === blocks.length - 1} aria-label="Move down" onClick={() => move(i, 1)}>↓</button>
+                <button type="button" style={bt} onClick={() => addBelow(i)}>＋ Add below</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
