@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
+import MissionSainikQuickAdd from './MissionSainikQuickAdd'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
@@ -65,7 +66,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [testNo, setTestNo] = useState(startTest || 1)
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
-  const [addMode, setAddMode] = useState('cards')   // cards | paste
+  const [addMode, setAddMode] = useState(isMobile ? 'one' : 'cards')   // one (a question at a time, saved as you go) | cards | paste
+  const [editorInView, setEditorInView] = useState(false)   // the floating "Add questions" button is hidden while the editor itself is on screen
   const [cards, setCards] = useState(() => [blankCard()])
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
@@ -184,25 +186,25 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const problems = cardsProblems(cards)
     return { ...parsedBase, errors: problems && !parsedBase.errors.length ? [`${problems} question card(s) incomplete — see the red notes`] : parsedBase.errors, questions: parsedBase.questions.map((q, i) => (filled[i]?.image && filled[i].type !== 'normal' ? { ...q, image_data: filled[i].image } : q)) }
   }, [parsedBase, cards, addMode])
-  const upload = async () => {
-    if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
-    if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
-    if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
-    const ownOf = list => (byVersion ? list.filter(x => x.uploaded_by === (currentUser?.name || '')) : list)   // practice: each teacher's own set
+  // Saves questions that are already parsed (from the paste box, the cards, or one question at a time): duplicates, count warning, insert, sign-off reset, auto-submit.
+  const insertQuestions = async (list, { clear = false } = {}) => {
+    if (!canEdit(testNo, section)) { setMsg('❌ Only the section setter or an admin can upload here.'); return false }
+    const ownOf = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l)   // several sets: each teacher's own set
     const have = ownOf(get(testNo, section)).length
-    if (parsed.questions.length > 200) return setMsg('❌ Upload at most 200 questions at a time.')
+    if (list.length > 200) { setMsg('❌ Upload at most 200 questions at a time.'); return false }
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     const seen = new Set(ownOf(get(testNo, section)).map(q => norm(q.question)))
-    const dupes = parsed.questions.filter((q, i) => seen.has(norm(q.question)) || parsed.questions.findIndex(z => norm(z.question) === norm(q.question)) !== i)
-    if (dupes.length) return setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”. Remove them and upload again.`)
-    if (have + parsed.questions.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + parsed.questions.length}. Upload anyway?`)) return
+    const dupes = list.filter((q, i) => seen.has(norm(q.question)) || list.findIndex(z => norm(z.question) === norm(q.question)) !== i)
+    if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
+    if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
     setBusy(true)
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
-    const rows = parsed.questions.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
+    const rows = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
-    if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : ''))
-    setText(''); setCards([blankCard()]); setMsg(`✅ ${rows.length} question(s) added to ${tid(testNo)} · ${section}`)
+    if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
+    if (clear) { setText(''); setCards([blankCard()]) }
+    setMsg(`✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}`)
     audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
     await clearSignoff(testNo, section)
     await load()
@@ -211,6 +213,13 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
       const task = (tasks || []).find(r => r.kind === 'test' && r.test_no === testNo && r.subject === section)
       if (task && task.status === 'Pending' && saveTask) await saveTask(task, { status: 'Submitted', question_count: have + rows.length })
     }
+    return true
+  }
+  const upload = async () => {
+    if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
+    if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
+    if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
+    await insertQuestions(parsed.questions, { clear: true })
   }
   const removeRows = async (match, label, ids) => {
     if (soft) {
@@ -527,6 +536,13 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   // Practice bank: print one version per teacher's set (up to 4) so students get different flavours; the admin can still change it in Paper tools.
   const flavourCount = byVersion ? Math.max(1, ...live(testNo).map(x => flavours(get(testNo, x.label), x.q).filter(f => f.complete).length)) : 1
   useEffect(() => { if (byVersion && flavourCount > 1) setVer(v => (v.sets < Math.min(4, flavourCount) ? { ...v, sets: Math.min(4, flavourCount) } : v)) }, [byVersion, flavourCount, testNo]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isMobile || typeof IntersectionObserver === 'undefined') return undefined
+    const el = document.getElementById('msb-editor'); if (!el) return undefined
+    const io = new IntersectionObserver(([e]) => setEditorInView(e.isIntersecting), { rootMargin: '-30% 0px -15% 0px', threshold: 0 })   // "on screen" = reaches the middle of the screen
+    io.observe(el)
+    return () => io.disconnect()
+  }, [isMobile, testNo, section, addMode])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
@@ -778,11 +794,13 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <span style={{ fontSize: 11.5, color: PX.sub }}>{isAdmin ? 'Back up, move to another series, or share with another institute. Duplicates are skipped.' : 'You can export or import your own section. Duplicates are skipped.'}</span>
             </div>
             <div role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
-              {[['cards', '🗂️ Question cards'], ['paste', '📋 Paste / file']].map(([k, l]) => (
+              {[['one', '☝️ One by one'], ['cards', '🗂️ Many at once'], ['paste', '📋 Paste / file']].map(([k, l]) => (
                 <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
               ))}
             </div>
-            {addMode === 'cards' ? (
+            {addMode === 'one' ? (
+              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+            ) : addMode === 'cards' ? (
               <>
                 <MultiQuestionAdder chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
@@ -935,7 +953,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
-      {isMobile && mayEdit && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
+      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
     </div>
   )
 }
