@@ -6,6 +6,7 @@ import { PremiumCard, PX } from './premiumUI'
 import { Pill, Avatar } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
 import NotesStudio, { printNote } from './MissionFoundationNotes'
+import { detectQuestions } from './lib/detectQuestions'
 import { MATERIAL_CSS, renderMaterial } from './lib/materialMarkup'
 import { MATH_CSS } from './lib/mathText'
 import {
@@ -192,6 +193,7 @@ async function openFile(path, flash) {
 export function MaterialTab({ tests, me, isAdmin, flash }) {
   const [items, setItems] = useState(null)
   const [filter, setFilter] = useState('')
+  const [qf, setQf] = useState('')   // '' all | 'q' question papers | 'n' notes only
   const [editing, setEditing] = useState(null)
   const [openId, setOpenId] = useState(null)
   const load = useCallback(async () => {
@@ -209,7 +211,8 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
     load()
   }
   const testName = id => { const t = tests.find(x => x.id === id); return t ? (t.title || 'Test ' + t.test_no) : '' }
-  const shown = (items || []).filter(m => !filter || m.subject === filter)
+  const det = useMemo(() => { const o = {}; (items || []).forEach(m => { if (m.body) o[m.id] = detectQuestions(m.body) }); return o }, [items])   // read from the text itself
+  const shown = (items || []).filter(m => (!filter || m.subject === filter) && (!qf || (qf === 'q' ? !!det[m.id]?.questions : !!m.body && !det[m.id]?.questions)))
 
   const chip = on => ({ padding: '8px 14px', borderRadius: 99, border: `1.5px solid ${on ? PX.navy : PX.line}`, background: on ? '#e4ebf6' : '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' })
   const startEdit = m => { setEditing(m); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }
@@ -217,13 +220,14 @@ export function MaterialTab({ tests, me, isAdmin, flash }) {
     <>
       <NotesStudio key={editing?.id || 'new'} {...{ tests, me, flash, editing }} onSaved={cancelled => { setEditing(null); if (!cancelled) load() }} />
       <PremiumCard title={`Material · ${shown.length}`} bodyStyle={{ padding: 0 }}
-        right={<select className="px-input" aria-label="Filter by subject" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 'auto' }}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select>}>
+        right={<span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><select className="px-input" aria-label="Filter by content" value={qf} onChange={e => setQf(e.target.value)} style={{ width: 'auto' }}><option value="">Questions and notes</option><option value="q">❓ Questions only</option><option value="n">📖 Notes only</option></select><select className="px-input" aria-label="Filter by subject" value={filter} onChange={e => setFilter(e.target.value)} style={{ width: 'auto' }}><option value="">All subjects</option>{SUBJECTS.map(s => <option key={s.key}>{s.label}</option>)}</select></span>}>
         {items === null ? <div style={{ padding: 20, color: PX.sub }}>Loading…</div> : !shown.length ? <div style={{ padding: 20, color: PX.sub }}>Nothing here yet — write the first notes above.</div> : shown.map(m => (
           <div key={m.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '12px 18px', borderTop: `1px solid ${PX.line}` }}>
             <span style={{ fontSize: 24 }} aria-hidden="true">{m.body ? '📝' : m.file_path ? '📄' : '🔗'}</span>
             <div style={{ flex: 1, minWidth: 200 }}>
               <div style={{ fontWeight: 700 }}>{m.title}</div>
               <div style={{ fontSize: 12.5, color: PX.sub }}>{[m.subject || 'All subjects', testName(m.test_id), m.uploaded_by, new Date(m.created_at).toLocaleDateString('en-GB')].filter(Boolean).join(' · ')}{m.note ? ` · ${m.note}` : ''}</div>
+              {det[m.id] && <div style={{ marginTop: 3 }}><span title="Found by reading the text" style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 99, background: det[m.id].questions ? '#e8f5ee' : '#eef1f6', color: det[m.id].questions ? '#0f7a4c' : '#5d6b82' }}>{det[m.id].questions ? `❓ ${det[m.id].questions} question${det[m.id].questions === 1 ? '' : 's'}${det[m.id].withAnswers ? ` · ${det[m.id].withAnswers === det[m.id].questions ? 'all' : det[m.id].withAnswers} with answers` : ' · no answers'}` : '📖 Notes · no questions'}</span></div>}
             </div>
             {m.body && <Btn onClick={() => setOpenId(openId === m.id ? null : m.id)}>{openId === m.id ? 'Hide' : 'Read'}</Btn>}
             {m.body && <Btn onClick={() => printNote(m, tests, m.uploaded_by)}>🖨 Print</Btn>}

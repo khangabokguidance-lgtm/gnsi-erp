@@ -7,6 +7,7 @@ import { MATH_TOOLS } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import { MATH_CSS, setMathStacked } from './lib/mathText'
 import { fitToPages } from './lib/materialFit'
+import { detectQuestions } from './lib/detectQuestions'
 import { logoSrc } from './lib/printPremium'
 import { renderMaterial, materialDocHtml, MATERIAL_CSS, PRINT_DEFAULTS, figureLine, parseFigureLine, wordCount, embedFor, kindOf, outline, FONTS } from './lib/materialMarkup'
 import { creatorOf, initials } from './lib/staffLookup'
@@ -89,7 +90,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [figErr, setFigErr] = useState('')
   const [layout, setLayout] = useState(() => ({ columns: 1, size: 13, saver: false, font: 'serif', ...load('msm-layout', {}) }))
   useEffect(() => { save('msm-layout', layout) }, [layout])
-  const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
+  const [q, setQ] = useState(''), [subj, setSubj] = useState(''), [kind, setKind] = useState(''), [testF, setTestF] = useState(''), [qf, setQf] = useState(''), [sort, setSort] = useState('new'), [grid, setGrid] = useState(false), [favOnly, setFavOnly] = useState(false)
   const [viewer, setViewer] = useState(null)
   const [favs, setFavs] = useState(() => load('msm-fav', [])), [recent, setRecent] = useState(() => load('msm-recent', []))
   const [printFor, setPrintFor] = useState(null)
@@ -216,12 +217,15 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   }
 
   // ── library ──
+  // Library detection: which typed materials hold questions (and how many), worked out from the text itself
+  const det = useMemo(() => { const o = {}; mats.forEach(m => { if (m.body) o[m.id] = detectQuestions(m.body) }); return o }, [mats])
+  const qCount = useMemo(() => ({ q: mats.filter(m => det[m.id]?.questions).length, n: mats.filter(m => m.body && !det[m.id]?.questions).length }), [mats, det])
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return mats.filter(m => (!subj || m.subject === subj) && (!kind || kindOf(m) === kind) && (!testF || String(m.test_no) === testF) && (!favOnly || favs.includes(m.id))
+    return mats.filter(m => (!subj || m.subject === subj) && (!kind || kindOf(m) === kind) && (!qf || (qf === 'q' ? !!det[m.id]?.questions : !!m.body && !det[m.id]?.questions)) && (!testF || String(m.test_no) === testF) && (!favOnly || favs.includes(m.id))
       && (!needle || [m.title, m.note, m.body, m.uploaded_by, m.subject].join(' ').toLowerCase().includes(needle)))
       .sort((a, b) => (favs.includes(b.id) - favs.includes(a.id)) || (sort === 'title' ? String(a.title).localeCompare(String(b.title)) : sort === 'old' ? String(a.created_at).localeCompare(String(b.created_at)) : String(b.created_at).localeCompare(String(a.created_at))))
-  }, [mats, q, subj, kind, testF, sort, favOnly, favs])
+  }, [mats, det, q, subj, kind, qf, testF, sort, favOnly, favs])
   const kinds = useMemo(() => { const c = {}; mats.forEach(m => { const k = kindOf(m); c[k] = (c[k] || 0) + 1 }); return c }, [mats])
   const recents = useMemo(() => recent.map(id => mats.find(m => m.id === id)).filter(Boolean).slice(0, 4), [recent, mats])
   const mine = mats.filter(m => m.uploaded_by === userName).length
@@ -446,7 +450,9 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
               {subjects.map(x => { const n = mats.filter(m => m.subject === x.label).length; return <button key={x.key} type="button" style={chip(subj === x.label)} onClick={() => setSubj(subj === x.label ? '' : x.label)}>{x.short} {n}</button> })}
             </div>
             <div className="msm-strip" style={{ marginTop: 8 }}>
-              <button type="button" style={chip(!kind && !favOnly)} onClick={() => { setKind(''); setFavOnly(false) }}>Any type</button>
+              <button type="button" style={chip(!kind && !favOnly && !qf)} onClick={() => { setKind(''); setFavOnly(false); setQf('') }}>Any type</button>
+              {qCount.q > 0 && <button type="button" style={chip(qf === 'q')} onClick={() => setQf(qf === 'q' ? '' : 'q')}>❓ Questions {qCount.q}</button>}
+              {qCount.n > 0 && <button type="button" style={chip(qf === 'n')} onClick={() => setQf(qf === 'n' ? '' : 'n')}>📖 Notes only {qCount.n}</button>}
               <button type="button" style={chip(favOnly)} onClick={() => setFavOnly(v => !v)}>⭐ Favourites {favs.filter(id => mats.some(m => m.id === id)).length}</button>
               {Object.entries(KIND).filter(([k]) => kinds[k]).map(([k, [ic, l]]) => <button key={k} type="button" style={chip(kind === k)} onClick={() => setKind(kind === k ? '' : k)}>{ic} {l} {kinds[k]}</button>)}
             </div>
@@ -470,6 +476,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                         <div style={{ fontWeight: 800, fontSize: 15, color: PX.ink, lineHeight: 1.25 }}>{m.title}</div>
                         <div style={{ fontSize: 12, color: PX.sub, margin: '2px 0 4px' }}>{[kl, m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : null, fmtDay(m.created_at)].filter(Boolean).join(' · ')}</div>
                         <Byline m={m} />
+                        {det[m.id] && <div style={{ margin: '3px 0 0' }}><span title="Found by reading the text" style={{ display: 'inline-block', fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 99, background: det[m.id].questions ? '#e8f5ee' : '#eef1f6', color: det[m.id].questions ? '#0f7a4c' : '#5d6b82' }}>{det[m.id].questions ? `❓ ${det[m.id].questions} question${det[m.id].questions === 1 ? '' : 's'}${det[m.id].withAnswers ? ` · ${det[m.id].withAnswers === det[m.id].questions ? 'all' : det[m.id].withAnswers} with answers` : ' · no answers'}` : '📖 Notes · no questions'}</span></div>}
                         {m.note && <div style={{ fontSize: 12, color: PX.sub, fontStyle: 'italic', marginTop: 3 }}>{m.note}</div>}
                       </div>
                       <button type="button" className="msm-fav" aria-pressed={fav} aria-label={fav ? 'Remove from favourites' : 'Add to favourites'} onClick={() => toggleFav(m.id)} style={{ color: fav ? '#d9a21b' : '#c3bba8' }}>{fav ? '★' : '☆'}</button>
