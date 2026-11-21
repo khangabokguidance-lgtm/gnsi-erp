@@ -11,7 +11,7 @@ import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
-import { AnalyserTab, MaterialTab, ChatTab, StudentsTab } from './MissionFoundationExtras'
+import { AnalyserTab, MaterialTab, ChatTab, StudentsTab, AuditTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import { QuestionMakerTab } from './MissionFoundationPaper'
 import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundationReport'
@@ -28,6 +28,7 @@ import {
 const T_TESTS = 'mission_foundation_tests'
 const T_PAPERS = 'mission_foundation_papers'
 const T_PANEL = 'mission_foundation_panel'
+const T_AUDIT = 'mission_foundation_audit'
 const T_MARKS = 'mission_foundation_marks'
 const SQL_FILE = 'supabase/migrations/20261216_mission_foundation.sql'
 
@@ -169,19 +170,27 @@ export default function MissionFoundation({ currentUser }) {
   }, [papers])
   const testById = useMemo(() => Object.fromEntries(tests.map(t => [t.id, t])), [tests])
 
+  // ── audit log + locks ──
+  const audit = (action, ref, detail) => { supabase.from(T_AUDIT).insert({ actor: me || '', action, ref: ref || null, detail: detail || null }).then(() => {}, () => {}) } // best-effort
+  const isLocked = testId => !!testById[testId]?.locked
+  const lockedMsg = 'This test is locked. Ask an admin to unlock it.'
   // ── writes ──
   const savePaper = async (id, patch) => {
+    const pp = papers.find(p => p.id === id)
+    if (pp && isLocked(pp.test_id) && !isAdmin) return flash(lockedMsg, true)
     const next = { ...patch, updated_by: me, updated_at: now() }
     setPapers(ps => ps.map(p => p.id === id ? { ...p, ...next } : p))
     const { error } = await supabase.from(T_PAPERS).update(next).eq('id', id)
-    if (error) { flash('Not saved: ' + error.message, true); load() }
+    if (error) { flash('Not saved: ' + error.message, true); load() } else audit('paper_update', `${testById[pp?.test_id]?.title || 'Test'} · ${pp?.subject || id}`, patch)
   }
   const saveTest = async (id, patch) => {
+    if (isLocked(id) && !isAdmin && !('locked' in patch)) return flash(lockedMsg, true)
     const next = { ...patch, updated_by: me, updated_at: now() }
     setTests(ts => ts.map(t => t.id === id ? { ...t, ...next } : t))
     const { error } = await supabase.from(T_TESTS).update(next).eq('id', id)
-    if (error) { flash('Not saved: ' + error.message, true); load() }
+    if (error) { flash('Not saved: ' + error.message, true); load() } else audit('locked' in patch ? (patch.locked ? 'test_lock' : 'test_unlock') : 'test_update', testById[id]?.title || id, 'locked' in patch ? null : Object.keys(patch))
   }
+  const lockTest = (id, on) => saveTest(id, { locked: on, locked_by: on ? me : null, locked_at: on ? now() : null })
 
   const stats = useMemo(() => {
     const done = papers.filter(p => p.status === 'Approved').length
@@ -214,6 +223,7 @@ export default function MissionFoundation({ currentUser }) {
     ] },
     { label: 'Team', color: '#0e7490', tabs: [
       { id: 'chat', label: 'Group chat', icon: PIcon.whatsapp, hint: 'Messages and files for all teachers' },
+      ...(isAdmin ? [{ id: 'audit', label: 'Audit log', icon: PIcon.shield, hint: 'Who changed what, and when (admin)' }] : []),
     ] },
   ]
 
@@ -258,18 +268,19 @@ export default function MissionFoundation({ currentUser }) {
                 <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>
               </>}
               {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel }} />}
-              {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }} />}
+              {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, lockTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
               {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staff, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
-              {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, initialTest: activeTest, onSaved: loadMarks }} />}
+              {tab === 'marks' && <MarksTab {...{ tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
               {tab === 'material' && <MaterialTab {...{ tests, me, isAdmin, flash }} />}
               {tab === 'chat' && <ChatTab {...{ me, isAdmin, flash }} />}
+              {tab === 'audit' && isAdmin && <AuditTab {...{ flash }} />}
               <FlowNav flow={FOUNDATION_FLOW} home="home" tab={tab} progress={flowProgress} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} />
             </>}
           </>
@@ -694,7 +705,7 @@ const pickDefaultTest = (tests, today) => [...tests].reverse().find(t => t.test_
 
 const markKey = (sid, subj) => `${sid}|${subj}`
 
-function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSaved }) {
+function MarksTab({ tests, papersByTest, me, flash, students, isAdmin, audit, initialTest, onSaved }) {
   const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
   const [batch, setBatch] = useState(BATCHES[0])     // a batch, or 'Both'
   const [subjectPick, setSubjectPick] = useState(null)  // null = not chosen yet (default below), 'all', or a subject label
@@ -728,6 +739,7 @@ function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSav
   const everyone = (students || []).filter(s => BATCHES.includes(s.batchName))
   const errors = everyone.flatMap(s => testPapers.map(p => markError(entries[markKey(s.id, p.subject)]?.marks, maxMarks(p)))).filter(Boolean).length
   const save = async () => {
+    if (tests.find(t => t.id === testId)?.locked && !isAdmin) return flash('This test is locked. Ask an admin to unlock it.', true)
     if (errors) return flash(`Fix ${errors} mark(s) first: each must be from 0 to the paper's full marks.`, true)
     const rows = everyone.flatMap(s => testPapers.map(p => {
       if (!changed.has(markKey(s.id, p.subject))) return null
@@ -740,7 +752,7 @@ function MarksTab({ tests, papersByTest, me, flash, students, initialTest, onSav
     setBusy(true)
     const { error } = await supabase.from(T_MARKS).upsert(rows, { onConflict: 'test_id,student_id,subject' })
     setBusy(false)
-    if (error) flash('Not saved: ' + error.message, true); else { setChanged(new Set()); flash(`Saved ${rows.length} marks${single ? ' in ' + subject : ''} for ${batch === 'Both' ? 'Udaan and Pragati' : batch}.`); onSaved?.() }
+    if (error) flash('Not saved: ' + error.message, true); else { setChanged(new Set()); audit?.('marks_save', tests.find(t => t.id === testId)?.title || testId, { rows: rows.length, batch, subject: single ? subject : 'all' }); flash(`Saved ${rows.length} marks${single ? ' in ' + subject : ''} for ${batch === 'Both' ? 'Udaan and Pragati' : batch}.`); onSaved?.() }
   }
   const set = (sid, subj, patch) => { setChanged(c => new Set(c).add(markKey(sid, subj))); setEntries(e => ({ ...e, [markKey(sid, subj)]: { marks: '', absent: false, ...e[markKey(sid, subj)], ...patch } })) }
   const absentAll = (sid, on) => papers.forEach(p => set(sid, p.subject, { absent: on }))

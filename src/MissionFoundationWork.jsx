@@ -200,7 +200,7 @@ function printHtml(title, body) {
   return true
 }
 
-export function ConductTab({ tests, testId, setTestId, papersByTest, students, marksCount, saveTest, me, isAdmin, flash, setTab }) {
+export function ConductTab({ tests, testId, setTestId, papersByTest, students, marksCount, saveTest, lockTest, me, isAdmin, flash, setTab }) {
   const test = tests.find(t => t.id === testId)
   if (!test) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   const papers = papersByTest[test.id] || []
@@ -258,7 +258,7 @@ export function ConductTab({ tests, testId, setTestId, papersByTest, students, m
   const doneN = CONDUCT_STEPS.filter(s => s.auto ? autoDone[s.key] : checklist[s.key]?.done).length
   return (
     <>
-      <PremiumCard title="Test day" subtitle={`${fmtLong(test.test_date)} · ${roster.length} students in ${batches.join(' & ')}${test.duration_min ? ` · all ${papers.length} subjects in one sitting of ${test.duration_min} min` : ''}`} right={<TestPicker tests={tests} value={testId} onChange={setTestId} />}>
+      <PremiumCard title="Test day" subtitle={`${fmtLong(test.test_date)} · ${roster.length} students in ${batches.join(' & ')}${test.duration_min ? ` · all ${papers.length} subjects in one sitting of ${test.duration_min} min` : ''}`} right={<span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{test.locked && <Pill tone="gold">🔒 Locked{test.locked_by ? ' by ' + test.locked_by : ''}</Pill>}{isAdmin && lockTest && <Btn onClick={() => lockTest(test.id, !test.locked)}>{test.locked ? '🔓 Unlock test' : '🔒 Lock test'}</Btn>}<TestPicker tests={tests} value={testId} onChange={setTestId} /></span>}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
           {field('venue', 'Hall / room', 'e.g. Main hall')}
           {field('start_time', 'Start time', 'e.g. 9:00 AM')}
