@@ -286,7 +286,7 @@ export default function MissionFoundation({ currentUser }) {
                 <HomeDashboard {...{ photoOf, tests, ctx: { papersByTest, students, teaching, prizes, marksCount, allMarks }, today, me, isAdmin, papers, testById, setTab, setOpenTest: openWork }} />
                 <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>
               </>}
-              {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel }} />}
+              {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel, isAdmin }} />}
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, lockTest, me, isAdmin, flash, setTab }} />}
               {tab === 'prizes' && <PrizesTab {...{ tests, papersByTest, allMarks, prizes, setPrizes, me, flash, today }} />}
               {tab === 'schedule' && <ScheduleTab {...{ photoOf, allPapersByTest, classNames, classRows, batchOptions: [...new Set([...(students || []), ...unplaced].map(x => x.batchName).filter(Boolean))], reloadStudents, tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}

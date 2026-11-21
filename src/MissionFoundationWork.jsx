@@ -122,12 +122,35 @@ export function TestPicker({ tests, value, onChange, label = 'Test' }) {
 }
 
 // ─── Teaching tracker ─────────────────────────────────────────────────────────
-export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, setTeaching, savePaper, me, flash, panel }) {
+export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, setTeaching, savePaper, me, flash, panel, isAdmin }) {
   const papers = papersByTest[testId] || []
   const rows = teaching.filter(t => t.test_id === testId)
   const isDone = (subject, chapter) => rows.some(r => r.subject === subject && r.chapter === chapter && r.done)
   const rowOf = (subject, chapter) => rows.find(r => r.subject === subject && r.chapter === chapter)
   const [draft, setDraft] = useState({})
+  const [editing, setEditing] = useState(null)   // { pid, old, value } — a chapter being renamed
+  // The admin, and the people who set or check that subject's paper, may change its chapter list.
+  const mayEdit = p => isAdmin || isSetter(me, p) || nameMatches(me, p.verifier)
+  const renameChapter = async p => {
+    const { old } = editing, nu = String(editing.value || '').replace(/;/g, ',').trim()
+    if (!nu) return flash('A chapter needs a name.', true)
+    if (nu === old) return setEditing(null)
+    const list = splitChapters(p.syllabus)
+    if (list.some(x => x !== old && x.toLowerCase() === nu.toLowerCase())) return flash(`"${nu}" is already in the list.`, true)
+    savePaper(p.id, { syllabus: list.map(x => (x === old ? nu : x)).join('; ') })
+    // keep its "taught" tick, who ticked it and when
+    setTeaching(ts => ts.map(t => (t.test_id === testId && t.subject === p.subject && t.chapter === old ? { ...t, chapter: nu } : t)))
+    const { error } = await supabase.from('mission_foundation_teaching').update({ chapter: nu }).eq('test_id', testId).eq('subject', p.subject).eq('chapter', old)
+    if (error) flash('Renamed, but the tick was not carried over: ' + error.message, true)
+    setEditing(null)
+  }
+  const deleteChapter = async (p, c) => {
+    if (!window.confirm(`Delete the chapter "${c}" from ${p.subject}? Its taught tick for this test is removed too.`)) return
+    savePaper(p.id, { syllabus: splitChapters(p.syllabus).filter(x => x !== c).join('; ') })
+    setTeaching(ts => ts.filter(t => !(t.test_id === testId && t.subject === p.subject && t.chapter === c)))
+    const { error } = await supabase.from('mission_foundation_teaching').delete().eq('test_id', testId).eq('subject', p.subject).eq('chapter', c)
+    if (error) flash('Chapter removed, but its tick record was not cleared: ' + error.message, true)
+  }
 
   const toggle = async (subject, chapter) => {
     const on = !isDone(subject, chapter)
@@ -166,18 +189,35 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
               <div style={{ display: 'grid', gap: 6 }}>
                 {chapters.map(c => {
                   const r = rowOf(p.subject, c), on = !!r?.done
+                  const editingThis = editing && editing.pid === p.id && editing.old === c
                   return (
-                    <label key={c} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 10px', borderRadius: 12, background: on ? PX.okBg : PX.tint, cursor: 'pointer', minHeight: 44 }}>
-                      <input type="checkbox" checked={on} onChange={() => toggle(p.subject, c)} />
-                      <span style={{ flex: 1, fontWeight: 600, textDecoration: on ? 'none' : 'none' }}>{c}</span>
-                      {on && <span style={{ fontSize: 11.5, color: PX.sub }}>{r.taught_by || ''}{r.taught_on ? ' · ' + fmt(r.taught_on) : ''}</span>}
-                    </label>
+                    <div key={c} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '6px 8px 6px 10px', borderRadius: 12, background: on ? PX.okBg : PX.tint, minHeight: 44 }}>
+                      {editingThis ? (
+                        <>
+                          <input className="px-input" autoFocus aria-label={`Rename chapter ${c}`} value={editing.value} onChange={e => setEditing({ ...editing, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') renameChapter(p); if (e.key === 'Escape') setEditing(null) }} style={{ flex: '1 1 160px', minWidth: 0 }} />
+                          <Btn kind="gold" onClick={() => renameChapter(p)}>Save</Btn>
+                          <Btn onClick={() => setEditing(null)}>Cancel</Btn>
+                        </>
+                      ) : (
+                        <>
+                          <label style={{ display: 'flex', gap: 10, alignItems: 'center', flex: '1 1 160px', minWidth: 0, cursor: 'pointer', minHeight: 36 }}>
+                            <input type="checkbox" checked={on} onChange={() => toggle(p.subject, c)} />
+                            <span style={{ flex: 1, fontWeight: 600, minWidth: 0 }}>{c}</span>
+                            {on && <span style={{ fontSize: 11.5, color: PX.sub }}>{r.taught_by || ''}{r.taught_on ? ' · ' + fmt(r.taught_on) : ''}</span>}
+                          </label>
+                          {mayEdit(p) && <>
+                            <button type="button" className="px-hbtn" aria-label={`Edit chapter ${c}`} title="Rename this chapter" onClick={() => setEditing({ pid: p.id, old: c, value: c })} style={{ color: PX.navy }}>✎</button>
+                            <button type="button" className="px-hbtn" aria-label={`Delete chapter ${c}`} title="Delete this chapter" onClick={() => deleteChapter(p, c)} style={{ color: PX.bad }}>🗑</button>
+                          </>}
+                        </>
+                      )}
+                    </div>
                   )
                 })}
-                <div style={{ display: 'flex', gap: 6 }}>
+                {mayEdit(p) && <div style={{ display: 'flex', gap: 6 }}>
                   <input className="px-input" aria-label={`Add a chapter to ${p.subject}`} placeholder="Add a chapter" value={draft[p.id] || ''} onChange={e => setDraft({ ...draft, [p.id]: e.target.value })} onKeyDown={e => e.key === 'Enter' && addChapter(p)} style={{ padding: '7px 10px' }} />
                   <Btn onClick={() => addChapter(p)}>Add</Btn>
-                </div>
+                </div>}
               </div>
             </PremiumCard>
           )
