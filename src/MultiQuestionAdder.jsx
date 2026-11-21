@@ -4,6 +4,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
 import { PX } from './premiumUI'
 import { parseQuestions } from './lib/missionSainikQuestions'
+import { detectQuestions } from './lib/detectQuestions'
 import { figFromFile, svgToJpeg } from './lib/figImage'
 import { vennSvg, vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
 import ScanFigure from './ScanFigure'
@@ -159,6 +160,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
   const [bulkText, setBulkText] = useState('')
   const bulkClean = useMemo(() => applyAnswerKey(bulkText), [bulkText])
   const bulk2 = useMemo(() => parseQuestions(bulkClean), [bulkClean])
+  const bulkDet = useMemo(() => detectQuestions(bulkClean), [bulkClean])   // does the pasted / loaded text hold questions at all?
   const loadBulkFile = e => { const f = e.target.files?.[0]; e.target.value = ''; if (!f) return; const r = new FileReader(); r.onload = () => setBulkText(/\.csv$/i.test(f.name) ? csvToQuestionText(String(r.result || '')) : String(r.result || '')); r.readAsText(f) }
   const addBulk = () => {
     if (!bulk2.questions.length) return
@@ -329,6 +331,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
               <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 6 }}>Paste from Word, Excel or a text file. Each question: the question, options A–D, <b>Ans: B</b> (optional <b>Exp:</b>, <b>Topic:</b>, <b>Level:</b>). Have the answers at the end instead? Add a line like <b>Answer key: 1-B 2-C 3-A</b>. For a reading passage put a <b>Passage: …</b> line before its questions. They become cards you can check, then add pictures to the figure and passage questions.</div>
               <pre style={{ background: '#fff', border: `1px solid ${PX.line}`, padding: 8, borderRadius: 8, fontSize: 12, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{'Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B'}</pre>
               <textarea rows={8} style={{ ...field, fontFamily: 'monospace', fontSize: isMobile ? 16 : 12, resize: 'vertical' }} placeholder="Paste questions here…" aria-label="Bulk paste questions" value={bulkText} onChange={e => setBulkText(e.target.value)} />
+              {bulkDet.kind !== 'empty' && <div role="status" aria-label="Question detection" style={{ marginTop: 6, fontSize: 12.5, color: bulkDet.questions ? '#0f7a4c' : '#92400e' }}><b>🔎 Detected:</b> {bulkDet.text}</div>}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
                 <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>📂 Load .txt / .csv<input type="file" accept=".txt,.csv,text/plain,text/csv" aria-label="Load questions from a file" style={{ display: 'none' }} onChange={loadBulkFile} /></label>
                 <span style={{ fontSize: 12.5, color: bulk2.errors.length ? PX.bad : PX.sub }}>{bulkText.trim() ? (bulk2.errors.length ? bulk2.errors.slice(0, 2).join(' · ') : `${bulk2.questions.length} question(s) found`) : ''}{bulkText.trim() && bulk2.errors.length && bulk2.questions.length ? ` · ${bulk2.questions.length} OK` : ''}</span>
