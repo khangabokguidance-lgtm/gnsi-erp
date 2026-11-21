@@ -462,10 +462,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
   }
-  // ── Combined paper (all subjects) for verification — admin and the staff assigned to that test only ──
-  const sectionsFor = t => live(t).map(x => ({ setters: settersOf(t, x.label), verifiers: verifiersOf(t, x.label) }))
-  const mayCombine = t => canBuildCombined({ isAdmin, isMe, sections: sectionsFor(t) })
-  const combinedTests = () => testsAllowed({ isAdmin, isMe, testNos: cfg.tests.map(x => x.no), sectionsOf: sectionsFor })
+  // ── Combined paper (all subjects) for verification — admins only ──
+  const mayCombine = () => canBuildCombined({ isAdmin })
+  const combinedTests = () => testsAllowed({ isAdmin, testNos: cfg.tests.map(x => x.no) })
   const combinedDoc = list => {
     const tests = list.map(t => {
       const secs = live(t).map(x => {
@@ -477,11 +476,11 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     })
     return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml })
   }
-  const combinedList = all => { const l = all ? combinedTests() : (mayCombine(testNo) ? [testNo] : []); if (!l.length) setMsg('🔒 Only admins and staff assigned to this test can build the combined paper.'); return l }
+  const combinedList = all => { const l = all ? combinedTests() : (mayCombine() ? [testNo] : []); if (!l.length) setMsg('🔒 Only an admin can build the combined paper.'); return l }
   const previewCombined = all => {
     const l = combinedList(all); if (!l.length) return
     audit('combined_paper_preview', `${series}:${l.join(',')}`, null)
-    setPreview({ html: `<!doctype html><html><head><meta charset="utf-8"><title>Combined paper</title></head><body style="margin:0;padding:14px">${combinedDoc(l)}</body></html>`, title: `Combined paper · ${all ? 'all my tests' : tid(testNo)}` })
+    setPreview({ html: `<!doctype html><html><head><meta charset="utf-8"><title>Combined paper</title></head><body style="margin:0;padding:14px">${combinedDoc(l)}</body></html>`, title: `Combined paper · ${all ? 'all tests' : tid(testNo)}` })
   }
   const exportCombined = all => {
     const l = combinedList(all); if (!l.length) return
@@ -783,10 +782,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
           <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
           <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
-          {mayCombine(testNo) && <>
-            <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin and assigned staff only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>
+          {mayCombine() && <>
+            <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>
             <button className="px-hbtn" onClick={() => exportCombined(false)}>📝 Combined Word</button>
-            {combinedTests().length > 1 && <button className="px-hbtn" onClick={() => previewCombined(true)}>🧩 All my tests</button>}
+            <button className="px-hbtn" onClick={() => previewCombined(true)}>🧩 All tests</button>
           </>}
         </div>
       </PremiumCard>}

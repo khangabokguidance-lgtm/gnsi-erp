@@ -2,21 +2,16 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { combinedHtml, canBuildCombined, testsAllowed, peopleOfTest } from '../src/lib/missionSainikCombined.js'
 
-const secs = [{ setters: ['Anil', 'Ravi'], verifiers: ['Meena'] }, { setters: ['Sita'], verifiers: [] }]
-const isMe = n => x => x === n
-
-test('admin and staff assigned to the test may build; others may not', () => {
-  assert.equal(canBuildCombined({ isAdmin: true, isMe: isMe('Nobody'), sections: secs }), true)
-  for (const n of ['Anil', 'Ravi', 'Sita', 'Meena']) assert.equal(canBuildCombined({ isAdmin: false, isMe: isMe(n), sections: secs }), true, n)
-  assert.equal(canBuildCombined({ isAdmin: false, isMe: isMe('Outsider'), sections: secs }), false)
-  assert.equal(canBuildCombined({ isAdmin: false, isMe: isMe('Anil'), sections: [] }), false)
+test('only an admin may build the combined paper', () => {
+  assert.equal(canBuildCombined({ isAdmin: true }), true)
+  assert.equal(canBuildCombined({ isAdmin: false }), false)
+  assert.equal(canBuildCombined({}), false)
 })
 
-test('testsAllowed keeps only the tests the person is assigned to', () => {
-  const sectionsOf = t => (t === 1 ? [{ setters: ['Anil'] }] : [{ setters: ['Sita'] }])
-  assert.deepEqual(testsAllowed({ isAdmin: false, isMe: isMe('Anil'), testNos: [1, 2, 3], sectionsOf }), [1])
-  assert.deepEqual(testsAllowed({ isAdmin: true, isMe: isMe('x'), testNos: [1, 2, 3], sectionsOf }), [1, 2, 3])
-  assert.deepEqual(peopleOfTest(secs).sort(), ['Anil', 'Meena', 'Ravi', 'Sita'])
+test('testsAllowed gives every test to an admin and none to anyone else', () => {
+  assert.deepEqual(testsAllowed({ isAdmin: true, testNos: [1, 2, 3] }), [1, 2, 3])
+  assert.deepEqual(testsAllowed({ isAdmin: false, testNos: [1, 2, 3] }), [])
+  assert.deepEqual(peopleOfTest([{ setters: ['Anil'], verifiers: ['Meena'] }]).sort(), ['Anil', 'Meena'])
 })
 
 test('combined document lists every subject with answers, status and problems', () => {
