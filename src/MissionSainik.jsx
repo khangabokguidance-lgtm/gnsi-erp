@@ -21,6 +21,7 @@ import MissionSainikHome from './MissionSainikHome'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
 import MissionSainikSetterPlan from './MissionSainikSetterPlan'
+import MissionSainikPracticePlan from './MissionSainikPracticePlan'
 import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
@@ -877,6 +878,7 @@ function MissionSainikInner({ currentUser }) {
     return (
       <>
       <MissionSainikSetterPlan {...{ tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikPracticePlan {...{ practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

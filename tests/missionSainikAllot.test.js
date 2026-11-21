@@ -122,3 +122,16 @@ test('co-setters: parsing, listing, adding and removing', () => {
   assert.equal(toggleCoSetter({ setter: 'A', co_setters: '' }, 'A', true), '')          // the main setter is not a co-setter
   assert.equal(settersLabel({ setter: 'A', co_setters: 'B' }, n => 'Sir ' + n), 'Sir A + Sir B')
 })
+
+import { groupBySet, addableTeachers } from '../src/lib/missionSainikAllot.js'
+
+test('groupBySet puts each practice row in its set and always returns every set', () => {
+  const rows = [{ id: 1, setter: 'A', test_no: 0 }, { id: 2, setter: 'B', test_no: 2 }, { id: 3, setter: 'C', test_no: 2 }, { id: 4, setter: 'D', test_no: 9 }]
+  const g = groupBySet(rows, 3, r => (r.test_no > 0 ? r.test_no : 1))
+  assert.deepEqual(g.map(x => [x.no, x.rows.map(r => r.id)]), [[1, [1]], [2, [2, 3]], [3, [4]]])      // set 9 is capped to the last set
+  assert.deepEqual(groupBySet([], 2, () => 1).map(x => x.rows.length), [0, 0])
+})
+
+test('addableTeachers skips people already in the set, de-duplicates and sorts', () => {
+  assert.deepEqual(addableTeachers(['Roshan', 'Arjun', 'Roshan', '', 'Kabiraj'], [{ setter: 'Arjun' }]), ['Kabiraj', 'Roshan'])
+})
