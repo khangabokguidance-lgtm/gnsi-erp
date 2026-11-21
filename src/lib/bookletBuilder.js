@@ -17,6 +17,7 @@
 // replace_english / set_options / set_option / replace_manipuri /
 // instructions), so a settings file works in both.
 import JSZip from 'jszip'
+import { detectQuestions } from './detectQuestions.js'
 import {
   AlignmentType, BorderStyle, Document, Footer, Header, LineRuleType, Packer, PageNumber, Paragraph, SectionType,
   ShadingType, Table, TableCell, TableLayoutType, TableRow, TabStopType, TextRun, WidthType,
@@ -130,7 +131,12 @@ export async function readChapterDocx(file) {
     const opts = optLines.join('\t').split(/\([A-D]\)/).slice(1).map(o => o.trim()).slice(0, 4)
     Q[n] = { eng, mm, opts }
   })
-  if (!nums.length) throw new Error('No questions found. Each question must start with a bold "Q1." line.')
+  if (!nums.length) {
+    // The booklet format is strict (bold "Q1." lines). Say what the file does hold, so the teacher knows what to fix.
+    const det = detectQuestions(ps.map(p => p.text).join('\n'))
+    throw new Error('No questions found in the booklet format: each question must start with a bold "Q1." line, then the options (A) (B) (C) (D). ' +
+      (det.questions ? `The file does hold ${det.questions} question${det.questions === 1 ? '' : 's'}, but not in this layout — make each question line bold and start it with Q1., Q2., …` : det.text))
+  }
   return { Q, key }
 }
 
@@ -422,3 +428,17 @@ export async function buildBooklet(source, cfg = {}, { columns = 2 } = {}) {
 export const bookletFileName = cfg =>
   (cfg.output && /\.docx$/i.test(cfg.output) ? cfg.output
     : `${String(cfg.title || 'Booklet').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '') || 'Booklet'}_GNSI.docx`)
+
+
+// What the chapter file really holds, for the "Detected" panel: questions with all four options, with answers, and the ones that need attention.
+// Q: { n: { eng, mm, opts } }; answerOf(n): the answer letter or ''.
+export function describeChapter(Q, answerOf = () => '') {
+  const nums = Object.keys(Q || {}).map(Number).sort((a, b) => a - b)
+  const noOptions = nums.filter(n => (Q[n].opts || []).filter(Boolean).length < 4)
+  const noAnswer = nums.filter(n => !answerOf(n))
+  const ok = nums.length - new Set([...noOptions, ...noAnswer]).size
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+  const text = !nums.length ? 'No questions found.'
+    : `${plural(nums.length, 'question')}: ${nums.length - noOptions.length} with all four options, ${noAnswer.length ? plural(nums.length - noAnswer.length, 'with an answer') : 'all with answers'}.`
+  return { total: nums.length, noOptions, noAnswer, ok, text, clean: !!nums.length && !noOptions.length && !noAnswer.length }
+}
