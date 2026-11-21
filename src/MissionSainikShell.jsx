@@ -182,7 +182,7 @@ export function Confetti({ show }) {
   )
 }
 
-export default function MissionSainikShell({ active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
+export default function MissionSainikShell({ navGroups, active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
   const [slim, setSlim] = useState(() => store.get('msx-rail-slim', true))
   const slimRef = useRef(slim); slimRef.current = slim
@@ -227,7 +227,7 @@ export default function MissionSainikShell({ active, onChange, title, subtitle, 
     setSheet(false); setQ(''); onChange(id); window.scrollTo?.({ top: 0 })
     setRecent(r => { const n = [id, ...r.filter(x => x !== id)].slice(0, 5); store.set('msx-recent', n); return n })
   }
-  const groups = NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
+  const groups = (navGroups || NAV_GROUPS).map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
   const inBottom = BOTTOM.some(b => b[0] === active)
   const flat = useMemo(() => groups.flatMap(g => g.items.map(([id, ic, label]) => ({ id, ic, label, group: g.title, hint: HINTS[id] || '' }))), [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const byId = Object.fromEntries(flat.map(x => [x.id, x]))
