@@ -425,6 +425,7 @@ function MissionSainikInner({ currentUser }) {
     setEditMarksId(r.id); window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
   const deleteMarks = async r => {
+    if (!isRealAdmin) return setMsg('Only an admin can delete marks.')
     if (!window.confirm('Delete this entry?')) return
     const { error } = await supabase.from(MARKS_TABLE).delete().eq('id', r.id)
     if (error) return setMsg('❌ ' + error.message)
@@ -480,6 +481,7 @@ function MissionSainikInner({ currentUser }) {
   }
 
   const deleteTask = async task => {
+    if (!isRealAdmin) return setMsg('Only an admin can delete a task.')
     if (!window.confirm(`Delete ${task.kind === 'test' ? 'PMT-' + String(task.test_no).padStart(2, '0') + ' · ' : 'Practice · '}${task.subject} (${fullName(task.setter)})? This cannot be undone.`)) return
     setBusy(true)
     const { error } = await supabase.from(TABLE).delete().eq('id', task.id)
@@ -1202,6 +1204,7 @@ function MissionSainikInner({ currentUser }) {
     }
   }
   const deletePanelMember = async m => {
+    if (!isRealAdmin) return setMsg('Only an admin can change the panel.')
     if (!window.confirm(`Remove ${fullName(m.name)} from the ${SUBJECTS.find(x => x.key === m.subject_key)?.label} panel? Their existing tasks stay.`)) return
     const { error } = await supabase.from('mission_sainik_panel').delete().eq('id', m.id)
     if (error) return setMsg('❌ ' + error.message)
@@ -1230,6 +1233,7 @@ function MissionSainikInner({ currentUser }) {
     }
     const last = [...mine].sort((a, b) => setNoFor(b) - setNoFor(a)).find(r => r.status === 'Pending')
     if (!last) return setMsg(mine.length ? `❌ ${fullName(m.name)} has already handed in their practice set(s); they cannot be removed.` : `${fullName(m.name)} has no practice set to remove.`)
+    if (!isRealAdmin) return setMsg('Only an admin can remove a practice set.')
     if (!window.confirm(`Remove Set ${setNoFor(last)} from ${fullName(m.name)}? Questions they uploaded stay in the bank.`)) return
     const { error } = await supabase.from(TABLE).delete().eq('id', last.id)
     if (error) return setMsg('❌ ' + error.message)
@@ -1240,7 +1244,7 @@ function MissionSainikInner({ currentUser }) {
     <>
       <PremiumCard title={panelView === 'pre' ? 'Question Setting Panel · Pre Mock' : 'Practice Setting Panel'} subtitle={panelView === 'pre' ? 'Teachers who set the Pre Mock tests. Until you add members here, the panel from the notice is used.' : 'Teachers who set the Practice question bank, and who verify it. This panel is separate from the Pre Mock panel.'}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>
+          {isRealAdmin && <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>}
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
         <div role="tablist" aria-label="Panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: panelDraft ? 12 : 8 }}>
@@ -1312,7 +1316,7 @@ function MissionSainikInner({ currentUser }) {
                           <button type="button" className="px-hbtn" aria-label={`One more practice set for ${m.name}`} onClick={() => bumpPracticeSets(m, 1)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>
                         </span>)}
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
-                      {!m.builtin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
+                      {!m.builtin && isRealAdmin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
                     {panelView === 'pre' && taskChips('Pre Mock', pre, 'mine', m.name)}
@@ -1395,6 +1399,7 @@ function MissionSainikInner({ currentUser }) {
     window.scrollTo?.({ top: 0, behavior: 'smooth' })
   }
   const deleteMaterial = async m => {
+    if (!(isRealAdmin || isMe(m.uploaded_by))) return setMsg('You can delete only your own material.')
     if (!window.confirm(`Delete “${m.title}”?`)) return
     if (m.file_path) await supabase.storage.from(MAT_BUCKET).remove([m.file_path])
     const { error } = await supabase.from(MAT_TABLE).delete().eq('id', m.id)
@@ -1613,7 +1618,7 @@ function MissionSainikInner({ currentUser }) {
                   <td>T{r.test_no}</td><td>{r.batch ? <PersonCell name={r.batch} size={28} staff={false}>{r.batch}</PersonCell> : '—'}</td>
                   {MARK_COLS.map(([k, , m]) => <td key={k}><ScorePill v={r[k]} max={m} /></td>)}
                   <td><ScorePill v={tot} max={120} /></td>
-                  <td style={{ whiteSpace: 'nowrap' }}><button className="px-hbtn" onClick={() => editMarks(r)} aria-label="Edit">✎</button> <button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}><button className="px-hbtn" onClick={() => editMarks(r)} aria-label="Edit">✎</button> {isRealAdmin && <button className="px-hbtn" onClick={() => deleteMarks(r)} aria-label="Delete">🗑</button>}</td>
                 </tr>)
             })}</tbody>
           </table>
@@ -1624,7 +1629,7 @@ function MissionSainikInner({ currentUser }) {
   const materialTab = (
     <MissionSainikMaterial mySubjects={[...new Set(myPanel.map(m => m.subject))]} syllabus={syl} mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
       onSave={saveMaterial} onCancelEdit={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}
-      onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
+      onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isRealAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
       institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} staff={staffDir} userName={currentUser?.name || ''} />
   )
 
@@ -1692,7 +1697,7 @@ function MissionSainikInner({ currentUser }) {
               practiceQ={practiceQMap} syllabus={syl} onSetting={async (key, on) => { if (on) await putSetting(key, 'on'); else await delSetting(key) }} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
-            {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
+            {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete={isRealAdmin} />}
             {tab === 'mock' && MockSeries()}
             {tab === 'allotment' && Allotment()}
             {tab === 'mine' && Mine()}
@@ -1801,7 +1806,7 @@ function MissionSainikInner({ currentUser }) {
           </div>
         </div>
       )}
-      {sel && <TaskDialog key={sel.id} people={peopleAll} onDelete={deleteTask} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
+      {sel && <TaskDialog key={sel.id} people={peopleAll} onDelete={isRealAdmin ? deleteTask : undefined} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
 }
