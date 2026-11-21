@@ -145,7 +145,7 @@ export default function MissionSainikSetterPlan({ photoOf = x => x, tests, TESTS
               <div><b style={{ color: PX.navy, fontSize: 14.5 }}>{s.label}</b><div style={{ fontSize: 11.5, color: PX.sub }}>{panel.length} on the panel</div></div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  {r.setter ? <Avatar name={r.setter} photoName={photoOf(r.setter)} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
+                  {r.setter ? <Avatar name={r.setter} photoName={photoOf(r.setter)} size={44} /> : <span aria-hidden="true" style={{ width: 44, height: 44, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
                   <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
                     {!r.setter && <option value="">Choose a teacher…</option>}
                     {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
@@ -154,7 +154,7 @@ export default function MissionSainikSetterPlan({ photoOf = x => x, tests, TESTS
                   </select>
                 </div>
                 {(coSettersOf(r).length > 0 || isAdmin) && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, margin: '6px 0 0 40px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, margin: '6px 0 0 54px' }}>
                     {coSettersOf(r).length > 0 && <span style={{ ...head }}>Also sets</span>}
                     {coSettersOf(r).map(n => (
                       <button key={n} type="button" disabled={!isAdmin || busy} onClick={() => setCo(r, n, false)} title={isAdmin ? 'Click to remove' : ''} aria-label={`Remove co-setter ${n}`}

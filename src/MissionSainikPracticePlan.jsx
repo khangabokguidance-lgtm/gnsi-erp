@@ -67,7 +67,7 @@ export default function MissionSainikPracticePlan({ photoOf = x => x, practice, 
               <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
                 {g.rows.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 12, background: '#fafbfd', border: '1px solid #eef1f6' }}>
-                    <Avatar name={r.setter} photoName={photoOf(r.setter)} size={26} /><b style={{ flex: 1, minWidth: 0, color: PX.ink, fontSize: 13.5 }}>{fullName(r.setter)}</b>
+                    <Avatar name={r.setter} photoName={photoOf(r.setter)} size={40} /><b style={{ flex: 1, minWidth: 0, color: PX.ink, fontSize: 13.5 }}>{fullName(r.setter)}</b>
                     <Pill tone={STATUS_TONE[r.status] || 'mute'}>{r.status}</Pill>
                     {isAdmin && <button type="button" className="px-hbtn" disabled={busy} onClick={() => removeTeacher(g, r)} aria-label={`Remove ${r.setter} from Set ${g.no}`} style={{ width: 30, height: 30, padding: 0 }}>✕</button>}
                   </div>))}
