@@ -126,7 +126,9 @@ export function nameMatches(who, name) {
   if (!who || !name) return false
   const words = String(who).toLowerCase().split(/[^a-z0-9]+/)
   const want = cleanTeacherName(name).toLowerCase()
-  return !!want && (words.includes(want) || want.split(/[^a-z0-9]+/).filter(Boolean).every(w => words.includes(w)))
+  // A short name on the panel ("Sandhya") also matches the full login name ("Sandhyarani ...").
+  const hit = w => words.includes(w) || (w.length >= 4 && words.some(x => x.startsWith(w)))
+  return !!want && (hit(want) || want.split(/[^a-z0-9]+/).filter(Boolean).every(hit))
 }
 // Honorifics typed into a name ("Sir Umesh") are dropped when it is saved, and never doubled when shown.
 const HONORIFIC = /^(?:(?:sir|madam|mam|ma'am|mr|mrs|ms|miss|dr|prof)\.?\s+)+/i
