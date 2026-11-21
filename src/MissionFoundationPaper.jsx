@@ -9,7 +9,7 @@ import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems 
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { omrHtml, wordWrap } from './lib/missionSainikPaper'
 import { mathToHtml } from './lib/mathText'
-import { paperModel, paperHtml, answerKeyHtml, nextPosition, PAPER_INSTRUCTIONS } from './lib/missionFoundationPaper'
+import { paperModel, paperHtml, answerKeyHtml, nextPosition, PAPER_INSTRUCTIONS, auditPaper } from './lib/missionFoundationPaper'
 import { TestPicker } from './MissionFoundationWork'
 import { MISSION_NAME, DEFAULT_TEST_MINUTES, isSetter, settersOf } from './missionFoundationData'
 
@@ -60,6 +60,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
   }, [testId, tick, flash])
 
   const model = useMemo(() => paperModel(papers, rows), [papers, rows])
+  const audit = useMemo(() => auditPaper(model), [model])   // what the paper really holds: sections, options, answers, repeats
   const printModel = useMemo(() => (opt.set === 'A' ? model : paperModel(papers, rows, { set: opt.set, seed: testId })), [model, papers, rows, opt.set, testId])
   const canEdit = p => isAdmin || isSetter(me, p)
   const pct = model.wanted ? Math.min(100, Math.round((model.total / model.wanted) * 100)) : 0
@@ -117,8 +118,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
   // ── outputs ──
   const needAll = () => {
     if (!model.total) { flash('Add questions first.', true); return false }
-    const short = model.sections.filter(s => s.items.length < s.wanted)
-    if (short.length && !window.confirm(`Not complete yet: ${short.map(s => `${s.subject} ${s.items.length}/${s.wanted}`).join(', ')}. Print anyway?`)) return false
+    if (!audit.ready && !window.confirm(`The paper is not ready: ${audit.text}\n\nPrint anyway?`)) return false
     return true
   }
   const printPaper = () => { if (needAll() && !openDoc(paperHtml(printModel, { ...head, autoPrint: true }))) flash('Allow pop-ups to print.', true) }
@@ -160,6 +160,15 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
           </div>
         </div>
         {loading && <div style={{ marginTop: 8, color: PX.sub, fontSize: 13 }}>Loading questions…</div>}
+        {!loading && (
+          <div role="status" aria-label="Question detection" style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.5, background: audit.ready ? '#f0fdf4' : '#fffbeb', border: `1px solid ${audit.ready ? '#bbf7d0' : '#fde68a'}`, color: audit.ready ? '#166534' : '#92400e' }}>
+            <b>🔎 Detected:</b> {audit.text}
+            {audit.kind !== 'empty' && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {audit.sections.map(x => { const ok = x.state === 'full' && !x.noOptions && !x.noAnswer && !x.dups; return <span key={x.subject} style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 99, background: ok ? '#dcfce7' : x.state === 'empty' ? '#fee2e2' : '#fef3c7', color: ok ? '#166534' : x.state === 'empty' ? '#991b1b' : '#92400e' }}>{ok ? '✓' : x.state === 'empty' ? '✕' : '!'} {x.subject} {x.have}/{x.wanted}</span> })}
+            </div>}
+            {audit.issues.length > 0 && <div style={{ marginTop: 6, fontSize: 12.5 }}>{audit.issues.slice(0, 8).map(i => `Q${i.no} (${i.subject}) ${i.problem}`).join(' · ')}{audit.issues.length > 8 ? ` · +${audit.issues.length - 8} more` : ''}</div>}
+          </div>
+        )}
       </PremiumCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>

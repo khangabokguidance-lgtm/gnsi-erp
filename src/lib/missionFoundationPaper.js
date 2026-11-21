@@ -83,3 +83,39 @@ export const PAPER_INSTRUCTIONS = 'This paper has all six subjects. Answer every
 
 // Next position for new questions in a subject (keeps typed order after deletes).
 export const nextPosition = (questions, subject) => questions.filter(q => q.subject === subject).reduce((m, q) => Math.max(m, Number(q.position) || 0), 0) + 1
+
+// What the combined paper really holds, section by section: questions made vs needed, questions without all four options or an answer,
+// and repeats. Read from the questions themselves, so it always matches what will print.
+// → { kind: 'empty' | 'incomplete' | 'complete', total, wanted, sections: [{ subject, have, wanted, state, noOptions, noAnswer, dups }], issues: [{ no, subject, problem }], ready, text }
+export function auditPaper(model) {
+  const norm = x => String(x ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const seen = new Map(), issues = []
+  const sections = model.sections.map(sec => {
+    let noOptions = 0, noAnswer = 0, dups = 0
+    sec.items.forEach((q, i) => {
+      const no = sec.start + i
+      if ((q.opts || []).filter(o => String(o.text ?? '').trim()).length < 4) { noOptions++; issues.push({ no, subject: sec.subject, problem: 'needs all four options' }) }
+      if (!/^[A-D]$/.test(String(q.answer || ''))) { noAnswer++; issues.push({ no, subject: sec.subject, problem: 'has no answer' }) }
+      const k = norm(q.question)
+      if (k) { if (seen.has(k)) { dups++; issues.push({ no, subject: sec.subject, problem: `repeats Q${seen.get(k)}` }) } else seen.set(k, no) }
+    })
+    const have = sec.items.length
+    const state = !have ? 'empty' : have < sec.wanted ? 'short' : have > sec.wanted && sec.wanted ? 'over' : 'full'
+    return { subject: sec.subject, have, wanted: sec.wanted, state, noOptions, noAnswer, dups }
+  })
+  const total = model.total
+  const bad = sections.filter(x => x.state === 'empty' || x.state === 'short' || x.state === 'over' || x.noOptions || x.noAnswer || x.dups)
+  const kind = !total ? 'empty' : bad.length ? 'incomplete' : 'complete'
+  const sum = f => sections.reduce((n, x) => n + x[f], 0)
+  const parts = [
+    `${total} of ${model.wanted} questions in ${sections.length} sections`,
+    sections.filter(x => x.state === 'empty').length && `${sections.filter(x => x.state === 'empty').map(x => x.subject).join(', ')}: no questions yet`,
+    sections.filter(x => x.state === 'short').length && `${sections.filter(x => x.state === 'short').map(x => `${x.subject} ${x.have}/${x.wanted}`).join(', ')} still short`,
+    sections.filter(x => x.state === 'over').length && `${sections.filter(x => x.state === 'over').map(x => `${x.subject} ${x.have}/${x.wanted}`).join(', ')} has extra`,
+    sum('noOptions') && `${sum('noOptions')} without all four options`,
+    sum('noAnswer') && `${sum('noAnswer')} without an answer`,
+    sum('dups') && `${sum('dups')} repeated`,
+  ].filter(Boolean)
+  const text = kind === 'empty' ? 'No questions found for this test yet.' : kind === 'complete' ? `${parts[0]}. Every question has four options and an answer, and none repeat.` : parts.join(' · ') + '.'
+  return { kind, total, wanted: model.wanted, sections, issues, ready: kind === 'complete', text }
+}

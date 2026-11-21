@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { paperModel, paperHtml, answerKeyHtml, nextPosition } from '../src/lib/missionFoundationPaper.js'
+import { paperModel, paperHtml, answerKeyHtml, nextPosition, auditPaper } from '../src/lib/missionFoundationPaper.js'
 
 const papers = [
   { subject: 'Mathematics I', questions: 2, marks_each: 2 },
@@ -48,4 +48,25 @@ test('paper and answer key html', () => {
 test('next position', () => {
   assert.equal(nextPosition(qs, 'Reasoning'), 3)
   assert.equal(nextPosition(qs, 'EVS'), 1)
+})
+
+test('audit: empty, short and complete sections are told apart', () => {
+  const a = auditPaper(paperModel(papers, qs))
+  assert.equal(a.kind, 'incomplete')
+  assert.deepEqual(a.sections.map(x => x.state), ['full', 'short', 'empty'])
+  assert.match(a.text, /4 of 6 questions in 3 sections/); assert.match(a.text, /EVS: no questions yet/); assert.match(a.text, /Reasoning 2\/3 still short/)
+  const done = auditPaper(paperModel([{ subject: 'Mathematics I', questions: 2, marks_each: 2 }], [q('1', 'Mathematics I', 1), q('2', 'Mathematics I', 2, 'B')]))
+  assert.equal(done.kind, 'complete'); assert.equal(done.ready, true); assert.match(done.text, /Every question has four options and an answer/)
+  assert.equal(auditPaper(paperModel(papers, [])).kind, 'empty')
+})
+
+test('audit: missing options, missing answers and repeats are listed with their question numbers', () => {
+  const bad = [
+    { ...q('1', 'Mathematics I', 1), option_c: '' },
+    { ...q('2', 'Mathematics I', 2), answer: '' },
+    { ...q('3', 'Reasoning', 1), question: 'Mathematics I q1' },
+  ]
+  const a = auditPaper(paperModel(papers, bad))
+  assert.deepEqual(a.issues.map(i => [i.no, i.problem]), [[1, 'needs all four options'], [2, 'has no answer'], [3, 'repeats Q1']])
+  assert.match(a.text, /1 without all four options/); assert.match(a.text, /1 without an answer/); assert.match(a.text, /1 repeated/)
 })
