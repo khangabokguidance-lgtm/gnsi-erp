@@ -228,6 +228,8 @@ export default function MissionFoundation({ currentUser }) {
     return { done, late, next, mine }
   }, [papers, tests, testById, today, me])
 
+  // A teacher's flow, first to last: teach -> set & check papers -> enter marks -> see results. The admin's set-up steps stay with the admin.
+  const flow = useMemo(() => (isAdmin ? FOUNDATION_FLOW : FOUNDATION_FLOW.filter(st => ['teach', 'papers', 'marks', 'results'].includes(st.id))), [isAdmin])
   const groups = [
     { label: 'Plan', color: '#185FA5', tabs: [
       { id: 'schedule', label: 'Schedule & syllabus', icon: PIcon.calendar, hint: '8 Monday tests, chapters and paper pattern' },
@@ -291,9 +293,9 @@ export default function MissionFoundation({ currentUser }) {
             </div>
             {loading ? <PremiumCard><div style={{ color: PX.sub }}>Loading…</div></PremiumCard> : <>
               {tab === 'home' && <>
-                <FlowTracker flow={FOUNDATION_FLOW} heading="MISSION FLOW · ONE STEP AT A TIME" progress={flowProgress} onGo={setTab} />
+                <FlowTracker flow={flow} heading="MISSION FLOW · ONE STEP AT A TIME" progress={flowProgress} onGo={setTab} />
                 <HomeDashboard {...{ photoOf, tests, ctx: { papersByTest, students, teaching, prizes, marksCount, allMarks }, today, me, isAdmin, papers, testById, setTab, setOpenTest: openWork }} />
-                <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>
+                {isAdmin && <div style={{ marginTop: 16 }}><IconTabs groups={groups} active={tab} open={false} onOpen={setTab} ariaLabel="Mission Foundation sections" /></div>}
               </>}
               {tab === 'teaching' && <TeachingTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, teaching, setTeaching, savePaper, me, flash, panel, isAdmin }} />}
               {tab === 'conduct' && <ConductTab {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, students, marksCount, saveTest, lockTest, me, isAdmin, flash, setTab }} />}
@@ -309,7 +311,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'material' && <MaterialTab {...{ tests, me, isAdmin, flash }} />}
               {tab === 'chat' && <ChatTab {...{ me, isAdmin, flash }} />}
               {tab === 'audit' && isAdmin && <AuditTab {...{ flash }} />}
-              <FlowNav flow={FOUNDATION_FLOW} home="home" tab={tab} progress={flowProgress} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} />
+              <FlowNav flow={flow} home="home" tab={tab} progress={flowProgress} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} />
             </>}
           </>
         )}
