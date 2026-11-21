@@ -7,6 +7,7 @@ import { parseQuestions } from './lib/missionSainikQuestions'
 import { figFromFile, svgToJpeg } from './lib/figImage'
 import { vennSvg, vennPresetSvg, VENN_PRESETS } from './lib/vennSvg'
 import ScanFigure from './ScanFigure'
+import StripSplit, { splitFileAuto } from './StripSplit'
 import { splitPastedQuestion, countQuestionStarts, applyAnswerKey } from './lib/questionPaste'
 import { csvToQuestionText } from './lib/missionSainikPaper'
 import { mathToHtml, mathPlain, hasPicture, pictureOf, withPicture, withoutPicture } from './lib/mathText'
@@ -206,6 +207,23 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
     if (t.k) setCards(cs => cs.map(c => (c.id === t.id ? { ...c, [t.k]: withPicture(c[t.k], url) } : c)))
     else setCards(cs => cs.map(c => (c.id === t.id ? { ...c, image: url, type: c.type === 'normal' ? 'figure' : c.type } : c)))
   }
+  const [strip, setStrip] = useState(null)   // { id, file } — a model-style strip picture being split into question + 4 options
+  const onStripped = r => {
+    const t = strip; setStrip(null); if (!t) return
+    setCards(cs => cs.map(c => (c.id === t.id ? { ...c, type: 'nonverbal', image: r.image, a: withPicture('', r.options[0]), b: withPicture('', r.options[1]), c: withPicture('', r.options[2]), d: withPicture('', r.options[3]) } : c)))
+  }
+  // Many strip pictures at once → one figure question per picture, in file-name order (1.png, 2.png, … 10.png).
+  const [bulkMsg, setBulkMsg] = useState('')
+  const addStrips = async files => {
+    const list = [...files].sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true }))
+    setBulkMsg(`Reading ${list.length} picture${list.length === 1 ? '' : 's'}…`)
+    const made = []; let guessed = 0
+    for (const f of list) {
+      try { const r = await splitFileAuto(f); if (!r.checked) guessed++; made.push({ ...blankCard(), type: 'nonverbal', image: r.image, a: withPicture('', r.options[0]), b: withPicture('', r.options[1]), c: withPicture('', r.options[2]), d: withPicture('', r.options[3]) }) } catch (er) { setBulkMsg(`${f.name}: ${er.message}`); return }
+    }
+    setCards(cs => [...cs.filter(c => !isEmptyCard(c)), ...made])
+    setBulkMsg(`${made.length} figure question${made.length === 1 ? '' : 's'} added. Type each question, tap its correct letter${guessed ? ` · ${guessed} picture${guessed === 1 ? '' : 's'} could not be split exactly — open ✂ Strip on those to adjust` : ''}.`)
+  }
   const [vennFor, setVennFor] = useState(null)
   const [vennDraft, setVennDraft] = useState({ sets: 2, labels: ['', '', ''], v: {}, universe: true })
   const [presetFor, setPresetFor] = useState(null)   // { id, k } — picking a relationship diagram for an option
@@ -321,6 +339,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
         </div>
       )}
       {undo && <div role="status" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 10px', padding: '9px 14px', borderRadius: 12, background: '#243049', color: '#fff', fontSize: 13.5 }}><span style={{ flex: 1 }}>Question removed.</span><button type="button" onClick={doUndo} style={{ border: 'none', background: '#e9d9b0', color: '#132a4f', borderRadius: 8, padding: '6px 12px', fontWeight: 800, cursor: 'pointer' }}>Undo</button><button type="button" aria-label="Dismiss" onClick={() => setUndo(null)} style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16 }}>×</button></div>}
+      {strip && <StripSplit file={strip.file} onDone={onStripped} onClose={() => setStrip(null)} />}
       {scan && <ScanFigure title={scan.k ? `Scan a picture for option ${scan.k.toUpperCase()}` : 'Scan a figure'} onDone={onScanned} onClose={() => setScan(null)} {...(scan.k ? { maxW: 260, quality: 0.72, cap: 60000, label: 'Option picture' } : {})} />}
       {presetFor && (
         <div onClick={() => setPresetFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
@@ -371,6 +390,7 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                             {c.image ? <img src={c.image} alt="Attached" style={{ maxHeight: 64, maxWidth: 110, objectFit: 'contain', borderRadius: 6, border: `1px solid ${PX.line}`, background: '#fff' }} /> : <span style={{ fontSize: 22 }}>{c.type === 'passage' ? '📖' : c.type === 'venn' ? '🔵' : c.type === 'nonverbal' ? '🔷' : '🖼️'}</span>}
                             <span style={{ flex: 1, minWidth: 130, fontSize: 12.5, color: PX.sub }}>{c.image ? 'Picture attached' : c.type === 'venn' ? 'Draw the Venn diagram below, or upload one' : c.type === 'nonverbal' ? 'Add the question figure (or give all four options as pictures)' : c.type === 'figure' ? 'Add the figure / diagram for this question' : 'Optional: upload the passage as a picture'}</span>
                             <button type="button" className="px-btn ghost" style={gbtn} onClick={() => setScan({ id: c.id })}>📷 Scan</button>
+                            {(c.type === 'figure' || c.type === 'nonverbal') && <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }} title="One picture with the question figure, a divider and four option figures">✂ Strip → 4 options<input type="file" accept="image/*" aria-label="Upload a strip picture to split into question and four options" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setStrip({ id: c.id, file: f }) }} /></label>}
                             <label className="px-btn ghost" style={{ ...gbtn, cursor: 'pointer' }}>{c.image ? 'Replace' : '⬆ Upload'}<input type="file" accept="image/*" aria-label="Upload a picture" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setImgErr(''); pickImage(c.id, f) } }} /></label>
                             {c.image && <button type="button" className="px-btn ghost" style={gbtn} onClick={() => upd(c.id, { image: '' })}>Remove</button>}
                           </div>
@@ -444,10 +464,12 @@ export default function MultiQuestionAdder({ cards, setCards, remaining, startNo
                 )
               })}
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
               <button type="button" className="px-btn ghost" style={{ flex: 1, borderStyle: 'dashed' }} onClick={() => addAfter(null, 1, cards[cards.length - 1])}>＋ Add question</button>
               <button type="button" className="px-btn ghost" style={{ borderStyle: 'dashed' }} onClick={() => addAfter(null, 5, cards[cards.length - 1])}>＋ Add 5</button>
+              <label className="px-btn ghost" style={{ borderStyle: 'dashed', cursor: 'pointer' }} title="Pick many strip pictures (question figure + four options in one picture); each becomes a question">✂ Add figure strips<input type="file" multiple accept="image/*" aria-label="Add many strip pictures" style={{ display: 'none' }} onChange={e => { const fs = e.target.files; if (fs?.length) addStrips(fs); e.target.value = '' }} /></label>
             </div>
+            {bulkMsg && <div role="status" style={{ marginTop: 8, padding: '8px 12px', borderRadius: 10, background: PX.goldBg, fontSize: 12.5, fontWeight: 700 }}>{bulkMsg}</div>}
             <div style={{ fontSize: 11.5, color: PX.faint, marginTop: 6 }}>Tips: tap a letter (or Alt+A–D) to mark the answer · Enter in option D or Ctrl+Enter starts the next question · paste a whole question into the box and it splits itself · paste or drop a picture onto a card for figures · ▲▼ reorder.</div>
           </div>
         )}

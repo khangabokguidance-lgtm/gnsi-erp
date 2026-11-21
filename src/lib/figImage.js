@@ -1,12 +1,17 @@
+// Word's own vector pictures (.wmf / .emf) cannot be opened by a browser.
+export const WORD_PICTURE = /\.(wmf|emf)$/i
+export const WORD_PICTURE_HELP = 'Word’s WMF/EMF pictures cannot be opened here. In Word: right-click the picture → Save as Picture → PNG, then upload that. (Or copy the picture and paste it into the card.)'
+
 // Resize a picked image to at most 640px wide and return a compact data: URL (figures are stored with the question).
 export function figFromFile(file, { maxW = 640, quality = 0.8, cap = 350000, label = 'Figure' } = {}) {
   return new Promise((resolve, reject) => {
+    if (WORD_PICTURE.test(file.name || '') || /(wmf|emf)/.test(file.type || '')) return reject(new Error(WORD_PICTURE_HELP))
     if (!/^image\//.test(file.type)) return reject(new Error('Choose an image file.'))
     const fr = new FileReader()
     fr.onerror = () => reject(new Error('Could not read the image.'))
     fr.onload = () => {
       const img = new Image()
-      img.onerror = () => reject(new Error('Could not open the image.'))
+      img.onerror = () => reject(new Error('Could not open the image. If it came from Word, save it as PNG first.'))
       img.onload = () => {
         const k = Math.min(1, maxW / img.width), c = document.createElement('canvas')
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
