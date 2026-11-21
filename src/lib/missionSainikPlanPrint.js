@@ -4,8 +4,8 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const splitChapters = v => String(v || '').split(';').map(s => s.trim()).filter(Boolean)
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
-// Height (mm) the content may use on one A4 page: 297 − top spacer 13 − footer space 17 − a small safety margin.
-const FIT_MM = 262
+// Page height minus this (top spacer 13 + footer space 17 + safety) is what the table may use. The page size comes from the preview's Paper / Layout picker.
+const FIT_MARGIN_MM = 35
 export const PLAN_CSS = `<style>
 .pp .title{padding:6px;font-size:11px;letter-spacing:2.2px}
 .pp .sub{margin:4px 0 7px;font-size:9.5px}
@@ -44,5 +44,5 @@ export function buildPlanBody({ tests, subjects, syl, fmtDate = x => x, year = 2
     <table class="t"><colgroup><col style="width:11%">${subjects.map(() => `<col style="width:${w}%">`).join('')}</colgroup>
     <thead><tr><th>Test</th>${subjects.map((x, i) => `<th style="border-bottom:2px solid ${TONES[i % TONES.length]}">${esc(x.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
     <div class="sig"><span>Prepared by</span><span>Academic Head</span><span>Principal</span></div></div>
-    <script>(function(){var f=function(){var td=document.querySelector('.frame>tbody>tr>td'),t=document.querySelector('.pp table.t');if(!td||!t)return;var max=${FIT_MM}*96/25.4,z=1;t.style.zoom=1;while(td.getBoundingClientRect().height>max&&z>.55){z-=.02;t.style.zoom=z}};(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(f)})()</script>`
+    <script>(function(){var H=297,f=function(){var td=document.querySelector('.frame>tbody>tr>td'),t=document.querySelector('.pp table.t');if(!td||!t)return;var max=(H-${FIT_MARGIN_MM})*96/25.4,z=1;t.style.zoom=1;while(td.getBoundingClientRect().height>max&&z>.4){z-=.02;t.style.zoom=z}};window.addEventListener('pagechange',function(e){H=e.detail;f()});(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(f)})()</script>`
 }
