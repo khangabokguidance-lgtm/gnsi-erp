@@ -26,7 +26,7 @@ function printSyllabus(cls, pattern, subjects, institute) {
   const patt = `<table class="t"><thead><tr><th class="l">Section</th><th>Questions</th><th>Marks each</th><th>Total</th></tr></thead><tbody>${pattern.sections.map(s => `<tr><td class="l"><b>${esc(s.subject)}</b></td><td>${s.questions}</td><td>${s.marksEach}</td><td>${s.questions * s.marksEach}</td></tr>`).join('')}</tbody></table>`
   const blocks = subjects.map(([name, chs]) => { const s = sec(name); return `<h3>${esc(name)}${s ? ` <small>· ${s.questions} questions · ${s.questions * s.marksEach} marks</small>` : ''}</h3><ol style="columns:2;column-gap:22px;margin:4px 0 6px;padding-left:20px">${chs.map(c => `<li style="break-inside:avoid;margin:0 0 2px">${esc(c)}</li>`).join('')}</ol>` }).join('')
   printPremium(`<div class="title">AISSEE 2027 · Class ${cls} Syllabus</div><div class="sub">Sainik School entrance exam · exam 31 Jan 2027</div><div class="kpis">${kpi}</div>${patt}${blocks}<div class="foot">Source: NTA Information Bulletin AISSEE-2027, Appendix ${cls === 6 ? 'II' : 'III'}.</div>`,
-    { title: `AISSEE-2027 Class ${cls} syllabus`, institute, docLabel: `AISSEE 2027 · Class ${cls} syllabus` })
+    { title: `AISSEE-2027 Class ${cls} syllabus`, institute, docLabel: `AISSEE 2027 · Class ${cls} syllabus`, official: true })
 }
 
 export function OfficialSyllabus({ isMobile, institute }) {

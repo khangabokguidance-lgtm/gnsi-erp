@@ -1205,7 +1205,7 @@ function MissionSainikInner({ currentUser }) {
   const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
   // Print the whole syllabus plan on the premium A4 frame (letterhead, logo, footer). It opens as a preview with a Print / Save as PDF button.
   const printSyllabusPlan = () => printPremium(buildPlanBody({ tests: TESTS, subjects: SUBJECTS, syl, fmtDate: fmtShort }),
-    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan' })
+    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan', official: true })
   const planDocx = async () => {
     try { downloadDocx('Mission_Sainik_syllabus_plan', await buildPlanDocx({ tests: TESTS, subjects: SUBJECTS, syl, institute, fmtDate: fmtShort })); setMsg('✅ Word file downloaded') }
     catch (e) { setMsg('❌ Could not make the Word file: ' + (e.message || e)) }
