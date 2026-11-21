@@ -2,6 +2,9 @@
 // followed by at least two lettered options (A) B) …). Pure function: used by the study-material editor and the question uploaders.
 const STEM = /^(?:Q(?:uestion)?\.?\s*)?(\d{1,3})\s*[.):-]\s*(\S.*)$/i
 const OPT = /^(?:[-*•]\s*)?\(?([A-Da-d])\s*[.):]\s*\S/
+// options written side by side on one line: "(A) one  (B) two  (C) three  (D) four"
+const INLINE = /(?:^|\s)\(?([A-Da-d])\s*[.)]\s+\S/g
+const optsIn = ln => Math.max(1, new Set([...ln.matchAll(INLINE)].map(m => m[1].toUpperCase())).size)
 const ANS = /^(?:ans(?:wer)?|correct(?: answer)?)\s*[:-]\s*\(?([A-Da-d])\b/i
 
 // → { kind: 'empty' | 'notes' | 'questions' | 'mixed', questions, withAnswers, numberedNoOptions, lines, text }
@@ -12,7 +15,7 @@ export function detectQuestions(text) {
   let questions = 0, withAnswers = 0, numberedNoOptions = 0, inQ = false, opts = 0, ans = false, qLines = 0, stems = 0
   const close = () => { if (!stems) return; if (opts >= 2) { questions++; if (ans) withAnswers++ } else numberedNoOptions++; stems = 0; opts = 0; ans = false }
   for (const ln of lines) {
-    if (OPT.test(ln) && stems) { opts++; qLines++; continue }
+    if (OPT.test(ln) && stems) { opts += optsIn(ln); qLines++; continue }
     if (ANS.test(ln) && stems) { ans = true; qLines++; continue }
     if (STEM.test(ln) && !/^(ans|exp|topic|level|difficulty)/i.test(ln)) {
       // a numbered line that follows a finished question starts a new one; a numbered list inside notes without options is counted separately

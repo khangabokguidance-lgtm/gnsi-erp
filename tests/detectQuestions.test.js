@@ -40,3 +40,8 @@ test('a wrapped question stem and an explanation line stay with their question',
   const d = detectQuestions('1. This question is long and\ncontinues on a second line?\nA) a\nB) b\nC) c\nD) d\nAnswer: A\nExplanation: because.')
   assert.equal(d.questions, 1); assert.equal(d.kind, 'questions')
 })
+
+test('options written side by side on one line count as options', () => {
+  const d = detectQuestions('Q1. What is 1?\n(A) one  (B) two  (C) three  (D) four\n\nQ2. What is 2?\n(A) one\t(B) two\t(C) three\t(D) four')
+  assert.equal(d.questions, 2); assert.equal(d.numberedNoOptions, 0)
+})

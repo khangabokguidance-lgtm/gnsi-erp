@@ -6,7 +6,7 @@
 // as tools/booklet/gnsi_booklet.py, but in the browser. Settings files (.json)
 // are the same as the Python program's, so one file works in both.
 import { useMemo, useRef, useState } from 'react'
-import { readChapterDocx, applyEdits, resolveGroups, buildBooklet, bookletFileName } from './lib/bookletBuilder'
+import { readChapterDocx, applyEdits, resolveGroups, buildBooklet, bookletFileName, describeChapter } from './lib/bookletBuilder'
 
 const NAVY = '#1B2A4A', GOLD = '#B8892B', RULE = '#E5DCC7', INK = '#1F2937', MUTED = '#6B7280'
 const LETTERS = ['A', 'B', 'C', 'D']
@@ -135,6 +135,7 @@ export default function BookletBuilder({ showToast }) {
     return String(n) === t || Q[n].eng.toLowerCase().includes(t)
   })
   const noAnswer = nums.filter(n => !answerOf(n))
+  const det = useMemo(() => describeChapter(Q, answerOf), [Q, cfg, source])   // eslint-disable-line react-hooks/exhaustive-deps
   const solCount = Object.values(cfg.solutions || {}).filter(Boolean).length
 
   return (
@@ -188,6 +189,12 @@ export default function BookletBuilder({ showToast }) {
               <div style={{ fontSize: 11.5, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
             </div>
           ))}
+        </div>
+
+        <div role="status" aria-label="Question detection" style={{ ...card, padding: '10px 14px', borderColor: det.clean ? '#BBF7D0' : '#FDE68A', background: det.clean ? '#F0FDF4' : '#FFFBEB', color: det.clean ? '#166534' : '#92400E', fontSize: 13 }}>
+          <b>🔎 Detected:</b> {det.text}
+          {det.noOptions.length > 0 && <div style={{ marginTop: 4 }}>Need all four options: {det.noOptions.slice(0, 15).map(n => 'Q' + n).join(', ')}{det.noOptions.length > 15 ? ` … (+${det.noOptions.length - 15})` : ''}</div>}
+          {det.noAnswer.length > 0 && <div style={{ marginTop: 4 }}>No answer yet: {det.noAnswer.slice(0, 15).map(n => 'Q' + n).join(', ')}{det.noAnswer.length > 15 ? ` … (+${det.noAnswer.length - 15})` : ''}. Add an answer key at the end of the file or choose them below.</div>}
         </div>
 
         {/* Details */}
