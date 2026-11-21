@@ -1,23 +1,35 @@
 // MissionSainikUI.jsx — small premium building blocks used inside the module's tables:
 // initials avatars, status pills with a dot, count pills with a mini progress bar, score pills, gradient bars.
+import { useState } from 'react'
 import { PX } from './premiumUI'
+import { useStaffPhotos, findStaffPhoto } from './staffPhotos'
 
 const PALETTE = [['#132a4f', '#2f5aa8'], ['#a97c1f', '#e3bd5f'], ['#0f7a4c', '#3fb184'], ['#6d28d9', '#a78bfa'], ['#c2410c', '#fb923c'], ['#0e7490', '#38bdf8'], ['#be185d', '#f472b6'], ['#4d7c0f', '#a3c94a']]
 const initials = n => String(n || '?').replace(/^(sir|miss|mr|mrs)\s+/i, '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?'
 const hue = n => { let h = 0; for (const c of String(n || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length] }
 
-export function Avatar({ name, size = 34 }) {
+// Initials circle, or the person's real photo when one exists in the staff photo system (Staff profile photo, or Website Manager → Faculty).
+// staff={false} for people who are not staff (students, batches): they keep the initials and are never matched to a staff photo.
+export function Avatar({ name, size = 34, staff = true, photoName }) {
+  useStaffPhotos()
+  const [broken, setBroken] = useState(false)
+  const url = staff && !broken ? findStaffPhoto(photoName || name) : null
   const [a, b] = hue(name)
+  if (url) {
+    return <img src={url} alt={String(name || '')} title={String(name || '')} loading="lazy" onError={() => setBroken(true)}
+      style={{ width: size, height: size, borderRadius: '50%', flex: 'none', objectFit: 'cover', objectPosition: 'center top', display: 'inline-block', background: '#F4F1EA',
+        boxShadow: '0 2px 6px rgba(19,42,79,.22), inset 0 0 0 2px rgba(255,255,255,.35)', border: '2px solid #E2C57E' }} />
+  }
   return (
     <span aria-hidden="true" style={{ width: size, height: size, borderRadius: '50%', flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: size * 0.38, letterSpacing: '.02em',
       background: `linear-gradient(135deg, ${a}, ${b})`, boxShadow: '0 2px 6px rgba(19,42,79,.22), inset 0 0 0 2px rgba(255,255,255,.35)' }}>{initials(name)}</span>
   )
 }
 
-export function PersonCell({ name, sub, size = 34, children }) {
+export function PersonCell({ name, sub, size = 34, children, staff = true, photoName }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-      <Avatar name={name} size={size} />
+      <Avatar name={name} size={size} staff={staff} photoName={photoName} />
       <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
         <span style={{ fontWeight: 700, color: PX.ink }}>{children || name}</span>
         {sub ? <span style={{ fontSize: 11.5, color: PX.sub, fontWeight: 500, overflowWrap: 'anywhere' }}>{sub}</span> : null}

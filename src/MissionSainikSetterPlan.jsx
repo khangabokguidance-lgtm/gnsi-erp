@@ -11,7 +11,7 @@ import { staffOptions } from './lib/teacherPick'
 const TABLE = 'mission_sainik_tasks'
 const STATUS_TONE = { Pending: 'warn', Submitted: 'info', Verified: 'gold', Approved: 'ok' }
 
-export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir = [], today, fmtShort, saveTask, reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
+export default function MissionSainikSetterPlan({ photoOf = x => x, tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir = [], today, fmtShort, saveTask, reload, setMsg, audit, currentUser, isAdmin, isMobile }) {
   const firstUpcoming = (TESTS.find(t => t.date >= today) || TESTS[0])?.no || 1
   const [no, setNo] = useState(firstUpcoming)
   const [busy, setBusy] = useState(false)
@@ -145,7 +145,7 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
               <div><b style={{ color: PX.navy, fontSize: 14.5 }}>{s.label}</b><div style={{ fontSize: 11.5, color: PX.sub }}>{panel.length} on the panel</div></div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  {r.setter ? <Avatar name={r.setter} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
+                  {r.setter ? <Avatar name={r.setter} photoName={photoOf(r.setter)} size={30} /> : <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', border: '2px dashed #e0a39b', flex: 'none' }} />}
                   <select className="px-input" aria-label={`Setter for ${test.id} ${s.label}`} value={r.setter || ''} disabled={busy || !isAdmin} onChange={e => choose(r, s, e.target.value)} style={{ flex: 1, minWidth: 0 }}>
                     {!r.setter && <option value="">Choose a teacher…</option>}
                     {r.setter && !panel.includes(r.setter) && !others.includes(r.setter) && opt(r.setter)}
@@ -159,7 +159,7 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
                     {coSettersOf(r).map(n => (
                       <button key={n} type="button" disabled={!isAdmin || busy} onClick={() => setCo(r, n, false)} title={isAdmin ? 'Click to remove' : ''} aria-label={`Remove co-setter ${n}`}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 9px 2px 3px', borderRadius: 99, border: `1px solid ${PX.line}`, background: '#fff', cursor: isAdmin ? 'pointer' : 'default', fontSize: 12, fontWeight: 700, color: PX.navy, fontFamily: 'inherit' }}>
-                        <Avatar name={n} size={18} />{fullName(n)}{isAdmin && <span aria-hidden="true" style={{ color: PX.sub }}>✕</span>}
+                        <Avatar name={n} photoName={photoOf(n)} size={18} />{fullName(n)}{isAdmin && <span aria-hidden="true" style={{ color: PX.sub }}>✕</span>}
                       </button>))}
                     {isAdmin && (
                       <select className="px-input" aria-label={`Add a co-setter for ${test.id} ${s.label}`} value="" disabled={busy} onChange={e => setCo(r, e.target.value, true)} style={{ width: 'auto', maxWidth: 190, height: 30, minHeight: 0, padding: '0 8px', fontSize: 12.5 }}>
@@ -196,7 +196,7 @@ export default function MissionSainikSetterPlan({ tests, TESTS, SUBJECTS, panelS
             const v = cTargets[n] || 0, was = cBase[n] || 0
             return (
               <div key={n} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto' : 'minmax(160px,1fr) 150px minmax(100px,1.2fr) 150px', gap: 10, alignItems: 'center', padding: '6px 10px', borderRadius: 12, background: '#fff', border: `1px solid ${v !== was ? PX.gold : '#eef1f6'}` }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><Avatar name={n} size={26} /><b style={{ color: PX.ink, fontSize: 13.5 }}>{fullName(n)}</b></span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}><Avatar name={n} photoName={photoOf(n)} size={26} /><b style={{ color: PX.ink, fontSize: 13.5 }}>{fullName(n)}</b></span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifySelf: isMobile ? 'end' : 'start' }}>
                   <button type="button" className="px-hbtn" aria-label={`One fewer test for ${n}`} disabled={!isAdmin || busy} onClick={() => bump(n, -1)} style={{ width: 34, height: 34, padding: 0, fontSize: 18 }}>−</button>
                   <b aria-live="polite" style={{ minWidth: 32, textAlign: 'center', fontSize: 17, color: PX.navy }}>{v}</b>
