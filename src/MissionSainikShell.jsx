@@ -83,6 +83,7 @@ html{scroll-behavior:smooth}
 .msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
 .msx-main.has-fab{padding-bottom:150px}
 .msx-main .px-table.msx-compact th,.msx-main .px-table.msx-compact td{padding:12px 9px;font-size:13.5px}
+.msx-main .px-table.msx-sched{width:100%}.msx-main .px-table.msx-sched th{padding:11px 7px;letter-spacing:.04em;font-size:10px;white-space:normal;line-height:1.25}.msx-main .px-table.msx-sched td{padding:10px 7px;font-size:13px;white-space:normal}.msx-main .px-table.msx-sched td.nw{white-space:nowrap}.msx-sched .sc-sec{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.msx-sched .sc-sec small{flex-basis:100%;color:#5d6b82;font-size:11px}
 .msx-rail{transition:width .2s ease}
 .msx-rail-tg{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 0 6px auto;border-radius:10px;color:var(--sub);font-size:16px;font-weight:800}.msx-rail-tg:hover{background:#e6ebf4}
 .msx-rail.slim{width:68px;padding-inline:8px}.msx-rail.slim .msx-rail-tg{margin-inline:auto}

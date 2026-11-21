@@ -746,7 +746,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
         <span style={{ fontSize: 11.5, color: PX.sub }}>No test or deadline on 13 Dec, 27 Dec, 1 Jan</span>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table className="px-table msx-compact">
+        <table className="px-table msx-compact msx-sched">
           <thead><tr><th>Test</th><th>Date</th><th>Day</th><th>Drafts due</th><th>Verification</th><th>Final &amp; print</th><th>Sections</th><th>Status</th></tr></thead>
           <tbody>
             {TESTS.map(t => {
@@ -758,10 +758,10 @@ function MissionSainikInner({ currentUser: sessionUser }) {
               return (
                 <tr key={t.no} style={dayName(t.date) === 'Sunday' ? { background: PX.tint } : undefined}>
                   <td><b>{t.id}</b>{upcoming && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: PX.gold }}>NEXT</span>}</td>
-                  <td>{fmt(t.date)}</td>
+                  <td className="nw">{fmt(t.date)}</td>
                   <td><Pill tone={dayName(t.date) === 'Sunday' ? 'gold' : 'mute'} dot={false}>{dayName(t.date)}{dayName(t.date) === 'Sunday' ? ' *' : ''}</Pill></td>
                   <td>{fmtShort(t.drafts)}</td><td>{fmtShort(t.verify)}</td><td>{fmtShort(t.print)}</td>
-                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><MiniBar pct={(st.done / (r.length || 6)) * 100} tone={done ? 'ok' : 'gold'} width={70} /><span style={{ fontWeight: 700 }}>{st.done}/{r.length || 6}</span><span style={{ color: PX.sub, fontSize: 12 }}>{st.ok} approved</span></span></td>
+                  <td><span className="sc-sec"><MiniBar pct={(st.done / (r.length || 6)) * 100} tone={done ? 'ok' : 'gold'} width={48} /><b>{st.done}/{r.length || 6}</b><small>{st.ok} approved</small></span></td>
                   <td>{r.length ? <Chip status={done ? 'Approved' : st.done ? 'Submitted' : 'Pending'} overdue={late && !done} small /> : <span style={{ color: PX.faint }}>—</span>}</td>
                 </tr>
               )

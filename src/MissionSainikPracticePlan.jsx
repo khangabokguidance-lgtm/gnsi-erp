@@ -26,10 +26,12 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, pho
   const head = { fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: PX.sub }
   const tone = TONES[SUBJECTS.findIndex(x => x.key === sub.key) % TONES.length]
 
-  const run = async (fn, okMsg, what) => {
+  const run = async (fn, okMsg, what, mustChange = false) => {
     setBusy(true)
-    const { error } = await fn()
+    const { error, data } = await fn()
     setBusy(false)
+    // A delete that matched no row is not a success (the database may have refused it quietly), so say so instead of "removed".
+    if (!error && mustChange && Array.isArray(data) && !data.length) { reload(); return setMsg('❌ Could not remove: the database did not delete it (no permission, or it is already gone). Refreshed the list.') }
     if (error) return setMsg('❌ ' + (/duplicate|unique/i.test(error.message) ? 'That teacher already has this set.' : error.message))
     audit('practice_plan', `${sub.key}:${what}`, null); setMsg('✅ ' + okMsg); reload()
   }
@@ -38,7 +40,7 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, pho
   const removeTeacher = (set, r) => {
     if (r.status !== 'Pending') return setMsg(`❌ ${fullName(r.setter)} has already handed in Set ${set.no}; it cannot be removed.`)
     if (!window.confirm(`Remove ${fullName(r.setter)} from ${sub.label} Set ${set.no}? Questions they uploaded stay in the bank.`)) return
-    run(() => supabase.from(TABLE).delete().eq('id', r.id), `${fullName(r.setter)} removed from Set ${set.no}`, `set${set.no}-${r.setter}`)
+    run(() => supabase.from(TABLE).delete().eq('id', r.id).select('id'), `${fullName(r.setter)} removed from Set ${set.no}`, `set${set.no}-${r.setter}`, true)
   }
   // Each practice teacher sets their OWN full set of questions for the same practice test, so students get different versions.
   const missingFor = set => practiceSetters(sub.key).filter(n => !set.rows.some(r => r.setter === n))
