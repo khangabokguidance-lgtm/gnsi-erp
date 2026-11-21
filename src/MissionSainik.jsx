@@ -30,6 +30,7 @@ import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText 
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import { printPremium } from './lib/printPremium'
+import { buildPlanBody } from './lib/missionSainikPlanPrint'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -1201,18 +1202,8 @@ function MissionSainikInner({ currentUser }) {
   const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
   const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
   // Print the whole syllabus plan on the premium A4 frame (letterhead, logo, footer). It opens as a preview with a Print / Save as PDF button.
-  const printSyllabusPlan = () => {
-    const total = TESTS.length * SUBJECTS.length
-    const filled = TESTS.reduce((n, t) => n + SUBJECTS.filter(x => syl[t.no + '|' + x.label]).length, 0)
-    const pct = total ? Math.round((filled / total) * 100) : 0
-    const rows = TESTS.map(t => `<tr><td class="l"><b>${esc(t.id)}</b><br><small>${esc(fmtShort(t.date))}</small></td>${SUBJECTS.map(x => { const cs = splitChapters(syl[t.no + '|' + x.label]); return `<td class="l">${cs.length ? cs.map(esc).join('<br>') : '<span style="color:#b42318">—</span>'}</td>` }).join('')}</tr>`).join('')
-    const perSubject = SUBJECTS.map(x => `<div class="kpi"><small>${esc(x.short)}</small><b>${TESTS.filter(t => syl[t.no + '|' + x.label]).length}/${TESTS.length}</b></div>`).join('')
-    printPremium(`<div class="title">Mission Sainik 2027 · Syllabus Plan</div><div class="sub">Chapter for each section of each Pre Mock Test · ${filled} of ${total} chapters planned (${pct}%)</div>
-      <div class="kpis" style="grid-template-columns:repeat(${SUBJECTS.length},1fr)">${perSubject}</div>
-      <table class="t" style="font-size:9px"><colgroup><col style="width:11%">${SUBJECTS.map(() => `<col style="width:${(89 / SUBJECTS.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th class="l">Test</th>${SUBJECTS.map(x => `<th class="l">${esc(x.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
-      <div class="sig"><span>Prepared by</span><span>Academic Head</span><span>Principal</span></div>`,
+  const printSyllabusPlan = () => printPremium(buildPlanBody({ tests: TESTS, subjects: SUBJECTS, syl, fmtDate: fmtShort }),
     { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan' })
-  }
   const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
   const runSylImport = async () => {
     const { rows: list, errors } = parseSyllabusText(sylImport, SUBJECTS)
