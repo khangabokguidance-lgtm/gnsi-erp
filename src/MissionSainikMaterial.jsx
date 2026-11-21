@@ -77,7 +77,7 @@ const SAVERS = [
   { margin: 'minimal', columns: 3, size: 10.5, compact: true, header: 'compact' },
 ]
 
-export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft, fileKey, editMat, busy, onSave, onCancelEdit, onEdit, onDelete, onOpen, canManage, getFileUrl, institute, isMobile, subjects, tests, setMsg, staff = [], userName = '', syllabus = null }) {
+export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft, fileKey, editMat, busy, onSave, onCancelEdit, onEdit, onDelete, onOpen, canManage, getFileUrl, institute, isMobile, subjects, tests, setMsg, staff = [], userName = '', syllabus = null, mySubjects = [] }) {
   const [tab, setTab] = useState('library')
   const [view, setView] = useState(isMobile ? 'edit' : 'split')
   const [restored, setRestored] = useState(false)
@@ -92,6 +92,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const [popts, setPopts] = useState(() => ({ ...PRINT_DEFAULTS, ...load('msm-print', {}) }))
   const ta = useRef(null)
   const set = patch => setDraft(d => ({ ...d, ...patch }))
+  useEffect(() => { if (mySubjects.length === 1 && !editMat && !draft.subject && !draft.title && !draft.body) setDraft(d => ({ ...d, subject: mySubjects[0] })) }, [mySubjects.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
   const instName = institute?.name || 'Guidance Navodaya & Sainik Institute'
   const me = useMemo(() => creatorOf(staff, userName), [staff, userName])
   const creator = useCallback(m => creatorOf(staff, m.uploaded_by), [staff])
@@ -316,6 +317,11 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                 <select className="msm-in" style={inp} aria-label="Test" value={draft.test_no} onChange={e => set({ test_no: e.target.value })}><option value={0}>All tests</option>{tests.map(t => <option key={t.id} value={t.no ?? t.id}>{t.id}</option>)}</select>
               </div>
             )}
+            {view !== 'preview' && mySubjects.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 10px' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub }}>Your panel subjects</span>
+                {mySubjects.map(sj => <button key={sj} type="button" aria-pressed={draft.subject === sj} onClick={() => set({ subject: sj })} style={{ padding: '7px 14px', minHeight: 40, borderRadius: 99, border: `1.5px solid ${draft.subject === sj ? PX.navy : PX.line}`, background: draft.subject === sj ? PX.navy : '#fff', color: draft.subject === sj ? '#fff' : PX.navy, fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{sj}</button>)}
+              </div>)}
             {view !== 'preview' && syllabus && (() => {
               // The syllabus plan: pick a test (and subject) and tap a planned chapter to start the material on it.
               const tNo = Number(draft.test_no) || 0

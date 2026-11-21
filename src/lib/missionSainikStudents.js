@@ -11,7 +11,7 @@ export function sainikRow(s) {
   return {
     id: s.id, name: String(s.name || '').trim(), gcc: s.gcc_no || s.admission_no || '', phone: s.phone || '', status: s.status || '',
     course: c.course, group: c.course === 'Sainik' ? 'sainik' : 'combined', batch: c.label, batchKey: c.key, medium: c.medium || '',
-    photo: s.photo_url || '', photoPath: s.photo_path || '',
+    photo: s.photo_url || '', photoPath: s.photo_path || '', admissionNo: s.admission_no || '', className: s.class_name || '',
   }
 }
 

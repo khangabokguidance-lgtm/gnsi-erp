@@ -16,21 +16,24 @@ test('a screen belongs to one step only', () => {
 test('back / next neighbours', () => {
   const [p, c, n] = flowNeighbors('mine')
   assert.equal(c.id, 'set'); assert.equal(p.id, 'assign'); assert.equal(n.id, 'build')
-  assert.equal(flowNeighbors('syllabus')[0], null)
+  assert.equal(flowNeighbors('panel')[0], null)
+  assert.equal(flowNeighbors('syllabus')[0].id, 'panel')
   assert.equal(flowNeighbors('insights')[2], null)
   assert.deepEqual(flowNeighbors('guide'), [null, null, null])
-  assert.equal(stepOfTab('megabuilder'), 3)
+  assert.equal(stepOfTab('megabuilder'), 4)
+  assert.equal(flowNeighbors('admit')[0].id, 'build'); assert.equal(flowNeighbors('admit')[2].id, 'marks')
+  assert.equal(flowNeighbors('certs')[0].id, 'analyse'); assert.equal(flowNeighbors('mockmarks')[1].id, 'marks')
 })
 
 test('first unfinished step is "now"; finished ones are "done"', () => {
-  const st = flowStatus({ plan: { done: 120, total: 120 }, assign: { done: 60, total: 120 }, set: { done: 0, total: 120 } })
-  assert.deepEqual(st.map(s => s.status), ['done', 'now', 'next', 'next', 'next', 'next', 'next'])
-  assert.equal(st[1].label2, '60/120'); assert.equal(st[1].pct, 50)
+  const st = flowStatus({ panel: { done: 6, total: 6 }, plan: { done: 120, total: 120 }, assign: { done: 60, total: 120 }, set: { done: 0, total: 120 } })
+  assert.deepEqual(st.map(s => s.status), ['done', 'done', 'now', 'next', 'next', 'next', 'next', 'next', 'next', 'next'])
+  assert.equal(st[2].label2, '60/120'); assert.equal(st[2].pct, 50)
 })
 
 test('with no data the first step is "now"; steps without a total never count as done', () => {
   assert.equal(flowStatus({})[0].status, 'now')
-  const all = flowStatus({ plan: { done: 1, total: 1 }, assign: { done: 1, total: 1 }, set: { done: 1, total: 1 }, marks: { done: 1, total: 1 } })
+  const all = flowStatus({ panel: { done: 1, total: 1 }, plan: { done: 1, total: 1 }, assign: { done: 1, total: 1 }, set: { done: 1, total: 1 }, marks: { done: 1, total: 1 } })
   assert.equal(all.find(s => s.id === 'build').status, 'now')
 })
 

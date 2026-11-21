@@ -24,6 +24,9 @@ import { staffOptions, staffNameFor } from './lib/teacherPick'
 import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikPracticePlan from './MissionSainikPracticePlan'
 import MissionSainikStudents from './MissionSainikStudents'
+import MissionSainikAdmit from './MissionSainikAdmit'
+import MissionSainikMockMarks from './MissionSainikMockMarks'
+import MissionSainikCertificates from './MissionSainikCertificates'
 import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
@@ -1561,7 +1564,7 @@ function MissionSainikInner({ currentUser }) {
     </>
   )
   const materialTab = (
-    <MissionSainikMaterial syllabus={syl} mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
+    <MissionSainikMaterial mySubjects={[...new Set(myPanel.map(m => m.subject))]} syllabus={syl} mats={mats} matSetup={matSetup} draft={matDraft} setDraft={setMatDraft} fileKey={fileKey} editMat={editMat} busy={busy}
       onSave={saveMaterial} onCancelEdit={() => { setEditMat(null); setFileKey(k => k + 1); setMatDraft({ title: '', subject: '', test_no: 0, link_url: '', note: '', body: '', file: null }) }}
       onEdit={startEditMat} onDelete={deleteMaterial} onOpen={openMaterial} canManage={m => isAdmin || isMe(m.uploaded_by)} getFileUrl={materialFileUrl}
       institute={institute} isMobile={isMobile} subjects={SUBJECTS} tests={TESTS} setMsg={setMsg} staff={staffDir} userName={currentUser?.name || ''} />
@@ -1584,7 +1587,12 @@ function MissionSainikInner({ currentUser }) {
     nextTest: nextTest ? nextTest.id.replace('PMT-', '') : 'Done', inLabel: `${submitted}/${total || seedCount}`, approved, overdue,
   }
   // Progress for the mission-flow tracker (Home) and the Back / Next bar.
+  // Where the logged-in teacher sits on the Panel: [{ subject, role }]. Home and Study material use it, so the panel setup carries through the other tabs.
+  const myPanel = (panelRows.length ? panelRows.map(r => ({ key: r.subject_key, name: r.name, role: r.role }))
+    : SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ key: x.key, name, role: 'setter' })), { key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ key: x.key, name, role: 'assistant' }))]))
+    .filter(m => isMe(m.name)).map(m => ({ subject: SUBJECTS.find(x => x.key === m.key)?.label || m.key, role: m.role === 'assistant' ? 'practice setter' : m.role === 'verifier' ? 'practice verifier' : 'setter' }))
   const flowProgress = {
+    panel: { done: panelRows.length ? SUBJECTS.filter(x => panelSetters(x.key).length).length : 0, total: SUBJECTS.length },
     plan: { done: TESTS.reduce((n, t) => n + SUBJECTS.filter(x => syl[t.no + '|' + x.label]).length, 0), total: TESTS.length * SUBJECTS.length },
     assign: { done: rows.filter(r => r.setter).length, total: rows.length },
     set: { done: approved, total },
@@ -1624,10 +1632,10 @@ function MissionSainikInner({ currentUser }) {
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading…</div> : (
           <>
             {tab === 'guide' && <MissionSainikGuide onGo={setTab} isMobile={isMobile} isAdmin={isRealAdmin} institute={institute} />}
-            {tab === 'overview' && <><MissionSainikHome upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
+            {tab === 'overview' && <><MissionSainikHome myPanel={myPanel} upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              practiceQ={practiceQMap} syllabus={syl} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
+              practiceQ={practiceQMap} syllabus={syl} onSetting={async (key, on) => { if (on) await putSetting(key, 'on'); else await delSetting(key) }} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete />}
@@ -1650,6 +1658,9 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'material' && materialTab}
             {tab === 'panel' && Panel()}
             {tab === 'students' && <MissionSainikStudents institute={institute} isMobile={isMobile} setMsg={setMsg} />}
+            {tab === 'admit' && <MissionSainikAdmit institute={institute} isMobile={isMobile} setMsg={setMsg} today={today} />}
+            {tab === 'mockmarks' && <MissionSainikMockMarks currentUser={currentUser} isMobile={isMobile} setMsg={setMsg} today={today} />}
+            {tab === 'certs' && <MissionSainikCertificates institute={institute} isMobile={isMobile} setMsg={setMsg} />}
             {tab === 'admin' && isRealAdmin && AdminPanel()}
             <FlowNav tab={tab} onGo={t => { setTab(t); window.scrollTo?.({ top: 0, behavior: 'smooth' }) }} progress={flowProgress} />
           </>

@@ -1,47 +1,21 @@
 // MissionSainikStudents.jsx — "Students" in Mission Sainik: every Sainik student (Achiever, Leader, Champion) and the Combined Course
 // students, read live from Students. Views: All, Sainik, Combined course; chips per batch; search; print, CSV and Word.
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from './supabase'
-import { getActiveStudents } from './studentQueries'
+import { useMemo, useState } from 'react'
+import { useSainikRoster } from './useSainikRoster'
 import { PremiumCard, PX } from './premiumUI'
 import { Avatar, Pill } from './MissionSainikUI'
 import { downloadCsv } from './lib/missionSainikExport'
 import { printPremium } from './lib/printPremium'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
-import { sainikRoster, filterRoster, rosterCounts, SAINIK_VIEWS } from './lib/missionSainikStudents'
+import { filterRoster, rosterCounts, SAINIK_VIEWS } from './lib/missionSainikStudents'
 
-const PHOTO_BUCKET = 'gnsi'
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-
-// Students keep photos in private storage (photo_path); turn them into temporary viewing links, in memory only.
-async function withPhotoLinks(rows) {
-  const need = rows.filter(r => r.photoPath && !r.photo)
-  if (!need.length) return rows
-  try {
-    const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(need.map(r => r.photoPath), 86400)
-    if (error || !data) return rows
-    const by = new Map(data.filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
-    return rows.map(r => (r.photoPath && !r.photo && by.get(r.photoPath) ? { ...r, photo: by.get(r.photoPath) } : r))
-  } catch { return rows }
-}
+const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 
 export default function MissionSainikStudents({ institute, isMobile, setMsg }) {
-  const [roster, setRoster] = useState(null)
+  const roster = useSainikRoster()
   const [view, setView] = useState('all')
   const [batchKey, setBatchKey] = useState('')
   const [q, setQ] = useState('')
-
-  useEffect(() => {
-    let live = true
-    ;(async () => {
-      let rows = null
-      try { rows = await getActiveStudents('id,name,gcc_no,admission_no,phone,course,batch,class_name,status,photo_url,photo_path') } catch { rows = null }
-      if (!rows || !rows.length) { try { rows = await getActiveStudents('id,name,gcc_no,admission_no,phone,course,batch,class_name,status') } catch { rows = [] } }   // a database without the photo columns
-      const list = await withPhotoLinks(sainikRoster(rows || []))
-      if (live) setRoster(list)
-    })()
-    return () => { live = false }
-  }, [])
 
   const counts = useMemo(() => rosterCounts(roster || [], view), [roster, view])
   const shown = useMemo(() => filterRoster(roster || [], { view, batchKey, q }), [roster, view, batchKey, q])
