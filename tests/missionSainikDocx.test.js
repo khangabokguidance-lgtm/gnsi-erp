@@ -25,3 +25,15 @@ test('official syllabus Word file builds for both classes', opts, async () => {
     assert.ok(blob.size > 5000)
   }
 })
+
+test('generic table Word file (results / merit list) contains the rows', opts, async () => {
+  const { buildTableDocx } = await import('../src/lib/missionSainikDocx.js')
+  const blob = await buildTableDocx({ title: 'Merit list', sub: 'x', institute: { name: 'GNSI', phone: '123' }, landscape: false,
+    columns: [{ h: 'Rank', w: 1 }, { h: 'Name', w: 3, left: true }], rows: [[1, 'Asha Devi'], [2, 'Bimol']], foot: [['', 'Average']] })
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()))
+  const xml = await zip.file('word/document.xml').async('string')
+  assert.ok(xml.includes('Asha Devi') && xml.includes('Bimol') && xml.includes('MERIT LIST') && xml.includes('Average'))
+  const head = Object.keys(zip.files).filter(f => /header|footer/.test(f))
+  assert.ok(head.length > 0)
+})

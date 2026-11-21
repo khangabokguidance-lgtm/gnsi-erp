@@ -32,7 +32,8 @@ import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
 import { printPremium } from './lib/printPremium'
 import { buildPlanBody } from './lib/missionSainikPlanPrint'
-import { buildPlanDocx, downloadDocx } from './lib/missionSainikDocx'
+import { buildPlanDocx, buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
+import { meritList } from './lib/missionSainikMerit'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -1350,6 +1351,24 @@ function MissionSainikInner({ currentUser }) {
       </PremiumCard>
     </>
   )
+  // Merit list: ranked by percentage for the test picked in the filter (or all tests together). Premium print preview and Word.
+  const merit = () => meritList(marks, MARK_COLS, marksFilter)
+  const meritTitle = () => marksFilter ? `Merit list · Daily Class Test ${marksFilter}` : 'Merit list · All Daily Class Tests'
+  const printMerit = () => {
+    const m = merit(); if (!m.rows.length) return setMsg('No marks to rank yet.')
+    const head = `<tr><th>Rank</th><th class="l">Batch / student</th>${MARK_COLS.map(([, l, mx]) => `<th>${esc(l)}<br>/${mx}${marksFilter ? '' : '×n'}</th>`).join('')}<th>Total</th><th>%</th></tr>`
+    const body = m.rows.map(r => `<tr${r.rank <= 3 ? ' style="background:#fdf6e3"' : ''}><td><b>${r.rank}</b></td><td class="l">${esc(r.name)}</td>${MARK_COLS.map(([k]) => `<td>${r.parts[k]}</td>`).join('')}<td><b>${r.total}</b>/${r.max}</td><td><b>${r.pct}%</b></td></tr>`).join('')
+    printPremium(`<div class="title">${esc(meritTitle())}</div><div class="sub">Mission Sainik 2027 · ${m.rows.length} ranked · ${m.tests} test${m.tests === 1 ? '' : 's'} · ranked by percentage</div><table class="t"><thead>${head}</thead><tbody>${body}</tbody></table><div class="sig"><span>Class teacher</span><span>Exam in-charge</span><span>Principal</span></div>`,
+      { title: meritTitle(), institute, docLabel: meritTitle(), official: true })
+  }
+  const meritDocx = async () => {
+    const m = merit(); if (!m.rows.length) return setMsg('No marks to rank yet.')
+    try {
+      downloadDocx(meritTitle().replace(/[^\w]+/g, '_'), await buildTableDocx({ title: meritTitle(), sub: `Mission Sainik 2027 · ${m.rows.length} ranked · ranked by percentage`, institute, label: meritTitle(), landscape: false,
+        columns: [{ h: 'Rank', w: 0.8 }, { h: 'Batch / student', w: 3, left: true }, ...MARK_COLS.map(([, l, mx]) => ({ h: `${l} /${mx}`, w: 1 })), { h: 'Total', w: 1.3 }, { h: '%', w: 0.9 }],
+        rows: m.rows.map(r => [r.rank, r.name, ...MARK_COLS.map(([k]) => r.parts[k]), `${r.total}/${r.max}`, r.pct + '%']) }))
+    } catch (e) { setMsg('❌ Could not make the Word file: ' + (e.message || e)) }
+  }
   const exportMarks = () => downloadCsv('Mission_Sainik_marks.csv', [['Test', 'Batch', ...MARK_COLS.map(([, l, m]) => `${l} /${m}`), 'Total /120']].concat(marks.map(r => ['T' + r.test_no, r.batch || '', ...MARK_COLS.map(([k]) => r[k] ?? ''), MARK_COLS.reduce((a, [k]) => a + (Number(r[k]) || 0), 0)])))
   const runMarksImport = async () => {
     const { rows: list, errors } = parseMarksText(marksImport, MARK_COLS)
@@ -1382,7 +1401,7 @@ function MissionSainikInner({ currentUser }) {
       <PremiumCard title={`Entries (${marksShown.length}${marksFilter ? ' of ' + marks.length : ''})`} subtitle="Red = below 60% — revisit that chapter" bodyStyle={{ padding: 0, overflowX: 'auto' }}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <select className="px-input" style={{ width: 'auto' }} value={marksFilter} onChange={e => setMarksFilter(Number(e.target.value))} aria-label="Filter by test"><option value={0}>All tests</option>{TESTS.map(t => <option key={t.no} value={t.no}>T{t.no}</option>)}</select>
-          <button className="px-hbtn" onClick={() => setMarksImport(marksImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportMarks}>⬇ CSV</button>
+          <button className="px-hbtn" onClick={() => setMarksImport(marksImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportMarks}>⬇ CSV</button><button className="px-hbtn" onClick={printMerit}>🏆 Merit list</button><button className="px-hbtn" onClick={meritDocx}>📝 Word</button>
         </span>}>
         {!marks.length ? <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No marks entered yet.</div> : (
           <table className="px-table" style={{ minWidth: 560 }}>

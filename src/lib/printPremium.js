@@ -145,7 +145,7 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 @media screen{.sheet{min-height:var(--ph,297mm)}.pgfoot{position:static;margin-top:0;width:var(--pw,210mm);margin:0 auto;background:#fff}}
 .body .foot{margin-top:10px;font-size:9px;color:var(--mut);text-align:center;border-top:1px dashed var(--line);padding-top:5px}
 @media print{
-  @page{margin:0}
+  @page{size:A4;margin:0}
   body{background:#fff}
   .bar{display:none}
   .sheet{margin:0;box-shadow:none;width:auto;background:transparent}

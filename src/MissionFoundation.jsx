@@ -10,7 +10,7 @@ import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
-import { downloadCsv } from './lib/missionSainikExport'
+import { downloadCsv, downloadFile, buildIcs } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab, StudentsTab, AuditTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import { QuestionMakerTab } from './MissionFoundationPaper'
@@ -32,6 +32,7 @@ const T_AUDIT = 'mission_foundation_audit'
 const T_MARKS = 'mission_foundation_marks'
 const SQL_FILE = 'supabase/migrations/20261216_mission_foundation.sql'
 
+const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const todayISO = () => new Date().toLocaleDateString('en-CA')
 const fmt = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '—'
 const monthOf = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
@@ -322,6 +323,12 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
     setOpenTest(data.id); load()
   }
 
+  // Calendar file (Google / Apple / Outlook) and a printed schedule of every test.
+  const exportIcs = () => downloadFile('Mission_Foundation_schedule.ics', buildIcs(tests.map(t => ({ uid: 'mf-' + t.test_no, date: t.test_date, title: `${t.title || 'Test ' + t.test_no} — ${MISSION_NAME}`, description: `All ${(papersByTest[t.id] || []).length || SUBJECTS.length} subjects · ${(t.batches || BATCHES).join(' & ')}${t.start_time ? ' · ' + t.start_time : ''}` })), MISSION_NAME), 'text/calendar;charset=utf-8')
+  const printSchedule = () => printPremium(`<div class="title">${esc(MISSION_NAME)} · Test Schedule</div><div class="sub">${tests.length} tests · ${esc(fmt(tests[0]?.test_date))} to ${esc(fmt(tests[tests.length - 1]?.test_date))}</div>
+    <table class="t"><thead><tr><th>Test</th><th>Date</th><th class="l">Chapters by subject</th></tr></thead><tbody>${tests.map(t => `<tr><td><b>${esc(t.title || 'Test ' + t.test_no)}</b></td><td>${esc(fmt(t.test_date))}</td><td class="l" style="font-size:8.5px">${(papersByTest[t.id] || []).map(p => `<b>${esc(subjectByLabel(p.subject)?.short || p.subject)}:</b> ${esc(p.syllabus || '—')}`).join('<br>')}</td></tr>`).join('')}</tbody></table>`,
+    { title: `${MISSION_NAME} schedule`, institute: getInstitute(), docLabel: `${MISSION_NAME} schedule`, official: true })
+
   const byMonth = useMemo(() => {
     const m = []
     tests.forEach(t => { const k = monthOf(t.test_date); const g = m.find(x => x.k === k); if (g) g.list.push(t); else m.push({ k, list: [t] }) })
@@ -348,6 +355,11 @@ function ScheduleTab({ tests, papersByTest, panel, today, isAdmin, me, openTest,
         </PremiumCard>
       )}
 
+      {tests.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 12px' }}>
+          <Btn onClick={exportIcs}>📅 Add to calendar (.ics)</Btn>
+          <Btn onClick={printSchedule}>🖨 Print schedule</Btn>
+        </div>)}
       {byMonth.map(g => (
         <PremiumCard key={g.k} title={g.k} subtitle={`${g.list.length} tests · tap a test to edit its syllabus pattern and teachers`} bodyStyle={{ padding: 0 }}
           right={isAdmin && g === byMonth[byMonth.length - 1] ? <Btn onClick={addTest}>＋ Add a test</Btn> : null}>
