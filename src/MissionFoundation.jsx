@@ -10,6 +10,7 @@ import { isAdminRole } from './roles'
 import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon, PX } from './premiumUI'
 import { PersonCell, Pill } from './MissionSainikUI'
+import { fetchAll } from './lib/missionSainikQuestions'
 import { downloadCsv, downloadFile, buildIcs } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab, StudentsTab, AuditTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
@@ -303,7 +304,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'schedule' && <ScheduleTab {...{ photoOf, allPapersByTest, classNames, classRows, batchOptions: [...new Set([...(students || []), ...unplaced].map(x => x.batchName).filter(Boolean))], reloadStudents, tests, papersByTest, panel, today, isAdmin, me, openTest, setOpenTest, savePaper, saveTest, peopleFor, load, flash }} />}
               {tab === 'students' && <StudentsTab {...{ students, unplaced, allMarks, tests, isAdmin, flash, reloadStudents }} />}
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
-              {tab === 'mine' && <MineTab {...{ photoOf, papers, testById, me, isAdmin, allTeachers, savePaper, today }} />}
+              {tab === 'mine' && <MineTab {...{ photoOf, papers, testById, me, isAdmin, allTeachers, savePaper, today, goMaker: id => { openWork(id); setTab('maker') } }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
               {tab === 'marks' && <MarksTab {...{ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ allPapersByTest, tests, papersByTest, flash, today }} />}
@@ -510,7 +511,7 @@ function TestEditor({ photoOf = x => x, test, papers, allPapers = papers, classN
         </div>)}
       <div style={{ overflowX: 'auto' }}>
         <table className="px-table" style={{ width: '100%', minWidth: 1180, background: '#fff' }}>
-          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th style={{ minWidth: 150 }}>Setters (1 or 2)</th><th>Checker</th><th>Status</th><th>Paper link</th><th /></tr></thead>
+          <thead><tr><th>Subject</th><th style={{ minWidth: 220 }}>Syllabus (chapters)</th><th>Qs</th><th>Marks each</th><th>Max</th><th style={{ minWidth: 150 }}>Setters (1 or 2)</th><th>Checker</th><th>Status</th><th /></tr></thead>
           <tbody>
             {shown.map(p => (
               <tr key={p.id}>
@@ -527,7 +528,6 @@ function TestEditor({ photoOf = x => x, test, papers, allPapers = papers, classN
                 </td>
                 <td><WithFace name={p.verifier} photoOf={photoOf}><PersonSelect label="Checker" value={p.verifier} options={peopleFor(p.subject).filter(n => !settersOf(p).includes(n))} onChange={v => savePaper(p.id, { verifier: v })} /></WithFace></td>
                 <td><select className="px-input" aria-label="Paper status" value={p.status} onChange={e => savePaper(p.id, { status: e.target.value })} style={{ padding: '7px 10px', minWidth: 116 }}>{PAPER_FLOW.map(s => <option key={s}>{s}</option>)}</select></td>
-                <td><BlurField label="Paper link" width={170} placeholder="https://…" value={p.paper_link} onSave={v => { const u = v ? safeUrl(v) : ''; if (v && !u) return flash('Use a full https:// link.', true); savePaper(p.id, { paper_link: u }) }} /></td>
                 <td>{isAdmin && <button type="button" aria-label={`Remove ${p.subject}`} className="px-btn ghost" onClick={() => delPaper(p)}>✕</button>}</td>
               </tr>
             ))}
@@ -609,8 +609,23 @@ function CopyFormat({ test, papers, tests, papersByTest, me, load, flash, onDone
 }
 
 // ─── My papers (teacher workspace) ────────────────────────────────────────────
-function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers, savePaper, today }) {
+function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers, savePaper, today, goMaker }) {
   const [who, setWho] = useState('')
+  // The paper and its syllabus come from the questions the staff made in Question maker: count and topics per test + subject.
+  const [made, setMade] = useState({})
+  const testIds = [...new Set(papers.map(p => p.test_id))].join(',')
+  useEffect(() => {
+    if (!testIds) return
+    let live = true
+    fetchAll(() => supabase.from('mission_foundation_questions').select('test_id, subject, topic').in('test_id', testIds.split(',')).order('id'))
+      .then(({ data }) => {
+        if (!live || !data) return
+        const m = {}
+        data.forEach(q => { const k = q.test_id + '|' + q.subject; const e = m[k] || (m[k] = { n: 0, topics: [] }); e.n++; const t = String(q.topic || '').replace(/;/g, ',').trim(); if (t && !e.topics.some(x => x.toLowerCase() === t.toLowerCase())) e.topics.push(t) })
+        setMade(m)
+      }, () => {})
+    return () => { live = false }
+  }, [testIds])
   const person = who || me
   const mine = papers.filter(p => isSetter(person, p) || nameMatches(person, p.verifier) || (who && (settersOf(p).includes(who) || p.verifier === who)))
     .map(p => ({ ...p, test: testById[p.test_id] })).filter(p => p.test)
@@ -631,13 +646,22 @@ function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers,
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}><Faces label={settersOf(p).length > 1 ? 'Setters' : 'Setter'} names={settersOf(p)} photoOf={photoOf} /><Faces label="Checker" names={[p.verifier]} photoOf={photoOf} /></div>
         <div style={{ fontSize: 13.5, color: PX.ink2 }}>Pattern: {p.questions || '?'} questions × {p.marks_each || '?'} marks = {maxMarks(p) || '?'}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>
-          <label>Syllabus<BlurField label="Syllabus" placeholder="Chapters for this paper" value={p.syllabus} onSave={v => savePaper(p.id, { syllabus: v })} /></label>
-          <label>Paper link (Google Drive etc.)<BlurField label="Paper link" placeholder="https://…" value={p.paper_link} onSave={v => savePaper(p.id, { paper_link: v ? safeUrl(v) : '' })} /></label>
+          <div>Syllabus
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {(made[p.test_id + '|' + p.subject]?.topics || []).map(t => <Pill key={t} tone="ok">{t}</Pill>)}
+              {!(made[p.test_id + '|' + p.subject]?.topics || []).length && <span style={{ color: PX.sub, fontSize: 13 }}>{p.syllabus || 'Comes from the topics of the questions made in Question maker.'}</span>}
+            </div>
+          </div>
+          <div>Question paper
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+              <Pill tone={(made[p.test_id + '|' + p.subject]?.n || 0) >= (Number(p.questions) || 1) ? 'ok' : 'warn'}>{made[p.test_id + '|' + p.subject]?.n || 0} / {p.questions || '?'} questions made</Pill>
+              <Btn onClick={() => goMaker(p.test_id)}>{setter ? 'Open Question maker' : 'View questions'}</Btn>
+            </div>
+          </div>
           <label>Remarks<BlurField label="Remarks" value={p.remarks} onSave={v => savePaper(p.id, { remarks: v })} /></label>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {p.paper_link && <a className="px-btn ghost" href={safeUrl(p.paper_link)} target="_blank" rel="noreferrer">Open paper</a>}
-          {setter && p.status === 'Pending' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Submitted' })}>Submit for checking</Btn>}
+          {setter && p.status === 'Pending' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Submitted', ...((made[p.test_id + '|' + p.subject]?.topics || []).length ? { syllabus: made[p.test_id + '|' + p.subject].topics.join('; ') } : {}) })}>Submit for checking</Btn>}
           {checker && p.status === 'Submitted' && <><Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Checked' })}>Mark checked</Btn><Btn onClick={() => savePaper(p.id, { status: 'Pending' })}>Send back to setter</Btn></>}
           {isAdmin && p.status === 'Checked' && <Btn kind="gold" onClick={() => savePaper(p.id, { status: 'Approved' })}>Approve</Btn>}
         </div>
