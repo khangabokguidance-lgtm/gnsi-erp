@@ -200,10 +200,12 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
                         </>
                       ) : (
                         <>
-                          <label style={{ display: 'flex', gap: 10, alignItems: 'center', flex: '1 1 160px', minWidth: 0, cursor: 'pointer', minHeight: 36 }}>
-                            <input type="checkbox" checked={on} onChange={() => toggle(p.subject, c)} />
-                            <span style={{ flex: 1, fontWeight: 600, minWidth: 0 }}>{c}</span>
-                            {on && <span style={{ fontSize: 11.5, color: PX.sub }}>{r.taught_by || ''}{r.taught_on ? ' · ' + fmt(r.taught_on) : ''}</span>}
+                          <label style={{ display: 'flex', gap: 10, alignItems: 'center', flex: '1 1 0', minWidth: 0, cursor: 'pointer', minHeight: 36 }}>
+                            <input type="checkbox" checked={on} onChange={() => toggle(p.subject, c)} style={{ flexShrink: 0 }} />
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.35 }}>{c}</span>
+                              {on && <span style={{ display: 'block', fontSize: 11.5, color: PX.sub, overflowWrap: 'anywhere', marginTop: 2 }}>{r.taught_by || ''}{r.taught_on ? ' · ' + fmt(r.taught_on) : ''}</span>}
+                            </span>
                           </label>
                           {mayEdit(p) && <>
                             <button type="button" className="px-hbtn" aria-label={`Edit chapter ${c}`} title="Rename this chapter" onClick={() => setEditing({ pid: p.id, old: c, value: c })} style={{ color: PX.navy }}>✎</button>
