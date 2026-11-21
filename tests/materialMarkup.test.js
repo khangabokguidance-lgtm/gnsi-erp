@@ -65,7 +65,7 @@ test('kindOf', () => {
 })
 
 test('document html escapes the title and includes the body', () => {
-  const d = materialDocHtml({ title: '<b>T</b>', body: '# Hi', subject: 'Maths' }, { institute: 'Acme' })
+  const d = materialDocHtml({ title: '<b>T</b>', body: '# Hi', subject: 'Maths' }, { institute: 'Acme', hf: false })
   assert.ok(!d.includes('<b>T</b>') && d.includes('&lt;b&gt;T') && d.includes('>Hi</h1>') && d.includes('Acme'))
 })
 
@@ -89,7 +89,7 @@ test('teacher boxes can be hidden for the student copy', () => {
 
 test('print options: byline with designation, columns, compact, ink saver, header', () => {
   const m = { title: 'T', body: '# A\n# B\n# C\ntext', subject: 'Maths', uploaded_by: 'Sir X' }
-  const d = materialDocHtml(m, { institute: 'Acme', author: { name: 'Sumanta', designation: 'Maths Teacher' }, reviewer: 'Kabiraj', columns: 2, compact: true, inkSaver: true, header: 'compact', toc: true, margin: 'minimal', paper: 'a5', landscape: true })
+  const d = materialDocHtml(m, { institute: 'Acme', author: { name: 'Sumanta', designation: 'Maths Teacher' }, reviewer: 'Kabiraj', hf: false, columns: 2, compact: true, inkSaver: true, header: 'compact', toc: true, margin: 'minimal', paper: 'a5', landscape: true })
   assert.ok(d.includes('Prepared by <b>Sumanta</b>, Maths Teacher') && d.includes('Reviewed by <b>Kabiraj</b>'))
   assert.ok(d.includes('column-count:2') && d.includes('grayscale') && d.includes('class="lh1"') && d.includes('class="toc"'))
   assert.ok(d.includes('size:A5 landscape') && d.includes('6mm 7mm 8mm'))
@@ -97,14 +97,14 @@ test('print options: byline with designation, columns, compact, ink saver, heade
 
 test('byline falls back to the uploader and can be switched off; header can be dropped', () => {
   const m = { title: 'T', body: 'x', uploaded_by: 'Sir X' }
-  assert.ok(materialDocHtml(m).includes('Prepared by <b>Sir X</b>'))
+  assert.ok(materialDocHtml(m, { hf: false }).includes('Prepared by <b>Sir X</b>'))
   assert.ok(!materialDocHtml(m, { byline: false }).includes('Prepared by'))
   assert.ok(!materialDocHtml(m, { header: 'none' }).includes('class="lh"'))
   assert.ok(PRINT_DEFAULTS.columns === 1)
 })
 
 test('author text is escaped', () => {
-  const d = materialDocHtml({ title: 'T', body: 'x' }, { author: { name: '<b>n</b>', designation: '<i>d</i>' } })
+  const d = materialDocHtml({ title: 'T', body: 'x' }, { hf: false, author: { name: '<b>n</b>', designation: '<i>d</i>' } })
   assert.ok(!d.includes('<b>n</b>') && !d.includes('<i>d</i>'))
 })
 
@@ -214,4 +214,25 @@ test('questions all typed as "1." are numbered on, and bulleted options stay opt
 test('print size and font are not overridden by the shared stylesheet', () => {
   const html = materialDocHtml({ title: 'T', body: 'x' }, { size: 10, font: 'sans' }, '.md{font-size:14px;font-family:Georgia}')
   assert.ok(html.lastIndexOf('.md{font-size:10px;font-family:Arial') > html.lastIndexOf('.md{font-size:14px'))
+})
+
+test('header and footer on every page carry the non-question text, and the body keeps only the content', () => {
+  const m = { title: 'GK 11', body: '1. Q?\nA) a\nB) b', subject: 'GK', test_no: 4, uploaded_by: 'Sir X' }
+  const d = materialDocHtml(m, { institute: 'Acme', author: { name: 'Sumanta', designation: 'Teacher' }, margin: 'minimal' })
+  const page = d.match(/@page\{[^<]*?\}\}/)[0]
+  assert.ok(page.includes('@top-left{content:"Acme"') && page.includes('@top-center{content:"GK 11"') && page.includes('@top-right{content:"GK · Test 4"'))
+  assert.ok(page.includes('@bottom-left{content:"Prepared by Sumanta, Teacher"') && page.includes('counter(page)'))
+  assert.ok(!d.includes('class="ti"') && !d.includes('class="lh') && !d.includes('Prepared by <b>'))
+  assert.ok(page.includes('margin:13mm 7mm 13mm;'))
+})
+
+test('header and footer text cannot break out of the style block', () => {
+  const d = materialDocHtml({ title: '</style><script>alert(1)</script>"x"', body: 'x' }, { institute: 'A"B' })
+  assert.ok(!d.includes('</style><script>') && !/content:"[^"]*[<>][^"]*"/.test(d.match(/@page\{[^<]*?\}\}/)?.[0] || ''))
+})
+
+test('header and footer can be turned off (letterhead stays on the first page) and are not used with header none', () => {
+  const m = { title: 'T', body: 'x', uploaded_by: 'Sir X' }
+  assert.ok(materialDocHtml(m, { hf: false }).includes('class="ti"'))
+  assert.ok(!materialDocHtml(m, { header: 'none' }).includes('@top-center'))
 })

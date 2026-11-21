@@ -113,7 +113,7 @@ export const MATERIAL_CSS = `.md{font-family:Georgia,'Times New Roman',serif;col
 export const wordCount = s => (String(s || '').replace(/\[\[img:[^\]]*\]\]/g, ' ').match(/\S+/g) || []).length
 
 // Print layouts that save paper: margins, columns, text size, compact spacing, ink saver, slim header, contents list.
-export const PRINT_DEFAULTS = { paper: 'a4', landscape: false, margin: 'normal', columns: 1, size: 13, compact: false, inkSaver: false, header: 'full', toc: false, teacher: true, byline: true, font: 'serif', optStyle: 'auto', studentLine: false, answerGrid: false, nup: 1, copies: 1, smallFigs: false }
+export const PRINT_DEFAULTS = { paper: 'a4', landscape: false, margin: 'normal', columns: 1, size: 13, compact: false, inkSaver: false, header: 'full', toc: false, teacher: true, byline: true, font: 'serif', hf: true, optStyle: 'auto', studentLine: false, answerGrid: false, nup: 1, copies: 1, smallFigs: false }
 export const FONTS = { serif: "Georgia,'Times New Roman',serif", times: "'Times New Roman',Times,serif", sans: 'Arial,Helvetica,sans-serif', narrow: "'Arial Narrow','Roboto Condensed','Liberation Sans Narrow',Arial,sans-serif" }
 const MARGINS = { normal: '16mm 14mm 18mm', narrow: '10mm 10mm 12mm', minimal: '6mm 7mm 8mm' }
 
@@ -137,7 +137,17 @@ export function materialDocHtml(m, o = {}, css = '') {
   const nup = opt.nup === 2
   const size = Math.max(8, Math.min(18, Number(opt.size) || 13)), cols = nup ? 1 : Math.max(1, Math.min(3, Number(opt.columns) || 1))
   const paper = nup ? 'A4 landscape' : (opt.paper === 'a5' ? 'A5' : 'A4') + (opt.landscape ? ' landscape' : '')
-  const mg = nup ? '6mm' : (MARGINS[opt.margin] || MARGINS.normal)
+  // Header & footer on every page: the non-question text (institute, title, subject / test, prepared by, page numbers) goes in the page margins,
+  // so the page itself is all questions. Not used for 2-copies-per-sheet, with header "none", or for Word (hf: false).
+  const hf = !nup && opt.hf !== false && opt.header !== 'none'
+  const mg0 = nup ? '6mm' : (MARGINS[opt.margin] || MARGINS.normal)
+  const mg = hf ? mg0.split(' ').map((v, i) => (i === 0 || i === 2 ? Math.max(13, parseFloat(v)) + 'mm' : v)).join(' ') : mg0
+  const hfc = (x, n = 64) => { const t = String(x ?? '').replace(/["\\<>\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t }
+  const byText = opt.byline && (author.name || m.uploaded_by) ? `Prepared by ${author.name || m.uploaded_by}${author.designation ? ', ' + author.designation : ''}${opt.reviewer ? ' · Reviewed by ' + opt.reviewer : ''}` : ''
+  const hfBox = 'font:8pt system-ui,sans-serif;color:#555'
+  const pageRule = nup ? `@page{size:${paper};margin:${mg}}`
+    : hf ? `@page{size:${paper};margin:${mg};@top-left{content:"${hfc(institute, 44)}";${hfBox};font-weight:700;color:#132a4f}@top-center{content:"${hfc(m.title, 56)}";${hfBox};font-weight:700;color:#111}@top-right{content:"${hfc([m.subject || 'All subjects', m.test_no ? 'Test ' + m.test_no : ''].filter(Boolean).join(' · '), 40)}";${hfBox}}@bottom-left{content:"${hfc(byText, 70)}";${hfBox}}@bottom-center{content:"Page " counter(page) " of " counter(pages);${hfBox}}@bottom-right{content:"${hfc(opt.tagline || 'Study Material', 40)}";${hfBox}}}`
+    : `@page{size:${paper};margin:${mg};@bottom-center{content:"${String(institute).replace(/["\\]/g, '')} · Page " counter(page) " of " counter(pages);font:8pt system-ui,sans-serif;color:#666}}`
   const compactCss = opt.compact || nup ? '.md{line-height:1.36}.md p{margin:0 0 4px}.md h1{margin:9px 0 3px;font-size:1.35em;padding-bottom:2px}.md h2{margin:8px 0 3px;font-size:1.15em}.md h3{margin:6px 0 2px}.md ul,.md ol{margin:0 0 5px;padding-left:19px}.md li{margin:0}.md table{margin:4px 0 7px}.md th,.md td{padding:2px 6px}.md .box{margin:4px 0 7px;padding:4px 9px}.md figure{margin:5px 0}.md figure img{max-height:230px}.md hr{margin:7px 0}.md p.q{margin:6px 0 3px}.md .opts{margin-bottom:3px}' : ''
   const inkCss = opt.inkSaver ? '.md .box,.md .box.tip,.md .box.formula,.md .box.warn,.md .box.ex,.md .box.teacher{background:none!important;border:1px solid #777!important;border-left:3px solid #333!important}.md th{background:none!important;font-weight:800}.md mark{background:none;text-decoration:underline}.md h1{border-bottom:1px solid #444;color:#000}.md h2,.md h3{color:#000}.lh{border-bottom:1px solid #444}.lh h1{color:#000}.md figure img{filter:grayscale(1) contrast(1.1)}.md .ol{background:none;border:1px solid #666}.md .ans{background:none;border-color:#666;color:#000}' : ''
   const figCss = opt.smallFigs ? '.md figure img{max-height:120px!important}.md img.oi{max-height:14mm}' : ''
@@ -145,13 +155,13 @@ export function materialDocHtml(m, o = {}, css = '') {
   const nq = (body.match(/<p class="q"/g) || []).length
   const grid = opt.answerGrid ? answerGridHtml(nq) : ''
   const stu = opt.studentLine ? '<div class="stu"><span>Name: <i></i></span><span>Roll no.: <i></i></span><span>Date: <i></i></span></div>' : ''
-  const head = `${lh}<div class="ti">${escHtml(m.title)}</div><div class="me">${meta}</div>${by}${stu}${toc}`
+  const head = hf ? `${stu}${toc}` : `${lh}<div class="ti">${escHtml(m.title)}</div><div class="me">${meta}</div>${by}${stu}${toc}`
   const main = `<div class="md${cols > 1 ? ' cols' : ''}">${body}</div>${grid}`
   const sheets = Math.max(1, Math.ceil((Math.max(1, Math.min(500, Number(opt.copies) || 1))) / 2))
   const page = nup
     ? Array.from({ length: sheets }, () => `<div class="sheet"><div class="panel">${head}${main}</div><div class="panel">${head}${main}</div></div>`).join('')
     : `${head}${main}`
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(m.title)}</title><style>@page{size:${paper};margin:${mg}${nup ? '' : `;@bottom-center{content:"${String(institute).replace(/["\\]/g, '')} · Page " counter(page) " of " counter(pages);font:8pt system-ui,sans-serif;color:#666}`}}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0}
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(m.title)}</title><style>${pageRule}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0}
 .lh{text-align:center;border-bottom:1px solid #b8923a;padding-bottom:6px;margin-bottom:9px;font-family:Georgia,serif}.lh:before{content:"";display:block;height:4px;background:linear-gradient(90deg,#b8923a,#f0e1b8,#b8923a);margin-bottom:7px}.lh h1{margin:0;font-size:17px;color:#132a4f;letter-spacing:.12em;text-transform:uppercase}.lh div{font-size:10px;color:#b8923a;font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin-top:2px}.lh1{font:11px system-ui,sans-serif;color:#444;border-bottom:1px solid #999;padding-bottom:2px;margin-bottom:6px}
 .ti{font:700 ${opt.compact || nup ? 17 : 19}px Georgia,serif;margin:0 0 1px}.me{font:11.5px system-ui,sans-serif;color:#5d6b82;margin-bottom:2px}.by{font:12px system-ui,sans-serif;color:#2e3b52;margin-bottom:${opt.compact || nup ? 5 : 9}px}
 .stu{display:flex;gap:14px;font:12px system-ui,sans-serif;margin:2px 0 8px}.stu span{flex:1;white-space:nowrap}.stu span:first-child{flex:2}.stu i{display:inline-block;width:calc(100% - 62px);border-bottom:1px solid #444;height:12px;vertical-align:bottom}

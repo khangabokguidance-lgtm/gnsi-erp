@@ -5,7 +5,8 @@ import { materialDocHtml } from './materialMarkup.js'
 const MM = 3.7795
 const MARGIN_MM = { normal: [16, 14, 18], narrow: [10, 10, 12], minimal: [6, 7, 8] }
 function pageBox(o) {
-  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg0 = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const mg = o.nup !== 2 && o.hf !== false && o.header !== 'none' ? [Math.max(13, mg0[0]), mg0[1], Math.max(13, mg0[2])] : mg0   // header / footer on every page need room in the margins
   return { cw: Math.round((W - 2 * mg[1]) * MM), ch: Math.round((H - mg[0] - mg[2]) * MM) }
 }
 

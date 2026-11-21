@@ -54,7 +54,8 @@ const TitleBlock = ({ title, subject, test, by, designation }) => (
 const MM = 3.7795
 const MARGIN_MM = { normal: [16, 14, 18], narrow: [10, 10, 12], minimal: [6, 7, 8] }
 function pageBox(o) {
-  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const [w, h] = o.paper === 'a5' ? [148, 210] : [210, 297], W = o.landscape ? h : w, H = o.landscape ? w : h, mg0 = MARGIN_MM[o.margin] || MARGIN_MM.normal
+  const mg = o.nup !== 2 && o.hf !== false && o.header !== 'none' ? [Math.max(13, mg0[0]), mg0[1], Math.max(13, mg0[2])] : mg0   // header / footer on every page need room in the margins
   return { cw: Math.round((W - 2 * mg[1]) * MM), ch: Math.round((H - mg[0] - mg[2]) * MM) }
 }
 export const CSS_ALL = MATH_CSS + MATERIAL_CSS
@@ -232,7 +233,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
   const doPrint = (m, o) => { const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(materialDocHtml(asDoc(m), { ...printOptsFor(m, o), auto: true }, CSS_ALL)); w.document.close() }
   const doWord = (m, o) => {
     setMathStacked(false)
-    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1, nup: 1 }, CSS_ALL) } finally { setMathStacked(true) }
+    let html; try { html = materialDocHtml(asDoc(m), { ...printOptsFor(m, o), columns: 1, nup: 1, hf: false }, CSS_ALL) } finally { setMathStacked(true) }
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = String(m.title || 'notes').replace(/[^\w-]+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
   }
@@ -583,7 +584,13 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
           <Row label="Margins"><Opt k="margin" v="normal" l="Normal" /><Opt k="margin" v="narrow" l="Narrow" /><Opt k="margin" v="minimal" l="Minimal" /></Row>
           <Row label="Columns"><Opt k="columns" v={1} l="1" /><Opt k="columns" v={2} l="2" /><Opt k="columns" v={3} l="3" /></Row>
           <Row label="Text size">{[[10.5, 'XS'], [11, 'S'], [12, 'M−'], [13, 'M'], [14, 'L'], [16, 'XL']].map(([v, l]) => <Opt key={v} k="size" v={v} l={l} />)}</Row>
-          <Row label="Header"><Opt k="header" v="full" l="Full" /><Opt k="header" v="compact" l="One line" /><Opt k="header" v="none" l="None" /></Row>
+          <Row label="Header &amp; footer">{(() => { const onHf = opts.hf !== false && opts.header !== 'none', none = opts.header === 'none', keep = none ? 'compact' : opts.header
+            return <>
+              <button type="button" aria-pressed={onHf} style={chip(onHf)} onClick={() => upd({ hf: true, header: keep })}>On every page</button>
+              <button type="button" aria-pressed={!onHf && !none} style={chip(!onHf && !none)} onClick={() => upd({ hf: false, header: keep })}>Top of page 1 only</button>
+              <button type="button" aria-pressed={none} style={chip(none)} onClick={() => upd({ header: 'none' })}>None</button>
+            </> })()}</Row>
+          {opts.hf !== false && opts.header !== 'none' && <div style={{ fontSize: 12, color: PX.sub, margin: '4px 0 0' }}>The title, institute, subject, test and “prepared by” go in the page header and footer on every page, with page numbers, so the page is all questions. Use Print → Save as PDF in Chrome or Edge.</div>}
           <Row label="Save space &amp; ink"><Tog k="compact" l="Compact spacing" /><Tog k="inkSaver" l="Ink saver (no colour fills)" /><Tog k="toc" l="Contents list" /></Row>
           <Row label="Copy for"><Opt k="teacher" v={true} l="🎓 Teacher copy (all)" /><Opt k="teacher" v={false} l="🧑‍🎓 Student copy (no teacher boxes)" /></Row>
           <Row label="Credit"><Tog k="byline" l="Show creator & designation" /></Row>
