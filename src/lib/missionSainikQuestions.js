@@ -30,7 +30,19 @@ export function parseQuestions(text) {
       push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null, ...(passage ? { passage } : {}) }; field = 'question'; continue
     }
     if (!cur) { if (field === 'passage' && !/^end\s*passage/i.test(ln)) passage = (passage + ' ' + ln).trim(); continue }
-    if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) { field = 'option_' + m[1].toLowerCase(); cur[field] = m[2].trim(); continue }
+    if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) {
+      // Several options on one line: "(a) Freezing (b) Condensation" — split at the next letter in sequence only.
+      let letter = m[1].toLowerCase(), rest = m[2]
+      for (;;) {
+        const next = String.fromCharCode(letter.charCodeAt(0) + 1)
+        const cut = next <= 'd' ? rest.search(new RegExp('\\s+\\(?' + next + '\\s*[.):]\\s*\\S', 'i')) : -1
+        if (cut < 0) break
+        cur['option_' + letter] = rest.slice(0, cut).trim()
+        rest = rest.slice(cut).trim().replace(/^\(?[A-D]\s*[.):]\s*/i, '')
+        letter = next
+      }
+      field = 'option_' + letter; cur[field] = rest.trim(); continue
+    }
     if ((m = ln.match(/^(?:ans(?:wer)?|correct(?: answer)?)\s*[:-]\s*\(?([A-D])\b/i))) { cur.answer = m[1].toUpperCase(); field = null; continue }
     if ((m = ln.match(/^(?:exp(?:lanation)?)\s*[:-]\s*(.*)$/i))) { cur.explanation = m[1].trim(); field = 'explanation'; continue }
     if ((m = ln.match(/^topic\s*[:-]\s*(.*)$/i))) { cur.topic = m[1].trim(); field = 'topic'; continue }

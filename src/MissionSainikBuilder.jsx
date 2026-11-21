@@ -17,6 +17,7 @@ import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
+import { combinedHtml, canBuildCombined, testsAllowed } from './lib/missionSainikCombined'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -294,6 +295,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   // Backup: the whole bank of this series as CSV (answers included), formula-injection safe.
   const exportCsv = () => {
+    if (!isAdmin) return setMsg('🔒 Only an admin can export the whole question bank. Use “This section” for your own subject.')
     const cell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
     const head = ['Series', 'Test', 'Section', 'Q no', 'Question', 'A', 'B', 'C', 'D', 'Answer', 'Explanation', 'Topic', 'Level', 'Uploaded by', 'Verified by']
     const lines = [head.map(cell).join(',')]
@@ -460,6 +462,35 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
+  }
+  // ── Combined paper (all subjects) for verification — admins only ──
+  const mayCombine = () => canBuildCombined({ isAdmin })
+  const combinedTests = () => testsAllowed({ isAdmin, testNos: cfg.tests.map(x => x.no) })
+  const combinedDoc = list => {
+    const tests = list.map(t => {
+      const secs = live(t).map(x => {
+        const items = (byVersion ? get(t, x.label) : usedQuestions(get(t, x.label), x.q)).map((q, i) => ({ ...q, no: startOf(x.label) + i }))
+        const so = signoff(t, x.label)
+        return { label: x.label, q: x.q, from: startOf(x.label), items, setters: settersOf(t, x.label), uploaders: [...new Set(get(t, x.label).map(q => q.uploaded_by).filter(Boolean))], verifier: verifiersOf(t, x.label).join(', '), signoff: so ? { verified_by: so.verified_by } : null, openNotes: openNotes(t, x.label) }
+      })
+      return { id: tid(t), date: dateOf(t) ? fmtShort(dateOf(t)) : '', sections: secs, checks: paperHealth(secs.map(x => ({ label: x.label, q: x.q, items: x.items })), qs, t).checks }
+    })
+    return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml })
+  }
+  const combinedList = all => { const l = all ? combinedTests() : (mayCombine() ? [testNo] : []); if (!l.length) setMsg('🔒 Only an admin can build the combined paper.'); return l }
+  const previewCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    audit('combined_paper_preview', `${series}:${l.join(',')}`, null)
+    setPreview({ html: `<!doctype html><html><head><meta charset="utf-8"><title>Combined paper</title></head><body style="margin:0;padding:14px">${combinedDoc(l)}</body></html>`, title: `Combined paper · ${all ? 'all tests' : tid(testNo)}` })
+  }
+  const exportCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    setMathStacked(false)
+    let html
+    try { html = wordWrap(combinedDoc(l), 'Combined paper') } finally { setMathStacked(true) }
+    const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
+    const a = document.createElement('a'); a.href = url; a.download = `${cfg.prefix}_combined_${all ? 'all_tests' : String(testNo).padStart(2, '0')}.doc`; a.click(); URL.revokeObjectURL(url)
+    audit('combined_paper_export', `${series}:${l.join(',')}`, null)
   }
   const printOmr = t => {
     if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
@@ -630,7 +661,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
         {isMobile && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
@@ -752,6 +783,11 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
           <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
           <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
+          {mayCombine() && <>
+            <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>
+            <button className="px-hbtn" onClick={() => exportCombined(false)}>📝 Combined Word</button>
+            <button className="px-hbtn" onClick={() => previewCombined(true)}>🧩 All tests</button>
+          </>}
         </div>
       </PremiumCard>}
 
