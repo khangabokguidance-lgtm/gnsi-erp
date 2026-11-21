@@ -60,7 +60,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   // Several sets on the same syllabus: every teacher writes their OWN full set; students get Version A, B, C. Always on for the practice bank; an admin switch for the Pre Mock series.
   const byVersion = isPractice || (series === 'pre' && locks?.pre_versions === 'on')
   const isAdmin = isAdminRole(currentUser?.role)
-  const isMe = n => nameMatches(currentUser?.name, n)
+  const isMe = n => nameMatches(currentUser?.matchName || currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
   const [testNo, setTestNo] = useState(startTest || 1)
@@ -165,7 +165,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const list = get(t, s); if (!list.length) return false
     if (isAdmin) return true
     if (openNotes(t, s) > 0) return false                     // unresolved review notes block verification
-    const mine = list.every(q => nameMatches(q.uploaded_by, currentUser?.name?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
+    const mine = list.every(q => nameMatches(q.uploaded_by, (currentUser?.matchName || currentUser?.name)?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
     return verifiersOf(t, s).some(isMe) && !mine
   }
   const clearSignoff = async (t, s) => { if (signoff(t, s)) await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s) }
@@ -846,7 +846,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 2 }}>{r.author}{r.status === 'resolved' ? ` · resolved by ${r.resolved_by || '?'}` : ''}</div>
             </div>
             {r.status === 'open' ? <button className="px-hbtn" onClick={() => setNoteStatus(r, 'resolved')}>Resolve</button> : isAdmin ? <button className="px-hbtn" onClick={() => setNoteStatus(r, 'open')}>Reopen</button> : null}
-            {(isAdmin || nameMatches(r.author, currentUser?.name?.split(/\s+/)[0])) && <button className="px-hbtn" onClick={() => delNote(r)} aria-label="Delete note">🗑</button>}
+            {(isAdmin || nameMatches(r.author, (currentUser?.matchName || currentUser?.name)?.split(/\s+/)[0])) && <button className="px-hbtn" onClick={() => delNote(r)} aria-label="Delete note">🗑</button>}
           </div>))}
         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           <input className="px-input" style={{ flex: '1 1 240px' }} value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="e.g. Q7 has two correct answers; Q12 needs an explanation" aria-label="New review note" />

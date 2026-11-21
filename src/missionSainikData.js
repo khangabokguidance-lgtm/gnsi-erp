@@ -134,7 +134,9 @@ export const PRACTICE_PANEL = {
 // Stricter than String.includes so "Boy" never matches "Boyd" and "Johny" never matches "Johnyson".
 export function nameMatches(who, name) {
   if (!who || !name) return false
-  return String(who).toLowerCase().split(/[^a-z0-9]+/).includes(String(name).toLowerCase())
+  const words = String(who).toLowerCase().split(/[^a-z0-9]+/), want = String(name).toLowerCase()
+  // a short panel name ("Sandhya") also matches a longer login name ("Sandhyarani")
+  return words.includes(want) || (want.length >= 4 && words.some(x => x.startsWith(want)))
 }
 // Only http(s) links may be stored or opened (blocks javascript: / data: URLs).
 export function safeUrl(u) {

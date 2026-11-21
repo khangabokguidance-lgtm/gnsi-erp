@@ -220,8 +220,19 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
     )
 }
 
-function MissionSainikInner({ currentUser }) {
+function MissionSainikInner({ currentUser: sessionUser }) {
   const isMobile = useIsMobile()
+  const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator and to find who is logged in
+  useEffect(() => { supabase.from('staff_profiles').select('name, designation, department, user_id, email').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
+  // The logged-in person's Staff record (login link, then email / username, then exact name). Its full name is what panel, setter and
+  // checker names are matched against (`matchName`); `name` stays the login name so saved "uploaded by" stamps keep working.
+  const currentUser = useMemo(() => {
+    const low = x => String(x || '').trim().toLowerCase(), u = sessionUser || {}
+    const hit = staffDir.find(x => u.id != null && x.user_id != null && String(x.user_id) === String(u.id))
+      || staffDir.find(x => [u.email, u.username].some(k => low(k) && low(k) === low(x.email)))
+      || staffDir.find(x => low(x.name) && low(x.name) === low(u.name))
+    return { ...u, matchName: hit?.name || u.name || '' }
+  }, [staffDir, sessionUser])
   const isRealAdmin = isAdminRole(currentUser?.role)
   // Everyone on staff manages everything here (reassign, approve, syllabus, marks). Updates are stamped with the user's name.
   const isAdmin = true
@@ -340,8 +351,6 @@ function MissionSainikInner({ currentUser }) {
   const [viewMat, setViewMat] = useState(null)
   const [paperMaker, setPaperMaker] = useState(false)
   const [printSet, setPrintSet] = useState(null)   // { subject, setNo } — print a Practice bank set
-  const [staffDir, setStaffDir] = useState([])   // staff names + designations, to credit a material's creator
-  useEffect(() => { supabase.from('staff_profiles').select('name, designation, department').then(({ data }) => { if (Array.isArray(data)) setStaffDir(data) }, () => {}) }, [])
   const staffOpts = useMemo(() => staffOptions(staffDir), [staffDir])
   const photoOf = tok => staffNameFor(tok, staffOpts)   // full staff name for a stored one-word name, to find the right photo
   const [syl, setSyl] = useState({})            // 'testNo|subject' -> chapter
@@ -354,7 +363,7 @@ function MissionSainikInner({ currentUser }) {
       .then(({ data }) => { try { if (data?.value) setInstitute(i => ({ ...i, ...JSON.parse(data.value) })) } catch { /* keep defaults */ } }, () => {})
   }, [])
 
-  const isMe = name => nameMatches(currentUser?.name, name)
+  const isMe = name => nameMatches(currentUser?.matchName, name)
   // Where the logged-in teacher sits on the Panel: [{ subject, role }]. Home and Study material use it, so the panel setup carries through the other tabs.
   const myPanel = (panelRows.length ? panelRows.map(r => ({ key: r.subject_key, name: r.name, role: r.role }))
     : SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ key: x.key, name, role: 'setter' })), { key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ key: x.key, name, role: 'assistant' }))]))
@@ -406,7 +415,7 @@ function MissionSainikInner({ currentUser }) {
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
     const { error } = await supabase.from(SYL_TABLE).upsert({ test_no, subject, chapter, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'test_no,subject' })
-    setMsg(error ? '❌ ' + error.message : '✅ Chapter saved')
+    setMsg(error ? '❌ ' + error.message : `✅ Chapter saved for ${(TESTS.find(t => t.no === Number(test_no)) || {}).id || 'Test ' + test_no} · ${subject}`)
   }
   const saveMarks = async () => {
     const d = markDraft
