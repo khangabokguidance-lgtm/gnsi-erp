@@ -53,7 +53,7 @@ export default function MissionSainikCertificates({ institute, setMsg, isMobile 
   return (
     <PremiumCard title="Results & certificates" subtitle="Rank the students of a mock test, print the result list and download merit certificates for the toppers."
       right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button type="button" className="px-hbtn" onClick={print}>🖨 Result list</button><button type="button" className="px-hbtn" onClick={csv}>⬇ CSV</button><button type="button" className="px-btn gold" disabled={!!busy || !winners.length} onClick={() => certs(winners)}>{busy || `🏆 ${winners.length} certificate${winners.length === 1 ? '' : 's'}`}</button></span>}>
-      <div role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div data-ti-skip role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         {Object.entries(EXAM_KINDS).map(([k, v]) => <button key={k} type="button" role="tab" aria-selected={kind === k} style={chip(kind === k)} onClick={() => { setKind(k); setSeries(''); setTestNo(0); setBatch('') }}>{v.label}</button>)}
       </div>
       {stored === null ? <div style={{ padding: 18, color: PX.sub }}>Loading results…</div> : !seriesList.length ? <div style={{ padding: 18, color: PX.sub }}>No {EXAM_KINDS[kind].label} results yet. Enter marks in <b>Mock marks</b> or upload a result sheet in the analyzer, then come back here.</div> : (

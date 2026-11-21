@@ -66,7 +66,7 @@ export default function MissionSainikMockMarks({ currentUser, setMsg, isMobile, 
     <PremiumCard title="Mock test marks" subtitle="Enter each student's marks for a Pre Mock or Mega Mock test. Mark Absent for those who did not appear. The analyzers use these marks."
       right={<button type="button" className="px-btn gold" disabled={busy || !batchKey} onClick={save}>{busy ? 'Saving…' : 'Save marks'}</button>}>
       {stored.mode === 'local' && <div role="note" style={{ padding: '9px 12px', borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13, marginBottom: 12 }}>{stored.note || 'The results table is not created in Supabase yet, so marks are kept in this browser only.'}</div>}
-      <div role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      <div data-ti-skip role="tablist" aria-label="Test series" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         {Object.entries(EXAM_KINDS).map(([k, v]) => <button key={k} type="button" role="tab" aria-selected={kind === k} style={chip(kind === k)} onClick={() => switchKind(k)}>{v.label}</button>)}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1.6fr 1.4fr', gap: 10, marginBottom: 12 }}>

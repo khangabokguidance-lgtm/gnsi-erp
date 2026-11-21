@@ -486,7 +486,7 @@ function TestEditor({ photoOf = x => x, test, papers, allPapers = papers, classN
         <label>Status<select className="px-input" value={test.status} onChange={e => saveTest(test.id, { status: e.target.value })} style={{ padding: '7px 10px' }}>{TEST_FLOW.map(s => <option key={s}>{s}</option>)}</select></label>
         <div>Batches<div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>{BATCHES.map(b => <label key={b} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={(test.batches || []).includes(b)} onChange={() => toggleBatch(b)} />{b}</label>)}</div></div>
       </div>
-      <div role="tablist" aria-label="Paper for" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 10px' }}>
+      <div data-ti-skip role="tablist" aria-label="Paper for" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 10px' }}>
         <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub, marginRight: 4 }}>Paper for</span>
         {[['', 'All classes (same paper)'], ...(test.batches || classNames).filter(b => classNames.includes(b)).map(b => [b, b + (classHas(b) ? ' · own paper' : '')])].map(([k, l]) => (
           <button key={k || 'all'} type="button" role="tab" aria-selected={cls === k} onClick={() => setCls(k)}

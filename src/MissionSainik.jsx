@@ -1247,7 +1247,7 @@ function MissionSainikInner({ currentUser }) {
           {isRealAdmin && <button className="px-btn gold" onClick={() => setPanelDraft({ subject_key: SUBJECTS[0].key, name: '', role: panelView === 'pre' ? 'setter' : 'assistant' })}>{panelView === 'pre' ? '＋ Add setter' : '＋ Add practice member'}</button>}
           {!panelRows.length && <button className="px-btn ghost" onClick={loadPanelFromNotice}>Load from notice</button>}
         </span>}>
-        <div role="tablist" aria-label="Panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: panelDraft ? 12 : 8 }}>
+        <div data-ti-skip role="tablist" aria-label="Panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: panelDraft ? 12 : 8 }}>
           {[['pre', '🧱 Pre Mock panel'], ['practice', '🗂️ Practice panel']].map(([k, l]) => {
             const n = panelRows.length ? panelRows.filter(r => inView(r, k)).length : SUBJECTS.reduce((a, x) => a + (k === 'pre' ? PANEL[x.key].length : 1 + PRACTICE_PANEL[x.key].assistants.length), 0)
             return <button key={k} type="button" role="tab" aria-selected={panelView === k} onClick={() => { setPanelView(k); setPanelDraft(null) }}
@@ -1495,7 +1495,7 @@ function MissionSainikInner({ currentUser }) {
                   </div>
                   <input className="px-input" style={{ flex: '1 1 180px', maxWidth: isMobile ? 'none' : 260, fontSize: isMobile ? 16 : undefined }} placeholder="🔍 Find test or chapter…" aria-label="Find test or chapter" value={sylQuery} onChange={e => setSylQuery(e.target.value)} />
                   <button type="button" style={chipBtn(sylOnlyEmpty)} onClick={() => setSylOnlyEmpty(v => !v)} aria-pressed={sylOnlyEmpty}>✏️ Only tests with gaps</button>
-                  <span className="px-tabs" role="tablist" aria-label="Layout" style={{ marginBottom: 0 }}>
+                  <span className="px-tabs" data-ti-skip role="tablist" aria-label="Layout" style={{ marginBottom: 0 }}>
                     {(isMobile ? [['cards', '🗂️ Cards']] : [['cards', '🗂️ Cards'], ['grid', '▦ Grid']]).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={sylView === k} className={'px-tab' + (sylView === k ? ' on' : '')} onClick={() => setSylView(k)} style={{ padding: '6px 12px', fontSize: 12.5 }}>{l}</button>)}
                   </span>
                 </div>
@@ -1704,7 +1704,7 @@ function MissionSainikInner({ currentUser }) {
             {tab === 'practice' && Practice()}
             {tab === 'syllabus' && (
               <>
-                <div role="tablist" aria-label="Syllabus pages" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <div data-ti-skip role="tablist" aria-label="Syllabus pages" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                   {[['plan', '🗓 Plan'], ['official', '📘 Official syllabus 2027'], ['manual', '📖 Manual']].map(([k, l]) => (
                     <button key={k} type="button" role="tab" aria-selected={sylPage === k} onClick={() => setSylPage(k)}
                       style={{ padding: '9px 16px', borderRadius: 99, border: `1.5px solid ${sylPage === k ? PX.gold : PX.line}`, background: sylPage === k ? PX.goldBg : '#fff', color: sylPage === k ? PX.navy : PX.sub, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>))}
@@ -1765,7 +1765,7 @@ function MissionSainikInner({ currentUser }) {
                   </div>
                   <div style={{ padding: '4px 24px 8px' }}>
                     <span style={lab}>Type</span>
-                    <div role="tablist" aria-label="Type" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2 }}>
+                    <div data-ti-skip role="tablist" aria-label="Type" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2 }}>
                       {[['practice', '📝 Practice set'], ['test', '📄 Pre Mock section']].map(([k, l]) => (
                         <button key={k} type="button" role="tab" aria-selected={f.kind === k} onClick={() => set({ kind: k, test_no: 1, question_count: k === 'test' ? 25 : '' })}
                           style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: f.kind === k ? '#fff' : 'transparent', boxShadow: f.kind === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: f.kind === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
