@@ -66,6 +66,8 @@ export function PremiumStyles() {
       .px-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold}}
       .px-h2{font-family:${PX.serif};font-size:22px;font-weight:600;color:${PX.ink}}
       @media (max-width:640px){.px-wrap{padding:12px 12px 90px}.px-hero{border-radius:18px;padding:16px 14px 14px}.px-tab{padding:9px 12px;font-size:13px}.px-h2{font-size:19px}}
+      /* Phones: 16px text in fields (iPhones zoom into anything smaller), 44px tap targets, bigger tick boxes */
+      @media (max-width:640px){.px-root .px-input,.px-root select.px-input,.px-root textarea.px-input{font-size:16px!important;min-height:44px!important}.px-root .px-btn,.px-root .px-hbtn{min-height:44px}.px-root input[type=checkbox],.px-root input[type=radio]{width:22px;height:22px}.px-root .px-tab{min-height:44px}}
     `}</style>
   )
 }

@@ -272,9 +272,9 @@ export default function MissionFoundation({ currentUser }) {
       <div className="px-wrap" style={{ maxWidth: 1240 }}>
         <PremiumHero isMobile={isMobile} icon={<span style={{ fontSize: isMobile ? 22 : 26 }}>🚀</span>}
           eyebrow="GNSI · Foundation · Udaan & Pragati" title={MISSION_NAME}
-          subtitle="8 Monday tests · 7 Dec 2026 – 25 Jan 2027 · teach, set papers, conduct, mark, analyse, award"
+          subtitle={isMobile && tab !== 'home' ? '' : '8 Monday tests · 7 Dec 2026 – 25 Jan 2027 · teach, set papers, conduct, mark, analyse, award'}
           actions={<button className="px-hbtn" onClick={load}>↻ Refresh</button>}
-          stats={[
+          stats={isMobile && tab !== 'home' ? [] : [   // on a phone only Home shows the big stat tiles, so the work on every other screen is not pushed off the screen
             { label: 'Tests', value: tests.length, sub: `${tests.filter(t => t.test_date < today).length} done` },
             { label: 'Next test', value: stats.next ? fmt(stats.next.test_date) : '—', sub: stats.next ? (papersByTest[stats.next.id] || []).map(p => subjectByLabel(p.subject)?.short || p.subject).join(', ') : 'none planned', tone: PX.goldLt },
             { label: 'Papers approved', value: `${stats.done}/${papers.length}`, sub: 'ready to print', tone: '#86efac' },
@@ -841,6 +841,7 @@ const pickDefaultTest = (tests, today) => [...tests].reverse().find(t => t.test_
 const markKey = (sid, subj) => `${sid}|${subj}`
 
 function MarksTab({ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest, onSaved }) {
+  const isMobile = useIsMobile()
   const [testId, setTestId] = useState(initialTest || tests[0]?.id || '')
   const [batch, setBatch] = useState(BATCHES[0])     // a batch, or 'Both'
   const [subjectPick, setSubjectPick] = useState(null)  // null = not chosen yet (default below), 'all', or a subject label
@@ -915,7 +916,7 @@ function MarksTab({ allPapersByTest, tests, papersByTest, me, flash, students, i
         : !list.length ? <div style={{ padding: 20, color: PX.sub }}>No active students found in {batch}.</div> : single ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="px-table" style={{ width: '100%' }}>
-              <thead><tr><th>#</th><th>Student</th>{batch === 'Both' && <th>Batch</th>}<th>{subject} /{maxMarks(papers[0]) || '?'}</th><th>Absent</th></tr></thead>
+              <thead><tr><th>#</th><th>Student</th>{batch === 'Both' && <th>Batch</th>}<th>{subject} /{maxMarks(papers[0]) || '?'}</th><th>{isMobile ? 'Abs.' : 'Absent'}</th></tr></thead>
               <tbody>
                 {list.map((s, i) => {
                   const p = papers[0]
@@ -931,7 +932,7 @@ function MarksTab({ allPapersByTest, tests, papersByTest, me, flash, students, i
                           disabled={e.absent} placeholder={e.absent ? 'AB' : ''} value={e.absent ? '' : e.marks}
                           onChange={ev => set(s.id, p.subject, { marks: ev.target.value })}
                           onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); nextBox(i) } }}
-                          style={{ width: 90, padding: '7px 10px', fontSize: 15, borderColor: err ? PX.bad : undefined, background: err ? PX.badBg : undefined }} />
+                          style={{ width: isMobile ? 84 : 90, padding: '7px 10px', fontSize: isMobile ? 17 : 15, borderColor: err ? PX.bad : undefined, background: err ? PX.badBg : undefined }} />
                         {err && <div style={{ fontSize: 11.5, color: PX.bad }}>{err}</div>}
                       </td>
                       <td><input type="checkbox" aria-label={`${s.name} absent`} checked={!!e.absent} onChange={ev => set(s.id, p.subject, { absent: ev.target.checked })} /></td>
@@ -972,6 +973,13 @@ function MarksTab({ allPapersByTest, tests, papersByTest, me, flash, students, i
             </table>
           </div>
         )}
+      {isMobile && !!papers.length && students !== null && list.length > 0 && (
+        // on a phone the teacher is far from the Save button at the top after typing a whole class: keep one in reach
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 5, background: '#fff', borderTop: `1px solid ${PX.line}`, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 -8px 18px -14px rgba(19,42,79,.4)' }}>
+          {single && <span style={{ fontSize: 13, fontWeight: 700, color: filled === list.length ? PX.ok : PX.sub, whiteSpace: 'nowrap' }}>{filled}/{list.length}</span>}
+          <Btn kind="gold" disabled={busy} onClick={save} style={{ flex: 1 }}>{busy ? 'Saving…' : dirty ? 'Save marks •' : 'Save marks'}</Btn>
+        </div>
+      )}
     </PremiumCard>
   )
 }
