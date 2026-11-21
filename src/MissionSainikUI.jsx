@@ -1,6 +1,7 @@
 // MissionSainikUI.jsx — small premium building blocks used inside the module's tables:
 // initials avatars, status pills with a dot, count pills with a mini progress bar, score pills, gradient bars.
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { PX } from './premiumUI'
 import { useStaffPhotos, findStaffPhoto } from './staffPhotos'
 
@@ -8,17 +9,53 @@ const PALETTE = [['#132a4f', '#2f5aa8'], ['#a97c1f', '#e3bd5f'], ['#0f7a4c', '#3
 const initials = n => String(n || '?').replace(/^(sir|miss|mr|mrs)\s+/i, '').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?'
 const hue = n => { let h = 0; for (const c of String(n || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length] }
 
+// True on a phone-width screen (updates when the window is resized or rotated).
+function usePhone() {
+  const q = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 700px)') : null)
+  const [phone, setPhone] = useState(() => !!q()?.matches)
+  useEffect(() => {
+    const m = q(); if (!m) return undefined
+    const f = e => setPhone(e.matches)
+    m.addEventListener?.('change', f)
+    return () => m.removeEventListener?.('change', f)
+  }, [])
+  return phone
+}
+
+// Full-size photo: tap anywhere or press Esc to close.
+function PhotoViewer({ url, name, onClose }) {
+  useEffect(() => { const k = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={`Photo of ${name}`} onClick={e => { e.stopPropagation(); onClose() }}
+      style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(8,16,34,.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 16, cursor: 'zoom-out' }}>
+      <img src={url} alt={String(name || '')} style={{ width: 'min(92vw, 520px)', maxHeight: '78vh', objectFit: 'contain', borderRadius: 20, background: '#F4F1EA', border: '3px solid #E2C57E', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} />
+      <div style={{ color: '#fff', fontWeight: 800, fontSize: 18, textAlign: 'center' }}>{name}</div>
+      <button type="button" onClick={e => { e.stopPropagation(); onClose() }} aria-label="Close photo" style={{ border: 0, borderRadius: 99, padding: '10px 26px', fontSize: 15, fontWeight: 800, background: '#fff', color: '#132a4f', cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
+    </div>, document.body)
+}
+
 // Initials circle, or the person's real photo when one exists in the staff photo system (Staff profile photo, or Website Manager → Faculty).
-// staff={false} for people who are not staff (students, batches): they keep the initials and are never matched to a staff photo.
+// On a phone the photo is drawn larger, and tapping it opens it full size. staff={false} for people who are not staff (students, batches):
+// they keep the initials and are never matched to a staff photo.
 export function Avatar({ name, size = 34, staff = true, photoName }) {
   useStaffPhotos()
+  const phone = usePhone()
   const [broken, setBroken] = useState(false)
+  const [open, setOpen] = useState(false)
   const url = staff && !broken ? findStaffPhoto(photoName || name) : null
   const [a, b] = hue(name)
   if (url) {
-    return <img src={url} alt={String(name || '')} title={String(name || '')} loading="lazy" onError={() => setBroken(true)}
-      style={{ width: size, height: size, borderRadius: '50%', flex: 'none', objectFit: 'cover', objectPosition: 'center top', display: 'inline-block', background: '#F4F1EA',
-        boxShadow: '0 2px 6px rgba(19,42,79,.22), inset 0 0 0 2px rgba(255,255,255,.35)', border: '2px solid #E2C57E' }} />
+    const px = phone ? Math.min(Math.round(size * 1.45), 76) : size
+    const big = size >= 24                                   // tiny chips are not tappable
+    return (
+      <>
+        <img src={url} alt={String(name || '')} title={String(name || '')} loading="lazy" onError={() => setBroken(true)}
+          onClick={big ? e => { e.stopPropagation(); setOpen(true) } : undefined} role={big ? 'button' : undefined} aria-label={big ? `Show a larger photo of ${name}` : undefined}
+          style={{ width: px, height: px, borderRadius: '50%', flex: 'none', objectFit: 'cover', objectPosition: 'center top', display: 'inline-block', background: '#F4F1EA', cursor: big ? 'zoom-in' : undefined,
+            boxShadow: '0 2px 6px rgba(19,42,79,.22), inset 0 0 0 2px rgba(255,255,255,.35)', border: '2px solid #E2C57E' }} />
+        {open && <PhotoViewer url={url} name={String(photoName || name || '')} onClose={() => setOpen(false)} />}
+      </>
+    )
   }
   return (
     <span aria-hidden="true" style={{ width: size, height: size, borderRadius: '50%', flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: size * 0.38, letterSpacing: '.02em',
