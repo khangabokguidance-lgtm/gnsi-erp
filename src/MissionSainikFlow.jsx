@@ -3,7 +3,8 @@ import { FLOW, flowStatus, flowNeighbors } from './lib/missionSainikFlow'
 import { PX } from './premiumUI'
 
 const CSS = `
-.msf-track{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+.msf-track{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:8px}
+@media (max-width:640px){.msf-track{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .msf-step{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:11px 12px 10px;border-radius:16px;border:1.5px solid #e8e2d2;background:#fff;text-align:left;cursor:pointer;font-family:inherit;transition:transform .12s,box-shadow .15s,border-color .15s}
 .msf-step:hover{transform:translateY(-1px);box-shadow:0 8px 18px -12px rgba(19,42,79,.45)}
 .msf-step.now{border-color:#b8923a;background:#fff9e8;box-shadow:0 0 0 3px rgba(184,146,58,.16)}
