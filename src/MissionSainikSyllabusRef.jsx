@@ -4,6 +4,7 @@
 // The data comes from officialSyllabus.js (single source of truth, shared with Teaching → Syllabus).
 import { useMemo, useState } from 'react'
 import { PremiumCard, PX } from './premiumUI'
+import { printPremium } from './lib/printPremium'
 import { EXAM_PATTERNS, classesOf, officialSubjects, patternTotals } from './officialSyllabus'
 
 const NTA_URL = 'https://exams.nta.nic.in/sainik-school-society/'
@@ -16,15 +17,18 @@ const KEY_DATES = [
 const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
 
 const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-function printSyllabus(cls, pattern, subjects) {
-  const w = window.open('', '_blank'); if (!w) return
+// Opens the premium A4 preview (letterhead, logo, footer) with a Print / Save as PDF button.
+function printSyllabus(cls, pattern, subjects, institute) {
   const sec = n => pattern.sections.find(x => x.subject === n)
-  const blocks = subjects.map(([name, chs]) => { const s = sec(name); return `<h3>${esc(name)}${s ? ` <small>· ${s.questions} questions · ${s.questions * s.marksEach} marks</small>` : ''}</h3><ol>${chs.map(c => `<li>${esc(c)}</li>`).join('')}</ol>` }).join('')
-  w.document.write(`<!doctype html><title>AISSEE-2027 Class ${cls} syllabus</title><style>body{font:13px/1.5 Arial,sans-serif;margin:24px;color:#111}h1{font-size:18px;margin:0}h2{font-size:12.5px;font-weight:400;color:#444;margin:2px 0 14px}h3{font-size:14px;margin:16px 0 4px;border-bottom:1px solid #999}h3 small{font-weight:400;color:#555}ol{columns:2;margin:6px 0;padding-left:22px}li{break-inside:avoid}.f{margin-top:18px;font-size:11px;color:#555}</style><h1>AISSEE-2027 · Class ${cls} syllabus</h1><h2>${pattern.sections.reduce((n, x) => n + x.questions, 0)} questions · ${pattern.sections.reduce((n, x) => n + x.questions * x.marksEach, 0)} marks · ${pattern.durationMin} minutes · no negative marking · exam 31 Jan 2027</h2>${blocks}<div class="f">Source: NTA Information Bulletin AISSEE-2027, Appendix ${cls === 6 ? 'II' : 'III'}.</div><script>window.onload=()=>window.print()</script>`)
-  w.document.close()
+  const qs = pattern.sections.reduce((n, x) => n + x.questions, 0), marks = pattern.sections.reduce((n, x) => n + x.questions * x.marksEach, 0)
+  const kpi = [[qs, 'Questions'], [marks, 'Marks'], [pattern.durationMin + ' min', 'Duration'], [pattern.negative ? 'Yes' : 'None', 'Negative marking']].map(([v, l]) => `<div class="kpi"><small>${l}</small><b>${v}</b></div>`).join('')
+  const patt = `<table class="t"><thead><tr><th class="l">Section</th><th>Questions</th><th>Marks each</th><th>Total</th></tr></thead><tbody>${pattern.sections.map(s => `<tr><td class="l"><b>${esc(s.subject)}</b></td><td>${s.questions}</td><td>${s.marksEach}</td><td>${s.questions * s.marksEach}</td></tr>`).join('')}</tbody></table>`
+  const blocks = subjects.map(([name, chs]) => { const s = sec(name); return `<h3>${esc(name)}${s ? ` <small>· ${s.questions} questions · ${s.questions * s.marksEach} marks</small>` : ''}</h3><ol style="columns:2;column-gap:22px;margin:4px 0 6px;padding-left:20px">${chs.map(c => `<li style="break-inside:avoid;margin:0 0 2px">${esc(c)}</li>`).join('')}</ol>` }).join('')
+  printPremium(`<div class="title">AISSEE 2027 · Class ${cls} Syllabus</div><div class="sub">Sainik School entrance exam · exam 31 Jan 2027</div><div class="kpis">${kpi}</div>${patt}${blocks}<div class="foot">Source: NTA Information Bulletin AISSEE-2027, Appendix ${cls === 6 ? 'II' : 'III'}.</div>`,
+    { title: `AISSEE-2027 Class ${cls} syllabus`, institute, docLabel: `AISSEE 2027 · Class ${cls} syllabus` })
 }
 
-export function OfficialSyllabus({ isMobile }) {
+export function OfficialSyllabus({ isMobile, institute }) {
   const classes = classesOf('sainik')
   const [cls, setCls] = useState(classes.includes(6) ? 6 : classes[0])
   const [q, setQ] = useState('')
@@ -38,7 +42,7 @@ export function OfficialSyllabus({ isMobile }) {
     <>
       <PremiumCard title="Official syllabus · AISSEE 2027" subtitle="Sainik School entrance exam (NTA): pattern, marks and every chapter by subject."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="px-hbtn" onClick={() => pattern && printSyllabus(cls, pattern, subjects)}>🖨 Print Class {cls} syllabus</button>
+          <button type="button" className="px-hbtn" onClick={() => pattern && printSyllabus(cls, pattern, subjects, institute || undefined)}>🖨 Print Class {cls} syllabus</button>
           <a className="px-hbtn" href="/syllabus/AISSEE-2027-Information-Bulletin.pdf" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>📄 Information Bulletin (PDF)</a>
           <a className="px-hbtn" href={NTA_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>↗ NTA website</a>
         </span>}>

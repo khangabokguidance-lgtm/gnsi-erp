@@ -29,6 +29,8 @@ import { officialSubjects, subjectFamily } from './officialSyllabus'
 import { downloadCsv, downloadFile, buildIcs, parseSyllabusText, parseMarksText } from './lib/missionSainikExport'
 import { PersonCell, Pill, MiniBar, ScorePill } from './MissionSainikUI'
 import { computeGame } from './lib/missionSainikGame'
+import { printPremium } from './lib/printPremium'
+import { buildPlanBody } from './lib/missionSainikPlanPrint'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
   buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
@@ -1199,6 +1201,9 @@ function MissionSainikInner({ currentUser }) {
   const inp = { padding: '9px 10px', borderRadius: 10, border: `1px solid ${PX.line || '#d8dee9'}`, fontSize: 13, width: '100%', boxSizing: 'border-box' }
   const setupNote = marksSetup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261203_mission_sainik_syllabus_marks.sql</b> in Supabase to enable this tab.</div>
   const exportSyllabus = () => downloadCsv('Mission_Sainik_syllabus.csv', [['Test', ...SUBJECTS.map(x => x.label)]].concat(TESTS.map(t => [t.id, ...SUBJECTS.map(x => syl[t.no + '|' + x.label] || '')])))
+  // Print the whole syllabus plan on the premium A4 frame (letterhead, logo, footer). It opens as a preview with a Print / Save as PDF button.
+  const printSyllabusPlan = () => printPremium(buildPlanBody({ tests: TESTS, subjects: SUBJECTS, syl, fmtDate: fmtShort }),
+    { title: 'Mission Sainik syllabus plan', institute, docLabel: 'Mission Sainik syllabus plan' })
   const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
   const runSylImport = async () => {
     const { rows: list, errors } = parseSyllabusText(sylImport, SUBJECTS)
@@ -1230,7 +1235,7 @@ function MissionSainikInner({ currentUser }) {
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
             <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
@@ -1467,7 +1472,7 @@ function MissionSainikInner({ currentUser }) {
                       style={{ padding: '9px 16px', borderRadius: 99, border: `1.5px solid ${sylPage === k ? PX.gold : PX.line}`, background: sylPage === k ? PX.goldBg : '#fff', color: sylPage === k ? PX.navy : PX.sub, fontWeight: 800, fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>))}
                 </div>
                 {sylPage === 'plan' && syllabusTab}
-                {sylPage === 'official' && <OfficialSyllabus isMobile={isMobile} />}
+                {sylPage === 'official' && <OfficialSyllabus isMobile={isMobile} institute={institute} />}
                 {sylPage === 'manual' && <SyllabusManual />}
               </>)}
             {tab === 'marks' && marksTab}
