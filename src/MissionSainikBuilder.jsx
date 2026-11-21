@@ -17,6 +17,7 @@ import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
+import { combinedHtml, canBuildCombined, testsAllowed } from './lib/missionSainikCombined'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -461,6 +462,36 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
   }
+  // ── Combined paper (all subjects) for verification — admin and the staff assigned to that test only ──
+  const sectionsFor = t => live(t).map(x => ({ setters: settersOf(t, x.label), verifiers: verifiersOf(t, x.label) }))
+  const mayCombine = t => canBuildCombined({ isAdmin, isMe, sections: sectionsFor(t) })
+  const combinedTests = () => testsAllowed({ isAdmin, isMe, testNos: cfg.tests.map(x => x.no), sectionsOf: sectionsFor })
+  const combinedDoc = list => {
+    const tests = list.map(t => {
+      const secs = live(t).map(x => {
+        const items = (byVersion ? get(t, x.label) : usedQuestions(get(t, x.label), x.q)).map((q, i) => ({ ...q, no: startOf(x.label) + i }))
+        const so = signoff(t, x.label)
+        return { label: x.label, q: x.q, from: startOf(x.label), items, setters: settersOf(t, x.label), uploaders: [...new Set(get(t, x.label).map(q => q.uploaded_by).filter(Boolean))], verifier: verifiersOf(t, x.label).join(', '), signoff: so ? { verified_by: so.verified_by } : null, openNotes: openNotes(t, x.label) }
+      })
+      return { id: tid(t), date: dateOf(t) ? fmtShort(dateOf(t)) : '', sections: secs, checks: paperHealth(secs.map(x => ({ label: x.label, q: x.q, items: x.items })), qs, t).checks }
+    })
+    return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml })
+  }
+  const combinedList = all => { const l = all ? combinedTests() : (mayCombine(testNo) ? [testNo] : []); if (!l.length) setMsg('🔒 Only admins and staff assigned to this test can build the combined paper.'); return l }
+  const previewCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    audit('combined_paper_preview', `${series}:${l.join(',')}`, null)
+    setPreview({ html: `<!doctype html><html><head><meta charset="utf-8"><title>Combined paper</title></head><body style="margin:0;padding:14px">${combinedDoc(l)}</body></html>`, title: `Combined paper · ${all ? 'all my tests' : tid(testNo)}` })
+  }
+  const exportCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    setMathStacked(false)
+    let html
+    try { html = wordWrap(combinedDoc(l), 'Combined paper') } finally { setMathStacked(true) }
+    const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
+    const a = document.createElement('a'); a.href = url; a.download = `${cfg.prefix}_combined_${all ? 'all_tests' : String(testNo).padStart(2, '0')}.doc`; a.click(); URL.revokeObjectURL(url)
+    audit('combined_paper_export', `${series}:${l.join(',')}`, null)
+  }
   const printOmr = t => {
     if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
@@ -752,6 +783,11 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
           <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
           <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
+          {mayCombine(testNo) && <>
+            <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin and assigned staff only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>
+            <button className="px-hbtn" onClick={() => exportCombined(false)}>📝 Combined Word</button>
+            {combinedTests().length > 1 && <button className="px-hbtn" onClick={() => previewCombined(true)}>🧩 All my tests</button>}
+          </>}
         </div>
       </PremiumCard>}
 
