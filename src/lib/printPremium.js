@@ -157,13 +157,13 @@ body{font-family:${FONT_STACK};font-size:10.5px;line-height:1.45;color:var(--ink
 // Paper size + orientation picker in the preview bar. Sets --pw/--ph (the preview sheet) and the print @page size, then tells the
 // content to re-fit itself (a "pagechange" event; detail = page height in mm).
 const PAPERS = { A4: [210, 297], A3: [297, 420], A5: [148, 210], Letter: [216, 279], Legal: [216, 356] };
-const PAGE_PICKER = `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p">Portrait</option><option value="l">Landscape</option></select></label>`;
+const pagePicker = (layout = 'p') => `<label>Paper <select id="pgsz">${Object.keys(PAPERS).map(k => `<option>${k}</option>`).join('')}</select></label><label>Layout <select id="pgor"><option value="p"${layout === 'p' ? ' selected' : ''}>Portrait</option><option value="l"${layout === 'l' ? ' selected' : ''}>Landscape</option></select></label>`;
 const PAGE_SCRIPT = `<style id="pgcss"></style><script>(function(){var P=${JSON.stringify(PAPERS)};var sz=document.getElementById('pgsz'),or=document.getElementById('pgor');function set(){var d=P[sz.value],l=or.value==='l',w=l?d[1]:d[0],h=l?d[0]:d[1],r=document.documentElement.style;r.setProperty('--pw',w+'mm');r.setProperty('--ph',h+'mm');document.getElementById('pgcss').textContent='@page{size:'+w+'mm '+h+'mm;margin:0}';window.dispatchEvent(new CustomEvent('pagechange',{detail:h}))}sz.onchange=or.onchange=set;set()})()</script>`;
 
 // bodyHTML  : the content (it may use the classes above)
 // institute : { name, address, tagline, logoUrl }
 // docLabel  : short label for the footer, e.g. "Duty sheet · Meera Singh · Pre Mock Test 2026"
-export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '', official = false, refNo = '' } = {}) {
+export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLabel = '', official = false, refNo = '', landscape = false } = {}) {
   if (denyPrint()) return;
   const w = window.open('', '_blank');
   if (!w) { alert('Pop-up blocked — allow pop-ups for this site to print the report.'); return; }
@@ -171,7 +171,7 @@ export function printPremium(bodyHTML, { title = 'Report', institute = {}, docLa
   const name = esc(institute.name || 'Guidance Navodaya & Sainik Institute');
   const stamp = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${FONT_LINKS}<style>${CSS}</style></head><body>
-  <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span>${PAGE_PICKER}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
+  <div class="bar"><button onclick="${PRINT_NOW}">Print / Save as PDF</button><span>${esc(title)}</span>${pagePicker(landscape ? 'l' : 'p')}<small>Tip: in the print window choose “Save as PDF”, margins “Default”, and leave “Headers and footers” off.</small></div>
   <div class="wm"><img src="${logo}" alt=""></div>
   <div class="sheet${official ? ' off' : ''}"><table class="frame">
     <thead><tr><td></td></tr></thead>

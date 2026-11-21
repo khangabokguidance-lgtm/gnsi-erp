@@ -14,7 +14,10 @@ import { downloadCsv } from './lib/missionSainikExport'
 import { AnalyserTab, MaterialTab, ChatTab, StudentsTab } from './MissionFoundationExtras'
 import { HomeDashboard, TeachingTab, ConductTab, PrizesTab } from './MissionFoundationWork'
 import { QuestionMakerTab } from './MissionFoundationPaper'
-import { testReportHtml, reportCardsHtml } from './lib/missionFoundationReport'
+import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundationReport'
+import { printPremium } from './lib/printPremium'
+import { getInstitute } from './systemSettings'
+import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
 import {
   MISSION_NAME, BATCHES, SUBJECTS, DEFAULT_PANEL, PAPER_FLOW, TEST_FLOW, DEFAULT_PLAN, DEFAULT_TEST_MINUTES,
   subjectByLabel, maxMarks, buildSchedule, foundationRoster, cleanTeacherName, shareTests, checkerFor, rankResults, markError, nameMatches, titled, safeUrl, focusTest, copyFormatPlan,
@@ -841,12 +844,25 @@ function ResultsTab({ tests, papersByTest, flash, today }) {
 
   const reportInput = () => ({ mission: MISSION_NAME, title: test?.title || 'Test ' + test?.test_no, date: fmt(test?.test_date), batch, papers, ranked,
     rows: (rows || []).filter(r => batch === 'All' || r.batch === batch), short: l => subjectByLabel(l)?.short || l })
-  const openPrint = html => { const w = window.open('', '_blank'); if (!w) return flash('Allow pop-ups to print.', true); w.document.write(html); w.document.close() }
+  // Premium A4 preview with the official letterhead, paper-size picker and Print / Save as PDF.
+  const printMarkSheet = () => printPremium(`${MFR_CSS}<div class="mfr">${testReportBody(reportInput(), true)}</div>`, { title: `Combined report · ${test?.title || ''}`, institute: getInstitute(), docLabel: `${MISSION_NAME} · ${test?.title || ''}`, official: true, landscape: true })
+  const printCards = () => printPremium(`${MFR_CSS}<div class="mfr">${reportCardsBody(reportInput(), true)}</div>`, { title: `Report cards · ${test?.title || ''}`, institute: getInstitute(), docLabel: `${MISSION_NAME} · ${test?.title || ''}`, official: true })
+  const wordSheet = async () => {
+    try {
+      const fullMax = papers.reduce((a, p) => a + maxMarks(p), 0)
+      downloadDocx(`${(test?.title || 'test').replace(/\W+/g, '_')}_${batch}_results`, await buildTableDocx({
+        title: `${test?.title || 'Test'} · Combined subject report`, sub: `${MISSION_NAME} · ${fmt(test?.test_date)} · ${batch === 'All' ? 'Udaan & Pragati' : batch} · full marks ${fullMax}`,
+        institute: getInstitute(), label: `${MISSION_NAME} results`, landscape: true,
+        columns: [{ h: 'Rank', w: 0.7 }, { h: 'Student', w: 2.6, left: true }, { h: 'Batch', w: 1 }, ...papers.map(p => ({ h: `${subjectByLabel(p.subject)?.short || p.subject} /${maxMarks(p)}`, w: 1 })), { h: 'Total', w: 1.1 }, { h: '%', w: 0.8 }],
+        rows: ranked.map(r => [r.rank ?? 'AB', r.student_name, r.batch, ...papers.map(p => r.subjects[p.subject] ?? '—'), `${r.total}/${r.max}`, r.pct ?? 'Absent']),
+      }))
+    } catch (e) { flash('Could not make the Word file: ' + (e.message || e), true) }
+  }
 
   if (!tests.length) return <PremiumCard title="No tests yet" subtitle="Create the schedule first." />
   return (
     <PremiumCard title={`Results · ${test?.title || ''}`} subtitle={test ? `${fmt(test.test_date)} · ranked by percentage of the papers each student sat` : ''} bodyStyle={{ padding: 0 }}
-      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn kind="gold" onClick={() => openPrint(testReportHtml(reportInput(), true))} disabled={!ranked.length}>🖨 Combined report</Btn><Btn onClick={() => openPrint(reportCardsHtml(reportInput(), true))} disabled={!ranked.length}>Report cards</Btn></div>}>
+      right={<div style={{ display: 'flex', gap: 6 }}><Btn onClick={exportCsv} disabled={!ranked.length}>Excel (CSV)</Btn><Btn kind="gold" onClick={printMarkSheet} disabled={!ranked.length}>🖨 Combined report</Btn><Btn onClick={printCards} disabled={!ranked.length}>Report cards</Btn><Btn onClick={wordSheet} disabled={!ranked.length}>📝 Word</Btn></div>}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '14px 18px' }}>
         <select className="px-input" aria-label="Test" value={testId} onChange={e => setTestId(e.target.value)} style={{ width: 'auto' }}>
           {tests.map(t => <option key={t.id} value={t.id}>{t.title || 'Test ' + t.test_no} · {fmt(t.test_date)}</option>)}

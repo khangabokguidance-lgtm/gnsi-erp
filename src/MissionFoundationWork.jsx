@@ -5,6 +5,8 @@ import { useState, useMemo } from 'react'
 import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill } from './MissionSainikUI'
+import { printPremium } from './lib/printPremium'
+import { getInstitute } from './systemSettings'
 import { downloadCertificates } from './lib/missionFoundationCerts'
 import {
   MISSION_NAME, BATCHES, CONDUCT_STEPS, splitChapters, prizeList, focusTest, cycleFor, maxMarks, subjectByLabel, nameMatches, titled,
@@ -185,18 +187,16 @@ export function TeachingTab({ tests, testId, setTestId, papersByTest, teaching, 
 }
 
 // ─── Test day ─────────────────────────────────────────────────────────────────
+// Test-day sheets open in the premium A4 preview (official letterhead, paper-size picker, Print / Save as PDF).
+const MFW_CSS = `<style>
+.mfw{font-size:10.5px;color:#111}.mfw .pg{break-after:page;page-break-after:always}.mfw .pg:last-child{break-after:auto;page-break-after:auto}
+.mfw h2{font-size:12px;margin:0 0 8px;text-align:center;font-weight:700;color:#0b1f45}
+.mfw .meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:10.5px;margin:4px 0 8px}
+.mfw table{width:100%;border-collapse:collapse;font-size:10.5px}.mfw th,.mfw td{border:1px solid #6b7686;padding:5px 5px;text-align:left}.mfw th{background:#0b1f45;color:#fff;font-size:9.5px}
+.mfw td.c,.mfw th.c{text-align:center}.mfw tr{break-inside:avoid}.mfw thead{display:table-header-group}.mfw .sig{display:flex;justify-content:space-between;margin-top:24px;font-size:10.5px}
+</style>`
 function printHtml(title, body) {
-  const w = window.open('', '_blank')
-  if (!w) return false
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
-    body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0}@page{size:A4;margin:12mm}
-    .pg{page-break-after:always}.pg:last-child{page-break-after:auto}
-    h1{font-size:18px;margin:0 0 2px;text-align:center}h2{font-size:14px;margin:0 0 10px;text-align:center;font-weight:600}
-    .meta{display:flex;justify-content:space-between;font-size:12px;margin:6px 0 10px}
-    table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #333;padding:6px 5px;text-align:left}th{background:#eee}
-    td.c,th.c{text-align:center}.sig{display:flex;justify-content:space-between;margin-top:28px;font-size:12px}
-  </style></head><body>${body}<script>window.onload=()=>setTimeout(()=>window.print(),300)<'+'/script></body></html>`)
-  w.document.close()
+  printPremium(`${MFW_CSS}<div class="mfw">${body.replace(/<h1>[^<]*<\/h1>/g, '')}</div>`, { title, institute: getInstitute(), docLabel: `${MISSION_NAME} · ${title}`, official: true })
   return true
 }
 
