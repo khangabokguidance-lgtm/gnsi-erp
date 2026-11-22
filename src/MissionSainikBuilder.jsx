@@ -594,6 +594,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     io.observe(el)
     return () => io.disconnect()
   }, [isMobile, testNo, section, addMode])
+  // Keep the chosen test chip centred in the strip. Only the strip scrolls, and only when the test changes:
+  // scrollIntoView on every render pulled the whole page back up while scrolling on a phone (the Build tab "would not scroll").
+  useEffect(() => {
+    const chip = document.querySelector('.msb .msb-chip.on'), strip = chip?.parentElement
+    if (strip) strip.scrollLeft = Math.max(0, chip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2)
+  }, [testNo, series, isMobile])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
@@ -632,7 +638,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             {cfg.tests.map(t => {
               const n = testCount(t.no), tot = totalQ(t.no), done = testReady(t.no)
               return (
-                <button key={t.no} type="button" role="tab" aria-selected={t.no === testNo} className={'msb-chip' + (t.no === testNo ? ' on' : '')} onClick={() => setTestNo(t.no)} ref={el => { if (el && t.no === testNo) el.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }}>
+                <button key={t.no} type="button" role="tab" aria-selected={t.no === testNo} className={'msb-chip' + (t.no === testNo ? ' on' : '')} onClick={() => setTestNo(t.no)}>
                   <div style={{ fontWeight: 800, color: PX.navy, fontSize: 14 }}>{tid(t.no)}</div>
                   <div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : cfg.noun === 'Set' ? 'one set per subject' : ' '}</div>
                   <div style={{ height: 5, borderRadius: 99, background: '#f1ede3', margin: '6px 0 3px', overflow: 'hidden' }}><div style={{ width: Math.min(100, tot ? (n / tot) * 100 : 0) + '%', height: '100%', background: done ? PX.ok : PX.gold }} /></div>
