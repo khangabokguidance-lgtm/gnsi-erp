@@ -613,12 +613,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 16px', borderBottom: `1px solid ${PX.line}`, background: PX.tint }}>
-          <button type="button" className="px-btn ghost" aria-label={`Previous ${cfg.noun.toLowerCase()}`} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)} style={{ minWidth: 44 }}>‹</button>
-          <select aria-label={`Choose a ${cfg.noun.toLowerCase()}`} value={testNo} onChange={e => setTestNo(Number(e.target.value))} style={{ flex: '1 1 180px', maxWidth: 320, fontWeight: 700 }}>
+          <button type="button" className="px-btn ghost" aria-label={`Previous ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)} style={{ minWidth: 44 }}>‹</button>
+          <select aria-label={`Choose a ${(cfg.noun || 'Test').toLowerCase()}`} value={testNo} onChange={e => setTestNo(Number(e.target.value))} style={{ flex: '1 1 180px', maxWidth: 320, fontWeight: 700 }}>
             {cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}{t.date ? ` · ${fmtShort(t.date)}` : ''}{testReady(t.no) ? ' · ready' : ''}</option>)}
           </select>
-          <button type="button" className="px-btn ghost" aria-label={`Next ${cfg.noun.toLowerCase()}`} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)} style={{ minWidth: 44 }}>›</button>
-          <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto' }} aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? `Show present ${cfg.noun.toLowerCase()} only` : `Show all ${cfg.tests.length} ${cfg.noun.toLowerCase()}s`}</button>
+          <button type="button" className="px-btn ghost" aria-label={`Next ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)} style={{ minWidth: 44 }}>›</button>
+          <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto' }} aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? `Show present ${(cfg.noun || 'Test').toLowerCase()} only` : `Show all ${cfg.tests.length} ${(cfg.noun || 'Test').toLowerCase()}s`}</button>
         </div>
         {nextMine && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: PX.goldBg, borderBottom: `1px solid ${PX.goldLine}` }}>
