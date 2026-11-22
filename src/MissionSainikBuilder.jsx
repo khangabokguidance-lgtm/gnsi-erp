@@ -13,6 +13,7 @@ import ScanFigure from './ScanFigure'
 import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
+import { Icon } from './MissionSainikIcons'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
@@ -27,6 +28,7 @@ const fmtShort = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', 
 // Which panel subjects may upload each Mega Mock section.
 const MEGA_PANEL = { Mathematics: ['maths'], Intelligence: ['reasoning'], 'Grammar + Vocabulary': ['grammar', 'vocab'], 'Science + GK': ['science', 'gk'] }
 
+const SUBJ_HUE = { maths: '#1d4f91', reasoning: '#6d28d9', science: '#0f7a4c', gk: '#c2410c', grammar: '#be185d', vocab: '#0e7490' }
 const SUBJ = Object.fromEntries(SUBJECTS.map(x => [x.key, x]))
 const DAILY_SECTIONS = [['maths', 20, 3], ['reasoning', 10, 2], ['grammar', 10, 2], ['gk', 10, 2]]
   .map(([k, q, marks]) => ({ label: SUBJ[k].label, short: SUBJ[k].short, q, marks, key: k }))
@@ -567,7 +569,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     return () => io.disconnect()
   }, [isMobile, testNo, section, addMode])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
-  const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
@@ -589,7 +590,43 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const stepTest = d => { const i = cfg.tests.findIndex(t => t.no === testNo); const n = cfg.tests[i + d]; if (n) setTestNo(n.no) }
-  const msbCss = `${MATH_CSS}.msb .msb-q .px-hbtn{height:32px!important;min-height:32px!important;padding:0 10px!important}.msb .msb-q input[type=checkbox]{margin-top:6px!important}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  const msbCss = `${MATH_CSS}.msb-wrap{background:#fff;border:1px solid #e3e8f1;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.06),0 18px 40px -24px rgba(19,42,79,.4);overflow:hidden;margin-bottom:18px}
+.msb-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;padding:20px 28px 22px;color:#fff;background:radial-gradient(70% 140% at 100% 0%,rgba(230,195,94,.24),transparent 60%),linear-gradient(135deg,#081a38,#14336a 70%,#1b4388);isolation:isolate;overflow:hidden}
+.msb-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000);mask-image:linear-gradient(90deg,transparent,#000);z-index:-1}
+.msb-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#8a6a1f,#e6c35e 50%,#8a6a1f)}
+.msb-hero.ready::after{height:5px;box-shadow:0 0 18px rgba(230,195,94,.9)}
+.msb-hero .k{display:inline-flex;align-items:center;gap:10px;font-size:11.5px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#f1dca0}.msb-hero .k::before{content:'';width:26px;height:2px;background:#e6c35e}
+.msb-hero h2{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 10px;font-family:'Fraunces','Playfair Display',Georgia,serif;font-size:38px;line-height:1.05;font-weight:700;letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.3)}
+.msb-hero .rd{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;background:#16a34a;color:#fff;font:800 12px/1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.04em;text-shadow:none;box-shadow:0 6px 16px -6px rgba(22,163,74,.9)}
+.msb-hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.msb-hero .ch{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid rgba(233,217,176,.4);border-radius:99px;background:rgba(255,255,255,.08);font-size:13px;font-weight:600;backdrop-filter:blur(4px)}
+.msb-hero .ch.hot{background:rgba(252,165,165,.18);border-color:rgba(252,165,165,.7);color:#ffe3e0}
+.msb-hero .acts{display:flex;gap:8px;flex-wrap:wrap}
+.msb-hero .acts button{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;transition:background .15s,transform .15s}
+.msb-hero .acts button:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
+.msb-hero .acts button.gold{background:linear-gradient(180deg,#d9b657,#b8923a);border-color:#9c7a2b;color:#2b1f03;box-shadow:0 8px 18px -8px rgba(184,146,58,.9)}.msb-hero .acts button.gold:hover{background:linear-gradient(180deg,#e2c068,#c49d42)}
+.msb-hero .r{text-align:center}.msb-hero .ring{position:relative;width:118px;height:118px;margin:0 auto}.msb-hero .ring svg{width:118px;height:118px}
+.msb-hero .ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.msb-hero .ring b{font-family:'Fraunces',Georgia,serif;font-size:36px;line-height:1;background:linear-gradient(180deg,#fff,#f1dca0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}.msb-hero .ring span{font-size:12px;color:#cfdbf2;font-weight:600;margin-top:2px}
+.msb-hero .cap{margin-top:6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#e9d9b0;font-weight:700}
+.msb-tiles{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:12px}
+.msb-tile{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:7px;padding:14px 14px 12px;border-radius:16px;background:#fff;border:1.5px solid #e3e8f1;border-top:5px solid var(--c);box-shadow:0 1px 2px rgba(19,42,79,.05);transition:transform .2s,box-shadow .2s,border-color .2s}
+.msb-tile:hover{transform:translateY(-3px);box-shadow:0 16px 28px -16px color-mix(in srgb,var(--c) 60%,#0b1c36)}
+.msb-tile:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msb-tile.on{border-color:var(--c);background:linear-gradient(180deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 60%);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 24%,transparent),0 16px 28px -18px color-mix(in srgb,var(--c) 70%,#0b1c36)}
+.msb-tile .top{display:flex;align-items:center;gap:10px}
+.msb-tile .mk{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 65%,#fff));color:#fff;font-weight:800;font-size:13px;box-shadow:0 6px 12px -6px var(--c)}
+.msb-tile .rg{font-weight:800;font-size:14px;color:#0e2a55;line-height:1.15;min-width:0}.msb-tile .rg small{display:block;font-weight:600;font-size:11.5px;color:#5d6b82}
+.msb-tile .num{font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:700;line-height:1;color:var(--c)}
+.msb-tile .tr{height:7px;border-radius:99px;background:#eceff5;overflow:hidden}.msb-tile .tr i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 60%,#fff));transition:width .8s ease}
+.msb-tile .st{display:flex;gap:5px;flex-wrap:wrap;min-height:22px}
+.msb-tile .p{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800;white-space:nowrap}
+.msb-tile .p.ok{background:#e6f5ec;color:#0f7a4c}.msb-tile .p.warn{background:#fff3d6;color:#8a5500}.msb-tile .p.info{background:#e8f0fe;color:#1d4ed8}.msb-tile .p.mute{background:#f0f2f7;color:#6b778c}
+.msb-tile .who{font-size:11.5px;color:#5d6b82;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msb .msb-q{border-radius:10px;padding-left:6px!important;padding-right:6px!important;transition:background .15s}.msb .msb-q:hover{background:#f6f9fe}
+.msb .msb-q>div>button b:first-child{display:inline-flex;align-items:center;justify-content:center;min-width:38px;margin-right:8px;padding:2px 8px;border-radius:7px;background:#e6edf9;color:#10305f;font-size:12px;font-weight:800}
+@media (max-width:700px){.msb-hero{grid-template-columns:1fr;padding:16px 16px 18px;text-align:left}.msb-hero h2{font-size:30px;margin:4px 0 8px;padding-right:84px}.msb-hero .r{position:absolute;top:14px;right:14px;z-index:1}.msb-hero .cap{display:none}.msb-hero .ring,.msb-hero .ring svg{width:78px;height:78px}.msb-hero .ring b{font-size:22px}.msb-hero .ring span{font-size:10px}.msb-hero .k{font-size:10.5px}.msb-hero .ch{padding:5px 11px;font-size:12.5px}.msb-hero .acts button{flex:1 1 140px;justify-content:center}.msb-tile .num{font-size:26px}.msb-wrap{border-radius:16px}}
+.msb .msb-q .px-hbtn{height:32px!important;min-height:32px!important;padding:0 10px!important}.msb .msb-q input[type=checkbox]{margin-top:6px!important}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
@@ -598,9 +635,32 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     <div className="msb">
       <style>{msbCss}</style>
       {setup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261206_mission_sainik_questions.sql</b> in Supabase to enable the builders.</div>}
-      <PremiumCard title={`${cfg.name} · ${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in — only a section's own setter (or an admin) can upload`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}
-        bodyStyle={{ padding: 0, overflowX: 'auto' }}>
+      <div className="msb-wrap">
+        <div className={'msb-hero' + (ready ? ' ready' : '')}>
+          <div className="l">
+            <div className="k">{cfg.name} {cfg.noun === 'Set' ? 'bank' : 'builder'}</div>
+            <h2>{tid(testNo)}{ready && <span className="rd"><Icon name="check" size={14} stroke={2.6} />Ready to print</span>}</h2>
+            <div className="chips">
+              {dateOf(testNo) && <span className="ch"><Icon name="schedule" size={15} />{new Date(dateOf(testNo) + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+              {dateOf(testNo) && today && (() => { const d = Math.round((new Date(dateOf(testNo) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5); return <span className={'ch' + (d >= 0 && d <= 3 ? ' hot' : '')}><Icon name="clock" size={15} />{d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : d > 0 ? `In ${d} days` : `${-d} day${d === -1 ? '' : 's'} ago`}</span> })()}
+              <span className="ch"><Icon name="practice" size={15} />{live(testNo).length} {cfg.noun === 'Set' ? 'subjects' : 'sections'}</span>
+            </div>
+            <div className="acts">
+              {(!embargo || isAdmin) && <button type="button" onClick={exportCsv}><Icon name="upload" size={16} style={{ transform: 'rotate(180deg)' }} />Export bank</button>}
+              <button type="button" onClick={() => printDoc(testNo, false)}><Icon name="print" size={16} />Question paper</button>
+              <button type="button" className="gold" onClick={() => printDoc(testNo, true)}><Icon name="certs" size={16} />Answer key</button>
+            </div>
+          </div>
+          <div className="r" role="img" aria-label={`${testCount(testNo)} of ${totalQ(testNo)} questions uploaded`}>
+            {(() => { const n = testCount(testNo), tot = totalQ(testNo), pct = tot ? Math.min(100, (n / tot) * 100) : 0, R = 52, C = 2 * Math.PI * R; return (
+              <div className="ring"><svg width="132" height="132" viewBox="0 0 132 132" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="66" cy="66" r={R} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="11" />
+                <circle cx="66" cy="66" r={R} fill="none" stroke="url(#msbg)" strokeWidth="11" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset .9s ease' }} />
+                <defs><linearGradient id="msbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#b8923a" /><stop offset="1" stopColor="#f6e3a8" /></linearGradient></defs></svg>
+                <div className="c"><b>{n}</b><span>of {tot}</span></div></div>) })()}
+            <div className="cap">questions in</div>
+          </div>
+        </div>
         {isMobile && showAll && (
           <div className="msb-strip" data-ti-skip role="tablist" aria-label={cfg.noun === 'Set' ? 'Choose a set' : 'Choose a test'} style={{ padding: '12px 12px 4px' }}>
             {cfg.tests.map(t => {
@@ -640,24 +700,29 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             </tr>))}
           </tbody>
         </table>}
-        <div style={{ padding: isMobile ? '12px' : '14px 16px 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${live(testNo).length}, 1fr)`, gap: 8 }}>
-          {live(testNo).map(s => {
+        <div className="msb-tiles" style={{ padding: isMobile ? '12px' : '16px 18px 18px', '--cols': isMobile ? 2 : live(testNo).length }}>
+          {live(testNo).map((s, si) => {
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
             const ups = [...new Set(get(testNo, s.label).map(q => q.uploaded_by).filter(Boolean))]
+            const hue = SUBJ_HUE[s.key] || Object.values(SUBJ_HUE)[si % 6], on = s.label === section
+            const verified = !!signoff(testNo, s.label), full = byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q
+            const label = byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`
+            const who = ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'
             return (
-              <button key={s.label} onClick={() => setSection(s.label)} style={{ all: 'unset', cursor: 'pointer', padding: 10, borderRadius: 12, background: s.label === section ? '#fff' : PX.tint, border: `2px solid ${s.label === section ? PX.gold : 'transparent'}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{s.short} <span style={{ fontWeight: 400 }}>· {range(s)}</span></div>
-                <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`}</div>
-                <div style={{ fontSize: 11, color: PX.sub }}>{ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'}</div>
-                {openNotes(testNo, s.label) > 0 && <div style={{ fontSize: 11, color: PX.warn, fontWeight: 700 }}>💬 {openNotes(testNo, s.label)} open note{openNotes(testNo, s.label) > 1 ? 's' : ''}</div>}
-                {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : (byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q) ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
+              <button key={s.label} type="button" className={'msb-tile' + (on ? ' on' : '')} aria-pressed={on} onClick={() => setSection(s.label)} style={{ '--c': hue }}>
+                <div className="top"><span className="mk">{String(s.short).slice(0, 2)}</span><span className="rg">{s.short}<small>{range(s)}</small></span></div>
+                <div className="num" style={{ color: st === 'none' ? '#8a93a6' : undefined }}>{label}</div>
+                <div className="tr"><i style={{ width: Math.min(100, s.q ? (n / s.q) * 100 : 0) + '%' }} /></div>
+                <div className="st">
+                  {verified ? <span className="p ok"><Icon name="check" size={12} stroke={2.6} />Verified</span> : full ? <span className="p warn">Awaiting verification</span> : n ? <span className="p info">In progress</span> : <span className="p mute">Not started</span>}
+                  {openNotes(testNo, s.label) > 0 && <span className="p warn">{openNotes(testNo, s.label)} note{openNotes(testNo, s.label) > 1 ? 's' : ''}</span>}
+                </div>
+                <div className="who">{who}</div>
               </button>
             )
           })}
         </div>
-        </div>
-      </PremiumCard>
+      </div>
 
 
       {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}
