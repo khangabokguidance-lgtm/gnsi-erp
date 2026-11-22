@@ -1,12 +1,15 @@
-// MissionSainikShell.jsx — Android-style app shell for the Mission Sainik module:
-// top app bar, bottom navigation (phones) / navigation rail (desktop), an "All tabs" bottom sheet, snackbar, FAB and confetti.
+// MissionSainikShell.jsx — formal portal shell for the Mission Sainik module (government-portal design language):
+// utility bar (accessibility controls), official-style header with emblem, breadcrumb bar, grouped side navigation,
+// page heading, footer, plus a phone layout with bottom navigation, an "All sections" sheet, toast, FAB and confetti.
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNoPullToRefresh } from './lib/useNoPullToRefresh'
 import { NAV_GROUPS } from './lib/missionSainikNav'
+import { Icon, hasIcon, Emblem } from './MissionSainikIcons'
 
-const BOTTOM = [['overview', '🏠', 'Home'], ['mine', '✅', 'Tasks'], ['prebuilder', '🧱', 'Build'], ['insights', '💡', 'Insights']]
+const BOTTOM = [['overview', 'Home'], ['mine', 'Tasks'], ['prebuilder', 'Build'], ['insights', 'Insights']]
+const ACTION_ICON = { 'Print notice': 'print', Refresh: 'refresh' }
 
-// What each section is for — shown in search results and used as search keywords.
+// What each section is for — shown in search results, page headings and used as search keywords.
 const HINTS = {
   overview: 'Dashboard, countdown, what needs attention', schedule: 'Test dates and deadlines calendar', mock: 'Mock series list and results', allotment: 'Who sets which paper',
   syllabus: 'Chapter plan for each test', panel: 'Teachers, setters, verifiers', students: 'All Sainik and Combined course students, photos, print', mine: 'My assigned tasks, submit and verify', practice: 'Practice sets and questions',
@@ -19,164 +22,209 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } },
 }
 
+// A section's icon: the line icon when one exists, otherwise whatever glyph the nav map supplied.
+const Ico = ({ id, fallback, size = 20 }) => (hasIcon(id) ? <Icon name={id} size={size} /> : <span style={{ fontSize: size - 2, lineHeight: 1 }}>{fallback}</span>)
+
 const CSS = `
-/* ── Comfort baseline: calmer surfaces, easier-to-read text, friendlier controls ── */
-.msx{--bg:#f4f6fa;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
-.msx ::selection{background:rgba(184,146,58,.28)}
-.msx-main{font-size:15px;line-height:1.5}
-.msx-main .px-card{margin-bottom:16px;border-radius:20px;border-color:#ebe6da;box-shadow:0 1px 2px rgba(19,42,79,.04),0 10px 28px -20px rgba(19,42,79,.28)}
-.msx-main .px-card-h{padding:16px 20px}.msx-main .px-card-t{font-size:17px;letter-spacing:.005em}.msx-main .px-card-s{font-size:13px;line-height:1.45;color:#56647c}
-.msx-main .px-input,.msx-main select,.msx-main textarea{font-size:15px;padding:11px 14px;border-radius:12px;border:1.5px solid #ddd6c6;background:#fff;transition:border-color .15s,box-shadow .15s}
-.msx-main .px-input:hover,.msx-main select:hover,.msx-main textarea:hover{border-color:#cbbf9f}
-.msx-main .px-input:focus,.msx-main select:focus,.msx-main textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px rgba(184,146,58,.18)}
-.msx-main ::placeholder{color:#7c869a;opacity:1}
-.msx-main input[type=checkbox],.msx-main input[type=radio]{width:19px;height:19px;accent-color:var(--navy);cursor:pointer}
-.msx-main .px-btn,.msx-main .px-hbtn{min-height:42px;font-size:14px;border-radius:12px;transition:transform .12s,box-shadow .15s,background .15s,filter .15s}
-.msx-main .px-btn:hover:not(:disabled){filter:brightness(1.06);box-shadow:0 6px 16px -8px rgba(19,42,79,.5)}.msx-main .px-btn:active:not(:disabled),.msx-main .px-hbtn:active{transform:scale(.97)}
-.msx-main .px-btn:disabled{opacity:.5;cursor:not-allowed}
-.msx-main .px-table th{font-size:11.5px;letter-spacing:.07em;padding:13px 16px}.msx-main .px-table td{font-size:14.5px}
-.msx-main .px-table tbody tr{transition:background .12s}.msx-main .px-table tbody tr:hover{background:#faf6ea}
-.msx-main .px-tabs{gap:4px}.msx-main .px-tab{font-size:14px;padding:9px 15px;border-radius:11px;transition:background .15s,color .15s}
-.msx-main button:disabled{cursor:not-allowed}
-.msx-main *{scrollbar-width:thin;scrollbar-color:#cfd6e4 transparent}
-.msx-main details>summary{cursor:pointer;padding:6px 0}
-.msx-snack{font-size:14.5px;line-height:1.4;border-radius:16px}.msx-snack.ok{background:#14532d}.msx-snack.bad{background:#7f1d1d}
-.msx-ri{font-size:14.5px;padding:11px 14px}.msx-ri.on{box-shadow:inset 3px 0 0 var(--gold)}
-@media (max-width:700px){.msx-main{padding:12px 10px 92px}.msx-main .px-card-h{padding:14px 16px}.msx-bi{font-size:12px}}
-.msx-disp{position:fixed;top:64px;right:10px;z-index:80;width:min(320px,calc(100vw - 20px));background:#fff;border-radius:20px;padding:16px;box-shadow:0 16px 48px rgba(10,20,40,.35);animation:msx-up .2s both;color:var(--ink)}
-.msx-disp h3{margin:0 0 2px;font-size:16px}.msx-disp p{margin:0 0 10px;font-size:12px;color:var(--sub)}.msx-disp h5{margin:12px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub)}
-.msx-seg{display:flex;gap:4px;background:#f1ede3;border-radius:12px;padding:3px}.msx-seg button{flex:1;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:700;color:var(--sub);background:transparent}
-.msx-seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(15,27,46,.18)}
-.msx[data-size=lg] .msx-main,.msx[data-size=lg] .msx-rail{zoom:1.12}.msx[data-size=xl] .msx-main,.msx[data-size=xl] .msx-rail{zoom:1.26}
-.msx[data-comfort=roomy] .msx-main .px-card,.msx[data-comfort=roomy] .msx-main .px-table td{line-height:1.6}.msx[data-comfort=roomy] .msx-main button,.msx[data-comfort=roomy] .msx-main input,.msx[data-comfort=roomy] .msx-main select{min-height:44px}
-html.msx-warm{filter:sepia(.2) brightness(.97) saturate(.95)}
-html.msx-dark{filter:invert(.9) hue-rotate(180deg);background:#fff}html.msx-dark img,html.msx-dark video,html.msx-dark iframe,html.msx-dark canvas{filter:invert(1) hue-rotate(180deg)}
-@media print{html.msx-warm,html.msx-dark{filter:none!important}}
-.msx-find{position:relative;margin:0 4px 6px}.msx-find input{width:100%;height:42px;border-radius:999px;border:1.5px solid #d9d2c2;background:#fff;padding:0 40px 0 38px;font:600 14px inherit;font-family:inherit;color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
-.msx-find input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,146,58,.2)}.msx-find .ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:15px;opacity:.6}
-.msx-find kbd{position:absolute;right:12px;top:50%;transform:translateY(-50%);font:700 11px inherit;font-family:inherit;color:var(--sub);border:1px solid #d9d2c2;border-radius:6px;padding:1px 6px;background:#faf8f3}
-.msx-find .x{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;font-size:16px;color:var(--sub)}
-.msx-res{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:14px;text-align:left;animation:msx-fade .15s both}.msx-res:hover,.msx-res.hi{background:#f6efdc}
-.msx-res b{display:block;font-size:14px;color:var(--ink)}.msx-res small{display:block;font-size:12px;color:var(--sub);margin-top:1px}.msx-res .ic{font-size:22px;width:38px;height:38px;border-radius:12px;background:#eef2f9;display:flex;align-items:center;justify-content:center;flex:none}
-.msx-pin{width:28px;height:28px;border-radius:50%;font-size:15px;color:#b8b2a2;flex:none;margin-left:auto}.msx-pin.on{color:var(--gold)}.msx-pin:hover{background:rgba(184,146,58,.15)}
-.msx-ri .msx-pin{opacity:0;transition:opacity .15s}.msx-ri:hover .msx-pin,.msx-ri .msx-pin.on{opacity:1}
-.msx-tile{position:relative}.msx-tile .msx-pin{position:absolute;top:2px;right:6px;width:24px;height:24px;font-size:13px;margin:0;opacity:.85}
-.msx-sheet .msx-sticky{position:sticky;top:-10px;z-index:2;background:#fff;padding:2px 0 8px}
-.msx button:focus-visible,.msx input:focus-visible{outline:2.5px solid var(--gold);outline-offset:2px}
-.msx-ri{transition:background .15s,transform .12s,padding-left .15s}.msx-ri:hover{padding-left:18px}
-html{scroll-behavior:smooth}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
-.msx{--navy:#132a4f;--navy2:#1e3a6e;--gold:#b8923a;--goldlt:#e9d9b0;--bg:#f2f4f8;--card:#fff;--ink:#0f1b2e;--sub:#5d6b82;--ok:#0f7a4c;--bad:#b42318;
-  font-family:'Plus Jakarta Sans','Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;position:relative;-webkit-tap-highlight-color:transparent}
+.msx{--navy:#132a4f;--navy2:#1e3a6e;--blue:#1d4f91;--gold:#b8923a;--goldlt:#e9d9b0;--bg:#eef1f6;--card:#fff;--ink:#0f1b2e;--sub:#4d5b73;--ok:#0f7a4c;--bad:#b42318;--line:#d5dbe6;--tint:#e8eef8;
+  font-family:'Noto Sans','Inter','Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;position:relative;-webkit-tap-highlight-color:transparent;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 .msx *{box-sizing:border-box}
 .msx button{font-family:inherit}
-.msx-tap{cursor:pointer;border:0;background:none;position:relative;overflow:hidden;transition:transform .12s,background .15s}
-.msx-tap:active{transform:scale(.96)}
-.msx-top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:6px;height:60px;padding:0 8px 0 6px;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;box-shadow:0 4px 18px rgba(14,32,63,.35)}
-.msx-top h1{flex:1;margin:0;font-size:19px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.msx-top h1 small{display:block;font-size:11px;font-weight:600;color:var(--goldlt);letter-spacing:.12em;text-transform:uppercase}
-.msx-ic{width:44px;height:44px;border-radius:50%;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}
-.msx-ic:hover{background:rgba(255,255,255,.12)}
-.msx-body{display:flex;max-width:1280px;margin:0 auto}
-.msx-rail{display:none;width:230px;flex:none;padding:14px 10px 40px;position:sticky;top:60px;height:calc(100vh - 60px);overflow:auto}
-.msx-rail h4{margin:14px 10px 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
-.msx-ri{display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink);text-align:left}
-.msx-ri:hover{background:#e6ebf4}.msx-ri.on{background:var(--goldlt);color:var(--navy)}
-.msx-main.has-fab{padding-bottom:150px}
-.msx-main .px-table.msx-compact th,.msx-main .px-table.msx-compact td{padding:12px 9px;font-size:13.5px}
-.msx-main .px-table.msx-sched{width:100%}.msx-main .px-table.msx-sched th{padding:11px 7px;letter-spacing:.04em;font-size:10px;white-space:normal;line-height:1.25}.msx-main .px-table.msx-sched td{padding:10px 7px;font-size:13px;white-space:normal}.msx-main .px-table.msx-sched td.nw{white-space:nowrap}.msx-sched .sc-sec{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.msx-sched .sc-sec small{flex-basis:100%;color:#5d6b82;font-size:11px}
-.msx-rail{transition:width .2s ease}
-.msx-rail-tg{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 0 6px auto;border-radius:10px;color:var(--sub);font-size:16px;font-weight:800}.msx-rail-tg:hover{background:#e6ebf4}
-.msx-rail.slim{width:68px;padding-inline:8px}.msx-rail.slim .msx-rail-tg{margin-inline:auto}
-.msx-rail.slim .msx-find,.msx-rail.slim .msx-lbl,.msx-rail.slim .msx-pin{display:none}
-.msx-rail.slim h4{height:1px;margin:10px 12px;padding:0;font-size:0;background:#e3dcc8}
-.msx-rail.slim .msx-ri{position:relative;justify-content:center;padding:10px 0;gap:0;border-radius:14px}
+.msx ::selection{background:rgba(29,79,145,.22)}
+.msx-tap{cursor:pointer;border:0;background:none;position:relative;transition:background .15s,color .15s,border-color .15s,box-shadow .15s}
+.msx button:focus-visible,.msx input:focus-visible,.msx a:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msx-skip{position:absolute;left:8px;top:-60px;z-index:100;background:#fff;color:var(--navy);font-weight:700;padding:10px 16px;border-radius:6px;border:2px solid var(--navy);text-decoration:none}.msx-skip:focus{top:8px}
+
+/* ── Utility bar: accessibility controls, as on official portals ── */
+.msx-util{display:flex;align-items:center;gap:14px;min-height:36px;padding:4px 18px;background:#0b1c36;color:#cdd8ec;font-size:12.5px}
+.msx-util .org{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}.msx-util .org b{color:#fff;font-weight:600}
+.msx-util .grp{display:flex;align-items:center;gap:4px}.msx-util .sep{width:1px;height:16px;background:rgba(255,255,255,.22)}
+.msx-util button{background:transparent;box-shadow:none;min-width:30px;height:28px;padding:0 8px;border-radius:4px;color:#e6edf9;font-size:12.5px;font-weight:700;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.msx-util button:hover{background:rgba(255,255,255,.12)}.msx-util button:not(.sw)[aria-pressed=true]{background:#fff;color:var(--navy)}
+.msx-util button.sw{width:20px;min-width:20px;height:20px;padding:0;border-radius:50%;border:2px solid #8fa3c4}.msx-util .sw[aria-pressed=true]{border-color:#f2c94c;box-shadow:0 0 0 2px rgba(242,201,76,.35)}
+.msx-util a.lnk{color:#e6edf9;text-decoration:none;font-weight:600}.msx-util a.lnk:hover{text-decoration:underline}
+
+/* ── Header: emblem + programme name ── */
+.msx-top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;min-height:72px;padding:8px 20px;background:#fff;color:var(--navy);border-bottom:3px solid var(--gold);box-shadow:0 2px 10px rgba(11,28,54,.08)}
+.msx-brand{display:flex;align-items:center;gap:13px;min-width:0;flex:1;text-align:left}
+.msx-brand .t{min-width:0}.msx-brand h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.01em;line-height:1.15;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msx-brand small{display:block;margin-top:3px;font-size:12px;font-weight:600;color:var(--sub);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msx-acts{display:flex;align-items:center;gap:8px}
+.msx-act{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid #b9c4d8;border-radius:6px;background:#fff;color:var(--navy);font-size:13.5px;font-weight:600}
+.msx-act:hover{background:var(--tint);border-color:var(--blue)}
+.msx-act.ic{width:40px;padding:0;justify-content:center}
+.msx-find-mobile{display:none}
+
+/* ── Breadcrumb ── */
+.msx-crumbs{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;padding:0 24px;min-height:40px;background:#e1e8f3;border-bottom:1px solid var(--line);font-size:13px;color:var(--sub);white-space:nowrap}
+.msx-crumbs button{color:var(--blue);font-weight:600;padding:6px 2px;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}.msx-crumbs button:hover{color:var(--navy);text-decoration-thickness:2px}
+.msx-crumbs .cur{color:var(--ink);font-weight:700;overflow:hidden;text-overflow:ellipsis}.msx-crumbs .sp{opacity:.55;flex:none}
+
+/* ── Layout ── */
+.msx-body{display:flex;max-width:1440px;margin:0 auto;align-items:flex-start}
+.msx-slot{display:none;flex:none;position:sticky;top:75px;align-self:flex-start;height:calc(100vh - 75px);z-index:20}
+.msx-rail{display:block;width:268px;height:100%;padding:14px 12px 40px;overflow:auto;background:#fff;border-right:1px solid var(--line);transition:width .2s ease}
+.msx-rail h4{margin:16px 8px 6px;padding-bottom:6px;font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--tint)}
+.msx-ri{display:flex;align-items:center;gap:12px;width:100%;min-height:42px;padding:9px 12px;border-radius:6px;font-size:14px;font-weight:600;color:#26354f;text-align:left}
+.msx-ri svg{color:#5a6b87}
+.msx-ri:hover{background:#f0f4fa;color:var(--navy)}
+.msx-ri.on{background:var(--tint);color:var(--navy);font-weight:700;box-shadow:inset 4px 0 0 var(--navy)}.msx-ri.on svg{color:var(--navy)}
+.msx-rail-tg{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:34px;margin:0 0 8px;border:1px solid var(--line);border-radius:6px;color:var(--sub);font-size:12.5px;font-weight:700}.msx-rail-tg:hover{background:#f0f4fa;color:var(--navy)}
+.msx-rail.slim{width:68px;padding-inline:8px}.msx-rail.slim .msx-find,.msx-rail.slim .msx-lbl,.msx-rail.slim .msx-pin,.msx-rail.slim .tgl{display:none}
+.msx-rail.slim h4{height:1px;margin:10px 10px;padding:0;font-size:0;border:0;background:var(--line)}
+.msx-rail.slim .msx-ri{position:relative;justify-content:center;padding:10px 0}
 .msx-rail.slim .msx-ri .msx-badge{position:absolute!important;top:2px;right:6px;margin:0!important}
-.msx-main{flex:1;min-width:0;padding:14px 12px 120px;animation:msx-in .28s ease backwards}
-.msx-main .px-card{border-radius:22px;border:1px solid #ece6d6;box-shadow:0 4px 22px rgba(19,42,79,.07);overflow:hidden}
-/* Premium data tables */
+.msx-main{flex:1;min-width:0;padding:22px 24px 48px;font-size:15px;line-height:1.55;animation:msx-in .25s ease backwards}
+.msx-main.has-fab{padding-bottom:150px}
+.msx.wide .msx-body{max-width:none}
+.msx:fullscreen{overflow:auto;height:100%;background:var(--bg)}
+
+/* ── Page heading ── */
+.msx-ph{margin:0 0 20px;padding-bottom:14px;border-bottom:1px solid var(--line);position:relative}
+.msx-ph::after{content:'';position:absolute;left:0;bottom:-1px;width:72px;height:3px;background:var(--gold)}
+.msx-ph .kick{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}
+.msx-ph h2{margin:2px 0 4px;font-size:27px;line-height:1.2;font-weight:800;color:var(--navy);letter-spacing:-.005em}
+.msx-ph p{margin:0;font-size:14.5px;color:var(--sub);max-width:70ch}
+
+/* ── Footer ── */
+.msx-foot{margin-top:8px;background:#0b1c36;color:#b9c6df;font-size:12.5px}
+.msx-foot .in{max-width:1440px;margin:0 auto;padding:18px 24px;display:flex;justify-content:space-between;gap:12px 28px;flex-wrap:wrap;align-items:center}
+.msx-foot b{color:#fff;font-weight:700}.msx-foot .gold{height:3px;background:linear-gradient(90deg,var(--gold),#e6c35e 50%,var(--gold))}
+
+/* ── Content surfaces: flat, bordered, small radius ── */
+.msx-main .px-card{margin-bottom:18px;border-radius:8px;border:1px solid var(--line);background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.06);overflow:hidden}
+.msx-main .px-card-h{padding:14px 20px;background:#f6f8fc;border-bottom:1px solid var(--line)}
+.msx-main .px-card-h .bar{width:4px;border-radius:0;background:var(--navy)}
+.msx-main .px-card-t{font-family:inherit;font-size:16.5px;font-weight:700;color:var(--navy);letter-spacing:0}
+.msx-main .px-card-s{font-size:13px;line-height:1.45;color:var(--sub)}
+.msx-main .px-input,.msx-main select,.msx-main textarea{font-size:15px;padding:10px 13px;border-radius:6px;border:1.5px solid #b4bfd2;background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.msx-main .px-input:hover,.msx-main select:hover,.msx-main textarea:hover{border-color:#8091ad}
+.msx-main .px-input:focus,.msx-main select:focus,.msx-main textarea:focus{outline:none;border-color:var(--blue)!important;box-shadow:0 0 0 3px rgba(29,79,145,.22)!important}
+.msx-main ::placeholder{color:#76839a;opacity:1}
+.msx-main input[type=checkbox],.msx-main input[type=radio]{width:19px;height:19px;accent-color:var(--navy);cursor:pointer}
+.msx-main .px-btn,.msx-main .px-hbtn{min-height:42px;font-size:14px;border-radius:6px;transition:background .15s,box-shadow .15s,filter .15s}
+.msx-main .px-btn{background:var(--navy);box-shadow:none;border:1px solid var(--navy)}
+.msx-main .px-btn:hover:not(:disabled){background:var(--blue);filter:none;box-shadow:0 2px 6px rgba(19,42,79,.3)}
+.msx-main .px-btn.ghost{background:#fff;color:var(--navy);border:1px solid #9fb0cb}.msx-main .px-btn.ghost:hover:not(:disabled){background:var(--tint)}
+.msx-main .px-btn.gold{background:var(--gold);border-color:#9c7a2b;color:#fff}.msx-main .px-btn.gold:hover:not(:disabled){background:#a07f2f}
+.msx-main .px-btn:disabled{opacity:.5;cursor:not-allowed}
+.msx-main .px-hbtn{background:#fff;color:var(--navy);border:1px solid #9fb0cb;height:38px;box-shadow:none}
+.msx-main .px-hbtn:hover{background:var(--tint);transform:none}
+.msx-main .px-tabs{gap:2px;padding:0;background:transparent;border:0;border-bottom:2px solid var(--line);border-radius:0;box-shadow:none}
+.msx-main .px-tab{font-size:14px;padding:11px 16px;border-radius:6px 6px 0 0;color:var(--sub);margin-bottom:-2px;border-bottom:3px solid transparent}
+.msx-main .px-tab:hover{background:#f0f4fa;color:var(--navy)}
+.msx-main .px-tab.on{background:#fff;color:var(--navy);font-weight:700;box-shadow:none;border-bottom-color:var(--navy)}.msx-main .px-tab.on svg{color:var(--navy)}
+.msx-main button:disabled{cursor:not-allowed}
+.msx-main *{scrollbar-width:thin;scrollbar-color:#b7c2d6 transparent}
+.msx-main details>summary{cursor:pointer;padding:6px 0}
+.msx-main select,.msx-main input[type=file]{background:#fff;color:var(--ink)}.msx-main input[type=file]{padding:8px!important}
+
+/* Data tables: tinted header, strong rule, zebra rows */
 .msx-main .px-table{border-collapse:separate;border-spacing:0}
-.msx-main .px-table th{background:linear-gradient(180deg,#fbf7ea,#f3ebd5);color:#6b5a2a;border-bottom:2px solid #e0b95a;padding:14px 16px;font-size:10.5px;letter-spacing:.12em}
-.msx-main .px-table td{padding:14px 16px;border-bottom:1px solid #f1ece0;font-variant-numeric:tabular-nums;transition:background .15s;white-space:nowrap}
-.msx-main .px-table tbody tr:nth-child(even) td{background:#fdfbf6}
-.msx-main .px-table tbody tr:hover td{background:#f9f1da}
+.msx-main .px-table th{background:#e4ebf6;color:#10305f;border-bottom:2px solid var(--blue);padding:12px 16px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.msx-main .px-table td{padding:12px 16px;border-bottom:1px solid #e3e8f0;font-size:14.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.msx-main .px-table tbody tr:nth-child(even) td{background:#f8fafd}
+.msx-main .px-table tbody tr:hover td{background:#eaf1fb}
 .msx-main .px-table tbody tr:last-child td{border-bottom:0}
-.msx-main .px-table td:first-child{font-weight:800;color:var(--navy)}
-.msx-main .px-table td.msx-click{cursor:pointer}
-.msx-main .px-table td.msx-click:hover{background:#f5e9c4!important;box-shadow:inset 0 0 0 2px #e0b95a;border-radius:6px}
-.msx-main .px-table.msx-allot td{padding:8px 6px;vertical-align:middle}
-.msx-allot .msx-acell{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #efe8d4;border-radius:12px;padding:7px 9px;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s}
-.msx-main .msx-allot td.msx-click:hover{background:transparent!important;box-shadow:none}
-.msx-allot td.msx-click:hover .msx-acell{border-color:#e0b95a;box-shadow:0 5px 14px rgba(184,146,58,.28);transform:translateY(-1px)}
-.msx-allot .msx-adate{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:99px;background:#f6efdc;color:#6b5a2a;font-size:11px;font-weight:700}
-.msx-main .msx-allot tbody tr:nth-child(even) td{background:transparent}
-.msx-main .msx-allot tbody tr:hover td{background:transparent}
-.msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:11px;font-size:12.5px;background:#fff;border:1px solid #e6dfcc;transition:border-color .15s,box-shadow .15s}
-.msx-main .px-table input.px-input:focus{outline:0;border-color:#b8923a;box-shadow:0 0 0 3px rgba(184,146,58,.22)}
-.msx-main .px-table input.px-input::placeholder{color:#b3ab98}
-/* The module's inner screens were designed for a dark hero; on light cards their .px-hbtn buttons need a light skin. */
-.msx-main .px-hbtn{background:#fff;color:var(--navy);border:1px solid #d9d2c2;height:38px;box-shadow:0 1px 2px rgba(19,42,79,.08)}
-.msx-main .px-hbtn:hover{background:#f6efdc;transform:none}
-.msx-main select,.msx-main input[type=file]{background:#fff;color:var(--ink)}
-.msx-main input[type=file]{padding:8px!important}
+.msx-main .px-table td:first-child{font-weight:700;color:var(--navy)}
 .msx-main .px-table td:first-child,.msx-main .px-table th:first-child{white-space:nowrap}
-.msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:1px solid #e3e7ef;padding:4px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(14,32,63,.10)}
-.msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10.5px;font-weight:600;color:var(--sub);padding:1px 0}
-.msx-pill{position:relative;width:54px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:background .2s,transform .2s}
-.msx-bi.on{color:var(--navy);font-weight:800}.msx-bi.on .msx-pill{background:var(--goldlt);transform:scale(1.05)}
+.msx-main .px-table td.msx-click{cursor:pointer}
+.msx-main .px-table td.msx-click:hover{background:#dce8f8!important;box-shadow:inset 0 0 0 2px var(--blue);border-radius:4px}
+.msx-main .px-table.msx-compact th,.msx-main .px-table.msx-compact td{padding:11px 9px;font-size:13.5px}
+.msx-main .px-table.msx-sched{width:100%}.msx-main .px-table.msx-sched th{padding:11px 7px;letter-spacing:.03em;font-size:10.5px;white-space:normal;line-height:1.25}.msx-main .px-table.msx-sched td{padding:10px 7px;font-size:13px;white-space:normal}.msx-main .px-table.msx-sched td.nw{white-space:nowrap}.msx-sched .sc-sec{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.msx-sched .sc-sec small{flex-basis:100%;color:var(--sub);font-size:11px}
+.msx-main .px-table.msx-allot td{padding:8px 6px;vertical-align:middle}
+.msx-allot .msx-acell{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #d9e0ec;border-radius:6px;padding:7px 9px;transition:border-color .15s,box-shadow .15s}
+.msx-main .msx-allot td.msx-click:hover{background:transparent!important;box-shadow:none}
+.msx-allot td.msx-click:hover .msx-acell{border-color:var(--blue);box-shadow:0 3px 10px rgba(29,79,145,.22)}
+.msx-allot .msx-adate{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:4px;background:var(--tint);color:#10305f;font-size:11px;font-weight:700}
+.msx-main .msx-allot tbody tr:nth-child(even) td,.msx-main .msx-allot tbody tr:hover td{background:transparent}
+.msx-main .px-table input.px-input{height:36px;padding:0 11px;border-radius:6px;font-size:13px;background:#fff;border:1px solid #b4bfd2}
+.msx-main .px-table input.px-input:focus{outline:0}
+.msx-main .px-table input.px-input::placeholder{color:#9aa5b8}
+
+/* ── Search ── */
+.msx-find{position:relative;margin:0 0 8px}.msx-find input{width:100%;height:42px;border-radius:6px;border:1.5px solid #b4bfd2;background:#fff;padding:0 42px 0 38px;font:600 14px inherit;font-family:inherit;color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.msx-find input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,79,145,.2)}.msx-find .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#5a6b87;display:flex}
+.msx-find kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:700 11px inherit;font-family:inherit;color:var(--sub);border:1px solid #b4bfd2;border-radius:4px;padding:1px 6px;background:#f4f6fa}
+.msx-find .x{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:4px;font-size:18px;color:var(--sub)}
+.msx-res{display:flex;align-items:center;gap:12px;width:100%;padding:9px 10px;border-radius:6px;text-align:left;animation:msx-fade .15s both}.msx-res:hover,.msx-res.hi{background:var(--tint)}
+.msx-res b{display:block;font-size:14px;color:var(--ink)}.msx-res small{display:block;font-size:12px;color:var(--sub);margin-top:1px}.msx-res .ic{width:38px;height:38px;border-radius:6px;background:var(--tint);color:var(--navy);display:flex;align-items:center;justify-content:center;flex:none}
+.msx-pin{width:28px;height:28px;border-radius:4px;font-size:15px;color:#a9b3c6;flex:none;margin-left:auto;display:inline-flex;align-items:center;justify-content:center}.msx-pin.on{color:var(--gold)}.msx-pin:hover{background:rgba(184,146,58,.16)}
+.msx-ri .msx-pin{opacity:0;transition:opacity .15s}.msx-ri:hover .msx-pin,.msx-ri .msx-pin.on,.msx-ri:focus-within .msx-pin{opacity:1}
+.msx-tile{position:relative}.msx-tile .msx-pin{position:absolute;top:2px;right:6px;width:24px;height:24px;font-size:13px;margin:0;opacity:.85}
+.msx-sheet .msx-sticky{position:sticky;top:-10px;z-index:2;background:#fff;padding:2px 0 8px}
+
+/* ── Phone chrome ── */
 .msx-badge{position:absolute;top:-3px;right:6px;min-width:17px;height:17px;border-radius:9px;background:var(--bad);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
-.msx-fab{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:35;display:flex;align-items:center;gap:8px;height:56px;padding:0 20px;border-radius:18px;background:var(--gold);color:#fff;font-weight:800;font-size:14px;box-shadow:0 10px 24px rgba(184,146,58,.55)}
-.msx-scrim{position:fixed;inset:0;z-index:50;background:rgba(10,20,40,.5);animation:msx-fade .2s both}
-.msx-sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-height:86vh;overflow:auto;background:#fff;border-radius:28px 28px 0 0;padding:10px 16px calc(24px + env(safe-area-inset-bottom));animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both;box-shadow:0 -12px 40px rgba(0,0,0,.25)}
-.msx-sheet .grab{width:42px;height:5px;border-radius:3px;background:#cfd6e4;margin:2px auto 12px}
-.msx-sheet h4{margin:14px 4px 8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
+.msx-bottom{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:#fff;border-top:2px solid var(--navy);padding:2px 2px calc(4px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(14,32,63,.12)}
+.msx-bi{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--sub);padding:5px 0 2px;border-top:3px solid transparent;margin-top:-2px}
+.msx-pill{position:relative;display:flex;align-items:center;justify-content:center;height:26px}
+.msx-bi.on{color:var(--navy);font-weight:800;border-top-color:var(--gold)}
+.msx-fab{position:fixed;right:18px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:35;display:flex;align-items:center;gap:8px;height:48px;padding:0 20px;border-radius:6px;background:var(--navy);color:#fff;font-weight:700;font-size:14px;border:2px solid var(--gold);box-shadow:0 8px 20px rgba(11,28,54,.4)}
+.msx-fab:hover{background:var(--blue)}
+.msx-scrim{position:fixed;inset:0;z-index:50;background:rgba(8,18,38,.55);animation:msx-fade .2s both}
+.msx-sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-height:86vh;overflow:auto;background:#fff;border-radius:14px 14px 0 0;border-top:4px solid var(--gold);padding:10px 16px calc(24px + env(safe-area-inset-bottom));animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both;box-shadow:0 -12px 40px rgba(0,0,0,.25)}
+.msx-sheet .grab{width:42px;height:4px;border-radius:2px;background:#c3cde0;margin:2px auto 12px}
+.msx-sheet h4{margin:16px 2px 8px;padding-bottom:5px;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--tint)}
 .msx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.msx-tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 2px;border-radius:18px;font-size:11.5px;font-weight:700;color:var(--ink);text-align:center}
-.msx-tile span{width:52px;height:52px;border-radius:18px;background:#eef2f9;display:flex;align-items:center;justify-content:center;font-size:25px}
-.msx-tile.on span{background:var(--goldlt);box-shadow:0 0 0 2px var(--gold)}
-.msx-snack{position:fixed;left:12px;right:12px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:60;margin:0 auto;max-width:520px;padding:13px 16px;border-radius:14px;font-size:13.5px;font-weight:600;color:#fff;background:#243049;box-shadow:0 8px 24px rgba(0,0,0,.3);animation:msx-up .25s both}
-.msx-snack.bad{background:#8f1d14}.msx-snack.ok{background:#14633f}
+.msx-tile{display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 2px;border-radius:8px;font-size:11.5px;font-weight:700;color:var(--ink);text-align:center}
+.msx-tile span.i{width:50px;height:50px;border-radius:8px;background:var(--tint);color:var(--navy);display:flex;align-items:center;justify-content:center}
+.msx-tile.on span.i{background:var(--navy);color:#fff}
+.msx-snack{position:fixed;left:12px;right:12px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:60;margin:0 auto;max-width:520px;padding:13px 16px;border-radius:6px;border-left:6px solid #7ea6e6;font-size:14.5px;line-height:1.4;font-weight:600;color:#fff;background:#1c2b46;box-shadow:0 8px 24px rgba(0,0,0,.3);animation:msx-up .25s both}
+.msx-snack.bad{background:#7f1d1d;border-left-color:#f08c82}.msx-snack.ok{background:#14532d;border-left-color:#6dd49d}
 .msx-confetti{position:fixed;inset:0;z-index:70;pointer-events:none;overflow:hidden}
 .msx-confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:msx-fall 1.7s ease-in forwards}
 .msx-overlay{align-items:flex-end!important}
-.msx-dialog{border-radius:26px 26px 0 0!important;width:100%!important;max-width:560px!important;animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both}
+.msx-dialog{border-radius:14px 14px 0 0!important;width:100%!important;max-width:560px!important;animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both}
+
+/* ── Display settings popover ── */
+.msx-disp{position:fixed;top:44px;right:12px;z-index:80;width:min(330px,calc(100vw - 24px));background:#fff;border-radius:8px;border:1px solid var(--line);border-top:4px solid var(--gold);padding:16px;box-shadow:0 16px 48px rgba(10,20,40,.35);animation:msx-up .2s both;color:var(--ink)}
+.msx-disp h3{margin:0 0 2px;font-size:16px;color:var(--navy)}.msx-disp p{margin:0 0 10px;font-size:12.5px;color:var(--sub)}.msx-disp h5{margin:12px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--sub)}
+.msx-seg{display:flex;gap:3px;background:#e9eef6;border-radius:6px;padding:3px}.msx-seg button{flex:1;padding:9px 4px;border-radius:4px;font-size:13px;font-weight:700;color:var(--sub);background:transparent}
+.msx-seg button.on{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(15,27,46,.22)}
+.msx[data-size=lg] .msx-main,.msx[data-size=lg] .msx-rail{zoom:1.12}.msx[data-size=xl] .msx-main,.msx[data-size=xl] .msx-rail{zoom:1.26}
+.msx[data-comfort=roomy] .msx-main .px-card,.msx[data-comfort=roomy] .msx-main .px-table td{line-height:1.65}.msx[data-comfort=roomy] .msx-main button,.msx[data-comfort=roomy] .msx-main input,.msx[data-comfort=roomy] .msx-main select{min-height:44px}
+html.msx-warm{filter:sepia(.2) brightness(.97) saturate(.95)}
+html.msx-dark{filter:invert(.9) hue-rotate(180deg);background:#fff}html.msx-dark img,html.msx-dark video,html.msx-dark iframe,html.msx-dark canvas{filter:invert(1) hue-rotate(180deg)}
+@media print{html.msx-warm,html.msx-dark{filter:none!important}.msx-util,.msx-top,.msx-crumbs,.msx-slot,.msx-bottom,.msx-foot,.msx-fab,.msx-ph{display:none!important}}
+
+@keyframes msx-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes msx-up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@keyframes msx-fade{from{opacity:0}to{opacity:1}}
+@keyframes msx-fall{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:.9}}
+@keyframes msx-pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.msx *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+@media (min-width:900px){.msx-slot{display:block}.msx-bottom{display:none}.msx-fab{bottom:24px}.msx-snack{bottom:24px;left:auto;right:24px;margin:0}.msx-overlay{align-items:center!important}.msx-dialog{border-radius:10px!important}}
+@media (max-width:899px){.msx-find-mobile{display:inline-flex}.msx-act .lbl{display:none}.msx-act{width:40px;padding:0;justify-content:center}.msx-util .org{display:none}.msx-util{justify-content:flex-end}}
 @media (max-width:700px){
+  .msx-top{min-height:60px;padding:6px 10px;gap:8px;border-bottom-width:3px}.msx-brand{gap:9px}.msx-brand h1{font-size:18px}.msx-brand small{font-size:11px}.msx-brand svg{width:36px;height:36px}
+  .msx-crumbs{padding:0 12px;min-height:36px;font-size:12.5px}
+  .msx-util{padding:3px 8px;gap:8px}.msx-util .hide-sm{display:none}
+  .msx-main{padding:14px 12px 96px;font-size:15px}.msx-main .px-card-h{padding:13px 15px}
+  .msx-ph{margin-bottom:14px}.msx-ph h2{font-size:22px}.msx-ph p{font-size:13.5px}
+  .msx-bi{font-size:10.5px}
   /* Wide data tables become stacked cards on phones (labels come from each column's heading, set in the Shell effect). */
   .msx-main table.px-table,.msx-main table.px-table tbody{display:block;width:100%;min-width:0!important}
   .msx-main .px-table thead{display:none}
-  .msx-main .px-table tr{display:block;margin:10px;padding:6px 14px;border:1px solid #e8e3d8;border-radius:18px;background:#fff;box-shadow:0 1px 6px rgba(19,42,79,.06)}
+  .msx-main .px-table tr{display:block;margin:10px;padding:6px 14px;border:1px solid var(--line);border-left:4px solid var(--navy);border-radius:6px;background:#fff;box-shadow:0 1px 3px rgba(19,42,79,.08)}
   .msx-main .px-table td{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0!important;padding:7px 0!important;text-align:right;position:static!important;background:transparent!important;white-space:normal!important}
   .msx-main .px-table td::before{content:attr(data-label);flex:none;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);text-align:left}
-  .msx-main .px-table td:first-child{justify-content:flex-start;font-size:15.5px;font-weight:800;padding-bottom:9px!important;margin-bottom:3px;border-bottom:1px solid #eef1f6!important}
+  .msx-main .px-table td:first-child{justify-content:flex-start;font-size:15.5px;font-weight:800;padding-bottom:9px!important;margin-bottom:3px;border-bottom:1px solid #e3e8f0!important}
   .msx-main .px-table td:first-child::before,.msx-main .px-table td[data-label=""]::before{display:none}
   .msx-main .px-table td:empty{display:none}
-  /* card headers: title first, action buttons on their own row */
   .msx-main .px-card-h{flex-wrap:wrap}
   .msx-main .px-card-h>div:first-of-type{flex:1 1 calc(100% - 28px)!important}
   .msx-main .px-card-h>*:not(.bar):not(div:first-of-type){margin-left:14px}
-  .msx-top{gap:0}.msx-top .msx-ic{width:44px;height:44px;font-size:18px}.msx-top h1{font-size:18px}
   /* comfortable thumb targets; 16px inputs stop iOS zooming the page on focus */
   .msx-main .px-hbtn,.msx-main .px-btn{min-height:42px}
-  .msx-main button:not(.msm-fav):not([role=checkbox]){min-height:40px}   /* chips, pills, number buttons: 40px minimum */
+  .msx-main button:not(.msm-fav):not([role=checkbox]){min-height:40px}
   .msx-main input:not([type=checkbox]):not([type=radio]):not([type=file]),.msx-main select,.msx-main textarea{font-size:16px!important;min-height:42px!important}
-  /* clear the slimmer bottom bar */
   .msx-fab{bottom:calc(66px + env(safe-area-inset-bottom))}.msx-snack{bottom:calc(62px + env(safe-area-inset-bottom))}
   .msx-allot .msx-acell{flex-direction:row;align-items:center;gap:8px;padding:6px 10px}
   .msx-main.has-fab{padding-bottom:150px}
 }
-@keyframes msx-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes msx-up{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
-@keyframes msx-fade{from{opacity:0}to{opacity:1}}
-@keyframes msx-fall{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:.9}}
-@keyframes msx-pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
-@media (min-width:900px){.msx-rail{display:block}.msx-bottom{display:none}.msx-fab{bottom:24px}.msx-snack{bottom:24px}.msx-main{padding:22px 24px 60px}.msx-overlay{align-items:center!important}.msx-dialog{border-radius:22px!important}}
-@media (prefers-reduced-motion:reduce){.msx *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
-.msx-slot{display:none;z-index:45;position:sticky;top:60px;height:calc(100vh - 60px);width:68px;flex:none}
-@media (min-width:900px){.msx-slot{display:block}}
-.msx-slot .msx-rail{position:absolute;left:0;top:0;height:100%;z-index:45;background:var(--bg)}
-.msx-slot .msx-rail:not(.slim){box-shadow:8px 0 28px rgba(15,30,60,.2);border-radius:0 18px 18px 0}
-.msx.wide .msx-body{max-width:none}
-.msx:fullscreen{overflow:auto;height:100%;background:var(--bg)}
 `
 
 export function Confetti({ show }) {
@@ -191,9 +239,9 @@ export function Confetti({ show }) {
   )
 }
 
-export default function MissionSainikShell({ navGroups, active, onChange, title, subtitle, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
+export default function MissionSainikShell({ navGroups, active, onChange, title, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
-  const [slim, setSlim] = useState(() => true)
+  const [slim, setSlim] = useState(() => store.get('msx-rail-slim', typeof window !== 'undefined' && window.innerWidth < 1180))
   const slimRef = useRef(slim); slimRef.current = slim
   const rootRef = useRef(null)
   const [wide, setWide] = useState(() => store.get('msx-wide', false))
@@ -218,14 +266,12 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   const [recent, setRecent] = useState(() => store.get('msx-recent', []))
   const railFind = useRef(null), sheetFind = useRef(null)
   const togglePin = id => setPins(p => { const n = p.includes(id) ? p.filter(x => x !== id) : [...p, id]; store.set('msx-pins', n); return n })
-  // "/" or Ctrl+K jumps to search: the rail on desktop, the All-sections sheet on phones.
+  const openFinder = () => { if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else if (window.matchMedia('(min-width:900px)').matches) { setSlim(false); store.set('msx-rail-slim', false); setTimeout(() => railFind.current?.focus(), 220) } else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }
+  // "/" or Ctrl+K jumps to search: the side menu on desktop, the All-sections sheet on phones.
   useEffect(() => {
     const k = e => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable
-      if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
-        e.preventDefault()
-        if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) }
-      }
+      if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) { e.preventDefault(); openFinder() }
     }
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k)
   }, [])
@@ -239,13 +285,14 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   })
   const go = id => {
     try { navigator.vibrate?.(8) } catch { /* not supported */ }
-    setSheet(false); setQ(''); if (window.matchMedia('(min-width:900px)').matches) setSlim(true); onChange(id); window.scrollTo?.({ top: 0 })
+    setSheet(false); setQ(''); onChange(id); window.scrollTo?.({ top: 0 })
     setRecent(r => { const n = [id, ...r.filter(x => x !== id)].slice(0, 5); store.set('msx-recent', n); return n })
   }
   const groups = (navGroups || NAV_GROUPS).map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
   const inBottom = BOTTOM.some(b => b[0] === active)
   const flat = useMemo(() => groups.flatMap(g => g.items.map(([id, ic, label]) => ({ id, ic, label, group: g.title, hint: HINTS[id] || '' }))), [isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const byId = Object.fromEntries(flat.map(x => [x.id, x]))
+  const cur = byId[active]
   const needle = q.trim().toLowerCase()
   const results = needle ? flat.filter(x => (x.label + ' ' + x.hint + ' ' + x.group).toLowerCase().includes(needle)) : []
   const pinned = pins.map(id => byId[id]).filter(Boolean)
@@ -257,8 +304,8 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
     else if (e.key === 'Escape') { setQ(''); e.currentTarget.blur() }
   }
   const finder = (ref, placeholder) => (
-    <div className="msx-find">
-      <span className="ic" aria-hidden="true">🔍</span>
+    <div className="msx-find" role="search">
+      <span className="ic" aria-hidden="true"><Icon name="search" size={17} /></span>
       <input ref={ref} type="search" value={q} onChange={e => { setQ(e.target.value); setHi(0) }} onKeyDown={onFindKey} placeholder={placeholder} aria-label="Find a section" enterKeyHint="go" />
       {q ? <button type="button" className="msx-tap x" aria-label="Clear search" onClick={() => setQ('')}>×</button> : <kbd aria-hidden="true">/</kbd>}
     </div>
@@ -268,59 +315,117 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
       {results.length === 0 && <div style={{ padding: '14px 12px', fontSize: 13.5, color: 'var(--sub)' }}>No section matches “{q}”. Try “marks”, “paper”, “syllabus” or “teacher”.</div>}
       {results.map((x, i) => (
         <button key={x.id} type="button" role="option" aria-selected={i === hi} className={'msx-tap msx-res' + (i === hi ? ' hi' : '')} onClick={() => go(x.id)} onMouseEnter={() => setHi(i)}>
-          <span className="ic">{x.ic}</span><span style={{ minWidth: 0 }}><b>{x.label}</b><small>{x.group} · {x.hint}</small></span>
+          <span className="ic"><Ico id={x.id} fallback={x.ic} /></span><span style={{ minWidth: 0 }}><b>{x.label}</b><small>{x.group} · {x.hint}</small></span>
         </button>))}
     </div>
   )
   const bad = msg && msg.startsWith('❌')
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const pinBtn = (id, label, extra) => (
+    <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} title={pins.includes(id) ? 'Unpin' : 'Pin to top'} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} style={extra}
+      onClick={e => { e.stopPropagation(); togglePin(id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(id) } }}>{pins.includes(id) ? '★' : '☆'}</span>
+  )
   return (
     <div className={'msx' + (wide || full ? ' wide' : '')} ref={rootRef} data-size={prefs.size} data-comfort={prefs.comfort}>
       <style>{CSS}</style>
+      <a className="msx-skip" href="#msx-main" onClick={e => { e.preventDefault(); document.getElementById('msx-main')?.focus() }}>Skip to main content</a>
+
+      <div className="msx-util" role="region" aria-label="Accessibility and display options">
+        <span className="org"><b>Guidance Khangabok</b> · GNSI Academic Portal</span>
+        <div className="grp" role="group" aria-label="Text size">
+          {[['md', 'A', 'Normal text size'], ['lg', 'A+', 'Large text size'], ['xl', 'A++', 'Extra large text size']].map(([k, t, l]) => <button key={k} type="button" aria-pressed={prefs.size === k} aria-label={l} title={l} onClick={() => setPref({ size: k })}>{t}</button>)}
+        </div>
+        <span className="sep" aria-hidden="true" />
+        <div className="grp" role="group" aria-label="Colour theme">
+          {[['light', '#ffffff', 'Light theme'], ['warm', '#f1c97a', 'Warm theme, easier on the eyes'], ['dark', '#10151f', 'Dark theme']].map(([k, c, l]) => <button key={k} type="button" className="sw" style={{ background: c, backgroundColor: c }} aria-pressed={prefs.theme === k} aria-label={l} title={l} onClick={() => setPref({ theme: k })} />)}
+        </div>
+        <span className="sep hide-sm" aria-hidden="true" />
+        <button type="button" className="hide-sm" aria-expanded={disp} onClick={() => setDisp(v => !v)} title="More display options">Display ▾</button>
+        <button type="button" aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen — hide the browser and ERP header'} onClick={toggleFull}><Icon name={full ? 'shrink' : 'expand'} size={16} /></button>
+      </div>
+
       <header className="msx-top">
-        {onBack ? <button className="msx-tap msx-ic" aria-label="Back to Home" onClick={onBack}>←</button> : <span className="msx-ic" aria-hidden="true">🎖️</span>}
-        <h1><small>{subtitle}</small>{title}</h1>
-        <button className="msx-tap msx-ic" aria-label="Display comfort: text size and theme" title="Display comfort" aria-expanded={disp} onClick={() => setDisp(v => !v)} style={{ fontSize: 15, fontWeight: 800 }}>Aa</button>
-        <button className="msx-tap msx-ic" aria-label="Find a section" title="Find a section ( / )" onClick={() => { if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }}>🔍</button>
-        <button className="msx-tap msx-ic" aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen — hide the browser and ERP header'} onClick={toggleFull} style={{ fontSize: 17 }}>{full ? '🗗' : '⛶'}</button>
-        {actions.map(a => <button key={a.label} className="msx-tap msx-ic" aria-label={a.label} title={a.label} onClick={a.onClick}>{a.icon}</button>)}
+        <div className="msx-brand">
+          {onBack && <button className="msx-tap msx-act ic" style={{ border: 0 }} aria-label="Back to Home" title="Back to Home" onClick={onBack}><Icon name="back" size={22} /></button>}
+          <Emblem size={46} />
+          <div className="t"><h1>Mission Sainik</h1><small>Sainik School Entrance Preparation Programme · AISSEE 2027</small></div>
+        </div>
+        <div className="msx-acts">
+          <button className="msx-tap msx-act ic msx-find-mobile" aria-label="Find a section" title="Find a section" onClick={openFinder}><Icon name="search" size={19} /></button>
+          {actions.map(a => (
+            <button key={a.label} className="msx-tap msx-act" aria-label={a.label} title={a.label} onClick={a.onClick}>
+              {ACTION_ICON[a.label] ? <Icon name={ACTION_ICON[a.label]} size={18} /> : <span aria-hidden="true">{a.icon}</span>}<span className="lbl">{a.label}</span>
+            </button>))}
+        </div>
       </header>
+
+      <nav className="msx-crumbs" aria-label="Breadcrumb">
+        <button type="button" className="msx-tap" onClick={() => go('overview')}>Home</button>
+        <span className="sp" aria-hidden="true">›</span>
+        {active === 'overview' ? <span className="cur" aria-current="page">Mission Sainik</span> : (
+          <>
+            <button type="button" className="msx-tap" onClick={() => go('overview')}>Mission Sainik</button>
+            {cur && <><span className="sp" aria-hidden="true">›</span><span>{cur.group}</span></>}
+            <span className="sp" aria-hidden="true">›</span><span className="cur" aria-current="page">{cur?.label || title}</span>
+          </>)}
+      </nav>
+
       <div className="msx-body">
         <div className="msx-slot">
-        <nav className={'msx-rail' + (slim ? ' slim' : '')} aria-label="Mission Sainik sections">
-          <button type="button" className="msx-tap msx-rail-tg" onClick={toggleSlim} aria-label={slim ? 'Expand menu' : 'Collapse menu'} title={slim ? 'Expand menu' : 'Collapse menu'}>{slim ? '»' : '«'}</button>
-          {finder(railFind, 'Find a section…')}
-          {needle && !slim ? resultList : (
-            <>
-              {pinned.length > 0 && <div><h4>⭐ Pinned</h4>
-                {pinned.map(x => (
-                  <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)} title={x.label}>
-                    <span style={{ fontSize: 19 }}>{x.ic}</span><span className="msx-lbl">{x.label}</span><span role="button" tabIndex={0} aria-label={`Unpin ${x.label}`} className="msx-pin on" onClick={e => { e.stopPropagation(); togglePin(x.id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(x.id) } }}>★</span>
-                  </button>))}
-              </div>}
-              {groups.map(g => (
-                <div key={g.title}><h4>{g.title}</h4>
-                  {g.items.map(([id, ic, label]) => (
-                    <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)} title={label}>
-                      <span style={{ fontSize: 19 }}>{ic}</span><span className="msx-lbl">{label}</span>{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
-                      <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} title={pins.includes(id) ? 'Unpin' : 'Pin to top'} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} style={badges[id] ? { marginLeft: 6 } : undefined} onClick={e => { e.stopPropagation(); togglePin(id) }} onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); togglePin(id) } }}>{pins.includes(id) ? '★' : '☆'}</span>
+          <nav className={'msx-rail' + (slim ? ' slim' : '')} aria-label="Mission Sainik sections">
+            <button type="button" className="msx-tap msx-rail-tg" onClick={toggleSlim} aria-label={slim ? 'Expand menu' : 'Collapse menu'} title={slim ? 'Expand menu' : 'Collapse menu'}>
+              <Icon name={slim ? 'menu' : 'back'} size={16} /><span className="tgl">{slim ? '' : 'Collapse menu'}</span>
+            </button>
+            {finder(railFind, 'Find a section…')}
+            {needle && !slim ? resultList : (
+              <>
+                {pinned.length > 0 && <div><h4>Pinned</h4>
+                  {pinned.map(x => (
+                    <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)} title={x.label}>
+                      <Ico id={x.id} fallback={x.ic} /><span className="msx-lbl">{x.label}</span>{pinBtn(x.id, x.label)}
                     </button>))}
-                </div>))}
-            </>
-          )}
-        </nav>
+                </div>}
+                {groups.map(g => (
+                  <div key={g.title}><h4>{g.title}</h4>
+                    {g.items.map(([id, ic, label]) => (
+                      <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)} title={label}>
+                        <Ico id={id} fallback={ic} /><span className="msx-lbl">{label}</span>{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
+                        {pinBtn(id, label, badges[id] ? { marginLeft: 6 } : undefined)}
+                      </button>))}
+                  </div>))}
+              </>
+            )}
+          </nav>
         </div>
-        <main className={'msx-main' + (fab ? ' has-fab' : '')} key={active}>{children}</main>
+        <main id="msx-main" tabIndex={-1} className={'msx-main' + (fab ? ' has-fab' : '')} key={active} style={{ outline: 'none' }}>
+          {active !== 'overview' && (
+            <div className="msx-ph">
+              <div className="kick">{cur?.group || 'Mission Sainik'}</div>
+              <h2>{cur?.label || title}</h2>
+              {HINTS[active] && <p>{HINTS[active]}</p>}
+            </div>)}
+          {children}
+        </main>
       </div>
+
+      <footer className="msx-foot">
+        <div className="gold" />
+        <div className="in">
+          <span><b>Mission Sainik</b> · Guidance Khangabok (GNSI)</span>
+          <span>For authorised staff use only · Last viewed {today}</span>
+        </div>
+      </footer>
+
       <nav className="msx-bottom" aria-label="Primary">
-        {BOTTOM.map(([id, ic, label]) => (
+        {BOTTOM.map(([id, label]) => (
           <button key={id} className={'msx-tap msx-bi' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}>
-            <span className="msx-pill">{ic}{badges[id] ? <span className="msx-badge">{badges[id]}</span> : null}</span>{label}
+            <span className="msx-pill"><Icon name={id} size={22} />{badges[id] ? <span className="msx-badge">{badges[id]}</span> : null}</span>{label}
           </button>))}
         <button className={'msx-tap msx-bi' + (!inBottom ? ' on' : '')} aria-haspopup="dialog" onClick={() => setSheet(true)}>
-          <span className="msx-pill">⠿</span>More
+          <span className="msx-pill"><Icon name="menu" size={22} /></span>Menu
         </button>
       </nav>
-      {fab && <button className="msx-tap msx-fab" onClick={fab.onClick}><span style={{ fontSize: 20 }}>{fab.icon}</span>{fab.label}</button>}
+      {fab && <button className="msx-tap msx-fab" onClick={fab.onClick}><Icon name="upload" size={19} />{fab.label}</button>}
       {sheet && (
         <>
           <div className="msx-scrim" onClick={() => setSheet(false)} />
@@ -329,16 +434,16 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
             <div className="msx-sticky">{finder(sheetFind, 'Find a section… e.g. marks, paper')}</div>
             {needle ? resultList : (
               <>
-                {[['⭐ Pinned', pinned], ['🕘 Recent', recents]].filter(([, l]) => l.length).map(([t, list]) => (
+                {[['Pinned', pinned], ['Recent', recents]].filter(([, l]) => l.length).map(([t, list]) => (
                   <div key={t}><h4>{t}</h4>
-                    <div className="msx-grid">{list.map(x => <button key={x.id} className={'msx-tap msx-tile' + (active === x.id ? ' on' : '')} onClick={() => go(x.id)}><span>{x.ic}</span>{x.label}</button>)}</div>
+                    <div className="msx-grid">{list.map(x => <button key={x.id} className={'msx-tap msx-tile' + (active === x.id ? ' on' : '')} onClick={() => go(x.id)}><span className="i"><Ico id={x.id} fallback={x.ic} size={24} /></span>{x.label}</button>)}</div>
                   </div>))}
                 {groups.map(g => (
                   <div key={g.title}><h4>{g.title}</h4>
                     <div className="msx-grid">
                       {g.items.map(([id, ic, label]) => (
-                        <button key={id} className={'msx-tap msx-tile' + (active === id ? ' on' : '')} onClick={() => go(id)}><span>{ic}</span>{label}
-                          <span role="button" tabIndex={0} aria-label={(pins.includes(id) ? 'Unpin ' : 'Pin ') + label} className={'msx-pin' + (pins.includes(id) ? ' on' : '')} onClick={e => { e.stopPropagation(); togglePin(id) }}>{pins.includes(id) ? '★' : '☆'}</span>
+                        <button key={id} className={'msx-tap msx-tile' + (active === id ? ' on' : '')} onClick={() => go(id)}><span className="i"><Ico id={id} fallback={ic} size={24} /></span>{label}
+                          {pinBtn(id, label)}
                         </button>))}
                     </div>
                   </div>))}
@@ -351,15 +456,15 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
       {disp && (
         <>
           <div onClick={() => setDisp(false)} style={{ position: 'fixed', inset: 0, zIndex: 79 }} />
-          <div className="msx-disp" role="dialog" aria-label="Display comfort">
-            <h3>Display comfort</h3><p>Pick what is easiest on your eyes. Saved on this device.</p>
+          <div className="msx-disp" role="dialog" aria-label="Display settings">
+            <h3>Display settings</h3><p>Choose what is easiest to read. Saved on this device.</p>
             <h5>Text size</h5>
             <div className="msx-seg" role="group" aria-label="Text size">{[['md', 'A', 'Normal'], ['lg', 'A+', 'Large'], ['xl', 'A++', 'Extra large']].map(([k, t, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.size === k ? ' on' : '')} aria-pressed={prefs.size === k} title={l} onClick={() => setPref({ size: k })}>{t}</button>)}</div>
             <h5>Colours</h5>
-            <div className="msx-seg" role="group" aria-label="Colour theme">{[['light', '☀️ Light'], ['warm', '🌅 Warm'], ['dark', '🌙 Dark']].map(([k, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.theme === k ? ' on' : '')} aria-pressed={prefs.theme === k} onClick={() => setPref({ theme: k })}>{l}</button>)}</div>
+            <div className="msx-seg" role="group" aria-label="Colour theme">{[['light', 'Light'], ['warm', 'Warm'], ['dark', 'Dark']].map(([k, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.theme === k ? ' on' : '')} aria-pressed={prefs.theme === k} onClick={() => setPref({ theme: k })}>{l}</button>)}</div>
             <h5>Spacing</h5>
             <div className="msx-seg" role="group" aria-label="Spacing">{[['normal', 'Normal'], ['roomy', 'Roomy (bigger buttons)']].map(([k, l]) => <button key={k} type="button" className={'msx-tap' + (prefs.comfort === k ? ' on' : '')} aria-pressed={prefs.comfort === k} onClick={() => setPref({ comfort: k })}>{l}</button>)}</div>
-            <button type="button" className="msx-tap" style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 12, background: '#f1ede3', fontWeight: 700, fontSize: 13 }} onClick={() => setPref({ size: 'md', theme: 'light', comfort: 'normal' })}>Reset to default</button>
+            <button type="button" className="msx-tap" style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 6, background: '#e9eef6', fontWeight: 700, fontSize: 13, color: 'var(--navy)' }} onClick={() => setPref({ size: 'md', theme: 'light', comfort: 'normal' })}>Reset to default</button>
           </div>
         </>
       )}

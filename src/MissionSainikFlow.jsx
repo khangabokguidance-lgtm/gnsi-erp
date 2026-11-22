@@ -5,19 +5,19 @@ import { PX } from './premiumUI'
 const CSS = `
 .msf-track{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:8px}
 @media (max-width:640px){.msf-track{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.msf-step{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:11px 12px 10px;border-radius:16px;border:1.5px solid #e8e2d2;background:#fff;text-align:left;cursor:pointer;font-family:inherit;transition:transform .12s,box-shadow .15s,border-color .15s}
+.msf-step{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:11px 12px 10px;border-radius:6px;border:1px solid #d5dbe6;background:#fff;text-align:left;cursor:pointer;font-family:inherit;transition:transform .12s,box-shadow .15s,border-color .15s}
 .msf-step:hover{transform:translateY(-1px);box-shadow:0 8px 18px -12px rgba(19,42,79,.45)}
-.msf-step.now{border-color:#b8923a;background:#fff9e8;box-shadow:0 0 0 3px rgba(184,146,58,.16)}
+.msf-step.now{border-color:#132a4f;border-top:4px solid #b8923a;background:#f4f8fe}
 .msf-step.done{background:#f3fbf6;border-color:#bfe3cc}
-.msf-n{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:#eef2f9;color:#132a4f}
+.msf-n{width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:#eef2f9;color:#132a4f}
 .msf-step.now .msf-n{background:#b8923a;color:#fff}.msf-step.done .msf-n{background:#0f7a4c;color:#fff}
 .msf-step b{font-size:13.5px;color:#0f1b2e;line-height:1.2}
 .msf-step small{font-size:11.5px;color:#5d6b82;font-weight:600}
 .msf-step .bar{height:5px;border-radius:3px;background:#eef1f6;width:100%;overflow:hidden;margin-top:2px}.msf-step .bar i{display:block;height:100%;background:linear-gradient(90deg,#b8923a,#0f7a4c)}
 .msf-nav{display:flex;align-items:stretch;gap:10px;margin:18px 0 6px;flex-wrap:wrap}
-.msf-nav button{flex:1 1 200px;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:16px;border:1.5px solid #e1dac8;background:#fff;font-family:inherit;cursor:pointer;text-align:left;transition:transform .12s,box-shadow .15s}
+.msf-nav button{flex:1 1 200px;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:6px;border:1px solid #9fb0cb;background:#fff;font-family:inherit;cursor:pointer;text-align:left;transition:transform .12s,box-shadow .15s}
 .msf-nav button:hover{transform:translateY(-1px);box-shadow:0 8px 18px -12px rgba(19,42,79,.5)}
-.msf-nav button.go{background:linear-gradient(135deg,#132a4f,#1e3a6e);border-color:#132a4f;color:#fff;justify-content:flex-end;text-align:right}
+.msf-nav button.go{background:#132a4f;border-color:#132a4f;color:#fff;justify-content:flex-end;text-align:right}
 .msf-nav small{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
 .msf-nav b{display:block;font-size:14.5px}
 .msf-nav .ar{font-size:22px;font-weight:800;color:#b8923a}.msf-nav .go .ar{color:#e9d9b0}
@@ -31,11 +31,11 @@ export function FlowTracker({ progress, onGo, flow = FLOW, heading = 'MISSION FL
   const steps = flowStatus(progress, flow)
   const now = steps.find(s => s.status === 'now')
   return (
-    <div style={{ background: '#fff', borderRadius: 24, padding: 16, boxShadow: '0 2px 14px rgba(19,42,79,.08)', marginBottom: 12, animation: 'msx-in .35s ease both' }}>
+    <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #d5dbe6', padding: 18, boxShadow: '0 1px 2px rgba(16,24,40,.06)', animation: 'msx-in .35s ease both' }}>
       <style>{CSS}</style>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: PX.sub }}>{heading}</div>
-        {now && <button type="button" className="msx-tap" onClick={() => onGo(now.tab)} style={{ fontSize: 13, fontWeight: 800, color: PX.navy, background: '#fff6dc', borderRadius: 99, padding: '6px 14px' }}>You are here: {now.label} ›</button>}
+        {now && <button type="button" className="msx-tap" onClick={() => onGo(now.tab)} style={{ fontSize: 13, fontWeight: 800, color: PX.navy, background: '#fff6dc', border: '1px solid #e9d9b0', borderRadius: 4, padding: '6px 14px' }}>You are here: {now.label} ›</button>}
       </div>
       <div className="msf-track" role="list">
         {steps.map(s => (
