@@ -76,6 +76,53 @@ const CSS = `
   .mh-sched thead{display:none}.mh-sched,.mh-sched tbody{display:block}.mh-sched tr{display:grid;grid-template-columns:1fr auto;gap:6px 10px;padding:12px 16px;border-bottom:1px solid #e3e8f0}.mh-sched tr:last-child{border-bottom:0}.mh-sched td{padding:0;border:0;background:transparent!important}.mh-sched td.pr{grid-column:1/-1}
   .mh-sched td[data-l]::before{content:attr(data-l) ': ';font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.05em}
 }
+
+/* ═══ Premium layer ═══ */
+.mh{gap:24px}
+.mh-notice{border-radius:12px;border-color:#ead9a3;border-left-width:5px;background:linear-gradient(90deg,#fffaf0,#fffdf8);box-shadow:var(--sh1)}
+.mh-notice .tag{border-radius:4px;background:linear-gradient(180deg,#d4ae58,#a98428);letter-spacing:.16em}
+.mh-hero{position:relative;border-radius:20px;border-bottom:0;box-shadow:0 30px 60px -28px rgba(11,28,54,.7),0 2px 6px rgba(11,28,54,.2);isolation:isolate}
+.mh-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--goldgrad);z-index:2}
+.mh-hero .l{position:relative;background:radial-gradient(70% 120% at 100% 0%,rgba(230,195,94,.22),transparent 60%),linear-gradient(135deg,#081a38,#14336a 70%,#1b4388);padding:34px 36px 36px;overflow:hidden}
+.mh-hero .l::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000);mask-image:linear-gradient(90deg,transparent,#000);z-index:-1}
+.mh-hero .l::after{content:'★';position:absolute;right:-18px;bottom:-60px;font-size:230px;line-height:1;color:rgba(233,217,176,.07);z-index:-1}
+.mh-hero .k{display:inline-flex;align-items:center;gap:10px;color:#f1dca0;letter-spacing:.22em}.mh-hero .k::before{content:'';width:28px;height:2px;background:var(--goldgrad)}
+.mh-hero h2{font-family:var(--serif);font-size:46px;font-weight:700;letter-spacing:-.015em;margin:10px 0 8px;text-shadow:0 2px 14px rgba(0,0,0,.3)}
+.mh-hero .hi{font-size:16px;color:#d9e4f7;margin-bottom:22px}
+.mh-chip{border-radius:999px;border-color:rgba(233,217,176,.4);background:rgba(255,255,255,.08);backdrop-filter:blur(4px);padding:7px 14px}
+.mh-hero .r{background:linear-gradient(180deg,#0e2a57,#0a2048);padding:34px 32px;gap:12px}
+.mh-hero .pct b{font-family:var(--serif);font-size:64px;font-weight:700;background:linear-gradient(180deg,#fff,#f1dca0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.mh-meter{height:12px;border-radius:99px;background:rgba(255,255,255,.14);box-shadow:inset 0 1px 3px rgba(0,0,0,.35)}.mh-meter i{border-radius:99px;background:linear-gradient(90deg,#b8923a,#f1dca0);box-shadow:0 0 14px rgba(241,220,160,.55)}
+.mh-kpi{border:1px solid #e3e8f1;border-top:0;border-radius:16px;position:relative;overflow:hidden;box-shadow:var(--sh2);transition:transform .25s,box-shadow .25s;padding:20px}
+.mh-kpi::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--c)}
+.mh-kpi:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(19,42,79,.06),0 22px 40px -22px rgba(19,42,79,.5)}
+.mh-kpi .ic{width:50px;height:50px;border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 18%,#fff),color-mix(in srgb,var(--c) 6%,#fff));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 22%,#fff)}
+.mh-kpi b{font-family:var(--serif);font-size:32px;font-weight:700;color:#0e2a55}
+.mh-kpi span.l{font-size:11px;letter-spacing:.12em}
+.mh-panel{border-radius:16px;border:1px solid #e3e8f1;box-shadow:var(--sh2)}
+.mh-panel>header{padding:16px 22px;background:linear-gradient(180deg,#fff,#f7f9fd);border-bottom:1px solid #e8ecf4}
+.mh-panel>header::before{width:4px;border-radius:4px;background:linear-gradient(180deg,#e6c35e,#b8923a)}
+.mh-panel>header h3{font-family:var(--serif);font-size:19px;font-weight:600;color:#0e2a55}
+.mh-panel>header a,.mh-panel>header button{color:#8a6a1f;text-decoration:none;border-bottom:1px solid #e0cc8f;padding:2px 0}
+.mh-body{padding:20px 22px}
+.mh-task{border-radius:12px;border:1px solid #e3e8f1;border-left:5px solid var(--c,var(--gold));box-shadow:var(--sh1);transition:transform .2s,box-shadow .2s}
+.mh-task:hover{transform:translateY(-2px);box-shadow:0 14px 26px -16px rgba(19,42,79,.45);background:#fff}
+.mh-task .ic{border-radius:12px;width:48px;height:48px}
+.mh-done{border-radius:12px}
+.mh-sched th{background:linear-gradient(180deg,#eef2f9,#e1e8f4);border-bottom:2px solid var(--gold);color:#0e2a55;letter-spacing:.1em}
+.mh-sched tbody tr:hover td{background:#fbf6e6}
+.mh-days{border-radius:99px;padding:3px 11px}
+.mh-bar .t{height:8px;border-radius:99px}.mh-bar .t i{border-radius:99px;background:linear-gradient(90deg,#1d4f91,#4b86d6)}
+.mh-links button{padding:14px 22px;transition:background .18s,padding-left .18s}.mh-links button:hover{background:linear-gradient(90deg,#f6efdc,#fff);padding-left:26px}
+.mh-links .ic{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#eaf0fa,#dde7f6);box-shadow:inset 0 0 0 1px #d3deef}
+.mh-links .ch{color:var(--gold)}
+.mh-quick{padding:18px 22px}.mh-quick button{border-radius:12px;box-shadow:var(--sh1);padding:14px;transition:transform .2s,box-shadow .2s,border-color .2s}.mh-quick button:hover{transform:translateY(-2px);border-color:var(--gold);box-shadow:0 12px 22px -14px rgba(184,146,58,.7);background:#fffdf7}
+.mh-role{border-radius:999px;border-color:#d8c58c;background:linear-gradient(180deg,#fff,#fffaf0)}
+.mh-lvl .badge{width:60px;height:60px;border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 10px 18px -10px rgba(184,146,58,.9)}
+.mh-lvl b{font-family:var(--serif);font-size:18px;color:#0e2a55}
+.mh-lvl .t{height:8px;border-radius:99px}.mh-lvl .t i{border-radius:99px}
+.mh-week i{border-radius:8px}.mh-badges span{border-radius:99px}
+@media (max-width:700px){.mh{gap:16px}.mh-hero{border-radius:16px}.mh-hero .l{padding:22px 20px}.mh-hero h2{font-size:32px}.mh-hero .pct b{font-size:48px}.mh-hero .r{padding:20px}.mh-kpi{padding:14px}.mh-kpi b{font-size:24px}.mh-kpi .ic{width:40px;height:40px}.mh-panel{border-radius:14px}.mh-panel>header h3{font-size:17px}.mh-body{padding:16px}}
 `
 
 const SERVICES = [
