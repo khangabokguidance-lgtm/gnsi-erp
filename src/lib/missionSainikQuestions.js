@@ -44,12 +44,18 @@ export function parseQuestions(text) {
 
 // PostgREST returns at most 1000 rows per request. The question bank can hold ~3000 rows (20 tests × 150 questions),
 // so load it page by page; otherwise questions silently vanish from papers and duplicate checks.
-export async function fetchAll(makeQuery, page = 1000) {
-  const all = []
-  for (let from = 0; ; from += page) {
-    const { data, error } = await makeQuery().range(from, from + page - 1)
-    if (error) return { data: null, error }
-    all.push(...(data || []))
-    if (!data || data.length < page) return { data: all, error: null }
+export async function fetchAll(makeQuery, page = 1000, parallel = 4) {
+  // The first page alone (most lists fit in it). If it is full, the rest is requested a few pages at a time; the queries must be ordered so the pages line up.
+  const first = await makeQuery().range(0, page - 1)
+  if (first.error) return { data: null, error: first.error }
+  const all = [...(first.data || [])]
+  if (all.length < page) return { data: all, error: null }
+  for (let start = page; ; start += page * parallel) {
+    const batch = await Promise.all(Array.from({ length: parallel }, (_, i) => makeQuery().range(start + i * page, start + (i + 1) * page - 1)))
+    for (const r of batch) if (r.error) return { data: null, error: r.error }
+    for (const { data } of batch) {
+      all.push(...(data || []))
+      if (!data || data.length < page) return { data: all, error: null }
+    }
   }
 }

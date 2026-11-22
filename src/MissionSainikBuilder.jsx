@@ -15,6 +15,7 @@ import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { Icon } from './MissionSainikIcons'
 import { routePreMock, matchChapter, offPlan, planState } from './lib/missionSainikPlanRule'
+import { settersOfRow } from './lib/missionSainikAllot'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
@@ -91,7 +92,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState('')
   const [signoffs, setSignoffs] = useState([])
-  const [bin, setBin] = useState([])
+  const [bin, setBin] = useState(null)   // deleted questions: loaded only when the recycle bin is opened (null = not loaded yet)
+  const [binCount, setBinCount] = useState(0)
   const [showBin, setShowBin] = useState(false)
   const [editQ, setEditQ] = useState(null)   // question being edited (draft copy)
   const [scanEdit, setScanEdit] = useState(false)
@@ -131,10 +133,19 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     setReviews(rv.error ? [] : rv.data || [])
     const so = await supabase.from('mission_sainik_signoffs').select('*').eq('series', series)
     setSignoffs(so.error ? [] : so.data || [])
-    const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
-    setBin(b.error ? [] : b.data || [])
+    const bc = await supabase.from(TABLE).select('id', { count: 'exact', head: true }).eq('series', series).not('deleted_at', 'is', null)   // just the number; the rows load when the bin is opened
+    setBinCount(bc.error ? 0 : bc.count || 0)
   }, [series])
   useEffect(() => { load() }, [load]) // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (!showBin) return undefined
+    let live = true
+    ;(async () => {
+      const b = await fetchAll(() => supabase.from(TABLE).select('*').eq('series', series).not('deleted_at', 'is', null).order('deleted_at', { ascending: false }))
+      if (live) setBin(b.error ? [] : b.data || [])
+    })()
+    return () => { live = false }
+  }, [showBin, binCount, series])
 
   const bySec = useMemo(() => {
     const m = {}; qs.forEach(q => { (m[q.test_no + '|' + q.section] = m[q.test_no + '|' + q.section] || []).push(q) }); return m
@@ -165,6 +176,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const canEdit = (t, s) => isAdmin || (!isLocked(t) && settersOf(t, s).some(isMe))
   // Pre Mock, Mock (Mega) and Practice: ONLY the section's own setter can add questions. Admins can still verify, edit, delete, lock and choose; they cannot upload.
   const setterOnly = series === 'pre' || series === 'mega' || series === 'practice'
+  // Where each teacher writes their OWN set (Practice, and Pre Mock with several sets) only the author — or an admin — may change or delete a question.
+  const canModify = q => isAdmin || (canEdit(q.test_no, q.section) && (!byVersion || q.uploaded_by === (currentUser?.name || '')))
   const canUpload = (t, s) => (setterOnly ? !isLocked(t) && settersOf(t, s).some(isMe) : canEdit(t, s))
   // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
   const dateOf = t => cfg.tests.find(x => x.no === t)?.date
@@ -267,6 +280,15 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
       const task = (tasks || []).find(r => r.kind === 'test' && r.test_no === testNo && r.subject === section)
       if (task && task.status === 'Pending' && saveTask) await saveTask(task, { status: 'Submitted', question_count: have + rows.length })
     }
+    // Practice: a practice teacher sets questions for EVERY test. When their full quota is in for all of them, hand in their practice task automatically.
+    if (series === 'practice' && saveTask) {
+      const me = currentUser?.name || '', pool = [...qs, ...(Array.isArray(inserted) ? inserted.filter(r => r.series === series) : rows)]
+      const own = t => pool.filter(x => x.test_no === t && x.section === section && x.uploaded_by === me).length
+      if (cfg.tests.every(t => own(t.no) >= sec.q)) {
+        const task = (tasks || []).find(r => r.kind === 'practice' && r.subject === section && settersOfRow(r).some(isMe))
+        if (task && task.status === 'Pending') await saveTask(task, { status: 'Submitted', question_count: pool.filter(x => x.section === section && x.uploaded_by === me).length })
+      }
+    }
     return true
   }
   const upload = async () => {
@@ -288,7 +310,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     setMsg(soft ? '🗑 Moved to the recycle bin — you can restore it.' : '🗑 Deleted.')
   }
   const del = async q => {
-    if (!canEdit(q.test_no, q.section)) return
+    if (!canModify(q)) return setMsg('❌ Only the teacher who set this question (or an admin) can delete it.')
     if (!window.confirm('Delete this question?' + (soft ? ' (it goes to the recycle bin)' : ' This cannot be undone.'))) return
     await removeRows(x => x.eq('id', q.id), `${series}:${q.test_no}:${q.section}`, 1)
   }
@@ -310,7 +332,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   const saveEdit = async () => {
     const d = editQ
-    if (!canEdit(d.test_no, d.section)) return setMsg('❌ Only the section setter or an admin can edit this question.')
+    if (!canModify(d)) return setMsg('❌ Only the teacher who set this question (or an admin) can edit it.')
     if (!d.question.trim() || !d.option_a.trim() || !d.option_b.trim() || !d.option_c.trim() || !d.option_d.trim()) return setMsg('❌ The question and all four options are required.')
     if (!['A', 'B', 'C', 'D'].includes(d.answer)) return setMsg('❌ Choose the correct answer.')
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
@@ -327,7 +349,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   // Save one question from the full-screen editor (same rules as the old inline form).
   const saveQuestionPatch = async (q, patch) => {
-    if (!canEdit(q.test_no, q.section)) { setMsg('❌ Only the section setter or an admin can edit this question.'); return false }
+    if (!canModify(q)) { setMsg('❌ Only the teacher who set this question (or an admin) can edit it.'); return false }
     const planned = chapterRule && 'topic' in patch ? chaptersOf(q.test_no, q.section) : []
     if (planned.length && patch.topic && !matchChapter(planned, patch.topic)) { setMsg(`❌ “${patch.topic}” is not planned for this test. Use: ${planned.join(' / ')}`); return false }
     if (planned.length && patch.topic) patch = { ...patch, topic: matchChapter(planned, patch.topic) }
@@ -588,7 +610,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   // Bulk actions on the ticked questions of the current section
   const toggle = id => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]))
   const moveSelected = async copy => {
-    const rowsSel = secList.filter(q => picked.includes(q.id)); if (!rowsSel.length) return
+    const rowsSel = secList.filter(q => picked.includes(q.id) && (copy || canModify(q))); if (!rowsSel.length) return
     const tt = Number(moveTo.test || testNo), ss = moveTo.section || section
     if (!canUpload(tt, ss)) return setMsg(setterOnly ? uploadDeniedMsg(tt, ss) : '❌ Only the target section’s setter or an admin can add questions there.')
     if (tt === testNo && ss === section) return setMsg('❌ Choose a different test or section.')
@@ -607,7 +629,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     await clearSignoff(tt, ss); await clearSignoff(testNo, section); setPicked([]); setMsg(`✅ ${copy ? 'Copied' : 'Moved'} ${rowsSel.length} question(s)`); load()
   }
   const deletePicked = async () => {
-    const ids = picked.filter(id => secList.some(q => q.id === id)); if (!ids.length || !canEdit(testNo, section)) return
+    const ids = picked.filter(id => secList.some(q => q.id === id && canModify(q))); if (!ids.length || !canEdit(testNo, section)) return
     if (!window.confirm(`Delete ${ids.length} selected question(s)?${soft ? ' They go to the recycle bin.' : ''}`)) return
     await removeRows(x => x.in('id', ids), `${series}:${testNo}:${section}`, ids.length); setPicked([])
   }
@@ -644,6 +666,30 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const myDone = t => mySecs.length > 0 && mySecs.every(x => get(t, x.label).filter(q => q.uploaded_by === myName).length >= x.q)
   const myDoneN = mySecs.length ? cfg.tests.filter(t => myDone(t.no)).length : 0
   const chapters = chaptersOf(testNo, sec.label)
+  // Practice, admin: questions saved in the old "Set 1–3" days sit on the wrong test. Each moves to the test whose planned chapter is its own topic,
+  // but only when exactly ONE test has that chapter (a chapter used by two tests is ambiguous, so it is left for a person to decide).
+  const refile = (() => {
+    const out = { by: {}, n: 0, amb: 0 }
+    if (series !== 'practice' || !isAdmin) return out
+    qs.filter(q => q.section === section).forEach(q => {
+      if (!String(q.topic || '').trim() || matchChapter(chaptersOf(q.test_no, section), q.topic)) return
+      const tg = cfg.tests.filter(t => matchChapter(chaptersOf(t.no, section), q.topic))
+      if (tg.length === 1) { (out.by[tg[0].no] = out.by[tg[0].no] || []).push(q); out.n++ } else out.amb++
+    })
+    return out
+  })()
+  const refileNow = async () => {
+    if (!refile.n || !isAdmin) return
+    if (!window.confirm(`Move ${refile.n} question${refile.n === 1 ? '' : 's'} of ${section} to the test whose planned chapter they are on?${refile.amb ? `\n\n${refile.amb} more are on a chapter used by several tests, or have none; they stay where they are.` : ''}\n\nVerification of the tests involved is reset.`)) return
+    for (const [t, list] of Object.entries(refile.by)) {
+      const { error } = await supabase.from(TABLE).update({ test_no: Number(t) }).in('id', list.map(q => q.id))
+      if (error) return setMsg('❌ ' + error.message)
+      await clearSignoff(Number(t), section)
+    }
+    for (const t of new Set(Object.values(refile.by).flat().map(q => q.test_no))) await clearSignoff(t, section)
+    audit('refile_practice', `practice:${section}`, { moved: refile.n, left: refile.amb })
+    setMsg(`✅ ${refile.n} question${refile.n === 1 ? '' : 's'} moved to the right test${refile.amb ? ` · ${refile.amb} left for you to decide` : ''}`); load()
+  }
   const offList = chapterRule && chapters.length === 1 ? offPlan(secList, chapters) : []   // questions here that are not on the planned chapter
   const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
@@ -947,6 +993,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
             </div>)}
+            {refile.n + refile.amb > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{refile.n + refile.amb} {section} practice question{refile.n + refile.amb === 1 ? ' is' : 's are'} on the wrong test</b> (saved before practice became one set per test). {refile.n > 0 ? `${refile.n} can be moved automatically to the test whose planned chapter they are on.` : ''}{refile.amb > 0 ? ` ${refile.amb} are on a chapter used by several tests, or have no chapter, so someone must decide.` : ''}</span>{refile.n > 0 && <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto', flex: 'none' }} onClick={refileNow}>Move {refile.n} to the right test</button>}</div>}
             {chapterRule && planState(chapters) === 'multi' && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>The plan lists {chapters.length} chapters for {tid(testNo)} · {sec.short || section}.</b> Every teacher must set the one same chapter, so uploads are paused. An admin must keep just one in Mission Sainik → Syllabus.</span></div>}
             {offList.length > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{offList.length} question{offList.length === 1 ? ' is' : 's are'} not on the planned chapter “{chapters[0]}”.</b> They are marked <i>Off plan</i> below. Fix or delete {offList.length === 1 ? 'it' : 'them'}; the section cannot be verified until then.</span>{mayEdit && offList.some(q => !String(q.topic || '').trim()) && <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto', flex: 'none' }} onClick={tagUntagged}>Tag {offList.filter(q => !String(q.topic || '').trim()).length} untagged as this chapter</button>}</div>}
             {chapterRule && (chapters.length ? (
@@ -1083,7 +1130,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>}
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
-        right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
+        right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.filter(canModify).length ? [] : secList.filter(canModify).map(q => q.id))}>{picked.length === secList.filter(canModify).length ? 'Clear selection' : 'Select all'}</button> : null}>
         {secList.length > 5 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             <input className="px-input" style={{ flex: '1 1 200px' }} type="search" value={qSearch} onChange={e => setQSearch(e.target.value)} placeholder="Search questions, topics, options…" aria-label="Search questions" />
@@ -1103,7 +1150,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.slice(0, limN).map(({ q, i }) => (
           <div key={q.id} className="msb-q" style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: isMobile ? '12px 0' : '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: isMobile ? 'center' : 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-              {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
+              {canModify(q) && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
               {secList.length > sec.q || multiTeachers ? <span title={q.uploaded_by ? `Set by ${fullName(q.uploaded_by)}` : ''} style={{ fontSize: 11, color: PX.sub, whiteSpace: 'nowrap' }}>{q.uploaded_by ? fullName(q.uploaded_by) : ''}</span> : null}
               {byVersion && flav.length > 0 && (() => { const f = flav.find(x => x.by === (String(q.uploaded_by || '').trim() || '(unknown)')); const idx = f ? f.items.findIndex(x => x.id === q.id) : -1; return f && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: idx < sec.q ? '#e8f0fe' : '#f1f3f7', color: idx < sec.q ? '#1d4ed8' : '#7b8799' }}>{idx < sec.q ? `Version ${f.letter} · Q${idx + 1}` : 'Extra'}</span> })()}
@@ -1111,8 +1158,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {isAdmin && !byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
               {chapterRule && chapters.length === 1 && !matchChapter(chapters, q.topic) && <span className="msb-off" title={`Planned chapter: ${chapters[0]}`}>Off plan</span>}
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
-              {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
-              {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
+              {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={canModify(q) ? 'Edit question' : 'Open question'}>{canModify(q) ? '✎' : '👁'}</button>}
+              {canModify(q) && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}
             </div>
             {editQ && editQ.id === q.id && (
               <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: PX.tint, border: `1px solid ${line}` }}>
@@ -1158,8 +1205,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         ))}
         {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qSearch}|${qLevel}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
       </PremiumCard>
-      {bin.length > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({bin.length})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
-        {showBin && (!bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
+      {binCount > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({binCount})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${binCount})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
+        {showBin && (bin === null ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Loading…</div> : !bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
           <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${line}`, fontSize: 13 }}>
             <span style={{ flex: 1 }}>{embargoed(q.test_no, q.section) ? '(hidden until test date)' : q.question.slice(0, 90)} <span style={{ color: PX.sub, fontSize: 11 }}>· {tid(q.test_no)} · {q.section} · deleted by {q.deleted_by || '?'}</span></span>
             {(isAdmin || canEdit(q.test_no, q.section)) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
@@ -1180,7 +1227,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       )}
       {studio != null && secList.some(x => x.id === studio) && (
         <QuestionEditor list={secList} startIndex={secList.findIndex(x => x.id === studio)} startNo={startOf(section)} title={`${sec.title || section}`} subtitle={`${tid(testNo)} · ${section}`}
-          canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
+          canEdit={(() => { const sq = secList.find(x => x.id === studio); return !!sq && canModify(sq) && !embargoed(testNo, section) })()} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
       {isMobile && mayAdd && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}

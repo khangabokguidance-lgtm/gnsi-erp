@@ -336,6 +336,21 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
     const ro = new ResizeObserver(() => root.style.setProperty('--msx-top', el.offsetHeight + 'px')); ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  // Keyboard use of the top menu: ← → move between groups, ↓ opens a group and moves down its list, ↑ moves up, Home/End jump, Esc closes and returns to the group.
+  const onMenuKey = e => {
+    const root = mbRef.current; if (!root) return
+    const btns = [...root.querySelectorAll('.msx-mb > button')], items = [...root.querySelectorAll('.msx-dd button')], act = document.activeElement
+    const inDd = !!act?.closest?.('.msx-dd')
+    const focusFirstItem = () => setTimeout(() => root.querySelector('.msx-dd button')?.focus(), 30)
+    if (e.key === 'Escape' && inDd) { act.closest('.msx-mb').querySelector(':scope > button')?.focus(); return }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (inDd) { const i = items.indexOf(act); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); e.preventDefault() }
+      else if (btns.includes(act) && act.dataset.g && e.key === 'ArrowDown') { setMenu(act.dataset.g); focusFirstItem(); e.preventDefault() }
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && (btns.includes(act) || inDd)) {
+      const cur = btns.indexOf(inDd ? act.closest('.msx-mb').querySelector(':scope > button') : act), nb = btns[(cur + (e.key === 'ArrowRight' ? 1 : -1) + btns.length) % btns.length]
+      nb?.focus(); if (menu && nb?.dataset.g) { setMenu(nb.dataset.g); if (inDd) focusFirstItem() } else if (menu) setMenu(null); e.preventDefault()
+    } else if ((e.key === 'Home' || e.key === 'End') && inDd) { items[e.key === 'Home' ? 0 : items.length - 1]?.focus(); e.preventDefault() }
+  }
   useEffect(() => {
     if (!menu) return undefined
     const away = e => { if (!mbRef.current?.contains(e.target)) setMenu(null) }
@@ -451,14 +466,14 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
             </button>))}
         </div>
       </header>
-      <nav className="msx-menubar" aria-label="Main menu" ref={mbRef}>
+      <nav className="msx-menubar" aria-label="Main menu" ref={mbRef} onKeyDown={onMenuKey}>
         <div className={'msx-mb' + (active === 'overview' ? ' cur' : '')}><button type="button" className="msx-tap" onClick={() => go('overview')}><Icon name="overview" size={17} />Home</button></div>
         {groups.filter(g => !(g.items.length === 1 && g.items[0][0] === 'overview')).map(g => {
           const items = g.items.filter(i => i[0] !== 'overview'); if (!items.length) return null
           const open = menu === g.title, here = items.some(i => i[0] === active), n = items.reduce((a, i) => a + (Number(badges[i[0]]) || 0), 0)
           return (
             <div key={g.title} className={'msx-mb' + (open ? ' open' : '') + (here ? ' cur' : '')} onMouseEnter={() => { if (menu && !open) setMenu(g.title) }}>
-              <button type="button" className="msx-tap" aria-haspopup="true" aria-expanded={open} onClick={() => setMenu(open ? null : g.title)}>
+              <button type="button" className="msx-tap" data-g={g.title} aria-haspopup="true" aria-expanded={open} onClick={() => setMenu(open ? null : g.title)}>
                 {g.title}{n > 0 && <span className="dot">{n}</span>}<span className="car"><Icon name="chev" size={14} style={{ transform: 'rotate(90deg)' }} /></span>
               </button>
               {open && (

@@ -29,7 +29,7 @@ import MissionSainikStudents from './MissionSainikStudents'
 import MissionSainikAdmit from './MissionSainikAdmit'
 import MissionSainikMockMarks from './MissionSainikMockMarks'
 import MissionSainikCertificates from './MissionSainikCertificates'
-import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
+import { retarget, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
 import { diffPlan } from './data/syllabusPlan2026'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
@@ -269,6 +269,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   const [allotStatus, setAllotStatus] = useState('')
   const [taskSort, setTaskSort] = useState('due')
   const [pracCounts, setPracCounts] = useState({})
+  const [pracWho, setPracWho] = useState({})   // 'uploader|test|subject' -> number of practice questions
   const [sylImport, setSylImport] = useState(null)                   // null | text
   const [sylPage, setSylPage] = useState('plan')                  // plan | official | manual
   const [sylView, setSylView] = useState('cards')                     // cards | grid
@@ -335,7 +336,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
     if (error) { setMsg('❌ ' + error.message); return false }
     audit('setting_clear_' + key.split(':')[0], key, null); await loadSettings(); return true
   }
-  // Number of questions each teacher must set per practice set, per subject (admin setting; default 25).
+  // Number of questions each practice teacher must set for EACH test, per subject (admin setting; default 25).
   const practiceQOf = key => Math.min(200, Math.max(5, Number(settings['practice_q:' + key]) || 25))
   const practiceQMap = useMemo(() => Object.fromEntries(SUBJECTS.map(x => [x.key, Math.min(200, Math.max(5, Number(settings['practice_q:' + x.key]) || 25))])), [settings])
   const setPracticeQ = async (sub, n) => {
@@ -344,7 +345,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
     if (!(await putSetting('practice_q:' + sub.key, q))) return
     // tasks that are still Pending follow the new number; submitted ones keep what was handed in
     await supabase.from(TABLE).update({ question_count: q, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }).eq('kind', 'practice').eq('subject', sub.label).eq('status', 'Pending')
-    setMsg(`✅ ${sub.label}: ${q} questions per practice set`); load()
+    setMsg(`✅ ${sub.label}: ${q} questions per test (each practice teacher, every test)`); load()
   }
   const [mats, setMats] = useState([])
   const [matSetup, setMatSetup] = useState(false)
@@ -445,7 +446,9 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(''), 4500); return () => clearTimeout(t) }, [msg])
 
   const tests = useMemo(() => rows.filter(r => r.kind === 'test'), [rows])
-  const practice = useMemo(() => rows.filter(r => r.kind === 'practice'), [rows])
+  // A practice teacher has ONE assignment per subject: every one of the 20 tests, on that test's planned chapter. Extra rows left over from the old
+  // "Set 1/2/3" model (same teacher and subject) are ignored; the first row of each teacher and subject is the assignment.
+  const practice = useMemo(() => { const seen = new Set(); return rows.filter(r => r.kind === 'practice').filter(r => { const k = r.subject + '|' + r.setter; if (seen.has(k)) return false; seen.add(k); return true }) }, [rows])
   const byCell = useMemo(() => {
     const m = {}
     tests.forEach(r => { m[r.test_no + '|' + r.subject] = r })
@@ -716,7 +719,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
 
         {isAdmin && total < seedCount && (
           <PremiumCard title="Create allotment" subtitle={`${total} of ${seedCount} rows exist`} style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 13, color: PX.sub, marginBottom: 10 }}>Creates the 20 tests × 6 sections and the 13 practice sets from the Office Order. Existing rows are left as they are.</div>
+            <div style={{ fontSize: 13, color: PX.sub, marginBottom: 10 }}>Creates the 20 tests × 6 sections and the 13 practice teacher assignments (each covers all 20 tests) from the Office Order. Existing rows are left as they are.</div>
             <button className="px-btn gold" disabled={busy} onClick={createAllotment}>{busy ? 'Creating…' : 'Create allotment'}</button>
           </PremiumCard>
         )}
@@ -961,18 +964,18 @@ function MissionSainikInner({ currentUser: sessionUser }) {
 
   const Allotment = () => {
     const list = filterTest ? TESTS.filter(t => t.no === filterTest) : TESTS
-    const load = {}; tests.forEach(r => { const o = (load[r.setter] = load[r.setter] || { n: 0, done: 0 }); o.n++; if (r.status !== 'Pending') o.done++ })
-    const people = Object.keys(load).sort((a, b) => load[b].n - load[a].n)
+    const workload = {}; tests.forEach(r => { const o = (workload[r.setter] = workload[r.setter] || { n: 0, done: 0 }); o.n++; if (r.status !== 'Pending') o.done++ })   // (not named `load`: that would hide the module's load() that the plan cards call to refresh)
+    const people = Object.keys(workload).sort((a, b) => workload[b].n - workload[a].n)
     const dim = r => (allotTeacher && r.setter !== allotTeacher) || (allotStatus && (allotStatus === 'Overdue' ? !isOverdue(r, today) : r.status !== allotStatus))
     const exportAllot = () => downloadCsv('Mission_Sainik_allotment.csv', [['Test', 'Date', ...SUBJECTS.map(x => x.label + ' (setter)'), ...SUBJECTS.map(x => x.label + ' (status)')]].concat(TESTS.map(t => [t.id, t.date, ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.setter || ''), ...SUBJECTS.map(x => byCell[t.no + '|' + x.label]?.status || '')])))
     return (
       <>
       <MissionSainikSetterPlan {...{ photoOf, tests, TESTS, SUBJECTS, panelSetters, peopleAll, staffDir, today, fmtShort, saveTask, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
-      <MissionSainikPracticePlan {...{ questionsPer: practiceQOf, photoOf, practiceSetters: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'assistant').map(r => r.name) : (PRACTICE_PANEL[key]?.assistants || [])), practice, SUBJECTS, PRACTICE_PANEL, subjectOfPractice, setNoFor, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
+      <MissionSainikPracticePlan {...{ coverOf, questionsPer: practiceQOf, photoOf, practiceSetters: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role === 'assistant').map(r => r.name) : (PRACTICE_PANEL[key]?.assistants || [])), practice, SUBJECTS, PRACTICE_PANEL, practiceNames: key => (panelRows.length ? panelRows.filter(r => r.subject_key === key && r.role !== 'setter').map(r => r.name) : [PRACTICE_PANEL[key]?.verifier, ...(PRACTICE_PANEL[key]?.assistants || [])].filter(Boolean)), peopleAll, staffDir, reload: load, setMsg, audit, currentUser, isAdmin: isRealAdmin, isMobile }} />
       <PremiumCard title="Allotment" subtitle="Who sets each section. Tap a cell to update it."
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{filterTest ? <button className="px-btn ghost" onClick={() => setFilterTest(0)}>Show all tests</button> : null}<button className="px-hbtn" onClick={exportAllot}>⬇ CSV</button></span>} bodyStyle={{ padding: 0 }}>
         <div style={{ padding: '12px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select className="px-input" style={{ width: 'auto' }} value={allotTeacher} onChange={e => setAllotTeacher(e.target.value)} aria-label="Highlight a teacher"><option value="">All teachers</option>{people.map(n => <option key={n} value={n}>{fullName(n)} · {load[n].done}/{load[n].n}</option>)}</select>
+          <select className="px-input" style={{ width: 'auto' }} value={allotTeacher} onChange={e => setAllotTeacher(e.target.value)} aria-label="Highlight a teacher"><option value="">All teachers</option>{people.map(n => <option key={n} value={n}>{fullName(n)} · {workload[n].done}/{workload[n].n}</option>)}</select>
           <select className="px-input" style={{ width: 'auto' }} value={allotStatus} onChange={e => setAllotStatus(e.target.value)} aria-label="Highlight a status"><option value="">Any status</option>{['Pending', 'Submitted', 'Verified', 'Approved', 'Overdue'].map(x => <option key={x}>{x}</option>)}</select>
           {(allotTeacher || allotStatus) && <button className="px-btn ghost" onClick={() => { setAllotTeacher(''); setAllotStatus('') }}>Clear</button>}
           <span style={{ fontSize: 12, color: PX.sub }}>Matching cells stay bright; the rest fade.</span>
@@ -1011,12 +1014,6 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   // Practice tab → open the Practice Bank builder on the right subject and set so questions can be added straight away.
   const subjectOfPractice = r => (SUBJECTS.find(x => x.label === r.subject) || SUBJECTS.find(x => r.subject.includes(x.label)) || SUBJECTS[0])
   const goAddQuestions = (subjectLabel, testNo) => { setBStart(b => ({ test: testNo, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }   // testNo = the Pre Mock test it prepares for (none: the builder opens on the present test)
-  const setNoFor = r => {
-    const sub = subjectOfPractice(r)
-    if (r.test_no > 0) return Math.min(r.test_no, PRACTICE_PANEL[sub.key]?.sets || 1)   // sets added from the Panel carry their number
-    const same = practice.filter(x => subjectOfPractice(x).key === sub.key).sort((a, b) => a.id - b.id)
-    return Math.min(Math.max(same.findIndex(x => x.id === r.id) + 1, 1), PRACTICE_PANEL[sub.key]?.sets || 1)
-  }
   const TaskRow = ({ r }) => {
     const late = isOverdue(r, today)
     const next = allowedStatuses(r)
@@ -1090,13 +1087,23 @@ function MissionSainikInner({ currentUser: sessionUser }) {
 
 
   useEffect(() => {
-    if (tab !== 'practice') return
+    if (!['practice', 'panel', 'allotment'].includes(tab)) return
     ;(async () => {
-      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section').eq('series', 'practice').is('deleted_at', null).order('id'))
-      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section').eq('series', 'practice').order('id')))
-      const m = {}; (error ? [] : data || []).forEach(q => { m[q.test_no + '|' + q.section] = (m[q.test_no + '|' + q.section] || 0) + 1 }); setPracCounts(m)
+      let { data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section,uploaded_by').eq('series', 'practice').is('deleted_at', null).order('id'))
+      if (error) ({ data, error } = await fetchAll(() => supabase.from('mission_sainik_questions').select('test_no,section,uploaded_by').eq('series', 'practice').order('id')))
+      const m = {}, w = {}; (error ? [] : data || []).forEach(q => { const k = q.test_no + '|' + q.section; m[k] = (m[k] || 0) + 1; const kw = (q.uploaded_by || '') + '|' + k; w[kw] = (w[kw] || 0) + 1 }); setPracCounts(m); setPracWho(w)
     })()
   }, [tab])
+  // How far one practice teacher has got: tests where they have set their full quota / started, and their questions. Every test counts.
+  const coverOf = (subLabel, name, q) => {
+    let done = 0, started = 0, qs = 0
+    TESTS.forEach(t => {
+      let n = 0
+      for (const [k, c] of Object.entries(pracWho)) { const i = k.indexOf('|'), by = k.slice(0, i), rest = k.slice(i + 1); if (rest === t.no + '|' + subLabel && nameMatches(by, name)) n += c }
+      qs += n; if (n >= q) done++; else if (n > 0) started++
+    })
+    return { done, started, total: TESTS.length, qs }
+  }
   const practiceSets = (() => {
     const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
     const groups = SUBJECTS.map((sub, si) => ({ sub, tone: TONES[si % 6], sets: TESTS.map(t => ({ no: t.no, n: pracCounts[t.no + '|' + sub.label] || 0, q: practiceQOf(sub.key), chapter: syl[t.no + '|' + sub.label] || '' })) }))   // one practice set per Pre Mock test
@@ -1135,7 +1142,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   const Practice = () => (
     <PremiumCard title="Practice question bank" subtitle="Latest pattern · verified by another teacher of the subject · issued to students by 15 Dec" right={<button className="px-btn gold" onClick={() => setAddTask(newTaskForm('practice'))}>＋ Add practice set</button>} bodyStyle={{ padding: 0 }}>
       {practiceSets}
-      {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice sets yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
+      {practice.length === 0 && <div style={{ padding: 20, color: PX.sub, fontSize: 13 }}>No practice teachers yet. {isAdmin ? 'Use “Create allotment” on the Overview tab.' : ''}</div>}
       {practice.map(r => <Fragment key={r.id}>{TaskRow({ r })}</Fragment>)}
       {practice.length > 0 && (
         <div style={{ padding: '12px 16px', fontSize: 13, color: PX.sub }}>
@@ -1165,20 +1172,18 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   // "How many tests will they set": give one teacher exactly N Pre Mock tests (role setter) or N practice sets (role assistant) of a subject.
   // `work` is the caller's working copy of that subject's tasks, so several teachers can be added in a row. Returns { ok, changed, work, error }.
   const applyTestCount = async (d, name, count, work) => {
-    if (d.role === 'verifier' || count === '' || count == null) return { ok: true, changed: 0, work }
     const sub = SUBJECTS.find(x => x.key === d.subject_key)
-    const rule = [...new Set([...panelSetters(d.subject_key), name])]
-    const practiceOpts = { sets: PRACTICE_PANEL[d.subject_key]?.sets || 1, setNoOf: setNoFor }
-    const r = d.role === 'setter' ? retarget(work, name, count, rule) : practiceGive(work, name, count, practiceOpts)
-    if (r.error) return { ok: false, error: r.error, work }
-    if (r.create) {                       // practice: add the missing sets for this teacher (Set 1, Set 2 …)
-      if (!r.create.length) return { ok: true, changed: 0, work }
-      const newRows = r.create.map(c => ({ kind: 'practice', test_no: c.test_no, subject: sub.label, setter: name, verifier: PRACTICE_PANEL[d.subject_key]?.verifier || null, question_count: practiceQOf(d.subject_key), status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }))
-      const { data, error } = await supabase.from(TABLE).insert(newRows).select()
+    if (d.role === 'assistant') {   // a practice teacher: ONE assignment per subject, covering every test
+      if (work.some(x => x.setter === name)) return { ok: true, changed: 0, work }
+      const row = { kind: 'practice', test_no: 0, subject: sub.label, setter: name, verifier: PRACTICE_PANEL[d.subject_key]?.verifier || null, question_count: practiceQOf(d.subject_key), status: 'Pending', updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }
+      const { data, error } = await supabase.from(TABLE).insert(row).select()
       if (error) return { ok: false, error: error.message, work }
-      audit('panel_tests', d.subject_key, { name, role: d.role, practice_sets: Number(count), added: newRows.length })
-      return { ok: true, changed: newRows.length, work: [...work, ...(data || [])] }
+      audit('panel_practice_teacher', d.subject_key, { name }); return { ok: true, changed: 1, work: [...work, ...(data || [])] }
     }
+    if (d.role === 'verifier' || count === '' || count == null) return { ok: true, changed: 0, work }
+    const rule = [...new Set([...panelSetters(d.subject_key), name])]
+    const r = retarget(work, name, count, rule)
+    if (r.error) return { ok: false, error: r.error, work }
     for (const c of r.changes) {
       const row = work.find(x => x.id === c.id)
       const verifier = nextVerifier(row, sub.key, c.setter, rule)
@@ -1233,23 +1238,6 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   const PRACTICE_ROLES = ['assistant', 'verifier']
   const inView = (r, view) => (view === 'pre' ? r.role === 'setter' : PRACTICE_ROLES.includes(r.role))
   const roleOpts = role => (role === 'setter' ? [['setter', 'Question setter (Pre Mock)']] : [['assistant', 'Practice setter'], ['verifier', 'Practice verifier']])
-  // + / − on a practice setter's row: one more / one fewer practice set (Set 1, 2, 3 …) of their own for this subject.
-  const bumpPracticeSets = async (m, delta) => {
-    const d = { subject_key: m.subject_key, role: 'assistant' }
-    const work = workFor(d), mine = work.filter(r => settersOfRow(r).includes(m.name) && r.setter === m.name)
-    if (delta > 0) {
-      const res = await applyTestCount(d, m.name, mine.length + 1, work)
-      if (!res.ok) return setMsg('❌ ' + res.error)
-      setMsg(`✅ ${fullName(m.name)} now sets ${mine.length + 1} practice set${mine.length + 1 === 1 ? '' : 's'}`); load(); return
-    }
-    const last = [...mine].sort((a, b) => setNoFor(b) - setNoFor(a)).find(r => r.status === 'Pending')
-    if (!last) return setMsg(mine.length ? `❌ ${fullName(m.name)} has already handed in their practice set(s); they cannot be removed.` : `${fullName(m.name)} has no practice set to remove.`)
-    if (!isRealAdmin) return setMsg('Only an admin can remove a practice set.')
-    if (!window.confirm(`Remove Set ${setNoFor(last)} from ${fullName(m.name)}? Questions they uploaded stay in the bank.`)) return
-    const { error } = await supabase.from(TABLE).delete().eq('id', last.id)
-    if (error) return setMsg('❌ ' + error.message)
-    audit('practice_set_remove', m.subject_key, { name: m.name, set: setNoFor(last) }); setMsg(`✅ Set ${setNoFor(last)} removed from ${fullName(m.name)}`); load()
-  }
   const roleLabel = role => (role === 'assistant' ? 'practice setter' : role === 'verifier' ? 'practice verifier' : 'setter')
   const Panel = () => (
     <>
@@ -1270,19 +1258,19 @@ function MissionSainikInner({ currentUser: sessionUser }) {
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1.2fr 1fr 1fr auto', gap: 10, alignItems: 'end', marginBottom: 10 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>1 · Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>2 · Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}>{roleOpts(panelDraft.role).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-              {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" placeholder={panelDraft.role === 'assistant' ? 'e.g. 1' : 'e.g. 5'} value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
+              {panelDraft.role === 'setter' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{'Pre Mock tests to set'}<input className="px-input" type="number" min="0" placeholder={panelDraft.role === 'assistant' ? 'e.g. 1' : 'e.g. 5'} value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
               <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions each (optional)<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
               <button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button>
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub, marginBottom: 6 }}>3 · Pick the teachers</div>
-            <TeacherPicker staff={staffDir} taken={panelRows.filter(r => r.subject_key === panelDraft.subject_key && r.role === panelDraft.role).map(r => r.name)} onAdd={addPanelMembers} addLabel="Add to panel" countLabel={panelDraft.role === 'verifier' ? '' : panelDraft.role === 'assistant' ? 'practice sets' : 'tests'} defaultCount={panelDraft.test_count ?? ''} />
+            <TeacherPicker staff={staffDir} taken={panelRows.filter(r => r.subject_key === panelDraft.subject_key && r.role === panelDraft.role).map(r => r.name)} onAdd={addPanelMembers} addLabel="Add to panel" countLabel={panelDraft.role === 'setter' ? 'tests' : ''} defaultCount={panelDraft.test_count ?? ''} />
           </div>)}
         {panelDraft?.id && (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.1fr 1.3fr 1.1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Subject<select className="px-input" value={panelDraft.subject_key} onChange={e => setPanelDraft({ ...panelDraft, subject_key: e.target.value })}>{SUBJECTS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}</select></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Name (e.g. Sumanta)<input className="px-input" value={panelDraft.name} onChange={e => setPanelDraft({ ...panelDraft, name: e.target.value })} /></label>
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Role<select className="px-input" value={panelDraft.role} onChange={e => setPanelDraft({ ...panelDraft, role: e.target.value })}>{roleOpts(panelDraft.role).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-            {panelDraft.role !== 'verifier' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{panelDraft.role === 'assistant' ? 'Practice sets to set' : 'Pre Mock tests to set'}<input className="px-input" type="number" min="0" value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
+            {panelDraft.role === 'setter' ? <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{'Pre Mock tests to set'}<input className="px-input" type="number" min="0" value={panelDraft.test_count ?? ''} onChange={e => setPanelDraft({ ...panelDraft, test_count: e.target.value })} /></label> : <span />}
             <label style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>Questions to upload<input className="px-input" type="number" min="0" placeholder="e.g. 100" value={panelDraft.question_quota ?? ''} onChange={e => setPanelDraft({ ...panelDraft, question_quota: e.target.value })} /></label>
             <span style={{ display: 'flex', gap: 8 }}><button className="px-btn gold" onClick={savePanelMember}>{panelDraft.id ? 'Update' : 'Add'}</button><button className="px-btn ghost" onClick={() => setPanelDraft(null)}>Cancel</button></span>
           </div>)}
@@ -1294,22 +1282,23 @@ function MissionSainikInner({ currentUser: sessionUser }) {
           return (
             <PremiumCard key={sub.key} title={sub.label} subtitle={`${members.length} member${members.length === 1 ? '' : 's'}`}
               right={panelView === 'practice' ? (
-                <span role="group" aria-label={`Questions per practice set, ${sub.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub }}>Questions / set</span>
-                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five fewer questions per set" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) - 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>−</button>}
+                <span role="group" aria-label={`Questions per test, ${sub.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub }}>Per test</span>
+                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five fewer questions per test" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) - 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>−</button>}
                   <b aria-live="polite" style={{ minWidth: 30, textAlign: 'center', fontSize: 16, color: PX.navy }}>{practiceQOf(sub.key)}</b>
-                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five more questions per set" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) + 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>}
+                  {isRealAdmin && <button type="button" className="px-hbtn" aria-label="Five more questions per test" onClick={() => setPracticeQ(sub, practiceQOf(sub.key) + 5)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>}
                 </span>) : null}>
               {members.length === 0 && <div style={{ color: PX.sub, fontSize: 13 }}>No one yet.</div>}
               {members.map((m, i) => {
                 const pre = tests.filter(r => r.subject === sub.label && settersOfRow(r).includes(m.name)).sort((a, b) => a.test_no - b.test_no)
                 const prac = practice.filter(r => subjectOfPractice(r).key === sub.key && settersOfRow(r).includes(m.name))
+                const cover = m.role === 'assistant' ? coverOf(sub.label, m.name, practiceQOf(sub.key)) : null
                 const mine = [...pre, ...prac]
                 const chipTone = r => r.status === 'Pending' ? { bg: '#f1ede3', fg: '#8a6118' } : { bg: '#dcfce7', fg: '#15803d' }
                 const taskChips = (label, list, tabKey, name) => list.length > 0 && (
                   <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, paddingLeft: 68 }}>
                     <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub, marginRight: 4 }}>{label} · {list.filter(r => r.status !== 'Pending').length}/{list.length} in</span>
-                    {list.map(r => { const t = chipTone(r); return <button key={r.id} type="button" title={`${r.status} — open ${fullName(m.name)}'s tasks`} onClick={() => { setPerson(m.name); setTaskView('all'); setTab(tabKey) }} style={{ border: 'none', cursor: 'pointer', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: t.bg, color: t.fg, fontFamily: 'inherit' }}>{tabKey === 'practice' ? `Set ${setNoFor(r)}` : 'PMT-' + String(r.test_no).padStart(2, '0')}</button> })}
+                    {list.map(r => { const t = chipTone(r); return <button key={r.id} type="button" title={`${r.status} — open ${fullName(m.name)}'s tasks`} onClick={() => { setPerson(m.name); setTaskView('all'); setTab(tabKey) }} style={{ border: 'none', cursor: 'pointer', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: t.bg, color: t.fg, fontFamily: 'inherit' }}>{tabKey === 'practice' ? 'All tests' : 'PMT-' + String(r.test_no).padStart(2, '0')}</button> })}
                   </div>)
                 return (
                   <div key={m.id || m.name + i} style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', padding: '8px 0', borderTop: i ? `1px solid ${PX.line}` : 'none' }}>
@@ -1317,17 +1306,12 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                       onClick={m.role === 'setter' ? () => { setPerson(m.name); setTaskView('all'); setTab('mine') } : undefined}
                       onKeyDown={m.role === 'setter' ? e => { if (e.key === 'Enter') { setPerson(m.name); setTaskView('all'); setTab('mine') } } : undefined}
                       style={{ flex: '1 1 190px', minWidth: 0, cursor: m.role === 'setter' ? 'pointer' : 'default' }}>
-                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, (m.role === 'assistant' || prac.length) ? `${prac.length} practice set${prac.length === 1 ? '' : 's'}${m.role === 'assistant' ? ` · ${prac.length * practiceQOf(sub.key)} questions to set (${practiceQOf(sub.key)} per set)` : ''}` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
+                      <PersonCell name={m.name} photoName={photoOf(m.name)} size={56} sub={[m.role === 'setter' ? `${pre.length} tests · ${pre.filter(r => r.status !== 'Pending').length} in` : null, m.role === 'assistant' ? `practice for all ${cover.total} tests · ${practiceQOf(sub.key)} questions per test · ${cover.qs} set so far` : null, m.question_quota != null ? `${mine.filter(r => r.status !== 'Pending').reduce((n, r) => n + (r.question_count || 0), 0)} / ${m.question_quota} questions` : null].filter(Boolean).join(' · ') || null}>{fullName(m.name)}</PersonCell>
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      {isRealAdmin && m.role === 'assistant' && !m.builtin && (
-                        <span role="group" aria-label={`Practice sets for ${m.name}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <button type="button" className="px-hbtn" aria-label={`One fewer practice set for ${m.name}`} onClick={() => bumpPracticeSets(m, -1)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>−</button>
-                          <b aria-live="polite" title="practice sets" style={{ minWidth: 22, textAlign: 'center', color: PX.navy }}>{prac.length}</b>
-                          <button type="button" className="px-hbtn" aria-label={`One more practice set for ${m.name}`} onClick={() => bumpPracticeSets(m, 1)} style={{ width: 32, height: 32, padding: 0, fontSize: 17 }}>＋</button>
-                        </span>)}
+                      {m.role === 'assistant' && cover && <span title={`${cover.qs} practice questions so far. Every practice teacher sets questions for every test.`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 800, color: cover.done === cover.total ? '#0f7a4c' : PX.navy }}><span style={{ width: 70, height: 7, borderRadius: 99, background: '#e3e8f0', overflow: 'hidden' }}><span style={{ display: 'block', width: Math.round((cover.done / cover.total) * 100) + '%', height: '100%', background: cover.done === cover.total ? '#16a34a' : '#1d4f91' }} /></span>{cover.done}/{cover.total} tests</span>}
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
-                      {!m.builtin && isRealAdmin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'verifier' ? {} : { test_count: m.role === 'assistant' ? prac.length : pre.length, test_count_was: m.role === 'assistant' ? prac.length : pre.length }) })} aria-label={`Edit ${m.name}`}>✎</button>
+                      {!m.builtin && isRealAdmin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'setter' ? { test_count: pre.length, test_count_was: pre.length } : {}) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
                     </span>
                     {panelView === 'pre' && taskChips('Pre Mock', pre, 'mine', m.name)}
